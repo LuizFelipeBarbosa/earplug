@@ -57,7 +57,8 @@ class BandEditScreen extends StatelessWidget {
               children: [
                 Text(band.name.toUpperCase(), style: epDisplay(size: 18)),
                 GestureDetector(
-                  onTap: () => app.say('Photo upload placeholder (demo)'),
+                  onTap: () =>
+                      app.say("Band photos aren't ready yet — coming soon."),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Text('CHANGE PHOTO',
@@ -116,7 +117,8 @@ class BandEditScreen extends StatelessWidget {
           children: [
             const SectionLabel('VIDEOS · DRAG-FREE REORDER'),
             GestureDetector(
-              onTap: () => app.say('Clip upload placeholder (demo)'),
+              onTap: () =>
+                  app.say("Clip upload isn't ready yet — coming soon."),
               child: Text('+ UPLOAD CLIP',
                   style: epText(
                       size: 11, weight: FontWeight.w900, letterSpacing: .6, color: Ep.link)),

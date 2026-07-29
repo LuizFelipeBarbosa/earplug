@@ -115,6 +115,7 @@ class Gig {
   final List<String> genres;
   final String desc;
   final Ticketing tix;
+  final String? externalUrl;
   final String cap;
 
   const Gig({
@@ -132,6 +133,7 @@ class Gig {
     required this.genres,
     required this.desc,
     required this.tix,
+    this.externalUrl,
     this.cap = 'No cap',
   });
 
@@ -155,6 +157,7 @@ class Gig {
       genres: List<String>.from(json['genres'] as List),
       desc: json['desc'] as String,
       tix: Ticketing.values.byName(json['ticketing'] as String),
+      externalUrl: json['externalUrl'] as String?,
       cap: json['cap'] as String,
     );
   }

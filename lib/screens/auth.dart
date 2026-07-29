@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../genres.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -17,19 +18,6 @@ const _errorColor = Color(0xFFFF6B6B);
 // The stamp's fixed tilt, used everywhere the door stamp is drawn.
 const _stampAngle = -9 * math.pi / 180;
 const _stepPadding = EdgeInsets.fromLTRB(22, 24, 22, 30);
-
-const _genres = [
-  'punk',
-  'hardcore',
-  'garage',
-  'noise',
-  'post-punk',
-  'shoegaze',
-  'surf',
-  'thrash',
-  'ska',
-  'emo',
-];
 
 /// "29 JUL 26" — the date pressed into the door stamp.
 String _stampDate() {
@@ -859,7 +847,7 @@ class _TasteStep extends StatelessWidget {
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (final (i, genre) in _genres.indexed)
+                      for (final (i, genre) in kGenres.indexed)
                         _TasteChip(
                           label: genre,
                           active: app.userGenres.contains(genre),

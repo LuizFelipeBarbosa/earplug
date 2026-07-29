@@ -99,7 +99,7 @@ void showCitySheet(BuildContext context) {
   final app = context.read<AppState>();
   _showEpSheet(context, (ctx) {
     final city = app.city;
-    Widget option(String title, String sub, String value, {Color? subColor}) {
+    Widget option(String title, String sub, String value) {
       return _SheetOption(
         selected: city == value,
         onTap: () {
@@ -109,7 +109,7 @@ void showCitySheet(BuildContext context) {
         leading: Text(title, style: epText(size: 13, weight: FontWeight.w800)),
         trailing: Text(sub,
             style: epText(
-                size: 10.5, weight: FontWeight.w800, color: subColor ?? Ep.inkA(.45))),
+                size: 10.5, weight: FontWeight.w800, color: Ep.inkA(.45))),
       );
     }
 
@@ -117,9 +117,8 @@ void showCitySheet(BuildContext context) {
       title: 'Where are you?',
       children: [
         const SizedBox(height: 6),
-        Text("Location off? No problem — pick a city and browse anyway.",
+        Text("Pick a scene — everything's within BART distance anyway.",
             style: epText(size: 11.5, color: Ep.inkA(.5), height: 1.45)),
-        option('Use my location', 'MISSION, SF', 'sf', subColor: Ep.link),
         option('San Francisco', 'Mission & around', 'sf'),
         option('Oakland', 'Temescal & around', 'oak'),
       ],
@@ -132,6 +131,9 @@ void showCitySheet(BuildContext context) {
 void showSwitcherSheet(BuildContext context) {
   final app = context.read<AppState>();
   _showEpSheet(context, (ctx) {
+    final profileName = app.profile?.name.trim();
+    final displayName =
+        profileName == null || profileName.isEmpty ? 'You' : profileName;
     return _SheetShell(
       title: 'Switch view',
       children: [
@@ -147,13 +149,14 @@ void showSwitcherSheet(BuildContext context) {
                 height: 34,
                 alignment: Alignment.center,
                 decoration: const BoxDecoration(color: Ep.blue, shape: BoxShape.circle),
-                child: Text('SR', style: epDisplay(size: 12, color: Colors.white)),
+                child: Text(profileInitials(profileName),
+                    style: epDisplay(size: 12, color: Colors.white)),
               ),
               const SizedBox(width: 11),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Sam Reyes', style: epText(size: 13, weight: FontWeight.w800)),
+                  Text(displayName, style: epText(size: 13, weight: FontWeight.w800)),
                   Text('Fan view', style: epText(size: 10.5, color: Ep.inkA(.5))),
                 ],
               ),
@@ -259,6 +262,7 @@ class _QrPainter extends CustomPainter {
 }
 
 void showQrDialog(BuildContext context, Gig gig, Venue venue) {
+  final userKey = context.read<AppState>().profile?.email ?? 'guest';
   showDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: .72),
@@ -281,7 +285,7 @@ void showQrDialog(BuildContext context, Gig gig, Venue venue) {
                 color: Colors.white,
                 child: CustomPaint(
                   size: const Size(119, 119),
-                  painter: _QrPainter(qrCellsFor('${gig.id}sam')),
+                  painter: _QrPainter(qrCellsFor('${gig.id}$userKey')),
                 ),
               ),
               const SizedBox(height: 12),

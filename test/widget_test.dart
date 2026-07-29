@@ -302,6 +302,9 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<List<VideoClip>> videosFor(String bandId) async => const [];
 
   @override
+  Future<List<PastGig>> history() async => const [];
+
+  @override
   Future<Band?> band(String bandId) async => null;
 
   @override

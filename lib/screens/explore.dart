@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../genres.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -209,9 +210,7 @@ class _BrowseRows extends StatelessWidget {
           spacing: 7,
           runSpacing: 7,
           children: [
-            for (final t in const [
-              'punk', 'hardcore', 'garage', 'noise', 'post-punk', 'shoegaze', 'surf', 'thrash'
-            ])
+            for (final t in kGenres)
               EpChip(label: t, active: false, onTap: () => app.setQuery(t)),
           ],
         ),

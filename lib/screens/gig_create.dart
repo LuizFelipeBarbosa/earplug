@@ -248,7 +248,9 @@ class _CustomArtSlot extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.read<AppState>();
     return GestureDetector(
-      onTap: () => app.say('Flyer upload placeholder (demo)'),
+      onTap: () => app.say(
+        "Flyer upload isn't ready yet — pick a press for now.",
+      ),
       child: ColoredBox(
         color: base,
         child: Padding(
@@ -1210,7 +1212,9 @@ void showVenueSheet(BuildContext context) {
       trailing: GestureDetector(
         onTap: () {
           Navigator.pop(ctx);
-          app.say('New venue form placeholder — it becomes a shared record.');
+          app.say(
+            "Adding venues isn't ready yet — pick from the list for now.",
+          );
         },
         child: Text(
           '+ NEW VENUE',
@@ -1569,7 +1573,12 @@ class _PublishedView extends StatelessWidget {
                         'SHARE LINK',
                         fontSize: 11.5,
                         padding: const EdgeInsets.symmetric(vertical: 13),
-                        onTap: () => app.say('Link copied — ${app.gigUrl}'),
+                        onTap: () {
+                          Clipboard.setData(
+                            ClipboardData(text: 'https://${app.gigUrl}'),
+                          );
+                          app.say('Link copied — ${app.gigUrl}');
+                        },
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1579,7 +1588,9 @@ class _PublishedView extends StatelessWidget {
                         kind: EpButtonKind.ghost,
                         fontSize: 11.5,
                         padding: const EdgeInsets.symmetric(vertical: 13),
-                        onTap: () => app.say('Door QR saved to photos (demo)'),
+                        onTap: () => app.say(
+                          "Door QR isn't ready yet — RSVPs still count live.",
+                        ),
                       ),
                     ),
                   ],

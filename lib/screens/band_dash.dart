@@ -18,19 +18,14 @@ class BandDashScreen extends StatelessWidget {
 
     final mine = app.myBandGigs;
     final next = mine.isEmpty ? null : mine.first;
-    final isNew = app.bandIsNew;
+    final clips = app.videosFor(band.id);
 
-    final activity = isNew
-        ? const [
-            ('Band created — invite flyers, er, members', 'now'),
-            ('Tip: post a "this is what we sound like" clip first', 'now'),
-          ]
-        : const [
-            ('14 new RSVPs for Riptide Release Show', '2h'),
-            ('Soundcheck clip passed 5K views', '1d'),
-            ('23 new followers after Basement series #4', '3d'),
-            ('Pigeon Court added you to Fog City Fest', '5d'),
-          ];
+    final tips = [
+      if (mine.isEmpty) 'List your first gig — RSVPs count live.',
+      if (clips.isEmpty) 'Post a "this is what we sound like" clip.',
+      if (band.followers < 25)
+        'Analytics unlock at 25 followers — ${25 - band.followers} to go.',
+    ];
 
     return ListView(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, tabBarClearance),
@@ -84,8 +79,10 @@ class BandDashScreen extends StatelessWidget {
           children: [
             _StatCard(
                 label: 'FOLLOWERS',
-                value: isNew ? '${band.followers}' : '486',
-                sub: isNew ? 'just the band so far' : '+23 this week'),
+                value: band.followersLabel,
+                sub: band.followers == 0
+                    ? 'just the band so far'
+                    : 'and counting'),
             const SizedBox(width: 8),
             _StatCard(
                 label: 'NEXT GIG RSVPS',
@@ -95,9 +92,9 @@ class BandDashScreen extends StatelessWidget {
                     : 'no gig listed'),
             const SizedBox(width: 8),
             _StatCard(
-                label: 'VIDEO VIEWS',
-                value: isNew ? '0' : '3.1K',
-                sub: isNew ? 'post your first clip' : 'this month'),
+                label: 'CLIPS',
+                value: '${clips.length}',
+                sub: clips.isEmpty ? 'post your first clip' : 'on your profile'),
           ],
         ),
         const SizedBox(height: 14),
@@ -105,7 +102,8 @@ class BandDashScreen extends StatelessWidget {
           children: [
             _ActionButton(
                 label: '▶ POST MEDIA',
-                onTap: () => app.say('Clip upload placeholder (demo)')),
+                onTap: () =>
+                    app.say("Clip upload isn't ready yet — coming soon.")),
             const SizedBox(width: 8),
             _ActionButton(
                 label: '+ CREATE GIG', filled: true, onTap: app.startGigCreate),
@@ -120,29 +118,30 @@ class BandDashScreen extends StatelessWidget {
           const SizedBox(height: 8),
           _NextUpCard(gig: next, app: app),
         ],
-        const SizedBox(height: 14),
-        const SectionLabel('RECENT ACTIVITY'),
-        const SizedBox(height: 6),
-        for (final (text, ago) in activity)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
-            decoration:
-                BoxDecoration(border: Border(bottom: BorderSide(color: Ep.whiteA(.07)))),
-            child: Row(
-              children: [
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: const BoxDecoration(color: Ep.blue, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(text, style: epText(size: 12.5, color: Ep.inkA(.75))),
-                ),
-                Text(ago, style: epText(size: 10.5, color: Ep.inkA(.35))),
-              ],
+        if (tips.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          const SectionLabel('GET ROLLING'),
+          const SizedBox(height: 6),
+          for (final tip in tips)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
+              decoration:
+                  BoxDecoration(border: Border(bottom: BorderSide(color: Ep.whiteA(.07)))),
+              child: Row(
+                children: [
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(color: Ep.blue, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(tip, style: epText(size: 12.5, color: Ep.inkA(.75))),
+                  ),
+                ],
+              ),
             ),
-          ),
+        ],
       ],
     );
   }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../genres.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -40,7 +42,8 @@ class BandCreateScreen extends StatelessWidget {
       Row(
         children: [
           GestureDetector(
-            onTap: () => app.say('Photo upload placeholder (demo)'),
+            onTap: () =>
+                app.say("Band photos aren't ready yet — coming soon."),
             child: SizedBox(
               width: 74,
               height: 74,
@@ -73,9 +76,7 @@ class BandCreateScreen extends StatelessWidget {
         spacing: 7,
         runSpacing: 7,
         children: [
-          for (final t in const [
-            'punk', 'hardcore', 'garage', 'noise', 'post-punk', 'shoegaze', 'surf', 'thrash'
-          ])
+          for (final t in kGenres)
             EpChip(
                 label: t, active: app.nbGenres.contains(t), onTap: () => app.toggleNbGenre(t)),
         ],
@@ -108,10 +109,11 @@ class BandCreateScreen extends StatelessWidget {
         TextSpan(
           style: epText(size: 12.5, color: Ep.inkA(.55), height: 1.5),
           children: [
-            const TextSpan(text: 'Invite by username — when they accept, '),
+            const TextSpan(text: 'Add bandmates by username so '),
             TextSpan(text: app.nbName, style: epText(size: 12.5, weight: FontWeight.w800)),
             const TextSpan(
-                text: ' shows up in their view switcher too. '
+                text: ' has its roster from day one — invites go out once '
+                    'member accounts link up. '
                     'Roles stay simple: admin (you) and members.'),
           ],
         ),
@@ -135,7 +137,7 @@ class BandCreateScreen extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(child: Text(invite, style: epText(size: 13, weight: FontWeight.w700))),
-              Text('INVITED · MEMBER',
+              Text('ON THE ROSTER',
                   style: epText(
                       size: 10, weight: FontWeight.w800, letterSpacing: .8, color: Ep.inkA(.45))),
             ],
@@ -144,7 +146,12 @@ class BandCreateScreen extends StatelessWidget {
         const SizedBox(height: 8),
       ],
       GestureDetector(
-        onTap: () => app.say('Invite link copied.'),
+        onTap: () {
+          Clipboard.setData(
+            ClipboardData(text: 'https://earplug.app/join/${app.nbSlug}'),
+          );
+          app.say('Invite link copied.');
+        },
         child: DashedBox(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(

@@ -45,6 +45,7 @@ abstract class EarplugRepository {
   Stream<Interactions> myInteractions();
   Stream<List<BandMembership>> myBands();
   Future<List<VideoClip>> videosFor(String bandId);
+  Future<List<PastGig>> history();
   Future<Band?> band(String bandId);
   Future<List<Band>> searchBands(String q);
   Future<void> toggleRsvp(String gigId);

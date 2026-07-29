@@ -122,9 +122,16 @@ class BandProfileScreen extends StatelessWidget {
                 _UpcomingRow(gig: g, app: app),
                 const SizedBox(height: 8),
               ],
-              const SizedBox(height: 8),
-              SectionLabel('PAST GIGS · ${band.past.length} PLAYED'),
-              const SizedBox(height: 6),
+              if (upcoming.isEmpty)
+                Text(
+                  'Nothing on the calendar right now.',
+                  style: epText(size: 11.5, color: Ep.inkA(.4)),
+                ),
+              if (band.past.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SectionLabel('PAST GIGS · ${band.past.length} PLAYED'),
+                const SizedBox(height: 6),
+              ],
               for (final p in band.past)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
@@ -159,7 +166,7 @@ class _PinnedVideo extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => app.say('▶ Video player placeholder (demo)'),
+      onTap: () => app.say("▶ Playback isn't wired up yet — catch them live."),
       child: Container(
         height: 190,
         decoration: BoxDecoration(
@@ -226,7 +233,7 @@ class _ClipTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => app.say('▶ Video player placeholder (demo)'),
+      onTap: () => app.say("▶ Playback isn't wired up yet — catch them live."),
       child: Container(
         decoration: BoxDecoration(
           color: Ep.card,

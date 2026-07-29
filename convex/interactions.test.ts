@@ -94,6 +94,47 @@ describe("interactions", () => {
     expect(band!.followerCount).toBe(10);
   });
 
+  test("history returns only past RSVPed gigs, newest first", async () => {
+    const { t, asFan, venueId, bandId, gigId } = await setup();
+
+    const [oldGigId, olderGigId] = await t.run(async (ctx) => {
+      const base = {
+        venueId,
+        price: 0,
+        doorsTime: "8PM / 9PM",
+        flyKey: "paper",
+        lineup: [bandId],
+        genres: ["hardcore"],
+        desc: "",
+        ticketing: "rsvp" as const,
+        cap: "No cap",
+        goingCount: 0,
+      };
+      return [
+        await ctx.db.insert("gigs", {
+          ...base,
+          title: "Last Month",
+          startsAt: Date.now() - 30 * 24 * 3600_000,
+        }),
+        await ctx.db.insert("gigs", {
+          ...base,
+          title: "Two Months Back",
+          startsAt: Date.now() - 60 * 24 * 3600_000,
+        }),
+      ];
+    });
+
+    // RSVP to both past gigs and the upcoming one; only the past two count.
+    for (const id of [olderGigId, gigId, oldGigId]) {
+      await asFan.mutation(api.interactions.toggleRsvp, { gigId: id });
+    }
+
+    expect(await t.query(api.interactions.history, {})).toEqual([]);
+    const history = await asFan.query(api.interactions.history, {});
+    expect(history.map((h) => h.title)).toEqual(["Last Month", "Two Months Back"]);
+    expect(history[0].venueName).toBe("Casa Quake");
+  });
+
   test("toggleSave double-toggle", async () => {
     const { asFan, gigId } = await setup();
     expect(await asFan.mutation(api.interactions.toggleSave, { gigId })).toEqual({ on: true });

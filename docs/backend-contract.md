@@ -52,6 +52,7 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 | `videos:forBand` | `{ bandId }` | `VideoPayload[]` ordered by `order` asc |
 | `users:me` | `{}` | `UserPayload \| null` |
 | ★ `interactions:myInteractions` | `{}` | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], attendedCount: number }`; empty/0 unauth |
+| `interactions:history` | `{}` | `[{ title: string, venueName: string, startsAt: number }]` — gigs the user RSVPed to with `startsAt < now`, newest first; `[]` unauth. Display string ("title — venue", "SAT JUL 5") derived client-side. |
 
 ## Mutations
 

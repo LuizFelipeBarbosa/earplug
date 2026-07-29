@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../demo_data.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -22,17 +21,6 @@ const _monthNames = [
   'Nov',
   'Dec',
 ];
-
-String _profileInitials(String? name) {
-  final words = name
-      ?.trim()
-      .split(RegExp(r'\s+'))
-      .where((word) => word.isNotEmpty)
-      .take(2)
-      .toList();
-  if (words == null || words.isEmpty) return '??';
-  return words.map((word) => word[0]).join().toUpperCase();
-}
 
 String _monthYear(DateTime date) =>
     '${_monthNames[date.month - 1]} ${date.year}';
@@ -77,7 +65,7 @@ class MyGigsScreen extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Text(
-                _profileInitials(profileName),
+                profileInitials(profileName),
                 style: epDisplay(size: 19, color: Colors.white),
               ),
             ),
@@ -88,7 +76,7 @@ class MyGigsScreen extends StatelessWidget {
                 children: [
                   Text(displayName, style: epDisplay(size: 19)),
                   Text(
-                    '${app.attended} gigs attended · fan since $fanSince',
+                    '${app.gigsAttended} gigs attended · fan since $fanSince',
                     style: epText(size: 11.5, color: Ep.inkA(.5)),
                   ),
                 ],
@@ -141,6 +129,11 @@ class MyGigsScreen extends StatelessWidget {
         const SizedBox(height: 8),
         const SectionLabel('SAVED'),
         const SizedBox(height: 8),
+        if (savedGigs.isEmpty)
+          Text(
+            'Nothing saved — tap the bookmark on a gig to stash it here.',
+            style: epText(size: 11.5, color: Ep.inkA(.4)),
+          ),
         for (final g in savedGigs) ...[
           _SavedRow(gig: g, app: app),
           const SizedBox(height: 8),
@@ -148,6 +141,11 @@ class MyGigsScreen extends StatelessWidget {
         const SizedBox(height: 8),
         const SectionLabel('FOLLOWING'),
         const SizedBox(height: 8),
+        if (app.follows.isEmpty)
+          Text(
+            'Not following any bands yet.',
+            style: epText(size: 11.5, color: Ep.inkA(.4)),
+          ),
         for (final id in app.follows.toList())
           if (app.band(id) != null) ...[
             _FollowRow(bandId: id, app: app),
@@ -156,7 +154,15 @@ class MyGigsScreen extends StatelessWidget {
         const SizedBox(height: 8),
         const SectionLabel('HISTORY'),
         const SizedBox(height: 6),
-        for (final p in DemoData.fanHistory)
+        if (app.history.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              'No gigs on record yet — RSVP and show up, this fills itself in.',
+              style: epText(size: 11.5, color: Ep.inkA(.4)),
+            ),
+          ),
+        for (final p in app.history)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
             decoration: BoxDecoration(

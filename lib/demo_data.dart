@@ -200,6 +200,7 @@ abstract final class DemoData {
       genres: ['post-punk', 'hardcore'],
       desc: 'Double bill. Loud then louder. Tickets through the venue.',
       tix: Ticketing.external,
+      externalUrl: 'https://example.com/tickets/pigeon-court',
     ),
     Gig(
       id: 'g5',
@@ -248,6 +249,7 @@ abstract final class DemoData {
       genres: ['punk', 'garage'],
       desc: 'Eight hours, four stages worth of bands on one stage.',
       tix: Ticketing.external,
+      externalUrl: 'https://example.com/tickets/fog-city-fest',
     ),
   ];
 

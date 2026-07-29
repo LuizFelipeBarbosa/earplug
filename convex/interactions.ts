@@ -37,6 +37,42 @@ export const myInteractions = query({
   },
 });
 
+/** Gigs the user RSVPed to that have already happened, newest first; [] when
+ * unauthenticated. Same Date.now() staleness caveat as gigs:feed — a gig only
+ * crosses into history when something invalidates this query. */
+export const history = query({
+  args: {},
+  returns: v.array(
+    v.object({
+      title: v.string(),
+      venueName: v.string(),
+      startsAt: v.number(),
+    }),
+  ),
+  handler: async (ctx) => {
+    const user = await currentUser(ctx);
+    if (user === null) return [];
+    const rsvps = await ctx.db
+      .query("gigRsvps")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .take(500);
+    const now = Date.now();
+    const past = [];
+    for (const rsvp of rsvps) {
+      const gig = await ctx.db.get(rsvp.gigId);
+      if (!gig || gig.startsAt >= now) continue;
+      const venue = await ctx.db.get(gig.venueId);
+      past.push({
+        title: gig.title,
+        venueName: venue?.name ?? "",
+        startsAt: gig.startsAt,
+      });
+    }
+    past.sort((a, b) => b.startsAt - a.startsAt);
+    return past;
+  },
+});
+
 export const toggleRsvp = mutation({
   args: { gigId: v.id("gigs") },
   returns: v.object({ on: v.boolean() }),

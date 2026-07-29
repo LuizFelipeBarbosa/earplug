@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/map_view.dart';
+
+Future<void> _openExternal(AppState app, String url) async {
+  final ok = await launchUrl(
+    Uri.parse(url),
+    mode: LaunchMode.externalApplication,
+  );
+  if (!ok) app.say("Couldn't open that link.");
+}
 
 class GigDetailScreen extends StatelessWidget {
   final String gigId;
@@ -129,7 +139,12 @@ class _Hero extends StatelessWidget {
               right: -8,
               top: -2,
               child: GestureDetector(
-                onTap: () => app.say('Link copied — earplug.app/g/${gig.id}'),
+                onTap: () {
+                  Clipboard.setData(
+                    ClipboardData(text: 'https://earplug.app/g/${gig.id}'),
+                  );
+                  app.say('Link copied — earplug.app/g/${gig.id}');
+                },
                 child: Container(
                   height: 36,
                   padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -261,7 +276,11 @@ class _VenueCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 GestureDetector(
-                  onTap: () => app.say('Opening directions… (demo)'),
+                  onTap: () => _openExternal(
+                    app,
+                    'https://www.google.com/maps/search/?api=1&query='
+                    '${venue.point.latitude},${venue.point.longitude}',
+                  ),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
                     decoration: BoxDecoration(
@@ -296,12 +315,11 @@ class _WhosGoing extends StatelessWidget {
         if (app.band(id) case final Band band) band.name,
     ];
     final socialLine = !app.authed
-        ? 'Log in to see which of your people are going.'
+        ? 'Log in to see when bands you follow are on the bill.'
         : followedBandNames.isEmpty
-            ? '3 people you know are going.'
+            ? 'None of the bands you follow are on this bill — yet.'
             : 'Bands you follow on this bill: '
-                '${followedBandNames.join(', ')}. '
-                'Plus 3 people you know.';
+                '${followedBandNames.join(', ')}.';
 
     return EpCard(
       padding: const EdgeInsets.all(14),
@@ -342,7 +360,14 @@ class _CtaBar extends StatelessWidget {
           kind: EpButtonKind.light,
           fontSize: 14,
           padding: const EdgeInsets.symmetric(vertical: 16),
-          onTap: () => app.say('Opening ticket site… (demo)'));
+          onTap: () {
+            final url = gig.externalUrl;
+            if (url == null) {
+              app.say('No ticket link listed for this gig.');
+            } else {
+              _openExternal(app, url);
+            }
+          });
     } else if (isRsvpd) {
       button = EpButton('GOING ✓',
           kind: EpButtonKind.outline,

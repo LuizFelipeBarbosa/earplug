@@ -465,3 +465,15 @@ class _TrianglePainter extends CustomPainter {
   @override
   bool shouldRepaint(_TrianglePainter old) => old.color != color;
 }
+
+/// "Sam Reyes" → "SR"; single words take one letter; null/empty → "??".
+String profileInitials(String? name) {
+  final words = name
+      ?.trim()
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty)
+      .take(2)
+      .toList();
+  if (words == null || words.isEmpty) return '??';
+  return words.map((word) => word[0]).join().toUpperCase();
+}

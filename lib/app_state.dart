@@ -110,7 +110,13 @@ class AppState extends ChangeNotifier {
   Set<String> follows = {};
   Set<String> saved = {};
   int attended = 0;
+  List<PastGig> history = const [];
   UserProfile? profile;
+
+  /// Legacy-imported count and RSVP-derived history can disagree; show
+  /// whichever credits the fan more.
+  int get gigsAttended =>
+      attended > history.length ? attended : history.length;
 
   // ---- home filters
   bool mapMode = false;
@@ -184,9 +190,19 @@ class AppState extends ChangeNotifier {
       await _refreshConvexAuth();
       await repository.ensureUser(name: auth.displayName);
       await _refreshProfile();
+      unawaited(_refreshHistory());
     } catch (_) {
       say('Something broke — try again.');
     }
+  }
+
+  Future<void> _refreshHistory() async {
+    try {
+      final loaded = await repository.history();
+      if (!authed) return;
+      history = loaded;
+      notifyListeners();
+    } catch (_) {}
   }
 
   Future<void> _refreshProfile() async {
@@ -294,6 +310,7 @@ class AppState extends ChangeNotifier {
 
   void openMyGigsTab() {
     if (authed) {
+      unawaited(_refreshHistory());
       resetTo(Screen.myGigs);
     } else {
       needAuth(const PendingAuth(PendingKind.myGigs));
@@ -326,6 +343,7 @@ class AppState extends ChangeNotifier {
     follows = {};
     saved = {};
     attended = 0;
+    history = const [];
     authed = false;
     resetTo(Screen.home);
     say('Signed out.');
@@ -363,7 +381,12 @@ class AppState extends ChangeNotifier {
         toggleFollow(p!.id!);
       case PendingKind.myGigs:
         _postAuthScreen = Screen.myGigs;
-        say('Welcome back, Sam.');
+        final name = (profile?.name ?? auth.displayName)?.trim();
+        say(
+          name == null || name.isEmpty
+              ? 'Welcome back.'
+              : 'Welcome back, ${name.split(' ').first}.',
+        );
       case PendingKind.band:
         _postAuthScreen = Screen.bandDash;
       case null:
@@ -577,7 +600,6 @@ class AppState extends ChangeNotifier {
   // ========================= band view =========================
 
   Band? get myBand => band(bandId);
-  bool get bandIsNew => bandId.startsWith('nb');
 
   List<Gig> get myBandGigs =>
       allGigs.where((g) => g.lineup.contains(bandId)).toList();

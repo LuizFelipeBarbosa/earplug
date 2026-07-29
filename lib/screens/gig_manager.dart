@@ -13,13 +13,7 @@ class GigManagerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final upcoming = app.myBandGigs;
-    final past = app.bandIsNew
-        ? const <(String, String, String)>[]
-        : const [
-            ('Riptide warmup — Casa Quake', 'JUL 12 · FREE', '64 RSVP → 51 in'),
-            ('Nightcrawler in-store', 'JUN 27 · \$8', '38 RSVP → 35 in'),
-            ('Peralta Hall benefit', 'JUN 6 · \$10', '71 RSVP → 49 in'),
-          ];
+    final past = app.myBand?.past ?? const [];
 
     return ListView(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, tabBarClearance),
@@ -70,28 +64,29 @@ class GigManagerScreen extends StatelessWidget {
           const SizedBox(height: 8),
         ],
         const SizedBox(height: 8),
-        const SectionLabel('PAST · RSVP → TURNOUT'),
+        const SectionLabel('PAST'),
         const SizedBox(height: 6),
-        for (final (title, meta, ratio) in past)
+        if (past.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(
+              'Played gigs will collect here after your first show.',
+              style: epText(size: 11.5, color: Ep.inkA(.4)),
+            ),
+          ),
+        for (final p in past)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
             decoration:
                 BoxDecoration(border: Border(bottom: BorderSide(color: Ep.whiteA(.07)))),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title,
-                          style: epText(size: 12.5, weight: FontWeight.w700, color: Ep.inkA(.75))),
-                      const SizedBox(height: 1),
-                      Text(meta, style: epText(size: 10.5, color: Ep.inkA(.4))),
-                    ],
-                  ),
+                  child: Text(p.title,
+                      style: epText(size: 12.5, weight: FontWeight.w700, color: Ep.inkA(.75))),
                 ),
-                Text(ratio,
-                    style: epText(size: 11.5, weight: FontWeight.w800, color: Ep.inkA(.6))),
+                Text(p.meta, style: epText(size: 10.5, color: Ep.inkA(.4))),
               ],
             ),
           ),

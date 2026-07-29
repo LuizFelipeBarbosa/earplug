@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../genres.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -83,7 +84,8 @@ class _Header extends StatelessWidget {
           active: app.fDate == DateFilter.week,
           onTap: () => app.toggleDateFilter(DateFilter.week)),
       EpChip(label: 'FREE', active: app.fFree, onTap: app.toggleFree),
-      for (final g in const ['punk', 'hardcore', 'garage', 'noise'])
+      // Only the head of the vocabulary fits the chip row.
+      for (final g in kGenres.take(4))
         EpChip(label: g, active: app.fGenre == g, onTap: () => app.toggleGenre(g)),
     ];
   }

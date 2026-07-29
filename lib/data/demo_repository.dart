@@ -62,6 +62,10 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<List<PastGig>> history() async =>
+      _auth.signedIn ? DemoData.fanHistory : const [];
+
+  @override
   Future<Band?> band(String bandId) async => _bands[bandId];
 
   @override
@@ -194,6 +198,7 @@ class DemoRepository implements EarplugRepository {
             '${ticketing == Ticketing.external ? 'Tickets via external link. ' : 'RSVP in app. '}'
             'Listed by $bandName.',
         tix: ticketing,
+        externalUrl: externalUrl,
         cap: cap,
       ),
     );
