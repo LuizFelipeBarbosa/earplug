@@ -86,22 +86,39 @@ final class ClerkWebAuth implements AuthService {
       await _clerk.load().toDart;
       _lastSignedIn = _clerk.user != null;
       _clerk.addListener(((JSAny? _) => _emitSignedInIfChanged()).toJS);
-
-      if (_window.sessionStorage.getItem(_oauthPendingKey) == 'true') {
-        _window.sessionStorage.removeItem(_oauthPendingKey);
-        await _clerk
-            .handleRedirectCallback(
-              _RedirectCallbackOptions(
-                signInFallbackRedirectUrl: _rootUrl,
-                signUpFallbackRedirectUrl: _rootUrl,
-              ),
-            )
-            .toDart;
-        _emitSignedInIfChanged();
-      }
     } catch (error) {
       throw AuthException(_messageFor(error));
     }
+
+    if (_window.sessionStorage.getItem(_oauthPendingKey) == 'true') {
+      _window.sessionStorage.removeItem(_oauthPendingKey);
+      try {
+        await _clerk.handleRedirectCallback(_redirectCallbackToApp()).toDart;
+      } catch (_) {
+        // A failed OAuth callback must not block startup: the user just
+        // arrives signed out and can retry from the door.
+      }
+      _emitSignedInIfChanged();
+    }
+  }
+
+  /// Every post-OAuth outcome must land back in the app. Any URL left unset
+  /// here falls back to Clerk's hosted account portal (accounts.dev), which
+  /// strands new sign-ups outside the app.
+  _RedirectCallbackOptions _redirectCallbackToApp() {
+    final url = _rootUrl;
+    return _RedirectCallbackOptions(
+      signInFallbackRedirectUrl: url,
+      signUpFallbackRedirectUrl: url,
+      signInUrl: url,
+      signUpUrl: url,
+      firstFactorUrl: url,
+      secondFactorUrl: url,
+      resetPasswordUrl: url,
+      continueSignUpUrl: url,
+      verifyEmailAddressUrl: url,
+      verifyPhoneNumberUrl: url,
+    );
   }
 
   Future<void> _loadClerkScript() {
@@ -550,5 +567,13 @@ extension type _RedirectCallbackOptions._(JSObject _) implements JSObject {
   external factory _RedirectCallbackOptions({
     required String signInFallbackRedirectUrl,
     required String signUpFallbackRedirectUrl,
+    required String signInUrl,
+    required String signUpUrl,
+    required String firstFactorUrl,
+    required String secondFactorUrl,
+    required String resetPasswordUrl,
+    required String continueSignUpUrl,
+    required String verifyEmailAddressUrl,
+    required String verifyPhoneNumberUrl,
   });
 }
