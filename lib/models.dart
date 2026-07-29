@@ -277,17 +277,21 @@ class Band {
   String get followersLabel => _compactCount(followers);
 
   Band copyWith({
+    String? name,
+    List<String>? genres,
+    String? area,
+    String? initials,
     String? bio,
     String? linkIg,
     String? linkBc,
     List<String>? upcoming,
   }) => Band(
     id: id,
-    name: name,
-    genres: genres,
-    area: area,
+    name: name ?? this.name,
+    genres: genres ?? this.genres,
+    area: area ?? this.area,
     color: color,
-    initials: initials,
+    initials: initials ?? this.initials,
     followers: followers,
     bio: bio ?? this.bio,
     linkIg: linkIg ?? this.linkIg,

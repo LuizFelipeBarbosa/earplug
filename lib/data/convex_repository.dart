@@ -111,7 +111,7 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<String> createBand({
+  Future<({String bandId, String slug})> createBand({
     required String name,
     required List<String> genres,
     required String bio,
@@ -131,21 +131,35 @@ class ConvexRepository implements EarplugRepository {
       'linkBc': ?linkBc,
       'linkYt': ?linkYt,
     });
-    return _asMap(result)['bandId'] as String;
+    final payload = _asMap(result);
+    return (
+      bandId: payload['bandId'] as String,
+      slug: payload['slug'] as String,
+    );
   }
 
   @override
   Future<void> updateBandProfile({
     required String bandId,
+    String? name,
+    List<String>? genres,
+    String? area,
     String? bio,
+    List<String>? inviteHandles,
     String? linkIg,
     String? linkBc,
+    String? linkYt,
   }) async {
     await _convexService.mutation('bands:updateProfile', {
       'bandId': bandId,
+      'name': ?name,
+      'genres': ?genres,
+      'area': ?area,
       'bio': ?bio,
+      'inviteHandles': ?inviteHandles,
       'linkIg': ?linkIg,
       'linkBc': ?linkBc,
+      'linkYt': ?linkYt,
     });
   }
 

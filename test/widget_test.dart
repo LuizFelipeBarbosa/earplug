@@ -120,9 +120,49 @@ void main() {
       expect(app.myBand!.initials, 'SB');
       expect(app.myBand!.followers, 2);
       expect(app.myBand!.area, 'Berkeley');
+      expect(app.nbShareSlug, 'static-bloom-two');
 
       app.postFirstGig();
       expect(app.current.screen, Screen.gigCreate);
+    });
+
+    test('rapid create taps and keep-editing never duplicate the band',
+        () async {
+      final app = await _demoApp();
+      app.startBandCreate();
+      app.setNbName('Static Bloom Two');
+      app.toggleNbGenre('punk');
+      app.setNbArea('Berkeley');
+      final bandsBefore = app.myBands.length;
+
+      // A double tap fires createBand twice; only one band may land.
+      await Future.wait([app.createBand(), app.createBand()]);
+      await pumpEventQueue();
+      expect(app.myBands.length, bandsBefore + 1);
+      final createdId = app.bandId;
+
+      // KEEP EDITING → rename → save updates the same record.
+      app.editCreatedBand();
+      expect(app.nbEditingCreated, isTrue);
+      app.setNbName('Static Gloom');
+      await app.createBand();
+      await pumpEventQueue();
+      expect(app.myBands.length, bandsBefore + 1);
+      expect(app.bandId, createdId);
+      expect(app.band(createdId)!.name, 'Static Gloom');
+      expect(app.band(createdId)!.initials, 'SG');
+      // The shared link survives the rename.
+      expect(app.nbShareSlug, 'static-bloom-two');
+
+      // A fresh band reusing a taken name gets its own slug.
+      app.makeAnotherBand();
+      app.setNbName('Static Gloom');
+      app.toggleNbGenre('punk');
+      app.setNbArea('Berkeley');
+      await app.createBand();
+      await pumpEventQueue();
+      expect(app.myBands.length, bandsBefore + 2);
+      expect(app.nbShareSlug, 'static-gloom-2');
     });
 
     test('failed RSVP mutation reverts its optimistic update', () async {
@@ -338,7 +378,7 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<void> ensureUser({String? name}) async {}
 
   @override
-  Future<String> createBand({
+  Future<({String bandId, String slug})> createBand({
     required String name,
     required List<String> genres,
     required String bio,
@@ -347,14 +387,19 @@ class _FailingRsvpRepository implements EarplugRepository {
     String? linkIg,
     String? linkBc,
     String? linkYt,
-  }) async => 'unused';
+  }) async => (bandId: 'unused', slug: 'unused');
 
   @override
   Future<void> updateBandProfile({
     required String bandId,
+    String? name,
+    List<String>? genres,
+    String? area,
     String? bio,
+    List<String>? inviteHandles,
     String? linkIg,
     String? linkBc,
+    String? linkYt,
   }) async {}
 
   @override

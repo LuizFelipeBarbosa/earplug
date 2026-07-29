@@ -138,7 +138,9 @@ void main() {
     expect(app.nbCreated, isTrue);
     expect(find.text("TAPE'S OUT"), findsOne);
     expect(find.text("You're on the map."), findsOne);
-    expect(find.text('earplug.app/static-bloom'), findsOne);
+    // The demo feed already has a Static Bloom, so the server-issued slug
+    // dedupes.
+    expect(find.text('earplug.app/static-bloom-2'), findsOne);
     expect(app.myBand!.name, 'Static Bloom');
     expect(app.myBand!.area, 'Mission, SF');
 
