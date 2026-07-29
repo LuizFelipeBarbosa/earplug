@@ -69,6 +69,9 @@ export default defineSchema({
     linkBc: v.optional(v.string()),
     // From createBand's links sheet (stored, not surfaced in v1).
     linkYt: v.optional(v.string()),
+    // Server-issued unique profile handle; stable once shared, so renames
+    // don't break links.
+    slug: v.optional(v.string()),
     pastShows: v.optional(v.array(pastShowValidator)),
     // Kept storage / legacy-preservation fields (user decision).
     imageStorageId: v.optional(v.id("_storage")),
@@ -86,6 +89,7 @@ export default defineSchema({
     userId: v.optional(v.id("users")),
   })
     .index("by_name", ["name"])
+    .index("by_slug", ["slug"])
     .searchIndex("search_name", { searchField: "name" }),
 
   venues: defineTable({

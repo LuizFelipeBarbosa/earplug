@@ -146,6 +146,17 @@ class AppState extends ChangeNotifier {
   bool nbPhoto = false;
   bool nbCreated = false;
 
+  /// Set once the band lands; later saves update this record instead of
+  /// creating another band.
+  String? _nbBandId;
+
+  /// The server-issued slug for the created band — unique, and stable across
+  /// renames so shared links keep resolving.
+  String? _nbCreatedSlug;
+
+  /// Blocks a second create/save while one is already in flight.
+  bool _nbSaving = false;
+
   // ---- gig create form
   String gfName = '';
   DateTime? gfDate;
@@ -711,6 +722,8 @@ class AppState extends ChangeNotifier {
     nbLabel = 'cream';
     nbPhoto = false;
     nbCreated = false;
+    _nbBandId = null;
+    _nbCreatedSlug = null;
   }
 
   void setNbName(String v) {
@@ -826,6 +839,14 @@ class AppState extends ChangeNotifier {
     return slug.isEmpty ? 'your-band' : slug;
   }
 
+  /// Whether the form is re-editing a band that already landed — the create
+  /// bar saves changes then instead of creating another band.
+  bool get nbEditingCreated => _nbBandId != null;
+
+  /// The slug shown on shareable URLs: the server-issued one once the band
+  /// exists, the client-side preview before that.
+  String get nbShareSlug => _nbCreatedSlug ?? nbSlug;
+
   /// Every area the feed knows (venues and bands), with how much scene lives
   /// there — the home-base sheet offers these before the free-text field.
   List<({String name, String sub})> get knownAreas {
@@ -862,28 +883,49 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> createBand() async {
+    if (_nbSaving) return;
     if (!canCreateBand) {
       say('Add ${bandMissing.join(' + ')} first — tap any line.');
       return;
     }
 
+    _nbSaving = true;
     final name = nbName.trim();
     try {
-      final createdBandId = await repository.createBand(
-        name: name,
-        genres: List.of(nbGenres),
-        bio: nbBio.trim(),
-        inviteHandles: List.of(nbInvites),
-        area: nbArea,
-        linkIg: nbIg.trim().isEmpty ? null : nbIg.trim(),
-        linkBc: nbBc.trim().isEmpty ? null : nbBc.trim(),
-        linkYt: nbYt.trim().isEmpty ? null : nbYt.trim(),
-      );
-      bandId = createdBandId;
+      if (_nbBandId case final existingId?) {
+        // "Keep editing" after a successful create: save onto the same band.
+        await repository.updateBandProfile(
+          bandId: existingId,
+          name: name,
+          genres: List.of(nbGenres),
+          area: nbArea,
+          bio: nbBio.trim(),
+          inviteHandles: List.of(nbInvites),
+          linkIg: nbIg.trim(),
+          linkBc: nbBc.trim(),
+          linkYt: nbYt.trim(),
+        );
+      } else {
+        final created = await repository.createBand(
+          name: name,
+          genres: List.of(nbGenres),
+          bio: nbBio.trim(),
+          inviteHandles: List.of(nbInvites),
+          area: nbArea,
+          linkIg: nbIg.trim().isEmpty ? null : nbIg.trim(),
+          linkBc: nbBc.trim().isEmpty ? null : nbBc.trim(),
+          linkYt: nbYt.trim().isEmpty ? null : nbYt.trim(),
+        );
+        bandId = created.bandId;
+        _nbBandId = created.bandId;
+        _nbCreatedSlug = created.slug;
+      }
     } on Exception catch (error) {
       debugPrint('createBand failed: $error');
       say('Something broke — try again.');
       return;
+    } finally {
+      _nbSaving = false;
     }
 
     nbCreated = true;

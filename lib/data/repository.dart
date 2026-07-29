@@ -53,7 +53,8 @@ abstract class EarplugRepository {
   Future<void> toggleSave(String gigId);
   Future<void> setGenres(List<String> genres);
   Future<void> ensureUser({String? name});
-  Future<String> createBand({
+  /// Returns the new band's id and its server-issued unique profile slug.
+  Future<({String bandId, String slug})> createBand({
     required String name,
     required List<String> genres,
     required String bio,
@@ -65,9 +66,14 @@ abstract class EarplugRepository {
   });
   Future<void> updateBandProfile({
     required String bandId,
+    String? name,
+    List<String>? genres,
+    String? area,
     String? bio,
+    List<String>? inviteHandles,
     String? linkIg,
     String? linkBc,
+    String? linkYt,
   });
   Future<String> publishGig({
     required String bandId,

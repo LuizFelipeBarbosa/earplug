@@ -107,8 +107,43 @@ class DemoRepository implements EarplugRepository {
     _userName = name ?? _userName;
   }
 
+  static String _initialsFor(String name) => name
+      .split(' ')
+      .where((word) => word.isNotEmpty)
+      .map((word) => word[0])
+      .take(2)
+      .join()
+      .toUpperCase();
+
+  /// Mirrors the backend: "static-bloom", or "static-bloom-2" when taken.
+  String _uniqueSlug(String name) {
+    var base = name
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    if (base.isEmpty) base = 'band';
+
+    final taken = {
+      ..._issuedSlugs,
+      for (final band in _bands.values)
+        band.name
+            .toLowerCase()
+            .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+            .replaceAll(RegExp(r'^-+|-+$'), ''),
+    };
+    for (var n = 1; ; n++) {
+      final candidate = n == 1 ? base : '$base-$n';
+      if (!taken.contains(candidate)) {
+        _issuedSlugs.add(candidate);
+        return candidate;
+      }
+    }
+  }
+
+  final Set<String> _issuedSlugs = {};
+
   @override
-  Future<String> createBand({
+  Future<({String bandId, String slug})> createBand({
     required String name,
     required List<String> genres,
     required String bio,
@@ -120,19 +155,14 @@ class DemoRepository implements EarplugRepository {
   }) async {
     final id = 'nb${_nextBandId++}';
     final bandName = name.trim();
+    final slug = _uniqueSlug(bandName);
     final created = Band(
       id: id,
       name: bandName,
       genres: genres.isEmpty ? const ['punk'] : List<String>.of(genres),
       area: area ?? 'Mission, SF',
       color: const Color(0xFF8FE6C4),
-      initials: bandName
-          .split(' ')
-          .where((word) => word.isNotEmpty)
-          .map((word) => word[0])
-          .take(2)
-          .join()
-          .toUpperCase(),
+      initials: _initialsFor(bandName),
       followers: 1 + inviteHandles.length,
       bio: bio.isEmpty
           ? 'New band. No recordings yet. Come see us anyway.'
@@ -145,20 +175,34 @@ class DemoRepository implements EarplugRepository {
     _memberships.add(BandMembership(band: created, role: 'admin'));
     _feedController.add(_currentFeed());
     _bandsController.add(_currentMemberships());
-    return id;
+    return (bandId: id, slug: slug);
   }
 
   @override
   Future<void> updateBandProfile({
     required String bandId,
+    String? name,
+    List<String>? genres,
+    String? area,
     String? bio,
+    List<String>? inviteHandles,
     String? linkIg,
     String? linkBc,
+    String? linkYt,
   }) async {
     final existing = _bands[bandId];
     if (existing == null) return;
 
-    final updated = existing.copyWith(bio: bio, linkIg: linkIg, linkBc: linkBc);
+    final trimmedName = name?.trim();
+    final updated = existing.copyWith(
+      name: trimmedName,
+      initials: trimmedName == null ? null : _initialsFor(trimmedName),
+      genres: genres,
+      area: area,
+      bio: bio,
+      linkIg: linkIg,
+      linkBc: linkBc,
+    );
     _bands[bandId] = updated;
     for (var i = 0; i < _memberships.length; i++) {
       final membership = _memberships[i];

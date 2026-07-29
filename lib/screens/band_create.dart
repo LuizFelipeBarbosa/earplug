@@ -854,7 +854,7 @@ class _NameLine extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   filled
-                      ? 'earplug.app/${app.nbSlug}'
+                      ? 'earplug.app/${app.nbShareSlug}'
                       : 'Your profile URL comes from this',
                   style: epText(size: 10, color: Ep.inkA(.4)),
                 ),
@@ -973,9 +973,11 @@ class _CreateBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            missing.isEmpty
-                ? 'Ready — you can post a gig the moment this lands.'
-                : 'Still needs ${missing.join(' + ')}',
+            missing.isNotEmpty
+                ? 'Still needs ${missing.join(' + ')}'
+                : app.nbEditingCreated
+                ? 'Your band is live — saving updates it.'
+                : 'Ready — you can post a gig the moment this lands.',
             textAlign: TextAlign.center,
             style: epText(
               size: 11,
@@ -988,7 +990,7 @@ class _CreateBar extends StatelessWidget {
           GestureDetector(
             onTap: app.createBand,
             child: EpButton(
-              'CREATE BAND',
+              app.nbEditingCreated ? 'SAVE CHANGES' : 'CREATE BAND',
               fontSize: 14,
               glow: app.canCreateBand,
               kind: app.canCreateBand
@@ -1547,7 +1549,7 @@ class _CreditsBodyState extends State<_CreditsBody> {
         const SizedBox(height: 10),
         GestureDetector(
           onTap: () {
-            final url = 'earplug.app/join/${app.nbSlug}';
+            final url = 'earplug.app/join/${app.nbShareSlug}';
             Clipboard.setData(ClipboardData(text: 'https://$url'));
             app.say('Join link copied — $url');
           },
@@ -1560,7 +1562,7 @@ class _CreditsBodyState extends State<_CreditsBody> {
               children: [
                 Flexible(
                   child: Text(
-                    'earplug.app/join/${app.nbSlug}',
+                    'earplug.app/join/${app.nbShareSlug}',
                     overflow: TextOverflow.ellipsis,
                     style: epText(
                       size: 12,
@@ -1673,7 +1675,8 @@ class _CreatedView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final profileUrl = 'earplug.app/${app.nbSlug}';
+    // nbShareSlug is server-issued by now: unique, and stable across renames.
+    final profileUrl = 'earplug.app/${app.nbShareSlug}';
 
     return ColoredBox(
       color: Ep.bg,
