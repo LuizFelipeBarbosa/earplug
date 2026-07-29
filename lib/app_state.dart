@@ -154,8 +154,11 @@ class AppState extends ChangeNotifier {
   /// renames so shared links keep resolving.
   String? _nbCreatedSlug;
 
-  /// Blocks a second create/save while one is already in flight.
+  /// Blocks a second create/save while one is already in flight, and puts the
+  /// create bar into its pending state so the block is visible rather than
+  /// just correct.
   bool _nbSaving = false;
+  bool get nbSaving => _nbSaving;
 
   // ---- gig create form
   String gfName = '';
@@ -890,6 +893,7 @@ class AppState extends ChangeNotifier {
     }
 
     _nbSaving = true;
+    notifyListeners();
     final name = nbName.trim();
     try {
       if (_nbBandId case final existingId?) {
@@ -925,7 +929,10 @@ class AppState extends ChangeNotifier {
       say('Something broke — try again.');
       return;
     } finally {
+      // Notifies on the failure path too, so the bar leaves its pending state
+      // whichever way the save ended.
       _nbSaving = false;
+      notifyListeners();
     }
 
     nbCreated = true;
@@ -949,6 +956,11 @@ class AppState extends ChangeNotifier {
     resetTo(Screen.bandDash);
     startGigCreate();
   }
+
+  /// The created view's quiet exit, for people who just want to see the band
+  /// they made. The header ✕ is gone on that screen, and web has no system
+  /// back, so without this the only ways off are the three loud ones.
+  void openCreatedBand() => resetTo(Screen.bandDash);
 
   // ========================= gig create =========================
 

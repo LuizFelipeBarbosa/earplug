@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:flutter_test/flutter_test.dart';
 
@@ -163,6 +165,46 @@ void main() {
       await pumpEventQueue();
       expect(app.myBands.length, bandsBefore + 2);
       expect(app.nbShareSlug, 'static-gloom-2');
+    });
+
+    test('a failed create leaves the form open and says so', () async {
+      final app = AppState(
+        repository: _GatedCreateRepository()..fail = true,
+        auth: FakeAuthService(),
+      );
+      addTearDown(app.dispose);
+      _fillBandForm(app);
+
+      await app.createBand();
+      await pumpEventQueue();
+
+      expect(app.nbCreated, isFalse);
+      expect(app.toast, 'Something broke — try again.');
+      // No half-created band to save onto, so a retry creates rather than
+      // updates — and the bar is usable again rather than stuck pending.
+      expect(app.nbEditingCreated, isFalse);
+      expect(app.nbSaving, isFalse);
+    });
+
+    test('an in-flight create is visible and blocks a second one', () async {
+      final repository = _GatedCreateRepository();
+      final app = AppState(repository: repository, auth: FakeAuthService());
+      addTearDown(app.dispose);
+      _fillBandForm(app);
+
+      final inFlight = app.createBand();
+      expect(app.nbSaving, isTrue); // the bar can show its pending state
+      expect(repository.createCalls, 1);
+
+      // A second tap while pending does nothing at all.
+      await app.createBand();
+      expect(repository.createCalls, 1);
+      expect(app.nbCreated, isFalse);
+
+      repository.gate.complete();
+      await inFlight;
+      expect(app.nbSaving, isFalse);
+      expect(app.nbCreated, isTrue);
     });
 
     test('failed RSVP mutation reverts its optimistic update', () async {
@@ -337,6 +379,39 @@ Future<AppState> _demoApp() async {
   addTearDown(app.dispose);
   await pumpEventQueue();
   return app;
+}
+
+/// The minimum the create bar needs before it will fire.
+void _fillBandForm(AppState app) {
+  app.startBandCreate();
+  app.setNbName('Static Bloom');
+  app.toggleNbGenre('punk');
+  app.setNbArea('Berkeley');
+}
+
+/// A create that only finishes when the test says so — or fails, on request.
+/// `Exception`, not `Error`, because that is what ConvexService surfaces.
+class _GatedCreateRepository extends _FailingRsvpRepository {
+  final gate = Completer<void>();
+  bool fail = false;
+  int createCalls = 0;
+
+  @override
+  Future<({String bandId, String slug})> createBand({
+    required String name,
+    required List<String> genres,
+    required String bio,
+    required List<String> inviteHandles,
+    String? area,
+    String? linkIg,
+    String? linkBc,
+    String? linkYt,
+  }) async {
+    createCalls++;
+    if (fail) throw Exception('createBand failed');
+    await gate.future;
+    return (bandId: 'nb1', slug: 'static-bloom');
+  }
 }
 
 class _FailingRsvpRepository implements EarplugRepository {

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import {
   bandColorFor,
   bandPayloadValidator,
@@ -8,6 +8,7 @@ import {
   requireBandAdmin,
   requireUser,
   toBandPayload,
+  uniqueSlug,
 } from "./lib/helpers";
 
 export const get = query({
@@ -60,36 +61,18 @@ export const myBands = query({
   },
 });
 
-function slugify(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug === "" ? "band" : slug;
-}
-
-/** "static-bloom", or "static-bloom-2" (-3, …) when the name is taken. */
-async function uniqueSlug(ctx: MutationCtx, name: string): Promise<string> {
-  const base = slugify(name);
-  for (let n = 1; ; n++) {
-    const candidate = n === 1 ? base : `${base}-${n}`;
-    const taken = await ctx.db
-      .query("bands")
-      .withIndex("by_slug", (q) => q.eq("slug", candidate))
-      .unique();
-    if (taken === null) return candidate;
-  }
-}
-
-/** Resolves a shared profile link (earplug.app/<slug>) to its band. */
+/** Resolves a shared profile link (earplug.app/<slug>) to its band. Bands
+ * predating slug issuance are backfilled by migrations:backfillSlugs. */
 export const bySlug = query({
   args: { slug: v.string() },
   returns: v.union(bandPayloadValidator, v.null()),
   handler: async (ctx, args) => {
+    // .first(), not .unique(): a duplicate slug should degrade to "resolves to
+    // the older band", never to a thrown query. See uniqueSlug in lib/helpers.
     const band = await ctx.db
       .query("bands")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
-      .unique();
+      .first();
     return band === null ? null : toBandPayload(band);
   },
 });
@@ -160,7 +143,11 @@ export const updateProfile = mutation({
       linkYt?: string;
     } = {};
     if (args.name !== undefined) {
-      // The slug stays as issued at creation so shared links keep resolving.
+      // Two name-derived fields deliberately do NOT follow a rename:
+      // `slug`, so shared links keep resolving, and `colorHex`, which is the
+      // band's visual identity everywhere it appears in the feed — recoloring
+      // a known band mid-flight is worse than a color that no longer matches
+      // its name hash. Initials are the label on that swatch, so they do.
       patch.name = args.name;
       patch.initials = initialsFor(args.name);
     }

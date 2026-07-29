@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
+import { uniqueSlug } from "./lib/helpers";
 
 // Port of lib/demo_data.dart (verbatim strings/numbers). startsAt is computed
 // relative to run time so gig 1 lands "tonight" (8PM Pacific) and the rest
@@ -139,6 +140,7 @@ export const seedDemo = internalMutation({
         followerCount: band.followerCount,
         bio: band.bio,
         pastShows: band.pastShows,
+        slug: await uniqueSlug(ctx, band.name),
       });
     }
 

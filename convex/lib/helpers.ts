@@ -31,6 +31,37 @@ export function initialsFor(name: string): string {
   return (words[0][0] + words[1][0]).toUpperCase();
 }
 
+/** "Static Bloom!" → "static-bloom". Punctuation-only names fall back to
+ * "band" so every row can be given a slug. */
+export function slugify(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug === "" ? "band" : slug;
+}
+
+/** "static-bloom", or "static-bloom-2" (-3, …) when the name is taken.
+ *
+ * Reads with `.first()`, not `.unique()`: nothing in the schema enforces slug
+ * uniqueness — this function is the only thing that does — so a duplicate
+ * introduced by any other write path must not be able to wedge slug issuance
+ * (and `bands:bySlug`) permanently by making the read throw. */
+export async function uniqueSlug(
+  ctx: MutationCtx,
+  name: string,
+): Promise<string> {
+  const base = slugify(name);
+  for (let n = 1; ; n++) {
+    const candidate = n === 1 ? base : `${base}-${n}`;
+    const taken = await ctx.db
+      .query("bands")
+      .withIndex("by_slug", (q) => q.eq("slug", candidate))
+      .first();
+    if (taken === null) return candidate;
+  }
+}
+
 // ─── Auth ───────────────────────────────────────────────────────────────────
 
 /** Non-throwing: the current user's doc, or null (queries must not throw when

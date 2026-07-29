@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/screens/band_create.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
@@ -108,6 +111,16 @@ void main() {
     await tester.pump();
     expect(app.nbInvites, ['@mara.k']);
     expect(find.text('INVITED'), findsOne);
+    // No join link to copy yet — the slug it would use isn't real until the
+    // server issues one, and this name is about to be deduped.
+    expect(find.text('COPY LINK'), findsNothing);
+    expect(
+      find.text(
+        'Your join link lands with the tape. Invites you add now go out the '
+        'moment it does.',
+      ),
+      findsOne,
+    );
     await tester.tap(find.byIcon(Icons.close).last);
     await tester.pump();
     expect(app.nbInvites, isEmpty);
@@ -154,6 +167,61 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
+  testWidgets('the created view leads out three ways', (tester) async {
+    final app = await _pumpBandCreate(tester);
+    await _fillAndCreate(tester);
+
+    // The header ✕ is gone on this screen, so a plain exit has to live here.
+    expect(find.text('GO TO BAND'), findsOne);
+    await tester.tap(find.text('GO TO BAND'));
+    await tester.pumpAndSettle();
+    expect(app.current.screen, Screen.bandDash);
+  });
+
+  testWidgets('the join link becomes copyable once the slug is real',
+      (tester) async {
+    final app = await _pumpBandCreate(tester);
+    await _fillAndCreate(tester);
+
+    // Back into the form with the band already landed.
+    await tester.tap(find.text('KEEP EDITING'));
+    await tester.pumpAndSettle();
+    expect(find.text('SAVE CHANGES'), findsOne);
+
+    await tester.drag(find.byType(ListView), const Offset(0, -560));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('CREDITS'));
+    await tester.pumpAndSettle();
+
+    // Now it is the server's slug, and it can be copied.
+    expect(find.text('COPY LINK'), findsOne);
+    expect(find.text('earplug.app/join/${app.nbShareSlug}'), findsOne);
+    expect(app.nbShareSlug, 'static-bloom-2');
+  });
+
+  testWidgets('the create bar goes pending while the save is in flight',
+      (tester) async {
+    final repository = _GatedDemoRepository(auth: FakeAuthService());
+    final app = await _pumpBandCreate(tester, repository: repository);
+    await _fillForm(tester);
+
+    await tester.tap(find.text('CREATE BAND'));
+    await tester.pump();
+    // Visibly pending rather than silently blocked.
+    expect(find.text('SAVING…'), findsOne);
+    expect(find.text('CREATE BAND'), findsNothing);
+
+    // Tapping again while pending must not queue a second band.
+    await tester.tap(find.text('SAVING…'));
+    await tester.pump();
+    expect(repository.createCalls, 1);
+
+    repository.gate.complete();
+    await tester.pumpAndSettle();
+    expect(app.nbCreated, isTrue);
+    expect(find.text("TAPE'S OUT"), findsOne);
+  });
+
   testWidgets('the photo slot toggles behind the tape', (tester) async {
     final app = await _pumpBandCreate(tester);
     expect(find.text('DROP A BAND PHOTO'), findsNothing);
@@ -190,14 +258,20 @@ void main() {
   });
 }
 
-Future<AppState> _pumpBandCreate(WidgetTester tester) async {
+Future<AppState> _pumpBandCreate(
+  WidgetTester tester, {
+  EarplugRepository? repository,
+}) async {
   // A phone-sized surface: the design targets 402x874.
   tester.view.physicalSize = const Size(402, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
 
   final auth = FakeAuthService();
-  final app = AppState(repository: DemoRepository(auth: auth), auth: auth);
+  final app = AppState(
+    repository: repository ?? DemoRepository(auth: auth),
+    auth: auth,
+  );
   addTearDown(app.dispose);
   await tester.pumpAndSettle();
   app.startBandCreate();
@@ -213,4 +287,61 @@ Future<AppState> _pumpBandCreate(WidgetTester tester) async {
   );
   await tester.pumpAndSettle();
   return app;
+}
+
+/// Fills the three required lines through the UI, leaving the bar ready.
+Future<void> _fillForm(WidgetTester tester) async {
+  await tester.enterText(find.byType(TextField).first, 'Static Bloom');
+  await tester.pump();
+
+  await tester.tap(find.text('SOUND · REQUIRED'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('PUNK'));
+  await tester.pump();
+  await tester.tap(find.text('DONE'));
+  await tester.pumpAndSettle();
+
+  await tester.tap(find.text('HOME BASE · REQUIRED'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('MISSION, SF'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _fillAndCreate(WidgetTester tester) async {
+  await _fillForm(tester);
+  await tester.tap(find.text('CREATE BAND'));
+  await tester.pumpAndSettle();
+}
+
+/// A demo repository whose create only lands when the test opens the gate.
+class _GatedDemoRepository extends DemoRepository {
+  _GatedDemoRepository({required super.auth});
+
+  final gate = Completer<void>();
+  int createCalls = 0;
+
+  @override
+  Future<({String bandId, String slug})> createBand({
+    required String name,
+    required List<String> genres,
+    required String bio,
+    required List<String> inviteHandles,
+    String? area,
+    String? linkIg,
+    String? linkBc,
+    String? linkYt,
+  }) async {
+    createCalls++;
+    await gate.future;
+    return super.createBand(
+      name: name,
+      genres: genres,
+      bio: bio,
+      inviteHandles: inviteHandles,
+      area: area,
+      linkIg: linkIg,
+      linkBc: linkBc,
+      linkYt: linkYt,
+    );
+  }
 }

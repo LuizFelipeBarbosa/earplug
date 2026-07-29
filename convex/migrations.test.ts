@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { bandColorFor } from "./lib/helpers";
 import schema from "./schema";
 
@@ -267,6 +267,78 @@ describe("migrations:migrateAll", () => {
       const pastShow = { title: "EARPLUG LAUNCH NIGHT", meta: "APR 3" };
       expect(ep.pastShows).toEqual([pastShow]);
       expect(tm.pastShows).toEqual([pastShow]); // accepted co-host played too
+
+      // Every surviving band leaves with a slug, so its profile link resolves.
+      expect(tm.slug).toBe("trackmagic");
+      expect(ep.slug).toBe("earplug");
+    });
+  });
+});
+
+describe("migrations:backfillSlugs", () => {
+  /** A band row as it looked before slugs existed. */
+  function legacyBand(name: string) {
+    return { name, genres: ["punk"] };
+  }
+
+  test("slugs every slugless band, oldest first, and re-runs clean", async () => {
+    const t = convexTest(schema);
+    // Insertion order is creation order, which is the order the backfill sees.
+    const ids = await t.run(async (ctx) => ({
+      older: await ctx.db.insert("bands", legacyBand("Static Bloom")),
+      newer: await ctx.db.insert("bands", legacyBand("Static Bloom!")),
+      punctuation: await ctx.db.insert("bands", legacyBand("!!!")),
+      slugged: await ctx.db.insert("bands", {
+        ...legacyBand("Foghorn Diet"),
+        slug: "foghorn-diet",
+      }),
+    }));
+
+    expect(await t.mutation(internal.migrations.backfillSlugs, {})).toEqual({
+      slugsIssued: 3,
+    });
+
+    await t.run(async (ctx) => {
+      // The older claimant keeps the clean slug; the younger takes the suffix.
+      expect((await ctx.db.get(ids.older))!.slug).toBe("static-bloom");
+      expect((await ctx.db.get(ids.newer))!.slug).toBe("static-bloom-2");
+      // A name with nothing sluggable still gets something resolvable.
+      expect((await ctx.db.get(ids.punctuation))!.slug).toBe("band");
+      // An existing slug is left exactly as it was.
+      expect((await ctx.db.get(ids.slugged))!.slug).toBe("foghorn-diet");
+    });
+
+    // Re-running issues nothing — that is what makes it safe to bundle into
+    // migrateAll on an already-migrated deployment.
+    expect(await t.mutation(internal.migrations.backfillSlugs, {})).toEqual({
+      slugsIssued: 0,
+    });
+
+    // The whole point: backfilled slugs resolve through the public query.
+    const resolved = await t.query(api.bands.bySlug, { slug: "static-bloom-2" });
+    expect(resolved?._id).toBe(ids.newer);
+  });
+
+  test("a duplicate slug degrades instead of throwing", async () => {
+    const t = convexTest(schema);
+    // Nothing in the schema stops this; only uniqueSlug does. If one ever
+    // lands, reads must still work rather than wedging the name forever.
+    await t.run(async (ctx) => {
+      const dupe = { ...legacyBand("Static Bloom"), slug: "static-bloom" };
+      await ctx.db.insert("bands", dupe);
+      await ctx.db.insert("bands", dupe);
+    });
+    expect(
+      await t.query(api.bands.bySlug, { slug: "static-bloom" }),
+    ).not.toBeNull();
+
+    // And a new band with the same name still gets issued a slug.
+    const fresh = await t.run(async (ctx) =>
+      ctx.db.insert("bands", legacyBand("Static Bloom")),
+    );
+    await t.mutation(internal.migrations.backfillSlugs, {});
+    await t.run(async (ctx) => {
+      expect((await ctx.db.get(fresh))!.slug).toBe("static-bloom-2");
     });
   });
 });
