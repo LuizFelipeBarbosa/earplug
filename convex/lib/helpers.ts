@@ -191,21 +191,22 @@ export const userPayloadValidator = v.object({
   createdAt: v.number(),
 });
 
-// Defensive defaults: the schema is widened during migration, so new fields
-// may be transiently absent on legacy rows.
+// `?? null` on the optional fields is the payload contract (explicit nulls,
+// never absent keys), not a defensive default — the rest are required by the
+// schema, so a missing one is a bug worth failing on.
 export function toBandPayload(band: Doc<"bands">) {
   return {
     _id: band._id,
     name: band.name,
     genres: band.genres,
-    area: band.area ?? "",
-    colorHex: band.colorHex ?? bandColorFor(band.name),
-    initials: band.initials ?? initialsFor(band.name),
-    followerCount: band.followerCount ?? 0,
+    area: band.area,
+    colorHex: band.colorHex,
+    initials: band.initials,
+    followerCount: band.followerCount,
     bio: band.bio ?? "",
     linkIg: band.linkIg ?? null,
     linkBc: band.linkBc ?? null,
-    pastShows: band.pastShows ?? [],
+    pastShows: band.pastShows,
   };
 }
 
@@ -233,12 +234,12 @@ export function toVenuePayload(venue: Doc<"venues">) {
   return {
     _id: venue._id,
     name: venue.name,
-    area: venue.area ?? "",
-    addr: venue.addr ?? "",
-    distSF: venue.distSF ?? "",
-    distOak: venue.distOak ?? "",
-    lat: venue.lat ?? 0,
-    lng: venue.lng ?? 0,
+    area: venue.area,
+    addr: venue.addr,
+    distSF: venue.distSF,
+    distOak: venue.distOak,
+    lat: venue.lat,
+    lng: venue.lng,
   };
 }
 
@@ -260,9 +261,9 @@ export function toUserPayload(user: Doc<"users">) {
     clerkId: user.clerkId,
     name: user.name,
     email: user.email,
-    genres: user.genres ?? [],
-    attendedCount: user.attendedCount ?? 0,
-    createdAt: user.memberSince ?? user._creationTime,
+    genres: user.genres,
+    attendedCount: user.attendedCount,
+    createdAt: user._creationTime,
   };
 }
 

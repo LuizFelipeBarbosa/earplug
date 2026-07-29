@@ -36,17 +36,16 @@ describe("users:ensureUser", () => {
     expect(count).toBe(1);
   });
 
-  test("adopts a legacy row by clerkId and backfills empty email", async () => {
+  // 25 migrated rows have an empty email — Clerk never gave the legacy app one.
+  test("adopts an existing row by clerkId and backfills empty email", async () => {
     const t = convexTest(schema);
-    const legacyId = await t.run(async (ctx) =>
+    const existingId = await t.run(async (ctx) =>
       ctx.db.insert("users", {
         clerkId: "user_legacy1",
         name: "Luiz B.",
         email: "",
-        avatar: "https://img.clerk.com/x",
-        memberSince: 1774900000000,
-        role: "fan",
-        showsAttended: 0,
+        genres: [],
+        attendedCount: 0,
       }),
     );
     const asLegacy = t.withIdentity({
@@ -54,9 +53,9 @@ describe("users:ensureUser", () => {
       email: "luiz@example.com",
     });
     const { userId } = await asLegacy.mutation(api.users.ensureUser, {});
-    expect(userId).toBe(legacyId);
+    expect(userId).toBe(existingId);
 
-    const row = await t.run(async (ctx) => ctx.db.get(legacyId));
+    const row = await t.run(async (ctx) => ctx.db.get(existingId));
     expect(row!.email).toBe("luiz@example.com"); // backfilled
     expect(row!.name).toBe("Luiz B."); // kept
   });
@@ -68,6 +67,8 @@ describe("users:ensureUser", () => {
         clerkId: "user_old_instance_a",
         name: "Anandi J.",
         email: "anandi@example.com",
+        genres: [],
+        attendedCount: 0,
       }),
     );
     const asAnandi = t.withIdentity({
@@ -87,11 +88,15 @@ describe("users:ensureUser", () => {
         clerkId: "user_dup_1",
         name: "Dup One",
         email: "dup@example.com",
+        genres: [],
+        attendedCount: 0,
       });
       await ctx.db.insert("users", {
         clerkId: "user_dup_2",
         name: "Dup Two",
         email: "dup@example.com",
+        genres: [],
+        attendedCount: 0,
       });
     });
     const asDup = t.withIdentity({
