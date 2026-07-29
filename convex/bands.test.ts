@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
+import { bandColorFor } from "./lib/helpers";
 import schema from "./schema";
 
 describe("bands: slugs and profile updates", () => {
@@ -33,6 +34,41 @@ describe("bands: slugs and profile updates", () => {
     expect(await t.query(api.bands.bySlug, { slug: "nobody" })).toBeNull();
   });
 
+  test("createBand persists the area and links the sheets collect", async () => {
+    const { t, asAdmin } = await setup();
+    const { bandId, slug } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Static Bloom",
+      genres: ["punk", "shoegaze"],
+      bio: "Two amps facing each other.",
+      inviteHandles: ["@mara.k"],
+      area: "Bernal Heights, SF",
+      linkIg: "@staticbloom",
+      linkBc: "staticbloom.bandcamp.com",
+      linkYt: "youtube.com/@staticbloom",
+    });
+
+    const doc = await t.run(async (ctx) => ctx.db.get(bandId));
+    expect(doc?.area).toBe("Bernal Heights, SF");
+    expect(doc?.linkIg).toBe("@staticbloom");
+    expect(doc?.linkBc).toBe("staticbloom.bandcamp.com");
+    expect(doc?.linkYt).toBe("youtube.com/@staticbloom");
+    expect(doc?.bio).toBe("Two amps facing each other.");
+    expect(doc?.inviteHandles).toEqual(["@mara.k"]);
+    // followerCount seeds from the crew: you plus everyone invited.
+    expect(doc?.followerCount).toBe(2);
+    expect(doc?.slug).toBe(slug);
+  });
+
+  test("createBand without an area falls back to the Bay Area default", async () => {
+    const { t, asAdmin } = await setup();
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Static Bloom",
+      ...bandArgs,
+    });
+    const doc = await t.run(async (ctx) => ctx.db.get(bandId));
+    expect(doc?.area).toBe("Bay Area");
+  });
+
   test("updateProfile edits the same band and keeps its slug", async () => {
     const { t, asAdmin } = await setup();
     const { bandId, slug } = await asAdmin.mutation(api.bands.createBand, {
@@ -58,6 +94,9 @@ describe("bands: slugs and profile updates", () => {
     expect(doc?.linkIg).toBe("@staticgloom");
     // Shared links must survive a rename.
     expect(doc?.slug).toBe(slug);
+    // So must the band's color: it is the identity people recognize in the
+    // feed. Initials follow the name, the swatch under them does not.
+    expect(doc?.colorHex).toBe(bandColorFor("Static Bloom"));
 
     const resolved = await t.query(api.bands.bySlug, { slug });
     expect(resolved?.name).toBe("Static Gloom");

@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { MutationCtx, internalMutation } from "./_generated/server";
-import { bandColorFor, initialsFor } from "./lib/helpers";
+import { bandColorFor, initialsFor, uniqueSlug } from "./lib/helpers";
 
 // One-shot, idempotent/re-runnable reshape of the legacy dev dataset
 // (dev:brilliant-cardinal-773) into the new contract schema, per the
@@ -361,6 +361,24 @@ async function migrateLaunchNight(ctx: MutationCtx) {
   }
 }
 
+// ─── step 9: backfill band slugs ────────────────────────────────────────────
+// Slugs arrived with the cassette create flow, so every band predating it —
+// legacy rows and seeded demo bands alike — has none, and bands:bySlug can't
+// resolve any of them. Issue one per slugless band. Bands come back in
+// creation order, so the oldest claimant of a name keeps the unsuffixed slug
+// and later ones take -2, -3, … Already-slugged bands are skipped, which is
+// what makes this re-runnable.
+
+async function backfillBandSlugs(ctx: MutationCtx): Promise<number> {
+  let issued = 0;
+  for (const band of await ctx.db.query("bands").take(1000)) {
+    if (band.slug !== undefined) continue;
+    await ctx.db.patch(band._id, { slug: await uniqueSlug(ctx, band.name) });
+    issued++;
+  }
+  return issued;
+}
+
 // ─── registered functions ───────────────────────────────────────────────────
 
 export const migrateUsers = internalMutation({
@@ -381,6 +399,16 @@ export const migrateBands = internalMutation({
   },
 });
 
+/** Standalone: the one step a deployment that already ran migrateAll still
+ * needs. Safe to re-run — it only touches bands with no slug. */
+export const backfillSlugs = internalMutation({
+  args: {},
+  returns: v.object({ slugsIssued: v.number() }),
+  handler: async (ctx) => {
+    return { slugsIssued: await backfillBandSlugs(ctx) };
+  },
+});
+
 export const migrateAll = internalMutation({
   args: {},
   returns: v.object({
@@ -391,6 +419,7 @@ export const migrateAll = internalMutation({
     venues: v.number(),
     videos: v.number(),
     gigs: v.number(),
+    bandsWithSlug: v.number(),
   }),
   handler: async (ctx) => {
     await deleteTestRows(ctx);
@@ -401,10 +430,15 @@ export const migrateAll = internalMutation({
     await migrateVenues(ctx);
     await migrateMediaSlots(ctx);
     await migrateLaunchNight(ctx);
+    await backfillBandSlugs(ctx);
 
+    const bands = await ctx.db.query("bands").take(1000);
     return {
+      // A state count, not a work count, like every other key here — so a
+      // re-run of this idempotent migration reports the same numbers.
+      bandsWithSlug: bands.filter((band) => band.slug !== undefined).length,
       users: (await ctx.db.query("users").take(1000)).length,
-      bands: (await ctx.db.query("bands").take(1000)).length,
+      bands: bands.length,
       bandMembers: (await ctx.db.query("bandMembers").take(1000)).length,
       follows: (await ctx.db.query("follows").take(1000)).length,
       venues: (await ctx.db.query("venues").take(1000)).length,

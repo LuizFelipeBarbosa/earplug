@@ -954,6 +954,7 @@ class _CreateBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final missing = app.bandMissing;
+    final live = app.canCreateBand && !app.nbSaving;
     return Container(
       padding: EdgeInsets.fromLTRB(
         16,
@@ -986,18 +987,22 @@ class _CreateBar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 9),
-          // Disabled-looking but still tappable: it says what is missing.
+          // The wrapper owns the tap; EpButton only renders. That way an
+          // unready press still lands here and says what is missing, instead
+          // of being swallowed by a disabled button.
           GestureDetector(
-            onTap: app.createBand,
+            onTap: app.nbSaving ? null : app.createBand,
             child: EpButton(
-              app.nbEditingCreated ? 'SAVE CHANGES' : 'CREATE BAND',
+              app.nbSaving
+                  ? 'SAVING…'
+                  : app.nbEditingCreated
+                      ? 'SAVE CHANGES'
+                      : 'CREATE BAND',
               fontSize: 14,
-              glow: app.canCreateBand,
-              kind: app.canCreateBand
-                  ? EpButtonKind.filled
-                  : EpButtonKind.disabled,
+              glow: live,
+              kind: live ? EpButtonKind.filled : EpButtonKind.disabled,
               padding: const EdgeInsets.symmetric(vertical: 16),
-              onTap: app.createBand,
+              onTap: null,
             ),
           ),
         ],
@@ -1547,45 +1552,73 @@ class _CreditsBodyState extends State<_CreditsBody> {
           ),
         ],
         const SizedBox(height: 10),
-        GestureDetector(
-          onTap: () {
-            final url = 'earplug.app/join/${app.nbShareSlug}';
-            Clipboard.setData(ClipboardData(text: 'https://$url'));
-            app.say('Join link copied — $url');
-          },
-          child: DashedBox(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            radius: 11,
-            color: Ep.whiteA(.25),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Flexible(
-                  child: Text(
-                    'earplug.app/join/${app.nbShareSlug}',
-                    overflow: TextOverflow.ellipsis,
-                    style: epText(
-                      size: 12,
-                      weight: FontWeight.w700,
-                      color: Ep.inkA(.7),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'COPY LINK',
-                  style: epText(
-                    size: 10.5,
-                    weight: FontWeight.w900,
-                    letterSpacing: .8,
-                    color: Ep.link,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        const _JoinLink(),
       ],
+    );
+  }
+}
+
+/// The join link only becomes real when the server issues the slug. Before
+/// that `nbShareSlug` is a client-side guess with no dedup, so a link copied
+/// now can point at somebody else's band — the demo feed alone already has a
+/// Static Bloom. So: no copy affordance until the tape lands.
+class _JoinLink extends StatelessWidget {
+  const _JoinLink();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+
+    if (!app.nbEditingCreated) {
+      return DashedBox(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        radius: 11,
+        color: Ep.whiteA(.15),
+        child: Text(
+          'Your join link lands with the tape. Invites you add now go out the '
+          'moment it does.',
+          style: epText(size: 11, color: Ep.inkA(.42), height: 1.45),
+        ),
+      );
+    }
+
+    final url = 'earplug.app/join/${app.nbShareSlug}';
+    return GestureDetector(
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: 'https://$url'));
+        app.say('Join link copied — $url');
+      },
+      child: DashedBox(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        radius: 11,
+        color: Ep.whiteA(.25),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Flexible(
+              child: Text(
+                url,
+                overflow: TextOverflow.ellipsis,
+                style: epText(
+                  size: 12,
+                  weight: FontWeight.w700,
+                  color: Ep.inkA(.7),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'COPY LINK',
+              style: epText(
+                size: 10.5,
+                weight: FontWeight.w900,
+                letterSpacing: .8,
+                color: Ep.link,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1740,38 +1773,56 @@ class _CreatedView extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              // Wrap, not Row: three labels at this size crowd a narrow phone.
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 18,
+                runSpacing: 10,
                 children: [
-                  GestureDetector(
+                  _QuietAction(
+                    'KEEP EDITING',
                     onTap: app.editCreatedBand,
-                    child: Text(
-                      'KEEP EDITING',
-                      style: epText(
-                        size: 11,
-                        weight: FontWeight.w800,
-                        letterSpacing: .6,
-                        color: Ep.inkA(.5),
-                      ),
-                    ),
+                    color: Ep.inkA(.5),
                   ),
-                  const SizedBox(width: 18),
-                  GestureDetector(
+                  _QuietAction(
+                    'GO TO BAND',
+                    onTap: app.openCreatedBand,
+                    color: Ep.inkA(.5),
+                  ),
+                  _QuietAction(
+                    'START ANOTHER',
                     onTap: app.makeAnotherBand,
-                    child: Text(
-                      'START ANOTHER',
-                      style: epText(
-                        size: 11,
-                        weight: FontWeight.w800,
-                        letterSpacing: .6,
-                        color: Ep.link,
-                      ),
-                    ),
+                    color: Ep.link,
                   ),
                 ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One of the created view's low-key text actions, under the loud pair.
+class _QuietAction extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+
+  const _QuietAction(this.label, {required this.onTap, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Text(
+        label,
+        style: epText(
+          size: 11,
+          weight: FontWeight.w800,
+          letterSpacing: .6,
+          color: color,
         ),
       ),
     );
