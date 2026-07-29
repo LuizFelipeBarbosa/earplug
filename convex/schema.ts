@@ -67,6 +67,8 @@ export default defineSchema({
     followerCount: v.optional(v.number()),
     linkIg: v.optional(v.string()),
     linkBc: v.optional(v.string()),
+    // From createBand's links sheet (stored, not surfaced in v1).
+    linkYt: v.optional(v.string()),
     pastShows: v.optional(v.array(pastShowValidator)),
     // Kept storage / legacy-preservation fields (user decision).
     imageStorageId: v.optional(v.id("_storage")),

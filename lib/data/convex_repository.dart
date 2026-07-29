@@ -116,12 +116,20 @@ class ConvexRepository implements EarplugRepository {
     required List<String> genres,
     required String bio,
     required List<String> inviteHandles,
+    String? area,
+    String? linkIg,
+    String? linkBc,
+    String? linkYt,
   }) async {
     final result = await _convexService.mutation('bands:createBand', {
       'name': name,
       'genres': genres,
       'bio': bio,
       'inviteHandles': inviteHandles,
+      'area': ?area,
+      'linkIg': ?linkIg,
+      'linkBc': ?linkBc,
+      'linkYt': ?linkYt,
     });
     return _asMap(result)['bandId'] as String;
   }

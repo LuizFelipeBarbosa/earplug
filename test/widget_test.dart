@@ -100,18 +100,29 @@ void main() {
       expect(app.gfShowOverlay, isTrue);
     });
 
-    test('band creation switches to band view as admin', () async {
+    test('band creation makes you admin of the new band', () async {
       final app = await _demoApp();
       app.startBandCreate();
       app.setNbName('Static Bloom Two');
-      app.nbNext();
+
+      // Genres and a home base gate the create; the button explains instead.
+      await app.createBand();
+      expect(app.nbCreated, isFalse);
+      expect(app.toast, 'Add a genre + a home base first — tap any line.');
+
+      app.toggleNbGenre('punk');
+      app.setNbArea('Berkeley');
       app.addNbInvite('alex');
       await app.createBand();
       await pumpEventQueue();
+      expect(app.nbCreated, isTrue);
       expect(app.bandId, 'nb1');
       expect(app.myBand!.initials, 'SB');
       expect(app.myBand!.followers, 2);
-      expect(app.current.screen, Screen.bandDash);
+      expect(app.myBand!.area, 'Berkeley');
+
+      app.postFirstGig();
+      expect(app.current.screen, Screen.gigCreate);
     });
 
     test('failed RSVP mutation reverts its optimistic update', () async {
@@ -332,6 +343,10 @@ class _FailingRsvpRepository implements EarplugRepository {
     required List<String> genres,
     required String bio,
     required List<String> inviteHandles,
+    String? area,
+    String? linkIg,
+    String? linkBc,
+    String? linkYt,
   }) async => 'unused';
 
   @override
