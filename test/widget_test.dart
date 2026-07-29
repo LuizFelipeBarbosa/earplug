@@ -84,6 +84,22 @@ void main() {
       expect(app.gfDate, isNull);
     });
 
+    test('gig URL and custom flyer overlay handle edge cases', () async {
+      final app = await _demoApp();
+      expect(app.gigUrl, 'earplug.app/g/your-gig');
+
+      app.setGfName('!!!');
+      expect(app.gigUrl, 'earplug.app/g/your-gig');
+      app.setGfName('Riptide Release');
+      expect(app.gigUrl, 'earplug.app/g/riptide-release');
+
+      app.setGfFly('custom');
+      app.toggleGfOverlay();
+      expect(app.gfShowOverlay, isFalse);
+      app.toggleGfOverlay();
+      expect(app.gfShowOverlay, isTrue);
+    });
+
     test('band creation switches to band view as admin', () async {
       final app = await _demoApp();
       app.startBandCreate();

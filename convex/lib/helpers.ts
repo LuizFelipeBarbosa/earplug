@@ -97,6 +97,20 @@ export const bandPayloadValidator = v.object({
   pastShows: v.array(pastShowPayload),
 });
 
+/** The six presses offered by the client's gig-create picker. "custom" means
+ * band-supplied art and is currently a v1 stub: no image/storage field backs it
+ * yet, so clients render a placeholder plate. The gigs.flyKey schema column
+ * stays v.string() because legacy rows/seeds use older keys: paper, blue, black,
+ * yellow, and bluetype. */
+export const flyKeyValidator = v.union(
+  v.literal("xerox"),
+  v.literal("riso"),
+  v.literal("marquee"),
+  v.literal("blueprint"),
+  v.literal("sunburst"),
+  v.literal("custom"),
+);
+
 export const gigPayloadValidator = v.object({
   _id: v.id("gigs"),
   title: v.string(),

@@ -84,7 +84,54 @@ describe("gigs:publishGig auth", () => {
         ...gigArgs,
         flyKey: "hologram" as never,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow("Validator error: Expected one of");
+  });
+
+  test("publishes with the custom press", async () => {
+    const { t, asAdmin, bandId, venueId } = await setupBand();
+    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+      bandId,
+      venueId,
+      ...gigArgs,
+      flyKey: "custom",
+    });
+    const gig = await t.run(async (ctx) => ctx.db.get(gigId));
+    expect(gig!.flyKey).toBe("custom");
+  });
+
+  test("external ticketing requires an http(s) URL", async () => {
+    const { asAdmin, bandId, venueId } = await setupBand();
+    const error = "External ticketing requires a valid http(s) URL";
+
+    await expect(
+      asAdmin.mutation(api.gigs.publishGig, {
+        bandId,
+        venueId,
+        ...gigArgs,
+        ticketing: "external",
+      }),
+    ).rejects.toThrow(error);
+    await expect(
+      asAdmin.mutation(api.gigs.publishGig, {
+        bandId,
+        venueId,
+        ...gigArgs,
+        ticketing: "external",
+        externalUrl: "not-a-url",
+      }),
+    ).rejects.toThrow(error);
+  });
+
+  test("rsvp ticketing drops an external URL", async () => {
+    const { t, asAdmin, bandId, venueId } = await setupBand();
+    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+      bandId,
+      venueId,
+      ...gigArgs,
+      externalUrl: "https://example.com",
+    });
+    const gig = await t.run(async (ctx) => ctx.db.get(gigId));
+    expect(gig!.externalUrl).toBeUndefined();
   });
 });
 

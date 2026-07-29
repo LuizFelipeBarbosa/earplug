@@ -62,6 +62,7 @@ final class ClerkWebAuth implements AuthService {
   bool get supportsAppleSignIn => true;
 
   @override
+  // Unlike mobile, Clerk's hosted web OAuth redirect needs no native client ID.
   bool get supportsGoogleSignIn => true;
 
   @override

@@ -763,7 +763,7 @@ class AppState extends ChangeNotifier {
   }
 
   void toggleGfOverlay() {
-    gfOverlay = !gfShowOverlay;
+    gfOverlay = !gfOverlay;
     notifyListeners();
   }
 
@@ -793,7 +793,7 @@ class AppState extends ChangeNotifier {
         .toLowerCase()
         .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
         .replaceAll(RegExp(r'^-+|-+$'), '');
-    return 'earplug.app/g/$slug';
+    return 'earplug.app/g/${slug.isEmpty ? 'your-gig' : slug}';
   }
 
   Future<void> publishGig() async {
@@ -822,7 +822,8 @@ class AppState extends ChangeNotifier {
         externalUrl: gfExt.isEmpty ? null : gfExt,
         cap: gfCap,
       );
-    } catch (_) {
+    } on Exception catch (error) {
+      debugPrint('publishGig failed: $error');
       say('Something broke — try again.');
       return;
     }

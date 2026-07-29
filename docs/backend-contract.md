@@ -15,7 +15,8 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 // GigPayload
 { "_id": "...", "title": "...", "venueId": "...", "price": 0,
   "startsAt": 1785300000000, "doorsTime": "8PM / 9PM",
-  "flyKey": "paper|blue|black|yellow|bluetype",
+  // publish accepts the first six; feeds may also return the five legacy keys
+  "flyKey": "xerox|riso|marquee|blueprint|sunburst|custom|paper|blue|black|yellow|bluetype",
   "lineup": ["<bandId>"], "genres": ["punk"], "desc": "...",
   "ticketing": "rsvp|external", "externalUrl": null, "cap": "No cap",
   "goingCount": 43, "createdByBand": null }
@@ -63,7 +64,7 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 | `interactions:toggleSave` | `{ gigId }` | `{ on: boolean }` | |
 | `bands:createBand` | `{ name, genres: string[], bio, inviteHandles: string[] }` | `{ bandId }` | Inserts band (colorHex/initials computed server-side; followerCount = 1 + invites) + admin bandMembers row for caller. Invites stored/ignored for v1 (no user linking yet). |
 | `bands:updateProfile` | `{ bandId, bio?, linkIg?, linkBc? }` | `null` | requireBandAdmin |
-| `gigs:publishGig` | `{ bandId, title, startsAt, doorsTime, venueId, price: number, ticketing, externalUrl?, cap }` | `{ gigId }` | requireBandAdmin(bandId); flyKey server-assigned `"bluetype"`; goingCount 0. |
+| `gigs:publishGig` | `{ bandId, title, startsAt, doorsTime, venueId, price: number, flyKey: "xerox"\|"riso"\|"marquee"\|"blueprint"\|"sunburst"\|"custom", ticketing, externalUrl?, cap }` | `{ gigId }` | requireBandAdmin(bandId); flyKey client-chosen from the six listed literals; `ticketing === "external"` requires a valid http(s) `externalUrl`; `externalUrl` is dropped for `ticketing === "rsvp"`; goingCount 0. |
 | `videos:pinVideo` | `{ videoId }` | `null` | requireBandAdmin of the video's band; unpins siblings. |
 | `videos:moveVideo` | `{ videoId, direction: "up"\|"down" }` | `null` | Swaps `order` with neighbor; no-op at ends. |
 
