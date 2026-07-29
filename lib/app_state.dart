@@ -1,10 +1,13 @@
 import 'dart:async';
-import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart';
 
+import 'data/convex_repository.dart';
+import 'data/demo_repository.dart';
+import 'data/repository.dart';
 import 'demo_data.dart';
 import 'models.dart';
+import 'services/auth_service.dart';
 
 enum Screen {
   home,
@@ -32,6 +35,8 @@ enum DateFilter { all, tonight, week }
 
 enum PendingKind { rsvp, follow, myGigs, band }
 
+enum DataStatus { connecting, ready, error }
+
 class PendingAuth {
   final PendingKind kind;
   final String? id;
@@ -39,9 +44,51 @@ class PendingAuth {
   const PendingAuth(this.kind, [this.id]);
 }
 
-/// App-wide state, ported 1:1 from the design's demo logic. Auth is faked
-/// (Clerk goes here later) and all data is in-memory (Convex goes here later).
 class AppState extends ChangeNotifier {
+  AppState({EarplugRepository? repository, AuthService? auth})
+    : this._(auth ?? FakeAuthService(), repository);
+
+  AppState._(AuthService resolvedAuth, EarplugRepository? providedRepository)
+    : auth = resolvedAuth,
+      repository = providedRepository ?? DemoRepository(auth: resolvedAuth),
+      _dataStatus = providedRepository is ConvexRepository
+          ? DataStatus.connecting
+          : DataStatus.ready {
+    authed = auth.signedIn;
+    if (authed) {
+      authStep = 2;
+      unawaited(_ensureUser());
+    }
+    _authSubscription = auth.signedInChanges.listen(_handleAuthChange);
+    _subscribeToFeed();
+    _interactionsSubscription = repository.myInteractions().listen(
+      _cacheInteractions,
+      onError: (_) {},
+    );
+    _bandsSubscription = repository.myBands().listen(
+      _cacheMemberships,
+      onError: (_) {},
+    );
+  }
+
+  final EarplugRepository repository;
+  final AuthService auth;
+
+  StreamSubscription<bool>? _authSubscription;
+  StreamSubscription<FeedSnapshot>? _feedSubscription;
+  StreamSubscription<Interactions>? _interactionsSubscription;
+  StreamSubscription<List<BandMembership>>? _bandsSubscription;
+
+  DataStatus _dataStatus;
+  DataStatus get dataStatus => _dataStatus;
+  String? dataError;
+
+  List<Gig> _allGigs = const [];
+  Map<String, Band> _bands = {};
+  Map<String, Venue> _venues = const {};
+  final Map<String, List<VideoClip>> _videoCache = {};
+  final Set<String> _videoLoads = {};
+
   // ---- navigation
   List<ScreenEntry> _stack = const [ScreenEntry(Screen.home)];
   ScreenEntry get current => _stack.last;
@@ -54,9 +101,9 @@ class AppState extends ChangeNotifier {
   final Set<String> userGenres = {};
 
   // ---- fan data
-  final Set<String> rsvps = {};
-  final Set<String> follows = {};
-  final Set<String> saved = {};
+  Set<String> rsvps = {};
+  Set<String> follows = {};
+  Set<String> saved = {};
   int attended = 0;
 
   // ---- home filters
@@ -70,18 +117,13 @@ class AppState extends ChangeNotifier {
   String query = '';
 
   // ---- band membership
-  List<String> myBands = ['b1'];
+  List<String> myBands = [];
   String bandId = 'b1';
-  Band? newBand; // the band created in-session, id 'nb'
 
   // ---- profile edits (b1 only, mirroring the design demo)
   String? b1BioOverride;
-  List<VideoClip>? b1VidsOverride;
   String linkIg = '@foghorndiet';
   String linkBc = 'foghorndiet.bandcamp.com';
-
-  // ---- published-in-session gigs
-  final List<Gig> customGigs = [];
 
   // ---- band create wizard
   int nbStep = 1;
@@ -107,7 +149,82 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _toastTimer?.cancel();
+    unawaited(_authSubscription?.cancel());
+    unawaited(_feedSubscription?.cancel());
+    unawaited(_interactionsSubscription?.cancel());
+    unawaited(_bandsSubscription?.cancel());
     super.dispose();
+  }
+
+  void _handleAuthChange(bool signedIn) {
+    authed = signedIn;
+    if (signedIn) {
+      authStep = 2;
+      unawaited(_ensureUser());
+    } else {
+      unawaited(_refreshConvexAuth());
+    }
+    notifyListeners();
+  }
+
+  Future<void> _refreshConvexAuth() async {
+    final repo = repository;
+    if (repo is ConvexRepository) await repo.refreshAuth();
+  }
+
+  Future<void> _ensureUser() async {
+    try {
+      // The websocket must carry the new identity before the mutation runs.
+      await _refreshConvexAuth();
+      await repository.ensureUser(name: auth.displayName);
+    } catch (_) {
+      say('Something broke — try again.');
+    }
+  }
+
+  void _subscribeToFeed() {
+    _feedSubscription = repository.feed().listen(
+      (snapshot) {
+        _allGigs = List<Gig>.of(snapshot.gigs);
+        _venues = Map<String, Venue>.of(snapshot.venues);
+        _bands = {
+          for (final entry in snapshot.bands.entries)
+            entry.key: entry.value.copyWith(
+              upcoming: [
+                for (final gig in snapshot.gigs)
+                  if (gig.lineup.contains(entry.key)) gig.id,
+              ],
+            ),
+        };
+        _dataStatus = DataStatus.ready;
+        dataError = null;
+        notifyListeners();
+      },
+      onError: (Object error) {
+        _dataStatus = DataStatus.error;
+        dataError = '$error';
+        notifyListeners();
+      },
+    );
+  }
+
+  void _cacheInteractions(Interactions interactions) {
+    rsvps = Set<String>.of(interactions.rsvpGigIds);
+    follows = Set<String>.of(interactions.followBandIds);
+    saved = Set<String>.of(interactions.savedGigIds);
+    attended = interactions.attendedCount;
+    notifyListeners();
+  }
+
+  void _cacheMemberships(List<BandMembership> memberships) {
+    myBands = [for (final membership in memberships) membership.band.id];
+    for (final membership in memberships) {
+      final band = membership.band;
+      _bands[band.id] = band.copyWith(
+        upcoming: _bands[band.id]?.upcoming ?? const [],
+      );
+    }
+    notifyListeners();
   }
 
   // ========================= navigation =========================
@@ -155,7 +272,6 @@ class AppState extends ChangeNotifier {
   }
 
   // ========================= auth =========================
-  // Fake auth for the design phase; swap for Clerk when wiring the backend.
 
   void needAuth(PendingAuth p) {
     pending = p;
@@ -164,21 +280,24 @@ class AppState extends ChangeNotifier {
   }
 
   String get authTitle => switch (pending?.kind) {
-        PendingKind.rsvp => 'Create an account to RSVP',
-        PendingKind.follow => 'Create an account to follow bands',
-        PendingKind.myGigs => 'Log in to see your gigs',
-        PendingKind.band => 'Log in to run your band',
-        null => 'Join the scene',
-      };
+    PendingKind.rsvp => 'Create an account to RSVP',
+    PendingKind.follow => 'Create an account to follow bands',
+    PendingKind.myGigs => 'Log in to see your gigs',
+    PendingKind.band => 'Log in to run your band',
+    null => 'Join the scene',
+  };
 
-  void login() {
-    authed = true;
-    authStep = 2;
-    rsvps.add('g5');
-    follows.addAll(['b2', 'b4']);
-    saved.add('g6');
-    attended = 12;
-    notifyListeners();
+  Future<void> login() async => await auth.signInDemo();
+
+  Future<void> signOut() async {
+    await auth.signOut();
+    rsvps = {};
+    follows = {};
+    saved = {};
+    attended = 0;
+    authed = false;
+    resetTo(Screen.home);
+    say('Signed out.');
   }
 
   void toggleUserGenre(String g) {
@@ -187,6 +306,14 @@ class AppState extends ChangeNotifier {
   }
 
   void finishAuth() {
+    if (repository is ConvexRepository) {
+      unawaited(
+        repository.setGenres(userGenres.toList()).catchError((Object _) {
+          say('Something broke — try again.');
+        }),
+      );
+    }
+
     final p = pending;
     pending = null;
     switch (p?.kind) {
@@ -209,9 +336,17 @@ class AppState extends ChangeNotifier {
   // ========================= fan actions =========================
 
   void toggleRsvp(String id) {
-    final on = rsvps.contains(id);
-    on ? rsvps.remove(id) : rsvps.add(id);
-    say(on ? 'RSVP removed.' : "You're on the list. QR is in My Gigs.");
+    final wasOn = rsvps.contains(id);
+    wasOn ? rsvps.remove(id) : rsvps.add(id);
+    notifyListeners();
+    say(wasOn ? 'RSVP removed.' : "You're on the list. QR is in My Gigs.");
+    unawaited(
+      repository.toggleRsvp(id).catchError((Object _) {
+        wasOn ? rsvps.add(id) : rsvps.remove(id);
+        say('Something broke — try again.');
+        notifyListeners();
+      }),
+    );
   }
 
   void requestRsvp(String id) {
@@ -223,10 +358,17 @@ class AppState extends ChangeNotifier {
   }
 
   void toggleFollow(String id) {
-    final on = follows.contains(id);
-    on ? follows.remove(id) : follows.add(id);
-    if (!on) say('Following ${band(id)!.name}.');
+    final wasOn = follows.contains(id);
+    wasOn ? follows.remove(id) : follows.add(id);
     notifyListeners();
+    if (!wasOn) say('Following ${band(id)!.name}.');
+    unawaited(
+      repository.toggleFollow(id).catchError((Object _) {
+        wasOn ? follows.add(id) : follows.remove(id);
+        say('Something broke — try again.');
+        notifyListeners();
+      }),
+    );
   }
 
   void requestFollow(String id) {
@@ -235,6 +377,19 @@ class AppState extends ChangeNotifier {
     } else {
       needAuth(PendingAuth(PendingKind.follow, id));
     }
+  }
+
+  void toggleSave(String id) {
+    final wasOn = saved.contains(id);
+    wasOn ? saved.remove(id) : saved.add(id);
+    notifyListeners();
+    unawaited(
+      repository.toggleSave(id).catchError((Object _) {
+        wasOn ? saved.add(id) : saved.remove(id);
+        say('Something broke — try again.');
+        notifyListeners();
+      }),
+    );
   }
 
   // ========================= filters =========================
@@ -246,7 +401,11 @@ class AppState extends ChangeNotifier {
 
   void setCity(String c) {
     city = c;
-    say(c == 'oak' ? 'Showing gigs near Temescal.' : 'Showing gigs near the Mission.');
+    say(
+      c == 'oak'
+          ? 'Showing gigs near Temescal.'
+          : 'Showing gigs near the Mission.',
+    );
   }
 
   void toggleDateFilter(DateFilter f) {
@@ -271,7 +430,7 @@ class AppState extends ChangeNotifier {
 
   // ========================= data access =========================
 
-  List<Gig> get allGigs => [...DemoData.gigs, ...customGigs];
+  List<Gig> get allGigs => _allGigs;
 
   Gig? gig(String id) {
     for (final g in allGigs) {
@@ -280,43 +439,75 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  Band? band(String id) => id == 'nb' ? newBand : DemoData.bands[id];
+  Band? band(String id) => _bands[id];
 
-  Venue venue(String id) => DemoData.venues[id]!;
+  Venue venue(String id) => _venues[id]!;
 
-  FlyerStyle flyer(String key) => DemoData.flyers[key] ?? DemoData.flyers['paper']!;
+  FlyerStyle flyer(String key) =>
+      DemoData.flyers[key] ?? DemoData.flyers['paper']!;
 
   String distanceOf(Venue v) => city == 'oak' ? v.distOak : v.distSF;
 
   List<Gig> get feed => allGigs.where((g) {
-        if (fDate == DateFilter.tonight && g.when != GigWhen.tonight) return false;
-        if (fDate == DateFilter.week && g.when == GigWhen.later) return false;
-        if (fFree && !g.free) return false;
-        if (fGenre != null && !g.genres.contains(fGenre)) return false;
-        return true;
-      }).toList();
+    if (fDate == DateFilter.tonight && g.when != GigWhen.tonight) return false;
+    if (fDate == DateFilter.week && g.when == GigWhen.later) return false;
+    if (fFree && !g.free) return false;
+    if (fGenre != null && !g.genres.contains(fGenre)) return false;
+    return true;
+  }).toList();
 
   /// RSVP count shown to bands: base demo count plus this user's RSVP.
   int rsvpCount(Gig g) => g.going + (rsvps.contains(g.id) ? 1 : 0);
 
-  List<VideoClip> videosFor(String bandId) =>
-      bandId == 'b1' ? (b1VidsOverride ?? DemoData.b1Videos) : DemoData.genericVideos;
+  List<VideoClip> videosFor(String bandId) {
+    final cached = _videoCache[bandId];
+    if (cached != null) return cached;
+
+    if (_videoLoads.add(bandId)) {
+      unawaited(_loadVideos(bandId));
+    }
+    return const <VideoClip>[];
+  }
 
   String bioFor(String id) {
-    if (id == 'b1') return b1BioOverride ?? DemoData.bands['b1']!.bio;
+    if (id == 'b1' && b1BioOverride != null) return b1BioOverride!;
     return band(id)?.bio ?? '';
+  }
+
+  Future<void> _loadVideos(String bandId) async {
+    try {
+      _videoCache[bandId] = await repository.videosFor(bandId);
+      notifyListeners();
+    } catch (_) {
+    } finally {
+      _videoLoads.remove(bandId);
+    }
+  }
+
+  void retry() {
+    _dataStatus = DataStatus.connecting;
+    dataError = null;
+    notifyListeners();
+    unawaited(_restartFeed());
+  }
+
+  Future<void> _restartFeed() async {
+    await _feedSubscription?.cancel();
+    _subscribeToFeed();
   }
 
   // ========================= band view =========================
 
   Band? get myBand => band(bandId);
-  bool get bandIsNew => bandId == 'nb';
+  bool get bandIsNew => bandId.startsWith('nb');
 
   List<Gig> get myBandGigs =>
       allGigs.where((g) => g.lineup.contains(bandId)).toList();
 
-  String get myBandNames =>
-      myBands.map((id) => band(id)?.name ?? '').where((n) => n.isNotEmpty).join(' · ');
+  String get myBandNames => myBands
+      .map((id) => band(id)?.name ?? '')
+      .where((n) => n.isNotEmpty)
+      .join(' · ');
 
   void switchToBand(String id) {
     bandId = id;
@@ -328,39 +519,62 @@ class AppState extends ChangeNotifier {
   void setBandBio(String v) {
     if (bandId == 'b1') {
       b1BioOverride = v;
-    } else if (newBand != null) {
-      newBand = newBand!.copyWith(bio: v);
     }
+    unawaited(
+      repository
+          .updateBandProfile(bandId: bandId, bio: v)
+          .catchError((Object _) {}),
+    );
     notifyListeners();
   }
 
   void setLinkIg(String v) {
     linkIg = v;
+    unawaited(
+      repository
+          .updateBandProfile(bandId: bandId, linkIg: v)
+          .catchError((Object _) {}),
+    );
     notifyListeners();
   }
 
   void setLinkBc(String v) {
     linkBc = v;
+    unawaited(
+      repository
+          .updateBandProfile(bandId: bandId, linkBc: v)
+          .catchError((Object _) {}),
+    );
     notifyListeners();
   }
 
   void pinVideo(int index) {
     final vids = videosFor('b1');
-    b1VidsOverride = [
-      for (var i = 0; i < vids.length; i++) vids[i].copyWith(pinned: i == index),
-    ];
-    notifyListeners();
+    if (index < 0 || index >= vids.length) return;
+    unawaited(_pinVideo(vids[index].id));
   }
 
   void moveVideo(int index, int delta) {
-    final vids = [...videosFor('b1')];
-    final j = index + delta;
-    if (j < 0 || j >= vids.length) return;
-    final tmp = vids[index];
-    vids[index] = vids[j];
-    vids[j] = tmp;
-    b1VidsOverride = vids;
-    notifyListeners();
+    final vids = videosFor('b1');
+    if (index < 0 || index >= vids.length) return;
+    final direction = delta < 0 ? 'up' : 'down';
+    unawaited(_moveVideo(vids[index].id, direction));
+  }
+
+  Future<void> _pinVideo(String videoId) async {
+    try {
+      await repository.pinVideo(videoId);
+      _videoCache['b1'] = await repository.videosFor('b1');
+      notifyListeners();
+    } catch (_) {}
+  }
+
+  Future<void> _moveVideo(String videoId, String direction) async {
+    try {
+      await repository.moveVideo(videoId, direction);
+      _videoCache['b1'] = await repository.videosFor('b1');
+      notifyListeners();
+    } catch (_) {}
   }
 
   // ========================= band create =========================
@@ -403,32 +617,23 @@ class AppState extends ChangeNotifier {
   }
 
   String get nbSlug {
-    final s = (nbName.isEmpty ? 'your-band' : nbName)
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+    final s = (nbName.isEmpty ? 'your-band' : nbName).toLowerCase().replaceAll(
+      RegExp(r'[^a-z0-9]+'),
+      '-',
+    );
     return s.length > 20 ? s.substring(0, 20) : s;
   }
 
-  void createBand() {
+  Future<void> createBand() async {
     final name = nbName.trim();
-    newBand = Band(
+    final createdBandId = await repository.createBand(
       name: name,
       genres: nbGenres.isEmpty ? const ['punk'] : nbGenres.toList(),
-      area: 'Mission, SF',
-      color: const Color(0xFF8FE6C4),
-      initials: name
-          .split(' ')
-          .where((w) => w.isNotEmpty)
-          .map((w) => w[0])
-          .take(2)
-          .join()
-          .toUpperCase(),
-      followers: 1 + nbInvites.length,
-      bio: nbBio.isEmpty ? 'New band. No recordings yet. Come see us anyway.' : nbBio,
+      bio: nbBio,
+      inviteHandles: nbInvites,
     );
-    if (!myBands.contains('nb')) myBands = [...myBands, 'nb'];
-    bandId = 'nb';
-    _stack = const [ScreenEntry(Screen.bandDash)];
+    bandId = createdBandId;
+    resetTo(Screen.bandDash);
     say('$name created — you are admin.');
   }
 
@@ -477,30 +682,25 @@ class AppState extends ChangeNotifier {
   bool get canPublishGig =>
       gfName.trim().isNotEmpty && gfDate != null && gfVenueId != null;
 
-  void publishGig() {
+  Future<void> publishGig() async {
     if (!canPublishGig) {
       say('Name, date and venue required.');
       return;
     }
-    final date = gfDate!.toUpperCase();
-    customGigs.add(Gig(
-      id: 'gx${customGigs.length + 1}',
+
+    await repository.publishGig(
+      bandId: bandId,
       title: gfName.trim(),
       venueId: gfVenueId!,
       price: gfPrice == 'FREE' ? 0 : int.parse(gfPrice.substring(1)),
-      dateShort: date,
-      dateLine: '$date · DOORS $gfTime',
-      time: '$gfTime doors',
-      when: GigWhen.later,
-      flyKey: 'bluetype',
-      lineup: [bandId],
-      going: 0,
-      genres: const ['punk'],
-      desc: '${gfTix == Ticketing.external ? 'Tickets via external link. ' : 'RSVP in app. '}'
-          'Listed by ${myBand?.name ?? ''}.',
-      tix: gfTix,
+      startsAt: DateTime.now()
+          .add(const Duration(days: 7))
+          .millisecondsSinceEpoch,
+      doorsTime: gfTime,
+      ticketing: gfTix,
+      externalUrl: gfExt.isEmpty ? null : gfExt,
       cap: gfCap,
-    ));
+    );
     gfName = '';
     gfDate = null;
     gfTime = '8PM';

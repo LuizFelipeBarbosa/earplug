@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state.dart';
+import 'data/convex_repository.dart';
+import 'data/repository.dart';
+import 'env.dart';
 import 'screens/analytics.dart';
 import 'screens/auth.dart';
 import 'screens/band_create.dart';
@@ -14,20 +17,41 @@ import 'screens/gig_detail.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
 import 'screens/my_gigs.dart';
+import 'services/auth_service.dart';
+import 'services/auth_service_factory.dart';
+import 'services/convex_service.dart';
 import 'theme.dart';
+import 'widgets/common.dart';
 import 'widgets/tab_bars.dart';
 
-void main() {
-  runApp(const EarplugApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (Env.demo) {
+    runApp(const EarplugApp());
+    return;
+  }
+
+  final convexService = ConvexService();
+  await convexService.init(Env.convexUrl);
+  final auth = createPlatformAuthService();
+  await auth.initialize();
+  convexService.setTokenFetcher(auth.fetchConvexToken);
+  final repository = ConvexRepository(convexService);
+  runApp(EarplugApp(repository: repository, auth: auth));
 }
 
 class EarplugApp extends StatelessWidget {
-  const EarplugApp({super.key});
+  const EarplugApp({super.key, this.repository, this.auth});
+
+  final EarplugRepository? repository;
+  final AuthService? auth;
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
-      create: (_) => AppState(),
+      create: (_) => repository == null && auth == null
+          ? AppState()
+          : AppState(repository: repository, auth: auth),
       child: MaterialApp(
         title: 'EarPlug',
         debugShowCheckedModeBanner: false,
@@ -39,7 +63,12 @@ class EarplugApp extends StatelessWidget {
 }
 
 const _fanTabScreens = {Screen.home, Screen.explore, Screen.myGigs};
-const _bandTabScreens = {Screen.bandDash, Screen.bandEdit, Screen.gigMgr, Screen.analytics};
+const _bandTabScreens = {
+  Screen.bandDash,
+  Screen.bandEdit,
+  Screen.gigMgr,
+  Screen.analytics,
+};
 
 class RootShell extends StatelessWidget {
   const RootShell({super.key});
@@ -49,17 +78,51 @@ class RootShell extends StatelessWidget {
     final app = context.watch<AppState>();
     final entry = app.current;
 
-    final body = Stack(
-      children: [
-        Positioned.fill(child: _screenFor(entry)),
-        if (_fanTabScreens.contains(entry.screen))
-          const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-        if (_bandTabScreens.contains(entry.screen))
-          const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
-        if (app.toast.isNotEmpty)
-          Positioned(left: 20, right: 20, bottom: 104, child: _Toast(message: app.toast)),
-      ],
-    );
+    final body = switch (app.dataStatus) {
+      DataStatus.connecting => ColoredBox(
+        color: Ep.bg,
+        child: Center(child: Text('EARPLUG', style: epDisplay(size: 28))),
+      ),
+      DataStatus.error => ColoredBox(
+        color: Ep.bg,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  app.dataError ?? "Couldn't load the feed.",
+                  textAlign: TextAlign.center,
+                  style: epText(size: 14, color: Ep.inkA(.75), height: 1.4),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: 220,
+                  child: EpButton('RETRY', onTap: app.retry),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      DataStatus.ready => Stack(
+        children: [
+          Positioned.fill(child: _screenFor(entry)),
+          if (_fanTabScreens.contains(entry.screen))
+            const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
+          if (_bandTabScreens.contains(entry.screen))
+            const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
+          if (app.toast.isNotEmpty)
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: 104,
+              child: _Toast(message: app.toast),
+            ),
+        ],
+      ),
+    };
 
     // On phones this fills the window; on wide screens (web/desktop) the app
     // renders as a centered phone-width column on a dark backdrop.
@@ -73,9 +136,7 @@ class RootShell extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
-            child: ClipRect(
-              child: Scaffold(body: body),
-            ),
+            child: ClipRect(child: Scaffold(body: body)),
           ),
         ),
       ),
@@ -114,7 +175,10 @@ class _Toast extends StatelessWidget {
       builder: (context, t, child) {
         return Opacity(
           opacity: t,
-          child: Transform.translate(offset: Offset(0, 16 * (1 - t)), child: child),
+          child: Transform.translate(
+            offset: Offset(0, 16 * (1 - t)),
+            child: child,
+          ),
         );
       },
       child: Container(
@@ -124,14 +188,17 @@ class _Toast extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withValues(alpha: .6),
-                blurRadius: 30,
-                offset: const Offset(0, 10)),
+              color: Colors.black.withValues(alpha: .6),
+              blurRadius: 30,
+              offset: const Offset(0, 10),
+            ),
           ],
         ),
-        child: Text(message,
-            textAlign: TextAlign.center,
-            style: epText(size: 12.5, weight: FontWeight.w800, color: Ep.bg)),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: epText(size: 12.5, weight: FontWeight.w800, color: Ep.bg),
+        ),
       ),
     );
   }

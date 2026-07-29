@@ -38,6 +38,9 @@ dependencies:
   google_fonts: ^8.2.0
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
+  convex_flutter: ^3.0.1
+  clerk_auth: ^0.0.18-beta
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:
@@ -49,6 +52,10 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+dependency_overrides:
+  convex_flutter:
+    path: vendor/convex_flutter
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

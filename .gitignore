@@ -43,3 +43,14 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets & local env
+.env.local
+.env*.local
+dart_defines.json
+
+# Node / Convex
+node_modules/
+
+# Convex backups
+backups/
