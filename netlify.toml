@@ -1,0 +1,22 @@
+[build]
+  publish = "build/web"
+  # Netlify's build image has no Flutter SDK, so fetch it first. The version is
+  # pinned to match local development; bump it deliberately rather than tracking
+  # whatever "stable" happens to be on the day of a build.
+  command = """
+    if [ ! -d "$HOME/flutter" ]; then
+      git clone https://github.com/flutter/flutter.git --depth 1 -b 3.44.6 "$HOME/flutter"
+    fi
+    export PATH="$HOME/flutter/bin:$PATH"
+    flutter --version
+    flutter build web --release \
+      --dart-define=CONVEX_URL="$CONVEX_URL" \
+      --dart-define=CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY"
+  """
+
+# Flutter web uses path-based URLs, so a hard refresh on any route must still
+# serve index.html instead of 404ing.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
