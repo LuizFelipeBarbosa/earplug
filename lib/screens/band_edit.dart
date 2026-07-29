@@ -122,7 +122,7 @@ class BandEditScreen extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        for (final (i, v) in app.videosFor('b1').indexed) ...[
+        for (final (i, v) in app.videosFor(app.bandId).indexed) ...[
           Container(
             padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(

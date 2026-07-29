@@ -73,10 +73,13 @@ class _SearchResults extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bandIds = DemoBandIds.all.where((id) {
-      final b = app.band(id)!;
-      return b.name.toLowerCase().contains(q) || b.genres.any((t) => t.contains(q));
-    }).toList();
+    final bandIds = [
+      for (final id in app.exploreBandIds)
+        if (app.band(id) case final Band band)
+          if (band.name.toLowerCase().contains(q) ||
+              band.genres.any((genre) => genre.toLowerCase().contains(q)))
+            id,
+    ];
     final gigs = app.allGigs.where((g) {
       return g.title.toLowerCase().contains(q) ||
           app.venue(g.venueId).name.toLowerCase().contains(q) ||
@@ -116,7 +119,8 @@ class _BandRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final band = app.band(bandId)!;
+    final band = app.band(bandId);
+    if (band == null) return const SizedBox.shrink();
     return EpCard(
       padding: const EdgeInsets.all(9),
       onTap: () => app.openBand(bandId),
@@ -227,7 +231,7 @@ class _BrowseRows extends StatelessWidget {
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
-              for (final id in DemoBandIds.all) _BandTile(bandId: id, app: app),
+              for (final id in app.exploreBandIds) _BandTile(bandId: id, app: app),
             ],
           ),
         ),
@@ -338,7 +342,8 @@ class _BandTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final band = app.band(bandId)!;
+    final band = app.band(bandId);
+    if (band == null) return const SizedBox.shrink();
     return GestureDetector(
       onTap: () => app.openBand(bandId),
       child: SizedBox(
@@ -353,18 +358,14 @@ class _BandTile extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: epText(size: 10.5, weight: FontWeight.w800, height: 1.2)),
             const SizedBox(height: 2),
-            Text(band.genres.first,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: epText(size: 9.5, color: Ep.inkA(.45))),
+            if (band.genres.isNotEmpty)
+              Text(band.genres.first,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: epText(size: 9.5, color: Ep.inkA(.45))),
           ],
         ),
       ),
     );
   }
-}
-
-/// Stable ordering of the demo bands for browse/search lists.
-abstract final class DemoBandIds {
-  static const all = ['b1', 'b2', 'b3', 'b4', 'b5', 'b6'];
 }

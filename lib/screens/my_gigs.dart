@@ -113,10 +113,11 @@ class MyGigsScreen extends StatelessWidget {
         const SizedBox(height: 8),
         const SectionLabel('FOLLOWING'),
         const SizedBox(height: 8),
-        for (final id in app.follows.toList()) ...[
-          _FollowRow(bandId: id, app: app),
-          const SizedBox(height: 8),
-        ],
+        for (final id in app.follows.toList())
+          if (app.band(id) != null) ...[
+            _FollowRow(bandId: id, app: app),
+            const SizedBox(height: 8),
+          ],
         const SizedBox(height: 8),
         const SectionLabel('HISTORY'),
         const SizedBox(height: 6),
@@ -299,7 +300,8 @@ class _FollowRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final band = app.band(bandId)!;
+    final band = app.band(bandId);
+    if (band == null) return const SizedBox.shrink();
     return EpCard(
       padding: const EdgeInsets.all(9),
       child: Row(

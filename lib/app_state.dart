@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'data/convex_repository.dart';
 import 'data/demo_repository.dart';
@@ -86,6 +87,7 @@ class AppState extends ChangeNotifier {
   List<Gig> _allGigs = const [];
   Map<String, Band> _bands = {};
   Map<String, Venue> _venues = const {};
+  final Map<String, String> _bandBioOverrides = {};
   final Map<String, List<VideoClip>> _videoCache = {};
   final Set<String> _videoLoads = {};
 
@@ -115,13 +117,13 @@ class AppState extends ChangeNotifier {
 
   // ---- explore
   String query = '';
+  List<String> exploreBandIds = [];
 
   // ---- band membership
   List<String> myBands = [];
-  String bandId = 'b1';
+  String bandId = '';
 
-  // ---- profile edits (b1 only, mirroring the design demo)
-  String? b1BioOverride;
+  // ---- profile edits
   String linkIg = '@foghorndiet';
   String linkBc = 'foghorndiet.bandcamp.com';
 
@@ -188,6 +190,7 @@ class AppState extends ChangeNotifier {
         _allGigs = List<Gig>.of(snapshot.gigs);
         _venues = Map<String, Venue>.of(snapshot.venues);
         _bands = {
+          ..._bands,
           for (final entry in snapshot.bands.entries)
             entry.key: entry.value.copyWith(
               upcoming: [
@@ -206,6 +209,20 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
+    unawaited(_refreshExploreBands());
+  }
+
+  Future<void> _refreshExploreBands() async {
+    try {
+      final bands = await repository.searchBands('');
+      exploreBandIds = [for (final band in bands) band.id];
+      for (final band in bands) {
+        _bands[band.id] = band.copyWith(
+          upcoming: _bands[band.id]?.upcoming ?? const [],
+        );
+      }
+      notifyListeners();
+    } catch (_) {}
   }
 
   void _cacheInteractions(Interactions interactions) {
@@ -218,6 +235,11 @@ class AppState extends ChangeNotifier {
 
   void _cacheMemberships(List<BandMembership> memberships) {
     myBands = [for (final membership in memberships) membership.band.id];
+    if (myBands.isEmpty) {
+      bandId = '';
+    } else if (bandId.isEmpty) {
+      bandId = myBands.first;
+    }
     for (final membership in memberships) {
       final band = membership.band;
       _bands[band.id] = band.copyWith(
@@ -361,7 +383,10 @@ class AppState extends ChangeNotifier {
     final wasOn = follows.contains(id);
     wasOn ? follows.remove(id) : follows.add(id);
     notifyListeners();
-    if (!wasOn) say('Following ${band(id)!.name}.');
+    if (!wasOn) {
+      final name = band(id)?.name;
+      say(name == null ? 'Band followed.' : 'Following $name.');
+    }
     unawaited(
       repository.toggleFollow(id).catchError((Object _) {
         wasOn ? follows.add(id) : follows.remove(id);
@@ -441,7 +466,17 @@ class AppState extends ChangeNotifier {
 
   Band? band(String id) => _bands[id];
 
-  Venue venue(String id) => _venues[id]!;
+  Venue venue(String id) => _venues[id] ?? _unknownVenue;
+
+  static const _unknownVenue = Venue(
+    id: '',
+    name: 'Venue unavailable',
+    area: '',
+    addr: '',
+    distSF: '',
+    distOak: '',
+    point: LatLng(0, 0),
+  );
 
   FlyerStyle flyer(String key) =>
       DemoData.flyers[key] ?? DemoData.flyers['paper']!;
@@ -470,8 +505,7 @@ class AppState extends ChangeNotifier {
   }
 
   String bioFor(String id) {
-    if (id == 'b1' && b1BioOverride != null) return b1BioOverride!;
-    return band(id)?.bio ?? '';
+    return _bandBioOverrides[id] ?? band(id)?.bio ?? '';
   }
 
   Future<void> _loadVideos(String bandId) async {
@@ -517,9 +551,8 @@ class AppState extends ChangeNotifier {
   void toFanView() => resetTo(Screen.home);
 
   void setBandBio(String v) {
-    if (bandId == 'b1') {
-      b1BioOverride = v;
-    }
+    if (bandId.isEmpty) return;
+    _bandBioOverrides[bandId] = v;
     unawaited(
       repository
           .updateBandProfile(bandId: bandId, bio: v)
@@ -529,6 +562,7 @@ class AppState extends ChangeNotifier {
   }
 
   void setLinkIg(String v) {
+    if (bandId.isEmpty) return;
     linkIg = v;
     unawaited(
       repository
@@ -539,6 +573,7 @@ class AppState extends ChangeNotifier {
   }
 
   void setLinkBc(String v) {
+    if (bandId.isEmpty) return;
     linkBc = v;
     unawaited(
       repository
@@ -549,30 +584,38 @@ class AppState extends ChangeNotifier {
   }
 
   void pinVideo(int index) {
-    final vids = videosFor('b1');
+    final activeBandId = bandId;
+    if (activeBandId.isEmpty) return;
+    final vids = videosFor(activeBandId);
     if (index < 0 || index >= vids.length) return;
-    unawaited(_pinVideo(vids[index].id));
+    unawaited(_pinVideo(activeBandId, vids[index].id));
   }
 
   void moveVideo(int index, int delta) {
-    final vids = videosFor('b1');
+    final activeBandId = bandId;
+    if (activeBandId.isEmpty) return;
+    final vids = videosFor(activeBandId);
     if (index < 0 || index >= vids.length) return;
     final direction = delta < 0 ? 'up' : 'down';
-    unawaited(_moveVideo(vids[index].id, direction));
+    unawaited(_moveVideo(activeBandId, vids[index].id, direction));
   }
 
-  Future<void> _pinVideo(String videoId) async {
+  Future<void> _pinVideo(String bandId, String videoId) async {
     try {
       await repository.pinVideo(videoId);
-      _videoCache['b1'] = await repository.videosFor('b1');
+      _videoCache[bandId] = await repository.videosFor(bandId);
       notifyListeners();
     } catch (_) {}
   }
 
-  Future<void> _moveVideo(String videoId, String direction) async {
+  Future<void> _moveVideo(
+    String bandId,
+    String videoId,
+    String direction,
+  ) async {
     try {
       await repository.moveVideo(videoId, direction);
-      _videoCache['b1'] = await repository.videosFor('b1');
+      _videoCache[bandId] = await repository.videosFor(bandId);
       notifyListeners();
     } catch (_) {}
   }
@@ -633,6 +676,7 @@ class AppState extends ChangeNotifier {
       inviteHandles: nbInvites,
     );
     bandId = createdBandId;
+    await _refreshExploreBands();
     resetTo(Screen.bandDash);
     say('$name created — you are admin.');
   }

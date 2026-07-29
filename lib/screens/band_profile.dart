@@ -18,7 +18,9 @@ class BandProfileScreen extends StatelessWidget {
     if (band == null) return const SizedBox.shrink();
 
     final vids = app.videosFor(bandId);
-    final pinned = vids.firstWhere((v) => v.pinned, orElse: () => vids.first);
+    final pinned = vids.isEmpty
+        ? null
+        : vids.firstWhere((v) => v.pinned, orElse: () => vids.first);
     final clips = vids.where((v) => v != pinned).take(4).toList();
     final upcoming = [
       for (final id in band.upcoming)
@@ -95,22 +97,24 @@ class BandProfileScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 onTap: () => app.requestFollow(bandId),
               ),
-              const SizedBox(height: 16),
-              const SectionLabel('▶ THIS IS WHAT WE SOUND LIKE', blue: true),
-              const SizedBox(height: 8),
-              _PinnedVideo(pinned: pinned, app: app),
-              const SizedBox(height: 16),
-              const SectionLabel('CLIPS'),
-              const SizedBox(height: 8),
-              GridView.count(
-                crossAxisCount: 2,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 168 / 104,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                children: [for (final v in clips) _ClipTile(clip: v, app: app)],
-              ),
+              if (pinned != null) ...[
+                const SizedBox(height: 16),
+                const SectionLabel('▶ THIS IS WHAT WE SOUND LIKE', blue: true),
+                const SizedBox(height: 8),
+                _PinnedVideo(pinned: pinned, app: app),
+                const SizedBox(height: 16),
+                const SectionLabel('CLIPS'),
+                const SizedBox(height: 8),
+                GridView.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  childAspectRatio: 168 / 104,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  children: [for (final v in clips) _ClipTile(clip: v, app: app)],
+                ),
+              ],
               const SizedBox(height: 16),
               const SectionLabel('UPCOMING GIGS'),
               const SizedBox(height: 8),
