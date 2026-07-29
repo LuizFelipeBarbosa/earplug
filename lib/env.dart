@@ -3,6 +3,9 @@ abstract final class Env {
   static const String clerkPublishableKey = String.fromEnvironment(
     'CLERK_PUBLISHABLE_KEY',
   );
+  static const String googleServerClientId = String.fromEnvironment(
+    'GOOGLE_SERVER_CLIENT_ID',
+  );
 
   static bool get demo =>
       const bool.fromEnvironment('EARPLUG_DEMO') || convexUrl.isEmpty;

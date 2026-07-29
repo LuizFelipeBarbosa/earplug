@@ -41,6 +41,8 @@ dependencies:
   convex_flutter: ^3.0.1
   clerk_auth: ^0.0.18-beta
   path_provider: ^2.1.5
+  sign_in_with_apple: ^7.0.1
+  google_sign_in: ^7.2.0
 
 dev_dependencies:
   flutter_test:
@@ -56,6 +58,10 @@ dev_dependencies:
 dependency_overrides:
   convex_flutter:
     path: vendor/convex_flutter
+  # vendor/convex_flutter's generated bindings and its Rust crate both pin
+  # flutter_rust_bridge 2.11.1 exactly; without this pub resolves 2.12.0 and
+  # RustLib.init throws on the codegen/runtime version check.
+  flutter_rust_bridge: 2.11.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

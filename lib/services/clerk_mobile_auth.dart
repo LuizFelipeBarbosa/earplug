@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:clerk_auth/clerk_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 import '../env.dart';
 import 'auth_service.dart';
@@ -10,7 +13,7 @@ AuthService createPlatformAuthService() {
   return ClerkMobileAuth(Env.clerkPublishableKey);
 }
 
-enum _EmailFlow { signIn, signUp }
+enum _CodeFlow { signIn, signUp }
 
 final class ClerkMobileAuth implements AuthService {
   ClerkMobileAuth(String publishableKey) {
@@ -31,7 +34,8 @@ final class ClerkMobileAuth implements AuthService {
       StreamController<bool>.broadcast();
 
   Future<void>? _initialization;
-  _EmailFlow? _emailFlow;
+  Future<void>? _googleInitialization;
+  ({_CodeFlow flow, Strategy strategy})? _pendingCodeFlow;
   bool _lastSignedIn = false;
 
   @override
@@ -45,6 +49,9 @@ final class ClerkMobileAuth implements AuthService {
 
   @override
   Stream<bool> get signedInChanges => _signedInController.stream;
+
+  @override
+  bool get supportsAppleSignIn => Platform.isIOS;
 
   @override
   Future<void> initialize() {
@@ -76,13 +83,14 @@ final class ClerkMobileAuth implements AuthService {
       throw const AuthException('Enter your email address.');
     }
 
+    _pendingCodeFlow = null;
     await _auth.resetClient();
     try {
       await _auth.attemptSignIn(
         identifier: identifier,
         strategy: Strategy.emailCode,
       );
-      _emailFlow = _EmailFlow.signIn;
+      _pendingCodeFlow = (flow: _CodeFlow.signIn, strategy: Strategy.emailCode);
     } catch (error) {
       if (!_isMissingIdentifier(error)) {
         throw AuthException(_messageFor(error));
@@ -94,7 +102,10 @@ final class ClerkMobileAuth implements AuthService {
           emailAddress: identifier,
           strategy: Strategy.emailCode,
         );
-        _emailFlow = _EmailFlow.signUp;
+        _pendingCodeFlow = (
+          flow: _CodeFlow.signUp,
+          strategy: Strategy.emailCode,
+        );
       } catch (signUpError) {
         throw AuthException(_messageFor(signUpError));
       }
@@ -102,18 +113,67 @@ final class ClerkMobileAuth implements AuthService {
   }
 
   @override
-  Future<bool> verifyEmailCode(String code) async {
+  Future<bool> verifyEmailCode(String code) {
+    return _verifyCode(code, Strategy.emailCode);
+  }
+
+  @override
+  Future<void> startPhoneSignIn(String phoneNumber) async {
+    await initialize();
+    final identifier = phoneNumber.trim();
+    if (identifier.isEmpty) {
+      throw const AuthException('Enter your phone number.');
+    }
+
+    _pendingCodeFlow = null;
+    await _auth.resetClient();
+    try {
+      await _auth.attemptSignIn(
+        identifier: identifier,
+        strategy: Strategy.phoneCode,
+      );
+      _pendingCodeFlow = (flow: _CodeFlow.signIn, strategy: Strategy.phoneCode);
+    } catch (error) {
+      if (!_isMissingIdentifier(error)) {
+        throw AuthException(_messageFor(error));
+      }
+
+      await _auth.resetClient();
+      try {
+        await _auth.attemptSignUp(
+          phoneNumber: identifier,
+          strategy: Strategy.phoneCode,
+        );
+        _pendingCodeFlow = (
+          flow: _CodeFlow.signUp,
+          strategy: Strategy.phoneCode,
+        );
+      } catch (signUpError) {
+        throw AuthException(_messageFor(signUpError));
+      }
+    }
+  }
+
+  @override
+  Future<bool> verifyPhoneCode(String code) {
+    return _verifyCode(code, Strategy.phoneCode);
+  }
+
+  Future<bool> _verifyCode(String code, Strategy strategy) async {
     await initialize();
     if (code.length != Strategy.numericalCodeLength) return false;
 
     try {
-      switch (_emailFlow) {
-        case _EmailFlow.signIn:
-          await _auth.attemptSignIn(strategy: Strategy.emailCode, code: code);
-        case _EmailFlow.signUp:
-          await _auth.attemptSignUp(strategy: Strategy.emailCode, code: code);
-        case null:
-          throw const AuthException('Send a verification code first.');
+      final pending = _pendingCodeFlow;
+      if (pending == null || pending.strategy != strategy) {
+        throw const AuthException('Send a verification code first.');
+      }
+
+      switch (pending.flow) {
+        case _CodeFlow.signIn:
+          await _auth.attemptSignIn(strategy: strategy, code: code);
+        case _CodeFlow.signUp:
+          await _auth.attemptSignUp(strategy: strategy, code: code);
       }
       return _auth.isSignedIn;
     } catch (error) {
@@ -123,8 +183,63 @@ final class ClerkMobileAuth implements AuthService {
   }
 
   @override
-  Future<void> signInWithOAuth(OAuthProvider provider) {
-    throw const AuthException('Coming soon on mobile — use email');
+  Future<void> signInWithOAuth(OAuthProvider provider) async {
+    await initialize();
+
+    try {
+      switch (provider) {
+        case OAuthProvider.apple:
+          final credential = await SignInWithApple.getAppleIDCredential(
+            scopes: const [
+              AppleIDAuthorizationScopes.email,
+              AppleIDAuthorizationScopes.fullName,
+            ],
+          );
+          await _signInWithIdToken(
+            provider: IdTokenProvider.apple,
+            token: credential.identityToken,
+          );
+        case OAuthProvider.google:
+          await (_googleInitialization ??= GoogleSignIn.instance.initialize(
+            serverClientId: Env.googleServerClientId.isEmpty
+                ? null
+                : Env.googleServerClientId,
+          ));
+          final account = await GoogleSignIn.instance.authenticate();
+          await _signInWithIdToken(
+            provider: IdTokenProvider.google,
+            token: account.authentication.idToken,
+          );
+      }
+    } on SignInWithAppleAuthorizationException catch (error) {
+      if (error.code == AuthorizationErrorCode.canceled) {
+        throw const AuthException('');
+      }
+      throw AuthException(_messageFor(error));
+    } on GoogleSignInException catch (error) {
+      if (error.code == GoogleSignInExceptionCode.canceled) {
+        throw const AuthException('');
+      }
+      throw AuthException(_messageFor(error));
+    } catch (error) {
+      if (error is AuthException) rethrow;
+      throw AuthException(_messageFor(error));
+    }
+  }
+
+  Future<void> _signInWithIdToken({
+    required IdTokenProvider provider,
+    required String? token,
+  }) async {
+    await _auth.idTokenSignIn(provider: provider, token: token);
+    if (!_auth.isSignedIn &&
+        (_auth.client.signIn?.isTransferable == true ||
+            _auth.client.signUp?.isTransferable == true)) {
+      await _auth.transfer();
+    }
+    if (!_auth.isSignedIn) {
+      throw const AuthException('Sign-in was not completed.');
+    }
   }
 
   @override
@@ -140,7 +255,7 @@ final class ClerkMobileAuth implements AuthService {
   Future<void> signOut() async {
     await initialize();
     await _auth.signOut();
-    _emailFlow = null;
+    _pendingCodeFlow = null;
     _emitSignedInIfChanged();
   }
 

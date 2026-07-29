@@ -12,6 +12,21 @@
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<!-- TODO(console): replace with real Google iOS OAuth client id -->
+	<key>GIDClientID</key>
+	<string>TODO-IOS-CLIENT-ID.apps.googleusercontent.com</string>
+	<!-- TODO(console): replace with real Google iOS OAuth client id -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.TODO-IOS-CLIENT-ID</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

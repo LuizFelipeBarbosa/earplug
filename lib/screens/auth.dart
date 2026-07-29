@@ -26,7 +26,7 @@ class AuthScreen extends StatelessWidget {
   }
 }
 
-enum _EmailStage { providers, email, code }
+enum _EmailStage { providers, email, emailCode, phone, phoneCode }
 
 class _Step1 extends StatefulWidget {
   final AppState app;
@@ -41,6 +41,7 @@ class _Step1State extends State<_Step1> {
   static const _errorColor = Color(0xFFFF6B6B);
 
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _codeController = TextEditingController();
 
   _EmailStage _stage = _EmailStage.providers;
@@ -50,6 +51,7 @@ class _Step1State extends State<_Step1> {
   @override
   void dispose() {
     _emailController.dispose();
+    _phoneController.dispose();
     _codeController.dispose();
     super.dispose();
   }
@@ -78,13 +80,15 @@ class _Step1State extends State<_Step1> {
         ),
         const SizedBox(height: 22),
         if (_stage == _EmailStage.providers) ...[
-          EpButton(
-            ' Continue with Apple',
-            kind: EpButtonKind.light,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            onTap: _loading ? null : () => _startOAuth(OAuthProvider.apple),
-          ),
-          const SizedBox(height: 14),
+          if (widget.app.auth.supportsAppleSignIn) ...[
+            EpButton(
+              ' Continue with Apple',
+              kind: EpButtonKind.light,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              onTap: _loading ? null : () => _startOAuth(OAuthProvider.apple),
+            ),
+            const SizedBox(height: 14),
+          ],
           EpButton(
             'G · Continue with Google',
             kind: EpButtonKind.ghost,
@@ -100,6 +104,23 @@ class _Step1State extends State<_Step1> {
             onTap: _showEmail,
             child: Text(
               'Use email instead',
+              textAlign: TextAlign.center,
+              style:
+                  epText(
+                    size: 12,
+                    weight: FontWeight.w700,
+                    color: Ep.inkA(.65),
+                  ).copyWith(
+                    decoration: TextDecoration.underline,
+                    decorationColor: Ep.inkA(.65),
+                  ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          GestureDetector(
+            onTap: _showPhone,
+            child: Text(
+              'Use phone instead',
               textAlign: TextAlign.center,
               style:
                   epText(
@@ -130,72 +151,53 @@ class _Step1State extends State<_Step1> {
             ),
           ),
         ] else ...[
-          TextField(
-            controller: _emailController,
-            enabled: !_loading && _stage == _EmailStage.email,
-            keyboardType: TextInputType.emailAddress,
-            autocorrect: false,
-            textCapitalization: TextCapitalization.none,
-            style: epText(size: 14),
-            decoration: epInputDecoration('you@example.com'),
-            onSubmitted: (_) {
-              if (_stage == _EmailStage.email) _sendCode();
-            },
-          ),
+          if (_stage == _EmailStage.email || _stage == _EmailStage.emailCode)
+            TextField(
+              controller: _emailController,
+              enabled: !_loading && _stage == _EmailStage.email,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              textCapitalization: TextCapitalization.none,
+              style: epText(size: 14),
+              decoration: epInputDecoration('you@example.com'),
+              onSubmitted: (_) {
+                if (_stage == _EmailStage.email) _sendEmailCode();
+              },
+            ),
+          if (_stage == _EmailStage.phone || _stage == _EmailStage.phoneCode)
+            TextField(
+              controller: _phoneController,
+              enabled: !_loading && _stage == _EmailStage.phone,
+              keyboardType: TextInputType.phone,
+              autofillHints: const [AutofillHints.telephoneNumber],
+              autocorrect: false,
+              style: epText(size: 14),
+              decoration: epInputDecoration('+1 555 555 0100'),
+              onSubmitted: (_) {
+                if (_stage == _EmailStage.phone) _sendPhoneCode();
+              },
+            ),
           const SizedBox(height: 10),
           if (_stage == _EmailStage.email)
             EpButton(
               _loading ? 'SENDING…' : 'SEND CODE',
               kind: _loading ? EpButtonKind.disabled : EpButtonKind.filled,
-              onTap: _loading ? null : _sendCode,
+              onTap: _loading ? null : _sendEmailCode,
             ),
-          if (_stage == _EmailStage.code) ...[
-            TextField(
-              controller: _codeController,
-              enabled: !_loading,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.done,
-              autofillHints: const [AutofillHints.oneTimeCode],
-              inputFormatters: [
-                FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(6),
-              ],
-              style: epDisplay(size: 18, letterSpacing: 5),
-              decoration: epInputDecoration(
-                '6-digit code',
-              ).copyWith(counterText: ''),
-              maxLength: 6,
-              onSubmitted: (_) => _verifyCode(),
-            ),
-            const SizedBox(height: 10),
+          if (_stage == _EmailStage.phone)
             EpButton(
-              _loading ? 'VERIFYING…' : 'VERIFY',
+              _loading ? 'SENDING…' : 'SEND CODE',
               kind: _loading ? EpButtonKind.disabled : EpButtonKind.filled,
-              onTap: _loading ? null : _verifyCode,
+              onTap: _loading ? null : _sendPhoneCode,
             ),
-          ],
-          if (_error != null) ...[
+          if (_stage == _EmailStage.emailCode)
+            _buildCodeEntry(verify: _verifyEmailCode, resend: _resendEmailCode),
+          if (_stage == _EmailStage.phoneCode)
+            _buildCodeEntry(verify: _verifyPhoneCode, resend: _resendPhoneCode),
+          if ((_stage == _EmailStage.email || _stage == _EmailStage.phone) &&
+              _error != null) ...[
             const SizedBox(height: 9),
             _InlineError(_error!),
-          ],
-          if (_stage == _EmailStage.code) ...[
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: _loading ? null : _resendCode,
-              child: Text(
-                'resend code',
-                textAlign: TextAlign.center,
-                style:
-                    epText(
-                      size: 11.5,
-                      weight: FontWeight.w700,
-                      color: Ep.link,
-                    ).copyWith(
-                      decoration: TextDecoration.underline,
-                      decorationColor: Ep.link,
-                    ),
-              ),
-            ),
           ],
           const SizedBox(height: 8),
           GestureDetector(
@@ -219,9 +221,67 @@ class _Step1State extends State<_Step1> {
     );
   }
 
+  Widget _buildCodeEntry({
+    required Future<void> Function() verify,
+    required Future<void> Function() resend,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _codeController,
+          enabled: !_loading,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.oneTimeCode],
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(6),
+          ],
+          style: epDisplay(size: 18, letterSpacing: 5),
+          decoration: epInputDecoration(
+            '6-digit code',
+          ).copyWith(counterText: ''),
+          maxLength: 6,
+          onSubmitted: (_) => verify(),
+        ),
+        const SizedBox(height: 10),
+        EpButton(
+          _loading ? 'VERIFYING…' : 'VERIFY',
+          kind: _loading ? EpButtonKind.disabled : EpButtonKind.filled,
+          onTap: _loading ? null : verify,
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 9),
+          _InlineError(_error!),
+        ],
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: _loading ? null : resend,
+          child: Text(
+            'resend code',
+            textAlign: TextAlign.center,
+            style: epText(size: 11.5, weight: FontWeight.w700, color: Ep.link)
+                .copyWith(
+                  decoration: TextDecoration.underline,
+                  decorationColor: Ep.link,
+                ),
+          ),
+        ),
+      ],
+    );
+  }
+
   void _showEmail() {
     setState(() {
       _stage = _EmailStage.email;
+      _error = null;
+    });
+  }
+
+  void _showPhone() {
+    setState(() {
+      _stage = _EmailStage.phone;
       _error = null;
     });
   }
@@ -230,6 +290,8 @@ class _Step1State extends State<_Step1> {
     setState(() {
       _stage = _EmailStage.providers;
       _error = null;
+      _emailController.clear();
+      _phoneController.clear();
       _codeController.clear();
     });
   }
@@ -242,18 +304,14 @@ class _Step1State extends State<_Step1> {
     try {
       await widget.app.auth.signInWithOAuth(provider);
     } catch (error) {
-      final message = _messageFor(error);
-      if (message == 'Coming soon on mobile — use email') {
-        widget.app.say(message);
-      } else if (mounted) {
-        setState(() => _error = message);
-      }
+      if (error is AuthException && error.message.isEmpty) return;
+      if (mounted) setState(() => _error = _messageFor(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _sendCode() async {
+  Future<void> _sendEmailCode() async {
     setState(() {
       _loading = true;
       _error = null;
@@ -262,7 +320,7 @@ class _Step1State extends State<_Step1> {
       await widget.app.auth.startEmailSignIn(_emailController.text);
       if (!mounted) return;
       setState(() {
-        _stage = _EmailStage.code;
+        _stage = _EmailStage.emailCode;
         _codeController.clear();
       });
     } catch (error) {
@@ -272,19 +330,53 @@ class _Step1State extends State<_Step1> {
     }
   }
 
-  Future<void> _resendCode() async {
-    await _sendCode();
-  }
+  Future<void> _sendPhoneCode() async {
+    final phoneNumber = _phoneController.text.replaceAll(
+      RegExp(r'[\s\-().]'),
+      '',
+    );
+    if (!phoneNumber.startsWith('+')) {
+      setState(() => _error = 'Include your country code, e.g. +1');
+      return;
+    }
 
-  Future<void> _verifyCode() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final verified = await widget.app.auth.verifyEmailCode(
-        _codeController.text.trim(),
-      );
+      await widget.app.auth.startPhoneSignIn(phoneNumber);
+      if (!mounted) return;
+      setState(() {
+        _stage = _EmailStage.phoneCode;
+        _codeController.clear();
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = _messageFor(error));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _resendEmailCode() => _sendEmailCode();
+
+  Future<void> _resendPhoneCode() => _sendPhoneCode();
+
+  Future<void> _verifyEmailCode() {
+    return _verifyCode(widget.app.auth.verifyEmailCode);
+  }
+
+  Future<void> _verifyPhoneCode() {
+    return _verifyCode(widget.app.auth.verifyPhoneCode);
+  }
+
+  Future<void> _verifyCode(Future<bool> Function(String code) verify) async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final verified = await verify(_codeController.text.trim());
       if (!verified && mounted) {
         setState(() => _error = 'That code is wrong or expired.');
       }
