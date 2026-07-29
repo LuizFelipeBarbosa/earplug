@@ -9,6 +9,7 @@
  */
 
 import type * as bands from "../bands.js";
+import type * as cleanup from "../cleanup.js";
 import type * as gigs from "../gigs.js";
 import type * as interactions from "../interactions.js";
 import type * as lib_helpers from "../lib/helpers.js";
@@ -25,6 +26,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   bands: typeof bands;
+  cleanup: typeof cleanup;
   gigs: typeof gigs;
   interactions: typeof interactions;
   "lib/helpers": typeof lib_helpers;
