@@ -30,6 +30,10 @@ Future<void> main() async {
     runApp(const EarplugApp());
     return;
   }
+  if (Env.convexUrl.isEmpty) {
+    runApp(const _ConfigErrorApp());
+    return;
+  }
 
   final convexService = ConvexService();
   await convexService.init(Env.convexUrl);
@@ -38,6 +42,42 @@ Future<void> main() async {
   convexService.setTokenFetcher(auth.fetchConvexToken);
   final repository = ConvexRepository(convexService);
   runApp(EarplugApp(repository: repository, auth: auth));
+}
+
+/// Shown instead of the app when the build has no backend to talk to. Loud on
+/// purpose: the alternative is a silent fall back to demo data.
+class _ConfigErrorApp extends StatelessWidget {
+  const _ConfigErrorApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: buildEpTheme(),
+      home: ColoredBox(
+        color: Ep.bg,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('NOT CONFIGURED', style: epDisplay(size: 22)),
+                const SizedBox(height: 16),
+                Text(
+                  'CONVEX_URL is not set, so there is no backend to load.\n\n'
+                  'Build with --dart-define=CONVEX_URL=…, or pass\n'
+                  '--dart-define=EARPLUG_DEMO=true for the offline demo.',
+                  textAlign: TextAlign.center,
+                  style: epText(size: 13, color: Ep.inkA(.75), height: 1.5),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class EarplugApp extends StatelessWidget {

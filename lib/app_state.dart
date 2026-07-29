@@ -364,7 +364,15 @@ class AppState extends ChangeNotifier {
     saved = {};
     attended = 0;
     history = const [];
+    profile = null;
     authed = false;
+    // Per-band caches outlive the session otherwise, so signing in as someone
+    // else in the same process would show the previous user's unsaved edits.
+    _bandBioOverrides.clear();
+    _bandLinkIgOverrides.clear();
+    _bandLinkBcOverrides.clear();
+    _videoCache.clear();
+    _videoLoads.clear();
     resetTo(Screen.home);
     say('Signed out.');
   }
