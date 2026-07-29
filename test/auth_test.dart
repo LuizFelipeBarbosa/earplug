@@ -10,7 +10,13 @@ import 'package:provider/provider.dart';
 void main() {
   testWidgets('backing out during the through splash keeps the pending RSVP',
       (tester) async {
-    final app = await _pumpAuth(tester, pending: () => 'g1');
+    final app = await _pumpAuth(
+      tester,
+      openGate: (app) {
+        app.openGig('g1');
+        app.requestRsvp('g1');
+      },
+    );
 
     // Signed in, so the taste step is up with its committing button.
     expect(find.text('INTO THE ROOM'), findsOne);
@@ -33,8 +39,42 @@ void main() {
 
   testWidgets('the splash walks through to the pending action on its own',
       (tester) async {
-    final app = await _pumpAuth(tester, pending: () => 'g1');
+    final app = await _pumpAuth(
+      tester,
+      openGate: (app) {
+        app.openGig('g1');
+        app.requestRsvp('g1');
+      },
+    );
 
+    await tester.tap(find.text('INTO THE ROOM'));
+    await tester.pump(const Duration(seconds: 3));
+
+    expect(app.rsvps, contains('g1'));
+    expect(app.current.screen, Screen.gig);
+  });
+
+  testWidgets('the splash lands on My Gigs for a myGigs intent',
+      (tester) async {
+    final app = await _pumpAuth(tester, openGate: (app) => app.openMyGigsTab());
+
+    await tester.tap(find.text('INTO THE ROOM'));
+    await tester.pump(const Duration(seconds: 3));
+
+    expect(app.current.screen, Screen.myGigs);
+  });
+
+  testWidgets('a double tap commits once and still lands back on the gig',
+      (tester) async {
+    final app = await _pumpAuth(
+      tester,
+      openGate: (app) {
+        app.openGig('g1');
+        app.requestRsvp('g1');
+      },
+    );
+
+    await tester.tap(find.text('INTO THE ROOM'));
     await tester.tap(find.text('INTO THE ROOM'));
     await tester.pump(const Duration(seconds: 3));
 
@@ -43,12 +83,12 @@ void main() {
   });
 }
 
-/// Signs in with an RSVP for [pending]'s gig parked behind the auth gate and
-/// pumps the auth screen the way main.dart hosts it: unmounted the moment the
-/// navigation stack pops it.
+/// Opens an authenticated route through [openGate], signs in, and pumps the
+/// auth screen the way main.dart hosts it: unmounted the moment the navigation
+/// stack pops it.
 Future<AppState> _pumpAuth(
   WidgetTester tester, {
-  required String Function() pending,
+  required void Function(AppState app) openGate,
 }) async {
   tester.view.physicalSize = const Size(402, 900);
   tester.view.devicePixelRatio = 1;
@@ -58,9 +98,7 @@ Future<AppState> _pumpAuth(
   final app = AppState(repository: DemoRepository(auth: auth), auth: auth);
   addTearDown(app.dispose);
 
-  final gigId = pending();
-  app.openGig(gigId);
-  app.requestRsvp(gigId);
+  openGate(app);
   expect(app.current.screen, Screen.auth);
   await auth.signInDemo();
 

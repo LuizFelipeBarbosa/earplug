@@ -376,7 +376,11 @@ class AppState extends ChangeNotifier {
   void leaveAuth() {
     final destination = _postAuthScreen;
     _postAuthScreen = null;
-    destination == null ? back() : resetTo(destination);
+    if (destination == null) {
+      back();
+    } else {
+      resetTo(destination);
+    }
   }
 
   void finishAuth() {

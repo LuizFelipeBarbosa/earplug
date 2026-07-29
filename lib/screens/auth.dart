@@ -14,6 +14,9 @@ import '../widgets/common.dart';
 const _stampAccent = Color(0xFF4B62FF);
 const _stampInk = Color(0xFF8C9DFF);
 const _errorColor = Color(0xFFFF6B6B);
+// The stamp's fixed tilt, used everywhere the door stamp is drawn.
+const _stampAngle = -9 * math.pi / 180;
+const _stepPadding = EdgeInsets.fromLTRB(22, 24, 22, 30);
 
 const _genres = [
   'punk',
@@ -84,6 +87,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   void _enterTheRoom(AppState app) {
+    if (_leaving) return;
     // Commit genres + the pending action now; the splash only delays the
     // navigation, so backing out mid-splash can't drop what they signed in for.
     app.commitAuth();
@@ -193,9 +197,11 @@ class _DoorStepState extends State<_DoorStep> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(22, 24, 22, 30),
+        padding: _stepPadding,
         child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight - 54),
+          constraints: BoxConstraints(
+            minHeight: math.max(0, constraints.maxHeight - _stepPadding.vertical),
+          ),
           child: IntrinsicHeight(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -225,39 +231,40 @@ class _DoorStepState extends State<_DoorStep> {
   }
 
   List<Widget> _buildProviders() {
+    final locked = _loading || widget.app.authStep == 2;
     return [
       if (widget.app.auth.supportsAppleSignIn) ...[
         EpButton(
           ' Continue with Apple',
-          kind: _loading ? EpButtonKind.disabled : EpButtonKind.light,
+          kind: locked ? EpButtonKind.disabled : EpButtonKind.light,
           padding: const EdgeInsets.symmetric(vertical: 15),
-          onTap: _loading ? null : () => _startOAuth(OAuthProvider.apple),
+          onTap: locked ? null : () => _startOAuth(OAuthProvider.apple),
         ),
         const SizedBox(height: 9),
       ],
       if (widget.app.auth.supportsGoogleSignIn) ...[
         EpButton(
           'G · Continue with Google',
-          kind: _loading ? EpButtonKind.disabled : EpButtonKind.ghost,
+          kind: locked ? EpButtonKind.disabled : EpButtonKind.ghost,
           padding: const EdgeInsets.symmetric(vertical: 15),
-          onTap: _loading ? null : () => _startOAuth(OAuthProvider.google),
+          onTap: locked ? null : () => _startOAuth(OAuthProvider.google),
         ),
         const SizedBox(height: 9),
       ],
       Row(
         children: [
           Expanded(
-            child: _MethodTile('EMAIL', onTap: _loading ? null : _showEmail),
+            child: _MethodTile('EMAIL', onTap: locked ? null : _showEmail),
           ),
           const SizedBox(width: 9),
           Expanded(
-            child: _MethodTile('PHONE', onTap: _loading ? null : _showPhone),
+            child: _MethodTile('PHONE', onTap: locked ? null : _showPhone),
           ),
         ],
       ),
       if (_error != null) ...[const SizedBox(height: 9), _InlineError(_error!)],
       const SizedBox(height: 9),
-      _TextAction('← KEEP BROWSING', onTap: widget.app.back),
+      _TextAction('← KEEP BROWSING', onTap: locked ? null : widget.app.back),
     ];
   }
 
@@ -607,7 +614,7 @@ class _StampThudState extends State<_StampThud>
       child: ScaleTransition(
         scale: _scale,
         child: Transform.rotate(
-          angle: -9 * math.pi / 180,
+          angle: _stampAngle,
           child: widget.child,
         ),
       ),
@@ -796,9 +803,11 @@ class _TasteStep extends StatelessWidget {
     return _RiseIn(
       child: LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(22, 24, 22, 30),
+          padding: _stepPadding,
           child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight - 54),
+            constraints: BoxConstraints(
+              minHeight: math.max(0, constraints.maxHeight - _stepPadding.vertical),
+            ),
             child: IntrinsicHeight(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -806,7 +815,7 @@ class _TasteStep extends StatelessWidget {
                   Row(
                     children: [
                       Transform.rotate(
-                        angle: -9 * math.pi / 180,
+                        angle: _stampAngle,
                         child: Container(
                           width: 44,
                           height: 44,
@@ -936,7 +945,7 @@ class _ThroughStep extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Transform.rotate(
-              angle: -9 * math.pi / 180,
+              angle: _stampAngle,
               child: const _DoorStamp(
                 size: 150,
                 borderColor: _stampAccent,
