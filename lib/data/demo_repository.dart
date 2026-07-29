@@ -113,6 +113,10 @@ class DemoRepository implements EarplugRepository {
     required List<String> genres,
     required String bio,
     required List<String> inviteHandles,
+    String? area,
+    String? linkIg,
+    String? linkBc,
+    String? linkYt,
   }) async {
     final id = 'nb${_nextBandId++}';
     final bandName = name.trim();
@@ -120,7 +124,7 @@ class DemoRepository implements EarplugRepository {
       id: id,
       name: bandName,
       genres: genres.isEmpty ? const ['punk'] : List<String>.of(genres),
-      area: 'Mission, SF',
+      area: area ?? 'Mission, SF',
       color: const Color(0xFF8FE6C4),
       initials: bandName
           .split(' ')
@@ -133,6 +137,8 @@ class DemoRepository implements EarplugRepository {
       bio: bio.isEmpty
           ? 'New band. No recordings yet. Come see us anyway.'
           : bio,
+      linkIg: linkIg,
+      linkBc: linkBc,
     );
 
     _bands[id] = created;

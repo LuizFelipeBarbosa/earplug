@@ -58,6 +58,10 @@ abstract class EarplugRepository {
     required List<String> genres,
     required String bio,
     required List<String> inviteHandles,
+    String? area,
+    String? linkIg,
+    String? linkBc,
+    String? linkYt,
   });
   Future<void> updateBandProfile({
     required String bandId,

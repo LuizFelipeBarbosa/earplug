@@ -133,12 +133,18 @@ class AppState extends ChangeNotifier {
   List<String> myBands = [];
   String bandId = '';
 
-  // ---- band create wizard
-  int nbStep = 1;
+  // ---- band create form (the cassette canvas)
   String nbName = '';
-  final Set<String> nbGenres = {};
+  final List<String> nbGenres = []; // insertion order shows on the tape, max 3
+  String? nbArea;
   String nbBio = '';
   final List<String> nbInvites = [];
+  String nbIg = '';
+  String nbBc = '';
+  String nbYt = '';
+  String nbLabel = 'cream';
+  bool nbPhoto = false;
+  bool nbCreated = false;
 
   // ---- gig create form
   String gfName = '';
@@ -689,12 +695,22 @@ class AppState extends ChangeNotifier {
   // ========================= band create =========================
 
   void startBandCreate() {
-    nbStep = 1;
+    _resetBandForm();
+    go(Screen.bandCreate);
+  }
+
+  void _resetBandForm() {
     nbName = '';
     nbGenres.clear();
+    nbArea = null;
     nbBio = '';
     nbInvites.clear();
-    go(Screen.bandCreate);
+    nbIg = '';
+    nbBc = '';
+    nbYt = '';
+    nbLabel = 'cream';
+    nbPhoto = false;
+    nbCreated = false;
   }
 
   void setNbName(String v) {
@@ -707,44 +723,189 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleNbGenre(String g) {
-    nbGenres.contains(g) ? nbGenres.remove(g) : nbGenres.add(g);
+  void setNbArea(String v) {
+    final area = v.trim();
+    if (area.isEmpty) return;
+    nbArea = area;
     notifyListeners();
   }
 
-  void nbNext() {
-    if (nbName.trim().isEmpty) return;
-    nbStep = 2;
+  void setNbIg(String v) {
+    nbIg = v;
+    notifyListeners();
+  }
+
+  void setNbBc(String v) {
+    nbBc = v;
+    notifyListeners();
+  }
+
+  void setNbYt(String v) {
+    nbYt = v;
+    notifyListeners();
+  }
+
+  void setNbLabel(String key) {
+    nbLabel = key;
+    notifyListeners();
+  }
+
+  void toggleNbPhoto() {
+    nbPhoto = !nbPhoto;
+    notifyListeners();
+  }
+
+  void toggleNbGenre(String g) {
+    if (nbGenres.contains(g)) {
+      nbGenres.remove(g);
+    } else if (nbGenres.length >= 3) {
+      say('Three genres max — it keeps discovery honest.');
+      return;
+    } else {
+      nbGenres.add(g);
+    }
+    notifyListeners();
+  }
+
+  void addNbGenre(String raw) {
+    final g = raw.trim().toLowerCase();
+    if (g.isEmpty) return;
+    if (nbGenres.contains(g)) return;
+    if (nbGenres.length >= 3) {
+      say('Three genres max.');
+      return;
+    }
+    nbGenres.add(g);
     notifyListeners();
   }
 
   void addNbInvite(String raw) {
     final n = raw.trim();
     if (n.isEmpty) return;
-    nbInvites.add(n.startsWith('@') ? n : '@$n');
+    final handle = n.startsWith('@') ? n : '@$n';
+    if (nbInvites.contains(handle)) return;
+    nbInvites.add(handle);
     notifyListeners();
   }
 
+  void removeNbInvite(String handle) {
+    nbInvites.remove(handle);
+    notifyListeners();
+  }
+
+  bool get canCreateBand =>
+      nbName.trim().isNotEmpty && nbGenres.isNotEmpty && nbArea != null;
+
+  /// What the create bar still asks for, in reading order.
+  List<String> get bandMissing => [
+    if (nbName.trim().isEmpty) 'a name',
+    if (nbGenres.isEmpty) 'a genre',
+    if (nbArea == null) 'a home base',
+  ];
+
+  /// How full the tape winds: the five liner-note lines, equally weighted.
+  double get nbCompletion {
+    final done = [
+      nbName.trim().isNotEmpty,
+      nbGenres.isNotEmpty,
+      nbArea != null,
+      nbBio.trim().isNotEmpty,
+      nbInvites.isNotEmpty ||
+          nbIg.trim().isNotEmpty ||
+          nbBc.trim().isNotEmpty ||
+          nbYt.trim().isNotEmpty,
+    ];
+    return done.where((d) => d).length / done.length;
+  }
+
   String get nbSlug {
-    final s = (nbName.isEmpty ? 'your-band' : nbName).toLowerCase().replaceAll(
-      RegExp(r'[^a-z0-9]+'),
-      '-',
-    );
-    return s.length > 20 ? s.substring(0, 20) : s;
+    final slug = (nbName.trim().isEmpty ? 'your-band' : nbName)
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    return slug.isEmpty ? 'your-band' : slug;
+  }
+
+  /// Every area the feed knows (venues and bands), with how much scene lives
+  /// there — the home-base sheet offers these before the free-text field.
+  List<({String name, String sub})> get knownAreas {
+    final bandCounts = <String, int>{};
+    for (final id in exploreBandIds) {
+      final area = band(id)?.area;
+      if (area != null && area.isNotEmpty) {
+        bandCounts[area] = (bandCounts[area] ?? 0) + 1;
+      }
+    }
+    final venueCounts = <String, int>{};
+    for (final venue in venues) {
+      if (venue.area.isNotEmpty) {
+        venueCounts[venue.area] = (venueCounts[venue.area] ?? 0) + 1;
+      }
+    }
+
+    String count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
+    final names = {...bandCounts.keys, ...venueCounts.keys}.toList()
+      ..sort(
+        (a, b) => (bandCounts[b] ?? 0).compareTo(bandCounts[a] ?? 0),
+      );
+    return [
+      for (final name in names)
+        (
+          name: name,
+          sub:
+              '${count(bandCounts[name] ?? 0, 'band')} · '
+              '${count(venueCounts[name] ?? 0, 'venue')}',
+        ),
+      if (nbArea case final area? when !names.contains(area))
+        (name: area, sub: 'Added by you'),
+    ];
   }
 
   Future<void> createBand() async {
+    if (!canCreateBand) {
+      say('Add ${bandMissing.join(' + ')} first — tap any line.');
+      return;
+    }
+
     final name = nbName.trim();
-    final createdBandId = await repository.createBand(
-      name: name,
-      genres: nbGenres.isEmpty ? const ['punk'] : nbGenres.toList(),
-      bio: nbBio,
-      inviteHandles: nbInvites,
-    );
-    bandId = createdBandId;
-    await _refreshExploreBands();
+    try {
+      final createdBandId = await repository.createBand(
+        name: name,
+        genres: List.of(nbGenres),
+        bio: nbBio.trim(),
+        inviteHandles: List.of(nbInvites),
+        area: nbArea,
+        linkIg: nbIg.trim().isEmpty ? null : nbIg.trim(),
+        linkBc: nbBc.trim().isEmpty ? null : nbBc.trim(),
+        linkYt: nbYt.trim().isEmpty ? null : nbYt.trim(),
+      );
+      bandId = createdBandId;
+    } on Exception catch (error) {
+      debugPrint('createBand failed: $error');
+      say('Something broke — try again.');
+      return;
+    }
+
+    nbCreated = true;
+    notifyListeners();
+    unawaited(_refreshExploreBands());
+  }
+
+  /// "Keep editing" — back to the tape with everything still filled in.
+  void editCreatedBand() {
+    nbCreated = false;
+    notifyListeners();
+  }
+
+  void makeAnotherBand() {
+    _resetBandForm();
+    notifyListeners();
+  }
+
+  /// The created view's headline action: straight into posting a gig.
+  void postFirstGig() {
     resetTo(Screen.bandDash);
-    say('$name created — you are admin.');
+    startGigCreate();
   }
 
   // ========================= gig create =========================

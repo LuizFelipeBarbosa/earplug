@@ -66,6 +66,10 @@ export const createBand = mutation({
     genres: v.array(v.string()),
     bio: v.string(),
     inviteHandles: v.array(v.string()),
+    area: v.optional(v.string()),
+    linkIg: v.optional(v.string()),
+    linkBc: v.optional(v.string()),
+    linkYt: v.optional(v.string()),
   },
   returns: v.object({ bandId: v.id("bands") }),
   handler: async (ctx, args) => {
@@ -74,12 +78,15 @@ export const createBand = mutation({
       name: args.name,
       genres: args.genres,
       bio: args.bio,
-      area: "Bay Area",
+      area: args.area ?? "Bay Area",
       colorHex: bandColorFor(args.name),
       initials: initialsFor(args.name),
       followerCount: 1 + args.inviteHandles.length,
       pastShows: [],
       inviteHandles: args.inviteHandles,
+      linkIg: args.linkIg,
+      linkBc: args.linkBc,
+      linkYt: args.linkYt,
     });
     await ctx.db.insert("bandMembers", {
       bandId,
