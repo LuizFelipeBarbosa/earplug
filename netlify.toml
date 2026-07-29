@@ -15,12 +15,16 @@
   """
 
 [build.environment]
-  # A Flutter web build necessarily bakes these into main.dart.js, and both are
-  # public by design: browsers connect straight to the Convex deployment URL, and
-  # Clerk publishable keys are client-side credentials. Scoped to these two keys
-  # on purpose -- do NOT switch this to SECRETS_SCAN_OMIT_PATHS = "build/web/**",
-  # which would stop scanning the entire published artifact and hide a real leak.
-  SECRETS_SCAN_OMIT_KEYS = "CONVEX_URL,CLERK_PUBLISHABLE_KEY"
+  # Every key here is public by design, so finding its value in the repo or the
+  # built main.dart.js is expected: browsers connect straight to CONVEX_URL,
+  # Clerk publishable keys are client-side credentials, CONVEX_DEPLOYMENT is the
+  # deployment name already visible inside CONVEX_URL, and the Clerk issuer
+  # domain is decodable from the publishable key. The latter two are injected by
+  # the Convex/Clerk Netlify extensions, not our build. Scoped to these keys on
+  # purpose -- do NOT switch this to SECRETS_SCAN_OMIT_PATHS = "build/web/**",
+  # which would stop scanning the entire published artifact and hide a real
+  # leak (notably CLERK_SECRET_KEY, which the Clerk extension also injects).
+  SECRETS_SCAN_OMIT_KEYS = "CONVEX_URL,CLERK_PUBLISHABLE_KEY,CONVEX_DEPLOYMENT,CLERK_JWT_ISSUER_DOMAIN"
 
 # Flutter web uses path-based URLs, so a hard refresh on any route must still
 # serve index.html instead of 404ing.
