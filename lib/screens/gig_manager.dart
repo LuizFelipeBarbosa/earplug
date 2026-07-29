@@ -29,7 +29,7 @@ class GigManagerScreen extends StatelessWidget {
           children: [
             Text('GIG MANAGER', style: epDisplay(size: 18)),
             GestureDetector(
-              onTap: () => app.go(Screen.gigCreate),
+              onTap: app.startGigCreate,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 decoration: BoxDecoration(

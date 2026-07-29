@@ -33,6 +33,7 @@ describe("gigs:publishGig auth", () => {
     startsAt: Date.now() + 86400_000,
     doorsTime: "8PM / 9PM",
     price: 10,
+    flyKey: "riso" as const,
     ticketing: "rsvp" as const,
     cap: "No cap",
   };
@@ -60,7 +61,7 @@ describe("gigs:publishGig auth", () => {
     ).rejects.toThrow("Not an admin");
   });
 
-  test("admin publishes; flyKey server-assigned bluetype, goingCount 0", async () => {
+  test("admin publishes; flyKey is the chosen press, goingCount 0", async () => {
     const { t, asAdmin, bandId, venueId } = await setupBand();
     const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
       bandId,
@@ -68,10 +69,22 @@ describe("gigs:publishGig auth", () => {
       ...gigArgs,
     });
     const gig = await t.run(async (ctx) => ctx.db.get(gigId));
-    expect(gig!.flyKey).toBe("bluetype");
+    expect(gig!.flyKey).toBe("riso");
     expect(gig!.goingCount).toBe(0);
     expect(gig!.lineup).toEqual([bandId]);
     expect(gig!.createdByBand).toBe(bandId);
+  });
+
+  test("rejects a flyKey outside the press list", async () => {
+    const { asAdmin, bandId, venueId } = await setupBand();
+    await expect(
+      asAdmin.mutation(api.gigs.publishGig, {
+        bandId,
+        venueId,
+        ...gigArgs,
+        flyKey: "hologram" as never,
+      }),
+    ).rejects.toThrow();
   });
 });
 

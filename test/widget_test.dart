@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:earplug/app_state.dart';
@@ -35,15 +36,52 @@ void main() {
 
     test('publishing a gig adds it to the feed and band gigs', () async {
       final app = await _demoApp();
+      app.startGigCreate();
       app.setGfName('Test Show');
-      app.setGfDate('Fri Aug 14');
+      app.setGfDate(DateTime(2026, 8, 14));
+      app.setGfDoors(const TimeOfDay(hour: 21, minute: 30));
       app.setGfVenue('v1');
+      app.setGfFly('riso');
       expect(app.canPublishGig, isTrue);
+      expect(app.gigMissing, isEmpty);
+
       await app.publishGig();
       await pumpEventQueue();
-      expect(app.allGigs.last.title, 'Test Show');
-      expect(app.allGigs.last.lineup, ['b1']);
+      final published = app.allGigs.last;
+      expect(published.title, 'Test Show');
+      expect(published.lineup, ['b1']);
+      expect(published.time, '9:30PM');
+      expect(published.flyKey, 'riso');
+      // The form stays put and shows the published flyer.
+      expect(app.gfPublished, isTrue);
+      expect(app.current.screen, Screen.gigCreate);
+
+      app.closeGigCreate();
       expect(app.current.screen, Screen.gigMgr);
+      expect(app.gfName, '');
+    });
+
+    test('gig form reports what is still missing', () async {
+      final app = await _demoApp();
+      app.startGigCreate();
+      expect(app.gigMissing, ['a name', 'a date', 'a venue']);
+
+      app.setGfName('Test Show');
+      app.setGfVenue('v1');
+      expect(app.gigMissing, ['a date']);
+      expect(app.canPublishGig, isFalse);
+
+      // Publishing while incomplete only nudges — nothing is written.
+      await app.publishGig();
+      expect(app.gfPublished, isFalse);
+      expect(app.toast, 'Add a date first — tap any card.');
+
+      // Tapping the selected day again clears it.
+      final date = DateTime(2026, 8, 15);
+      app.setGfDate(date);
+      expect(app.gfDateLabel, 'Sat Aug 15');
+      app.setGfDate(date);
+      expect(app.gfDate, isNull);
     });
 
     test('band creation switches to band view as admin', () async {
@@ -293,6 +331,7 @@ class _FailingRsvpRepository implements EarplugRepository {
     required String doorsTime,
     required String venueId,
     required int price,
+    required String flyKey,
     required Ticketing ticketing,
     String? externalUrl,
     required String cap,

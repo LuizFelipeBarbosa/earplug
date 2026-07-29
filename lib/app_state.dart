@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:latlong2/latlong.dart';
 
 import 'data/convex_repository.dart';
@@ -137,13 +138,16 @@ class AppState extends ChangeNotifier {
 
   // ---- gig create form
   String gfName = '';
-  String? gfDate;
-  String gfTime = '8PM';
+  DateTime? gfDate;
+  TimeOfDay gfDoors = const TimeOfDay(hour: 20, minute: 0);
   String? gfVenueId;
   String gfPrice = 'FREE';
   Ticketing gfTix = Ticketing.rsvp;
   String gfCap = 'No cap';
   String gfExt = '';
+  String gfFly = 'xerox';
+  bool gfOverlay = true;
+  bool gfPublished = false;
 
   // ---- toast
   String toast = '';
@@ -483,6 +487,9 @@ class AppState extends ChangeNotifier {
 
   Venue venue(String id) => _venues[id] ?? _unknownVenue;
 
+  /// Every venue the feed knows about — shared records bands pick from.
+  List<Venue> get venues => _venues.values.toList();
+
   static const _unknownVenue = Venue(
     id: '',
     name: 'Venue unavailable',
@@ -698,18 +705,24 @@ class AppState extends ChangeNotifier {
 
   // ========================= gig create =========================
 
+  void startGigCreate() {
+    _resetGigForm();
+    go(Screen.gigCreate);
+  }
+
   void setGfName(String v) {
     gfName = v;
     notifyListeners();
   }
 
-  void setGfDate(String? v) {
-    gfDate = v;
+  /// Tapping the selected day again clears it, as in the design.
+  void setGfDate(DateTime? v) {
+    gfDate = v == null || v == gfDate ? null : v;
     notifyListeners();
   }
 
-  void setGfTime(String v) {
-    gfTime = v;
+  void setGfDoors(TimeOfDay v) {
+    gfDoors = v;
     notifyListeners();
   }
 
@@ -738,37 +751,141 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setGfFly(String key) {
+    gfFly = key;
+    notifyListeners();
+  }
+
+  void toggleGfOverlay() {
+    gfOverlay = !gfShowOverlay;
+    notifyListeners();
+  }
+
+  /// Band-supplied art rather than one of the presses.
+  bool get gfCustomFlyer => gfFly == 'custom';
+
+  /// Presses always print the details; uploaded art can show clean.
+  bool get gfShowOverlay => !gfCustomFlyer || gfOverlay;
+
+  String get gfDoorsLabel => timeLabel(gfDoors);
+
+  /// "Sat Aug 15", or empty until a day is picked.
+  String get gfDateLabel => gfDate == null ? '' : dateLabel(gfDate!);
+
   bool get canPublishGig =>
       gfName.trim().isNotEmpty && gfDate != null && gfVenueId != null;
 
+  /// What the publish bar still asks for, in reading order.
+  List<String> get gigMissing => [
+    if (gfName.trim().isEmpty) 'a name',
+    if (gfDate == null) 'a date',
+    if (gfVenueId == null) 'a venue',
+  ];
+
+  String get gigUrl {
+    final slug = (gfName.trim().isEmpty ? 'your-gig' : gfName.trim())
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+        .replaceAll(RegExp(r'^-+|-+$'), '');
+    return 'earplug.app/g/$slug';
+  }
+
   Future<void> publishGig() async {
-    if (!canPublishGig) {
-      say('Name, date and venue required.');
+    final date = gfDate;
+    if (!canPublishGig || date == null) {
+      say('Add ${gigMissing.join(' + ')} first — tap any card.');
       return;
     }
 
-    await repository.publishGig(
-      bandId: bandId,
-      title: gfName.trim(),
-      venueId: gfVenueId!,
-      price: gfPrice == 'FREE' ? 0 : int.parse(gfPrice.substring(1)),
-      startsAt: DateTime.now()
-          .add(const Duration(days: 7))
-          .millisecondsSinceEpoch,
-      doorsTime: gfTime,
-      ticketing: gfTix,
-      externalUrl: gfExt.isEmpty ? null : gfExt,
-      cap: gfCap,
-    );
+    try {
+      await repository.publishGig(
+        bandId: bandId,
+        title: gfName.trim(),
+        venueId: gfVenueId!,
+        price: gfPrice == 'FREE' ? 0 : int.parse(gfPrice.substring(1)),
+        startsAt: DateTime(
+          date.year,
+          date.month,
+          date.day,
+          gfDoors.hour,
+          gfDoors.minute,
+        ).millisecondsSinceEpoch,
+        doorsTime: gfDoorsLabel,
+        flyKey: gfFly,
+        ticketing: gfTix,
+        externalUrl: gfExt.isEmpty ? null : gfExt,
+        cap: gfCap,
+      );
+    } catch (_) {
+      say('Something broke — try again.');
+      return;
+    }
+
+    gfPublished = true;
+    notifyListeners();
+  }
+
+  /// "Keep editing" — back to the form with everything still filled in.
+  void editPublishedGig() {
+    gfPublished = false;
+    notifyListeners();
+  }
+
+  void makeAnotherGig() {
+    _resetGigForm();
+    notifyListeners();
+  }
+
+  /// The ✕ in the header: done here, back to the gig manager.
+  void closeGigCreate() {
+    _resetGigForm();
+    _stack = const [ScreenEntry(Screen.gigMgr)];
+    notifyListeners();
+  }
+
+  void _resetGigForm() {
     gfName = '';
     gfDate = null;
-    gfTime = '8PM';
+    gfDoors = const TimeOfDay(hour: 20, minute: 0);
     gfVenueId = null;
     gfPrice = 'FREE';
     gfTix = Ticketing.rsvp;
     gfCap = 'No cap';
     gfExt = '';
-    _stack = const [ScreenEntry(Screen.gigMgr)];
-    say('Gig published — it is live in the feed.');
+    gfFly = 'xerox';
+    gfOverlay = true;
+    gfPublished = false;
   }
+}
+
+const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const _monthNames = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// "Sat Aug 15".
+String dateLabel(DateTime d) =>
+    '${_weekdayNames[d.weekday - 1]} ${_monthNames[d.month - 1]} ${d.day}';
+
+/// "Aug 2026".
+String monthLabel(DateTime d) => '${_monthNames[d.month - 1]} ${d.year}';
+
+/// "8PM" / "9:30PM" — the form the rest of the app stores doors times in.
+String timeLabel(TimeOfDay t) {
+  final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
+  final minutes = t.minute == 0
+      ? ''
+      : ':${t.minute.toString().padLeft(2, '0')}';
+  return '$hour$minutes${t.hour < 12 ? 'AM' : 'PM'}';
 }

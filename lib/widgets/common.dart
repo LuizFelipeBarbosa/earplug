@@ -93,25 +93,60 @@ class PriceBadge extends StatelessWidget {
   }
 }
 
-class _StripePainter extends CustomPainter {
-  final Color stripe;
+class _FlyerPatternPainter extends CustomPainter {
+  final FlyerStyle style;
+  final double scale;
 
-  const _StripePainter(this.stripe);
+  const _FlyerPatternPainter(this.style, this.scale);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = stripe;
-    for (double y = 0; y < size.height; y += 5) {
-      canvas.drawRect(Rect.fromLTWH(0, y, size.width, 2), paint);
+    final paint = Paint()..color = style.patternColor;
+    final pitch = style.pitch * scale;
+    switch (style.pattern) {
+      case FlyerPattern.scan:
+        for (double y = 0; y < size.height; y += pitch) {
+          canvas.drawRect(Rect.fromLTWH(0, y, size.width, 2), paint);
+        }
+      case FlyerPattern.dots:
+        for (double y = 1; y < size.height; y += pitch) {
+          for (double x = 1; x < size.width; x += pitch) {
+            canvas.drawCircle(Offset(x, y), 1.2, paint);
+          }
+        }
+      case FlyerPattern.hatch:
+        // 45° bars: sweep the diagonal offset across both edges of the box.
+        paint
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = pitch / 2;
+        for (double d = -size.height; d < size.width + size.height; d += pitch) {
+          canvas.drawLine(Offset(d, 0), Offset(d + size.height, size.height), paint);
+        }
+      case FlyerPattern.rays:
+        final center = Offset(size.width / 2, size.height * .28);
+        final reach = size.width + size.height;
+        final wedge = style.pitch * math.pi / 180;
+        for (double a = 0; a < 2 * math.pi; a += wedge) {
+          canvas.drawPath(
+            Path()
+              ..moveTo(center.dx, center.dy)
+              ..lineTo(center.dx + reach * math.cos(a), center.dy + reach * math.sin(a))
+              ..lineTo(center.dx + reach * math.cos(a + wedge / 2),
+                  center.dy + reach * math.sin(a + wedge / 2))
+              ..close(),
+            paint,
+          );
+        }
     }
   }
 
   @override
-  bool shouldRepaint(_StripePainter old) => old.stripe != stripe;
+  bool shouldRepaint(_FlyerPatternPainter old) =>
+      old.style != style || old.scale != scale;
 }
 
-/// Xeroxed-flyer block: solid base color with faint horizontal scan stripes,
-/// slightly rotated. The visual signature of the whole app.
+/// Xeroxed-flyer block: solid base color under a faint print texture, slightly
+/// rotated. The visual signature of the whole app.
 class FlyerBox extends StatelessWidget {
   final FlyerStyle style;
   final double? width;
@@ -121,6 +156,9 @@ class FlyerBox extends StatelessWidget {
   final EdgeInsets padding;
   final Widget? child;
   final bool shadow;
+
+  /// Multiplies [FlyerStyle.pitch] so small swatches read as the same texture.
+  final double patternScale;
 
   const FlyerBox({
     super.key,
@@ -132,6 +170,7 @@ class FlyerBox extends StatelessWidget {
     this.padding = EdgeInsets.zero,
     this.child,
     this.shadow = true,
+    this.patternScale = 1,
   });
 
   @override
@@ -148,7 +187,7 @@ class FlyerBox extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: CustomPaint(
-        painter: _StripePainter(style.stripe),
+        painter: _FlyerPatternPainter(style, patternScale),
         child: Padding(padding: padding, child: child),
       ),
     );
@@ -335,22 +374,39 @@ class EpCard extends StatelessWidget {
 class DashedBox extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
+  final Color? color;
+  final double radius;
 
-  const DashedBox({super.key, required this.child, this.padding = const EdgeInsets.all(20)});
+  /// False lets the box shrink to its child — used for inline flyer chips.
+  final bool expand;
+
+  const DashedBox({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(20),
+    this.color,
+    this.radius = 13,
+    this.expand = true,
+  });
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _DashedBorderPainter(Ep.whiteA(.18)),
-      child: Container(width: double.infinity, padding: padding, child: child),
+      painter: _DashedBorderPainter(color ?? Ep.whiteA(.18), radius),
+      child: Container(
+        width: expand ? double.infinity : null,
+        padding: padding,
+        child: child,
+      ),
     );
   }
 }
 
 class _DashedBorderPainter extends CustomPainter {
   final Color color;
+  final double radius;
 
-  const _DashedBorderPainter(this.color);
+  const _DashedBorderPainter(this.color, this.radius);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -360,7 +416,7 @@ class _DashedBorderPainter extends CustomPainter {
       ..strokeWidth = 1.2;
     final rrect = RRect.fromRectAndRadius(
       Rect.fromLTWH(.6, .6, size.width - 1.2, size.height - 1.2),
-      const Radius.circular(13),
+      Radius.circular(radius),
     );
     final path = Path()..addRRect(rrect);
     const dash = 5.0, gap = 4.0;
@@ -374,7 +430,8 @@ class _DashedBorderPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_DashedBorderPainter old) => old.color != color;
+  bool shouldRepaint(_DashedBorderPainter old) =>
+      old.color != color || old.radius != radius;
 }
 
 /// Play-button triangle.

@@ -108,7 +108,7 @@ class BandDashScreen extends StatelessWidget {
                 onTap: () => app.say('Clip upload placeholder (demo)')),
             const SizedBox(width: 8),
             _ActionButton(
-                label: '+ CREATE GIG', filled: true, onTap: () => app.go(Screen.gigCreate)),
+                label: '+ CREATE GIG', filled: true, onTap: app.startGigCreate),
             const SizedBox(width: 8),
             _ActionButton(
                 label: '▦ ANALYTICS', onTap: () => app.resetTo(Screen.analytics)),

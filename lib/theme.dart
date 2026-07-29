@@ -11,6 +11,9 @@ abstract final class Ep {
   static const linkSoft = Color(0xFFB9C4FF);
   static const pageBackdrop = Color(0xFF17171B);
 
+  /// Marks a field the user still has to fill in.
+  static const required = Color(0xFFE4DC4A);
+
   /// Ink (off-white) at the given opacity — the spec leans on rgba(244,244,240,x).
   static Color inkA(double a) => ink.withValues(alpha: a);
 

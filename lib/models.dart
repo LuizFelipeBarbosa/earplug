@@ -60,16 +60,39 @@ class UserProfile {
   );
 }
 
-/// Xeroxed-flyer color treatment: base color, faint horizontal stripes, ink.
+/// Print texture laid over a flyer's base color.
+enum FlyerPattern {
+  /// Photocopier scan lines: 2px bars every [FlyerStyle.pitch].
+  scan,
+
+  /// Riso dot grid: one dot per [FlyerStyle.pitch] square.
+  dots,
+
+  /// Blueprint hatching: 45° bars, half of [FlyerStyle.pitch] wide.
+  hatch,
+
+  /// Sunburst rays: alternating wedges [FlyerStyle.pitch] degrees apart.
+  rays,
+}
+
+/// Xeroxed-flyer treatment: base color, a print texture over it, and the ink
+/// colour text on the flyer is set in.
 class FlyerStyle {
   final Color base;
-  final Color stripe;
+  final Color patternColor;
   final Color fg;
+  final FlyerPattern pattern;
+
+  /// Texture spacing — pixels for [FlyerPattern.scan], [FlyerPattern.dots] and
+  /// [FlyerPattern.hatch], degrees per wedge pair for [FlyerPattern.rays].
+  final double pitch;
 
   const FlyerStyle({
     required this.base,
-    required this.stripe,
+    required this.patternColor,
     required this.fg,
+    this.pattern = FlyerPattern.scan,
+    this.pitch = 5,
   });
 }
 

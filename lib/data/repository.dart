@@ -71,6 +71,7 @@ abstract class EarplugRepository {
     required String doorsTime,
     required String venueId,
     required int price,
+    required String flyKey,
     required Ticketing ticketing,
     String? externalUrl,
     required String cap,
