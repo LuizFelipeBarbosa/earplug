@@ -318,14 +318,6 @@ class AppState extends ChangeNotifier {
     go(Screen.auth);
   }
 
-  String get authTitle => switch (pending?.kind) {
-    PendingKind.rsvp => 'Create an account to RSVP',
-    PendingKind.follow => 'Create an account to follow bands',
-    PendingKind.myGigs => 'Log in to see your gigs',
-    PendingKind.band => 'Log in to run your band',
-    null => 'Join the scene',
-  };
-
   Future<void> login() async => await auth.signInDemo();
 
   Future<void> signOut() async {
@@ -344,7 +336,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void finishAuth() {
+  /// Where [leaveAuth] lands, decided by [commitAuth]; null pops back to
+  /// wherever the auth gate was opened from.
+  Screen? _postAuthScreen;
+
+  /// The durable half of finishing auth: persists genre picks and completes
+  /// the action that triggered the gate. Runs before any celebration delay so
+  /// backing out (or being killed) mid-splash can't drop the pending action.
+  void commitAuth() {
     if (repository is ConvexRepository) {
       unawaited(
         repository.setGenres(userGenres.toList()).catchError((Object _) {
@@ -357,19 +356,32 @@ class AppState extends ChangeNotifier {
     pending = null;
     switch (p?.kind) {
       case PendingKind.rsvp:
-        back();
+        _postAuthScreen = null;
         toggleRsvp(p!.id!);
       case PendingKind.follow:
-        back();
+        _postAuthScreen = null;
         toggleFollow(p!.id!);
       case PendingKind.myGigs:
-        resetTo(Screen.myGigs);
+        _postAuthScreen = Screen.myGigs;
         say('Welcome back, Sam.');
       case PendingKind.band:
-        resetTo(Screen.bandDash);
+        _postAuthScreen = Screen.bandDash;
       case null:
-        back();
+        _postAuthScreen = null;
     }
+  }
+
+  /// The navigation half: leaves the auth screen for wherever [commitAuth]
+  /// decided. Skipping this (user backed out first) loses nothing.
+  void leaveAuth() {
+    final destination = _postAuthScreen;
+    _postAuthScreen = null;
+    destination == null ? back() : resetTo(destination);
+  }
+
+  void finishAuth() {
+    commitAuth();
+    leaveAuth();
   }
 
   // ========================= fan actions =========================
