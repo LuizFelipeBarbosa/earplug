@@ -14,6 +14,14 @@
       --dart-define=CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY"
   """
 
+[build.environment]
+  # A Flutter web build necessarily bakes these into main.dart.js, and both are
+  # public by design: browsers connect straight to the Convex deployment URL, and
+  # Clerk publishable keys are client-side credentials. Scoped to these two keys
+  # on purpose -- do NOT switch this to SECRETS_SCAN_OMIT_PATHS = "build/web/**",
+  # which would stop scanning the entire published artifact and hide a real leak.
+  SECRETS_SCAN_OMIT_KEYS = "CONVEX_URL,CLERK_PUBLISHABLE_KEY"
+
 # Flutter web uses path-based URLs, so a hard refresh on any route must still
 # serve index.html instead of 404ing.
 [[redirects]]
