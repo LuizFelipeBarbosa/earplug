@@ -89,17 +89,19 @@ class _Step1State extends State<_Step1> {
             ),
             const SizedBox(height: 14),
           ],
-          EpButton(
-            'G · Continue with Google',
-            kind: EpButtonKind.ghost,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            onTap: _loading ? null : () => _startOAuth(OAuthProvider.google),
-          ),
+          if (widget.app.auth.supportsGoogleSignIn) ...[
+            EpButton(
+              'G · Continue with Google',
+              kind: EpButtonKind.ghost,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              onTap: _loading ? null : () => _startOAuth(OAuthProvider.google),
+            ),
+            const SizedBox(height: 14),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 9),
             _InlineError(_error!),
           ],
-          const SizedBox(height: 14),
           GestureDetector(
             onTap: _showEmail,
             child: Text(

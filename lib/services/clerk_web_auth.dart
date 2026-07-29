@@ -62,6 +62,9 @@ final class ClerkWebAuth implements AuthService {
   bool get supportsAppleSignIn => true;
 
   @override
+  bool get supportsGoogleSignIn => true;
+
+  @override
   Future<void> initialize() {
     return _initialization ??= _initialize();
   }

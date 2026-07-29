@@ -24,6 +24,7 @@ abstract class AuthService {
   Future<void> startPhoneSignIn(String phoneNumber);
   Future<bool> verifyPhoneCode(String code);
   bool get supportsAppleSignIn;
+  bool get supportsGoogleSignIn;
   Future<void> signInWithOAuth(OAuthProvider provider);
 }
 
@@ -82,6 +83,9 @@ class FakeAuthService implements AuthService {
 
   @override
   bool get supportsAppleSignIn => true;
+
+  @override
+  bool get supportsGoogleSignIn => true;
 
   @override
   Future<void> signInWithOAuth(OAuthProvider provider) => signInDemo();

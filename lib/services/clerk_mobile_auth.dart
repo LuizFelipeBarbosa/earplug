@@ -51,7 +51,10 @@ final class ClerkMobileAuth implements AuthService {
   Stream<bool> get signedInChanges => _signedInController.stream;
 
   @override
-  bool get supportsAppleSignIn => Platform.isIOS;
+  bool get supportsAppleSignIn => Platform.isIOS && Env.appleSignInEnabled;
+
+  @override
+  bool get supportsGoogleSignIn => Env.googleServerClientId.isNotEmpty;
 
   @override
   Future<void> initialize() {

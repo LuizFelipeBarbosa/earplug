@@ -89,6 +89,8 @@ class AppState extends ChangeNotifier {
   Map<String, Band> _bands = {};
   Map<String, Venue> _venues = const {};
   final Map<String, String> _bandBioOverrides = {};
+  final Map<String, String> _bandLinkIgOverrides = {};
+  final Map<String, String> _bandLinkBcOverrides = {};
   final Map<String, List<VideoClip>> _videoCache = {};
   final Set<String> _videoLoads = {};
 
@@ -124,10 +126,6 @@ class AppState extends ChangeNotifier {
   // ---- band membership
   List<String> myBands = [];
   String bandId = '';
-
-  // ---- profile edits
-  String linkIg = '@foghorndiet';
-  String linkBc = 'foghorndiet.bandcamp.com';
 
   // ---- band create wizard
   int nbStep = 1;
@@ -530,6 +528,14 @@ class AppState extends ChangeNotifier {
     return _bandBioOverrides[id] ?? band(id)?.bio ?? '';
   }
 
+  String linkIgFor(String id) {
+    return _bandLinkIgOverrides[id] ?? band(id)?.linkIg ?? '';
+  }
+
+  String linkBcFor(String id) {
+    return _bandLinkBcOverrides[id] ?? band(id)?.linkBc ?? '';
+  }
+
   Future<void> _loadVideos(String bandId) async {
     try {
       _videoCache[bandId] = await repository.videosFor(bandId);
@@ -585,7 +591,7 @@ class AppState extends ChangeNotifier {
 
   void setLinkIg(String v) {
     if (bandId.isEmpty) return;
-    linkIg = v;
+    _bandLinkIgOverrides[bandId] = v;
     unawaited(
       repository
           .updateBandProfile(bandId: bandId, linkIg: v)
@@ -596,7 +602,7 @@ class AppState extends ChangeNotifier {
 
   void setLinkBc(String v) {
     if (bandId.isEmpty) return;
-    linkBc = v;
+    _bandLinkBcOverrides[bandId] = v;
     unawaited(
       repository
           .updateBandProfile(bandId: bandId, linkBc: v)

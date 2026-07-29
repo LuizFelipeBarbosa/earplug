@@ -91,7 +91,8 @@ class BandEditScreen extends StatelessWidget {
           children: [
             Expanded(
               child: TextFormField(
-                initialValue: app.linkIg,
+                key: ValueKey('linkIg-${app.bandId}'),
+                initialValue: app.linkIgFor(app.bandId),
                 onChanged: app.setLinkIg,
                 style: epText(size: 12),
                 decoration: epInputDecoration('@instagram'),
@@ -100,7 +101,8 @@ class BandEditScreen extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: TextFormField(
-                initialValue: app.linkBc,
+                key: ValueKey('linkBc-${app.bandId}'),
+                initialValue: app.linkBcFor(app.bandId),
                 onChanged: app.setLinkBc,
                 style: epText(size: 12),
                 decoration: epInputDecoration('bandcamp'),
