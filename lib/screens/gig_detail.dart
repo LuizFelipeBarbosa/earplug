@@ -291,12 +291,16 @@ class _WhosGoing extends StatelessWidget {
   Widget build(BuildContext context) {
     final going = gig.going + (app.rsvps.contains(gig.id) ? 1 : 0);
     final followedOnBill = app.follows.where(gig.lineup.contains).toList();
+    final followedBandNames = [
+      for (final id in followedOnBill)
+        if (app.band(id) case final Band band) band.name,
+    ];
     final socialLine = !app.authed
         ? 'Log in to see which of your people are going.'
-        : followedOnBill.isEmpty
+        : followedBandNames.isEmpty
             ? '3 people you know are going.'
             : 'Bands you follow on this bill: '
-                '${followedOnBill.map((id) => app.band(id)!.name).join(', ')}. '
+                '${followedBandNames.join(', ')}. '
                 'Plus 3 people you know.';
 
     return EpCard(

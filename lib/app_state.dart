@@ -107,6 +107,7 @@ class AppState extends ChangeNotifier {
   Set<String> follows = {};
   Set<String> saved = {};
   int attended = 0;
+  UserProfile? profile;
 
   // ---- home filters
   bool mapMode = false;
@@ -164,6 +165,7 @@ class AppState extends ChangeNotifier {
       authStep = 2;
       unawaited(_ensureUser());
     } else {
+      profile = null;
       unawaited(_refreshConvexAuth());
     }
     notifyListeners();
@@ -179,9 +181,22 @@ class AppState extends ChangeNotifier {
       // The websocket must carry the new identity before the mutation runs.
       await _refreshConvexAuth();
       await repository.ensureUser(name: auth.displayName);
+      await _refreshProfile();
     } catch (_) {
       say('Something broke — try again.');
     }
+  }
+
+  Future<void> _refreshProfile() async {
+    try {
+      final repo = repository;
+      if (repo is ConvexRepository) {
+        final loadedProfile = await repo.me();
+        if (!authed) return;
+        profile = loadedProfile;
+        notifyListeners();
+      }
+    } catch (_) {}
   }
 
   void _subscribeToFeed() {

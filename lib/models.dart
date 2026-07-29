@@ -34,6 +34,32 @@ class Venue {
   );
 }
 
+class UserProfile {
+  final String name;
+  final String email;
+  final List<String> genres;
+  final int attendedCount;
+  final DateTime createdAt;
+
+  const UserProfile({
+    required this.name,
+    required this.email,
+    required this.genres,
+    required this.attendedCount,
+    required this.createdAt,
+  });
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
+    name: json['name'] as String,
+    email: json['email'] as String,
+    genres: List<String>.from(json['genres'] as List),
+    attendedCount: (json['attendedCount'] as num).toInt(),
+    createdAt: DateTime.fromMillisecondsSinceEpoch(
+      (json['createdAt'] as num).toInt(),
+    ),
+  );
+}
+
 /// Xeroxed-flyer color treatment: base color, faint horizontal stripes, ink.
 class FlyerStyle {
   final Color base;

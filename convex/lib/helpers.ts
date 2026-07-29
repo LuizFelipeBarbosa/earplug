@@ -143,6 +143,7 @@ export const userPayloadValidator = v.object({
   email: v.string(),
   genres: v.array(v.string()),
   attendedCount: v.number(),
+  createdAt: v.number(),
 });
 
 // Defensive defaults: the schema is widened during migration, so new fields
@@ -216,6 +217,7 @@ export function toUserPayload(user: Doc<"users">) {
     email: user.email,
     genres: user.genres ?? [],
     attendedCount: user.attendedCount ?? 0,
+    createdAt: user.memberSince ?? user._creationTime,
   };
 }
 

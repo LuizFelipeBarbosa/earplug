@@ -11,6 +11,12 @@ class ConvexRepository implements EarplugRepository {
   /// sequence mutations after the identity change.
   Future<void> refreshAuth() => _convexService.refreshAuth();
 
+  Future<UserProfile?> me() async {
+    final result = await _convexService.query('users:me');
+    final json = _asMap(result);
+    return json.isEmpty ? null : UserProfile.fromJson(json);
+  }
+
   @override
   Stream<FeedSnapshot> feed() {
     return _convexService.subscribe('gigs:feed', const {}, parseFeedSnapshot);

@@ -8,12 +8,47 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/sheets.dart';
 
+const _monthNames = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+String _profileInitials(String? name) {
+  final words = name
+      ?.trim()
+      .split(RegExp(r'\s+'))
+      .where((word) => word.isNotEmpty)
+      .take(2)
+      .toList();
+  if (words == null || words.isEmpty) return '??';
+  return words.map((word) => word[0]).join().toUpperCase();
+}
+
+String _monthYear(DateTime date) =>
+    '${_monthNames[date.month - 1]} ${date.year}';
+
 class MyGigsScreen extends StatelessWidget {
   const MyGigsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    final profile = app.profile;
+    final profileName = profile?.name.trim();
+    final displayName = profileName == null || profileName.isEmpty
+        ? 'YOUR PROFILE'
+        : profileName.toUpperCase();
+    final fanSince = profile == null ? '—' : _monthYear(profile.createdAt);
     final upcoming = [
       for (final id in app.rsvps)
         if (app.gig(id) case final Gig g) g,
@@ -42,7 +77,7 @@ class MyGigsScreen extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Text(
-                'SR',
+                _profileInitials(profileName),
                 style: epDisplay(size: 19, color: Colors.white),
               ),
             ),
@@ -51,9 +86,9 @@ class MyGigsScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('SAM REYES', style: epDisplay(size: 19)),
+                  Text(displayName, style: epDisplay(size: 19)),
                   Text(
-                    '${app.attended} gigs attended · fan since Jul 2026',
+                    '${app.attended} gigs attended · fan since $fanSince',
                     style: epText(size: 11.5, color: Ep.inkA(.5)),
                   ),
                 ],
