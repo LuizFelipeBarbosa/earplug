@@ -222,8 +222,9 @@ class _FeedCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FlyerBox(
-            style: fly,
+          GigFlyer(
+            gig,
+            fly,
             width: 74,
             height: 98,
             rotationDeg: -1.4,

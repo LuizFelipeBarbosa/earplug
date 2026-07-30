@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
@@ -11,6 +12,31 @@ double headerTopPad(BuildContext context) =>
 
 /// Bottom inset used by scrollables so content clears the floating tab bar.
 const double tabBarClearance = 96;
+
+class EpNetworkImage extends StatelessWidget {
+  final String? url;
+  final BoxFit fit;
+  final Widget fallback;
+
+  const EpNetworkImage({
+    super.key,
+    required this.url,
+    this.fit = BoxFit.cover,
+    required this.fallback,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (url == null || url!.isEmpty) return fallback;
+    return CachedNetworkImage(
+      imageUrl: url!,
+      fit: fit,
+      fadeInDuration: const Duration(milliseconds: 180),
+      placeholder: (_, _) => fallback,
+      errorWidget: (_, _, _) => fallback,
+    );
+  }
+}
 
 class SectionLabel extends StatelessWidget {
   final String text;
@@ -145,10 +171,40 @@ class _FlyerPatternPainter extends CustomPainter {
       old.style != style || old.scale != scale;
 }
 
+class ClipTexture extends StatelessWidget {
+  final Color bandColor;
+  final double patternScale;
+
+  const ClipTexture({
+    super.key,
+    required this.bandColor,
+    this.patternScale = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = FlyerStyle(
+      base: Ep.card,
+      patternColor: Ep.whiteA(.06),
+      fg: Ep.ink,
+      pattern: FlyerPattern.scan,
+    );
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const ColoredBox(color: Ep.card),
+        ColoredBox(color: bandColor.withValues(alpha: .14)),
+        CustomPaint(painter: _FlyerPatternPainter(style, patternScale)),
+      ],
+    );
+  }
+}
+
 /// Xeroxed-flyer block: solid base color under a faint print texture, slightly
 /// rotated. The visual signature of the whole app.
 class FlyerBox extends StatelessWidget {
   final FlyerStyle style;
+  final String? imageUrl;
   final double? width;
   final double? height;
   final double rotationDeg;
@@ -163,6 +219,7 @@ class FlyerBox extends StatelessWidget {
   const FlyerBox({
     super.key,
     required this.style,
+    this.imageUrl,
     this.width,
     this.height,
     this.rotationDeg = 0,
@@ -186,15 +243,72 @@ class FlyerBox extends StatelessWidget {
             : null,
       ),
       clipBehavior: Clip.antiAlias,
-      child: CustomPaint(
-        painter: _FlyerPatternPainter(style, patternScale),
-        child: Padding(padding: padding, child: child),
-      ),
+      child: imageUrl == null || imageUrl!.isEmpty
+          ? CustomPaint(
+              painter: _FlyerPatternPainter(style, patternScale),
+              child: Padding(padding: padding, child: child),
+            )
+          : Stack(
+              fit: StackFit.expand,
+              children: [
+                EpNetworkImage(
+                  url: imageUrl,
+                  fit: BoxFit.cover,
+                  fallback: CustomPaint(
+                    painter: _FlyerPatternPainter(style, patternScale),
+                  ),
+                ),
+                Padding(padding: padding, child: child),
+              ],
+            ),
     );
     if (rotationDeg != 0) {
       box = Transform.rotate(angle: rotationDeg * math.pi / 180, child: box);
     }
     return box;
+  }
+}
+
+class GigFlyer extends StatelessWidget {
+  final Gig gig;
+  final FlyerStyle style;
+  final double? width;
+  final double? height;
+  final double rotationDeg;
+  final double radius;
+  final EdgeInsets padding;
+  final Widget? child;
+  final bool shadow;
+  final double patternScale;
+
+  const GigFlyer(
+    this.gig,
+    this.style, {
+    super.key,
+    this.width,
+    this.height,
+    this.rotationDeg = 0,
+    this.radius = 6,
+    this.padding = EdgeInsets.zero,
+    this.child,
+    this.shadow = true,
+    this.patternScale = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FlyerBox(
+      style: style,
+      imageUrl: gig.flyKey == 'custom' ? gig.flyerUrl : null,
+      width: width,
+      height: height,
+      rotationDeg: rotationDeg,
+      radius: radius,
+      padding: padding,
+      shadow: shadow,
+      patternScale: patternScale,
+      child: child,
+    );
   }
 }
 
@@ -217,17 +331,34 @@ class BandAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final square = Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: band.color,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: Text(band.initials, style: epDisplay(size: fontSize, color: Ep.bg)),
+    );
+    if (band.heroUrl == null || band.heroUrl!.isEmpty) {
+      return Transform.rotate(
+        angle: rotationDeg * math.pi / 180,
+        child: square,
+      );
+    }
     return Transform.rotate(
       angle: rotationDeg * math.pi / 180,
-      child: Container(
-        width: size,
-        height: size,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: band.color,
-          borderRadius: BorderRadius.circular(radius),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: EpNetworkImage(
+            url: band.heroUrl,
+            fallback: square,
+          ),
         ),
-        child: Text(band.initials, style: epDisplay(size: fontSize, color: Ep.bg)),
       ),
     );
   }

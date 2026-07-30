@@ -22,6 +22,7 @@ enum Screen {
   bandCreate,
   bandDash,
   bandEdit,
+  bandMedia,
   gigMgr,
   gigCreate,
   analytics,
@@ -331,6 +332,8 @@ class AppState extends ChangeNotifier {
   }
 
   void openBand(String id) => go(Screen.band, id);
+
+  void openBandMedia() => go(Screen.bandMedia, bandId);
 
   void openMyGigsTab() {
     if (authed) {

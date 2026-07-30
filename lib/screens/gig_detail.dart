@@ -85,8 +85,9 @@ class _Hero extends StatelessWidget {
         .toUpperCase();
     final topPad = headerTopPad(context);
 
-    return FlyerBox(
-      style: fly,
+    return GigFlyer(
+      gig,
+      fly,
       height: 330,
       radius: 0,
       shadow: false,

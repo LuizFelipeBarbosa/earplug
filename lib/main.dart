@@ -11,6 +11,7 @@ import 'screens/auth.dart';
 import 'screens/band_create.dart';
 import 'screens/band_dash.dart';
 import 'screens/band_edit.dart';
+import 'screens/band_media.dart';
 import 'screens/band_profile.dart';
 import 'screens/explore.dart';
 import 'screens/gig_create.dart';
@@ -210,6 +211,7 @@ class RootShell extends StatelessWidget {
       Screen.bandCreate => const BandCreateScreen(),
       Screen.bandDash => const BandDashScreen(),
       Screen.bandEdit => const BandEditScreen(),
+      Screen.bandMedia => BandMediaScreen(bandId: entry.param!),
       Screen.gigMgr => const GigManagerScreen(),
       Screen.gigCreate => const GigCreateScreen(),
       Screen.analytics => const AnalyticsScreen(),

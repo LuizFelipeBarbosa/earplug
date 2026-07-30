@@ -158,8 +158,9 @@ class _GigRow extends StatelessWidget {
       onTap: () => app.openGig(gig.id),
       child: Row(
         children: [
-          FlyerBox(
-              style: app.flyer(gig.flyKey),
+          GigFlyer(
+              gig,
+              app.flyer(gig.flyKey),
               width: 34,
               height: 44,
               rotationDeg: -2,
@@ -268,8 +269,9 @@ class _FlyerRail extends StatelessWidget {
                       Stack(
                         clipBehavior: Clip.none,
                         children: [
-                          FlyerBox(
-                            style: app.flyer(g.flyKey),
+                          GigFlyer(
+                            g,
+                            app.flyer(g.flyKey),
                             width: 118,
                             height: 150,
                             rotationDeg: tilt,
