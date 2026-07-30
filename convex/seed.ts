@@ -108,15 +108,6 @@ export const DEMO_VENUE_NAMES = DEMO_VENUES.map((venue) => venue.name);
 export const DEMO_BAND_NAMES = DEMO_BANDS.map((band) => band.name);
 export const DEMO_GIG_TITLES = DEMO_GIGS.map((gig) => gig.title);
 
-// b1 videos: "12.4K views"/2:41 etc. converted to numbers.
-const B1_VIDEOS = [
-  { title: "This is what we sound like — live at Foghorn Club", views: 12400, lengthSec: 161, pinned: true, order: 0 },
-  { title: "Riptide (practice take, one mic)", views: 3100, lengthSec: 185, pinned: false, order: 1 },
-  { title: "Undertow — basement set", views: 1800, lengthSec: 142, pinned: false, order: 2 },
-  { title: "New song, no name yet", views: 942, lengthSec: 107, pinned: false, order: 3 },
-  { title: "Soundcheck goes wrong (fun)", views: 5600, lengthSec: 58, pinned: false, order: 4 },
-];
-
 export const seedDemo = internalMutation({
   args: {},
   returns: v.object({ seeded: v.boolean() }),
@@ -170,17 +161,6 @@ export const seedDemo = internalMutation({
         ticketing: gig.ticketing,
         cap: "No cap",
         goingCount: gig.goingCount,
-      });
-    }
-
-    for (const video of B1_VIDEOS) {
-      await ctx.db.insert("videos", {
-        bandId: bandIds.b1,
-        title: video.title,
-        views: video.views,
-        lengthSec: video.lengthSec,
-        pinned: video.pinned,
-        order: video.order,
       });
     }
 

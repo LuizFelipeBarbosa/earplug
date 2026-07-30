@@ -83,6 +83,10 @@ export default defineSchema({
     cap: v.string(),
     goingCount: v.number(),
     createdByBand: v.optional(v.id("bands")),
+    // Band-supplied flyer art, set when flyKey is "custom". The gig owns this
+    // blob outright — it is never a bandMedia row, because `lineup` is an array
+    // so "whose media is it" would be ambiguous.
+    flyStorageId: v.optional(v.id("_storage")),
   })
     .index("by_startsAt", ["startsAt"])
     .index("by_title", ["title"]),
@@ -129,4 +133,36 @@ export default defineSchema({
     // Storage reference for videos synthesized from legacy bandMediaSlots.
     storageId: v.optional(v.id("_storage")),
   }).index("by_band_order", ["bandId", "order"]),
+
+  // Supersedes `videos`: one ordered list per band holding both clips and
+  // photos, so ordering and the pin are a single concept rather than two.
+  //
+  // `storageId` is required — a media row with no bytes behind it is exactly
+  // the broken state this table exists to fix. (Verified safe: all four legacy
+  // `videos` rows carry a live blob.) `contentType`/`sizeBytes` are optional
+  // because convex-test records `_storage` docs as `{size, sha256}` only.
+  //
+  // No `url` column: Convex storage URLs embed the deployment hostname and go
+  // stale when a blob is deleted, so they are resolved per read via
+  // `ctx.storage.getUrl`, which returns null for a missing file.
+  bandMedia: defineTable({
+    bandId: v.id("bands"),
+    kind: v.union(v.literal("video"), v.literal("photo")),
+    storageId: v.id("_storage"),
+    contentType: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    title: v.string(),
+    // Separate from `title`: a clip's title is a name, a photo wants a credit
+    // ("shot by Mara, Aug '25"). Overloading one field makes a later split a
+    // migration.
+    caption: v.optional(v.string()),
+    order: v.number(),
+    pinned: v.boolean(),
+    // Video-only. Carried over for display; nothing increments `views`.
+    views: v.optional(v.number()),
+    lengthSec: v.optional(v.number()),
+    uploadedBy: v.optional(v.id("users")),
+  })
+    .index("by_band_order", ["bandId", "order"])
+    .index("by_band_kind_order", ["bandId", "kind", "order"]),
 });

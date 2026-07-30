@@ -121,4 +121,38 @@ describe("bands: slugs and profile updates", () => {
       }),
     ).rejects.toThrow();
   });
+
+  test("get resolves heroUrl from the selected live photo", async () => {
+    const { t, asAdmin } = await setup();
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Static Bloom",
+      ...bandArgs,
+    });
+    expect((await t.query(api.bands.get, { bandId }))?.heroUrl).toBeNull();
+
+    const { storageId, mediaId } = await t.run(async (ctx) => {
+      const storageId = await ctx.storage.store(
+        new Blob([new Uint8Array([1, 2, 3])]),
+      );
+      const mediaId = await ctx.db.insert("bandMedia", {
+        bandId,
+        kind: "photo",
+        storageId,
+        title: "Band photo",
+        order: 0,
+        pinned: false,
+      });
+      return { storageId, mediaId };
+    });
+    await asAdmin.mutation(api.bands.setBandPhoto, { bandId, mediaId });
+    expect((await t.query(api.bands.get, { bandId }))?.heroUrl).toEqual(
+      expect.any(String),
+    );
+
+    await t.run(async (ctx) => ctx.storage.delete(storageId));
+    expect((await t.query(api.bands.get, { bandId }))?.heroUrl).toBeNull();
+    expect(
+      await t.run(async (ctx) => (await ctx.db.get(bandId))?.imageStorageId),
+    ).toBe(storageId);
+  });
 });
