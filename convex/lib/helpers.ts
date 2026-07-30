@@ -219,17 +219,17 @@ export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
     _id: band._id,
     name: band.name,
     genres: band.genres,
-    area: band.area,
-    colorHex: band.colorHex,
-    initials: band.initials,
-    followerCount: band.followerCount,
+    area: band.area ?? "", // TODO(prod-migration): remove at tighten
+    colorHex: band.colorHex ?? "", // TODO(prod-migration): remove at tighten
+    initials: band.initials ?? "", // TODO(prod-migration): remove at tighten
+    followerCount: band.followerCount ?? 0, // TODO(prod-migration): remove at tighten
     heroUrl: band.imageStorageId
       ? await ctx.storage.getUrl(band.imageStorageId)
       : null,
     bio: band.bio ?? "",
     linkIg: band.linkIg ?? null,
     linkBc: band.linkBc ?? null,
-    pastShows: band.pastShows,
+    pastShows: band.pastShows ?? [], // TODO(prod-migration): remove at tighten
   };
 }
 
@@ -260,12 +260,12 @@ export function toVenuePayload(venue: Doc<"venues">) {
   return {
     _id: venue._id,
     name: venue.name,
-    area: venue.area,
-    addr: venue.addr,
-    distSF: venue.distSF,
-    distOak: venue.distOak,
-    lat: venue.lat,
-    lng: venue.lng,
+    area: venue.area ?? "", // TODO(prod-migration): remove at tighten
+    addr: venue.addr ?? "", // TODO(prod-migration): remove at tighten
+    distSF: venue.distSF ?? "", // TODO(prod-migration): remove at tighten
+    distOak: venue.distOak ?? "", // TODO(prod-migration): remove at tighten
+    lat: venue.lat ?? 0, // TODO(prod-migration): remove at tighten
+    lng: venue.lng ?? 0, // TODO(prod-migration): remove at tighten
   };
 }
 
@@ -297,8 +297,8 @@ export function toUserPayload(user: Doc<"users">) {
     clerkId: user.clerkId,
     name: user.name,
     email: user.email,
-    genres: user.genres,
-    attendedCount: user.attendedCount,
+    genres: user.genres ?? [], // TODO(prod-migration): remove at tighten
+    attendedCount: user.attendedCount ?? 0, // TODO(prod-migration): remove at tighten
     createdAt: user._creationTime,
   };
 }
