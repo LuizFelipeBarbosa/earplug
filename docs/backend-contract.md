@@ -121,6 +121,8 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
   `migrations:clearLegacyBandImageFields` were run against dev, and
   `convex/migrations.ts` has now been deleted. The entries remain recoverable
   from git history, following the established one-shot migration lifecycle.
-- Prod (`decisive-iguana-759`) still runs the pre-v1 legacy schema and requires
-  the full legacy migration (see git history) before any changes in this
-  document can deploy there; that work is explicitly out of scope here.
+- Prod (`decisive-iguana-759`) was migrated to this contract on 2026-07-30 via
+  `migrations:migrateAll` + `migrations:purgeLegacy` (one-shot, deleted after
+  the run — recoverable from git history like the dev migration). Both
+  deployments now run the tight v1 schema; prod holds the real user base
+  (287 users, 11 bands, 14 past gigs and their RSVP history).

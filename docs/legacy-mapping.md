@@ -15,6 +15,23 @@ zero diff between dev and prod. The legacy app was far bigger than the new v1
 
 ---
 
+## 0b. Prod outcome (2026-07-30) — prod migrated too
+
+The open question in §7/§9-Q0 is settled: prod (`decisive-iguana-759`) was
+migrated in place on 2026-07-30 by a prod-specific `migrations:migrateAll` +
+`migrations:purgeLegacy` (recoverable from git at the commit that deleted
+them). Deviations from the dev design below: prod's Clerk linkage needed no
+email fallback (287/287 unique live-instance clerkIds); all 14 past events,
+275 rsvps, 5 likes, and 12 venues WERE migrated (dev dropped its equivalents);
+`bandMediaSlots` and band profile images became 40 `bandMedia` rows; `area` is
+the bare city ("Berkeley"/"Oakland"); `followerCount` = savedArtists +
+memberships; migrated gigs briefly carried a `legacyEventId` for idempotency
+and purge guards, stripped by `purgeLegacy`. Final prod state: 287 users,
+11 bands, 12 venues, 14 gigs, 19 bandMembers, 17 follows, 275 gigRsvps,
+5 gigSaves, 40 bandMedia; all 54 storage blobs referenced
+(`sweepOrphanBlobs` dry run: `wouldDelete: 0`). The emptied legacy tables
+remain as undeclared shells (dashboard-only to drop), same as dev.
+
 ## 0. Outcome (2026-07-29) — migration complete
 
 Everything below is the *design record*. Both phases have now run against
