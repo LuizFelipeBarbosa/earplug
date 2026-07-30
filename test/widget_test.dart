@@ -128,44 +128,46 @@ void main() {
       expect(app.current.screen, Screen.gigCreate);
     });
 
-    test('rapid create taps and keep-editing never duplicate the band',
-        () async {
-      final app = await _demoApp();
-      app.startBandCreate();
-      app.setNbName('Static Bloom Two');
-      app.toggleNbGenre('punk');
-      app.setNbArea('Berkeley');
-      final bandsBefore = app.myBands.length;
+    test(
+      'rapid create taps and keep-editing never duplicate the band',
+      () async {
+        final app = await _demoApp();
+        app.startBandCreate();
+        app.setNbName('Static Bloom Two');
+        app.toggleNbGenre('punk');
+        app.setNbArea('Berkeley');
+        final bandsBefore = app.myBands.length;
 
-      // A double tap fires createBand twice; only one band may land.
-      await Future.wait([app.createBand(), app.createBand()]);
-      await pumpEventQueue();
-      expect(app.myBands.length, bandsBefore + 1);
-      final createdId = app.bandId;
+        // A double tap fires createBand twice; only one band may land.
+        await Future.wait([app.createBand(), app.createBand()]);
+        await pumpEventQueue();
+        expect(app.myBands.length, bandsBefore + 1);
+        final createdId = app.bandId;
 
-      // KEEP EDITING → rename → save updates the same record.
-      app.editCreatedBand();
-      expect(app.nbEditingCreated, isTrue);
-      app.setNbName('Static Gloom');
-      await app.createBand();
-      await pumpEventQueue();
-      expect(app.myBands.length, bandsBefore + 1);
-      expect(app.bandId, createdId);
-      expect(app.band(createdId)!.name, 'Static Gloom');
-      expect(app.band(createdId)!.initials, 'SG');
-      // The shared link survives the rename.
-      expect(app.nbShareSlug, 'static-bloom-two');
+        // KEEP EDITING → rename → save updates the same record.
+        app.editCreatedBand();
+        expect(app.nbEditingCreated, isTrue);
+        app.setNbName('Static Gloom');
+        await app.createBand();
+        await pumpEventQueue();
+        expect(app.myBands.length, bandsBefore + 1);
+        expect(app.bandId, createdId);
+        expect(app.band(createdId)!.name, 'Static Gloom');
+        expect(app.band(createdId)!.initials, 'SG');
+        // The shared link survives the rename.
+        expect(app.nbShareSlug, 'static-bloom-two');
 
-      // A fresh band reusing a taken name gets its own slug.
-      app.makeAnotherBand();
-      app.setNbName('Static Gloom');
-      app.toggleNbGenre('punk');
-      app.setNbArea('Berkeley');
-      await app.createBand();
-      await pumpEventQueue();
-      expect(app.myBands.length, bandsBefore + 2);
-      expect(app.nbShareSlug, 'static-gloom-2');
-    });
+        // A fresh band reusing a taken name gets its own slug.
+        app.makeAnotherBand();
+        app.setNbName('Static Gloom');
+        app.toggleNbGenre('punk');
+        app.setNbArea('Berkeley');
+        await app.createBand();
+        await pumpEventQueue();
+        expect(app.myBands.length, bandsBefore + 2);
+        expect(app.nbShareSlug, 'static-gloom-2');
+      },
+    );
 
     test('a failed create leaves the form open and says so', () async {
       final app = AppState(
@@ -428,6 +430,40 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<List<VideoClip>> videosFor(String bandId) async => const [];
 
   @override
+  Future<List<BandMedia>> mediaFor(String bandId) async => const [];
+
+  @override
+  Future<String> generateMediaUploadUrl(String bandId) async => 'unused';
+
+  @override
+  Future<String> addBandMedia({
+    required String bandId,
+    required MediaKind kind,
+    required String storageId,
+    required String title,
+    String? caption,
+    int? lengthSec,
+  }) async => 'unused';
+
+  @override
+  Future<void> deleteBandMedia(String mediaId) async {}
+
+  @override
+  Future<void> pinBandMedia(String mediaId) async {}
+
+  @override
+  Future<void> moveBandMedia(String mediaId, String direction) async {}
+
+  @override
+  Future<void> setBandPhoto({
+    required String bandId,
+    required String mediaId,
+  }) async {}
+
+  @override
+  Future<void> clearBandPhoto(String bandId) async {}
+
+  @override
   Future<List<PastGig>> history() async => const [];
 
   @override
@@ -486,6 +522,7 @@ class _FailingRsvpRepository implements EarplugRepository {
     required String venueId,
     required int price,
     required String flyKey,
+    String? flyStorageId,
     required Ticketing ticketing,
     String? externalUrl,
     required String cap,

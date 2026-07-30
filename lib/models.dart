@@ -116,6 +116,7 @@ class Gig {
   final String desc;
   final Ticketing tix;
   final String? externalUrl;
+  final String? flyerUrl;
   final String cap;
 
   const Gig({
@@ -134,6 +135,7 @@ class Gig {
     required this.desc,
     required this.tix,
     this.externalUrl,
+    this.flyerUrl,
     this.cap = 'No cap',
   });
 
@@ -158,6 +160,7 @@ class Gig {
       desc: json['desc'] as String,
       tix: Ticketing.values.byName(json['ticketing'] as String),
       externalUrl: json['externalUrl'] as String?,
+      flyerUrl: json['flyerUrl'] as String?,
       cap: json['cap'] as String,
     );
   }
@@ -233,6 +236,7 @@ class Band {
   final String bio;
   final String? linkIg;
   final String? linkBc;
+  final String? heroUrl;
   final List<String> upcoming; // gig ids
   final List<PastGig> past;
 
@@ -247,6 +251,7 @@ class Band {
     required this.bio,
     this.linkIg,
     this.linkBc,
+    this.heroUrl,
     this.upcoming = const [],
     this.past = const [],
   });
@@ -265,6 +270,7 @@ class Band {
       bio: json['bio'] as String,
       linkIg: json['linkIg'] as String?,
       linkBc: json['linkBc'] as String?,
+      heroUrl: json['heroUrl'] as String?,
       upcoming: const [],
       past: [
         for (final show in pastShows)
@@ -284,6 +290,7 @@ class Band {
     String? bio,
     String? linkIg,
     String? linkBc,
+    String? heroUrl,
     List<String>? upcoming,
   }) => Band(
     id: id,
@@ -296,8 +303,82 @@ class Band {
     bio: bio ?? this.bio,
     linkIg: linkIg ?? this.linkIg,
     linkBc: linkBc ?? this.linkBc,
+    heroUrl: heroUrl ?? this.heroUrl,
     upcoming: upcoming ?? this.upcoming,
     past: past,
+  );
+}
+
+enum MediaKind { video, photo }
+
+class BandMedia {
+  final String id;
+  final String bandId;
+  final MediaKind kind;
+  final String? url;
+  final String title;
+  final String? caption;
+  final int? sizeBytes;
+  final int? views;
+  final int? lengthSec;
+  final bool pinned;
+  final int order;
+  final bool isHero;
+
+  const BandMedia({
+    required this.id,
+    required this.bandId,
+    required this.kind,
+    required this.url,
+    required this.title,
+    required this.caption,
+    required this.sizeBytes,
+    required this.views,
+    required this.lengthSec,
+    required this.pinned,
+    required this.order,
+    required this.isHero,
+  });
+
+  factory BandMedia.fromJson(Map<String, dynamic> json) => BandMedia(
+    id: json['_id'] as String,
+    bandId: json['bandId'] as String,
+    kind: MediaKind.values.byName(json['kind'] as String),
+    url: json['url'] as String?,
+    title: json['title'] as String,
+    caption: json['caption'] as String?,
+    sizeBytes: (json['sizeBytes'] as num?)?.toInt(),
+    views: (json['views'] as num?)?.toInt(),
+    lengthSec: (json['lengthSec'] as num?)?.toInt(),
+    pinned: json['pinned'] as bool,
+    order: (json['order'] as num).toInt(),
+    isHero: json['isHero'] as bool,
+  );
+
+  bool get isVideo => kind == MediaKind.video;
+
+  String get lenLabel {
+    if (lengthSec == null) return '';
+    final seconds = (lengthSec! % 60).toString().padLeft(2, '0');
+    return '${lengthSec! ~/ 60}:$seconds';
+  }
+
+  String get viewsLabel =>
+      views == null ? '' : '${_compactCount(views!)} views';
+
+  BandMedia copyWith({bool? pinned, int? order, String? title}) => BandMedia(
+    id: id,
+    bandId: bandId,
+    kind: kind,
+    url: url,
+    title: title ?? this.title,
+    caption: caption,
+    sizeBytes: sizeBytes,
+    views: views,
+    lengthSec: lengthSec,
+    pinned: pinned ?? this.pinned,
+    order: order ?? this.order,
+    isHero: isHero,
   );
 }
 

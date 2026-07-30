@@ -14,6 +14,10 @@ class DemoRepository implements EarplugRepository {
       'b1': List<VideoClip>.of(DemoData.b1Videos),
       '_generic': List<VideoClip>.of(DemoData.genericVideos),
     };
+    _mediaLists = {
+      'b1': List<BandMedia>.of(DemoData.b1Media),
+      '_generic': List<BandMedia>.of(DemoData.genericMedia),
+    };
 
     if (_auth.signedIn) _seedInteractions();
     _auth.signedInChanges.listen(_handleSignedInChange);
@@ -30,16 +34,19 @@ class DemoRepository implements EarplugRepository {
   late final Map<String, Band> _bands;
   late final List<BandMembership> _memberships;
   late final Map<String, List<VideoClip>> _videoLists;
+  late final Map<String, List<BandMedia>> _mediaLists;
   final List<Gig> _publishedGigs = [];
   final Set<String> _rsvpGigIds = {};
   final Set<String> _followBandIds = {};
   final Set<String> _savedGigIds = {};
   final Set<String> _userGenres = {};
+  final Map<String, String> _heroByBand = {};
 
   String? _userName;
   int _attendedCount = 0;
   int _nextBandId = 1;
   int _nextGigId = 1;
+  int _nextMediaId = 1;
   bool _interactionsSeeded = false;
 
   @override
@@ -59,6 +66,156 @@ class DemoRepository implements EarplugRepository {
         ? _videoLists['b1']!
         : _videoLists['_generic']!;
     return List<VideoClip>.of(videos);
+  }
+
+  @override
+  Future<List<BandMedia>> mediaFor(String bandId) async {
+    // Sorted copy: moveBandMedia swaps `order` values in place, and the wire
+    // contract (media:forBand) returns rows ordered by `order` asc.
+    final media = List<BandMedia>.of(
+      _mediaLists[bandId] ?? _mediaLists['_generic']!,
+    )..sort((a, b) => a.order.compareTo(b.order));
+    return [
+      for (final item in media)
+        BandMedia(
+          id: item.id,
+          bandId: item.bandId,
+          kind: item.kind,
+          url: item.url,
+          title: item.title,
+          caption: item.caption,
+          sizeBytes: item.sizeBytes,
+          views: item.views,
+          lengthSec: item.lengthSec,
+          pinned: item.pinned,
+          order: item.order,
+          isHero: _heroByBand[bandId] == item.id,
+        ),
+    ];
+  }
+
+  @override
+  Future<String> generateMediaUploadUrl(String bandId) async => 'demo://upload';
+
+  @override
+  Future<String> addBandMedia({
+    required String bandId,
+    required MediaKind kind,
+    required String storageId,
+    required String title,
+    String? caption,
+    int? lengthSec,
+  }) async {
+    final media = _mediaLists.putIfAbsent(bandId, () => []);
+    final id = 'demo-media-${_nextMediaId++}';
+    final isFirstVideo =
+        kind == MediaKind.video &&
+        !media.any((item) => item.kind == MediaKind.video);
+    media.add(
+      BandMedia(
+        id: id,
+        bandId: bandId,
+        kind: kind,
+        url: null,
+        title: title,
+        caption: caption,
+        sizeBytes: null,
+        views: null,
+        lengthSec: lengthSec,
+        pinned: isFirstVideo,
+        order: media.where((item) => item.kind == kind).length,
+        isHero: false,
+      ),
+    );
+    return id;
+  }
+
+  @override
+  Future<void> deleteBandMedia(String mediaId) async {
+    final media = _mediaListContaining(mediaId);
+    if (media == null) return;
+
+    final index = media.indexWhere((item) => item.id == mediaId);
+    final removed = media.removeAt(index);
+    final sameKindIndices = [
+      for (var i = 0; i < media.length; i++)
+        if (media[i].kind == removed.kind) i,
+    ]..sort((a, b) => media[a].order.compareTo(media[b].order));
+    for (var order = 0; order < sameKindIndices.length; order++) {
+      final itemIndex = sameKindIndices[order];
+      media[itemIndex] = media[itemIndex].copyWith(order: order);
+    }
+
+    if (_heroByBand[removed.bandId] == mediaId) {
+      _heroByBand.remove(removed.bandId);
+    }
+  }
+
+  @override
+  Future<void> pinBandMedia(String mediaId) async {
+    final media = _mediaListContaining(mediaId);
+    if (media == null) return;
+
+    final target = media.firstWhere((item) => item.id == mediaId);
+    if (!target.isVideo) return;
+    for (var i = 0; i < media.length; i++) {
+      if (media[i].isVideo) {
+        media[i] = media[i].copyWith(pinned: media[i].id == mediaId);
+      }
+    }
+  }
+
+  @override
+  Future<void> moveBandMedia(String mediaId, String direction) async {
+    final media = _mediaListContaining(mediaId);
+    if (media == null) return;
+
+    final itemIndex = media.indexWhere((item) => item.id == mediaId);
+    final target = media[itemIndex];
+    final sameKindIndices = [
+      for (var i = 0; i < media.length; i++)
+        if (media[i].kind == target.kind) i,
+    ]..sort((a, b) => media[a].order.compareTo(media[b].order));
+    final index = sameKindIndices.indexOf(itemIndex);
+    final delta = switch (direction) {
+      'up' => -1,
+      'down' => 1,
+      _ => 0,
+    };
+    final destination = index + delta;
+    if (delta == 0 ||
+        destination < 0 ||
+        destination >= sameKindIndices.length) {
+      return;
+    }
+
+    final destinationIndex = sameKindIndices[destination];
+    final destinationOrder = media[destinationIndex].order;
+    media[destinationIndex] = media[destinationIndex].copyWith(
+      order: target.order,
+    );
+    media[itemIndex] = target.copyWith(order: destinationOrder);
+  }
+
+  @override
+  Future<void> setBandPhoto({
+    required String bandId,
+    required String mediaId,
+  }) async {
+    final media = _mediaListContaining(mediaId);
+    final targetIndex = media?.indexWhere((item) => item.id == mediaId) ?? -1;
+    final target = targetIndex == -1 ? null : media![targetIndex];
+    if (target == null ||
+        target.kind != MediaKind.photo ||
+        target.bandId != bandId) {
+      throw StateError('Band photo must be a photo owned by the same band.');
+    }
+    _heroByBand[bandId] = mediaId;
+  }
+
+  @override
+  Future<void> clearBandPhoto(String bandId) async {
+    _heroByBand.remove(bandId);
   }
 
   @override
@@ -223,6 +380,7 @@ class DemoRepository implements EarplugRepository {
     required String venueId,
     required int price,
     required String flyKey,
+    String? flyStorageId,
     required Ticketing ticketing,
     String? externalUrl,
     required String cap,
@@ -339,6 +497,13 @@ class DemoRepository implements EarplugRepository {
   List<VideoClip>? _videoListContaining(String videoId) {
     for (final videos in _videoLists.values) {
       if (videos.any((video) => video.id == videoId)) return videos;
+    }
+    return null;
+  }
+
+  List<BandMedia>? _mediaListContaining(String mediaId) {
+    for (final media in _mediaLists.values) {
+      if (media.any((item) => item.id == mediaId)) return media;
     }
     return null;
   }
