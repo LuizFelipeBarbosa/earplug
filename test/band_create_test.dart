@@ -413,9 +413,11 @@ class FakeMediaPicker implements MediaPicker {
   }
 
   @override
-  Future<List<PickedMedia>> pickPhotos({int limit = 10}) async {
+  Future<({List<PickedMedia> photos, List<String> oversized})> pickPhotos({
+    int limit = 10,
+  }) async {
     _throwIfNeeded();
-    return nextPhotos;
+    return (photos: nextPhotos, oversized: const <String>[]);
   }
 
   @override

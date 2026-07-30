@@ -140,14 +140,23 @@ class BandMediaController extends ChangeNotifier {
   }
 
   Future<void> pickAndUploadPhotos(String bandId) async {
-    final List<PickedMedia> media;
+    final List<PickedMedia> photos;
+    final List<String> oversized;
     try {
-      media = await _picker.pickPhotos();
+      final (photos: pickedPhotos, oversized: skippedPhotos) = await _picker
+          .pickPhotos();
+      photos = pickedPhotos;
+      oversized = skippedPhotos;
     } on MediaPickException catch (error) {
       say(error.message);
       return;
     }
-    for (final photo in media) {
+    if (oversized.isNotEmpty) {
+      final count = oversized.length;
+      final subject = count == 1 ? 'photo was' : 'photos were';
+      say('$count $subject over 8 MB — export smaller and retry.');
+    }
+    for (final photo in photos) {
       await _beginUpload(bandId, MediaKind.photo, photo);
     }
   }

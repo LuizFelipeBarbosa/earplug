@@ -56,13 +56,25 @@ class MediaPicker {
     return _readPhoto(file);
   }
 
-  Future<List<PickedMedia>> pickPhotos({int limit = 10}) async {
+  Future<({List<PickedMedia> photos, List<String> oversized})> pickPhotos({
+    int limit = 10,
+  }) async {
     final files = await _picker.pickMultiImage(
       limit: limit,
       maxWidth: 2048,
       imageQuality: 88,
     );
-    return [for (final file in files) await _readPhoto(file)];
+    final photos = <PickedMedia>[];
+    final oversized = <String>[];
+    for (final file in files) {
+      final media = await _read(file);
+      if (media.sizeBytes > maxPhotoBytes) {
+        oversized.add(file.name);
+      } else {
+        photos.add(media);
+      }
+    }
+    return (photos: photos, oversized: oversized);
   }
 
   Future<PickedMedia?> pickVideo() async {

@@ -19,13 +19,7 @@ export const generateUploadUrl = mutation({
   returns: v.string(),
   handler: async (ctx, args) => {
     await requireBandAdmin(ctx, args.bandId);
-    const media = await ctx.db
-      .query("bandMedia")
-      .withIndex("by_band_order", (q) => q.eq("bandId", args.bandId))
-      .take(MAX_MEDIA_PER_BAND + 1);
-    if (media.length >= MAX_MEDIA_PER_BAND) {
-      throw new Error(`A band can have at most ${MAX_MEDIA_PER_BAND} media.`);
-    }
+    // The row cap belongs in addMedia because this URL also uploads gig flyers.
     return await ctx.storage.generateUploadUrl();
   },
 });
@@ -55,7 +49,7 @@ export const addMedia = mutation({
 
     let order = -1;
     for (const item of media) {
-      if (item.kind === args.kind) order = Math.max(order, item.order);
+      order = Math.max(order, item.order);
     }
 
     const meta = await ctx.db.system.get("_storage", args.storageId);
@@ -79,6 +73,9 @@ export const addMedia = mutation({
       throw new Error(
         `Media captions can be at most ${MAX_MEDIA_CAPTION} characters.`,
       );
+    }
+    if (args.kind === "photo" && args.lengthSec !== undefined) {
+      throw new Error("lengthSec is only valid for video media");
     }
     if (
       args.lengthSec !== undefined &&
@@ -111,6 +108,31 @@ export const addMedia = mutation({
   },
 });
 
+/** One-shot dev repair: run once via the dashboard/CLI, then delete this mutation. */
+export const normalizeOrders = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    let bandsRepacked = 0;
+    for await (const band of ctx.db.query("bands")) {
+      const media = await ctx.db
+        .query("bandMedia")
+        .withIndex("by_band_order", (q) => q.eq("bandId", band._id))
+        .order("asc")
+        .take(MAX_MEDIA_PER_BAND);
+      if (media.length === 0) continue;
+
+      bandsRepacked++;
+      for (let order = 0; order < media.length; order++) {
+        if (media[order].order !== order) {
+          await ctx.db.patch(media[order]._id, { order });
+        }
+      }
+    }
+    return bandsRepacked;
+  },
+});
+
 export const deleteMedia = mutation({
   args: { mediaId: v.id("bandMedia") },
   returns: v.null(),
@@ -123,14 +145,12 @@ export const deleteMedia = mutation({
     if (band?.imageStorageId === media.storageId) {
       await ctx.db.patch(band._id, { imageStorageId: undefined });
     }
-    await ctx.storage.delete(media.storageId);
+    // Physical blob deletion belongs exclusively to sweepOrphanBlobs so shared or missing blobs cannot wedge row deletion.
     await ctx.db.delete(media._id);
 
     const remaining = await ctx.db
       .query("bandMedia")
-      .withIndex("by_band_kind_order", (q) =>
-        q.eq("bandId", media.bandId).eq("kind", media.kind),
-      )
+      .withIndex("by_band_order", (q) => q.eq("bandId", media.bandId))
       .order("asc")
       .take(MAX_MEDIA_PER_BAND);
     for (let order = 0; order < remaining.length; order++) {
@@ -138,8 +158,17 @@ export const deleteMedia = mutation({
         await ctx.db.patch(remaining[order]._id, { order });
       }
     }
-    if (media.kind === "video" && media.pinned && remaining.length > 0) {
-      await ctx.db.patch(remaining[0]._id, { pinned: true });
+    if (media.kind === "video" && media.pinned) {
+      const firstRemainingVideo = await ctx.db
+        .query("bandMedia")
+        .withIndex("by_band_kind_order", (q) =>
+          q.eq("bandId", media.bandId).eq("kind", "video"),
+        )
+        .order("asc")
+        .first();
+      if (firstRemainingVideo) {
+        await ctx.db.patch(firstRemainingVideo._id, { pinned: true });
+      }
     }
     return null;
   },
@@ -156,7 +185,9 @@ export const pinMedia = mutation({
 
     const siblings = await ctx.db
       .query("bandMedia")
-      .withIndex("by_band_order", (q) => q.eq("bandId", media.bandId))
+      .withIndex("by_band_kind_order", (q) =>
+        q.eq("bandId", media.bandId).eq("kind", "video"),
+      )
       .take(MAX_MEDIA_PER_BAND);
     for (const sibling of siblings) {
       if (sibling.pinned && sibling._id !== args.mediaId) {
@@ -180,12 +211,13 @@ export const moveMedia = mutation({
     await requireBandAdmin(ctx, media.bandId);
     const siblings = await ctx.db
       .query("bandMedia")
-      .withIndex("by_band_kind_order", (q) =>
-        q.eq("bandId", media.bandId).eq("kind", media.kind),
-      )
+      .withIndex("by_band_order", (q) => q.eq("bandId", media.bandId))
       .order("asc")
       .take(MAX_MEDIA_PER_BAND);
     const index = siblings.findIndex((sibling) => sibling._id === args.mediaId);
+    if (index === -1) {
+      throw new Error("Media not found among band's ordered media");
+    }
     const neighborIndex = args.direction === "up" ? index - 1 : index + 1;
     if (neighborIndex < 0 || neighborIndex >= siblings.length) return null;
     const neighbor = siblings[neighborIndex];
@@ -217,6 +249,7 @@ export const forBand = query({
 type SweepResult = {
   scanned: number;
   deleted: number;
+  wouldDelete: number;
   skipped: number;
   aborted: boolean;
   done: boolean;
@@ -231,6 +264,7 @@ export const sweepOrphanBlobs = internalMutation({
   returns: v.object({
     scanned: v.number(),
     deleted: v.number(),
+    wouldDelete: v.number(),
     skipped: v.number(),
     aborted: v.boolean(),
     done: v.boolean(),
@@ -255,18 +289,22 @@ export const sweepOrphanBlobs = internalMutation({
       .withIndex("by_clerk_id")
       .take(2000);
 
-    if (
-      mediaRows.length === 2000 ||
-      heroBands.length === 2000 ||
-      gigs.length === 2000 ||
-      users.length === 2000
-    ) {
+    const cappedTables: string[] = [];
+    if (mediaRows.length === 2000) cappedTables.push("bandMedia");
+    if (heroBands.length === 2000) cappedTables.push("bands");
+    if (gigs.length === 2000) cappedTables.push("gigs");
+    if (users.length === 2000) cappedTables.push("users");
+    if (cappedTables.length > 0) {
       // A read that hits 2000 may have been silently truncated, omitting a live
       // blob such as a real user avatar. Deleting against an incomplete
       // reference set is unsafe, so do not guess.
+      console.warn(
+        `sweepOrphanBlobs aborted: ${cappedTables.join(", ")} hit the 2000-row guard`,
+      );
       return {
         scanned: 0,
         deleted: 0,
+        wouldDelete: 0,
         skipped: 0,
         aborted: true,
         done: true,
@@ -295,6 +333,7 @@ export const sweepOrphanBlobs = internalMutation({
     });
     let scanned = 0;
     let deleted = 0;
+    let wouldDelete = 0;
     let skipped = 0;
     const cutoff = Date.now() - graceMs;
     for (const blob of page.page) {
@@ -303,8 +342,12 @@ export const sweepOrphanBlobs = internalMutation({
         skipped++;
         continue;
       }
-      if (!dryRun) await ctx.storage.delete(blob._id);
-      deleted++;
+      if (dryRun) {
+        wouldDelete++;
+      } else {
+        await ctx.storage.delete(blob._id);
+        deleted++;
+      }
     }
 
     if (!page.isDone) {
@@ -317,6 +360,7 @@ export const sweepOrphanBlobs = internalMutation({
     return {
       scanned,
       deleted,
+      wouldDelete,
       skipped,
       aborted: false,
       done: page.isDone,

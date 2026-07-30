@@ -266,7 +266,6 @@ class _CustomArtSlot extends StatelessWidget {
     app.setGfFlyerArt(picked);
     app.setGfFlyerUploading(true);
     final storageId = await media.uploadFlyerArt(app.bandId, picked);
-    if (!context.mounted) return;
 
     // Clearing the preview while its upload is in flight must not let the
     // stale completion restore a storage id for art that is no longer shown.

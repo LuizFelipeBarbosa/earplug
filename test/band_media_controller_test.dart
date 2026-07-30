@@ -107,6 +107,23 @@ void main() {
     });
 
     test(
+      'oversized photos are skipped without losing accepted photos',
+      () async {
+        final harness = _makeController();
+        const bandId = 'photo-batch-band';
+        harness.picker.nextPhotos = [_photoFixture()];
+        harness.picker.nextOversized = ['too-large.jpg', 'also-too-large.png'];
+
+        await harness.controller.pickAndUploadPhotos(bandId);
+
+        expect(harness.said, [
+          '2 photos were over 8 MB — export smaller and retry.',
+        ]);
+        expect(harness.controller.photosFor(bandId), hasLength(1));
+      },
+    );
+
+    test(
       'picker validation errors are said without creating an upload',
       () async {
         final harness = _makeController();
@@ -212,6 +229,13 @@ PickedMedia _videoFixture() => PickedMedia(
   sizeBytes: 3,
 );
 
+PickedMedia _photoFixture() => PickedMedia(
+  bytes: Uint8List.fromList([1, 2, 3]),
+  filename: 'backstage.jpg',
+  contentType: 'image/jpeg',
+  sizeBytes: 3,
+);
+
 Future<void> _waitForLoad(BandMediaController controller, String bandId) async {
   for (
     var attempt = 0;
@@ -241,6 +265,7 @@ _makeController({EarplugRepository? repository, MediaUploadService? uploader}) {
 class FakeMediaPicker implements MediaPicker {
   PickedMedia? nextPhoto;
   List<PickedMedia> nextPhotos = [];
+  List<String> nextOversized = [];
   PickedMedia? nextVideo;
   MediaPickException? nextException;
 
@@ -256,10 +281,12 @@ class FakeMediaPicker implements MediaPicker {
   }
 
   @override
-  Future<List<PickedMedia>> pickPhotos({int limit = 10}) async {
+  Future<({List<PickedMedia> photos, List<String> oversized})> pickPhotos({
+    int limit = 10,
+  }) async {
     photoListCalls++;
     _throwIfNeeded();
-    return nextPhotos;
+    return (photos: nextPhotos, oversized: nextOversized);
   }
 
   @override

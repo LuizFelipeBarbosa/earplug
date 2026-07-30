@@ -4,6 +4,7 @@ import { QueryCtx, mutation, query } from "./_generated/server";
 import {
   FEED_GRACE_MS,
   MAX_FEED_GIGS,
+  assertUploadAcceptable,
   bandPayloadValidator,
   flyKeyValidator,
   gigPayloadValidator,
@@ -120,6 +121,10 @@ export const publishGig = mutation({
       }
       const upload = await ctx.db.system.get("_storage", args.flyStorageId);
       if (!upload) throw new Error("Flyer upload not found");
+      assertUploadAcceptable(
+        { size: upload.size, contentType: upload.contentType },
+        "photo",
+      );
     }
     const venue = await ctx.db.get(args.venueId);
     if (!venue) throw new Error("Venue not found");

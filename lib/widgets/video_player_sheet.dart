@@ -31,7 +31,6 @@ class _VideoPlayerModal extends StatefulWidget {
 class _VideoPlayerModalState extends State<_VideoPlayerModal> {
   VideoPlayerController? _controller;
   String? _error;
-  bool _playing = false;
 
   @override
   void initState() {
@@ -64,14 +63,18 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
     super.dispose();
   }
 
-  void _togglePlayback() {
+  Future<void> _togglePlayback() async {
     final controller = _controller!;
-    if (_playing) {
-      controller.pause();
-    } else {
-      controller.play();
+    final value = controller.value;
+    if (value.isPlaying) {
+      await controller.pause();
+      return;
     }
-    setState(() => _playing = !_playing);
+    if (value.duration.inMilliseconds != 0 &&
+        value.position >= value.duration) {
+      await controller.seekTo(Duration.zero);
+    }
+    await controller.play();
   }
 
   @override
@@ -150,37 +153,38 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Row(
-            children: [
-              GestureDetector(
-                onTap: _togglePlayback,
-                behavior: HitTestBehavior.opaque,
-                child: SizedBox(
-                  width: 34,
-                  height: 34,
-                  child: Center(
-                    child: _playing
-                        ? const Icon(Icons.pause, size: 20, color: Colors.white)
-                        : const Padding(
-                            padding: EdgeInsets.only(left: 2),
-                            child: PlayTriangle(size: 13),
-                          ),
+          child: ValueListenableBuilder<VideoPlayerValue>(
+            valueListenable: controller,
+            builder: (context, value, _) {
+              final duration = value.duration.inMilliseconds;
+              final progress = duration == 0
+                  ? 0.0
+                  : (value.position.inMilliseconds / duration).clamp(0.0, 1.0);
+              return Row(
+                children: [
+                  GestureDetector(
+                    onTap: _togglePlayback,
+                    behavior: HitTestBehavior.opaque,
+                    child: SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: Center(
+                        child: value.isPlaying
+                            ? const Icon(
+                                Icons.pause,
+                                size: 20,
+                                color: Colors.white,
+                              )
+                            : const Padding(
+                                padding: EdgeInsets.only(left: 2),
+                                child: PlayTriangle(size: 13),
+                              ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ValueListenableBuilder<VideoPlayerValue>(
-                  valueListenable: controller,
-                  builder: (context, value, _) {
-                    final duration = value.duration.inMilliseconds;
-                    final progress = duration == 0
-                        ? 0.0
-                        : (value.position.inMilliseconds / duration).clamp(
-                            0.0,
-                            1.0,
-                          );
-                    return SizedBox(
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
                       height: 3,
                       child: LayoutBuilder(
                         builder: (context, constraints) {
@@ -201,11 +205,11 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
                           );
                         },
                       ),
-                    );
-                  },
-                ),
-              ),
-            ],
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
         Padding(

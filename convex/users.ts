@@ -19,8 +19,9 @@ export const me = query({
 /**
  * Idempotent upsert keyed on identity.subject. Adoption order:
  *  1. clerkId match (total on the migrated dataset).
- *  2. email fallback — unique-match-only (25 legacy rows have empty email and
- *     one email appears on 3 accounts; a non-unique match must NOT adopt).
+ *  2. verified-email fallback — unique-match-only (25 legacy rows have empty
+ *     email and one email appears on 3 accounts; a non-unique match must NOT
+ *     adopt).
  *  3. Insert a fresh user.
  * Backfills empty email (and missing name) from the Clerk identity.
  */
@@ -57,8 +58,8 @@ export const ensureUser = mutation({
       return { userId: byClerkId._id };
     }
 
-    // 2. Email fallback — adopt only when exactly one non-empty match exists.
-    if (identityEmail !== "") {
+    // 2. Email fallback — unverified addresses cannot re-key legacy accounts.
+    if (identityEmail !== "" && identity.emailVerified === true) {
       const byEmail = await ctx.db
         .query("users")
         .withIndex("by_email", (q) => q.eq("email", identityEmail))

@@ -686,11 +686,7 @@ class _PhotoSurface extends StatelessWidget {
     final url = item.url;
     if (url == null) return placeholder;
 
-    return Image.network(
-      url,
-      fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => placeholder,
-    );
+    return EpNetworkImage(url: url, fit: BoxFit.cover, fallback: placeholder);
   }
 }
 

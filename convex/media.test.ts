@@ -25,7 +25,7 @@ describe("media mutations", () => {
     return { t, asAdmin, bandId, userId };
   }
 
-  test("addMedia appends within each kind and auto-pins only the first video", async () => {
+  test("addMedia appends globally and auto-pins only the first video", async () => {
     const { t, asAdmin, bandId } = await setupBand();
     const [videoStorage1, videoStorage2, photoStorage1, photoStorage2] =
       await t.run(async (ctx) => [
@@ -68,9 +68,47 @@ describe("media mutations", () => {
     }));
     expect(docs.video1).toMatchObject({ order: 0, pinned: true, views: 0 });
     expect(docs.video2).toMatchObject({ order: 1, pinned: false, views: 0 });
-    expect(docs.photo1).toMatchObject({ order: 0, pinned: false });
-    expect(docs.photo2).toMatchObject({ order: 1, pinned: false });
+    expect(docs.photo1).toMatchObject({ order: 2, pinned: false });
+    expect(docs.photo2).toMatchObject({ order: 3, pinned: false });
     expect(docs.photo1?.views).toBeUndefined();
+  });
+
+  test("addMedia preserves insertion order across photos and videos", async () => {
+    const { t, asAdmin, bandId } = await setupBand();
+    const [firstPhotoStorage, secondPhotoStorage, videoStorage] = await t.run(
+      async (ctx) => [
+        await ctx.storage.store(new Blob([new Uint8Array([1])])),
+        await ctx.storage.store(new Blob([new Uint8Array([2])])),
+        await ctx.storage.store(new Blob([new Uint8Array([3])])),
+      ],
+    );
+
+    const firstPhoto = await asAdmin.mutation(api.media.addMedia, {
+      bandId,
+      kind: "photo",
+      storageId: firstPhotoStorage,
+      title: "First photo",
+    });
+    const secondPhoto = await asAdmin.mutation(api.media.addMedia, {
+      bandId,
+      kind: "photo",
+      storageId: secondPhotoStorage,
+      title: "Second photo",
+    });
+    const video = await asAdmin.mutation(api.media.addMedia, {
+      bandId,
+      kind: "video",
+      storageId: videoStorage,
+      title: "Video",
+    });
+
+    const media = await t.query(api.media.forBand, { bandId });
+    expect(media.map((row) => row._id)).toEqual([
+      firstPhoto.mediaId,
+      secondPhoto.mediaId,
+      video.mediaId,
+    ]);
+    expect(media.map((row) => row.order)).toEqual([0, 1, 2]);
   });
 
   test("addMedia rejects members, strangers, and unauthenticated callers", async () => {
@@ -156,6 +194,58 @@ describe("media mutations", () => {
     ).rejects.toThrow("Not an admin");
   });
 
+  test("pinMedia, moveMedia, and generateUploadUrl reject members and unauthenticated callers", async () => {
+    const { t, asAdmin, bandId } = await setupBand();
+    const storageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob([new Uint8Array([1, 2, 3])])),
+    );
+    const { mediaId } = await asAdmin.mutation(api.media.addMedia, {
+      bandId,
+      kind: "video",
+      storageId,
+      title: "Admin upload",
+    });
+
+    const asMember = t.withIdentity({
+      subject: "media_action_member",
+      email: "media-action-member@example.com",
+    });
+    const { userId: memberId } = await asMember.mutation(
+      api.users.ensureUser,
+      {},
+    );
+    await t.run(async (ctx) => {
+      await ctx.db.insert("bandMembers", {
+        bandId,
+        userId: memberId,
+        role: "member",
+      });
+    });
+
+    await expect(
+      asMember.mutation(api.media.pinMedia, { mediaId }),
+    ).rejects.toThrow("Not an admin");
+    await expect(
+      asMember.mutation(api.media.moveMedia, {
+        mediaId,
+        direction: "up",
+      }),
+    ).rejects.toThrow("Not an admin");
+    await expect(
+      asMember.mutation(api.media.generateUploadUrl, { bandId }),
+    ).rejects.toThrow("Not an admin");
+
+    await expect(
+      t.mutation(api.media.pinMedia, { mediaId }),
+    ).rejects.toThrow("Not signed in");
+    await expect(
+      t.mutation(api.media.moveMedia, { mediaId, direction: "up" }),
+    ).rejects.toThrow("Not signed in");
+    await expect(
+      t.mutation(api.media.generateUploadUrl, { bandId }),
+    ).rejects.toThrow("Not signed in");
+  });
+
   test("addMedia rejects missing uploads and duplicate storage ids", async () => {
     const { t, asAdmin, bandId } = await setupBand();
     const deletedStorageId = await t.run(async (ctx) => {
@@ -193,7 +283,24 @@ describe("media mutations", () => {
     ).rejects.toThrow("already in this band's media");
   });
 
-  test("addMedia rejects a band already at the media cap", async () => {
+  test("addMedia rejects photo length metadata", async () => {
+    const { t, asAdmin, bandId } = await setupBand();
+    const storageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob([new Uint8Array([1, 2, 3])])),
+    );
+
+    await expect(
+      asAdmin.mutation(api.media.addMedia, {
+        bandId,
+        kind: "photo",
+        storageId,
+        title: "Photo",
+        lengthSec: 1,
+      }),
+    ).rejects.toThrow("lengthSec is only valid for video media");
+  });
+
+  test("addMedia rejects a band already at the media cap while upload URLs remain available", async () => {
     const { t, asAdmin, bandId } = await setupBand();
     const [seedStorageId, newStorageId] = await t.run(async (ctx) => [
       await ctx.storage.store(new Blob([new Uint8Array([1])])),
@@ -220,6 +327,9 @@ describe("media mutations", () => {
         title: "One too many",
       }),
     ).rejects.toThrow(`at most ${MAX_MEDIA_PER_BAND}`);
+    await expect(
+      asAdmin.mutation(api.media.generateUploadUrl, { bandId }),
+    ).resolves.toEqual(expect.any(String));
   });
 
   test("pinMedia changes the pinned video and rejects photos", async () => {
@@ -262,7 +372,7 @@ describe("media mutations", () => {
     ).rejects.toThrow("Only clips can be pinned");
   });
 
-  test("moveMedia swaps only same-kind neighbors and no-ops at the ends", async () => {
+  test("moveMedia swaps global neighbors and no-ops at the ends", async () => {
     const { t, asAdmin, bandId } = await setupBand();
     const [videoStorage1, photoStorage, videoStorage2] = await t.run(
       async (ctx) => [
@@ -307,16 +417,16 @@ describe("media mutations", () => {
       photo: await ctx.db.get(ids.photo),
       secondVideo: await ctx.db.get(ids.secondVideo),
     }));
-    expect(docs.firstVideo?.order).toBe(2);
-    expect(docs.secondVideo?.order).toBe(0);
-    expect(docs.photo?.order).toBe(1);
+    expect(docs.firstVideo?.order).toBe(1);
+    expect(docs.photo?.order).toBe(0);
+    expect(docs.secondVideo?.order).toBe(2);
 
     await asAdmin.mutation(api.media.moveMedia, {
-      mediaId: ids.secondVideo,
+      mediaId: ids.photo,
       direction: "up",
     });
     await asAdmin.mutation(api.media.moveMedia, {
-      mediaId: ids.firstVideo,
+      mediaId: ids.secondVideo,
       direction: "down",
     });
     docs = await t.run(async (ctx) => ({
@@ -324,12 +434,61 @@ describe("media mutations", () => {
       photo: await ctx.db.get(ids.photo),
       secondVideo: await ctx.db.get(ids.secondVideo),
     }));
-    expect(docs.firstVideo?.order).toBe(2);
-    expect(docs.secondVideo?.order).toBe(0);
-    expect(docs.photo?.order).toBe(1);
+    expect(docs.firstVideo?.order).toBe(1);
+    expect(docs.photo?.order).toBe(0);
+    expect(docs.secondVideo?.order).toBe(2);
   });
 
-  test("deleteMedia removes the blob and repacks the remaining kind", async () => {
+  test("moveMedia moves a video above the preceding photo", async () => {
+    const { t, asAdmin, bandId } = await setupBand();
+    const [firstPhotoStorage, videoStorage, lastPhotoStorage] = await t.run(
+      async (ctx) => [
+        await ctx.storage.store(new Blob([new Uint8Array([1])])),
+        await ctx.storage.store(new Blob([new Uint8Array([2])])),
+        await ctx.storage.store(new Blob([new Uint8Array([3])])),
+      ],
+    );
+    const ids = await t.run(async (ctx) => ({
+      firstPhoto: await ctx.db.insert("bandMedia", {
+        bandId,
+        kind: "photo",
+        storageId: firstPhotoStorage,
+        title: "First photo",
+        order: 0,
+        pinned: false,
+      }),
+      video: await ctx.db.insert("bandMedia", {
+        bandId,
+        kind: "video",
+        storageId: videoStorage,
+        title: "Video",
+        order: 1,
+        pinned: true,
+      }),
+      lastPhoto: await ctx.db.insert("bandMedia", {
+        bandId,
+        kind: "photo",
+        storageId: lastPhotoStorage,
+        title: "Last photo",
+        order: 2,
+        pinned: false,
+      }),
+    }));
+
+    await asAdmin.mutation(api.media.moveMedia, {
+      mediaId: ids.video,
+      direction: "up",
+    });
+    const media = await t.query(api.media.forBand, { bandId });
+    expect(media.map((row) => row._id)).toEqual([
+      ids.video,
+      ids.firstPhoto,
+      ids.lastPhoto,
+    ]);
+    expect(media.map((row) => row.order)).toEqual([0, 1, 2]);
+  });
+
+  test("deleteMedia preserves the blob and repacks the remaining media", async () => {
     const { t, asAdmin, bandId } = await setupBand();
     const [storage0, storage1, storage2] = await t.run(async (ctx) => [
       await ctx.storage.store(new Blob([new Uint8Array([1])])),
@@ -373,9 +532,58 @@ describe("media mutations", () => {
         )
         .collect(),
     }));
-    expect(after.deletedBlob).toBeNull();
+    expect(after.deletedBlob).not.toBeNull();
     expect(after.rows.map((row) => row.order)).toEqual([0, 1]);
     expect(after.rows.map((row) => row._id)).toEqual([ids[0], ids[2]]);
+  });
+
+  test("deleteMedia preserves a blob shared with another band", async () => {
+    const { t, asAdmin, bandId } = await setupBand();
+    const sharedStorageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob([new Uint8Array([1, 2, 3])])),
+    );
+    const bandAMedia = await asAdmin.mutation(api.media.addMedia, {
+      bandId,
+      kind: "photo",
+      storageId: sharedStorageId,
+      title: "Band A photo",
+    });
+
+    const asOtherAdmin = t.withIdentity({
+      subject: "shared_blob_admin",
+      email: "shared-blob-admin@example.com",
+    });
+    await asOtherAdmin.mutation(api.users.ensureUser, {});
+    const { bandId: otherBandId } = await asOtherAdmin.mutation(
+      api.bands.createBand,
+      {
+        name: "Shared Blob Band",
+        genres: ["noise"],
+        bio: "",
+        inviteHandles: [],
+      },
+    );
+    const bandBMedia = await asOtherAdmin.mutation(api.media.addMedia, {
+      bandId: otherBandId,
+      kind: "photo",
+      storageId: sharedStorageId,
+      title: "Band B photo",
+    });
+
+    await asAdmin.mutation(api.media.deleteMedia, {
+      mediaId: bandAMedia.mediaId,
+    });
+    const otherBandMedia = await t.query(api.media.forBand, {
+      bandId: otherBandId,
+    });
+    expect(otherBandMedia).toMatchObject([
+      { _id: bandBMedia.mediaId, url: expect.any(String) },
+    ]);
+    expect(
+      await t.run(async (ctx) =>
+        ctx.db.system.get("_storage", sharedStorageId),
+      ),
+    ).not.toBeNull();
   });
 
   test("deleteMedia promotes a remaining video when the pinned video is deleted", async () => {
@@ -687,6 +895,7 @@ describe("media:sweepOrphanBlobs", () => {
     expect(result).toMatchObject({
       scanned: 5,
       deleted: 1,
+      wouldDelete: 0,
       skipped: 4,
       aborted: false,
       done: true,
@@ -714,7 +923,8 @@ describe("media:sweepOrphanBlobs", () => {
     const result = await t.mutation(internal.media.sweepOrphanBlobs, {
       graceMs: 0,
     });
-    expect(result.deleted).toBe(1);
+    expect(result.wouldDelete).toBe(1);
+    expect(result.deleted).toBe(0);
     expect(
       await t.run(async (ctx) => ctx.db.system.get("_storage", orphanId)),
     ).not.toBeNull();
@@ -730,7 +940,7 @@ describe("media:sweepOrphanBlobs", () => {
       graceMs: 1_000_000_000_000,
       dryRun: false,
     });
-    expect(result).toMatchObject({ deleted: 0, skipped: 1 });
+    expect(result).toMatchObject({ deleted: 0, wouldDelete: 0, skipped: 1 });
     expect(
       await t.run(async (ctx) => ctx.db.system.get("_storage", orphanId)),
     ).not.toBeNull();

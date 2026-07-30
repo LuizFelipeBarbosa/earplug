@@ -74,11 +74,73 @@ describe("users:ensureUser", () => {
     const asAnandi = t.withIdentity({
       subject: "user_new_a",
       email: "anandi@example.com",
+      emailVerified: true,
     });
     const { userId } = await asAnandi.mutation(api.users.ensureUser, {});
     expect(userId).toBe(uniqueId);
     const row = await t.run(async (ctx) => ctx.db.get(uniqueId));
     expect(row!.clerkId).toBe("user_new_a");
+  });
+
+  test("does NOT adopt unique email matches that are unverified", async () => {
+    const t = convexTest(schema);
+    const [falseVerifiedLegacyId, omittedVerifiedLegacyId] = await t.run(
+      async (ctx) => [
+        await ctx.db.insert("users", {
+          clerkId: "user_unverified_false_old",
+          name: "False Verified",
+          email: "false-verified@example.com",
+          genres: [],
+          attendedCount: 0,
+        }),
+        await ctx.db.insert("users", {
+          clerkId: "user_unverified_omitted_old",
+          name: "Omitted Verified",
+          email: "omitted-verified@example.com",
+          genres: [],
+          attendedCount: 0,
+        }),
+      ],
+    );
+
+    const asFalseVerified = t.withIdentity({
+      subject: "user_unverified_false_new",
+      email: "false-verified@example.com",
+      emailVerified: false,
+    });
+    const asOmittedVerified = t.withIdentity({
+      subject: "user_unverified_omitted_new",
+      email: "omitted-verified@example.com",
+    });
+    const falseVerified = await asFalseVerified.mutation(
+      api.users.ensureUser,
+      {},
+    );
+    const omittedVerified = await asOmittedVerified.mutation(
+      api.users.ensureUser,
+      {},
+    );
+
+    expect(falseVerified.userId).not.toBe(falseVerifiedLegacyId);
+    expect(omittedVerified.userId).not.toBe(omittedVerifiedLegacyId);
+    const rows = await t.run(async (ctx) => ({
+      falseVerifiedLegacy: await ctx.db.get(falseVerifiedLegacyId),
+      omittedVerifiedLegacy: await ctx.db.get(omittedVerifiedLegacyId),
+      falseVerifiedFresh: await ctx.db.get(falseVerified.userId),
+      omittedVerifiedFresh: await ctx.db.get(omittedVerified.userId),
+    }));
+    expect(rows.falseVerifiedLegacy?.clerkId).toBe(
+      "user_unverified_false_old",
+    );
+    expect(rows.omittedVerifiedLegacy?.clerkId).toBe(
+      "user_unverified_omitted_old",
+    );
+    expect(rows.falseVerifiedFresh?.clerkId).toBe(
+      "user_unverified_false_new",
+    );
+    expect(rows.omittedVerifiedFresh?.clerkId).toBe(
+      "user_unverified_omitted_new",
+    );
   });
 
   test("does NOT adopt by email when the match is ambiguous", async () => {
