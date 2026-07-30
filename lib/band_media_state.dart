@@ -163,6 +163,12 @@ class BandMediaController extends ChangeNotifier {
     }
   }
 
+  /// Uploads already-picked bytes as a photo row; returns the mediaId or null
+  /// on failure. The normal upload tile lifecycle remains visible throughout.
+  Future<String?> uploadHeldPhoto(String bandId, PickedMedia media) {
+    return _beginUpload(bandId, MediaKind.photo, media);
+  }
+
   Future<void> retryUpload(String uploadId) async {
     final found = _findUpload(uploadId);
     if (found == null ||
@@ -180,7 +186,7 @@ class BandMediaController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _beginUpload(
+  Future<String?> _beginUpload(
     String bandId,
     MediaKind kind,
     PickedMedia media,
@@ -198,23 +204,24 @@ class BandMediaController extends ChangeNotifier {
     );
     _uploads.putIfAbsent(bandId, () => []).add(upload);
     notifyListeners();
-    await _runUpload(upload);
+    return _runUpload(upload);
   }
 
-  Future<void> _runUpload(MediaUpload upload) async {
+  Future<String?> _runUpload(MediaUpload upload) async {
     final payload = upload.payload;
-    if (payload == null) return;
+    if (payload == null) return null;
 
     try {
-      await _uploader.upload(
+      final mediaId = await _uploader.upload(
         bandId: upload.bandId,
         kind: upload.kind,
         media: payload,
         onPhase: (phase) => _setUploadPhase(upload.bandId, upload.id, phase),
       );
-      if (!_removeUpload(upload.bandId, upload.id)) return;
+      if (!_removeUpload(upload.bandId, upload.id)) return null;
       notifyListeners();
       await refresh(upload.bandId);
+      return mediaId;
     } on MediaUploadException catch (error) {
       _setUploadPhase(
         upload.bandId,
@@ -222,6 +229,7 @@ class BandMediaController extends ChangeNotifier {
         MediaUploadPhase.failed,
         error: error.message,
       );
+      return null;
     }
   }
 

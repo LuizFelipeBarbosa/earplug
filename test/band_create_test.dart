@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:earplug/app_state.dart';
+import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/screens/band_create.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,7 +16,7 @@ import 'package:provider/provider.dart';
 void main() {
   testWidgets('the tape, its labels and every sheet render and drive the form',
       (tester) async {
-    final app = await _pumpBandCreate(tester);
+    final app = (await _pumpBandCreate(tester)).app;
 
     // Header, blank cassette and the liner notes.
     expect(find.text('START A BAND'), findsOne);
@@ -168,7 +171,7 @@ void main() {
   });
 
   testWidgets('the created view leads out three ways', (tester) async {
-    final app = await _pumpBandCreate(tester);
+    final app = (await _pumpBandCreate(tester)).app;
     await _fillAndCreate(tester);
 
     // The header ✕ is gone on this screen, so a plain exit has to live here.
@@ -180,7 +183,7 @@ void main() {
 
   testWidgets('the join link becomes copyable once the slug is real',
       (tester) async {
-    final app = await _pumpBandCreate(tester);
+    final app = (await _pumpBandCreate(tester)).app;
     await _fillAndCreate(tester);
 
     // Back into the form with the band already landed.
@@ -202,7 +205,8 @@ void main() {
   testWidgets('the create bar goes pending while the save is in flight',
       (tester) async {
     final repository = _GatedDemoRepository(auth: FakeAuthService());
-    final app = await _pumpBandCreate(tester, repository: repository);
+    final app =
+        (await _pumpBandCreate(tester, repository: repository)).app;
     await _fillForm(tester);
 
     await tester.tap(find.text('CREATE BAND'));
@@ -222,28 +226,52 @@ void main() {
     expect(find.text("TAPE'S OUT"), findsOne);
   });
 
-  testWidgets('the photo slot toggles behind the tape', (tester) async {
-    final app = await _pumpBandCreate(tester);
-    expect(find.text('DROP A BAND PHOTO'), findsNothing);
+  testWidgets('the photo slot picks and clears an inlay behind the tape',
+      (tester) async {
+    final harness = await _pumpBandCreate(tester);
+    final app = harness.app;
+    harness.picker.nextPhoto = _photoFixture();
+    expect(find.text('DROP A BAND PHOTO'), findsOne);
 
     await tester.tap(find.byKey(const ValueKey('label-photo')));
-    await tester.pump();
-    expect(app.nbPhoto, isTrue);
-    expect(find.text('DROP A BAND PHOTO'), findsOne);
+    await tester.pumpAndSettle();
+    expect(app.nbPhoto, isNotNull);
+    expect(find.byType(Image), findsOne);
+    expect(find.byIcon(Icons.check), findsOne);
+    expect(find.text('DROP A BAND PHOTO'), findsNothing);
     expect(
       find.text('Photo sits behind the tape — drop one in above.'),
       findsOne,
     );
 
-    await tester.tap(find.byKey(const ValueKey('label-photo')));
+    await tester.tap(find.byKey(const ValueKey('clear-band-photo')));
     await tester.pump();
-    expect(app.nbPhoto, isFalse);
-    expect(find.text('DROP A BAND PHOTO'), findsNothing);
+    expect(app.nbPhoto, isNull);
+    expect(find.text('DROP A BAND PHOTO'), findsOne);
+    expect(find.byIcon(Icons.arrow_upward), findsOne);
+  });
+
+  testWidgets('a picked band photo lands as the first gallery hero',
+      (tester) async {
+    final harness = await _pumpBandCreate(tester);
+    harness.picker.nextPhoto = _photoFixture();
+
+    await tester.tap(find.byKey(const ValueKey('label-photo')));
+    await tester.pumpAndSettle();
+    await _fillForm(tester);
+    await tester.tap(find.text('CREATE BAND'));
+    await tester.pumpAndSettle();
+
+    final bandId = harness.app.bandId;
+    await harness.controller.refresh(bandId);
+    final photos = harness.controller.photosFor(bandId);
+    expect(photos, hasLength(1));
+    expect(photos.single.isHero, isTrue);
   });
 
   testWidgets('an unready create explains itself instead of firing',
       (tester) async {
-    final app = await _pumpBandCreate(tester);
+    final app = (await _pumpBandCreate(tester)).app;
 
     await tester.tap(find.text('CREATE BAND'));
     await tester.pump();
@@ -258,9 +286,11 @@ void main() {
   });
 }
 
-Future<AppState> _pumpBandCreate(
+Future<({AppState app, BandMediaController controller, FakeMediaPicker picker})>
+    _pumpBandCreate(
   WidgetTester tester, {
   EarplugRepository? repository,
+  FakeMediaPicker? picker,
 }) async {
   // A phone-sized surface: the design targets 402x874.
   tester.view.physicalSize = const Size(402, 900);
@@ -274,11 +304,22 @@ Future<AppState> _pumpBandCreate(
   );
   addTearDown(app.dispose);
   await tester.pumpAndSettle();
+  final resolvedPicker = picker ?? FakeMediaPicker();
+  final controller = BandMediaController(
+    repository: app.repository,
+    picker: resolvedPicker,
+    say: app.say,
+  );
+  app.attachMediaController(controller);
+  addTearDown(controller.dispose);
   app.startBandCreate();
 
   await tester.pumpWidget(
-    ChangeNotifierProvider.value(
-      value: app,
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: app),
+        ChangeNotifierProvider.value(value: controller),
+      ],
       child: MaterialApp(
         theme: buildEpTheme(),
         home: const Scaffold(body: BandCreateScreen()),
@@ -286,7 +327,20 @@ Future<AppState> _pumpBandCreate(
     ),
   );
   await tester.pumpAndSettle();
-  return app;
+  return (app: app, controller: controller, picker: resolvedPicker);
+}
+
+PickedMedia _photoFixture() {
+  final bytes = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk'
+    '+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  );
+  return PickedMedia(
+    bytes: bytes,
+    filename: 'band_photo.png',
+    contentType: 'image/png',
+    sizeBytes: bytes.lengthInBytes,
+  );
 }
 
 /// Fills the three required lines through the UI, leaving the bar ready.
@@ -343,5 +397,35 @@ class _GatedDemoRepository extends DemoRepository {
       linkBc: linkBc,
       linkYt: linkYt,
     );
+  }
+}
+
+class FakeMediaPicker implements MediaPicker {
+  PickedMedia? nextPhoto;
+  List<PickedMedia> nextPhotos = [];
+  PickedMedia? nextVideo;
+  MediaPickException? nextException;
+
+  @override
+  Future<PickedMedia?> pickPhoto() async {
+    _throwIfNeeded();
+    return nextPhoto;
+  }
+
+  @override
+  Future<List<PickedMedia>> pickPhotos({int limit = 10}) async {
+    _throwIfNeeded();
+    return nextPhotos;
+  }
+
+  @override
+  Future<PickedMedia?> pickVideo() async {
+    _throwIfNeeded();
+    return nextVideo;
+  }
+
+  void _throwIfNeeded() {
+    final error = nextException;
+    if (error != null) throw error;
   }
 }

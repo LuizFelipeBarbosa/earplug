@@ -5,8 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../band_media_state.dart';
 import '../demo_data.dart';
 import '../models.dart';
+import '../services/media_picker.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -214,11 +216,14 @@ class _Poster extends StatelessWidget {
               _CustomArtSlot(base: fly.base)
             else
               FlyerBox(style: fly, radius: 0, shadow: false),
-            // Keeps printed text legible over photographic art.
+            // Keeps printed text legible over photographic art. Purely visual:
+            // without IgnorePointer this gradient hit-tests as opaque and eats
+            // every tap meant for the drop zone underneath.
             if (app.gfCustomFlyer && app.gfShowOverlay)
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
+              IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
@@ -227,7 +232,8 @@ class _Poster extends StatelessWidget {
                       Colors.black.withValues(alpha: .15),
                       Colors.black.withValues(alpha: .78),
                     ],
-                    stops: const [0, .38, .52, 1],
+                      stops: const [0, .38, .52, 1],
+                    ),
                   ),
                 ),
               ),
@@ -244,43 +250,106 @@ class _CustomArtSlot extends StatelessWidget {
 
   const _CustomArtSlot({required this.base});
 
+  Future<void> _pick(BuildContext context) async {
+    final app = context.read<AppState>();
+    final media = context.read<BandMediaController>();
+    final PickedMedia? picked;
+    try {
+      picked = await media.pickFlyerArt();
+    } on MediaPickException catch (error) {
+      if (!context.mounted) return;
+      app.say(error.message);
+      return;
+    }
+    if (!context.mounted || picked == null) return;
+
+    app.setGfFlyerArt(picked);
+    app.setGfFlyerUploading(true);
+    final storageId = await media.uploadFlyerArt(app.bandId, picked);
+    if (!context.mounted) return;
+
+    // Clearing the preview while its upload is in flight must not let the
+    // stale completion restore a storage id for art that is no longer shown.
+    if (identical(app.gfFlyerArt, picked)) {
+      app.setGfFlyerStorageId(storageId);
+    }
+    app.setGfFlyerUploading(false);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final app = context.read<AppState>();
-    return GestureDetector(
-      onTap: () => app.say(
-        "Flyer upload isn't ready yet — pick a press for now.",
-      ),
-      child: ColoredBox(
-        color: base,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: DashedBox(
-            padding: const EdgeInsets.all(12),
-            color: Ep.whiteA(.28),
-            radius: 4,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.add_photo_alternate_outlined,
-                      size: 22, color: Ep.inkA(.45)),
-                  const SizedBox(height: 6),
-                  Text(
-                    'DROP YOUR FLYER',
-                    style: epText(
-                      size: 10.5,
-                      weight: FontWeight.w900,
-                      letterSpacing: .8,
-                      color: Ep.inkA(.45),
+    final app = context.watch<AppState>();
+    final art = app.gfFlyerArt;
+    final slot = ColoredBox(
+      color: base,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (art == null)
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: DashedBox(
+                  padding: const EdgeInsets.all(12),
+                  color: Ep.whiteA(.28),
+                  radius: 4,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_photo_alternate_outlined,
+                            size: 22, color: Ep.inkA(.45)),
+                        const SizedBox(height: 6),
+                        Text(
+                          'DROP YOUR FLYER',
+                          style: epText(
+                            size: 10.5,
+                            weight: FontWeight.w900,
+                            letterSpacing: .8,
+                            color: Ep.inkA(.45),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
+                ),
+            )
+          else
+            Image.memory(art.bytes, fit: BoxFit.cover),
+          if (art != null)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: GestureDetector(
+                key: const ValueKey('clear-flyer-art'),
+                onTap: () => app.setGfFlyerArt(null),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: .72),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Ep.whiteA(.3)),
+                  ),
+                  child: const Icon(Icons.close, size: 14, color: Colors.white),
+                ),
               ),
             ),
-          ),
-        ),
+          if (app.gfFlyerUploading)
+            const Align(
+              alignment: Alignment.bottomCenter,
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+        ],
       ),
+    );
+    if (art != null) return slot;
+    // The tap target must be the whole opaque slot, exactly the footprint the
+    // original single-detector layout had: a detector wrapping only the inner
+    // drop-zone content loses the hit test to poster-stack siblings.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _pick(context),
+      child: slot,
     );
   }
 }

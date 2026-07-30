@@ -230,8 +230,9 @@ class _NextUpCard extends StatelessWidget {
       onTap: () => app.openGig(gig.id),
       child: Row(
         children: [
-          FlyerBox(
-              style: app.flyer(gig.flyKey),
+          GigFlyer(
+              gig,
+              app.flyer(gig.flyKey),
               width: 46,
               height: 60,
               rotationDeg: -2,
