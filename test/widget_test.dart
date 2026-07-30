@@ -427,9 +427,6 @@ class _FailingRsvpRepository implements EarplugRepository {
   Stream<List<BandMembership>> myBands() => const Stream.empty();
 
   @override
-  Future<List<VideoClip>> videosFor(String bandId) async => const [];
-
-  @override
   Future<List<BandMedia>> mediaFor(String bandId) async => const [];
 
   @override
@@ -527,10 +524,4 @@ class _FailingRsvpRepository implements EarplugRepository {
     String? externalUrl,
     required String cap,
   }) async => 'unused';
-
-  @override
-  Future<void> pinVideo(String videoId) async {}
-
-  @override
-  Future<void> moveVideo(String videoId, String direction) async {}
 }

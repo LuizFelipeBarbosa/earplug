@@ -44,7 +44,6 @@ abstract class EarplugRepository {
   Stream<FeedSnapshot> feed();
   Stream<Interactions> myInteractions();
   Stream<List<BandMembership>> myBands();
-  Future<List<VideoClip>> videosFor(String bandId);
   Future<List<BandMedia>> mediaFor(String bandId);
   Future<String> generateMediaUploadUrl(String bandId);
   Future<String> addBandMedia({
@@ -104,6 +103,4 @@ abstract class EarplugRepository {
     String? externalUrl,
     required String cap,
   });
-  Future<void> pinVideo(String videoId);
-  Future<void> moveVideo(String videoId, String direction);
 }

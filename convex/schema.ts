@@ -50,7 +50,6 @@ export default defineSchema({
     // Storage / link content with no home in the v1 UI, kept rather than swept.
     imageStorageId: v.optional(v.id("_storage")),
     legacySocialLinks: v.optional(legacySocialLinksValidator),
-    legacyImageSlotIds: v.optional(v.array(v.id("_storage"))),
     // Invite handles from createBand (stored, unused in v1).
     inviteHandles: v.optional(v.array(v.string())),
   })
@@ -123,24 +122,13 @@ export default defineSchema({
     .index("by_user_gig", ["userId", "gigId"])
     .index("by_user", ["userId"]),
 
-  videos: defineTable({
-    bandId: v.id("bands"),
-    title: v.string(),
-    views: v.number(),
-    lengthSec: v.number(),
-    pinned: v.boolean(),
-    order: v.number(),
-    // Storage reference for videos synthesized from legacy bandMediaSlots.
-    storageId: v.optional(v.id("_storage")),
-  }).index("by_band_order", ["bandId", "order"]),
-
-  // Supersedes `videos`: one ordered list per band holding both clips and
-  // photos, so ordering and the pin are a single concept rather than two.
+  // One ordered list per band holding both clips and photos, so ordering and
+  // the pin are a single concept rather than two.
   //
   // `storageId` is required — a media row with no bytes behind it is exactly
-  // the broken state this table exists to fix. (Verified safe: all four legacy
-  // `videos` rows carry a live blob.) `contentType`/`sizeBytes` are optional
-  // because convex-test records `_storage` docs as `{size, sha256}` only.
+  // the broken state this table exists to fix. `contentType`/`sizeBytes` are
+  // optional because convex-test records `_storage` docs as `{size, sha256}`
+  // only.
   //
   // No `url` column: Convex storage URLs embed the deployment hostname and go
   // stale when a blob is deleted, so they are resolved per read via

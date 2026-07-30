@@ -246,10 +246,6 @@ export const sweepOrphanBlobs = internalMutation({
       .query("bands")
       .withIndex("by_name")
       .take(2000);
-    const legacyImageBands = await ctx.db
-      .query("bands")
-      .withIndex("by_name")
-      .take(2000);
     const gigs = await ctx.db
       .query("gigs")
       .withIndex("by_startsAt")
@@ -262,7 +258,6 @@ export const sweepOrphanBlobs = internalMutation({
     if (
       mediaRows.length === 2000 ||
       heroBands.length === 2000 ||
-      legacyImageBands.length === 2000 ||
       gigs.length === 2000 ||
       users.length === 2000
     ) {
@@ -283,11 +278,6 @@ export const sweepOrphanBlobs = internalMutation({
     for (const band of heroBands) {
       if (band.imageStorageId !== undefined) {
         referenced.add(band.imageStorageId);
-      }
-    }
-    for (const band of legacyImageBands) {
-      for (const storageId of band.legacyImageSlotIds ?? []) {
-        referenced.add(storageId);
       }
     }
     for (const gig of gigs) {

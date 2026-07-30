@@ -10,10 +10,6 @@ class DemoRepository implements EarplugRepository {
   DemoRepository({required this._auth}) {
     _bands = Map<String, Band>.of(DemoData.bands);
     _memberships = [BandMembership(band: _bands['b1']!, role: 'admin')];
-    _videoLists = {
-      'b1': List<VideoClip>.of(DemoData.b1Videos),
-      '_generic': List<VideoClip>.of(DemoData.genericVideos),
-    };
     _mediaLists = {
       'b1': List<BandMedia>.of(DemoData.b1Media),
       '_generic': List<BandMedia>.of(DemoData.genericMedia),
@@ -33,7 +29,6 @@ class DemoRepository implements EarplugRepository {
 
   late final Map<String, Band> _bands;
   late final List<BandMembership> _memberships;
-  late final Map<String, List<VideoClip>> _videoLists;
   late final Map<String, List<BandMedia>> _mediaLists;
   final List<Gig> _publishedGigs = [];
   final Set<String> _rsvpGigIds = {};
@@ -59,14 +54,6 @@ class DemoRepository implements EarplugRepository {
   @override
   Stream<List<BandMembership>> myBands() =>
       _replay(_bandsController, _currentMemberships);
-
-  @override
-  Future<List<VideoClip>> videosFor(String bandId) async {
-    final videos = bandId == 'b1'
-        ? _videoLists['b1']!
-        : _videoLists['_generic']!;
-    return List<VideoClip>.of(videos);
-  }
 
   @override
   Future<List<BandMedia>> mediaFor(String bandId) async {
@@ -414,35 +401,6 @@ class DemoRepository implements EarplugRepository {
     return id;
   }
 
-  @override
-  Future<void> pinVideo(String videoId) async {
-    final videos = _videoListContaining(videoId);
-    if (videos == null) return;
-
-    for (var i = 0; i < videos.length; i++) {
-      videos[i] = videos[i].copyWith(pinned: videos[i].id == videoId);
-    }
-  }
-
-  @override
-  Future<void> moveVideo(String videoId, String direction) async {
-    final videos = _videoListContaining(videoId);
-    if (videos == null) return;
-
-    final index = videos.indexWhere((video) => video.id == videoId);
-    final delta = switch (direction) {
-      'up' => -1,
-      'down' => 1,
-      _ => 0,
-    };
-    final destination = index + delta;
-    if (delta == 0 || destination < 0 || destination >= videos.length) return;
-
-    final moved = videos[index];
-    videos[index] = videos[destination];
-    videos[destination] = moved;
-  }
-
   FeedSnapshot _currentFeed() => FeedSnapshot(
     gigs: List<Gig>.unmodifiable([...DemoData.gigs, ..._publishedGigs]),
     venues: DemoData.venues,
@@ -492,13 +450,6 @@ class DemoRepository implements EarplugRepository {
 
   void _toggle(Set<String> values, String id) {
     values.contains(id) ? values.remove(id) : values.add(id);
-  }
-
-  List<VideoClip>? _videoListContaining(String videoId) {
-    for (final videos in _videoLists.values) {
-      if (videos.any((video) => video.id == videoId)) return videos;
-    }
-    return null;
   }
 
   List<BandMedia>? _mediaListContaining(String mediaId) {

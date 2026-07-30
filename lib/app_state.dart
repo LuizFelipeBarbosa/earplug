@@ -95,8 +95,6 @@ class AppState extends ChangeNotifier {
   final Map<String, String> _bandLinkIgOverrides = {};
   final Map<String, String> _bandLinkBcOverrides = {};
   final Map<String, String> _bandRoles = {};
-  final Map<String, List<VideoClip>> _videoCache = {};
-  final Set<String> _videoLoads = {};
   BandMediaController? _media;
 
   // ---- navigation
@@ -120,8 +118,7 @@ class AppState extends ChangeNotifier {
 
   /// Legacy-imported count and RSVP-derived history can disagree; show
   /// whichever credits the fan more.
-  int get gigsAttended =>
-      attended > history.length ? attended : history.length;
+  int get gigsAttended => attended > history.length ? attended : history.length;
 
   // ---- home filters
   bool mapMode = false;
@@ -387,8 +384,6 @@ class AppState extends ChangeNotifier {
     _bandLinkIgOverrides.clear();
     _bandLinkBcOverrides.clear();
     _bandRoles.clear();
-    _videoCache.clear();
-    _videoLoads.clear();
     _media?.clearForSignOut();
     resetTo(Screen.home);
     say('Signed out.');
@@ -602,16 +597,6 @@ class AppState extends ChangeNotifier {
   /// RSVP count shown to bands: base demo count plus this user's RSVP.
   int rsvpCount(Gig g) => g.going + (rsvps.contains(g.id) ? 1 : 0);
 
-  List<VideoClip> videosFor(String bandId) {
-    final cached = _videoCache[bandId];
-    if (cached != null) return cached;
-
-    if (_videoLoads.add(bandId)) {
-      unawaited(_loadVideos(bandId));
-    }
-    return const <VideoClip>[];
-  }
-
   String bioFor(String id) {
     return _bandBioOverrides[id] ?? band(id)?.bio ?? '';
   }
@@ -622,16 +607,6 @@ class AppState extends ChangeNotifier {
 
   String linkBcFor(String id) {
     return _bandLinkBcOverrides[id] ?? band(id)?.linkBc ?? '';
-  }
-
-  Future<void> _loadVideos(String bandId) async {
-    try {
-      _videoCache[bandId] = await repository.videosFor(bandId);
-      notifyListeners();
-    } catch (_) {
-    } finally {
-      _videoLoads.remove(bandId);
-    }
   }
 
   void retry() {
@@ -696,43 +671,6 @@ class AppState extends ChangeNotifier {
           .catchError((Object _) {}),
     );
     notifyListeners();
-  }
-
-  void pinVideo(int index) {
-    final activeBandId = bandId;
-    if (activeBandId.isEmpty) return;
-    final vids = videosFor(activeBandId);
-    if (index < 0 || index >= vids.length) return;
-    unawaited(_pinVideo(activeBandId, vids[index].id));
-  }
-
-  void moveVideo(int index, int delta) {
-    final activeBandId = bandId;
-    if (activeBandId.isEmpty) return;
-    final vids = videosFor(activeBandId);
-    if (index < 0 || index >= vids.length) return;
-    final direction = delta < 0 ? 'up' : 'down';
-    unawaited(_moveVideo(activeBandId, vids[index].id, direction));
-  }
-
-  Future<void> _pinVideo(String bandId, String videoId) async {
-    try {
-      await repository.pinVideo(videoId);
-      _videoCache[bandId] = await repository.videosFor(bandId);
-      notifyListeners();
-    } catch (_) {}
-  }
-
-  Future<void> _moveVideo(
-    String bandId,
-    String videoId,
-    String direction,
-  ) async {
-    try {
-      await repository.moveVideo(videoId, direction);
-      _videoCache[bandId] = await repository.videosFor(bandId);
-      notifyListeners();
-    } catch (_) {}
   }
 
   // ========================= band create =========================
@@ -900,9 +838,7 @@ class AppState extends ChangeNotifier {
 
     String count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
     final names = {...bandCounts.keys, ...venueCounts.keys}.toList()
-      ..sort(
-        (a, b) => (bandCounts[b] ?? 0).compareTo(bandCounts[a] ?? 0),
-      );
+      ..sort((a, b) => (bandCounts[b] ?? 0).compareTo(bandCounts[a] ?? 0));
     return [
       for (final name in names)
         (

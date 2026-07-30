@@ -354,40 +354,6 @@ abstract final class DemoData {
     ),
   };
 
-  static const b1Videos = <VideoClip>[
-    VideoClip(
-      id: 'b1v1',
-      title: 'This is what we sound like — live at Foghorn Club',
-      views: '12.4K views',
-      len: '2:41',
-      pinned: true,
-    ),
-    VideoClip(
-      id: 'b1v2',
-      title: 'Riptide (practice take, one mic)',
-      views: '3.1K views',
-      len: '3:05',
-    ),
-    VideoClip(
-      id: 'b1v3',
-      title: 'Undertow — basement set',
-      views: '1.8K views',
-      len: '2:22',
-    ),
-    VideoClip(
-      id: 'b1v4',
-      title: 'New song, no name yet',
-      views: '942 views',
-      len: '1:47',
-    ),
-    VideoClip(
-      id: 'b1v5',
-      title: 'Soundcheck goes wrong (fun)',
-      views: '5.6K views',
-      len: '0:58',
-    ),
-  ];
-
   /// Band media for Foghorn Diet, including its clips and demo photos.
   static const b1Media = <BandMedia>[
     BandMedia(
@@ -487,41 +453,6 @@ abstract final class DemoData {
       pinned: false,
       order: 1,
       isHero: false,
-    ),
-  ];
-
-  /// Generic clip list shown for bands that haven't uploaded (everyone but b1).
-  static const genericVideos = <VideoClip>[
-    VideoClip(
-      id: 'gv1',
-      title: 'This is what we sound like',
-      views: '1.1K views',
-      len: '2:10',
-      pinned: true,
-    ),
-    VideoClip(
-      id: 'gv2',
-      title: 'Live clip — last month',
-      views: '640 views',
-      len: '1:52',
-    ),
-    VideoClip(
-      id: 'gv3',
-      title: 'Practice space take',
-      views: '402 views',
-      len: '2:33',
-    ),
-    VideoClip(
-      id: 'gv4',
-      title: 'New one (rough)',
-      views: '188 views',
-      len: '1:19',
-    ),
-    VideoClip(
-      id: 'gv5',
-      title: 'Full set audio',
-      views: '871 views',
-      len: '22:04',
     ),
   ];
 

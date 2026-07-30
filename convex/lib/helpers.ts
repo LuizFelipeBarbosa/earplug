@@ -173,16 +173,6 @@ export const venuePayloadValidator = v.object({
   lng: v.number(),
 });
 
-export const videoPayloadValidator = v.object({
-  _id: v.id("videos"),
-  bandId: v.id("bands"),
-  title: v.string(),
-  views: v.number(),
-  lengthSec: v.number(),
-  pinned: v.boolean(),
-  order: v.number(),
-});
-
 export const mediaKindValidator = v.union(
   v.literal("video"),
   v.literal("photo"),
@@ -279,18 +269,6 @@ export function toVenuePayload(venue: Doc<"venues">) {
   };
 }
 
-export function toVideoPayload(video: Doc<"videos">) {
-  return {
-    _id: video._id,
-    bandId: video.bandId,
-    title: video.title,
-    views: video.views,
-    lengthSec: video.lengthSec,
-    pinned: video.pinned,
-    order: video.order,
-  };
-}
-
 export function toMediaPayload(
   media: Doc<"bandMedia">,
   url: string | null,
@@ -336,9 +314,7 @@ export const MAX_FEED_GIGS = 200;
 // ─── Band media limits ──────────────────────────────────────────────────────
 
 /** Both the insert cap and every `.take()` on `bandMedia`, so "the whole
- * ordered list fits in one read" holds by construction. (`videos.ts` took 100
- * with no insert cap, so a band with 101 rows would have silently reordered a
- * truncated list.) */
+ * ordered list fits in one read" holds by construction. */
 export const MAX_MEDIA_PER_BAND = 50;
 
 export const MAX_MEDIA_BYTES = 100 * 1024 * 1024;

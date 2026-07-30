@@ -382,42 +382,6 @@ class BandMedia {
   );
 }
 
-class VideoClip {
-  final String id;
-  final String title;
-  final String views;
-  final String len;
-  final bool pinned;
-
-  const VideoClip({
-    required this.id,
-    required this.title,
-    required this.views,
-    required this.len,
-    this.pinned = false,
-  });
-
-  factory VideoClip.fromJson(Map<String, dynamic> json) {
-    final lengthSec = (json['lengthSec'] as num).toInt();
-    final seconds = (lengthSec % 60).toString().padLeft(2, '0');
-    return VideoClip(
-      id: json['_id'] as String,
-      title: json['title'] as String,
-      views: '${_compactCount(json['views'] as num)} views',
-      len: '${lengthSec ~/ 60}:$seconds',
-      pinned: json['pinned'] as bool,
-    );
-  }
-
-  VideoClip copyWith({bool? pinned}) => VideoClip(
-    id: id,
-    title: title,
-    views: views,
-    len: len,
-    pinned: pinned ?? this.pinned,
-  );
-}
-
 Color _colorFromHex(String value) {
   final hex = value.startsWith('#') ? value.substring(1) : value;
   return Color(0xFF000000 | int.parse(hex, radix: 16));

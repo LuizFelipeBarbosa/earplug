@@ -3,9 +3,8 @@
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
 
-**v1.1 — band media.** `media:*` supersedes `videos:*`. `videos:*` is
-deprecated and will be removed in a later coordinated release, after the client
-has migrated.
+**v1.1 — band media.** The client migrated to `media:*`, which superseded
+`videos:*`; the deprecated `videos:*` functions have now been removed.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
@@ -40,10 +39,6 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
   "linkIg": "@foghorndiet", "linkBc": "foghorndiet.bandcamp.com",
   "pastShows": [{ "title": "...", "meta": "JUL 12" }] }
 
-// VideoPayload
-{ "_id": "...", "bandId": "...", "title": "...", "views": 12400,
-  "lengthSec": 161, "pinned": true, "order": 0 }
-
 // MediaPayload
 { "_id": "...", "bandId": "...", "kind": "video|photo",
   // null means the client renders its placeholder tile
@@ -68,8 +63,6 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 | `bands:get` | `{ bandId }` | `BandPayload` (full) or `null` |
 | `bands:search` | `{ q: string }` | `BandPayload[]` — name search-index match; `q: ""` → all bands (capped 50) |
 | ★ `bands:myBands` | `{}` | `[{ band: BandPayload, role: "admin"\|"member" }]`; `[]` unauth |
-| `videos:forBand` | `{ bandId }` | `VideoPayload[]` ordered by `order` asc |
-| ↳ v1.1 status for `videos:forBand` | — | **Deprecated.** Same wire shape as before, but `_id` values now name `bandMedia` rows. Ids are opaque to clients; do not construct or compare them structurally. |
 | `media:forBand` | `{ bandId }` | `MediaPayload[]` — public; ordered by `order` asc |
 | `users:me` | `{}` | `UserPayload \| null` |
 | ★ `interactions:myInteractions` | `{}` | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], attendedCount: number }`; empty/0 unauth |
@@ -88,10 +81,6 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 | `bands:updateProfile` | `{ bandId, bio?, linkIg?, linkBc? }` | `null` | requireBandAdmin |
 | `gigs:publishGig` | `{ bandId, title, startsAt, doorsTime, venueId, price: number, flyKey: "xerox"\|"riso"\|"marquee"\|"blueprint"\|"sunburst"\|"custom", ticketing, externalUrl?, cap }` | `{ gigId }` | requireBandAdmin(bandId); flyKey client-chosen from the six listed literals; `ticketing === "external"` requires a valid http(s) `externalUrl`; `externalUrl` is dropped for `ticketing === "rsvp"`; goingCount 0. |
 | ↳ v1.1 args/rules for `gigs:publishGig` | Adds `flyStorageId?` to the args above | `{ gigId }` | `flyKey === "custom"` requires a live `flyStorageId` or throws. A non-`"custom"` flyKey silently drops any supplied `flyStorageId`; nothing is stored. |
-| `videos:pinVideo` | `{ videoId }` | `null` | requireBandAdmin of the video's band; unpins siblings. |
-| ↳ v1.1 status for `videos:pinVideo` | — | — | **Deprecated** compatibility shim over `bandMedia`. |
-| `videos:moveVideo` | `{ videoId, direction: "up"\|"down" }` | `null` | Swaps `order` with neighbor; no-op at ends. |
-| ↳ v1.1 status for `videos:moveVideo` | — | — | **Deprecated** compatibility shim over `bandMedia`. |
 | `media:generateUploadUrl` | `{ bandId }` | upload URL string | requireBandAdmin(bandId); throws when the band already has 50 media rows. |
 | `media:addMedia` | `{ bandId, kind: "video"\|"photo", storageId, title, caption?, lengthSec? }` | `{ mediaId }` | requireBandAdmin(bandId); requires a live, acceptable, non-duplicate upload and room under the per-band cap. Ordering is appended within `kind`; the first video auto-pins. |
 | `media:deleteMedia` | `{ mediaId }` | `null` | requireBandAdmin of the media's band; deletes the blob and row, repacks that kind's order, clears the hero reference when applicable, and promotes a video when the pinned one is deleted. |
@@ -121,15 +110,17 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 
 ## Internal (not called by client)
 
-- `seed:seedDemo` internalMutation — idempotent demo venues/gigs/videos port of
+- `seed:seedDemo` internalMutation — idempotent demo venues/bands/gigs port of
   lib/demo_data.dart; startsAt computed relative to run date so one gig is "tonight".
 - `migrations:migrateUsers` / `migrations:migrateBands` internalMutations — written
   only after the legacy-schema mapping checkpoint.
-- `media:sweepOrphanBlobs` internalMutation — dry-run by default; not yet wired
-  to a cron (deferred).
+- `media:sweepOrphanBlobs` internalMutation — dry-run by default; scheduled by
+  `convex/crons.ts` every 24 hours with `{ dryRun: false }`.
 - `migrations:migrateVideosToBandMedia`,
   `migrations:backfillLegacyPhotos`, `migrations:purgeVideosTable`, and
-  `migrations:clearLegacyBandImageFields` are one-shot migration entries. Run
-  them once against the real deployment, then delete them from the codebase,
-  following the lifecycle precedent of the migrations deleted at commit
-  `4b5c819`.
+  `migrations:clearLegacyBandImageFields` were run against dev, and
+  `convex/migrations.ts` has now been deleted. The entries remain recoverable
+  from git history, following the established one-shot migration lifecycle.
+- Prod (`decisive-iguana-759`) still runs the pre-v1 legacy schema and requires
+  the full legacy migration (see git history) before any changes in this
+  document can deploy there; that work is explicitly out of scope here.

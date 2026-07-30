@@ -49,14 +49,6 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<List<VideoClip>> videosFor(String bandId) async {
-    final result = await _convexService.query('videos:forBand', {
-      'bandId': bandId,
-    });
-    return [for (final json in _mapList(result)) VideoClip.fromJson(json)];
-  }
-
-  @override
   Future<List<BandMedia>> mediaFor(String bandId) async {
     final result = await _convexService.query('media:forBand', {
       'bandId': bandId,
@@ -261,19 +253,6 @@ class ConvexRepository implements EarplugRepository {
       'cap': cap,
     });
     return _asMap(result)['gigId'] as String;
-  }
-
-  @override
-  Future<void> pinVideo(String videoId) async {
-    await _convexService.mutation('videos:pinVideo', {'videoId': videoId});
-  }
-
-  @override
-  Future<void> moveVideo(String videoId, String direction) async {
-    await _convexService.mutation('videos:moveVideo', {
-      'videoId': videoId,
-      'direction': direction,
-    });
   }
 }
 
