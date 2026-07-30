@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:latlong2/latlong.dart';
 
+import 'band_media_state.dart';
 import 'data/convex_repository.dart';
 import 'data/demo_repository.dart';
 import 'data/repository.dart';
@@ -91,8 +92,10 @@ class AppState extends ChangeNotifier {
   final Map<String, String> _bandBioOverrides = {};
   final Map<String, String> _bandLinkIgOverrides = {};
   final Map<String, String> _bandLinkBcOverrides = {};
+  final Map<String, String> _bandRoles = {};
   final Map<String, List<VideoClip>> _videoCache = {};
   final Set<String> _videoLoads = {};
+  BandMediaController? _media;
 
   // ---- navigation
   List<ScreenEntry> _stack = const [ScreenEntry(Screen.home)];
@@ -295,6 +298,7 @@ class AppState extends ChangeNotifier {
     }
     for (final membership in memberships) {
       final band = membership.band;
+      _bandRoles[band.id] = membership.role;
       _bands[band.id] = band.copyWith(
         upcoming: _bands[band.id]?.upcoming ?? const [],
       );
@@ -347,6 +351,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void attachMediaController(BandMediaController c) => _media = c;
+
   // ========================= auth =========================
 
   void needAuth(PendingAuth p) {
@@ -371,8 +377,10 @@ class AppState extends ChangeNotifier {
     _bandBioOverrides.clear();
     _bandLinkIgOverrides.clear();
     _bandLinkBcOverrides.clear();
+    _bandRoles.clear();
     _videoCache.clear();
     _videoLoads.clear();
+    _media?.clearForSignOut();
     resetTo(Screen.home);
     say('Signed out.');
   }
@@ -549,6 +557,10 @@ class AppState extends ChangeNotifier {
   }
 
   Band? band(String id) => _bands[id];
+
+  String roleFor(String id) => _bandRoles[id] ?? 'member';
+
+  bool isAdminOf(String id) => _bandRoles[id] == 'admin';
 
   Venue venue(String id) => _venues[id] ?? _unknownVenue;
 

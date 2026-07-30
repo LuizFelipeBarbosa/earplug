@@ -45,7 +45,7 @@ class BandDashScreen extends StatelessWidget {
                       Text('${band.name.toUpperCase()} ▾',
                           style: epDisplay(size: 16, height: 1)),
                       const SizedBox(height: 3),
-                      Text('BAND VIEW · ADMIN',
+                      Text('BAND VIEW · ${app.roleFor(band.id).toUpperCase()}',
                           style: epText(
                               size: 10,
                               weight: FontWeight.w800,

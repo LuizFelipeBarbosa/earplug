@@ -1,0 +1,314 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import 'data/repository.dart';
+import 'models.dart';
+import 'services/media_picker.dart';
+import 'services/media_upload_service.dart';
+
+class MediaUpload {
+  const MediaUpload({
+    required this.id,
+    required this.bandId,
+    required this.kind,
+    required this.filename,
+    required this.sizeBytes,
+    required this.phase,
+    required this.error,
+    required this.payload,
+    required this.preview,
+  });
+
+  final String id;
+  final String bandId;
+  final MediaKind kind;
+  final String filename;
+  final int sizeBytes;
+  final MediaUploadPhase phase;
+  final String? error;
+
+  // Bytes stay alive only for retry. Done and dismissed uploads must release
+  // them or every completed video could retain another 25 MB.
+  final PickedMedia? payload;
+  final Uint8List? preview;
+}
+
+class BandMediaController extends ChangeNotifier {
+  BandMediaController({
+    required this.repository,
+    required this.say,
+    MediaPicker? picker,
+    MediaUploadService? uploader,
+  }) : _picker = picker ?? MediaPicker(),
+       _uploader = uploader ?? MediaUploadService(repository: repository);
+
+  final EarplugRepository repository;
+  final void Function(String) say;
+  final MediaPicker _picker;
+  final MediaUploadService _uploader;
+
+  final Map<String, List<BandMedia>> _mediaCache = {};
+  final Set<String> _mediaLoads = {};
+  final Map<String, Object> _loadTokens = {};
+  final Map<String, String> _loadErrors = {};
+  final Map<String, List<MediaUpload>> _uploads = {};
+
+  List<BandMedia> mediaFor(String bandId) {
+    final cached = _mediaCache[bandId];
+    if (cached != null) return cached;
+
+    if (_mediaLoads.add(bandId)) {
+      unawaited(_loadMedia(bandId));
+    }
+    return const <BandMedia>[];
+  }
+
+  List<BandMedia> videosFor(String bandId) {
+    final videos = mediaFor(
+      bandId,
+    ).where((media) => media.kind == MediaKind.video).toList();
+    videos.sort((a, b) => a.order.compareTo(b.order));
+    return videos;
+  }
+
+  List<BandMedia> photosFor(String bandId) {
+    final photos = mediaFor(
+      bandId,
+    ).where((media) => media.kind == MediaKind.photo).toList();
+    photos.sort((a, b) => a.order.compareTo(b.order));
+    return photos;
+  }
+
+  BandMedia? pinnedVideoFor(String bandId) {
+    final videos = videosFor(bandId);
+    for (final video in videos) {
+      if (video.pinned) return video;
+    }
+    return videos.isEmpty ? null : videos.first;
+  }
+
+  bool isLoading(String bandId) => _mediaLoads.contains(bandId);
+
+  String? loadErrorFor(String bandId) => _loadErrors[bandId];
+
+  Future<void> refresh(String bandId) async {
+    _mediaLoads.add(bandId);
+    await _loadMedia(bandId);
+  }
+
+  Future<void> _loadMedia(String bandId) async {
+    final token = Object();
+    _loadTokens[bandId] = token;
+    try {
+      final loaded = await repository.mediaFor(bandId);
+      if (!identical(_loadTokens[bandId], token)) return;
+      _mediaCache[bandId] = List<BandMedia>.unmodifiable(loaded);
+      _loadErrors.remove(bandId);
+    } catch (error) {
+      if (!identical(_loadTokens[bandId], token)) return;
+      _loadErrors[bandId] = '$error';
+    } finally {
+      if (identical(_loadTokens[bandId], token)) {
+        _loadTokens.remove(bandId);
+        _mediaLoads.remove(bandId);
+        notifyListeners();
+      }
+    }
+  }
+
+  List<MediaUpload> uploadsFor(String bandId) =>
+      List<MediaUpload>.unmodifiable(_uploads[bandId] ?? const []);
+
+  bool isUploading(String bandId) => uploadsFor(bandId).any(
+    (upload) =>
+        upload.phase != MediaUploadPhase.failed &&
+        upload.phase != MediaUploadPhase.done,
+  );
+
+  Future<void> pickAndUploadVideo(String bandId) async {
+    final PickedMedia? media;
+    try {
+      media = await _picker.pickVideo();
+    } on MediaPickException catch (error) {
+      say(error.message);
+      return;
+    }
+    if (media == null) return;
+
+    await _beginUpload(bandId, MediaKind.video, media);
+  }
+
+  Future<void> pickAndUploadPhotos(String bandId) async {
+    final List<PickedMedia> media;
+    try {
+      media = await _picker.pickPhotos();
+    } on MediaPickException catch (error) {
+      say(error.message);
+      return;
+    }
+    for (final photo in media) {
+      await _beginUpload(bandId, MediaKind.photo, photo);
+    }
+  }
+
+  Future<PickedMedia?> pickFlyerArt() => _picker.pickPhoto();
+
+  Future<String?> uploadFlyerArt(String bandId, PickedMedia media) async {
+    try {
+      return await _uploader.uploadRaw(bandId: bandId, media: media);
+    } on MediaUploadException catch (error) {
+      say(error.message);
+      return null;
+    }
+  }
+
+  Future<void> retryUpload(String uploadId) async {
+    final found = _findUpload(uploadId);
+    if (found == null ||
+        found.upload.phase != MediaUploadPhase.failed ||
+        found.upload.payload == null) {
+      return;
+    }
+    await _runUpload(found.upload);
+  }
+
+  void dismissUpload(String uploadId) {
+    final found = _findUpload(uploadId);
+    if (found == null) return;
+    _removeUpload(found.upload.bandId, uploadId);
+    notifyListeners();
+  }
+
+  Future<void> _beginUpload(
+    String bandId,
+    MediaKind kind,
+    PickedMedia media,
+  ) async {
+    final upload = MediaUpload(
+      id: '$bandId-${DateTime.now().microsecondsSinceEpoch}',
+      bandId: bandId,
+      kind: kind,
+      filename: media.filename,
+      sizeBytes: media.sizeBytes,
+      phase: MediaUploadPhase.preparing,
+      error: null,
+      payload: media,
+      preview: kind == MediaKind.photo ? media.bytes : null,
+    );
+    _uploads.putIfAbsent(bandId, () => []).add(upload);
+    notifyListeners();
+    await _runUpload(upload);
+  }
+
+  Future<void> _runUpload(MediaUpload upload) async {
+    final payload = upload.payload;
+    if (payload == null) return;
+
+    try {
+      await _uploader.upload(
+        bandId: upload.bandId,
+        kind: upload.kind,
+        media: payload,
+        onPhase: (phase) => _setUploadPhase(upload.bandId, upload.id, phase),
+      );
+      if (!_removeUpload(upload.bandId, upload.id)) return;
+      notifyListeners();
+      await refresh(upload.bandId);
+    } on MediaUploadException catch (error) {
+      _setUploadPhase(
+        upload.bandId,
+        upload.id,
+        MediaUploadPhase.failed,
+        error: error.message,
+      );
+    }
+  }
+
+  void _setUploadPhase(
+    String bandId,
+    String uploadId,
+    MediaUploadPhase phase, {
+    String? error,
+  }) {
+    final uploads = _uploads[bandId];
+    final index = uploads?.indexWhere((upload) => upload.id == uploadId) ?? -1;
+    if (uploads == null || index == -1) return;
+
+    final current = uploads[index];
+    uploads[index] = MediaUpload(
+      id: current.id,
+      bandId: current.bandId,
+      kind: current.kind,
+      filename: current.filename,
+      sizeBytes: current.sizeBytes,
+      phase: phase,
+      error: error,
+      payload: phase == MediaUploadPhase.done ? null : current.payload,
+      preview: current.preview,
+    );
+    notifyListeners();
+  }
+
+  ({String bandId, MediaUpload upload})? _findUpload(String uploadId) {
+    for (final entry in _uploads.entries) {
+      for (final upload in entry.value) {
+        if (upload.id == uploadId) {
+          return (bandId: entry.key, upload: upload);
+        }
+      }
+    }
+    return null;
+  }
+
+  bool _removeUpload(String bandId, String uploadId) {
+    final uploads = _uploads[bandId];
+    if (uploads == null) return false;
+
+    final before = uploads.length;
+    uploads.removeWhere((upload) => upload.id == uploadId);
+    if (uploads.isEmpty) _uploads.remove(bandId);
+    return uploads.length != before;
+  }
+
+  Future<void> pin(String bandId, String mediaId) async {
+    await _mutate(bandId, () => repository.pinBandMedia(mediaId));
+  }
+
+  Future<void> move(String bandId, String mediaId, String direction) async {
+    await _mutate(bandId, () => repository.moveBandMedia(mediaId, direction));
+  }
+
+  Future<void> remove(String bandId, String mediaId) async {
+    await _mutate(bandId, () => repository.deleteBandMedia(mediaId));
+  }
+
+  Future<void> setHero(String bandId, String mediaId) async {
+    await _mutate(
+      bandId,
+      () => repository.setBandPhoto(bandId: bandId, mediaId: mediaId),
+    );
+  }
+
+  Future<void> clearHero(String bandId) async {
+    await _mutate(bandId, () => repository.clearBandPhoto(bandId));
+  }
+
+  Future<void> _mutate(String bandId, Future<void> Function() mutation) async {
+    try {
+      await mutation();
+      await refresh(bandId);
+    } catch (_) {
+      say('Something broke — try again.');
+    }
+  }
+
+  void clearForSignOut() {
+    _mediaCache.clear();
+    _mediaLoads.clear();
+    _loadTokens.clear();
+    _loadErrors.clear();
+    _uploads.clear();
+    notifyListeners();
+  }
+}

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state.dart';
+import 'band_media_state.dart';
 import 'data/convex_repository.dart';
 import 'data/repository.dart';
 import 'env.dart';
@@ -88,10 +89,25 @@ class EarplugApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => repository == null && auth == null
-          ? AppState()
-          : AppState(repository: repository, auth: auth),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => repository == null && auth == null
+              ? AppState()
+              : AppState(repository: repository, auth: auth),
+        ),
+        ChangeNotifierProvider<BandMediaController>(
+          create: (ctx) {
+            final app = ctx.read<AppState>();
+            final controller = BandMediaController(
+              repository: app.repository,
+              say: app.say,
+            );
+            app.attachMediaController(controller);
+            return controller;
+          },
+        ),
+      ],
       child: MaterialApp(
         title: 'EarPlug',
         debugShowCheckedModeBanner: false,
