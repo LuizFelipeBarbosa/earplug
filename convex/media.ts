@@ -108,31 +108,6 @@ export const addMedia = mutation({
   },
 });
 
-/** One-shot dev repair: run once via the dashboard/CLI, then delete this mutation. */
-export const normalizeOrders = internalMutation({
-  args: {},
-  returns: v.number(),
-  handler: async (ctx) => {
-    let bandsRepacked = 0;
-    for await (const band of ctx.db.query("bands")) {
-      const media = await ctx.db
-        .query("bandMedia")
-        .withIndex("by_band_order", (q) => q.eq("bandId", band._id))
-        .order("asc")
-        .take(MAX_MEDIA_PER_BAND);
-      if (media.length === 0) continue;
-
-      bandsRepacked++;
-      for (let order = 0; order < media.length; order++) {
-        if (media[order].order !== order) {
-          await ctx.db.patch(media[order]._id, { order });
-        }
-      }
-    }
-    return bandsRepacked;
-  },
-});
-
 export const deleteMedia = mutation({
   args: { mediaId: v.id("bandMedia") },
   returns: v.null(),
