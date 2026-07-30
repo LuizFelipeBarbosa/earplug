@@ -6,6 +6,11 @@ import { uniqueSlug } from "./lib/helpers";
 // Port of lib/demo_data.dart (verbatim strings/numbers). startsAt is computed
 // relative to run time so gig 1 lands "tonight" (8PM Pacific) and the rest
 // follow the demo spacing (JUL 28 → AUG 9 = day offsets 0..12).
+//
+// TEST FIXTURE ONLY. This exists for `gigs.test.ts`; it must never be run
+// against a real deployment. Its rows were purged from dev by
+// `cleanup:purgeDemoData`, and re-seeding would put fake bands back in front
+// of real users.
 
 const PT_OFFSET_MS = 7 * 60 * 60 * 1000; // PDT (UTC-7)
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -96,14 +101,12 @@ const DEMO_GIGS = [
   { title: "Fog City Fest — Day Show", venue: "v1", price: 15, dayOffset: 12, hour: 12, minute: 0, doorsTime: "12PM / 12:30PM", flyKey: "blue", lineup: ["b1", "b2", "b4", "b5"], goingCount: 112, genres: ["punk", "garage"], desc: "Eight hours, four stages worth of bands on one stage.", ticketing: "external" as const },
 ];
 
-// b1 videos: "12.4K views"/2:41 etc. converted to numbers.
-const B1_VIDEOS = [
-  { title: "This is what we sound like — live at Foghorn Club", views: 12400, lengthSec: 161, pinned: true, order: 0 },
-  { title: "Riptide (practice take, one mic)", views: 3100, lengthSec: 185, pinned: false, order: 1 },
-  { title: "Undertow — basement set", views: 1800, lengthSec: 142, pinned: false, order: 2 },
-  { title: "New song, no name yet", views: 942, lengthSec: 107, pinned: false, order: 3 },
-  { title: "Soundcheck goes wrong (fun)", views: 5600, lengthSec: 58, pinned: false, order: 4 },
-];
+// Names/titles of everything `seedDemo` inserts. `cleanup:purgeDemoData`
+// deletes by these lists, so keeping them derived from the fixtures above is
+// what stops the seeder and the purger from drifting apart.
+export const DEMO_VENUE_NAMES = DEMO_VENUES.map((venue) => venue.name);
+export const DEMO_BAND_NAMES = DEMO_BANDS.map((band) => band.name);
+export const DEMO_GIG_TITLES = DEMO_GIGS.map((gig) => gig.title);
 
 export const seedDemo = internalMutation({
   args: {},
@@ -158,17 +161,6 @@ export const seedDemo = internalMutation({
         ticketing: gig.ticketing,
         cap: "No cap",
         goingCount: gig.goingCount,
-      });
-    }
-
-    for (const video of B1_VIDEOS) {
-      await ctx.db.insert("videos", {
-        bandId: bandIds.b1,
-        title: video.title,
-        views: video.views,
-        lengthSec: video.lengthSec,
-        pinned: video.pinned,
-        order: video.order,
       });
     }
 

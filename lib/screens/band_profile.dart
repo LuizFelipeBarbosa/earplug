@@ -1,10 +1,15 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../band_media_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/photo_viewer.dart';
+import '../widgets/video_player_sheet.dart';
 
 class BandProfileScreen extends StatelessWidget {
   final String bandId;
@@ -17,11 +22,11 @@ class BandProfileScreen extends StatelessWidget {
     final band = app.band(bandId);
     if (band == null) return const SizedBox.shrink();
 
-    final vids = app.videosFor(bandId);
-    final pinned = vids.isEmpty
-        ? null
-        : vids.firstWhere((v) => v.pinned, orElse: () => vids.first);
-    final clips = vids.where((v) => v != pinned).take(4).toList();
+    final media = context.watch<BandMediaController>();
+    final vids = media.videosFor(bandId);
+    final pinned = media.pinnedVideoFor(bandId);
+    final clips = vids.where((v) => v.id != pinned?.id).take(4).toList();
+    final photos = media.photosFor(bandId);
     final upcoming = [
       for (final id in band.upcoming)
         if (app.gig(id) case final Gig g) g,
@@ -101,7 +106,7 @@ class BandProfileScreen extends StatelessWidget {
                 const SizedBox(height: 16),
                 const SectionLabel('▶ THIS IS WHAT WE SOUND LIKE', blue: true),
                 const SizedBox(height: 8),
-                _PinnedVideo(pinned: pinned, app: app),
+                _PinnedVideo(pinned: pinned, band: band, app: app),
                 const SizedBox(height: 16),
                 const SectionLabel('CLIPS'),
                 const SizedBox(height: 8),
@@ -112,7 +117,63 @@ class BandProfileScreen extends StatelessWidget {
                   childAspectRatio: 168 / 104,
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  children: [for (final v in clips) _ClipTile(clip: v, app: app)],
+                  children: [
+                    for (final v in clips)
+                      _ClipTile(clip: v, band: band, app: app),
+                  ],
+                ),
+              ],
+              if (photos.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const SectionLabel('PHOTOS'),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 104,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: math.min(photos.length, 6),
+                    separatorBuilder: (_, _) => const SizedBox(width: 8),
+                    itemBuilder: (context, i) {
+                      final tile = Transform.rotate(
+                        angle: (i % 2 == 0 ? -2 : 1.5) * math.pi / 180,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: SizedBox(
+                            width: 96,
+                            height: 96,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                EpNetworkImage(
+                                  url: photos[i].url,
+                                  fallback: const ColoredBox(color: Ep.card),
+                                ),
+                                if (photos.length > 6 && i == 5) ...[
+                                  ColoredBox(
+                                    color: Colors.black.withValues(alpha: .55),
+                                  ),
+                                  Center(
+                                    child: Text(
+                                      '+${photos.length - 6}',
+                                      style: epDisplay(size: 16),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                      return GestureDetector(
+                        onTap: () => showPhotoViewer(context, photos, i),
+                        child: SizedBox(
+                          width: 96,
+                          height: 96,
+                          child: tile,
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ],
               const SizedBox(height: 16),
@@ -158,29 +219,57 @@ class BandProfileScreen extends StatelessWidget {
 }
 
 class _PinnedVideo extends StatelessWidget {
-  final VideoClip pinned;
+  final BandMedia pinned;
+  final Band band;
   final AppState app;
 
-  const _PinnedVideo({required this.pinned, required this.app});
+  const _PinnedVideo({
+    required this.pinned,
+    required this.band,
+    required this.app,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => app.say("▶ Playback isn't wired up yet — catch them live."),
+      onTap: () {
+        if (pinned.url == null || pinned.url!.isEmpty) {
+          app.say('That clip is still processing.');
+          return;
+        }
+        showBandVideo(context, media: pinned, bandName: band.name);
+      },
       child: Container(
         height: 190,
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF16161C), Color(0xFF0D0D10)],
-          ),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        foregroundDecoration: BoxDecoration(
           border: Border.all(color: Ep.whiteA(.12)),
           borderRadius: BorderRadius.circular(14),
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
+            Positioned.fill(child: ClipTexture(bandColor: band.color)),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 90,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: .55),
+                    ],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
+            ),
             Center(
               child: Container(
                 width: 58,
@@ -214,7 +303,7 @@ class _PinnedVideo extends StatelessWidget {
             Positioned(
               right: 12,
               bottom: 10,
-              child: Text('${pinned.views} · ${pinned.len}',
+              child: Text('${pinned.viewsLabel} · ${pinned.lenLabel}',
                   style: epText(size: 10.5, weight: FontWeight.w700, color: Ep.inkA(.55))),
             ),
           ],
@@ -225,23 +314,38 @@ class _PinnedVideo extends StatelessWidget {
 }
 
 class _ClipTile extends StatelessWidget {
-  final VideoClip clip;
+  final BandMedia clip;
+  final Band band;
   final AppState app;
 
-  const _ClipTile({required this.clip, required this.app});
+  const _ClipTile({
+    required this.clip,
+    required this.band,
+    required this.app,
+  });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => app.say("▶ Playback isn't wired up yet — catch them live."),
+      onTap: () {
+        if (clip.url == null || clip.url!.isEmpty) {
+          app.say('That clip is still processing.');
+          return;
+        }
+        showBandVideo(context, media: clip, bandName: band.name);
+      },
       child: Container(
         decoration: BoxDecoration(
-          color: Ep.card,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        foregroundDecoration: BoxDecoration(
           border: Border.all(color: Ep.whiteA(.1)),
           borderRadius: BorderRadius.circular(10),
         ),
+        clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
+            Positioned.fill(child: ClipTexture(bandColor: band.color)),
             Center(child: PlayTriangle(size: 13, color: Ep.whiteA(.85))),
             Positioned(
               left: 8,
@@ -261,7 +365,8 @@ class _ClipTile extends StatelessWidget {
                   color: Colors.black.withValues(alpha: .6),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(clip.len, style: epText(size: 9, weight: FontWeight.w800)),
+                child: Text(clip.lenLabel,
+                    style: epText(size: 9, weight: FontWeight.w800)),
               ),
             ),
           ],

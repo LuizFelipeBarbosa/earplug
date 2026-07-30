@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../band_media_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -18,7 +19,7 @@ class BandDashScreen extends StatelessWidget {
 
     final mine = app.myBandGigs;
     final next = mine.isEmpty ? null : mine.first;
-    final clips = app.videosFor(band.id);
+    final clips = context.watch<BandMediaController>().videosFor(band.id);
 
     final tips = [
       if (mine.isEmpty) 'List your first gig — RSVPs count live.',
@@ -45,7 +46,7 @@ class BandDashScreen extends StatelessWidget {
                       Text('${band.name.toUpperCase()} ▾',
                           style: epDisplay(size: 16, height: 1)),
                       const SizedBox(height: 3),
-                      Text('BAND VIEW · ADMIN',
+                      Text('BAND VIEW · ${app.roleFor(band.id).toUpperCase()}',
                           style: epText(
                               size: 10,
                               weight: FontWeight.w800,
@@ -102,8 +103,7 @@ class BandDashScreen extends StatelessWidget {
           children: [
             _ActionButton(
                 label: '▶ POST MEDIA',
-                onTap: () =>
-                    app.say("Clip upload isn't ready yet — coming soon.")),
+                onTap: app.openBandMedia),
             const SizedBox(width: 8),
             _ActionButton(
                 label: '+ CREATE GIG', filled: true, onTap: app.startGigCreate),
@@ -230,8 +230,9 @@ class _NextUpCard extends StatelessWidget {
       onTap: () => app.openGig(gig.id),
       child: Row(
         children: [
-          FlyerBox(
-              style: app.flyer(gig.flyKey),
+          GigFlyer(
+              gig,
+              app.flyer(gig.flyKey),
               width: 46,
               height: 60,
               rotationDeg: -2,

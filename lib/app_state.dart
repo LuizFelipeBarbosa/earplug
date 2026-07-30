@@ -4,12 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:latlong2/latlong.dart';
 
+import 'band_media_state.dart';
 import 'data/convex_repository.dart';
 import 'data/demo_repository.dart';
 import 'data/repository.dart';
 import 'demo_data.dart';
 import 'models.dart';
 import 'services/auth_service.dart';
+import 'services/media_picker.dart';
 
 enum Screen {
   home,
@@ -21,6 +23,7 @@ enum Screen {
   bandCreate,
   bandDash,
   bandEdit,
+  bandMedia,
   gigMgr,
   gigCreate,
   analytics,
@@ -91,8 +94,8 @@ class AppState extends ChangeNotifier {
   final Map<String, String> _bandBioOverrides = {};
   final Map<String, String> _bandLinkIgOverrides = {};
   final Map<String, String> _bandLinkBcOverrides = {};
-  final Map<String, List<VideoClip>> _videoCache = {};
-  final Set<String> _videoLoads = {};
+  final Map<String, String> _bandRoles = {};
+  BandMediaController? _media;
 
   // ---- navigation
   List<ScreenEntry> _stack = const [ScreenEntry(Screen.home)];
@@ -115,8 +118,7 @@ class AppState extends ChangeNotifier {
 
   /// Legacy-imported count and RSVP-derived history can disagree; show
   /// whichever credits the fan more.
-  int get gigsAttended =>
-      attended > history.length ? attended : history.length;
+  int get gigsAttended => attended > history.length ? attended : history.length;
 
   // ---- home filters
   bool mapMode = false;
@@ -143,7 +145,9 @@ class AppState extends ChangeNotifier {
   String nbBc = '';
   String nbYt = '';
   String nbLabel = 'cream';
-  bool nbPhoto = false;
+  PickedMedia? nbPhoto;
+  String? nbPhotoError;
+  bool nbPhotoUploading = false;
   bool nbCreated = false;
 
   /// Set once the band lands; later saves update this record instead of
@@ -171,6 +175,9 @@ class AppState extends ChangeNotifier {
   String gfExt = '';
   String gfFly = 'xerox';
   bool gfOverlay = true;
+  PickedMedia? gfFlyerArt;
+  String? gfFlyerStorageId;
+  bool gfFlyerUploading = false;
   bool gfPublished = false;
 
   // ---- toast
@@ -295,6 +302,7 @@ class AppState extends ChangeNotifier {
     }
     for (final membership in memberships) {
       final band = membership.band;
+      _bandRoles[band.id] = membership.role;
       _bands[band.id] = band.copyWith(
         upcoming: _bands[band.id]?.upcoming ?? const [],
       );
@@ -328,6 +336,8 @@ class AppState extends ChangeNotifier {
 
   void openBand(String id) => go(Screen.band, id);
 
+  void openBandMedia() => go(Screen.bandMedia, bandId);
+
   void openMyGigsTab() {
     if (authed) {
       unawaited(_refreshHistory());
@@ -347,6 +357,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void attachMediaController(BandMediaController c) => _media = c;
+
   // ========================= auth =========================
 
   void needAuth(PendingAuth p) {
@@ -364,7 +376,15 @@ class AppState extends ChangeNotifier {
     saved = {};
     attended = 0;
     history = const [];
+    profile = null;
     authed = false;
+    // Per-band caches outlive the session otherwise, so signing in as someone
+    // else in the same process would show the previous user's unsaved edits.
+    _bandBioOverrides.clear();
+    _bandLinkIgOverrides.clear();
+    _bandLinkBcOverrides.clear();
+    _bandRoles.clear();
+    _media?.clearForSignOut();
     resetTo(Screen.home);
     say('Signed out.');
   }
@@ -542,6 +562,10 @@ class AppState extends ChangeNotifier {
 
   Band? band(String id) => _bands[id];
 
+  String roleFor(String id) => _bandRoles[id] ?? 'member';
+
+  bool isAdminOf(String id) => _bandRoles[id] == 'admin';
+
   Venue venue(String id) => _venues[id] ?? _unknownVenue;
 
   /// Every venue the feed knows about — shared records bands pick from.
@@ -573,16 +597,6 @@ class AppState extends ChangeNotifier {
   /// RSVP count shown to bands: base demo count plus this user's RSVP.
   int rsvpCount(Gig g) => g.going + (rsvps.contains(g.id) ? 1 : 0);
 
-  List<VideoClip> videosFor(String bandId) {
-    final cached = _videoCache[bandId];
-    if (cached != null) return cached;
-
-    if (_videoLoads.add(bandId)) {
-      unawaited(_loadVideos(bandId));
-    }
-    return const <VideoClip>[];
-  }
-
   String bioFor(String id) {
     return _bandBioOverrides[id] ?? band(id)?.bio ?? '';
   }
@@ -593,16 +607,6 @@ class AppState extends ChangeNotifier {
 
   String linkBcFor(String id) {
     return _bandLinkBcOverrides[id] ?? band(id)?.linkBc ?? '';
-  }
-
-  Future<void> _loadVideos(String bandId) async {
-    try {
-      _videoCache[bandId] = await repository.videosFor(bandId);
-      notifyListeners();
-    } catch (_) {
-    } finally {
-      _videoLoads.remove(bandId);
-    }
   }
 
   void retry() {
@@ -669,43 +673,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void pinVideo(int index) {
-    final activeBandId = bandId;
-    if (activeBandId.isEmpty) return;
-    final vids = videosFor(activeBandId);
-    if (index < 0 || index >= vids.length) return;
-    unawaited(_pinVideo(activeBandId, vids[index].id));
-  }
-
-  void moveVideo(int index, int delta) {
-    final activeBandId = bandId;
-    if (activeBandId.isEmpty) return;
-    final vids = videosFor(activeBandId);
-    if (index < 0 || index >= vids.length) return;
-    final direction = delta < 0 ? 'up' : 'down';
-    unawaited(_moveVideo(activeBandId, vids[index].id, direction));
-  }
-
-  Future<void> _pinVideo(String bandId, String videoId) async {
-    try {
-      await repository.pinVideo(videoId);
-      _videoCache[bandId] = await repository.videosFor(bandId);
-      notifyListeners();
-    } catch (_) {}
-  }
-
-  Future<void> _moveVideo(
-    String bandId,
-    String videoId,
-    String direction,
-  ) async {
-    try {
-      await repository.moveVideo(videoId, direction);
-      _videoCache[bandId] = await repository.videosFor(bandId);
-      notifyListeners();
-    } catch (_) {}
-  }
-
   // ========================= band create =========================
 
   void startBandCreate() {
@@ -723,7 +690,9 @@ class AppState extends ChangeNotifier {
     nbBc = '';
     nbYt = '';
     nbLabel = 'cream';
-    nbPhoto = false;
+    nbPhoto = null;
+    nbPhotoError = null;
+    nbPhotoUploading = false;
     nbCreated = false;
     _nbBandId = null;
     _nbCreatedSlug = null;
@@ -766,8 +735,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleNbPhoto() {
-    nbPhoto = !nbPhoto;
+  void setNbPhoto(PickedMedia? photo) {
+    nbPhoto = photo;
     notifyListeners();
   }
 
@@ -869,9 +838,7 @@ class AppState extends ChangeNotifier {
 
     String count(int n, String noun) => '$n $noun${n == 1 ? '' : 's'}';
     final names = {...bandCounts.keys, ...venueCounts.keys}.toList()
-      ..sort(
-        (a, b) => (bandCounts[b] ?? 0).compareTo(bandCounts[a] ?? 0),
-      );
+      ..sort((a, b) => (bandCounts[b] ?? 0).compareTo(bandCounts[a] ?? 0));
     return [
       for (final name in names)
         (
@@ -935,9 +902,42 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }
 
+    final photo = nbPhoto;
+    final media = _media;
+    if (photo != null && media != null) {
+      unawaited(_uploadBandPhoto(bandId, photo));
+    }
     nbCreated = true;
     notifyListeners();
     unawaited(_refreshExploreBands());
+  }
+
+  Future<void> _uploadBandPhoto(String bandId, PickedMedia photo) async {
+    final media = _media;
+    if (media == null) return;
+
+    nbPhotoUploading = true;
+    nbPhotoError = null;
+    notifyListeners();
+
+    final mediaId = await media.uploadHeldPhoto(bandId, photo);
+    if (mediaId == null) {
+      nbPhotoUploading = false;
+      nbPhotoError = 'upload failed';
+      notifyListeners();
+      say("Band's up. The photo didn't upload — add it from Media.");
+      return;
+    }
+
+    await media.setHero(bandId, mediaId);
+    nbPhotoUploading = false;
+    notifyListeners();
+  }
+
+  Future<void> retryNbPhoto() async {
+    final photo = nbPhoto;
+    if (photo == null) return;
+    await _uploadBandPhoto(bandId, photo);
   }
 
   /// "Keep editing" — back to the tape with everything still filled in.
@@ -1015,6 +1015,22 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setGfFlyerArt(PickedMedia? art) {
+    gfFlyerArt = art;
+    gfFlyerStorageId = null;
+    notifyListeners();
+  }
+
+  void setGfFlyerUploading(bool v) {
+    gfFlyerUploading = v;
+    notifyListeners();
+  }
+
+  void setGfFlyerStorageId(String? id) {
+    gfFlyerStorageId = id;
+    notifyListeners();
+  }
+
   void toggleGfOverlay() {
     gfOverlay = !gfOverlay;
     notifyListeners();
@@ -1032,13 +1048,17 @@ class AppState extends ChangeNotifier {
   String get gfDateLabel => gfDate == null ? '' : dateLabel(gfDate!);
 
   bool get canPublishGig =>
-      gfName.trim().isNotEmpty && gfDate != null && gfVenueId != null;
+      gfName.trim().isNotEmpty &&
+      gfDate != null &&
+      gfVenueId != null &&
+      (!gfCustomFlyer || gfFlyerStorageId != null);
 
   /// What the publish bar still asks for, in reading order.
   List<String> get gigMissing => [
     if (gfName.trim().isEmpty) 'a name',
     if (gfDate == null) 'a date',
     if (gfVenueId == null) 'a venue',
+    if (gfCustomFlyer && gfFlyerStorageId == null) 'your flyer art',
   ];
 
   String get gigUrl {
@@ -1050,6 +1070,11 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> publishGig() async {
+    if (gfFlyerUploading) {
+      say('Still uploading your flyer — one sec.');
+      return;
+    }
+
     final date = gfDate;
     if (!canPublishGig || date == null) {
       say('Add ${gigMissing.join(' + ')} first — tap any card.');
@@ -1071,6 +1096,7 @@ class AppState extends ChangeNotifier {
         ).millisecondsSinceEpoch,
         doorsTime: gfDoorsLabel,
         flyKey: gfFly,
+        flyStorageId: gfFlyerStorageId,
         ticketing: gfTix,
         externalUrl: gfExt.isEmpty ? null : gfExt,
         cap: gfCap,
@@ -1114,6 +1140,9 @@ class AppState extends ChangeNotifier {
     gfExt = '';
     gfFly = 'xerox';
     gfOverlay = true;
+    gfFlyerArt = null;
+    gfFlyerStorageId = null;
+    gfFlyerUploading = false;
     gfPublished = false;
   }
 }

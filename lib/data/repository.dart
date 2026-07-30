@@ -44,7 +44,21 @@ abstract class EarplugRepository {
   Stream<FeedSnapshot> feed();
   Stream<Interactions> myInteractions();
   Stream<List<BandMembership>> myBands();
-  Future<List<VideoClip>> videosFor(String bandId);
+  Future<List<BandMedia>> mediaFor(String bandId);
+  Future<String> generateMediaUploadUrl(String bandId);
+  Future<String> addBandMedia({
+    required String bandId,
+    required MediaKind kind,
+    required String storageId,
+    required String title,
+    String? caption,
+    int? lengthSec,
+  });
+  Future<void> deleteBandMedia(String mediaId);
+  Future<void> pinBandMedia(String mediaId);
+  Future<void> moveBandMedia(String mediaId, String direction);
+  Future<void> setBandPhoto({required String bandId, required String mediaId});
+  Future<void> clearBandPhoto(String bandId);
   Future<List<PastGig>> history();
   Future<Band?> band(String bandId);
   Future<List<Band>> searchBands(String q);
@@ -53,6 +67,7 @@ abstract class EarplugRepository {
   Future<void> toggleSave(String gigId);
   Future<void> setGenres(List<String> genres);
   Future<void> ensureUser({String? name});
+
   /// Returns the new band's id and its server-issued unique profile slug.
   Future<({String bandId, String slug})> createBand({
     required String name,
@@ -83,10 +98,9 @@ abstract class EarplugRepository {
     required String venueId,
     required int price,
     required String flyKey,
+    String? flyStorageId,
     required Ticketing ticketing,
     String? externalUrl,
     required String cap,
   });
-  Future<void> pinVideo(String videoId);
-  Future<void> moveVideo(String videoId, String direction);
 }

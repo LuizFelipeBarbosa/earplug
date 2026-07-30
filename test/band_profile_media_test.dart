@@ -1,0 +1,109 @@
+import 'package:earplug/app_state.dart';
+import 'package:earplug/band_media_state.dart';
+import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/demo_data.dart';
+import 'package:earplug/models.dart';
+import 'package:earplug/screens/band_profile.dart';
+import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/common.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+
+void main() {
+  testWidgets('profile renders the pinned video and clip grid', (tester) async {
+    await _pumpProfile(tester);
+    final pinned = DemoData.b1Media.singleWhere((media) => media.pinned);
+    final clip = DemoData.b1Media.firstWhere(
+      (media) => media.isVideo && !media.pinned,
+    );
+
+    expect(find.text(pinned.title), findsOne);
+    expect(find.text(clip.title), findsOne);
+    expect(find.text('CLIPS'), findsOne);
+  });
+
+  testWidgets('profile renders all demo photo tiles', (tester) async {
+    await _pumpProfile(tester);
+    final photoCount = DemoData.b1Media
+        .where((media) => media.kind == MediaKind.photo)
+        .length;
+
+    expect(find.text('PHOTOS'), findsOne);
+    // The strip sits below the initial test viewport; offstage widgets are
+    // still built, just excluded by the default skipOffstage.
+    expect(
+      find.byType(EpNetworkImage, skipOffstage: false),
+      findsNWidgets(photoCount),
+    );
+  });
+
+  testWidgets('a processing clip stays on the profile and shows a toast', (
+    tester,
+  ) async {
+    final harness = await _pumpProfile(tester);
+    final clip = DemoData.b1Media.firstWhere(
+      (media) => media.isVideo && !media.pinned,
+    );
+    final clipTitle = find.text(clip.title);
+    await tester.ensureVisible(clipTitle);
+    await tester.pumpAndSettle();
+
+    await tester.tap(clipTitle);
+    await tester.pump();
+
+    expect(harness.app.toast, 'That clip is still processing.');
+    expect(find.byType(BandProfileScreen), findsOne);
+    expect(
+      Navigator.of(tester.element(find.byType(BandProfileScreen))).canPop(),
+      isFalse,
+    );
+
+    // Flush app.say's 2.2s toast-clear timer so teardown sees no pending timer.
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('band avatar falls back to initials without a hero photo', (
+    tester,
+  ) async {
+    final harness = await _pumpProfile(tester);
+    final band = harness.app.band('b1')!;
+
+    expect(band.heroUrl, isNull);
+    expect(find.text(band.initials), findsOne);
+  });
+}
+
+Future<({AppState app, BandMediaController media})> _pumpProfile(
+  WidgetTester tester,
+) async {
+  tester.view.physicalSize = const Size(402, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+
+  final auth = FakeAuthService();
+  final app = AppState(
+    repository: DemoRepository(auth: auth),
+    auth: auth,
+  );
+  final media = BandMediaController(repository: app.repository, say: app.say);
+  app.attachMediaController(media);
+  addTearDown(media.dispose);
+  addTearDown(app.dispose);
+
+  await tester.pumpWidget(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AppState>.value(value: app),
+        ChangeNotifierProvider<BandMediaController>.value(value: media),
+      ],
+      child: MaterialApp(
+        theme: buildEpTheme(),
+        home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return (app: app, media: media);
+}

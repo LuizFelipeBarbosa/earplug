@@ -49,11 +49,73 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<List<VideoClip>> videosFor(String bandId) async {
-    final result = await _convexService.query('videos:forBand', {
+  Future<List<BandMedia>> mediaFor(String bandId) async {
+    final result = await _convexService.query('media:forBand', {
       'bandId': bandId,
     });
-    return [for (final json in _mapList(result)) VideoClip.fromJson(json)];
+    return [for (final json in _mapList(result)) BandMedia.fromJson(json)];
+  }
+
+  @override
+  Future<String> generateMediaUploadUrl(String bandId) async {
+    final result = await _convexService.mutation('media:generateUploadUrl', {
+      'bandId': bandId,
+    });
+    return result as String;
+  }
+
+  @override
+  Future<String> addBandMedia({
+    required String bandId,
+    required MediaKind kind,
+    required String storageId,
+    required String title,
+    String? caption,
+    int? lengthSec,
+  }) async {
+    final result = await _convexService.mutation('media:addMedia', {
+      'bandId': bandId,
+      'kind': kind.name,
+      'storageId': storageId,
+      'title': title,
+      'caption': ?caption,
+      'lengthSec': ?lengthSec,
+    });
+    return _asMap(result)['mediaId'] as String;
+  }
+
+  @override
+  Future<void> deleteBandMedia(String mediaId) async {
+    await _convexService.mutation('media:deleteMedia', {'mediaId': mediaId});
+  }
+
+  @override
+  Future<void> pinBandMedia(String mediaId) async {
+    await _convexService.mutation('media:pinMedia', {'mediaId': mediaId});
+  }
+
+  @override
+  Future<void> moveBandMedia(String mediaId, String direction) async {
+    await _convexService.mutation('media:moveMedia', {
+      'mediaId': mediaId,
+      'direction': direction,
+    });
+  }
+
+  @override
+  Future<void> setBandPhoto({
+    required String bandId,
+    required String mediaId,
+  }) async {
+    await _convexService.mutation('bands:setBandPhoto', {
+      'bandId': bandId,
+      'mediaId': mediaId,
+    });
+  }
+
+  @override
+  Future<void> clearBandPhoto(String bandId) async {
+    await _convexService.mutation('bands:clearBandPhoto', {'bandId': bandId});
   }
 
   @override
@@ -172,6 +234,7 @@ class ConvexRepository implements EarplugRepository {
     required String venueId,
     required int price,
     required String flyKey,
+    String? flyStorageId,
     required Ticketing ticketing,
     String? externalUrl,
     required String cap,
@@ -184,24 +247,12 @@ class ConvexRepository implements EarplugRepository {
       'venueId': venueId,
       'price': price,
       'flyKey': flyKey,
+      'flyStorageId': ?flyStorageId,
       'ticketing': ticketing.name,
       'externalUrl': ?externalUrl,
       'cap': cap,
     });
     return _asMap(result)['gigId'] as String;
-  }
-
-  @override
-  Future<void> pinVideo(String videoId) async {
-    await _convexService.mutation('videos:pinVideo', {'videoId': videoId});
-  }
-
-  @override
-  Future<void> moveVideo(String videoId, String direction) async {
-    await _convexService.mutation('videos:moveVideo', {
-      'videoId': videoId,
-      'direction': direction,
-    });
   }
 }
 

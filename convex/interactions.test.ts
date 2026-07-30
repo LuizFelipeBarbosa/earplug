@@ -18,6 +18,7 @@ async function setup() {
     });
     const bandId = await ctx.db.insert("bands", {
       name: "Mission Creep",
+      slug: "mission-creep",
       genres: ["hardcore"],
       area: "Mission, SF",
       colorHex: "#E4DC4A",

@@ -9,13 +9,13 @@
  */
 
 import type * as bands from "../bands.js";
+import type * as crons from "../crons.js";
 import type * as gigs from "../gigs.js";
 import type * as interactions from "../interactions.js";
 import type * as lib_helpers from "../lib/helpers.js";
-import type * as migrations from "../migrations.js";
+import type * as media from "../media.js";
 import type * as seed from "../seed.js";
 import type * as users from "../users.js";
-import type * as videos from "../videos.js";
 
 import type {
   ApiFromModules,
@@ -25,13 +25,13 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   bands: typeof bands;
+  crons: typeof crons;
   gigs: typeof gigs;
   interactions: typeof interactions;
   "lib/helpers": typeof lib_helpers;
-  migrations: typeof migrations;
+  media: typeof media;
   seed: typeof seed;
   users: typeof users;
-  videos: typeof videos;
 }>;
 
 /**

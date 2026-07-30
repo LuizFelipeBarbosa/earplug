@@ -15,6 +15,38 @@ zero diff between dev and prod. The legacy app was far bigger than the new v1
 
 ---
 
+## 0. Outcome (2026-07-29) — migration complete
+
+Everything below is the *design record*. Both phases have now run against
+`dev:brilliant-cardinal-773`, and the code that ran them has been deleted
+(`convex/migrations.ts`, `convex/cleanup.ts` — recoverable from git).
+
+- **Phase 1** — `migrations:migrateAll` reshaped users/bands/venues in place and
+  moved `bandMemberships`→`bandMembers`, `savedArtists`→`follows`,
+  `bandMediaSlots`→`videos`, and the launch-night `events` row→`gigs`.
+- **Phase 2** — `cleanup:cleanupAll` recovered the 25 launch-night RSVPs still
+  stranded in `rsvps`, collapsed 4 duplicate accounts onto 1, and deleted the
+  seeded demo content (6 bands / 6 venues / 7 gigs / 5 videos), the `test band`
+  and e2e rows, and 124 rows across 11 superseded tables.
+- **Then** `schema.ts` dropped the legacy tables and promoted every backfilled
+  field to required.
+
+Final dev state: **33 users, 6 bands, 4 venues, 1 gig, 25 gigRsvps, 8 follows,
+12 bandMembers, 4 videos.** Zero dangling references.
+
+Answers to the open questions in §9: Q0 dev (prod out of scope, left frozen);
+Q1 backfill from the Clerk identity on adoption; Q2 keep the storage ids;
+Q3 yes; Q4 "Berkeley, CA"; Q5 yes + park the extra links in
+`legacySocialLinks`; Q6 map videos across, keep image ids on the band;
+Q7 keep the 4 real venues and drop the demo ones; Q8 yes, ported.
+
+**Known leftover:** removing a table from `schema.ts` does not drop it. The 21
+emptied legacy tables still exist as empty shells in the deployment. They are
+undeclared, unreachable from code, and harmless — but deleting them is a
+dashboard-only action the CLI can't do.
+
+---
+
 ## 1. Row counts (dev)
 
 | Table | Rows | Migrate? |

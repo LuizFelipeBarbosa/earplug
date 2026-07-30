@@ -41,6 +41,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Earplug needs camera access to record band photos and videos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Earplug needs access to your photo library to attach band photos and videos.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

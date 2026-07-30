@@ -16,7 +16,7 @@ export const get = query({
   returns: v.union(bandPayloadValidator, v.null()),
   handler: async (ctx, args) => {
     const band = await ctx.db.get(args.bandId);
-    return band === null ? null : toBandPayload(band);
+    return band === null ? null : await toBandPayload(ctx, band);
   },
 });
 
@@ -32,7 +32,11 @@ export const search = query({
             .query("bands")
             .withSearchIndex("search_name", (q) => q.search("name", args.q))
             .take(50);
-    return bands.map(toBandPayload);
+    const out = [];
+    for (const band of bands) {
+      out.push(await toBandPayload(ctx, band));
+    }
+    return out;
   },
 });
 
@@ -55,7 +59,9 @@ export const myBands = query({
     const out = [];
     for (const membership of memberships) {
       const band = await ctx.db.get(membership.bandId);
-      if (band) out.push({ band: toBandPayload(band), role: membership.role });
+      if (band) {
+        out.push({ band: await toBandPayload(ctx, band), role: membership.role });
+      }
     }
     return out;
   },
@@ -73,7 +79,7 @@ export const bySlug = query({
       .query("bands")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .first();
-    return band === null ? null : toBandPayload(band);
+    return band === null ? null : await toBandPayload(ctx, band);
   },
 });
 
@@ -163,6 +169,37 @@ export const updateProfile = mutation({
     if (Object.keys(patch).length > 0) {
       await ctx.db.patch(args.bandId, patch);
     }
+    return null;
+  },
+});
+
+export const setBandPhoto = mutation({
+  args: {
+    bandId: v.id("bands"),
+    mediaId: v.id("bandMedia"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireBandAdmin(ctx, args.bandId);
+    const media = await ctx.db.get(args.mediaId);
+    if (!media) throw new Error("Media not found");
+    if (media.bandId !== args.bandId) {
+      throw new Error("Media belongs to a different band");
+    }
+    if (media.kind !== "photo") {
+      throw new Error("Only photos can be the band photo");
+    }
+    await ctx.db.patch(args.bandId, { imageStorageId: media.storageId });
+    return null;
+  },
+});
+
+export const clearBandPhoto = mutation({
+  args: { bandId: v.id("bands") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireBandAdmin(ctx, args.bandId);
+    await ctx.db.patch(args.bandId, { imageStorageId: undefined });
     return null;
   },
 });

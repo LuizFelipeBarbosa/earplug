@@ -4,6 +4,7 @@ import { QueryCtx, mutation, query } from "./_generated/server";
 import {
   FEED_GRACE_MS,
   MAX_FEED_GIGS,
+  assertUploadAcceptable,
   bandPayloadValidator,
   flyKeyValidator,
   gigPayloadValidator,
@@ -57,10 +58,15 @@ export const feed = query({
     const bands = [];
     for (const bandId of bandIds) {
       const band = await ctx.db.get(bandId);
-      if (band) bands.push(toBandPayload(band));
+      if (band) bands.push(await toBandPayload(ctx, band));
     }
 
-    return { gigs: gigs.map(toGigPayload), venues, bands };
+    const gigPayloads = [];
+    for (const gig of gigs) {
+      gigPayloads.push(await toGigPayload(ctx, gig));
+    }
+
+    return { gigs: gigPayloads, venues, bands };
   },
 });
 
@@ -70,9 +76,13 @@ export const forBand = query({
   returns: v.array(gigPayloadValidator),
   handler: async (ctx, args) => {
     const gigs = await upcomingGigs(ctx);
-    return gigs
-      .filter((gig) => gig.lineup.includes(args.bandId))
-      .map(toGigPayload);
+    const out = [];
+    for (const gig of gigs) {
+      if (gig.lineup.includes(args.bandId)) {
+        out.push(await toGigPayload(ctx, gig));
+      }
+    }
+    return out;
   },
 });
 
@@ -85,6 +95,7 @@ export const publishGig = mutation({
     venueId: v.id("venues"),
     price: v.number(),
     flyKey: flyKeyValidator,
+    flyStorageId: v.optional(v.id("_storage")),
     ticketing: v.union(v.literal("rsvp"), v.literal("external")),
     externalUrl: v.optional(v.string()),
     cap: v.string(),
@@ -104,6 +115,17 @@ export const publishGig = mutation({
     ) {
       throw new Error("External ticketing requires a valid http(s) URL");
     }
+    if (args.flyKey === "custom") {
+      if (args.flyStorageId === undefined) {
+        throw new Error("Custom flyer requires flyStorageId");
+      }
+      const upload = await ctx.db.system.get("_storage", args.flyStorageId);
+      if (!upload) throw new Error("Flyer upload not found");
+      assertUploadAcceptable(
+        { size: upload.size, contentType: upload.contentType },
+        "photo",
+      );
+    }
     const venue = await ctx.db.get(args.venueId);
     if (!venue) throw new Error("Venue not found");
     const band = await ctx.db.get(args.bandId);
@@ -122,6 +144,9 @@ export const publishGig = mutation({
       ticketing: args.ticketing,
       ...(args.ticketing === "external" && args.externalUrl !== undefined
         ? { externalUrl: args.externalUrl }
+        : {}),
+      ...(args.flyKey === "custom" && args.flyStorageId !== undefined
+        ? { flyStorageId: args.flyStorageId }
         : {}),
       cap: args.cap,
       goingCount: 0,

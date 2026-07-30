@@ -6,7 +6,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../band_media_state.dart';
 import '../genres.dart';
+import '../services/media_picker.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -15,6 +17,21 @@ const _tapeTilt = -1.2 * math.pi / 180;
 /// Permanent Marker — the hand-written tape-label voice of this screen.
 TextStyle _marker({double size = 13, Color color = Ep.ink, double? height}) =>
     GoogleFonts.permanentMarker(fontSize: size, color: color, height: height);
+
+Future<void> _pickBandPhoto(BuildContext context) async {
+  final app = context.read<AppState>();
+  final media = context.read<BandMediaController>();
+  final PickedMedia? picked;
+  try {
+    picked = await media.pickFlyerArt();
+  } on MediaPickException catch (error) {
+    if (!context.mounted) return;
+    app.say(error.message);
+    return;
+  }
+  if (!context.mounted || picked == null) return;
+  app.setNbPhoto(picked);
+}
 
 // ============================ label styles ============================
 
@@ -279,7 +296,7 @@ class _TapeHero extends StatelessWidget {
               SizedBox(
                 width: 262,
                 child: Text(
-                  app.nbPhoto
+                  app.nbPhoto != null
                       ? 'Photo sits behind the tape — drop one in above.'
                       : 'Type on the label, tap the marker lines, or work the '
                             'notes below.',
@@ -302,61 +319,87 @@ class _TapeHero extends StatelessWidget {
 
 /// The strip behind the tape: a photo drop zone, or a soft blue glow.
 class _InlaySlot extends StatelessWidget {
-  final bool photo;
+  final PickedMedia? photo;
 
   const _InlaySlot({required this.photo});
 
   @override
   Widget build(BuildContext context) {
-    if (!photo) {
-      return const DecoratedBox(
-        decoration: BoxDecoration(
-          color: Color(0xFF101014),
-          gradient: RadialGradient(
-            center: Alignment(0, -1),
-            radius: 1.1,
-            colors: [Color(0x381435F0), Colors.transparent],
+    final app = context.read<AppState>();
+    final picked = photo;
+    if (picked == null) {
+      return GestureDetector(
+        // Opaque so the whole slot hits, not just the icon/text pixels.
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _pickBandPhoto(context),
+        child: DecoratedBox(
+          decoration: const BoxDecoration(
+            color: Color(0xFF101014),
+            gradient: RadialGradient(
+              center: Alignment(0, -1),
+              radius: 1.1,
+              colors: [Color(0x381435F0), Colors.transparent],
+            ),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add_photo_alternate_outlined,
+                    size: 22, color: Ep.inkA(.45)),
+                const SizedBox(height: 6),
+                Text(
+                  'DROP A BAND PHOTO',
+                  style: epText(
+                    size: 10.5,
+                    weight: FontWeight.w900,
+                    letterSpacing: .8,
+                    color: Ep.inkA(.45),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
 
-    return GestureDetector(
-      onTap: () => context.read<AppState>().say(
-        "Band photos aren't ready yet — coming soon.",
-      ),
-      child: Container(
-        color: const Color(0xFF101014),
-        foregroundDecoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFF0A0A0C).withValues(alpha: .55),
-              const Color(0xFF0A0A0C).withValues(alpha: .94),
-            ],
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Container(
+          color: const Color(0xFF101014),
+          foregroundDecoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                const Color(0xFF0A0A0C).withValues(alpha: .55),
+                const Color(0xFF0A0A0C).withValues(alpha: .94),
+              ],
+            ),
           ),
+          child: Image.memory(picked.bytes, fit: BoxFit.cover),
         ),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.add_photo_alternate_outlined,
-                  size: 22, color: Ep.inkA(.45)),
-              const SizedBox(height: 6),
-              Text(
-                'DROP A BAND PHOTO',
-                style: epText(
-                  size: 10.5,
-                  weight: FontWeight.w900,
-                  letterSpacing: .8,
-                  color: Ep.inkA(.45),
-                ),
+        Positioned(
+          top: 8,
+          right: 8,
+          child: GestureDetector(
+            key: const ValueKey('clear-band-photo'),
+            onTap: () => app.setNbPhoto(null),
+            child: Container(
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: .72),
+                shape: BoxShape.circle,
+                border: Border.all(color: Ep.whiteA(.3)),
               ),
-            ],
+              child: const Icon(Icons.close, size: 14, color: Colors.white),
+            ),
           ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -590,12 +633,12 @@ class _SwatchRow extends StatelessWidget {
         ],
         _Swatch(
           key: const ValueKey('label-photo'),
-          selected: app.nbPhoto,
+          selected: app.nbPhoto != null,
           dashed: true,
-          onTap: app.toggleNbPhoto,
+          onTap: () => _pickBandPhoto(context),
           child: Center(
             child: Icon(
-              app.nbPhoto ? Icons.check : Icons.arrow_upward,
+              app.nbPhoto != null ? Icons.check : Icons.arrow_upward,
               size: 13,
               color: Ep.link,
             ),
@@ -1737,6 +1780,25 @@ class _CreatedView extends StatelessWidget {
                     Transform.scale(scale: scale, child: child),
                 child: const _Cassette(maxWidth: 320),
               ),
+              if (app.nbPhotoUploading || app.nbPhotoError != null) ...[
+                const SizedBox(height: 12),
+                if (app.nbPhotoUploading)
+                  Text(
+                    'ADDING YOUR PHOTO…',
+                    style: epText(
+                      size: 11,
+                      weight: FontWeight.w800,
+                      letterSpacing: .6,
+                      color: Ep.inkA(.5),
+                    ),
+                  )
+                else
+                  _QuietAction(
+                    'RETRY PHOTO',
+                    onTap: app.retryNbPhoto,
+                    color: Ep.link,
+                  ),
+              ],
               const SizedBox(height: 18),
               Text("You're on the map.", style: epDisplay(size: 20)),
               const SizedBox(height: 4),

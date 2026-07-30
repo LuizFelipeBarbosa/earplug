@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../band_media_state.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -13,6 +14,7 @@ class BandEditScreen extends StatelessWidget {
     final app = context.watch<AppState>();
     final band = app.myBand;
     if (band == null) return const SizedBox.shrink();
+    final videos = context.watch<BandMediaController>().videosFor(app.bandId);
 
     return ListView(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, tabBarClearance),
@@ -57,8 +59,7 @@ class BandEditScreen extends StatelessWidget {
               children: [
                 Text(band.name.toUpperCase(), style: epDisplay(size: 18)),
                 GestureDetector(
-                  onTap: () =>
-                      app.say("Band photos aren't ready yet — coming soon."),
+                  onTap: app.openBandMedia,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     child: Text('CHANGE PHOTO',
@@ -115,18 +116,34 @@ class BandEditScreen extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const SectionLabel('VIDEOS · DRAG-FREE REORDER'),
-            GestureDetector(
-              onTap: () =>
-                  app.say("Clip upload isn't ready yet — coming soon."),
-              child: Text('+ UPLOAD CLIP',
-                  style: epText(
-                      size: 11, weight: FontWeight.w900, letterSpacing: .6, color: Ep.link)),
+            const SectionLabel('VIDEOS'),
+            Row(
+              children: [
+                GestureDetector(
+                  onTap: app.openBandMedia,
+                  child: Text('+ UPLOAD CLIP',
+                      style: epText(
+                          size: 11,
+                          weight: FontWeight.w900,
+                          letterSpacing: .6,
+                          color: Ep.link)),
+                ),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: app.openBandMedia,
+                  child: Text('MANAGE ›',
+                      style: epText(
+                          size: 10.5,
+                          weight: FontWeight.w800,
+                          letterSpacing: .6,
+                          color: Ep.inkA(.55))),
+                ),
+              ],
             ),
           ],
         ),
         const SizedBox(height: 8),
-        for (final (i, v) in app.videosFor(app.bandId).indexed) ...[
+        for (final v in videos) ...[
           Container(
             padding: const EdgeInsets.all(9),
             decoration: BoxDecoration(
@@ -158,63 +175,17 @@ class BandEditScreen extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: epText(size: 12.5, weight: FontWeight.w800)),
                       const SizedBox(height: 2),
-                      Text('${v.views} · ${v.len}',
+                      Text('${v.viewsLabel} · ${v.lenLabel}',
                           style: epText(size: 10.5, color: Ep.inkA(.5))),
                     ],
                   ),
                 ),
-                const SizedBox(width: 9),
-                GestureDetector(
-                  onTap: () => app.pinVideo(i),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: v.pinned ? Ep.blue : null,
-                      border: v.pinned ? null : Border.all(color: Ep.whiteA(.18)),
-                      borderRadius: BorderRadius.circular(7),
-                    ),
-                    child: Text(v.pinned ? 'PINNED ★' : 'PIN',
-                        style: epText(
-                            size: 9.5,
-                            weight: FontWeight.w900,
-                            letterSpacing: .5,
-                            color: v.pinned ? Colors.white : Ep.inkA(.7))),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                _ArrowButton(label: '↑', onTap: () => app.moveVideo(i, -1)),
-                const SizedBox(width: 6),
-                _ArrowButton(label: '↓', onTap: () => app.moveVideo(i, 1)),
               ],
             ),
           ),
           const SizedBox(height: 8),
         ],
       ],
-    );
-  }
-}
-
-class _ArrowButton extends StatelessWidget {
-  final String label;
-  final VoidCallback onTap;
-
-  const _ArrowButton({required this.label, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          border: Border.all(color: Ep.whiteA(.18)),
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: Text(label, style: epText(size: 12, color: Ep.inkA(.7))),
-      ),
     );
   }
 }

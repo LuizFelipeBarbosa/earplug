@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state.dart';
+import 'band_media_state.dart';
 import 'data/convex_repository.dart';
 import 'data/repository.dart';
 import 'env.dart';
@@ -10,6 +11,7 @@ import 'screens/auth.dart';
 import 'screens/band_create.dart';
 import 'screens/band_dash.dart';
 import 'screens/band_edit.dart';
+import 'screens/band_media.dart';
 import 'screens/band_profile.dart';
 import 'screens/explore.dart';
 import 'screens/gig_create.dart';
@@ -30,6 +32,10 @@ Future<void> main() async {
     runApp(const EarplugApp());
     return;
   }
+  if (Env.convexUrl.isEmpty) {
+    runApp(const _ConfigErrorApp());
+    return;
+  }
 
   final convexService = ConvexService();
   await convexService.init(Env.convexUrl);
@@ -40,6 +46,42 @@ Future<void> main() async {
   runApp(EarplugApp(repository: repository, auth: auth));
 }
 
+/// Shown instead of the app when the build has no backend to talk to. Loud on
+/// purpose: the alternative is a silent fall back to demo data.
+class _ConfigErrorApp extends StatelessWidget {
+  const _ConfigErrorApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: buildEpTheme(),
+      home: ColoredBox(
+        color: Ep.bg,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('NOT CONFIGURED', style: epDisplay(size: 22)),
+                const SizedBox(height: 16),
+                Text(
+                  'CONVEX_URL is not set, so there is no backend to load.\n\n'
+                  'Build with --dart-define=CONVEX_URL=…, or pass\n'
+                  '--dart-define=EARPLUG_DEMO=true for the offline demo.',
+                  textAlign: TextAlign.center,
+                  style: epText(size: 13, color: Ep.inkA(.75), height: 1.5),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class EarplugApp extends StatelessWidget {
   const EarplugApp({super.key, this.repository, this.auth});
 
@@ -48,10 +90,25 @@ class EarplugApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => repository == null && auth == null
-          ? AppState()
-          : AppState(repository: repository, auth: auth),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => repository == null && auth == null
+              ? AppState()
+              : AppState(repository: repository, auth: auth),
+        ),
+        ChangeNotifierProvider<BandMediaController>(
+          create: (ctx) {
+            final app = ctx.read<AppState>();
+            final controller = BandMediaController(
+              repository: app.repository,
+              say: app.say,
+            );
+            app.attachMediaController(controller);
+            return controller;
+          },
+        ),
+      ],
       child: MaterialApp(
         title: 'EarPlug',
         debugShowCheckedModeBanner: false,
@@ -154,6 +211,7 @@ class RootShell extends StatelessWidget {
       Screen.bandCreate => const BandCreateScreen(),
       Screen.bandDash => const BandDashScreen(),
       Screen.bandEdit => const BandEditScreen(),
+      Screen.bandMedia => BandMediaScreen(bandId: entry.param!),
       Screen.gigMgr => const GigManagerScreen(),
       Screen.gigCreate => const GigCreateScreen(),
       Screen.analytics => const AnalyticsScreen(),

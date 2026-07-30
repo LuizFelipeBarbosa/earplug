@@ -1,7 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:earplug/app_state.dart';
+import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
+import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,7 +17,7 @@ import 'package:provider/provider.dart';
 void main() {
   testWidgets('the flyer, its presses and every sheet render and drive the form',
       (tester) async {
-    final app = await _pumpGigCreate(tester);
+    final app = (await _pumpGigCreate(tester)).app;
 
     // Header, live flyer and the four slot cards.
     expect(find.text('NEW GIG'), findsOne);
@@ -106,7 +113,7 @@ void main() {
 
   testWidgets('uploaded art swaps the press for a drop slot and an overlay toggle',
       (tester) async {
-    final app = await _pumpGigCreate(tester);
+    final app = (await _pumpGigCreate(tester)).app;
     expect(find.text('Text overlay'), findsNothing);
 
     await tester.tap(find.byKey(const ValueKey('press-custom')));
@@ -126,23 +133,98 @@ void main() {
     expect(find.text('+ DATE & DOORS'), findsNothing);
     expect(find.text('WHEN · REQUIRED'), findsOne);
   });
+
+  testWidgets('picking custom flyer art shows its memory preview',
+      (tester) async {
+    final harness = await _pumpGigCreate(tester);
+    harness.picker.nextPhoto = _photoFixture();
+
+    await tester.tap(find.byKey(const ValueKey('press-custom')));
+    await tester.pump();
+    await tester.tap(find.text('DROP YOUR FLYER'));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.gfFlyerArt, isNotNull);
+    expect(harness.app.gfFlyerStorageId, isNotNull);
+    expect(find.byType(Image), findsOne);
+    expect(find.text('DROP YOUR FLYER'), findsNothing);
+  });
+
+  testWidgets('custom flyer upload gates publish and threads its storage id',
+      (tester) async {
+    final repository = _GatedFlyerRepository(auth: FakeAuthService());
+    final harness = await _pumpGigCreate(tester, repository: repository);
+    final app = harness.app;
+    harness.picker.nextPhoto = _photoFixture();
+    app.setGfName('Gated Flyer Show');
+    app.setGfDate(DateTime.now().add(const Duration(days: 2)));
+    app.setGfVenue('v1');
+
+    await tester.tap(find.byKey(const ValueKey('press-custom')));
+    await tester.pump();
+    await tester.tap(find.text('DROP YOUR FLYER'));
+    await tester.pump();
+
+    expect(app.gfFlyerUploading, isTrue);
+    expect(app.gigMissing, contains('your flyer art'));
+    await tester.tap(find.text('PUBLISH GIG'));
+    await tester.pump();
+    expect(repository.publishCalls, 0);
+    expect(app.gfPublished, isFalse);
+    expect(app.toast, 'Still uploading your flyer — one sec.');
+
+    repository.uploadGate.complete();
+    await tester.pumpAndSettle();
+    expect(app.gfFlyerUploading, isFalse);
+    expect(app.gfFlyerStorageId, isNotNull);
+    expect(app.gigMissing, isNot(contains('your flyer art')));
+
+    await tester.tap(find.text('PUBLISH GIG'));
+    await tester.pumpAndSettle();
+    expect(repository.publishCalls, 1);
+    expect(repository.publishedFlyStorageId, app.gfFlyerStorageId);
+    expect(repository.publishedFlyStorageId, isNotNull);
+    expect(app.gfPublished, isTrue);
+
+    // Flush app.say's 2.2s toast-clear timers so teardown sees none pending.
+    await tester.pump(const Duration(seconds: 3));
+  });
 }
 
-Future<AppState> _pumpGigCreate(WidgetTester tester) async {
+Future<({AppState app, BandMediaController controller, FakeMediaPicker picker})>
+    _pumpGigCreate(
+  WidgetTester tester, {
+  EarplugRepository? repository,
+  FakeMediaPicker? picker,
+}) async {
   // A phone-sized surface: the design targets 402x874.
   tester.view.physicalSize = const Size(402, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
 
   final auth = FakeAuthService();
-  final app = AppState(repository: DemoRepository(auth: auth), auth: auth);
+  final app = AppState(
+    repository: repository ?? DemoRepository(auth: auth),
+    auth: auth,
+  );
   addTearDown(app.dispose);
   await tester.pumpAndSettle();
+  final resolvedPicker = picker ?? FakeMediaPicker();
+  final controller = BandMediaController(
+    repository: app.repository,
+    picker: resolvedPicker,
+    say: app.say,
+  );
+  app.attachMediaController(controller);
+  addTearDown(controller.dispose);
   app.startGigCreate();
 
   await tester.pumpWidget(
-    ChangeNotifierProvider.value(
-      value: app,
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: app),
+        ChangeNotifierProvider.value(value: controller),
+      ],
       child: MaterialApp(
         theme: buildEpTheme(),
         home: const Scaffold(body: GigCreateScreen()),
@@ -150,5 +232,95 @@ Future<AppState> _pumpGigCreate(WidgetTester tester) async {
     ),
   );
   await tester.pumpAndSettle();
-  return app;
+  return (app: app, controller: controller, picker: resolvedPicker);
+}
+
+PickedMedia _photoFixture() {
+  final bytes = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk'
+    '+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  );
+  return PickedMedia(
+    bytes: bytes,
+    filename: 'flyer.png',
+    contentType: 'image/png',
+    sizeBytes: bytes.lengthInBytes,
+  );
+}
+
+class FakeMediaPicker implements MediaPicker {
+  PickedMedia? nextPhoto;
+  List<PickedMedia> nextPhotos = [];
+  PickedMedia? nextVideo;
+  MediaPickException? nextException;
+
+  @override
+  Future<PickedMedia?> pickPhoto() async {
+    _throwIfNeeded();
+    return nextPhoto;
+  }
+
+  @override
+  Future<({List<PickedMedia> photos, List<String> oversized})> pickPhotos({
+    int limit = 10,
+  }) async {
+    _throwIfNeeded();
+    return (photos: nextPhotos, oversized: const <String>[]);
+  }
+
+  @override
+  Future<PickedMedia?> pickVideo() async {
+    _throwIfNeeded();
+    return nextVideo;
+  }
+
+  void _throwIfNeeded() {
+    final error = nextException;
+    if (error != null) throw error;
+  }
+}
+
+class _GatedFlyerRepository extends DemoRepository {
+  _GatedFlyerRepository({required super.auth});
+
+  final uploadGate = Completer<void>();
+  int publishCalls = 0;
+  String? publishedFlyStorageId;
+
+  @override
+  Future<String> generateMediaUploadUrl(String bandId) async {
+    await uploadGate.future;
+    return super.generateMediaUploadUrl(bandId);
+  }
+
+  @override
+  Future<String> publishGig({
+    required String bandId,
+    required String title,
+    required int startsAt,
+    required String doorsTime,
+    required String venueId,
+    required int price,
+    required String flyKey,
+    String? flyStorageId,
+    required Ticketing ticketing,
+    String? externalUrl,
+    required String cap,
+  }) async {
+    publishCalls++;
+    publishedFlyStorageId = flyStorageId;
+    return super.publishGig(
+      bandId: bandId,
+      title: title,
+      startsAt: startsAt,
+      doorsTime: doorsTime,
+      venueId: venueId,
+      price: price,
+      flyKey: flyKey,
+      flyStorageId: flyStorageId,
+      ticketing: ticketing,
+      externalUrl: externalUrl,
+      cap: cap,
+    );
+  }
 }

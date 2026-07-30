@@ -8,6 +8,9 @@ abstract final class Env {
   );
   static const appleSignInEnabled = bool.fromEnvironment('APPLE_SIGN_IN_ENABLED');
 
-  static bool get demo =>
-      const bool.fromEnvironment('EARPLUG_DEMO') || convexUrl.isEmpty;
+  /// Demo mode must be asked for. It used to also switch itself on whenever
+  /// `convexUrl` was empty, which meant a build that simply forgot
+  /// `--dart-define=CONVEX_URL` served six invented bands as if they were real.
+  /// A missing URL is now a startup error — see `main()`.
+  static const bool demo = bool.fromEnvironment('EARPLUG_DEMO');
 }

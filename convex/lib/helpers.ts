@@ -122,6 +122,7 @@ export const bandPayloadValidator = v.object({
   colorHex: v.string(),
   initials: v.string(),
   followerCount: v.number(),
+  heroUrl: v.union(v.string(), v.null()),
   bio: v.string(),
   linkIg: v.union(v.string(), v.null()),
   linkBc: v.union(v.string(), v.null()),
@@ -129,9 +130,9 @@ export const bandPayloadValidator = v.object({
 });
 
 /** The six presses offered by the client's gig-create picker. "custom" means
- * band-supplied art and is currently a v1 stub: no image/storage field backs it
- * yet, so clients render a placeholder plate. The gigs.flyKey schema column
- * stays v.string() because legacy rows/seeds use older keys: paper, blue, black,
+ * band-supplied art backed by gigs.flyStorageId; clients render a placeholder
+ * plate when flyerUrl resolves null. The gigs.flyKey schema column stays
+ * v.string() because legacy rows/seeds use older keys: paper, blue, black,
  * yellow, and bluetype. */
 export const flyKeyValidator = v.union(
   v.literal("xerox"),
@@ -150,6 +151,7 @@ export const gigPayloadValidator = v.object({
   startsAt: v.number(),
   doorsTime: v.string(),
   flyKey: v.string(),
+  flyerUrl: v.union(v.string(), v.null()),
   lineup: v.array(v.id("bands")),
   genres: v.array(v.string()),
   desc: v.string(),
@@ -171,14 +173,28 @@ export const venuePayloadValidator = v.object({
   lng: v.number(),
 });
 
-export const videoPayloadValidator = v.object({
-  _id: v.id("videos"),
+export const mediaKindValidator = v.union(
+  v.literal("video"),
+  v.literal("photo"),
+);
+
+export const mediaPayloadValidator = v.object({
+  _id: v.id("bandMedia"),
   bandId: v.id("bands"),
+  kind: mediaKindValidator,
+  // Resolved per read; null when the blob is gone, so clients render the
+  // placeholder tile rather than a dead image.
+  url: v.union(v.string(), v.null()),
   title: v.string(),
-  views: v.number(),
-  lengthSec: v.number(),
+  caption: v.union(v.string(), v.null()),
+  contentType: v.union(v.string(), v.null()),
+  sizeBytes: v.union(v.number(), v.null()),
+  views: v.union(v.number(), v.null()),
+  lengthSec: v.union(v.number(), v.null()),
   pinned: v.boolean(),
   order: v.number(),
+  /** True when this row's blob is also the band's profile photo. */
+  isHero: v.boolean(),
 });
 
 export const userPayloadValidator = v.object({
@@ -191,25 +207,33 @@ export const userPayloadValidator = v.object({
   createdAt: v.number(),
 });
 
-// Defensive defaults: the schema is widened during migration, so new fields
-// may be transiently absent on legacy rows.
-export function toBandPayload(band: Doc<"bands">) {
+// `?? null` on the optional fields is the payload contract (explicit nulls,
+// never absent keys), not a defensive default — the rest are required by the
+// schema, so a missing one is a bug worth failing on.
+/** Known fan-out cost, accepted for v1: resolving the hero joins its `_storage`
+ * row into every reader's read set — including `gigs:feed`, where one band's
+ * hero change re-fires the feed for every subscribed client. First thing to
+ * revisit if the feed gets hot. */
+export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
   return {
     _id: band._id,
     name: band.name,
     genres: band.genres,
-    area: band.area ?? "",
-    colorHex: band.colorHex ?? bandColorFor(band.name),
-    initials: band.initials ?? initialsFor(band.name),
-    followerCount: band.followerCount ?? 0,
+    area: band.area,
+    colorHex: band.colorHex,
+    initials: band.initials,
+    followerCount: band.followerCount,
+    heroUrl: band.imageStorageId
+      ? await ctx.storage.getUrl(band.imageStorageId)
+      : null,
     bio: band.bio ?? "",
     linkIg: band.linkIg ?? null,
     linkBc: band.linkBc ?? null,
-    pastShows: band.pastShows ?? [],
+    pastShows: band.pastShows,
   };
 }
 
-export function toGigPayload(gig: Doc<"gigs">) {
+export async function toGigPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
   return {
     _id: gig._id,
     title: gig.title,
@@ -218,6 +242,9 @@ export function toGigPayload(gig: Doc<"gigs">) {
     startsAt: gig.startsAt,
     doorsTime: gig.doorsTime,
     flyKey: gig.flyKey,
+    flyerUrl: gig.flyStorageId
+      ? await ctx.storage.getUrl(gig.flyStorageId)
+      : null,
     lineup: gig.lineup,
     genres: gig.genres,
     desc: gig.desc,
@@ -233,24 +260,34 @@ export function toVenuePayload(venue: Doc<"venues">) {
   return {
     _id: venue._id,
     name: venue.name,
-    area: venue.area ?? "",
-    addr: venue.addr ?? "",
-    distSF: venue.distSF ?? "",
-    distOak: venue.distOak ?? "",
-    lat: venue.lat ?? 0,
-    lng: venue.lng ?? 0,
+    area: venue.area,
+    addr: venue.addr,
+    distSF: venue.distSF,
+    distOak: venue.distOak,
+    lat: venue.lat,
+    lng: venue.lng,
   };
 }
 
-export function toVideoPayload(video: Doc<"videos">) {
+export function toMediaPayload(
+  media: Doc<"bandMedia">,
+  url: string | null,
+  heroStorageId: Id<"_storage"> | undefined,
+) {
   return {
-    _id: video._id,
-    bandId: video.bandId,
-    title: video.title,
-    views: video.views,
-    lengthSec: video.lengthSec,
-    pinned: video.pinned,
-    order: video.order,
+    _id: media._id,
+    bandId: media.bandId,
+    kind: media.kind,
+    url,
+    title: media.title,
+    caption: media.caption ?? null,
+    contentType: media.contentType ?? null,
+    sizeBytes: media.sizeBytes ?? null,
+    views: media.views ?? null,
+    lengthSec: media.lengthSec ?? null,
+    pinned: media.pinned,
+    order: media.order,
+    isHero: heroStorageId !== undefined && heroStorageId === media.storageId,
   };
 }
 
@@ -260,9 +297,9 @@ export function toUserPayload(user: Doc<"users">) {
     clerkId: user.clerkId,
     name: user.name,
     email: user.email,
-    genres: user.genres ?? [],
-    attendedCount: user.attendedCount ?? 0,
-    createdAt: user.memberSince ?? user._creationTime,
+    genres: user.genres,
+    attendedCount: user.attendedCount,
+    createdAt: user._creationTime,
   };
 }
 
@@ -273,3 +310,58 @@ export const FEED_GRACE_MS = 6 * 60 * 60 * 1000;
 
 /** Hard ceiling on feed-style index range reads. */
 export const MAX_FEED_GIGS = 200;
+
+// ─── Band media limits ──────────────────────────────────────────────────────
+
+/** Both the insert cap and every `.take()` on `bandMedia`, so "the whole
+ * ordered list fits in one read" holds by construction. */
+export const MAX_MEDIA_PER_BAND = 50;
+
+export const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
+
+export const PHOTO_CONTENT_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+]);
+
+/** `video/quicktime` is not optional: every legacy clip in the deployment is a
+ * .mov, so rejecting it would orphan the entire existing library. */
+export const VIDEO_CONTENT_TYPES = new Set([
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+]);
+
+export const MAX_MEDIA_TITLE = 200;
+export const MAX_MEDIA_CAPTION = 500;
+/** Four hours — long enough for a full set, short enough to catch garbage. */
+export const MAX_MEDIA_LENGTH_SEC = 4 * 60 * 60;
+
+/**
+ * Throws unless the uploaded blob is acceptable for `kind`.
+ *
+ * Pure, so the size and type rules are testable without allocating a 100 MB
+ * Blob in the edge-runtime VM.
+ *
+ * `contentType` is rejected only when present AND disallowed. It is absent in
+ * convex-test (which records `_storage` docs as `{size, sha256}` only) and on
+ * some legacy blobs, and it is never sniffed — it is whatever header the
+ * uploader sent. So this is hygiene (an .mp4 filed as a photo breaks the
+ * gallery renderer), not a security control.
+ */
+export function assertUploadAcceptable(
+  meta: { size: number; contentType?: string },
+  kind: "video" | "photo",
+): void {
+  if (meta.size > MAX_MEDIA_BYTES) {
+    throw new Error("That file is too big — 100 MB max.");
+  }
+  const allowed =
+    kind === "video" ? VIDEO_CONTENT_TYPES : PHOTO_CONTENT_TYPES;
+  if (meta.contentType !== undefined && !allowed.has(meta.contentType)) {
+    throw new Error(`${meta.contentType} can't be posted as a ${kind}.`);
+  }
+}

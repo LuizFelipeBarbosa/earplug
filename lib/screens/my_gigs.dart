@@ -229,8 +229,9 @@ class _UpcomingCard extends StatelessWidget {
         children: [
           GestureDetector(
             onTap: () => app.openGig(gig.id),
-            child: FlyerBox(
-              style: app.flyer(gig.flyKey),
+            child: GigFlyer(
+              gig,
+              app.flyer(gig.flyKey),
               width: 44,
               height: 58,
               rotationDeg: -2,
@@ -300,8 +301,9 @@ class _SavedRow extends StatelessWidget {
       onTap: () => app.openGig(gig.id),
       child: Row(
         children: [
-          FlyerBox(
-            style: app.flyer(gig.flyKey),
+          GigFlyer(
+            gig,
+            app.flyer(gig.flyKey),
             width: 38,
             height: 50,
             rotationDeg: -2,

@@ -87,16 +87,71 @@ describe("gigs:publishGig auth", () => {
     ).rejects.toThrow("Validator error: Expected one of");
   });
 
-  test("publishes with the custom press", async () => {
+  test("publishes custom flyer storage and resolves its URL", async () => {
     const { t, asAdmin, bandId, venueId } = await setupBand();
+    const flyStorageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob([new Uint8Array([1, 2, 3])])),
+    );
     const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
       bandId,
       venueId,
       ...gigArgs,
       flyKey: "custom",
+      flyStorageId,
     });
-    const gig = await t.run(async (ctx) => ctx.db.get(gigId));
-    expect(gig!.flyKey).toBe("custom");
+    const gigs = await t.query(api.gigs.forBand, { bandId });
+    const gig = gigs.find((candidate) => candidate._id === gigId);
+    expect(gig?.flyKey).toBe("custom");
+    expect(gig?.flyerUrl).toEqual(expect.any(String));
+  });
+
+  test("rejects a custom press without flyer storage", async () => {
+    const { asAdmin, bandId, venueId } = await setupBand();
+    await expect(
+      asAdmin.mutation(api.gigs.publishGig, {
+        bandId,
+        venueId,
+        ...gigArgs,
+        flyKey: "custom",
+      }),
+    ).rejects.toThrow("Custom flyer requires flyStorageId");
+  });
+
+  test("rejects a custom press whose flyer blob was deleted", async () => {
+    const { t, asAdmin, bandId, venueId } = await setupBand();
+    const flyStorageId = await t.run(async (ctx) => {
+      const storageId = await ctx.storage.store(
+        new Blob([new Uint8Array([1, 2, 3])]),
+      );
+      await ctx.storage.delete(storageId);
+      return storageId;
+    });
+    await expect(
+      asAdmin.mutation(api.gigs.publishGig, {
+        bandId,
+        venueId,
+        ...gigArgs,
+        flyKey: "custom",
+        flyStorageId,
+      }),
+    ).rejects.toThrow("Flyer upload not found");
+  });
+
+  test("drops flyer storage supplied with a non-custom press", async () => {
+    const { t, asAdmin, bandId, venueId } = await setupBand();
+    const flyStorageId = await t.run(async (ctx) =>
+      ctx.storage.store(new Blob([new Uint8Array([1, 2, 3])])),
+    );
+    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+      bandId,
+      venueId,
+      ...gigArgs,
+      flyStorageId,
+    });
+    const rawGig = await t.run(async (ctx) => ctx.db.get(gigId));
+    expect(rawGig?.flyStorageId).toBeUndefined();
+    const gigs = await t.query(api.gigs.forBand, { bandId });
+    expect(gigs.find((gig) => gig._id === gigId)?.flyerUrl).toBeNull();
   });
 
   test("external ticketing requires an http(s) URL", async () => {
@@ -184,15 +239,6 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     const hits = await t.query(api.bands.search, { q: "Foghorn" });
     expect(hits.length).toBe(1);
     expect(hits[0].name).toBe("Foghorn Diet");
-
-    // videos:forBand — top-level array ordered by order asc.
-    const videos = await t.query(api.videos.forBand, { bandId: foghorn!._id });
-    expect(Array.isArray(videos)).toBe(true);
-    expect(videos.length).toBe(5);
-    expect(videos.map((video) => video.order)).toEqual([0, 1, 2, 3, 4]);
-    expect(videos[0].pinned).toBe(true);
-    expect(videos[0].views).toBe(12400);
-    expect(videos[0].lengthSec).toBe(161);
 
     // bands:myBands — [] unauthenticated (never throws).
     expect(await t.query(api.bands.myBands, {})).toEqual([]);

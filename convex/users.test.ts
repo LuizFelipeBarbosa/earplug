@@ -36,17 +36,16 @@ describe("users:ensureUser", () => {
     expect(count).toBe(1);
   });
 
-  test("adopts a legacy row by clerkId and backfills empty email", async () => {
+  // 25 migrated rows have an empty email — Clerk never gave the legacy app one.
+  test("adopts an existing row by clerkId and backfills empty email", async () => {
     const t = convexTest(schema);
-    const legacyId = await t.run(async (ctx) =>
+    const existingId = await t.run(async (ctx) =>
       ctx.db.insert("users", {
         clerkId: "user_legacy1",
         name: "Luiz B.",
         email: "",
-        avatar: "https://img.clerk.com/x",
-        memberSince: 1774900000000,
-        role: "fan",
-        showsAttended: 0,
+        genres: [],
+        attendedCount: 0,
       }),
     );
     const asLegacy = t.withIdentity({
@@ -54,9 +53,9 @@ describe("users:ensureUser", () => {
       email: "luiz@example.com",
     });
     const { userId } = await asLegacy.mutation(api.users.ensureUser, {});
-    expect(userId).toBe(legacyId);
+    expect(userId).toBe(existingId);
 
-    const row = await t.run(async (ctx) => ctx.db.get(legacyId));
+    const row = await t.run(async (ctx) => ctx.db.get(existingId));
     expect(row!.email).toBe("luiz@example.com"); // backfilled
     expect(row!.name).toBe("Luiz B."); // kept
   });
@@ -68,16 +67,80 @@ describe("users:ensureUser", () => {
         clerkId: "user_old_instance_a",
         name: "Anandi J.",
         email: "anandi@example.com",
+        genres: [],
+        attendedCount: 0,
       }),
     );
     const asAnandi = t.withIdentity({
       subject: "user_new_a",
       email: "anandi@example.com",
+      emailVerified: true,
     });
     const { userId } = await asAnandi.mutation(api.users.ensureUser, {});
     expect(userId).toBe(uniqueId);
     const row = await t.run(async (ctx) => ctx.db.get(uniqueId));
     expect(row!.clerkId).toBe("user_new_a");
+  });
+
+  test("does NOT adopt unique email matches that are unverified", async () => {
+    const t = convexTest(schema);
+    const [falseVerifiedLegacyId, omittedVerifiedLegacyId] = await t.run(
+      async (ctx) => [
+        await ctx.db.insert("users", {
+          clerkId: "user_unverified_false_old",
+          name: "False Verified",
+          email: "false-verified@example.com",
+          genres: [],
+          attendedCount: 0,
+        }),
+        await ctx.db.insert("users", {
+          clerkId: "user_unverified_omitted_old",
+          name: "Omitted Verified",
+          email: "omitted-verified@example.com",
+          genres: [],
+          attendedCount: 0,
+        }),
+      ],
+    );
+
+    const asFalseVerified = t.withIdentity({
+      subject: "user_unverified_false_new",
+      email: "false-verified@example.com",
+      emailVerified: false,
+    });
+    const asOmittedVerified = t.withIdentity({
+      subject: "user_unverified_omitted_new",
+      email: "omitted-verified@example.com",
+    });
+    const falseVerified = await asFalseVerified.mutation(
+      api.users.ensureUser,
+      {},
+    );
+    const omittedVerified = await asOmittedVerified.mutation(
+      api.users.ensureUser,
+      {},
+    );
+
+    expect(falseVerified.userId).not.toBe(falseVerifiedLegacyId);
+    expect(omittedVerified.userId).not.toBe(omittedVerifiedLegacyId);
+    const rows = await t.run(async (ctx) => ({
+      falseVerifiedLegacy: await ctx.db.get(falseVerifiedLegacyId),
+      omittedVerifiedLegacy: await ctx.db.get(omittedVerifiedLegacyId),
+      falseVerifiedFresh: await ctx.db.get(falseVerified.userId),
+      omittedVerifiedFresh: await ctx.db.get(omittedVerified.userId),
+    }));
+    expect(rows.falseVerifiedLegacy?.clerkId).toBe(
+      "user_unverified_false_old",
+    );
+    expect(rows.omittedVerifiedLegacy?.clerkId).toBe(
+      "user_unverified_omitted_old",
+    );
+    expect(rows.falseVerifiedFresh?.clerkId).toBe(
+      "user_unverified_false_new",
+    );
+    expect(rows.omittedVerifiedFresh?.clerkId).toBe(
+      "user_unverified_omitted_new",
+    );
   });
 
   test("does NOT adopt by email when the match is ambiguous", async () => {
@@ -87,11 +150,15 @@ describe("users:ensureUser", () => {
         clerkId: "user_dup_1",
         name: "Dup One",
         email: "dup@example.com",
+        genres: [],
+        attendedCount: 0,
       });
       await ctx.db.insert("users", {
         clerkId: "user_dup_2",
         name: "Dup Two",
         email: "dup@example.com",
+        genres: [],
+        attendedCount: 0,
       });
     });
     const asDup = t.withIdentity({
