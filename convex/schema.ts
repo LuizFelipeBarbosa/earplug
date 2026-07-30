@@ -125,6 +125,7 @@ export default defineSchema({
     cap: v.string(),
     goingCount: v.number(),
     createdByBand: v.optional(v.id("bands")),
+    legacyEventId: v.optional(v.id("events")), // TODO(prod-migration): stripped by purgeLegacy before tighten
     // Band-supplied flyer art, set when flyKey is "custom". The gig owns this
     // blob outright — it is never a bandMedia row, because `lineup` is an array
     // so "whose media is it" would be ambiguous.
