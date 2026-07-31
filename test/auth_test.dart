@@ -1,11 +1,11 @@
 import 'package:earplug/app_state.dart';
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/screens/auth.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+
+import 'support/harness.dart';
 
 void main() {
   testWidgets('backing out during the through splash keeps the pending RSVP', (
@@ -94,36 +94,23 @@ Future<AppState> _pumpAuth(
   WidgetTester tester, {
   required void Function(AppState app) openGate,
 }) async {
-  tester.view.physicalSize = const Size(402, 900);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-
   final auth = FakeAuthService();
-  final app = AppState(
-    repository: DemoRepository(auth: auth),
+  final harness = await pumpApp(
+    tester,
     auth: auth,
-  );
-  addTearDown(app.dispose);
-
-  openGate(app);
-  expect(app.current.screen, Screen.auth);
-  await auth.signInDemo();
-
-  await tester.pumpWidget(
-    ChangeNotifierProvider.value(
-      value: app,
-      child: MaterialApp(
-        theme: buildEpTheme(),
-        home: Scaffold(
-          body: Consumer<AppState>(
-            builder: (_, a, _) => a.current.screen == Screen.auth
-                ? const AuthScreen()
-                : const SizedBox.shrink(),
-          ),
-        ),
+    beforePump: (app) async {
+      openGate(app);
+      expect(app.current.screen, Screen.auth);
+      await auth.signInDemo();
+    },
+    home: Scaffold(
+      body: Consumer<AppState>(
+        builder: (_, a, _) => a.current.screen == Screen.auth
+            ? const AuthScreen()
+            : const SizedBox.shrink(),
       ),
     ),
+    pumpFor: const Duration(milliseconds: 400), // taste-step rise-in
   );
-  await tester.pump(const Duration(milliseconds: 400)); // taste-step rise-in
-  return app;
+  return harness.app;
 }

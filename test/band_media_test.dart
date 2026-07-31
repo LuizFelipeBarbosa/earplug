@@ -1,20 +1,18 @@
 import 'dart:async';
-import 'dart:typed_data';
 
-import 'package:earplug/app_state.dart';
-import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_media.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/services/media_upload_service.dart';
-import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
+
+import 'support/fakes.dart';
+import 'support/fixtures.dart';
+import 'support/harness.dart';
 
 void main() {
   testWidgets('renders seeded media and both upload slots', (tester) async {
@@ -33,9 +31,11 @@ void main() {
   testWidgets('shows the empty state when the repository has no media', (
     tester,
   ) async {
+    final auth = FakeAuthService();
     await _pumpBandMedia(
       tester,
-      repositoryBuilder: (auth) => _EmptyMediaDemoRepository(auth: auth),
+      auth: auth,
+      repository: _EmptyMediaDemoRepository(auth: auth),
     );
 
     expect(find.text('NOTHING POSTED YET'), findsOneWidget);
@@ -46,15 +46,14 @@ void main() {
   testWidgets('shows an in-flight upload and then its new media row', (
     tester,
   ) async {
-    late _GatedSaveDemoRepository repository;
+    final auth = FakeAuthService();
+    final repository = _GatedSaveDemoRepository(auth: auth);
     final harness = await _pumpBandMedia(
       tester,
-      repositoryBuilder: (auth) {
-        repository = _GatedSaveDemoRepository(auth: auth);
-        return repository;
-      },
+      auth: auth,
+      repository: repository,
     );
-    harness.picker.nextVideo = _videoFixture();
+    harness.picker.nextVideo = videoFixture();
 
     await tester.tap(find.text('+ CLIP'));
     await tester.pump();
@@ -76,17 +75,20 @@ void main() {
   });
 
   testWidgets('failed uploads can be discarded', (tester) async {
+    final auth = FakeAuthService();
+    final repository = HttpUploadDemoRepository(auth: auth);
     final harness = await _pumpBandMedia(
       tester,
-      repositoryBuilder: (auth) => _HttpUploadDemoRepository(auth: auth),
-      uploaderBuilder: (repository) => MediaUploadService(
+      auth: auth,
+      repository: repository,
+      uploader: MediaUploadService(
         repository: repository,
         post: (url, bytes, contentType) async {
           throw Exception('simulated upload failure');
         },
       ),
     );
-    harness.picker.nextVideo = _videoFixture();
+    harness.picker.nextVideo = videoFixture();
 
     await tester.tap(find.text('+ CLIP'));
     await tester.pumpAndSettle();
@@ -106,9 +108,11 @@ void main() {
   testWidgets('members are gated from uploads and management controls', (
     tester,
   ) async {
+    final auth = FakeAuthService();
     final harness = await _pumpBandMedia(
       tester,
-      repositoryBuilder: (auth) => _MemberDemoRepository(auth: auth),
+      auth: auth,
+      repository: _MemberDemoRepository(auth: auth),
     );
 
     expect(find.text('PIN'), findsNothing);
@@ -153,94 +157,18 @@ void main() {
   });
 }
 
-Future<_BandMediaHarness> _pumpBandMedia(
+Future<AppHarness> _pumpBandMedia(
   WidgetTester tester, {
-  DemoRepository Function(FakeAuthService auth)? repositoryBuilder,
-  MediaUploadService Function(EarplugRepository repository)? uploaderBuilder,
-}) async {
-  tester.view.physicalSize = const Size(402, 900);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-
-  final auth = FakeAuthService();
-  final repository =
-      repositoryBuilder?.call(auth) ?? DemoRepository(auth: auth);
-  final app = AppState(repository: repository, auth: auth);
-  final picker = FakeMediaPicker();
-  final controller = BandMediaController(
-    repository: repository,
-    say: app.say,
-    picker: picker,
-    uploader:
-        uploaderBuilder?.call(repository) ??
-        MediaUploadService(repository: repository),
-  );
-  app.attachMediaController(controller);
-  addTearDown(controller.dispose);
-  addTearDown(app.dispose);
-
-  await tester.pumpWidget(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider<AppState>.value(value: app),
-        ChangeNotifierProvider<BandMediaController>.value(value: controller),
-      ],
-      child: MaterialApp(
-        theme: buildEpTheme(),
-        home: const BandMediaScreen(bandId: 'b1'),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-
-  return _BandMediaHarness(app: app, picker: picker);
-}
-
-class _BandMediaHarness {
-  final AppState app;
-  final FakeMediaPicker picker;
-
-  const _BandMediaHarness({required this.app, required this.picker});
-}
-
-PickedMedia _videoFixture() => PickedMedia(
-  bytes: Uint8List.fromList([1, 2, 3]),
-  filename: 'riptide_live.mp4',
-  contentType: 'video/mp4',
-  sizeBytes: 3,
+  FakeAuthService? auth,
+  EarplugRepository? repository,
+  MediaUploadService? uploader,
+}) => pumpApp(
+  tester,
+  auth: auth,
+  repository: repository,
+  uploader: uploader,
+  home: const BandMediaScreen(bandId: 'b1'),
 );
-
-class FakeMediaPicker implements MediaPicker {
-  PickedMedia? nextPhoto;
-  List<PickedMedia> nextPhotos = [];
-  PickedMedia? nextVideo;
-  MediaPickException? nextException;
-
-  @override
-  Future<PickedMedia?> pickPhoto() async {
-    _throwIfNeeded();
-    return nextPhoto;
-  }
-
-  @override
-  Future<({List<PickedMedia> photos, List<String> oversized})> pickPhotos({
-    int limit = 10,
-  }) async {
-    _throwIfNeeded();
-    return (photos: nextPhotos, oversized: const <String>[]);
-  }
-
-  @override
-  Future<PickedMedia?> pickVideo() async {
-    _throwIfNeeded();
-    return nextVideo;
-  }
-
-  void _throwIfNeeded() {
-    final error = nextException;
-    if (error != null) throw error;
-  }
-}
 
 class _EmptyMediaDemoRepository extends DemoRepository {
   _EmptyMediaDemoRepository({required super.auth});
@@ -282,12 +210,4 @@ class _GatedSaveDemoRepository extends DemoRepository {
       lengthSec: lengthSec,
     );
   }
-}
-
-class _HttpUploadDemoRepository extends DemoRepository {
-  _HttpUploadDemoRepository({required super.auth});
-
-  @override
-  Future<String> generateMediaUploadUrl(String bandId) async =>
-      'https://fake.upload/x';
 }

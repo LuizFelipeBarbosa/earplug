@@ -9,6 +9,9 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/services/media_upload_service.dart';
 
+import 'support/fakes.dart';
+import 'support/fixtures.dart';
+
 void main() {
   group('BandMediaController', () {
     test('mediaFor starts empty and populates after its lazy load', () async {
@@ -28,7 +31,7 @@ void main() {
     test('video upload advances phases, lands, and auto-pins', () async {
       final harness = _makeController();
       const bandId = 'fresh-band';
-      harness.picker.nextVideo = _videoFixture();
+      harness.picker.nextVideo = videoFixture();
       final phases = <MediaUploadPhase>[];
       harness.controller.addListener(() {
         final uploads = harness.controller.uploadsFor(bandId);
@@ -54,7 +57,7 @@ void main() {
     });
 
     test('failed upload retains its payload and can be retried', () async {
-      final repository = _HttpUploadDemoRepository();
+      final repository = HttpUploadDemoRepository();
       var shouldFail = true;
       var postCalls = 0;
       Future<String> poster(
@@ -72,7 +75,7 @@ void main() {
         uploader: MediaUploadService(repository: repository, post: poster),
       );
       const bandId = 'retry-band';
-      final fixture = _videoFixture();
+      final fixture = videoFixture();
       harness.picker.nextVideo = fixture;
 
       await harness.controller.pickAndUploadVideo(bandId);
@@ -111,7 +114,7 @@ void main() {
       () async {
         final harness = _makeController();
         const bandId = 'photo-batch-band';
-        harness.picker.nextPhotos = [_photoFixture()];
+        harness.picker.nextPhotos = [stubPhotoFixture()];
         harness.picker.nextOversized = ['too-large.jpg', 'also-too-large.png'];
 
         await harness.controller.pickAndUploadPhotos(bandId);
@@ -188,7 +191,7 @@ void main() {
     });
 
     test('clearForSignOut clears caches and uploads and notifies', () async {
-      final repository = _HttpUploadDemoRepository();
+      final repository = HttpUploadDemoRepository();
       final harness = _makeController(
         repository: repository,
         uploader: MediaUploadService(
@@ -202,7 +205,7 @@ void main() {
       await harness.controller.refresh(bandId);
       expect(harness.controller.mediaFor(bandId), isNotEmpty);
 
-      harness.picker.nextVideo = _videoFixture();
+      harness.picker.nextVideo = videoFixture();
       await harness.controller.pickAndUploadVideo(bandId);
       expect(harness.controller.uploadsFor(bandId), hasLength(1));
 
@@ -221,20 +224,6 @@ void main() {
     });
   });
 }
-
-PickedMedia _videoFixture() => PickedMedia(
-  bytes: Uint8List.fromList([1, 2, 3]),
-  filename: 'riptide_live.mp4',
-  contentType: 'video/mp4',
-  sizeBytes: 3,
-);
-
-PickedMedia _photoFixture() => PickedMedia(
-  bytes: Uint8List.fromList([1, 2, 3]),
-  filename: 'backstage.jpg',
-  contentType: 'image/jpeg',
-  sizeBytes: 3,
-);
 
 Future<void> _waitForLoad(BandMediaController controller, String bandId) async {
   for (
@@ -260,52 +249,4 @@ _makeController({EarplugRepository? repository, MediaUploadService? uploader}) {
   );
   addTearDown(controller.dispose);
   return (controller: controller, picker: picker, said: said);
-}
-
-class FakeMediaPicker implements MediaPicker {
-  PickedMedia? nextPhoto;
-  List<PickedMedia> nextPhotos = [];
-  List<String> nextOversized = [];
-  PickedMedia? nextVideo;
-  MediaPickException? nextException;
-
-  int photoCalls = 0;
-  int photoListCalls = 0;
-  int videoCalls = 0;
-
-  @override
-  Future<PickedMedia?> pickPhoto() async {
-    photoCalls++;
-    _throwIfNeeded();
-    return nextPhoto;
-  }
-
-  @override
-  Future<({List<PickedMedia> photos, List<String> oversized})> pickPhotos({
-    int limit = 10,
-  }) async {
-    photoListCalls++;
-    _throwIfNeeded();
-    return (photos: nextPhotos, oversized: nextOversized);
-  }
-
-  @override
-  Future<PickedMedia?> pickVideo() async {
-    videoCalls++;
-    _throwIfNeeded();
-    return nextVideo;
-  }
-
-  void _throwIfNeeded() {
-    final error = nextException;
-    if (error != null) throw error;
-  }
-}
-
-class _HttpUploadDemoRepository extends DemoRepository {
-  _HttpUploadDemoRepository() : super(auth: FakeAuthService());
-
-  @override
-  Future<String> generateMediaUploadUrl(String bandId) async =>
-      'https://fake.upload/x';
 }

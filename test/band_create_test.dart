@@ -1,17 +1,15 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:earplug/app_state.dart';
-import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/screens/band_create.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/services/media_picker.dart';
-import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
+
+import 'support/fixtures.dart';
+import 'support/harness.dart';
 
 void main() {
   testWidgets(
@@ -231,7 +229,7 @@ void main() {
   ) async {
     final harness = await _pumpBandCreate(tester);
     final app = harness.app;
-    harness.picker.nextPhoto = _photoFixture();
+    harness.picker.nextPhoto = photoFixture();
     expect(find.text('DROP A BAND PHOTO'), findsOne);
 
     await tester.tap(find.byKey(const ValueKey('label-photo')));
@@ -256,7 +254,7 @@ void main() {
     tester,
   ) async {
     final harness = await _pumpBandCreate(tester);
-    harness.picker.nextPhoto = _photoFixture();
+    harness.picker.nextPhoto = photoFixture();
 
     await tester.tap(find.byKey(const ValueKey('label-photo')));
     await tester.pumpAndSettle();
@@ -265,8 +263,8 @@ void main() {
     await tester.pumpAndSettle();
 
     final bandId = harness.app.bandId;
-    await harness.controller.refresh(bandId);
-    final photos = harness.controller.photosFor(bandId);
+    await harness.media.refresh(bandId);
+    final photos = harness.media.photosFor(bandId);
     expect(photos, hasLength(1));
     expect(photos.single.isHero, isTrue);
   });
@@ -289,62 +287,20 @@ void main() {
   });
 }
 
-Future<({AppState app, BandMediaController controller, FakeMediaPicker picker})>
-_pumpBandCreate(
+Future<AppHarness> _pumpBandCreate(
   WidgetTester tester, {
   EarplugRepository? repository,
-  FakeMediaPicker? picker,
-}) async {
-  // A phone-sized surface: the design targets 402x874.
-  tester.view.physicalSize = const Size(402, 900);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-
-  final auth = FakeAuthService();
-  final app = AppState(
-    repository: repository ?? DemoRepository(auth: auth),
-    auth: auth,
-  );
-  addTearDown(app.dispose);
-  await tester.pumpAndSettle();
-  final resolvedPicker = picker ?? FakeMediaPicker();
-  final controller = BandMediaController(
-    repository: app.repository,
-    picker: resolvedPicker,
-    say: app.say,
-  );
-  app.attachMediaController(controller);
-  addTearDown(controller.dispose);
-  app.startBandCreate();
-
-  await tester.pumpWidget(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: app),
-        ChangeNotifierProvider.value(value: controller),
-      ],
-      child: MaterialApp(
-        theme: buildEpTheme(),
-        home: const Scaffold(body: BandCreateScreen()),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  return (app: app, controller: controller, picker: resolvedPicker);
-}
-
-PickedMedia _photoFixture() {
-  final bytes = base64Decode(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk'
-    '+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-  );
-  return PickedMedia(
-    bytes: bytes,
-    filename: 'band_photo.png',
-    contentType: 'image/png',
-    sizeBytes: bytes.lengthInBytes,
-  );
-}
+}) => pumpApp(
+  tester,
+  repository: repository,
+  // Let the demo streams land before the form opens, the way they have by the
+  // time a real user reaches this screen.
+  beforePump: (app) async {
+    await tester.pumpAndSettle();
+    app.startBandCreate();
+  },
+  home: const Scaffold(body: BandCreateScreen()),
+);
 
 /// Fills the three required lines through the UI, leaving the bar ready.
 Future<void> _fillForm(WidgetTester tester) async {
@@ -400,37 +356,5 @@ class _GatedDemoRepository extends DemoRepository {
       linkBc: linkBc,
       linkYt: linkYt,
     );
-  }
-}
-
-class FakeMediaPicker implements MediaPicker {
-  PickedMedia? nextPhoto;
-  List<PickedMedia> nextPhotos = [];
-  PickedMedia? nextVideo;
-  MediaPickException? nextException;
-
-  @override
-  Future<PickedMedia?> pickPhoto() async {
-    _throwIfNeeded();
-    return nextPhoto;
-  }
-
-  @override
-  Future<({List<PickedMedia> photos, List<String> oversized})> pickPhotos({
-    int limit = 10,
-  }) async {
-    _throwIfNeeded();
-    return (photos: nextPhotos, oversized: const <String>[]);
-  }
-
-  @override
-  Future<PickedMedia?> pickVideo() async {
-    _throwIfNeeded();
-    return nextVideo;
-  }
-
-  void _throwIfNeeded() {
-    final error = nextException;
-    if (error != null) throw error;
   }
 }

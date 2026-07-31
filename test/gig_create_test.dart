@@ -1,18 +1,15 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:earplug/app_state.dart';
-import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/services/media_picker.dart';
-import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
+
+import 'support/fixtures.dart';
+import 'support/harness.dart';
 
 void main() {
   testWidgets(
@@ -157,7 +154,7 @@ void main() {
     tester,
   ) async {
     final harness = await _pumpGigCreate(tester);
-    harness.picker.nextPhoto = _photoFixture();
+    harness.picker.nextPhoto = photoFixture(filename: 'flyer.png');
 
     await tester.tap(find.byKey(const ValueKey('press-custom')));
     await tester.pump();
@@ -176,7 +173,7 @@ void main() {
     final repository = _GatedFlyerRepository(auth: FakeAuthService());
     final harness = await _pumpGigCreate(tester, repository: repository);
     final app = harness.app;
-    harness.picker.nextPhoto = _photoFixture();
+    harness.picker.nextPhoto = photoFixture(filename: 'flyer.png');
     app.setGfName('Gated Flyer Show');
     app.setGfDate(DateTime.now().add(const Duration(days: 2)));
     app.setGfVenue('v1');
@@ -212,94 +209,20 @@ void main() {
   });
 }
 
-Future<({AppState app, BandMediaController controller, FakeMediaPicker picker})>
-_pumpGigCreate(
+Future<AppHarness> _pumpGigCreate(
   WidgetTester tester, {
   EarplugRepository? repository,
-  FakeMediaPicker? picker,
-}) async {
-  // A phone-sized surface: the design targets 402x874.
-  tester.view.physicalSize = const Size(402, 900);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-
-  final auth = FakeAuthService();
-  final app = AppState(
-    repository: repository ?? DemoRepository(auth: auth),
-    auth: auth,
-  );
-  addTearDown(app.dispose);
-  await tester.pumpAndSettle();
-  final resolvedPicker = picker ?? FakeMediaPicker();
-  final controller = BandMediaController(
-    repository: app.repository,
-    picker: resolvedPicker,
-    say: app.say,
-  );
-  app.attachMediaController(controller);
-  addTearDown(controller.dispose);
-  app.startGigCreate();
-
-  await tester.pumpWidget(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: app),
-        ChangeNotifierProvider.value(value: controller),
-      ],
-      child: MaterialApp(
-        theme: buildEpTheme(),
-        home: const Scaffold(body: GigCreateScreen()),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  return (app: app, controller: controller, picker: resolvedPicker);
-}
-
-PickedMedia _photoFixture() {
-  final bytes = base64Decode(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk'
-    '+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-  );
-  return PickedMedia(
-    bytes: bytes,
-    filename: 'flyer.png',
-    contentType: 'image/png',
-    sizeBytes: bytes.lengthInBytes,
-  );
-}
-
-class FakeMediaPicker implements MediaPicker {
-  PickedMedia? nextPhoto;
-  List<PickedMedia> nextPhotos = [];
-  PickedMedia? nextVideo;
-  MediaPickException? nextException;
-
-  @override
-  Future<PickedMedia?> pickPhoto() async {
-    _throwIfNeeded();
-    return nextPhoto;
-  }
-
-  @override
-  Future<({List<PickedMedia> photos, List<String> oversized})> pickPhotos({
-    int limit = 10,
-  }) async {
-    _throwIfNeeded();
-    return (photos: nextPhotos, oversized: const <String>[]);
-  }
-
-  @override
-  Future<PickedMedia?> pickVideo() async {
-    _throwIfNeeded();
-    return nextVideo;
-  }
-
-  void _throwIfNeeded() {
-    final error = nextException;
-    if (error != null) throw error;
-  }
-}
+}) => pumpApp(
+  tester,
+  repository: repository,
+  // Let the demo streams land before the form opens, the way they have by the
+  // time a real user reaches this screen.
+  beforePump: (app) async {
+    await tester.pumpAndSettle();
+    app.startGigCreate();
+  },
+  home: const Scaffold(body: GigCreateScreen()),
+);
 
 class _GatedFlyerRepository extends DemoRepository {
   _GatedFlyerRepository({required super.auth});

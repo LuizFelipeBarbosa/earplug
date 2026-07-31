@@ -1,15 +1,11 @@
-import 'package:earplug/app_state.dart';
-import 'package:earplug/band_media_state.dart';
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
-import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
+
+import 'support/harness.dart';
 
 void main() {
   testWidgets('profile renders the pinned video and clip grid', (tester) async {
@@ -75,35 +71,7 @@ void main() {
   });
 }
 
-Future<({AppState app, BandMediaController media})> _pumpProfile(
-  WidgetTester tester,
-) async {
-  tester.view.physicalSize = const Size(402, 900);
-  tester.view.devicePixelRatio = 1;
-  addTearDown(tester.view.reset);
-
-  final auth = FakeAuthService();
-  final app = AppState(
-    repository: DemoRepository(auth: auth),
-    auth: auth,
-  );
-  final media = BandMediaController(repository: app.repository, say: app.say);
-  app.attachMediaController(media);
-  addTearDown(media.dispose);
-  addTearDown(app.dispose);
-
-  await tester.pumpWidget(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider<AppState>.value(value: app),
-        ChangeNotifierProvider<BandMediaController>.value(value: media),
-      ],
-      child: MaterialApp(
-        theme: buildEpTheme(),
-        home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-  return (app: app, media: media);
-}
+Future<AppHarness> _pumpProfile(WidgetTester tester) => pumpApp(
+  tester,
+  home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+);
