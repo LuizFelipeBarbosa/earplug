@@ -16,16 +16,16 @@ import {
   venuePayloadValidator,
 } from "./lib/helpers";
 
-/** The one instant that divides "upcoming" from "past" — every feed-shaped read
- * below derives from it, forwards or backwards, so the two sides can never
- * disagree about which gigs exist.
+/** The instant that divides "upcoming" from "past". Every feed-shaped read
+ * derives from it so they share one grace window — but each query execution
+ * takes its own reading, so a gig sitting right on the boundary can still be
+ * upcoming to one query and past to another.
  *
  * Known staleness, deferred for v1: Date.now() is captured when the query
- * executes, and cached results only recompute on writes to the gigs range this
- * reads — so a gig can linger past the 6h grace until the next gig is published
- * (RSVPs write `interactions` and do not invalidate this). Pre-launch fix: a
- * cron heartbeat that writes the current hour cutoff to a singleton doc which
- * this function reads instead of the clock. */
+ * executes, and a cached result only recomputes when something writes to the
+ * range it read — so on a quiet deployment a gig can linger past the 6h grace.
+ * Pre-launch fix: a cron heartbeat that writes the current hour's cutoff to a
+ * singleton doc this reads instead of the clock. */
 function feedCutoff(): number {
   return Date.now() - FEED_GRACE_MS;
 }

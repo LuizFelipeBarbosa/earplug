@@ -77,7 +77,7 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 |---|---|---|
 | ★ `gigs:feed` | `{}` | `{ gigs: GigPayload[], venues: VenuePayload[], bands: BandPayload[] }` — all gigs with `startsAt >= now - 6h`, ascending, plus every venue/band they reference. Public. Bounded to the 200 nearest upcoming gigs. |
 | `gigs:forBand` | `{ bandId }` | `GigPayload[]` upcoming gigs whose lineup contains bandId, ascending. Filtered out of the same 200-gig forward window as `gigs:feed`. |
-| `gigs:pastForBand` | `{ bandId }` | `{ gigs: GigPayload[], venues: VenuePayload[] }` — past gigs whose lineup contains bandId, **descending**, plus the venues they reference. Public. Bounded to the 200 most recent past gigs. |
+| `gigs:pastForBand` | `{ bandId }` | `{ gigs: GigPayload[], venues: VenuePayload[] }` — past gigs whose lineup contains bandId, **descending**, plus the venues they reference. Public. Reads the 200 most recent past gigs **globally** and then filters by lineup, so a band whose shows fall outside that window returns empty — the same trap `gigs:forBand` carries forward. |
 | `venues:list` | `{}` | `VenuePayload[]` — every venue, name-ascending, capped at 500. Public. |
 | `bands:get` | `{ bandId }` | `BandPayload` (full) or `null` |
 | `bands:search` | `{ q: string }` | `BandPayload[]` — name search-index match; `q: ""` → all bands (capped 50) |
@@ -92,7 +92,7 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 
 | Function | Args | Returns | Notes |
 |---|---|---|---|
-| `users:ensureUser` | `{ name?: string }` | `{ userId }` | Idempotent upsert keyed on `identity.subject`; adopts a legacy row matching `identity.email` (sets its clerkId). Called by the client right after sign-in. |
+| `users:ensureUser` | `{ name?: string }` | `{ userId }` | Idempotent upsert keyed on `identity.subject`. Falls back to adopting a legacy row by `identity.email` — but **only** when `identity.emailVerified` is true **and** exactly one row carries that address, so an unverified sign-up cannot claim a migrated account and the known duplicate-email rows are left alone. Backfills an empty name from the identity. Called by the client right after sign-in. |
 | `users:setGenres` | `{ genres: string[] }` | `null` | |
 | `interactions:toggleRsvp` | `{ gigId }` | `{ on: boolean }` | Insert/delete join row via by_user_gig index; `goingCount` ±1 same transaction. |
 | `interactions:toggleFollow` | `{ bandId }` | `{ on: boolean }` | `followerCount` ±1 same transaction. |
@@ -132,8 +132,12 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 
 ## Internal (not called by client)
 
-- `seed:seedDemo` internalMutation — idempotent demo venues/bands/gigs port of
-  lib/demo_data.dart; startsAt computed relative to run date so one gig is "tonight".
+- `seed:seedDemo` internalMutation — **test fixture only, never run it against a
+  real deployment.** Its idempotency marker is a venue named "The Foghorn Club",
+  which prod does not have, so on prod it is not idempotent: it inserts fake
+  bands and gigs into the live feed, and the purger that could undo that was
+  deleted with `convex/cleanup.ts`. A port of lib/demo_data.dart; startsAt is
+  computed relative to run date so one gig is "tonight".
 - `media:sweepOrphanBlobs` internalMutation — dry-run by default; scheduled by
   `convex/crons.ts` every 24 hours with `{ dryRun: false }`. Also the only
   thing that deletes blobs: it aborts rather than guess when any reference
