@@ -209,6 +209,16 @@ class DemoRepository implements EarplugRepository {
   Future<List<PastGig>> history() async =>
       _auth.signedIn ? DemoData.fanHistory : const [];
 
+  /// Empty by construction: every demo gig is upcoming, so the demo dataset has
+  /// no history to show. Inventing past shows here would put fabricated dates on
+  /// a real-looking profile.
+  @override
+  Future<BandHistory> bandHistory(String bandId) async => BandHistory.empty;
+
+  @override
+  Future<List<Venue>> venues() async =>
+      DemoData.venues.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+
   @override
   Future<Band?> band(String bandId) async => _bands[bandId];
 

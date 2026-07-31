@@ -32,8 +32,9 @@ Future<void> main() async {
     runApp(const EarplugApp());
     return;
   }
-  if (Env.convexUrl.isEmpty) {
-    runApp(const _ConfigErrorApp());
+  final configError = Env.configurationError;
+  if (configError != null) {
+    runApp(_ConfigErrorApp(message: configError));
     return;
   }
 
@@ -46,10 +47,14 @@ Future<void> main() async {
   runApp(EarplugApp(repository: repository, auth: auth));
 }
 
-/// Shown instead of the app when the build has no backend to talk to. Loud on
-/// purpose: the alternative is a silent fall back to demo data.
+/// Shown instead of the app when the build is misconfigured — no backend, no
+/// Clerk key, or a Clerk key paired with the wrong deployment. Loud on purpose:
+/// the alternatives are a silent fall back to demo data, or signing in against
+/// one environment while reading another and calling the empty result a bug.
 class _ConfigErrorApp extends StatelessWidget {
-  const _ConfigErrorApp();
+  const _ConfigErrorApp({required this.message});
+
+  final String message;
 
   @override
   Widget build(BuildContext context) {
@@ -67,9 +72,7 @@ class _ConfigErrorApp extends StatelessWidget {
                 Text('NOT CONFIGURED', style: epDisplay(size: 22)),
                 const SizedBox(height: 16),
                 Text(
-                  'CONVEX_URL is not set, so there is no backend to load.\n\n'
-                  'Build with --dart-define=CONVEX_URL=…, or pass\n'
-                  '--dart-define=EARPLUG_DEMO=true for the offline demo.',
+                  message,
                   textAlign: TextAlign.center,
                   style: epText(size: 13, color: Ep.inkA(.75), height: 1.5),
                 ),
@@ -113,10 +116,29 @@ class EarplugApp extends StatelessWidget {
         title: 'EarPlug',
         debugShowCheckedModeBanner: false,
         theme: buildEpTheme(),
+        // A corner ribbon on everything that is not production, so which
+        // dataset you are looking at is never a guess.
+        builder: (_, child) {
+          final app = child ?? const SizedBox.shrink();
+          final label = _environmentRibbon();
+          if (label == null) return app;
+          return Banner(
+            message: label,
+            location: BannerLocation.topEnd,
+            color: Ep.ink,
+            child: app,
+          );
+        },
         home: const RootShell(),
       ),
     );
   }
+}
+
+/// Null in production, so the live app carries no ribbon.
+String? _environmentRibbon() {
+  if (Env.demo) return 'DEMO';
+  return Env.convexTier == DeploymentTier.development ? 'DEV' : null;
 }
 
 const _fanTabScreens = {Screen.home, Screen.explore, Screen.myGigs};

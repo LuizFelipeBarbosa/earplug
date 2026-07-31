@@ -4,8 +4,6 @@ import 'dart:js_interop';
 import '../env.dart';
 import 'auth_service.dart';
 
-const _clerkScriptUrl =
-    'https://premium-sheep-24.clerk.accounts.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js';
 const _oauthPendingKey = 'earplug_clerk_oauth_pending';
 
 AuthService createPlatformAuthService() {
@@ -122,9 +120,16 @@ final class ClerkWebAuth implements AuthService {
   }
 
   Future<void> _loadClerkScript() {
+    // Derived from the publishable key rather than configured, so clerk-js can
+    // never be fetched from a different Clerk instance than the key belongs to.
+    final scriptUrl =
+        Env.clerkScriptUrl ??
+        (throw const AuthException(
+          'Clerk publishable key does not encode a Frontend API host.',
+        ));
     final completer = Completer<void>();
     final script = _document.createElement('script')
-      ..src = _clerkScriptUrl
+      ..src = scriptUrl
       ..type = 'text/javascript'
       ..setAttribute('data-clerk-publishable-key', _publishableKey)
       ..onload = (() {

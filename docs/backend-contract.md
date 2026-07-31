@@ -6,6 +6,12 @@ Changes require updating both workstreams — do not drift silently.
 **v1.1 — band media.** The client migrated to `media:*`, which superseded
 `videos:*`; the deprecated `videos:*` functions have now been removed.
 
+**v1.2 — reachable history.** `gigs:feed` and `gigs:forBand` both read forward
+from `now - 6h`, and venues reached the client only bundled inside the feed. On
+prod — where all 14 gigs are migrated past events — that left every gig, every
+venue and all 275 RSVPs unreadable by any query. Added `gigs:pastForBand` and
+`venues:list`; no existing function changed.
+
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
 (UTC). Auth = Clerk JWT (template `convex`) attached by the client; queries that
@@ -60,6 +66,8 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 |---|---|---|
 | ★ `gigs:feed` | `{}` | `{ gigs: GigPayload[], venues: VenuePayload[], bands: BandPayload[] }` — all gigs with `startsAt >= now - 6h`, ascending, plus every venue/band they reference. Public. |
 | `gigs:forBand` | `{ bandId }` | `GigPayload[]` upcoming gigs whose lineup contains bandId, ascending |
+| `gigs:pastForBand` | `{ bandId }` | `{ gigs: GigPayload[], venues: VenuePayload[] }` — past gigs whose lineup contains bandId, **descending**, plus the venues they reference. Public. Bounded to the 200 most recent past gigs. |
+| `venues:list` | `{}` | `VenuePayload[]` — every venue, name-ascending, capped at 500. Public. |
 | `bands:get` | `{ bandId }` | `BandPayload` (full) or `null` |
 | `bands:search` | `{ q: string }` | `BandPayload[]` — name search-index match; `q: ""` → all bands (capped 50) |
 | ★ `bands:myBands` | `{}` | `[{ band: BandPayload, role: "admin"\|"member" }]`; `[]` unauth |

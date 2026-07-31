@@ -4,6 +4,7 @@ import { QueryCtx, mutation, query } from "./_generated/server";
 import {
   FEED_GRACE_MS,
   MAX_FEED_GIGS,
+  MAX_PAST_GIGS,
   assertUploadAcceptable,
   bandPayloadValidator,
   flyKeyValidator,
@@ -83,6 +84,45 @@ export const forBand = query({
       }
     }
     return out;
+  },
+});
+
+/** Past gigs whose lineup contains bandId, newest first, with the venues they
+ * reference so a profile can render date + place without a second round trip.
+ *
+ * `feed` and `forBand` both look forward from `now - 6h`, so before this the
+ * only read path to a band's history was the denormalized `bands.pastShows`
+ * strings — title and a short date, no venue, flyer or gig id. On a dataset
+ * migrated from past events that left every gig unreachable. */
+export const pastForBand = query({
+  args: { bandId: v.id("bands") },
+  returns: v.object({
+    gigs: v.array(gigPayloadValidator),
+    venues: v.array(venuePayloadValidator),
+  }),
+  handler: async (ctx, args) => {
+    const cutoff = Date.now() - FEED_GRACE_MS;
+    const recent = await ctx.db
+      .query("gigs")
+      .withIndex("by_startsAt", (q) => q.lt("startsAt", cutoff))
+      .order("desc")
+      .take(MAX_PAST_GIGS);
+
+    const gigs = [];
+    const venueIds = new Set<Id<"venues">>();
+    for (const gig of recent) {
+      if (!gig.lineup.includes(args.bandId)) continue;
+      gigs.push(await toGigPayload(ctx, gig));
+      venueIds.add(gig.venueId);
+    }
+
+    const venues = [];
+    for (const venueId of venueIds) {
+      const venue = await ctx.db.get(venueId);
+      if (venue) venues.push(toVenuePayload(venue));
+    }
+
+    return { gigs, venues };
   },
 });
 

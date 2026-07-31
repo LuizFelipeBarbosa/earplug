@@ -40,6 +40,19 @@ class BandMembership {
   const BandMembership({required this.band, required this.role});
 }
 
+/// A band's past gigs, newest first, with the venues they were played at.
+///
+/// Separate from [FeedSnapshot] because history carries no band map: the caller
+/// already knows whose profile it is looking at.
+class BandHistory {
+  final List<Gig> gigs;
+  final Map<String, Venue> venues;
+
+  const BandHistory({required this.gigs, required this.venues});
+
+  static const empty = BandHistory(gigs: [], venues: {});
+}
+
 abstract class EarplugRepository {
   Stream<FeedSnapshot> feed();
   Stream<Interactions> myInteractions();
@@ -60,6 +73,8 @@ abstract class EarplugRepository {
   Future<void> setBandPhoto({required String bandId, required String mediaId});
   Future<void> clearBandPhoto(String bandId);
   Future<List<PastGig>> history();
+  Future<BandHistory> bandHistory(String bandId);
+  Future<List<Venue>> venues();
   Future<Band?> band(String bandId);
   Future<List<Band>> searchBands(String q);
   Future<void> toggleRsvp(String gigId);

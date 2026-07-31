@@ -1,0 +1,25 @@
+// Native Google Sign-In configuration for the iOS app.
+//
+// `--dart-define-from-file` reaches Dart only, so the iOS client id cannot come
+// from config/*.json — Info.plist needs it at build time. It is referenced there
+// as $(GOOGLE_IOS_CLIENT_ID) and $(GOOGLE_IOS_URL_SCHEME) rather than hardcoded,
+// which is what used to leave TODO placeholders sitting in tracked source.
+//
+// Both values are public identifiers, not secrets.
+//
+// Create the client at: Google Cloud console -> APIs & Services -> Credentials
+//   -> Create OAuth client ID -> iOS, bundle id `com.earplug.app`.
+//
+// GOOGLE_IOS_URL_SCHEME is the client id with its two dot-separated halves
+// reversed — Google shows it as the "iOS URL scheme" on the credential page.
+// Copy it from there rather than assembling it by hand.
+//
+//   GOOGLE_IOS_CLIENT_ID  = 000000000000-abc123.apps.googleusercontent.com
+//   GOOGLE_IOS_URL_SCHEME = com.googleusercontent.apps.000000000000-abc123
+//
+// Left empty on purpose: an empty GIDClientID makes google_sign_in fail loudly
+// at initialize() instead of half-working. Mobile also hides the Google button
+// entirely until GOOGLE_SERVER_CLIENT_ID is set in config/*.json.
+
+GOOGLE_IOS_CLIENT_ID =
+GOOGLE_IOS_URL_SCHEME =

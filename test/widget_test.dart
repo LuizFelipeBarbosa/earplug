@@ -464,6 +464,12 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<List<PastGig>> history() async => const [];
 
   @override
+  Future<BandHistory> bandHistory(String bandId) async => BandHistory.empty;
+
+  @override
+  Future<List<Venue>> venues() async => const [];
+
+  @override
   Future<Band?> band(String bandId) async => null;
 
   @override

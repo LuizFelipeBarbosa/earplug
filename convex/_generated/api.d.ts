@@ -16,6 +16,7 @@ import type * as lib_helpers from "../lib/helpers.js";
 import type * as media from "../media.js";
 import type * as seed from "../seed.js";
 import type * as users from "../users.js";
+import type * as venues from "../venues.js";
 
 import type {
   ApiFromModules,
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   media: typeof media;
   seed: typeof seed;
   users: typeof users;
+  venues: typeof venues;
 }>;
 
 /**

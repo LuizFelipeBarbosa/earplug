@@ -311,6 +311,15 @@ export const FEED_GRACE_MS = 6 * 60 * 60 * 1000;
 /** Hard ceiling on feed-style index range reads. */
 export const MAX_FEED_GIGS = 200;
 
+/** Ceiling on the backwards scan behind `gigs:pastForBand`. Same bound and
+ * same caveat as the forward reads: a band whose shows fall outside the 200
+ * most recent past gigs would not appear. */
+export const MAX_PAST_GIGS = 200;
+
+/** The venue table is a small curated list, not user-generated, so one read
+ * returns all of it. */
+export const MAX_VENUES = 500;
+
 // ─── Band media limits ──────────────────────────────────────────────────────
 
 /** Both the insert cap and every `.take()` on `bandMedia`, so "the whole
