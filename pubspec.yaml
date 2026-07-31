@@ -1,5 +1,5 @@
 name: earplug
-description: "A new Flutter project."
+description: "EarPlug — a live-music app for the Bay Area. Fans browse and RSVP to gigs; bands publish them."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -31,9 +31,6 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
   provider: ^6.1.5+1
   google_fonts: ^8.2.0
   flutter_map: ^8.3.1
@@ -79,8 +76,10 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # Declared file by file, not by directory: a directory entry bundles every
+  # file it contains, including ones nothing references.
   assets:
-    - assets/images/
+    - assets/images/listen_local_bw.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
