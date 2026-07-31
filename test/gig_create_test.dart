@@ -44,10 +44,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('WHEN IS IT'), findsOne);
     expect(find.text('DOORS 8PM'), findsOne);
-    final tomorrow = DateTime.now().add(const Duration(days: 1));
-    await tester.tap(find.text('${tomorrow.day}').first);
+    // Tomorrow, not "the 1st" — on the last day of a month tomorrow falls in
+    // the next one, and the calendar shows four months at once, so a bare day
+    // number matches a past cell first and taps nothing.
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final tomorrowCell = find.byKey(
+      ValueKey('day-${tomorrow.year}-${tomorrow.month}-${tomorrow.day}'),
+    );
+    await tester.scrollUntilVisible(tomorrowCell, 80, scrollable: find.byType(Scrollable).last);
+    await tester.tap(tomorrowCell);
     await tester.pump();
-    expect(app.gfDate?.day, tomorrow.day);
+    expect(app.gfDate, tomorrow);
     await tester.tap(find.text('DOORS 7PM'));
     await tester.pump();
     expect(app.gfDoorsLabel, '7PM');

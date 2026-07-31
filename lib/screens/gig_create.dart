@@ -1188,6 +1188,9 @@ class _Month extends StatelessWidget {
       final selected = date == app.gfDate;
 
       return GestureDetector(
+        // Keyed by the whole date, not the day number: four months are on
+        // screen at once, so '1' alone is ambiguous four times over.
+        key: ValueKey('day-${date.year}-${date.month}-${date.day}'),
         onTap: past ? null : () => app.setGfDate(date),
         child: Container(
           height: 34,
