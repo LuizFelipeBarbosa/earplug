@@ -14,161 +14,160 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('the tape, its labels and every sheet render and drive the form',
-      (tester) async {
-    final app = (await _pumpBandCreate(tester)).app;
+  testWidgets(
+    'the tape, its labels and every sheet render and drive the form',
+    (tester) async {
+      final app = (await _pumpBandCreate(tester)).app;
 
-    // Header, blank cassette and the liner notes.
-    expect(find.text('START A BAND'), findsOne);
-    expect(find.text('DRAFT'), findsOne);
-    expect(find.text('SIDE A · DEMO'), findsOne);
-    expect(find.text('HOME TAPING'), findsOne);
-    expect(find.text('what do you sound like?'), findsOne);
-    expect(find.text('BAND NAME · REQUIRED'), findsOne);
-    expect(find.text('SOUND · REQUIRED'), findsOne);
-    expect(find.text('HOME BASE · REQUIRED'), findsOne);
-    expect(find.text('TAPE FILLS AS YOU GO'), findsOne);
-    expect(find.text('0%'), findsOne);
-    expect(
-      find.text('Still needs a name + a genre + a home base'),
-      findsOne,
-    );
+      // Header, blank cassette and the liner notes.
+      expect(find.text('START A BAND'), findsOne);
+      expect(find.text('DRAFT'), findsOne);
+      expect(find.text('SIDE A · DEMO'), findsOne);
+      expect(find.text('HOME TAPING'), findsOne);
+      expect(find.text('what do you sound like?'), findsOne);
+      expect(find.text('BAND NAME · REQUIRED'), findsOne);
+      expect(find.text('SOUND · REQUIRED'), findsOne);
+      expect(find.text('HOME BASE · REQUIRED'), findsOne);
+      expect(find.text('TAPE FILLS AS YOU GO'), findsOne);
+      expect(find.text('0%'), findsOne);
+      expect(find.text('Still needs a name + a genre + a home base'), findsOne);
 
-    // Writing on the tape label fills the liner-notes line below it too.
-    await tester.enterText(find.byType(TextField).first, 'Static Bloom');
-    await tester.pump();
-    expect(app.nbName, 'Static Bloom');
-    expect(find.text('BAND NAME ✓'), findsOne);
-    expect(find.text('earplug.app/static-bloom'), findsOne);
-    expect(find.text('20%'), findsOne);
+      // Writing on the tape label fills the liner-notes line below it too.
+      await tester.enterText(find.byType(TextField).first, 'Static Bloom');
+      await tester.pump();
+      expect(app.nbName, 'Static Bloom');
+      expect(find.text('BAND NAME ✓'), findsOne);
+      expect(find.text('earplug.app/static-bloom'), findsOne);
+      expect(find.text('20%'), findsOne);
 
-    await tester.tap(find.byKey(const ValueKey('label-riso')));
-    await tester.pump();
-    expect(app.nbLabel, 'riso');
+      await tester.tap(find.byKey(const ValueKey('label-riso')));
+      await tester.pump();
+      expect(app.nbLabel, 'riso');
 
-    // Sound sheet — chips cap at three, plus one of your own.
-    await tester.tap(find.text('SOUND · REQUIRED'));
-    await tester.pumpAndSettle();
-    expect(find.text('Up to three — this is what fans filter by.'), findsOne);
-    await tester.tap(find.text('PUNK'));
-    await tester.tap(find.text('HARDCORE'));
-    await tester.tap(find.text('GARAGE'));
-    await tester.pump();
-    await tester.tap(find.text('THRASH'));
-    await tester.pump();
-    expect(app.nbGenres, ['punk', 'hardcore', 'garage']);
-    expect(app.toast, 'Three genres max — it keeps discovery honest.');
-    await tester.tap(find.text('HARDCORE'));
-    await tester.pump();
-    await tester.enterText(
-      find.widgetWithText(TextField, 'Something else…'),
-      'surf punk',
-    );
-    await tester.tap(find.text('ADD'));
-    await tester.pump();
-    expect(app.nbGenres, ['punk', 'garage', 'surf punk']);
-    await tester.tap(find.text('DONE'));
-    await tester.pumpAndSettle();
-    expect(find.text('punk · garage · surf punk'), findsOne);
-    expect(find.text('SOUND ✓'), findsOne);
+      // Sound sheet — chips cap at three, plus one of your own.
+      await tester.tap(find.text('SOUND · REQUIRED'));
+      await tester.pumpAndSettle();
+      expect(find.text('Up to three — this is what fans filter by.'), findsOne);
+      await tester.tap(find.text('PUNK'));
+      await tester.tap(find.text('HARDCORE'));
+      await tester.tap(find.text('GARAGE'));
+      await tester.pump();
+      await tester.tap(find.text('THRASH'));
+      await tester.pump();
+      expect(app.nbGenres, ['punk', 'hardcore', 'garage']);
+      expect(app.toast, 'Three genres max — it keeps discovery honest.');
+      await tester.tap(find.text('HARDCORE'));
+      await tester.pump();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Something else…'),
+        'surf punk',
+      );
+      await tester.tap(find.text('ADD'));
+      await tester.pump();
+      expect(app.nbGenres, ['punk', 'garage', 'surf punk']);
+      await tester.tap(find.text('DONE'));
+      await tester.pumpAndSettle();
+      expect(find.text('punk · garage · surf punk'), findsOne);
+      expect(find.text('SOUND ✓'), findsOne);
 
-    // Home base sheet — the scene picks come with band and venue counts.
-    await tester.tap(find.text('HOME BASE · REQUIRED'));
-    await tester.pumpAndSettle();
-    expect(find.text('Fans browsing nearby see you first.'), findsOne);
-    expect(find.textContaining('venue'), findsWidgets);
-    await tester.tap(find.text('MISSION, SF'));
-    await tester.pumpAndSettle();
-    expect(app.nbArea, 'Mission, SF');
-    expect(find.text('MISSION, SF'), findsOne); // the tape stamp
-    expect(find.text('READY'), findsOne);
-    expect(
-      find.text('Ready — you can post a gig the moment this lands.'),
-      findsOne,
-    );
+      // Home base sheet — the scene picks come with band and venue counts.
+      await tester.tap(find.text('HOME BASE · REQUIRED'));
+      await tester.pumpAndSettle();
+      expect(find.text('Fans browsing nearby see you first.'), findsOne);
+      expect(find.textContaining('venue'), findsWidgets);
+      await tester.tap(find.text('MISSION, SF'));
+      await tester.pumpAndSettle();
+      expect(app.nbArea, 'Mission, SF');
+      expect(find.text('MISSION, SF'), findsOne); // the tape stamp
+      expect(find.text('READY'), findsOne);
+      expect(
+        find.text('Ready — you can post a gig the moment this lands.'),
+        findsOne,
+      );
 
-    // The lower liner notes sit under the create bar until scrolled clear.
-    await tester.drag(find.byType(ListView), const Offset(0, -280));
-    await tester.pumpAndSettle();
+      // The lower liner notes sit under the create bar until scrolled clear.
+      await tester.drag(find.byType(ListView), const Offset(0, -280));
+      await tester.pumpAndSettle();
 
-    // Sleeve notes sheet — the starter line fills the bio.
-    await tester.tap(find.text('SLEEVE NOTES'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('USE A STARTER LINE'));
-    await tester.pump();
-    expect(app.nbBio, isNotEmpty);
-    await tester.tap(find.text('DONE'));
-    await tester.pumpAndSettle();
-    expect(find.text('SLEEVE NOTES ✓'), findsOne);
+      // Sleeve notes sheet — the starter line fills the bio.
+      await tester.tap(find.text('SLEEVE NOTES'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('USE A STARTER LINE'));
+      await tester.pump();
+      expect(app.nbBio, isNotEmpty);
+      await tester.tap(find.text('DONE'));
+      await tester.pumpAndSettle();
+      expect(find.text('SLEEVE NOTES ✓'), findsOne);
 
-    // Credits sheet — invite a bandmate, then change your mind.
-    await tester.drag(find.byType(ListView), const Offset(0, -280));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('CREDITS'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextField, '@username'),
-      'mara.k',
-    );
-    await tester.tap(find.text('INVITE'));
-    await tester.pump();
-    expect(app.nbInvites, ['@mara.k']);
-    expect(find.text('INVITED'), findsOne);
-    // No join link to copy yet — the slug it would use isn't real until the
-    // server issues one, and this name is about to be deduped.
-    expect(find.text('COPY LINK'), findsNothing);
-    expect(
-      find.text(
-        'Your join link lands with the tape. Invites you add now go out the '
-        'moment it does.',
-      ),
-      findsOne,
-    );
-    await tester.tap(find.byIcon(Icons.close).last);
-    await tester.pump();
-    expect(app.nbInvites, isEmpty);
-    // With the invite row gone, the last close icon is the sheet's own ✕.
-    await tester.tap(find.byIcon(Icons.close).last);
-    await tester.pumpAndSettle();
+      // Credits sheet — invite a bandmate, then change your mind.
+      await tester.drag(find.byType(ListView), const Offset(0, -280));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('CREDITS'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, '@username'),
+        'mara.k',
+      );
+      await tester.tap(find.text('INVITE'));
+      await tester.pump();
+      expect(app.nbInvites, ['@mara.k']);
+      expect(find.text('INVITED'), findsOne);
+      // No join link to copy yet — the slug it would use isn't real until the
+      // server issues one, and this name is about to be deduped.
+      expect(find.text('COPY LINK'), findsNothing);
+      expect(
+        find.text(
+          'Your join link lands with the tape. Invites you add now go out the '
+          'moment it does.',
+        ),
+        findsOne,
+      );
+      await tester.tap(find.byIcon(Icons.close).last);
+      await tester.pump();
+      expect(app.nbInvites, isEmpty);
+      // With the invite row gone, the last close icon is the sheet's own ✕.
+      await tester.tap(find.byIcon(Icons.close).last);
+      await tester.pumpAndSettle();
 
-    // Links sheet.
-    await tester.drag(find.byType(ListView), const Offset(0, -280));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('LINKS'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextField, '@yourband'),
-      '@staticbloom',
-    );
-    await tester.tap(find.text('DONE'));
-    await tester.pumpAndSettle();
-    expect(app.nbIg, '@staticbloom');
-    expect(find.text('Instagram'), findsOne);
-    // Links fill the fifth liner line, so the tape is fully wound.
-    expect(find.text('FULL TAPE'), findsOne);
-    expect(find.text('100%'), findsOne);
+      // Links sheet.
+      await tester.drag(find.byType(ListView), const Offset(0, -280));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('LINKS'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, '@yourband'),
+        '@staticbloom',
+      );
+      await tester.tap(find.text('DONE'));
+      await tester.pumpAndSettle();
+      expect(app.nbIg, '@staticbloom');
+      expect(find.text('Instagram'), findsOne);
+      // Links fill the fifth liner line, so the tape is fully wound.
+      expect(find.text('FULL TAPE'), findsOne);
+      expect(find.text('100%'), findsOne);
 
-    // Create, then the tape's-out confirmation.
-    await tester.tap(find.text('CREATE BAND'));
-    await tester.pumpAndSettle();
-    expect(app.nbCreated, isTrue);
-    expect(find.text("TAPE'S OUT"), findsOne);
-    expect(find.text("You're on the map."), findsOne);
-    // The demo feed already has a Static Bloom, so the server-issued slug
-    // dedupes.
-    expect(find.text('earplug.app/static-bloom-2'), findsOne);
-    expect(app.myBand!.name, 'Static Bloom');
-    expect(app.myBand!.area, 'Mission, SF');
+      // Create, then the tape's-out confirmation.
+      await tester.tap(find.text('CREATE BAND'));
+      await tester.pumpAndSettle();
+      expect(app.nbCreated, isTrue);
+      expect(find.text("TAPE'S OUT"), findsOne);
+      expect(find.text("You're on the map."), findsOne);
+      // The demo feed already has a Static Bloom, so the server-issued slug
+      // dedupes.
+      expect(find.text('earplug.app/static-bloom-2'), findsOne);
+      expect(app.myBand!.name, 'Static Bloom');
+      expect(app.myBand!.area, 'Mission, SF');
 
-    await tester.tap(find.text('START ANOTHER'));
-    await tester.pumpAndSettle();
-    expect(app.nbName, isEmpty);
-    expect(find.text('DRAFT'), findsOne);
-    expect(find.text('HOME TAPING'), findsOne);
+      await tester.tap(find.text('START ANOTHER'));
+      await tester.pumpAndSettle();
+      expect(app.nbName, isEmpty);
+      expect(find.text('DRAFT'), findsOne);
+      expect(find.text('HOME TAPING'), findsOne);
 
-    // Let the genre-cap toast expire so no timer outlives the test.
-    await tester.pump(const Duration(seconds: 3));
-  });
+      // Let the genre-cap toast expire so no timer outlives the test.
+      await tester.pump(const Duration(seconds: 3));
+    },
+  );
 
   testWidgets('the created view leads out three ways', (tester) async {
     final app = (await _pumpBandCreate(tester)).app;
@@ -181,8 +180,9 @@ void main() {
     expect(app.current.screen, Screen.bandDash);
   });
 
-  testWidgets('the join link becomes copyable once the slug is real',
-      (tester) async {
+  testWidgets('the join link becomes copyable once the slug is real', (
+    tester,
+  ) async {
     final app = (await _pumpBandCreate(tester)).app;
     await _fillAndCreate(tester);
 
@@ -202,11 +202,11 @@ void main() {
     expect(app.nbShareSlug, 'static-bloom-2');
   });
 
-  testWidgets('the create bar goes pending while the save is in flight',
-      (tester) async {
+  testWidgets('the create bar goes pending while the save is in flight', (
+    tester,
+  ) async {
     final repository = _GatedDemoRepository(auth: FakeAuthService());
-    final app =
-        (await _pumpBandCreate(tester, repository: repository)).app;
+    final app = (await _pumpBandCreate(tester, repository: repository)).app;
     await _fillForm(tester);
 
     await tester.tap(find.text('CREATE BAND'));
@@ -226,8 +226,9 @@ void main() {
     expect(find.text("TAPE'S OUT"), findsOne);
   });
 
-  testWidgets('the photo slot picks and clears an inlay behind the tape',
-      (tester) async {
+  testWidgets('the photo slot picks and clears an inlay behind the tape', (
+    tester,
+  ) async {
     final harness = await _pumpBandCreate(tester);
     final app = harness.app;
     harness.picker.nextPhoto = _photoFixture();
@@ -251,8 +252,9 @@ void main() {
     expect(find.byIcon(Icons.arrow_upward), findsOne);
   });
 
-  testWidgets('a picked band photo lands as the first gallery hero',
-      (tester) async {
+  testWidgets('a picked band photo lands as the first gallery hero', (
+    tester,
+  ) async {
     final harness = await _pumpBandCreate(tester);
     harness.picker.nextPhoto = _photoFixture();
 
@@ -269,8 +271,9 @@ void main() {
     expect(photos.single.isHero, isTrue);
   });
 
-  testWidgets('an unready create explains itself instead of firing',
-      (tester) async {
+  testWidgets('an unready create explains itself instead of firing', (
+    tester,
+  ) async {
     final app = (await _pumpBandCreate(tester)).app;
 
     await tester.tap(find.text('CREATE BAND'));
@@ -287,7 +290,7 @@ void main() {
 }
 
 Future<({AppState app, BandMediaController controller, FakeMediaPicker picker})>
-    _pumpBandCreate(
+_pumpBandCreate(
   WidgetTester tester, {
   EarplugRepository? repository,
   FakeMediaPicker? picker,

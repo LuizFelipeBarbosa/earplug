@@ -33,8 +33,10 @@ Widget _attribution() {
     child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       color: Colors.black.withValues(alpha: .7),
-      child: Text('© OpenStreetMap contributors',
-          style: epText(size: 9, color: Ep.whiteA(.5))),
+      child: Text(
+        '© OpenStreetMap contributors',
+        style: epText(size: 9, color: Ep.whiteA(.5)),
+      ),
     ),
   );
 }
@@ -52,7 +54,11 @@ class _Pin extends StatelessWidget {
         shape: BoxShape.circle,
         border: Border.all(color: free ? Colors.white : Ep.blue, width: 2.5),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: .6), blurRadius: 8, offset: const Offset(0, 2)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .6),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
         ],
       ),
     );
@@ -133,7 +139,11 @@ class _MapGigCard extends StatelessWidget {
   final Venue venue;
   final VoidCallback onOpen;
 
-  const _MapGigCard({required this.gig, required this.venue, required this.onOpen});
+  const _MapGigCard({
+    required this.gig,
+    required this.venue,
+    required this.onOpen,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -144,17 +154,25 @@ class _MapGigCard extends StatelessWidget {
         border: Border.all(color: Ep.whiteA(.14)),
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: .6), blurRadius: 30, offset: const Offset(0, 12)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .6),
+            blurRadius: 30,
+            offset: const Offset(0, 12),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(gig.title.toUpperCase(),
-              style: epText(size: 15, weight: FontWeight.w800, letterSpacing: .2)),
+          Text(
+            gig.title.toUpperCase(),
+            style: epText(size: 15, weight: FontWeight.w800, letterSpacing: .2),
+          ),
           const SizedBox(height: 3),
-          Text('${venue.name} · ${venue.area} · ${gig.dateLine}',
-              style: epText(size: 12, color: Ep.inkA(.6))),
+          Text(
+            '${venue.name} · ${venue.area} · ${gig.dateLine}',
+            style: epText(size: 12, color: Ep.inkA(.6)),
+          ),
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -163,13 +181,23 @@ class _MapGigCard extends StatelessWidget {
               GestureDetector(
                 onTap: onOpen,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 9,
+                  ),
                   decoration: BoxDecoration(
                     color: Ep.blue,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text('OPEN GIG →',
-                      style: epText(size: 12, weight: FontWeight.w800, letterSpacing: .8, color: Colors.white)),
+                  child: Text(
+                    'OPEN GIG →',
+                    style: epText(
+                      size: 12,
+                      weight: FontWeight.w800,
+                      letterSpacing: .8,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -197,7 +225,9 @@ class VenueMiniMap extends StatelessWidget {
               initialCenter: venue.point,
               initialZoom: 15,
               backgroundColor: Ep.bg,
-              interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.none,
+              ),
             ),
             children: [
               _darkTiles(),

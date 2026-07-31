@@ -138,7 +138,11 @@ class _LabelPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = stripe;
         for (double d = -size.height; d < size.width; d += stripe * 2) {
-          canvas.drawLine(Offset(d + size.height, 0), Offset(d, size.height), ink);
+          canvas.drawLine(
+            Offset(d + size.height, 0),
+            Offset(d, size.height),
+            ink,
+          );
         }
     }
   }
@@ -345,8 +349,11 @@ class _InlaySlot extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.add_photo_alternate_outlined,
-                    size: 22, color: Ep.inkA(.45)),
+                Icon(
+                  Icons.add_photo_alternate_outlined,
+                  size: 22,
+                  color: Ep.inkA(.45),
+                ),
                 const SizedBox(height: 6),
                 Text(
                   'DROP A BAND PHOTO',
@@ -427,7 +434,10 @@ class _Cassette extends StatelessWidget {
       letterSpacing: 1.7,
       color: label.fg.withValues(alpha: .6),
     );
-    final markerLine = _marker(size: 13, color: label.fg.withValues(alpha: .85));
+    final markerLine = _marker(
+      size: 13,
+      color: label.fg.withValues(alpha: .85),
+    );
 
     // Wind the reels toward the right as the form fills.
     final frac = app.nbCompletion;
@@ -443,10 +453,7 @@ class _Cassette extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('SIDE A · DEMO', style: smallStamp),
-            Text(
-              app.nbArea?.toUpperCase() ?? 'HOME TAPING',
-              style: smallStamp,
-            ),
+            Text(app.nbArea?.toUpperCase() ?? 'HOME TAPING', style: smallStamp),
           ],
         ),
         const SizedBox(height: 7),
@@ -469,7 +476,10 @@ class _Cassette extends StatelessWidget {
             ),
           )
         else
-          Text(app.nbName, style: _marker(size: 27, color: label.fg, height: 1.06)),
+          Text(
+            app.nbName,
+            style: _marker(size: 27, color: label.fg, height: 1.06),
+          ),
         const SizedBox(height: 7),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -863,7 +873,10 @@ class _NameLine extends StatelessWidget {
         children: [
           SizedBox(
             width: 22,
-            child: Text('01', style: _marker(size: 15, color: _numColor(state))),
+            child: Text(
+              '01',
+              style: _marker(size: 15, color: _numColor(state)),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -942,7 +955,10 @@ class _LinerLine extends StatelessWidget {
           children: [
             SizedBox(
               width: 22,
-              child: Text(num, style: _marker(size: 15, color: _numColor(state))),
+              child: Text(
+                num,
+                style: _marker(size: 15, color: _numColor(state)),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -976,10 +992,7 @@ class _LinerLine extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.only(top: 10),
-              child: Text(
-                '›',
-                style: epText(size: 16, color: Ep.inkA(.3)),
-              ),
+              child: Text('›', style: epText(size: 16, color: Ep.inkA(.3))),
             ),
           ],
         ),
@@ -1039,8 +1052,8 @@ class _CreateBar extends StatelessWidget {
               app.nbSaving
                   ? 'SAVING…'
                   : app.nbEditingCreated
-                      ? 'SAVE CHANGES'
-                      : 'CREATE BAND',
+                  ? 'SAVE CHANGES'
+                  : 'CREATE BAND',
               fontSize: 14,
               glow: live,
               kind: live ? EpButtonKind.filled : EpButtonKind.disabled,
@@ -1135,7 +1148,10 @@ class _SheetHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: epText(size: 10.5, color: Ep.inkA(.4), height: 1.45));
+    return Text(
+      text,
+      style: epText(size: 10.5, color: Ep.inkA(.4), height: 1.45),
+    );
   }
 }
 
@@ -1423,9 +1439,7 @@ class _SleeveNotesBodyState extends State<_SleeveNotesBody> {
           minLines: 4,
           maxLines: 6,
           style: epText(size: 13.5, height: 1.5),
-          decoration: _sheetInput(
-            'What do you sound like, where do you play?',
-          ),
+          decoration: _sheetInput('What do you sound like, where do you play?'),
         ),
         const SizedBox(height: 11),
         Row(

@@ -8,8 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('backing out during the through splash keeps the pending RSVP',
-      (tester) async {
+  testWidgets('backing out during the through splash keeps the pending RSVP', (
+    tester,
+  ) async {
     final app = await _pumpAuth(
       tester,
       openGate: (app) {
@@ -37,8 +38,9 @@ void main() {
     expect(app.current.screen, Screen.gig);
   });
 
-  testWidgets('the splash walks through to the pending action on its own',
-      (tester) async {
+  testWidgets('the splash walks through to the pending action on its own', (
+    tester,
+  ) async {
     final app = await _pumpAuth(
       tester,
       openGate: (app) {
@@ -54,8 +56,9 @@ void main() {
     expect(app.current.screen, Screen.gig);
   });
 
-  testWidgets('the splash lands on My Gigs for a myGigs intent',
-      (tester) async {
+  testWidgets('the splash lands on My Gigs for a myGigs intent', (
+    tester,
+  ) async {
     final app = await _pumpAuth(tester, openGate: (app) => app.openMyGigsTab());
 
     await tester.tap(find.text('INTO THE ROOM'));
@@ -64,8 +67,9 @@ void main() {
     expect(app.current.screen, Screen.myGigs);
   });
 
-  testWidgets('a double tap commits once and still lands back on the gig',
-      (tester) async {
+  testWidgets('a double tap commits once and still lands back on the gig', (
+    tester,
+  ) async {
     final app = await _pumpAuth(
       tester,
       openGate: (app) {
@@ -95,7 +99,10 @@ Future<AppState> _pumpAuth(
   addTearDown(tester.view.reset);
 
   final auth = FakeAuthService();
-  final app = AppState(repository: DemoRepository(auth: auth), auth: auth);
+  final app = AppState(
+    repository: DemoRepository(auth: auth),
+    auth: auth,
+  );
   addTearDown(app.dispose);
 
   openGate(app);

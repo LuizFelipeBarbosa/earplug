@@ -107,9 +107,14 @@ void showCitySheet(BuildContext context) {
           app.setCity(value);
         },
         leading: Text(title, style: epText(size: 13, weight: FontWeight.w800)),
-        trailing: Text(sub,
-            style: epText(
-                size: 10.5, weight: FontWeight.w800, color: Ep.inkA(.45))),
+        trailing: Text(
+          sub,
+          style: epText(
+            size: 10.5,
+            weight: FontWeight.w800,
+            color: Ep.inkA(.45),
+          ),
+        ),
       );
     }
 
@@ -117,8 +122,10 @@ void showCitySheet(BuildContext context) {
       title: 'Where are you?',
       children: [
         const SizedBox(height: 6),
-        Text("Pick a scene — everything's within BART distance anyway.",
-            style: epText(size: 11.5, color: Ep.inkA(.5), height: 1.45)),
+        Text(
+          "Pick a scene — everything's within BART distance anyway.",
+          style: epText(size: 11.5, color: Ep.inkA(.5), height: 1.45),
+        ),
         option('San Francisco', 'Mission & around', 'sf'),
         option('Oakland', 'Temescal & around', 'oak'),
       ],
@@ -132,8 +139,9 @@ void showSwitcherSheet(BuildContext context) {
   final app = context.read<AppState>();
   _showEpSheet(context, (ctx) {
     final profileName = app.profile?.name.trim();
-    final displayName =
-        profileName == null || profileName.isEmpty ? 'You' : profileName;
+    final displayName = profileName == null || profileName.isEmpty
+        ? 'You'
+        : profileName;
     return _SheetShell(
       title: 'Switch view',
       children: [
@@ -148,16 +156,27 @@ void showSwitcherSheet(BuildContext context) {
                 width: 34,
                 height: 34,
                 alignment: Alignment.center,
-                decoration: const BoxDecoration(color: Ep.blue, shape: BoxShape.circle),
-                child: Text(profileInitials(profileName),
-                    style: epDisplay(size: 12, color: Colors.white)),
+                decoration: const BoxDecoration(
+                  color: Ep.blue,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  profileInitials(profileName),
+                  style: epDisplay(size: 12, color: Colors.white),
+                ),
               ),
               const SizedBox(width: 11),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(displayName, style: epText(size: 13, weight: FontWeight.w800)),
-                  Text('Fan view', style: epText(size: 10.5, color: Ep.inkA(.5))),
+                  Text(
+                    displayName,
+                    style: epText(size: 13, weight: FontWeight.w800),
+                  ),
+                  Text(
+                    'Fan view',
+                    style: epText(size: 10.5, color: Ep.inkA(.5)),
+                  ),
                 ],
               ),
             ],
@@ -178,10 +197,14 @@ void showSwitcherSheet(BuildContext context) {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(band.name.toUpperCase(),
-                            style: epText(size: 13, weight: FontWeight.w800)),
-                        Text('Band view · admin',
-                            style: epText(size: 10.5, color: Ep.inkA(.5))),
+                        Text(
+                          band.name.toUpperCase(),
+                          style: epText(size: 13, weight: FontWeight.w800),
+                        ),
+                        Text(
+                          'Band view · admin',
+                          style: epText(size: 10.5, color: Ep.inkA(.5)),
+                        ),
                       ],
                     ),
                   ),
@@ -197,9 +220,15 @@ void showSwitcherSheet(BuildContext context) {
             },
             child: DashedBox(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-              child: Text('+ START A BAND',
-                  style: epText(
-                      size: 13, weight: FontWeight.w900, letterSpacing: .4, color: Ep.link)),
+              child: Text(
+                '+ START A BAND',
+                style: epText(
+                  size: 13,
+                  weight: FontWeight.w900,
+                  letterSpacing: .4,
+                  color: Ep.link,
+                ),
+              ),
             ),
           ),
         ),
@@ -251,7 +280,10 @@ class _QrPainter extends CustomPainter {
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < n; c++) {
         if (cells[r][c]) {
-          canvas.drawRect(Rect.fromLTWH(c * cell, r * cell, cell + .5, cell + .5), paint);
+          canvas.drawRect(
+            Rect.fromLTWH(c * cell, r * cell, cell + .5, cell + .5),
+            paint,
+          );
         }
       }
     }
@@ -276,9 +308,11 @@ void showQrDialog(BuildContext context, Gig gig, Venue venue) {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(gig.title.toUpperCase(),
-                  textAlign: TextAlign.center,
-                  style: epDisplay(size: 14, color: Ep.bg, height: 1.2)),
+              Text(
+                gig.title.toUpperCase(),
+                textAlign: TextAlign.center,
+                style: epDisplay(size: 14, color: Ep.bg, height: 1.2),
+              ),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(10),
@@ -289,13 +323,16 @@ void showQrDialog(BuildContext context, Gig gig, Venue venue) {
                 ),
               ),
               const SizedBox(height: 12),
-              Text('${gig.dateShort} · ${venue.name}\nFlash this at the door.',
-                  textAlign: TextAlign.center,
-                  style: epText(
-                      size: 11,
-                      weight: FontWeight.w700,
-                      color: Ep.bg.withValues(alpha: .6),
-                      height: 1.4)),
+              Text(
+                '${gig.dateShort} · ${venue.name}\nFlash this at the door.',
+                textAlign: TextAlign.center,
+                style: epText(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  color: Ep.bg.withValues(alpha: .6),
+                  height: 1.4,
+                ),
+              ),
             ],
           ),
         ),

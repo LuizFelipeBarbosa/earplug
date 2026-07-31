@@ -43,7 +43,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
       children: [
         Container(
           padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 12),
-          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Ep.whiteA(.09)))),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: Ep.whiteA(.09))),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -59,7 +61,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
           ),
         ),
         Expanded(
-          child: searching ? _SearchResults(app: app, q: q) : _BrowseRows(app: app),
+          child: searching
+              ? _SearchResults(app: app, q: q)
+              : _BrowseRows(app: app),
         ),
       ],
     );
@@ -102,7 +106,10 @@ class _SearchResults extends StatelessWidget {
         const SectionLabel('GIGS & VENUES'),
         const SizedBox(height: 6),
         if (gigs.isEmpty)
-          Text('No gigs or venues found.', style: epText(size: 12, color: Ep.inkA(.4))),
+          Text(
+            'No gigs or venues found.',
+            style: epText(size: 12, color: Ep.inkA(.4)),
+          ),
         for (final g in gigs) ...[
           _GigRow(gig: g, app: app),
           const SizedBox(height: 6),
@@ -133,9 +140,14 @@ class _BandRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(band.name.toUpperCase(),
-                    style: epText(size: 13, weight: FontWeight.w800)),
-                Text(band.genreLine, style: epText(size: 11, color: Ep.inkA(.5))),
+                Text(
+                  band.name.toUpperCase(),
+                  style: epText(size: 13, weight: FontWeight.w800),
+                ),
+                Text(
+                  band.genreLine,
+                  style: epText(size: 11, color: Ep.inkA(.5)),
+                ),
               ],
             ),
           ),
@@ -159,24 +171,29 @@ class _GigRow extends StatelessWidget {
       child: Row(
         children: [
           GigFlyer(
-              gig,
-              app.flyer(gig.flyKey),
-              width: 34,
-              height: 44,
-              rotationDeg: -2,
-              radius: 4,
-              shadow: false),
+            gig,
+            app.flyer(gig.flyKey),
+            width: 34,
+            height: 44,
+            rotationDeg: -2,
+            radius: 4,
+            shadow: false,
+          ),
           const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(gig.title.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: epText(size: 13, weight: FontWeight.w800)),
-                Text('${gig.dateShort} · ${app.venue(gig.venueId).name}',
-                    style: epText(size: 11, color: Ep.inkA(.5))),
+                Text(
+                  gig.title.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: epText(size: 13, weight: FontWeight.w800),
+                ),
+                Text(
+                  '${gig.dateShort} · ${app.venue(gig.venueId).name}',
+                  style: epText(size: 11, color: Ep.inkA(.5)),
+                ),
               ],
             ),
           ),
@@ -231,7 +248,8 @@ class _BrowseRows extends StatelessWidget {
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
-              for (final id in app.exploreBandIds) _BandTile(bandId: id, app: app),
+              for (final id in app.exploreBandIds)
+                _BandTile(bandId: id, app: app),
             ],
           ),
         ),
@@ -246,7 +264,12 @@ class _FlyerRail extends StatelessWidget {
   final double tilt;
   final bool freeTag;
 
-  const _FlyerRail({required this.gigs, required this.app, required this.tilt, this.freeTag = false});
+  const _FlyerRail({
+    required this.gigs,
+    required this.app,
+    required this.tilt,
+    this.freeTag = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -281,17 +304,28 @@ class _FlyerRail extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(g.title.toUpperCase(),
-                                    maxLines: 5,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: epDisplay(
-                                        size: 12, color: app.flyer(g.flyKey).fg, height: 1.1)),
-                                Text(g.dateShort,
-                                    style: epText(
-                                        size: 9,
-                                        weight: FontWeight.w800,
-                                        letterSpacing: .5,
-                                        color: app.flyer(g.flyKey).fg.withValues(alpha: .85))),
+                                Text(
+                                  g.title.toUpperCase(),
+                                  maxLines: 5,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: epDisplay(
+                                    size: 12,
+                                    color: app.flyer(g.flyKey).fg,
+                                    height: 1.1,
+                                  ),
+                                ),
+                                Text(
+                                  g.dateShort,
+                                  style: epText(
+                                    size: 9,
+                                    weight: FontWeight.w800,
+                                    letterSpacing: .5,
+                                    color: app
+                                        .flyer(g.flyKey)
+                                        .fg
+                                        .withValues(alpha: .85),
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -302,28 +336,39 @@ class _FlyerRail extends StatelessWidget {
                               child: Transform.rotate(
                                 angle: 6 * 3.14159 / 180,
                                 child: Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 3,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: Ep.blue,
                                     borderRadius: BorderRadius.circular(5),
                                   ),
-                                  child: Text('FREE',
-                                      style: epText(
-                                          size: 9,
-                                          weight: FontWeight.w900,
-                                          letterSpacing: .8,
-                                          color: Colors.white)),
+                                  child: Text(
+                                    'FREE',
+                                    style: epText(
+                                      size: 9,
+                                      weight: FontWeight.w900,
+                                      letterSpacing: .8,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                         ],
                       ),
                       const SizedBox(height: 6),
-                      Text(app.venue(g.venueId).name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: epText(size: 10.5, weight: FontWeight.w700, color: Ep.inkA(.55))),
+                      Text(
+                        app.venue(g.venueId).name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: epText(
+                          size: 10.5,
+                          weight: FontWeight.w700,
+                          color: Ep.inkA(.55),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -353,17 +398,21 @@ class _BandTile extends StatelessWidget {
           children: [
             BandAvatar(band, size: 64, radius: 13, fontSize: 20),
             const SizedBox(height: 7),
-            Text(band.name.toUpperCase(),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: epText(size: 10.5, weight: FontWeight.w800, height: 1.2)),
+            Text(
+              band.name.toUpperCase(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: epText(size: 10.5, weight: FontWeight.w800, height: 1.2),
+            ),
             const SizedBox(height: 2),
             if (band.genres.isNotEmpty)
-              Text(band.genres.first,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: epText(size: 9.5, color: Ep.inkA(.45))),
+              Text(
+                band.genres.first,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: epText(size: 9.5, color: Ep.inkA(.45)),
+              ),
           ],
         ),
       ),

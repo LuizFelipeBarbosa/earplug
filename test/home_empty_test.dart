@@ -11,7 +11,8 @@ import 'package:provider/provider.dart';
 // Purging the seeded demo rows made a genuinely empty feed reachable for the
 // first time, so the two reasons a feed can be empty have to read differently.
 
-const _noGigs = 'No upcoming gigs yet.\nWhen a band books one, it shows up here.';
+const _noGigs =
+    'No upcoming gigs yet.\nWhen a band books one, it shows up here.';
 const _noMatches =
     "Nothing matches those filters.\nLoosen up — the scene's out there.";
 
@@ -25,8 +26,9 @@ void main() {
     expect(find.text('0 GIGS NEAR YOU · BY DATE'), findsOne);
   });
 
-  testWidgets('a filter that excludes everything blames the filter',
-      (tester) async {
+  testWidgets('a filter that excludes everything blames the filter', (
+    tester,
+  ) async {
     final app = await _pumpHome(tester, empty: false);
     expect(app.allGigs, isNotEmpty);
 
@@ -46,7 +48,9 @@ Future<AppState> _pumpHome(WidgetTester tester, {required bool empty}) async {
 
   final auth = FakeAuthService();
   final app = AppState(
-    repository: empty ? _EmptyFeedRepository(auth: auth) : DemoRepository(auth: auth),
+    repository: empty
+        ? _EmptyFeedRepository(auth: auth)
+        : DemoRepository(auth: auth),
     auth: auth,
   );
   addTearDown(app.dispose);

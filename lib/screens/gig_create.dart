@@ -224,14 +224,14 @@ class _Poster extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: .62),
-                      Colors.black.withValues(alpha: .12),
-                      Colors.black.withValues(alpha: .15),
-                      Colors.black.withValues(alpha: .78),
-                    ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: .62),
+                        Colors.black.withValues(alpha: .12),
+                        Colors.black.withValues(alpha: .15),
+                        Colors.black.withValues(alpha: .78),
+                      ],
                       stops: const [0, .38, .52, 1],
                     ),
                   ),
@@ -288,29 +288,32 @@ class _CustomArtSlot extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(10),
               child: DashedBox(
-                  padding: const EdgeInsets.all(12),
-                  color: Ep.whiteA(.28),
-                  radius: 4,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add_photo_alternate_outlined,
-                            size: 22, color: Ep.inkA(.45)),
-                        const SizedBox(height: 6),
-                        Text(
-                          'DROP YOUR FLYER',
-                          style: epText(
-                            size: 10.5,
-                            weight: FontWeight.w900,
-                            letterSpacing: .8,
-                            color: Ep.inkA(.45),
-                          ),
+                padding: const EdgeInsets.all(12),
+                color: Ep.whiteA(.28),
+                radius: 4,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.add_photo_alternate_outlined,
+                        size: 22,
+                        color: Ep.inkA(.45),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'DROP YOUR FLYER',
+                        style: epText(
+                          size: 10.5,
+                          weight: FontWeight.w900,
+                          letterSpacing: .8,
+                          color: Ep.inkA(.45),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
             )
           else
             Image.memory(art.bytes, fit: BoxFit.cover),
@@ -364,8 +367,11 @@ class _PosterOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
-    final titleStyle = epDisplay(size: 23, color: ink, height: 1.02)
-        .copyWith(letterSpacing: -.3);
+    final titleStyle = epDisplay(
+      size: 23,
+      color: ink,
+      height: 1.02,
+    ).copyWith(letterSpacing: -.3);
 
     return Padding(
       padding: const EdgeInsets.all(15),
@@ -743,7 +749,9 @@ class _SlotGrid extends StatelessWidget {
       _SlotCard(
         tag: app.gfDate == null ? 'WHEN · REQUIRED' : 'WHEN ✓',
         tagColor: app.gfDate == null ? Ep.required : Ep.link,
-        value: app.gfDate == null ? 'Pick a date' : app.gfDateLabel.toUpperCase(),
+        value: app.gfDate == null
+            ? 'Pick a date'
+            : app.gfDateLabel.toUpperCase(),
         sub: app.gfDate == null ? '' : 'Doors ${app.gfDoorsLabel}',
         state: app.gfDate == null ? _SlotState.needed : _SlotState.done,
         onTap: () => showWhenSheet(context),
@@ -771,10 +779,10 @@ class _SlotGrid extends StatelessWidget {
         tagColor: Ep.inkA(.5),
         value: app.gfTix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
         sub: switch (app.gfTix) {
-          Ticketing.rsvp when app.gfCap == 'No cap' => 'No cap · QR at the door',
+          Ticketing.rsvp when app.gfCap == 'No cap' =>
+            'No cap · QR at the door',
           Ticketing.rsvp => 'Cap ${app.gfCap} · QR at the door',
-          Ticketing.external =>
-            app.gfExt.isEmpty ? 'Add your link' : app.gfExt,
+          Ticketing.external => app.gfExt.isEmpty ? 'Add your link' : app.gfExt,
         },
         state: _SlotState.optional,
         onTap: () => showTicketsSheet(context),
@@ -840,10 +848,12 @@ class _SlotCard extends StatelessWidget {
           ),
           if (sub.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(sub,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: epText(size: 10.5, color: Ep.inkA(.45))),
+            Text(
+              sub,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: epText(size: 10.5, color: Ep.inkA(.45)),
+            ),
           ],
         ],
       ),
@@ -1060,7 +1070,9 @@ class _DoneButton extends StatelessWidget {
 void showWhenSheet(BuildContext context) {
   _openSheet(context, (ctx) {
     return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .82),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(ctx).height * .82,
+      ),
       child: const _Sheet(
         title: 'When is it',
         padBody: false,
@@ -1146,7 +1158,8 @@ class _WhenBody extends StatelessWidget {
                   children: [
                     for (final hour in const [18, 19, 20, 21, 22]) ...[
                       EpChip(
-                        label: 'DOORS ${timeLabel(TimeOfDay(hour: hour, minute: 0))}',
+                        label:
+                            'DOORS ${timeLabel(TimeOfDay(hour: hour, minute: 0))}',
                         active: app.gfDoors == TimeOfDay(hour: hour, minute: 0),
                         onTap: () =>
                             app.setGfDoors(TimeOfDay(hour: hour, minute: 0)),

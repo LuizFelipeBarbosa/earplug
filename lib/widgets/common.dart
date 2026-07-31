@@ -64,7 +64,12 @@ class EpChip extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
 
-  const EpChip({super.key, required this.label, required this.active, required this.onTap});
+  const EpChip({
+    super.key,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -145,8 +150,16 @@ class _FlyerPatternPainter extends CustomPainter {
         paint
           ..style = PaintingStyle.stroke
           ..strokeWidth = pitch / 2;
-        for (double d = -size.height; d < size.width + size.height; d += pitch) {
-          canvas.drawLine(Offset(d, 0), Offset(d + size.height, size.height), paint);
+        for (
+          double d = -size.height;
+          d < size.width + size.height;
+          d += pitch
+        ) {
+          canvas.drawLine(
+            Offset(d, 0),
+            Offset(d + size.height, size.height),
+            paint,
+          );
         }
       case FlyerPattern.rays:
         final center = Offset(size.width / 2, size.height * .28);
@@ -156,9 +169,14 @@ class _FlyerPatternPainter extends CustomPainter {
           canvas.drawPath(
             Path()
               ..moveTo(center.dx, center.dy)
-              ..lineTo(center.dx + reach * math.cos(a), center.dy + reach * math.sin(a))
-              ..lineTo(center.dx + reach * math.cos(a + wedge / 2),
-                  center.dy + reach * math.sin(a + wedge / 2))
+              ..lineTo(
+                center.dx + reach * math.cos(a),
+                center.dy + reach * math.sin(a),
+              )
+              ..lineTo(
+                center.dx + reach * math.cos(a + wedge / 2),
+                center.dy + reach * math.sin(a + wedge / 2),
+              )
               ..close(),
             paint,
           );
@@ -239,7 +257,13 @@ class FlyerBox extends StatelessWidget {
         color: style.base,
         borderRadius: BorderRadius.circular(radius),
         boxShadow: shadow
-            ? [BoxShadow(color: Colors.black.withValues(alpha: .5), blurRadius: 10, offset: const Offset(0, 3))]
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: .5),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ]
             : null,
       ),
       clipBehavior: Clip.antiAlias,
@@ -339,7 +363,10 @@ class BandAvatar extends StatelessWidget {
         color: band.color,
         borderRadius: BorderRadius.circular(radius),
       ),
-      child: Text(band.initials, style: epDisplay(size: fontSize, color: Ep.bg)),
+      child: Text(
+        band.initials,
+        style: epDisplay(size: fontSize, color: Ep.bg),
+      ),
     );
     if (band.heroUrl == null || band.heroUrl!.isEmpty) {
       return Transform.rotate(
@@ -354,10 +381,7 @@ class BandAvatar extends StatelessWidget {
         child: SizedBox(
           width: size,
           height: size,
-          child: EpNetworkImage(
-            url: band.heroUrl,
-            fallback: square,
-          ),
+          child: EpNetworkImage(url: band.heroUrl, fallback: square),
         ),
       ),
     );
@@ -422,7 +446,11 @@ class EpButton extends StatelessWidget {
     final (Color? bg, Color fg, Border? border) = switch (kind) {
       EpButtonKind.filled => (Ep.blue, Colors.white, null),
       EpButtonKind.light => (Ep.ink, Ep.bg, null),
-      EpButtonKind.outline => (null, Ep.link, Border.all(color: Ep.blue, width: 1.5)),
+      EpButtonKind.outline => (
+        null,
+        Ep.link,
+        Border.all(color: Ep.blue, width: 1.5),
+      ),
       EpButtonKind.ghost => (null, Ep.ink, Border.all(color: Ep.whiteA(.3))),
       EpButtonKind.disabled => (Ep.whiteA(.08), Ep.inkA(.35), null),
     };
@@ -437,13 +465,24 @@ class EpButton extends StatelessWidget {
           border: border,
           borderRadius: BorderRadius.circular(12),
           boxShadow: glow
-              ? [BoxShadow(color: Ep.blue.withValues(alpha: .45), blurRadius: 22, offset: const Offset(0, 6))]
+              ? [
+                  BoxShadow(
+                    color: Ep.blue.withValues(alpha: .45),
+                    blurRadius: 22,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
               : null,
         ),
         child: Text(
           label,
           textAlign: TextAlign.center,
-          style: epText(size: fontSize, weight: FontWeight.w900, letterSpacing: .8, color: fg),
+          style: epText(
+            size: fontSize,
+            weight: FontWeight.w900,
+            letterSpacing: .8,
+            color: fg,
+          ),
         ),
       ),
     );
@@ -451,21 +490,21 @@ class EpButton extends StatelessWidget {
 }
 
 InputDecoration epInputDecoration(String hint) => InputDecoration(
-      hintText: hint,
-      hintStyle: epText(size: 14, color: Ep.inkA(.35)),
-      filled: true,
-      fillColor: Ep.card,
-      isDense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
-        borderSide: BorderSide(color: Ep.whiteA(.16)),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
-        borderSide: BorderSide(color: Ep.whiteA(.3)),
-      ),
-    );
+  hintText: hint,
+  hintStyle: epText(size: 14, color: Ep.inkA(.35)),
+  filled: true,
+  fillColor: Ep.card,
+  isDense: true,
+  contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+  enabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(11),
+    borderSide: BorderSide(color: Ep.whiteA(.16)),
+  ),
+  focusedBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(11),
+    borderSide: BorderSide(color: Ep.whiteA(.3)),
+  ),
+);
 
 /// Dark card container used across screens.
 class EpCard extends StatelessWidget {
@@ -497,7 +536,11 @@ class EpCard extends StatelessWidget {
       child: child,
     );
     if (onTap == null) return card;
-    return GestureDetector(onTap: onTap, behavior: HitTestBehavior.opaque, child: card);
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: card,
+    );
   }
 }
 
@@ -554,7 +597,10 @@ class _DashedBorderPainter extends CustomPainter {
     for (final metric in path.computeMetrics()) {
       var d = 0.0;
       while (d < metric.length) {
-        canvas.drawPath(metric.extractPath(d, math.min(d + dash, metric.length)), paint);
+        canvas.drawPath(
+          metric.extractPath(d, math.min(d + dash, metric.length)),
+          paint,
+        );
         d += dash + gap;
       }
     }
@@ -574,7 +620,10 @@ class PlayTriangle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(size: Size(size, size * 1.2), painter: _TrianglePainter(color));
+    return CustomPaint(
+      size: Size(size, size * 1.2),
+      painter: _TrianglePainter(color),
+    );
   }
 }
 
