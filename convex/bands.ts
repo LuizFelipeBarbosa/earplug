@@ -67,8 +67,10 @@ export const myBands = query({
   },
 });
 
-/** Resolves a shared profile link (earplug.app/<slug>) to its band. Bands
- * predating slug issuance are backfilled by migrations:backfillSlugs. */
+/** Resolves a shared profile link (earplug.app/<slug>) to its band. `slug` is a
+ * required schema column and `uniqueSlug` is the only thing that issues one, so
+ * every band — including the migrated rows, which were backfilled before the
+ * column was tightened — is reachable here. */
 export const bySlug = query({
   args: { slug: v.string() },
   returns: v.union(bandPayloadValidator, v.null()),

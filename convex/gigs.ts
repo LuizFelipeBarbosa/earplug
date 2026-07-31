@@ -16,19 +16,38 @@ import {
   venuePayloadValidator,
 } from "./lib/helpers";
 
-/** Known staleness, deferred for v1: Date.now() is captured when the query
+/** The one instant that divides "upcoming" from "past" — every feed-shaped read
+ * below derives from it, forwards or backwards, so the two sides can never
+ * disagree about which gigs exist.
+ *
+ * Known staleness, deferred for v1: Date.now() is captured when the query
  * executes, and cached results only recompute on writes to the gigs range this
  * reads — so a gig can linger past the 6h grace until the next gig is published
  * (RSVPs write `interactions` and do not invalidate this). Pre-launch fix: a
  * cron heartbeat that writes the current hour cutoff to a singleton doc which
  * this function reads instead of the clock. */
+function feedCutoff(): number {
+  return Date.now() - FEED_GRACE_MS;
+}
+
+/** Gigs at or after the cutoff, ascending. */
 async function upcomingGigs(ctx: QueryCtx): Promise<Doc<"gigs">[]> {
-  const cutoff = Date.now() - FEED_GRACE_MS;
   return await ctx.db
     .query("gigs")
-    .withIndex("by_startsAt", (q) => q.gte("startsAt", cutoff))
+    .withIndex("by_startsAt", (q) => q.gte("startsAt", feedCutoff()))
     .order("asc")
     .take(MAX_FEED_GIGS);
+}
+
+/** Venue payloads for the ids a set of gigs referenced, skipping any venue that
+ * has since been deleted. */
+async function hydrateVenues(ctx: QueryCtx, venueIds: Set<Id<"venues">>) {
+  const venues = [];
+  for (const venueId of venueIds) {
+    const venue = await ctx.db.get(venueId);
+    if (venue) venues.push(toVenuePayload(venue));
+  }
+  return venues;
 }
 
 /** All gigs with startsAt >= now - 6h, ascending, plus every venue/band they
@@ -51,11 +70,7 @@ export const feed = query({
       if (gig.createdByBand) bandIds.add(gig.createdByBand);
     }
 
-    const venues = [];
-    for (const venueId of venueIds) {
-      const venue = await ctx.db.get(venueId);
-      if (venue) venues.push(toVenuePayload(venue));
-    }
+    const venues = await hydrateVenues(ctx, venueIds);
     const bands = [];
     for (const bandId of bandIds) {
       const band = await ctx.db.get(bandId);
@@ -101,10 +116,9 @@ export const pastForBand = query({
     venues: v.array(venuePayloadValidator),
   }),
   handler: async (ctx, args) => {
-    const cutoff = Date.now() - FEED_GRACE_MS;
     const recent = await ctx.db
       .query("gigs")
-      .withIndex("by_startsAt", (q) => q.lt("startsAt", cutoff))
+      .withIndex("by_startsAt", (q) => q.lt("startsAt", feedCutoff()))
       .order("desc")
       .take(MAX_PAST_GIGS);
 
@@ -116,13 +130,7 @@ export const pastForBand = query({
       venueIds.add(gig.venueId);
     }
 
-    const venues = [];
-    for (const venueId of venueIds) {
-      const venue = await ctx.db.get(venueId);
-      if (venue) venues.push(toVenuePayload(venue));
-    }
-
-    return { gigs, venues };
+    return { gigs, venues: await hydrateVenues(ctx, venueIds) };
   },
 });
 

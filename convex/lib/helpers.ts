@@ -1,9 +1,14 @@
 import { v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
+import { pastShowValidator } from "../schema";
 
 // ─── Deterministic band identity ────────────────────────────────────────────
-// Shared by bands:createBand AND migrations:migrateAll so the two can't drift.
+// Every band's colour, initials and slug are derived from its name rather than
+// stored by hand, so any write path that creates or renames a band lands on the
+// same values. Live callers: bands:createBand (all three) and
+// bands:updateProfile (initials only — see the note there on why colour and
+// slug deliberately do not follow a rename).
 
 const BAND_PALETTE = [
   "#7B8FFF",
@@ -109,11 +114,6 @@ export async function requireBandAdmin(
 
 // ─── Contract payload validators + converters ───────────────────────────────
 
-export const pastShowPayload = v.object({
-  title: v.string(),
-  meta: v.string(),
-});
-
 export const bandPayloadValidator = v.object({
   _id: v.id("bands"),
   name: v.string(),
@@ -126,7 +126,8 @@ export const bandPayloadValidator = v.object({
   bio: v.string(),
   linkIg: v.union(v.string(), v.null()),
   linkBc: v.union(v.string(), v.null()),
-  pastShows: v.array(pastShowPayload),
+  // The wire shape is the stored shape here; reuse it rather than restating it.
+  pastShows: v.array(pastShowValidator),
 });
 
 /** The six presses offered by the client's gig-create picker. "custom" means

@@ -1,7 +1,12 @@
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { Doc, Id } from "./_generated/dataModel";
+import {
+  MutationCtx,
+  internalMutation,
+  mutation,
+  query,
+} from "./_generated/server";
 import {
   MAX_MEDIA_CAPTION,
   MAX_MEDIA_LENGTH_SEC,
@@ -13,6 +18,26 @@ import {
   requireBandAdmin,
   toMediaPayload,
 } from "./lib/helpers";
+
+/**
+ * Loads the media row and asserts the caller is an admin of the band that owns
+ * it. Shared by every mutation that takes a bare `mediaId`.
+ *
+ * The order is load-then-authorize and must stay that way: an unknown or
+ * already-deleted id reports "Media not found" to every caller, admin or not,
+ * which is the behaviour the media tests pin. (That order is also an existence
+ * oracle — a known finding tracked separately, not something to quietly flip
+ * here.)
+ */
+async function mediaForAdmin(
+  ctx: MutationCtx,
+  mediaId: Id<"bandMedia">,
+): Promise<Doc<"bandMedia">> {
+  const media = await ctx.db.get(mediaId);
+  if (!media) throw new Error("Media not found");
+  await requireBandAdmin(ctx, media.bandId);
+  return media;
+}
 
 export const generateUploadUrl = mutation({
   args: { bandId: v.id("bands") },
@@ -112,9 +137,7 @@ export const deleteMedia = mutation({
   args: { mediaId: v.id("bandMedia") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const media = await ctx.db.get(args.mediaId);
-    if (!media) throw new Error("Media not found");
-    await requireBandAdmin(ctx, media.bandId);
+    const media = await mediaForAdmin(ctx, args.mediaId);
 
     const band = await ctx.db.get(media.bandId);
     if (band?.imageStorageId === media.storageId) {
@@ -153,9 +176,7 @@ export const pinMedia = mutation({
   args: { mediaId: v.id("bandMedia") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const media = await ctx.db.get(args.mediaId);
-    if (!media) throw new Error("Media not found");
-    await requireBandAdmin(ctx, media.bandId);
+    const media = await mediaForAdmin(ctx, args.mediaId);
     if (media.kind !== "video") throw new Error("Only clips can be pinned");
 
     const siblings = await ctx.db
@@ -181,9 +202,7 @@ export const moveMedia = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const media = await ctx.db.get(args.mediaId);
-    if (!media) throw new Error("Media not found");
-    await requireBandAdmin(ctx, media.bandId);
+    const media = await mediaForAdmin(ctx, args.mediaId);
     const siblings = await ctx.db
       .query("bandMedia")
       .withIndex("by_band_order", (q) => q.eq("bandId", media.bandId))

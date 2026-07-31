@@ -172,6 +172,13 @@ describe("users:ensureUser", () => {
   });
 });
 
+describe("users:me", () => {
+  test("is null when unauthenticated, never a throw", async () => {
+    const t = convexTest(schema);
+    expect(await t.query(api.users.me, {})).toBeNull();
+  });
+});
+
 describe("users:setGenres", () => {
   test("requires auth and updates genres", async () => {
     const t = convexTest(schema);

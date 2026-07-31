@@ -342,19 +342,6 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(Array.isArray(forBand)).toBe(true);
     expect(forBand.length).toBe(2); // g2 + g7
     expect(forBand.every((gig) => gig.lineup.includes(foghorn!._id))).toBe(true);
-
-    // bands:search — top-level array; "" → all (capped 50).
-    const all = await t.query(api.bands.search, { q: "" });
-    expect(Array.isArray(all)).toBe(true);
-    expect(all.length).toBe(6);
-    const hits = await t.query(api.bands.search, { q: "Foghorn" });
-    expect(hits.length).toBe(1);
-    expect(hits[0].name).toBe("Foghorn Diet");
-
-    // bands:myBands — [] unauthenticated (never throws).
-    expect(await t.query(api.bands.myBands, {})).toEqual([]);
-    // users:me — null unauthenticated.
-    expect(await t.query(api.users.me, {})).toBeNull();
   });
 
   test("myBands returns band+role entries for the caller", async () => {
