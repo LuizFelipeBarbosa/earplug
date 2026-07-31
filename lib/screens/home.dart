@@ -211,7 +211,7 @@ class _FeedList extends StatelessWidget {
               // An empty feed with no filters applied means there genuinely are
               // no upcoming gigs — blaming the filters would be a lie.
               app.allGigs.isEmpty
-                  ? "No upcoming gigs yet.\nWhen a band books one, it shows up here."
+                  ? 'No upcoming gigs yet.\nWhen a band books one, it shows up here.'
                   : "Nothing matches those filters.\nLoosen up — the scene's out there.",
               textAlign: TextAlign.center,
               style: epText(size: 13, color: Ep.inkA(.5), height: 1.4),

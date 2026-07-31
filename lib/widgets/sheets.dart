@@ -285,7 +285,7 @@ class _QrPainter extends CustomPainter {
 
 void showQrDialog(BuildContext context, Gig gig, Venue venue) {
   final userKey = context.read<AppState>().profile?.email ?? 'guest';
-  showDialog(
+  showDialog<void>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: .72),
     builder: (ctx) {

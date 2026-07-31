@@ -1,13 +1,12 @@
 import 'dart:typed_data';
 
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/services/media_upload_service.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
 import 'support/fixtures.dart';

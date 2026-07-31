@@ -389,7 +389,7 @@ class AppState extends ChangeNotifier {
     go(Screen.auth);
   }
 
-  Future<void> login() async => await auth.signInDemo();
+  Future<void> login() async => auth.signInDemo();
 
   Future<void> signOut() async {
     await auth.signOut();

@@ -1,32 +1,64 @@
-# This file configures the analyzer, which statically analyzes Dart code to
-# check for errors, warnings, and lints.
+# Static analysis configuration. `flutter analyze` and the IDE both read this.
 #
-# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
-# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
-# invoked from the command line by running `flutter analyze`.
+# Baseline is package:flutter_lints; everything below it is this project's own
+# tightening. The bias is rules that catch defects (dropped futures, dynamic
+# dispatch, silently-wrong casts) over rules that only enforce house style.
 
-# The following line activates a set of recommended lints for Flutter apps,
-# packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
   exclude:
+    # Vendored third-party package — not ours to lint or fix.
     - vendor/convex_flutter/**
+  language:
+    # Refuse implicit downcasts from dynamic; a wrong shape coming back from
+    # Convex should fail at the cast site, not three frames later.
+    strict-casts: true
+    # No bare `List`/`Map`/`Future`; a raw type erases to dynamic and takes
+    # strict-casts down with it.
+    strict-raw-types: true
+    strict-inference: true
 
 linter:
-  # The lint rules applied to this project can be customized in the
-  # section below to disable rules from the `package:flutter_lints/flutter.yaml`
-  # included above or to enable additional rules. A list of all available lints
-  # and their documentation is published at https://dart.dev/lints.
-  #
-  # Instead of disabling a lint rule for the entire project in the
-  # section below, it can also be suppressed for a single line of code
-  # or a specific dart file by using the `// ignore: name_of_lint` and
-  # `// ignore_for_file: name_of_lint` syntax on the line or in the file
-  # producing the lint.
   rules:
-    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
-    # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+    # --- Correctness ---
+    - avoid_dynamic_calls
+    - avoid_empty_else
+    - avoid_slow_async_io
+    - await_only_futures
+    - cancel_subscriptions
+    - collection_methods_unrelated_type
+    - literal_only_boolean_expressions
+    - test_types_in_equals
+    - throw_in_finally
+    - unawaited_futures
+    - unnecessary_statements
 
-# Additional information about this file can be found at
-# https://dart.dev/guides/language/analysis-options
+    # --- Clarity ---
+    - always_declare_return_types
+    - avoid_unused_constructor_parameters
+    - directives_ordering
+    - prefer_const_declarations
+    - prefer_final_locals
+    - prefer_single_quotes
+    - unnecessary_await_in_return
+    - unnecessary_lambdas
+    - unnecessary_parenthesis
+
+    # --- Production hygiene ---
+    # print() has no destination on web or a release device. Route diagnostics
+    # somewhere they can actually be read.
+    - avoid_print
+
+# Considered and deliberately not enabled — each one's only hit in this
+# codebase was a false positive on correct code, and the alternative was an
+# `// ignore:` comment on something that is not a defect:
+#
+#   close_sinks — ConvexService.subscribe returns a broadcast controller's
+#     stream to its caller, which owns the lifetime; the upstream Convex
+#     handle is cancelled in onCancel. The rule cannot follow a controller
+#     that escapes the function that built it.
+#   no_adjacent_strings_in_list — the rule exists to catch a missing comma,
+#     but this codebase wraps long prose strings across lines inside list
+#     literals (_bioStarters and friends), which is the same shape. Keeping
+#     it would push those lines past 80 columns to satisfy a false alarm.

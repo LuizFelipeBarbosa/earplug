@@ -1,14 +1,13 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart' show TimeOfDay;
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/convex_repository.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:flutter/material.dart' show TimeOfDay;
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('AppState', () {
