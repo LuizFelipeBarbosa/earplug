@@ -221,6 +221,56 @@ void main() {
       expect(app.rsvps, isNot(contains('g1')));
       expect(app.toast, 'Something broke — try again.');
     });
+
+    test(
+      'a burst of bio keystrokes persists once, not per character',
+      () async {
+        final repository = _CountingProfileRepository(auth: FakeAuthService());
+        final app = await _demoApp(repository: repository);
+        app.switchToBand('b1');
+
+        for (final draft in ['W', 'We', 'We p', 'We play']) {
+          app.setBandBio(draft);
+        }
+        // Shown immediately; nothing written yet.
+        expect(app.bioFor('b1'), 'We play');
+        expect(repository.profileCalls, 0);
+
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        expect(repository.profileCalls, 1);
+        expect(repository.lastBio, 'We play');
+      },
+    );
+
+    test(
+      'a failed bio write drops the override instead of faking a save',
+      () async {
+        final repository = _CountingProfileRepository(auth: FakeAuthService())
+          ..fail = true;
+        final app = await _demoApp(repository: repository);
+        app.switchToBand('b1');
+        final serverBio = app.bioFor('b1');
+
+        app.setBandBio('never lands');
+        expect(app.bioFor('b1'), 'never lands');
+
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        await pumpEventQueue();
+        expect(app.bioFor('b1'), serverBio);
+        expect(app.toast, 'Something broke — try again.');
+      },
+    );
+
+    test('genre picks persist in demo mode too', () async {
+      final repository = _CountingProfileRepository(auth: FakeAuthService());
+      final app = await _demoApp(repository: repository);
+
+      app.toggleUserGenre('punk');
+      app.commitAuth();
+      await pumpEventQueue();
+
+      expect(repository.storedGenres, ['punk']);
+    });
   });
 
   group('Gig date derivations', () {
@@ -372,15 +422,60 @@ void main() {
   });
 }
 
-Future<AppState> _demoApp() async {
+Future<AppState> _demoApp({DemoRepository? repository}) async {
   final auth = FakeAuthService();
   final app = AppState(
-    repository: DemoRepository(auth: auth),
+    repository: repository ?? DemoRepository(auth: auth),
     auth: auth,
   );
   addTearDown(app.dispose);
   await pumpEventQueue();
   return app;
+}
+
+/// Counts profile writes so the debounce is observable, and can fail them on
+/// request. Everything else stays real demo behaviour.
+class _CountingProfileRepository extends DemoRepository {
+  _CountingProfileRepository({required super.auth});
+
+  int profileCalls = 0;
+  String? lastBio;
+  List<String> storedGenres = const [];
+  bool fail = false;
+
+  @override
+  Future<void> updateBandProfile({
+    required String bandId,
+    String? name,
+    List<String>? genres,
+    String? area,
+    String? bio,
+    List<String>? inviteHandles,
+    String? linkIg,
+    String? linkBc,
+    String? linkYt,
+  }) async {
+    profileCalls++;
+    if (fail) throw Exception('updateBandProfile failed');
+    lastBio = bio ?? lastBio;
+    return super.updateBandProfile(
+      bandId: bandId,
+      name: name,
+      genres: genres,
+      area: area,
+      bio: bio,
+      inviteHandles: inviteHandles,
+      linkIg: linkIg,
+      linkBc: linkBc,
+      linkYt: linkYt,
+    );
+  }
+
+  @override
+  Future<void> setGenres(List<String> genres) async {
+    storedGenres = List.of(genres);
+    return super.setGenres(genres);
+  }
 }
 
 /// The minimum the create bar needs before it will fire.
