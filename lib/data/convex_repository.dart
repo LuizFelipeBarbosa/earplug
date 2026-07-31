@@ -7,10 +7,10 @@ class ConvexRepository implements EarplugRepository {
 
   final ConvexService _convexService;
 
-  /// Pushes the current auth token to the websocket; awaitable so callers can
-  /// sequence mutations after the identity change.
+  @override
   Future<void> refreshAuth() => _convexService.refreshAuth();
 
+  @override
   Future<UserProfile?> me() async {
     final result = await _convexService.query('users:me');
     final json = _asMap(result);

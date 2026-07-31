@@ -54,6 +54,13 @@ class BandHistory {
 }
 
 abstract class EarplugRepository {
+  /// Pushes the current auth token to the backend; awaitable so callers can
+  /// sequence mutations after an identity change.
+  Future<void> refreshAuth();
+
+  /// The signed-in user's profile, or null when the backend holds none.
+  Future<UserProfile?> me();
+
   Stream<FeedSnapshot> feed();
   Stream<Interactions> myInteractions();
   Stream<List<BandMembership>> myBands();

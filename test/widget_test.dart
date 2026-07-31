@@ -418,6 +418,12 @@ class _GatedCreateRepository extends _FailingRsvpRepository {
 
 class _FailingRsvpRepository implements EarplugRepository {
   @override
+  Future<void> refreshAuth() async {}
+
+  @override
+  Future<UserProfile?> me() async => null;
+
+  @override
   Stream<FeedSnapshot> feed() => const Stream.empty();
 
   @override
