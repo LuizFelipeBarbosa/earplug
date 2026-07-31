@@ -7,10 +7,15 @@ shared.
 
 ## Two environments, paired
 
-A Convex deployment and a Clerk instance are chosen **together**. Each
-deployment trusts exactly one issuer via `CLERK_JWT_ISSUER_DOMAIN`, read in
-`convex/auth.config.ts`, so a client holding the other instance's key signs in
-successfully and then reads nothing — indistinguishable from deleted data.
+**This section is the canonical statement of the pairing rule.** `.env.example`,
+`config/README.md` and `netlify.toml` state it in one line and point here; keep
+the detail in this file only.
+
+A Convex deployment and a Clerk instance are chosen **together, never
+independently**. Each deployment trusts exactly one issuer via
+`CLERK_JWT_ISSUER_DOMAIN`, read in `convex/auth.config.ts`, so a client holding
+the other instance's key signs in successfully and then reads nothing —
+indistinguishable from deleted data, not from misconfiguration.
 
 | | development | production |
 |---|---|---|
@@ -21,6 +26,18 @@ successfully and then reads nothing — indistinguishable from deleted data.
 
 `Env.configurationError` (`lib/env.dart`) refuses to start on a mismatched
 pair, naming both sides. Non-production builds carry a `DEV` corner ribbon.
+`decisive-iguana-759` is also named literally in `lib/env.dart` as the one
+production deployment — if it ever changes, change it there too or the guard
+checks the wrong name.
+
+Two facts about the deployment side of the pair, since they are the ones people
+look for:
+
+- `CLERK_JWT_ISSUER_DOMAIN` is set per deployment with `npx convex env set`,
+  never read from a file in this repo. It is the only thing that decides which
+  Clerk instance a deployment trusts.
+- `CLERK_SECRET_KEY` exists on both deployments for backend tooling; no
+  function reads it, and no client code ever sees it.
 
 ## Building
 

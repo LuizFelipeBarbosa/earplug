@@ -14,11 +14,11 @@
   """
 
 [build.environment]
-  # Which config/*.json the build reads. This is the ONLY environment variable
-  # the build still consumes: the Convex URL and Clerk key now travel together
-  # inside that file, because choosing them independently is what let a client
-  # sign in against one environment and read another. Set to "prod" in the
-  # Netlify UI to publish against production; unset builds development.
+  # Which config/*.json the build reads, and the ONLY environment variable the
+  # build still consumes — the Convex URL and Clerk key travel together inside
+  # that file because they are chosen together, never independently
+  # (docs/environments.md). Set to "prod" in the Netlify UI to publish against
+  # production; unset builds development.
   EARPLUG_ENV = "dev"
 
   # Every key here is public by design, so finding its value in the repo or the

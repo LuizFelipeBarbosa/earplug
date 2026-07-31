@@ -29,16 +29,12 @@ Convex deployment environment and is read by no client code.
 ## The pairing rule
 
 A Convex deployment and a Clerk instance are chosen together, never
-independently — each deployment trusts exactly one issuer, so a mismatched pair
-signs in successfully and then reads nothing. `Env.configurationError` in
-`lib/env.dart` refuses to start on a mismatch, and these files are the unit in
-which the pair travels.
+independently — and these files are the unit in which the pair travels, which is
+why the URL and the key live in one file rather than two variables.
 
-| | dev.json | prod.json |
-|---|---|---|
-| Convex | `brilliant-cardinal-773` | `decisive-iguana-759` |
-| Clerk | `premium-sheep-24.clerk.accounts.dev` | `clerk.earplug.dev` |
-| Key | `pk_test_…` | `pk_live_…` |
+**See [`../docs/environments.md`](../docs/environments.md) for the rule, the
+deployment/instance table, and why a mismatch is worse than a missing value.**
+That document is the only place the pairing is spelled out.
 
 ## Native configuration lives elsewhere
 
@@ -49,4 +45,5 @@ platform level, and cannot come from these files:
   `Info.plist` as `$(GOOGLE_IOS_CLIENT_ID)`.
 - **Sign in with Apple capability** — `ios/Runner/Runner.entitlements`.
 
-See `docs/environments.md` for the full credential checklist.
+See [`../docs/environments.md`](../docs/environments.md) for the full credential
+checklist.
