@@ -9,8 +9,14 @@ import '../models.dart';
 import '../services/media_upload_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
+import '../widgets/form_bits.dart';
 
 const _adminGateMessage = 'Only band admins can post media.';
+
+/// Retry/discard sit inline in a tight failed-upload row, so they get less
+/// breathing room than a TextAction under a form step.
+const _uploadActionPadding = EdgeInsets.symmetric(vertical: 3);
 
 class BandMediaScreen extends StatelessWidget {
   final String bandId;
@@ -327,15 +333,21 @@ class _UploadTile extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                _TextAction(
-                  label: 'RETRY',
+                TextAction(
+                  'RETRY',
                   color: Ep.link,
+                  size: 10.5,
+                  letterSpacing: .7,
+                  padding: _uploadActionPadding,
                   onTap: () => media.retryUpload(upload.id),
                 ),
                 const SizedBox(width: 18),
-                _TextAction(
-                  label: 'DISCARD',
+                TextAction(
+                  'DISCARD',
                   color: Ep.inkA(.55),
+                  size: 10.5,
+                  letterSpacing: .7,
+                  padding: _uploadActionPadding,
                   onTap: () => media.dismissUpload(upload.id),
                 ),
               ],
@@ -551,17 +563,17 @@ class _MediaRow extends StatelessWidget {
               ),
               const SizedBox(width: 5),
             ],
-            _ArrowButton(
-              label: '↑',
+            _GlyphButton.arrow(
+              glyph: '↑',
               onTap: () => media.move(bandId, item.id, 'up'),
             ),
             const SizedBox(width: 5),
-            _ArrowButton(
-              label: '↓',
+            _GlyphButton.arrow(
+              glyph: '↓',
               onTap: () => media.move(bandId, item.id, 'down'),
             ),
             const SizedBox(width: 5),
-            _DeleteButton(
+            _GlyphButton.delete(
               key: ValueKey('delete-${item.id}'),
               onTap: () => _showDeleteSheet(context, media, bandId, item),
             ),
@@ -603,12 +615,23 @@ class _PinButton extends StatelessWidget {
   }
 }
 
-// Deliberately duplicated from the old edit-screen control for now.
-class _ArrowButton extends StatelessWidget {
-  final String label;
+/// Square icon-ish control in the admin row of a media tile: reorder arrows
+/// and the delete cross.
+class _GlyphButton extends StatelessWidget {
+  final String glyph;
+  final TextStyle glyphStyle;
   final VoidCallback onTap;
 
-  const _ArrowButton({required this.label, required this.onTap});
+  _GlyphButton.arrow({required this.glyph, required this.onTap})
+    : glyphStyle = epText(size: 12, color: Ep.inkA(.7));
+
+  _GlyphButton.delete({super.key, required this.onTap})
+    : glyph = '\u2715',
+      glyphStyle = epText(
+        size: 10.5,
+        weight: FontWeight.w900,
+        color: Ep.inkA(.62),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -622,37 +645,7 @@ class _ArrowButton extends StatelessWidget {
           border: Border.all(color: Ep.whiteA(.18)),
           borderRadius: BorderRadius.circular(7),
         ),
-        child: Text(label, style: epText(size: 12, color: Ep.inkA(.7))),
-      ),
-    );
-  }
-}
-
-class _DeleteButton extends StatelessWidget {
-  final VoidCallback onTap;
-
-  const _DeleteButton({super.key, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          border: Border.all(color: Ep.whiteA(.18)),
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: Text(
-          '✕',
-          style: epText(
-            size: 10.5,
-            weight: FontWeight.w900,
-            color: Ep.inkA(.62),
-          ),
-        ),
+        child: Text(glyph, style: glyphStyle),
       ),
     );
   }
@@ -688,48 +681,6 @@ class _PhotoSurface extends StatelessWidget {
 
     return EpNetworkImage(url: url, fit: BoxFit.cover, fallback: placeholder);
   }
-}
-
-class _TextAction extends StatelessWidget {
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _TextAction({
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Text(
-          label,
-          style: epText(
-            size: 10.5,
-            weight: FontWeight.w900,
-            letterSpacing: .7,
-            color: color,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-Future<void> _openMediaSheet(BuildContext context, WidgetBuilder builder) {
-  return showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: .6),
-    isScrollControlled: true,
-    constraints: const BoxConstraints(maxWidth: 480),
-    builder: builder,
-  );
 }
 
 class _MediaSheet extends StatelessWidget {
@@ -779,7 +730,7 @@ void _showHeroSheet(
   BandMediaController media,
   String bandId,
 ) {
-  _openMediaSheet(
+  showEpSheet(
     context,
     (sheetContext) => _MediaSheet(
       title: 'Choose band photo',
@@ -854,7 +805,7 @@ void _showDeleteSheet(
   String bandId,
   BandMedia item,
 ) {
-  _openMediaSheet(
+  showEpSheet(
     context,
     (sheetContext) => _MediaSheet(
       title: 'Delete media?',

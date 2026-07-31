@@ -5,17 +5,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import 'common.dart';
-
-Future<void> _showEpSheet(BuildContext context, WidgetBuilder builder) {
-  return showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: .6),
-    isScrollControlled: true,
-    constraints: const BoxConstraints(maxWidth: 480),
-    builder: builder,
-  );
-}
+import 'ep_sheet.dart';
 
 class _SheetShell extends StatelessWidget {
   final String title;
@@ -97,7 +87,7 @@ class _SheetOption extends StatelessWidget {
 
 void showCitySheet(BuildContext context) {
   final app = context.read<AppState>();
-  _showEpSheet(context, (ctx) {
+  showEpSheet(context, (ctx) {
     final city = app.city;
     Widget option(String title, String sub, String value) {
       return _SheetOption(
@@ -137,7 +127,7 @@ void showCitySheet(BuildContext context) {
 
 void showSwitcherSheet(BuildContext context) {
   final app = context.read<AppState>();
-  _showEpSheet(context, (ctx) {
+  showEpSheet(context, (ctx) {
     final profileName = app.profile?.name.trim();
     final displayName = profileName == null || profileName.isEmpty
         ? 'You'

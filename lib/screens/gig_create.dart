@@ -11,6 +11,8 @@ import '../models.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
+import '../widgets/form_bits.dart';
 
 const _posterTilt = -1.6 * math.pi / 180;
 
@@ -76,7 +78,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(child: Text('NEW GIG', style: epDisplay(size: 16))),
-                  _ReadyPill(ready: app.canPublishGig),
+                  ReadyPill(ready: app.canPublishGig),
                 ],
               ),
             ),
@@ -99,33 +101,6 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
         ),
         const Positioned(left: 0, right: 0, bottom: 0, child: _PublishBar()),
       ],
-    );
-  }
-}
-
-class _ReadyPill extends StatelessWidget {
-  final bool ready;
-
-  const _ReadyPill({required this.ready});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: ready ? Ep.blue.withValues(alpha: .2) : Ep.card,
-        border: Border.all(color: ready ? Ep.blue : Ep.whiteA(.14)),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Text(
-        ready ? 'READY' : 'DRAFT',
-        style: epText(
-          size: 9.5,
-          weight: FontWeight.w900,
-          letterSpacing: 1.2,
-          color: ready ? Ep.linkSoft : Ep.inkA(.45),
-        ),
-      ),
     );
   }
 }
@@ -486,7 +461,7 @@ class _SwatchRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (final key in DemoData.flyerPicks) ...[
-          _Swatch(
+          Swatch(
             key: ValueKey('press-$key'),
             selected: app.gfFly == key,
             onTap: () => app.setGfFly(key),
@@ -501,7 +476,7 @@ class _SwatchRow extends StatelessWidget {
           ),
           const SizedBox(width: 9),
         ],
-        _Swatch(
+        Swatch(
           key: const ValueKey('press-custom'),
           selected: app.gfCustomFlyer,
           dashed: true,
@@ -511,58 +486,6 @@ class _SwatchRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _Swatch extends StatelessWidget {
-  final bool selected;
-  final bool dashed;
-  final VoidCallback onTap;
-  final Widget child;
-
-  const _Swatch({
-    super.key,
-    required this.selected,
-    required this.onTap,
-    required this.child,
-    this.dashed = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          color: dashed ? Ep.bg : null,
-          shape: BoxShape.circle,
-          border: dashed
-              ? null
-              : Border.all(
-                  color: selected ? Ep.link : Ep.whiteA(.18),
-                  width: 2,
-                ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Ep.link.withValues(alpha: .25),
-                    spreadRadius: 3,
-                  ),
-                ]
-              : null,
-        ),
-        child: dashed
-            ? DashedBox(
-                padding: EdgeInsets.zero,
-                radius: 15,
-                color: selected ? Ep.link : Ep.whiteA(.35),
-                child: child,
-              )
-            : child,
-      ),
     );
   }
 }
@@ -921,17 +844,6 @@ class _PublishBar extends StatelessWidget {
 
 // ============================ sheets ============================
 
-Future<void> _openSheet(BuildContext context, WidgetBuilder builder) {
-  return showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: .6),
-    isScrollControlled: true,
-    constraints: const BoxConstraints(maxWidth: 480),
-    builder: builder,
-  );
-}
-
 class _Sheet extends StatelessWidget {
   final String title;
   final Widget? trailing;
@@ -987,23 +899,6 @@ class _Sheet extends StatelessWidget {
   }
 }
 
-InputDecoration _sheetInput(String hint) => InputDecoration(
-  hintText: hint,
-  hintStyle: epText(size: 13, color: Ep.inkA(.35)),
-  filled: true,
-  fillColor: Ep.bg,
-  isDense: true,
-  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(10),
-    borderSide: BorderSide(color: Ep.whiteA(.16)),
-  ),
-  focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(10),
-    borderSide: BorderSide(color: Ep.whiteA(.3)),
-  ),
-);
-
 /// Full-width option row used by the venue and ticketing sheets.
 class _OptionCard extends StatelessWidget {
   final String title;
@@ -1051,24 +946,10 @@ class _OptionCard extends StatelessWidget {
   }
 }
 
-class _DoneButton extends StatelessWidget {
-  const _DoneButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return EpButton(
-      'DONE',
-      fontSize: 12.5,
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      onTap: () => Navigator.pop(context),
-    );
-  }
-}
-
 // ---------------------------- when ----------------------------
 
 void showWhenSheet(BuildContext context) {
-  _openSheet(context, (ctx) {
+  showEpSheet(context, (ctx) {
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.sizeOf(ctx).height * .82,
@@ -1170,7 +1051,7 @@ class _WhenBody extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 11),
-              const _DoneButton(),
+              const DoneButton(),
             ],
           ),
         ),
@@ -1290,7 +1171,7 @@ class _Month extends StatelessWidget {
 
 void showVenueSheet(BuildContext context) {
   final app = context.read<AppState>();
-  _openSheet(context, (ctx) {
+  showEpSheet(context, (ctx) {
     return _Sheet(
       title: 'Where is it',
       trailing: GestureDetector(
@@ -1350,7 +1231,10 @@ void showVenueSheet(BuildContext context) {
 const _presetPrices = ['FREE', '\$5', '\$8', '\$10', '\$12', '\$15'];
 
 void showPriceSheet(BuildContext context) {
-  _openSheet(context, (_) => const _Sheet(title: 'Cover', child: _PriceBody()));
+  showEpSheet(
+    context,
+    (_) => const _Sheet(title: 'Cover', child: _PriceBody()),
+  );
 }
 
 class _PriceBody extends StatefulWidget {
@@ -1465,7 +1349,7 @@ class _PriceBodyState extends State<_PriceBody> {
 const _presetCaps = ['No cap', '50', '100', '150'];
 
 void showTicketsSheet(BuildContext context) {
-  _openSheet(
+  showEpSheet(
     context,
     (_) => const _Sheet(title: 'Tickets', child: _TicketsBody()),
   );
@@ -1599,11 +1483,11 @@ class _TicketsBodyState extends State<_TicketsBody> {
               keyboardType: TextInputType.url,
               onChanged: app.setGfExt,
               style: epText(size: 12.5),
-              decoration: _sheetInput('https://…'),
+              decoration: sheetInput('https://…'),
             ),
           ),
         const SizedBox(height: 14),
-        const _DoneButton(),
+        const DoneButton(),
       ],
     );
   }

@@ -10,6 +10,7 @@ import '../genres.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/form_bits.dart';
 
 // Door-stamp accent palette from the Sign In v3 design.
 const _stampAccent = Color(0xFF4B62FF);
@@ -270,7 +271,7 @@ class _DoorStepState extends State<_DoorStep> {
       ),
       if (_error != null) ...[const SizedBox(height: 9), _InlineError(_error!)],
       const SizedBox(height: 9),
-      _TextAction('← KEEP BROWSING', onTap: locked ? null : widget.app.back),
+      TextAction('← KEEP BROWSING', onTap: locked ? null : widget.app.back),
     ];
   }
 
@@ -325,7 +326,7 @@ class _DoorStepState extends State<_DoorStep> {
         _InlineError(_error!),
       ],
       const SizedBox(height: 8),
-      _TextAction('← BACK', onTap: _loading ? null : _showProviders),
+      TextAction('← BACK', onTap: _loading ? null : _showProviders),
     ];
   }
 
@@ -742,33 +743,6 @@ class _MethodTile extends StatelessWidget {
             weight: FontWeight.w900,
             letterSpacing: 1.2,
             color: Ep.inkA(.8),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TextAction extends StatelessWidget {
-  final String label;
-  final VoidCallback? onTap;
-
-  const _TextAction(this.label, {required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: epText(
-            size: 11.5,
-            weight: FontWeight.w900,
-            letterSpacing: 1.4,
-            color: Ep.inkA(.4),
           ),
         ),
       ),
