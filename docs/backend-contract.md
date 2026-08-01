@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1)
+# EarPlug Convex function contract (FROZEN — v1.5)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -19,6 +19,33 @@ resolves it back to a band (`earplug.app/<slug>`, and the `join/<slug>` invite
 link built on it). `bands:updateProfile` covers the whole profile, not just bio
 and links. All of this reached the backend before v1.2 and was never recorded
 here.
+
+**v1.4 — the follower-count invariant, stated.** `bands.followerCount` is
+`count(follows by band) + count(bandMembers by band)`. Of the three writers
+that have touched it, `interactions:toggleFollow`'s ±1 per follow row and the
+now-deleted migration's `follows + bandMembers` sum agree; production already
+reflects that sum. `bands:createBand` was the exception: its old `1 + invites`
+formula counted invite handles even though they are stored strings that never
+become members, so a band created with three invites was born three followers
+ahead of reality. It now seeds `followerCount: 1` for the single admin member
+row it creates. The new `maintenance:recountBandFollowers` reconciler is
+therefore a no-op on production. No wire shape changed.
+
+**v1.5 — Clerk synchronization and verified-email repair.** Clerk now delivers
+`user.created`, `user.updated` and `user.deleted` to `POST /clerk-webhook` on
+the deployment's `.convex.site` host (**not** `.convex.cloud`). `users:ensureUser`
+and the webhook use one shared adoption ladder in one mutation transaction, so
+adoption may now happen before sign-in without introducing a check/create race.
+`user.deleted` is a soft tombstone with no cascade: deleting the row would
+leave five tables with dangling user ids and can strand a band's sole admin,
+while cascading would have to reimplement counters across unbounded joins and
+destroy RSVP history in response to a replayable event. The tombstone blanks
+email so a new Clerk identity cannot adopt the dead row. `users.deletedAt` was
+added to storage but is deliberately absent from `UserPayload`. Existing-row
+email backfills and authoritative updates are collision-guarded in the shared
+ladder, webhook and backfill paths; the two deliberate ladder deltas are that
+blank-email repair now pays an extra `by_email` read rather than creating a
+duplicate, and email fallback excludes tombstones.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
@@ -67,6 +94,7 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 // UserPayload
 { "_id": "...", "clerkId": "user_...", "name": "Sam Reyes",
   "email": "sam@example.com", "genres": ["punk"], "attendedCount": 12,
+  // users.deletedAt is an internal tombstone and is deliberately not exposed
   // the row's _creationTime, surfaced under a stable name
   "createdAt": 1785300000000 }
 ```
@@ -92,12 +120,12 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 
 | Function | Args | Returns | Notes |
 |---|---|---|---|
-| `users:ensureUser` | `{ name?: string }` | `{ userId }` | Idempotent upsert keyed on `identity.subject`. Falls back to adopting a legacy row by `identity.email` — but **only** when `identity.emailVerified` is true **and** exactly one row carries that address, so an unverified sign-up cannot claim a migrated account and the known duplicate-email rows are left alone. Backfills an empty name from the identity. Called by the client right after sign-in. |
+| `users:ensureUser` | `{ name?: string }` | `{ userId }` | Thin authenticated adapter over the shared Clerk adoption ladder, keyed on `identity.subject`. Falls back to adopting a live legacy row by `identity.email` — but **only** when `identity.emailVerified` is true **and** exactly one row carries that address, so an unverified sign-up cannot claim a migrated account and the known duplicate-email rows are left alone. Empty-email repair refuses collisions. Called by the client right after sign-in, but `user.created` can now run the same adoption before any sign-in. |
 | `users:setGenres` | `{ genres: string[] }` | `null` | |
 | `interactions:toggleRsvp` | `{ gigId }` | `{ on: boolean }` | Insert/delete join row via by_user_gig index; `goingCount` ±1 same transaction. |
 | `interactions:toggleFollow` | `{ bandId }` | `{ on: boolean }` | `followerCount` ±1 same transaction. |
 | `interactions:toggleSave` | `{ gigId }` | `{ on: boolean }` | |
-| `bands:createBand` | `{ name, genres: string[], bio, inviteHandles: string[], area?, linkIg?, linkBc?, linkYt? }` | `{ bandId, slug }` | Inserts band (colorHex/initials/slug computed server-side; `area` defaults to "Bay Area"; followerCount = 1 + invites) + admin bandMembers row for caller. Invites stored/ignored for v1 (no user linking yet). |
+| `bands:createBand` | `{ name, genres: string[], bio, inviteHandles: string[], area?, linkIg?, linkBc?, linkYt? }` | `{ bandId, slug }` | Inserts band (colorHex/initials/slug computed server-side; `area` defaults to "Bay Area"; `followerCount = 1` — the single admin `bandMembers` row this insert is always followed by, per the v1.4 invariant; invites are stored/ignored for v1 and are deliberately not counted). |
 | `bands:updateProfile` | `{ bandId, name?, genres?, area?, bio?, inviteHandles?, linkIg?, linkBc?, linkYt? }` | `null` | requireBandAdmin. Only the keys supplied are patched. A rename recomputes `initials` but deliberately NOT `slug` (shared links keep resolving) or `colorHex` (the band's visual identity in the feed). |
 | `gigs:publishGig` | `{ bandId, title, startsAt, doorsTime, venueId, price: number, flyKey: "xerox"\|"riso"\|"marquee"\|"blueprint"\|"sunburst"\|"custom", ticketing, externalUrl?, cap }` | `{ gigId }` | requireBandAdmin(bandId); flyKey client-chosen from the six listed literals; `ticketing === "external"` requires a valid http(s) `externalUrl`; `externalUrl` is dropped for `ticketing === "rsvp"`; `startsAt`/`price` must be finite and non-negative and the venue must exist. `lineup` is `[bandId]`, `genres` are copied from the band, `desc` starts empty, `createdByBand = bandId`, goingCount 0. |
 | ↳ v1.1 args/rules for `gigs:publishGig` | Adds `flyStorageId?` to the args above | `{ gigId }` | `flyKey === "custom"` requires a live `flyStorageId` or throws. A non-`"custom"` flyKey silently drops any supplied `flyStorageId`; nothing is stored. |
@@ -108,6 +136,12 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 | `media:moveMedia` | `{ mediaId, direction: "up"\|"down" }` | `null` | requireBandAdmin of the media's band; swaps `order` with the adjacent row in the band's single global list, which may be of the other kind; no-op at ends. |
 | `bands:setBandPhoto` | `{ bandId, mediaId }` | `null` | requireBandAdmin(bandId); media must be a photo belonging to that band. |
 | `bands:clearBandPhoto` | `{ bandId }` | `null` | requireBandAdmin(bandId); clears `imageStorageId` without deleting the blob. |
+
+## HTTP endpoints
+
+| Method and path | Host | Behavior |
+|---|---|---|
+| `POST /clerk-webhook` | The deployment's `.convex.site` URL, **not** `.convex.cloud` | Verifies the Svix signature with that deployment's `CLERK_WEBHOOK_SECRET`. `user.created` and `user.updated` flatten a validated Clerk user into the shared adoption mutation; `user.deleted` soft-tombstones by Clerk id. Other valid event types return 200 and write nothing. Verification/payload failures return 400; missing configuration or mutation failures return 500 so Svix retries. Operations are idempotent by Clerk id; `svix-id` is logged for traceability rather than stored in an unbounded dedupe table. |
 
 ## Limits
 
@@ -122,6 +156,18 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
   direct-POST URL from `media:generateUploadUrl` bypasses mutation-level
   validation, so clients **must** pre-check file size and type before uploading.
 
+## Invariants
+
+- `bands.followerCount == count(follows by bandId) + count(bandMembers by
+  bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
+  its follow row) and `bands:createBand` (seeds 1 with its admin member row).
+  `maintenance:recountBandFollowers` checks and can repair drift.
+- `gigs.goingCount == count(gigRsvps by gigId)`. Its writers are
+  `interactions:toggleRsvp` (±1 with its RSVP row) and every gig insert, which
+  seeds it to 0.
+- `bands.pastShows` is a hand-derived summary with no live writer. No gig
+  mutation maintains it, so it is not synchronized automatically.
+
 ## Client-side derivations (NOT server concerns)
 
 - `GigWhen` tonight/week/later, `dateShort` ("TUE JUL 28"), `dateLine`
@@ -131,6 +177,23 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 - Feed filters (city/tonight/week/free/genre) — client-side over the feed payload.
 
 ## Internal (not called by client)
+
+- `users:syncFromClerk` internalMutation — the webhook's single write entry
+  point for a flattened, validated Clerk identity. Runs the same adoption
+  ladder as `users:ensureUser`; `user.updated` makes a non-empty, non-colliding
+  email authoritative while preserving a non-empty stored name.
+- `users:markDeletedFromClerk` internalMutation — soft-tombstones a row by
+  Clerk id and blanks its email. It deliberately leaves follows, memberships,
+  RSVPs, saves, media attribution and denormalized counters untouched.
+- `clerkBackfill:backfillEmails` internalAction — dry-run by default; processes
+  one batch per invocation and self-schedules by monotonic creation time. It
+  writes only Clerk-verified primary addresses and never an address another
+  row already holds.
+- `clerkBackfill:listUsersNeedingEmail` internalQuery — reads only the
+  `by_email` range for `email == ""`, after a supplied creation-time boundary.
+- `clerkBackfill:applyEmails` internalMutation — rechecks missing/filled/
+  tombstoned rows and email collisions inside the write transaction, including
+  collisions introduced earlier in the same batch.
 
 - `seed:seedDemo` internalMutation — **test fixture only, never run it against a
   real deployment.** Its idempotency marker is a venue named "The Foghorn Club",
@@ -142,6 +205,18 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
   `convex/crons.ts` every 24 hours with `{ dryRun: false }`. Also the only
   thing that deletes blobs: it aborts rather than guess when any reference
   table hits its 2000-row read guard.
+- `maintenance:recountBandFollowers` internalMutation — dry-run by default with
+  an optional `bandId` scope. It recomputes counts from the `by_band` indexes on
+  `follows` and `bandMembers`, reports each before/after in `changes`, and is
+  idempotent when run live twice. It is NOT scheduled by crons. An unscoped
+  band read that hits its cap aborts the whole run; a per-band join read that
+  hits its cap skips that band without writing.
+- `maintenance:publishRealGig` internalMutation — dry-run by default and takes
+  the same args as `gigs:publishGig` through the shared validators/helpers in
+  `convex/lib/helpers.ts`, minus the `requireBandAdmin` check. It deduplicates
+  `(title, startsAt, venueId)` through the `by_title` index and takes real
+  operator-supplied gig details. It is not a seeder and shares nothing with
+  `seed:seedDemo`.
 - The one-shot legacy migrations are gone. `convex/migrations.ts` and
   `convex/cleanup.ts` were deleted after their runs, per the established
   one-shot lifecycle; both deployments now run the tight v1 schema, and prod

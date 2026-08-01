@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
+import { upsertUserFromClerk } from "./lib/clerkUser";
 import {
   currentUser,
   requireUser,
@@ -16,15 +17,6 @@ export const me = query({
   },
 });
 
-/**
- * Idempotent upsert keyed on identity.subject. Adoption order:
- *  1. clerkId match (total on the migrated dataset).
- *  2. verified-email fallback — unique-match-only (25 legacy rows have empty
- *     email and one email appears on 3 accounts; a non-unique match must NOT
- *     adopt).
- *  3. Insert a fresh user.
- * Backfills empty email (and missing name) from the Clerk identity.
- */
 export const ensureUser = mutation({
   args: { name: v.optional(v.string()) },
   returns: v.object({ userId: v.id("users") }),
@@ -32,59 +24,57 @@ export const ensureUser = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Not signed in");
 
-    const identityEmail = typeof identity.email === "string" ? identity.email : "";
-    const identityName =
-      args.name ??
-      (typeof identity.name === "string" && identity.name !== ""
-        ? identity.name
-        : undefined);
-
-    // 1. Adopt by clerkId.
-    const byClerkId = await ctx.db
-      .query("users")
-      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
-      .unique();
-    if (byClerkId) {
-      const patch: { email?: string; name?: string } = {};
-      if (byClerkId.email === "" && identityEmail !== "") {
-        patch.email = identityEmail;
-      }
-      if (byClerkId.name === "" && identityName !== undefined) {
-        patch.name = identityName;
-      }
-      if (Object.keys(patch).length > 0) {
-        await ctx.db.patch(byClerkId._id, patch);
-      }
-      return { userId: byClerkId._id };
-    }
-
-    // 2. Email fallback — unverified addresses cannot re-key legacy accounts.
-    if (identityEmail !== "" && identity.emailVerified === true) {
-      const byEmail = await ctx.db
-        .query("users")
-        .withIndex("by_email", (q) => q.eq("email", identityEmail))
-        .take(2);
-      if (byEmail.length === 1) {
-        const adopted = byEmail[0];
-        await ctx.db.patch(adopted._id, {
-          clerkId: identity.subject,
-          ...(adopted.name === "" && identityName !== undefined
-            ? { name: identityName }
-            : {}),
-        });
-        return { userId: adopted._id };
-      }
-    }
-
-    // 3. Fresh user.
-    const userId = await ctx.db.insert("users", {
+    const { userId } = await upsertUserFromClerk(ctx, {
       clerkId: identity.subject,
-      name: identityName ?? (identityEmail !== "" ? identityEmail.split("@")[0] : "Music fan"),
-      email: identityEmail,
-      genres: [],
-      attendedCount: 0,
+      email: identity.email ?? "",
+      emailVerified: identity.emailVerified === true,
+      name: (args.name ?? identity.name) || undefined,
     });
     return { userId };
+  },
+});
+
+export const syncFromClerk = internalMutation({
+  args: {
+    clerkId: v.string(),
+    email: v.string(),
+    emailVerified: v.boolean(),
+    name: v.optional(v.string()),
+    emailIsAuthoritative: v.boolean(),
+  },
+  returns: v.object({
+    userId: v.id("users"),
+    outcome: v.union(
+      v.literal("created"),
+      v.literal("adopted_by_clerk_id"),
+      v.literal("adopted_by_email"),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    return await upsertUserFromClerk(ctx, args, {
+      emailIsAuthoritative: args.emailIsAuthoritative,
+    });
+  },
+});
+
+export const markDeletedFromClerk = internalMutation({
+  args: { clerkId: v.string() },
+  returns: v.object({ found: v.boolean() }),
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .unique();
+    if (user === null) return { found: false };
+
+    // Keep the row and every reference to it. A hard delete would dangle user
+    // ids in five tables and can leave a band with no surviving admin. A
+    // cascade would also have to reproduce counter maintenance across
+    // unbounded joins and would destroy RSVP history on a replayable event.
+    // Blanking email keeps the tombstone out of non-empty by_email ranges so a
+    // later sign-up under a new Clerk id cannot adopt this dead identity.
+    await ctx.db.patch(user._id, { deletedAt: Date.now(), email: "" });
+    return { found: true };
   },
 });
 

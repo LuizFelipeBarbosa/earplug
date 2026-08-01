@@ -7,6 +7,7 @@
     "deploy": "convex deploy"
   },
   "dependencies": {
+    "@clerk/backend": "^3.15.0",
     "convex": "^1.42.3"
   },
   "devDependencies": {

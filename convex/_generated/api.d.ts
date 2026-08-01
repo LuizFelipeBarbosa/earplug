@@ -9,10 +9,14 @@
  */
 
 import type * as bands from "../bands.js";
+import type * as clerkBackfill from "../clerkBackfill.js";
 import type * as crons from "../crons.js";
 import type * as gigs from "../gigs.js";
+import type * as http from "../http.js";
 import type * as interactions from "../interactions.js";
+import type * as lib_clerkUser from "../lib/clerkUser.js";
 import type * as lib_helpers from "../lib/helpers.js";
+import type * as maintenance from "../maintenance.js";
 import type * as media from "../media.js";
 import type * as seed from "../seed.js";
 import type * as users from "../users.js";
@@ -26,10 +30,14 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   bands: typeof bands;
+  clerkBackfill: typeof clerkBackfill;
   crons: typeof crons;
   gigs: typeof gigs;
+  http: typeof http;
   interactions: typeof interactions;
+  "lib/clerkUser": typeof lib_clerkUser;
   "lib/helpers": typeof lib_helpers;
+  maintenance: typeof maintenance;
   media: typeof media;
   seed: typeof seed;
   users: typeof users;

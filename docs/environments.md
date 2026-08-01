@@ -12,10 +12,12 @@ shared.
 the detail in this file only.
 
 A Convex deployment and a Clerk instance are chosen **together, never
-independently**. Each deployment trusts exactly one issuer via
-`CLERK_JWT_ISSUER_DOMAIN`, read in `convex/auth.config.ts`, so a client holding
-the other instance's key signs in successfully and then reads nothing —
-indistinguishable from deleted data, not from misconfiguration.
+independently**. The pairing now governs all three deployment secrets:
+`CLERK_JWT_ISSUER_DOMAIN`, `CLERK_WEBHOOK_SECRET` and `CLERK_SECRET_KEY`. Each
+deployment trusts exactly one issuer via `CLERK_JWT_ISSUER_DOMAIN`, read in
+`convex/auth.config.ts`, so a client holding the other instance's key signs in
+successfully and then reads nothing — indistinguishable from deleted data, not
+from misconfiguration.
 
 | | development | production |
 |---|---|---|
@@ -34,10 +36,18 @@ Two facts about the deployment side of the pair, since they are the ones people
 look for:
 
 - `CLERK_JWT_ISSUER_DOMAIN` is set per deployment with `npx convex env set`,
-  never read from a file in this repo. It is the only thing that decides which
-  Clerk instance a deployment trusts.
-- `CLERK_SECRET_KEY` exists on both deployments for backend tooling; no
-  function reads it, and no client code ever sees it.
+  never read from a file in this repo. It decides which Clerk instance a
+  deployment trusts.
+- `CLERK_WEBHOOK_SECRET` is also set per deployment and belongs to one Clerk
+  webhook endpoint/instance. It must pair with the same deployment as the
+  issuer domain. Configure the endpoint as `POST /clerk-webhook` on the
+  deployment's `.convex.site` host, not `.convex.cloud`.
+- `CLERK_SECRET_KEY` exists on both deployments and is read by
+  `clerkBackfill:backfillEmails`; no client code ever sees it. It must belong
+  to the same Clerk instance as the issuer and webhook secret. A `sk_live_`
+  key used against dev (or a test key against prod) returns zero matches for
+  every id and reports `skippedNotFoundInClerk: 146` with no other symptom —
+  indistinguishable from “Clerk has no record of these users”.
 
 ## Building
 
