@@ -90,6 +90,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<FeedSnapshot>? _feedSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
+  bool _disposed = false;
 
   DataStatus _dataStatus;
   DataStatus get dataStatus => _dataStatus;
@@ -98,7 +99,25 @@ class AppState extends ChangeNotifier {
   List<Gig> _allGigs = const [];
   Map<String, Band> _bands = {};
   Map<String, Venue> _venues = const {};
+
+  /// The full curated venue table (`venues:list`), including venues no upcoming
+  /// gig references. The feed only carries venues its gigs point at.
+  Map<String, Venue> _venueDirectory = const {};
+  DataStatus _venueStatus = DataStatus.connecting;
+  DataStatus get venueStatus => _venueStatus;
+  String? venueError;
+
   final Map<String, String> _bandRoles = {};
+
+  /// Past gigs per band, from `gigs:pastForBand`. Lazily loaded on first read.
+  /// Follows `BandMediaController.mediaFor` / `_loadMedia`: a read-triggered
+  /// per-band cache with a staleness token and one final notification.
+  /// Deliberate deviation: media retries after its own failure rebuild; this
+  /// cache gates on the error map until an explicit [refreshBandHistory].
+  final Map<String, BandHistory> _bandHistory = {};
+  final Map<String, Object> _bandHistoryTokens = {};
+  final Map<String, String> _bandHistoryErrors = {};
+
   BandMediaController? _media;
 
   /// What the user typed into the band-edit fields, shown until the server has
@@ -201,6 +220,7 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _toastTimer?.cancel();
     for (final timer in _bandEditTimers.values) {
       timer.cancel();
@@ -296,6 +316,33 @@ class AppState extends ChangeNotifier {
       },
     );
     unawaited(_refreshExploreBands());
+    unawaited(_refreshVenueDirectory());
+  }
+
+  /// One-shot directory refresh, following the `_refreshExploreBands` pattern.
+  Future<void> _refreshVenueDirectory() async {
+    try {
+      final loaded = await repository.venues();
+      if (_disposed) return;
+      _venueDirectory = {for (final venue in loaded) venue.id: venue};
+      _venueStatus = DataStatus.ready;
+      venueError = null;
+      notifyListeners();
+    } catch (error) {
+      logError('venues', error);
+      if (_disposed) return;
+      _venueStatus = DataStatus.error;
+      venueError = '$error';
+      notifyListeners();
+    }
+  }
+
+  void retryVenues() {
+    if (_venueStatus == DataStatus.connecting) return;
+    _venueStatus = DataStatus.connecting;
+    venueError = null;
+    notifyListeners();
+    unawaited(_refreshVenueDirectory());
   }
 
   Future<void> _refreshExploreBands() async {
@@ -564,14 +611,61 @@ class AppState extends ChangeNotifier {
 
   Band? band(String id) => _bands[id];
 
+  /// A band's past gigs, or null until the first load lands. Kicks the load off
+  /// on first read; a failed load is not retried until [refreshBandHistory].
+  BandHistory? bandHistory(String id) {
+    final cached = _bandHistory[id];
+    if (cached != null) return cached;
+    if (!_bandHistoryTokens.containsKey(id) &&
+        !_bandHistoryErrors.containsKey(id)) {
+      unawaited(_loadBandHistory(id));
+    }
+    return null;
+  }
+
+  /// Why the last load for [id] failed, or null.
+  String? bandHistoryError(String id) => _bandHistoryErrors[id];
+
+  /// Clears any recorded failure and loads again — the RETRY affordance.
+  void refreshBandHistory(String id) {
+    _bandHistoryErrors.remove(id);
+    notifyListeners();
+    unawaited(_loadBandHistory(id));
+  }
+
+  Future<void> _loadBandHistory(String id) async {
+    final token = Object();
+    _bandHistoryTokens[id] = token;
+    try {
+      final loaded = await repository.bandHistory(id);
+      if (_disposed || !identical(_bandHistoryTokens[id], token)) return;
+      _bandHistory[id] = loaded;
+      _bandHistoryErrors.remove(id);
+    } catch (error) {
+      logError('bandHistory', error);
+      if (_disposed || !identical(_bandHistoryTokens[id], token)) return;
+      _bandHistoryErrors[id] = '$error';
+    } finally {
+      if (!_disposed && identical(_bandHistoryTokens[id], token)) {
+        _bandHistoryTokens.remove(id);
+        notifyListeners();
+      }
+    }
+  }
+
   String roleFor(String id) => _bandRoles[id] ?? 'member';
 
   bool isAdminOf(String id) => _bandRoles[id] == 'admin';
 
-  Venue venue(String id) => _venues[id] ?? _unknownVenue;
+  Venue venue(String id) => _venues[id] ?? _venueDirectory[id] ?? _unknownVenue;
 
-  /// Every venue the feed knows about — shared records bands pick from.
-  List<Venue> get venues => _venues.values.toList();
+  /// Every venue the app knows: the curated table plus whatever the live feed
+  /// carries. Feed rows win on id — they are realtime. Name-ordered, one entry
+  /// per id; this is the only venue list any screen reads.
+  List<Venue> get venues {
+    final merged = <String, Venue>{..._venueDirectory, ..._venues};
+    return merged.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+  }
 
   static const _unknownVenue = Venue(
     id: '',

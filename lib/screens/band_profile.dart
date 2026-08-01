@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../band_media_state.dart';
+import '../data/repository.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -206,43 +207,129 @@ class BandProfileScreen extends StatelessWidget {
                   'Nothing on the calendar right now.',
                   style: epText(size: 11.5, color: Ep.inkA(.4)),
                 ),
-              if (band.past.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                SectionLabel('PAST GIGS · ${band.past.length} PLAYED'),
-                const SizedBox(height: 6),
-              ],
-              for (final p in band.past)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 2,
-                    vertical: 9,
-                  ),
-                  decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: Ep.whiteA(.07))),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          p.title,
-                          style: epText(
-                            size: 12.5,
-                            weight: FontWeight.w700,
-                            color: Ep.inkA(.75),
-                          ),
-                        ),
-                      ),
-                      Text(p.meta, style: epText(size: 11, color: Ep.inkA(.4))),
-                    ],
-                  ),
-                ),
+              _PastShows(band: band, app: app),
             ],
           ),
         ),
       ],
     );
   }
+}
+
+class _PastShows extends StatelessWidget {
+  const _PastShows({required this.band, required this.app});
+
+  final Band band;
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final history = app.bandHistory(band.id);
+    final rows = history == null ? const <PastGig>[] : _pastRowsFrom(history);
+    final error = app.bandHistoryError(band.id);
+    final List<Widget> content;
+
+    if (rows.isNotEmpty) {
+      content = [
+        SectionLabel('PAST GIGS · ${rows.length} PLAYED'),
+        const SizedBox(height: 6),
+        for (final row in rows) _PastRow(show: row),
+      ];
+    } else if (band.past.isNotEmpty) {
+      content = [
+        SectionLabel('PAST GIGS · ${band.past.length} PLAYED'),
+        const SizedBox(height: 6),
+        for (final row in band.past) _PastRow(show: row),
+      ];
+    } else if (history == null && error == null) {
+      content = [
+        const SectionLabel('PAST GIGS'),
+        const SizedBox(height: 6),
+        Text(
+          'Loading past shows…',
+          style: epText(size: 11.5, color: Ep.inkA(.4)),
+        ),
+      ];
+    } else if (error != null) {
+      content = [
+        const SectionLabel('PAST GIGS'),
+        const SizedBox(height: 6),
+        Text(
+          "Couldn't load past shows.",
+          style: epText(size: 11.5, color: Ep.inkA(.4)),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: 120,
+          child: EpButton(
+            'RETRY',
+            kind: EpButtonKind.outline,
+            fontSize: 12.5,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            onTap: () => app.refreshBandHistory(band.id),
+          ),
+        ),
+      ];
+    } else {
+      content = [
+        const SectionLabel('PAST GIGS'),
+        const SizedBox(height: 6),
+        Text(
+          'No past shows yet.',
+          style: epText(size: 11.5, color: Ep.inkA(.4)),
+        ),
+      ];
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [const SizedBox(height: 8), ...content],
+    );
+  }
+}
+
+class _PastRow extends StatelessWidget {
+  const _PastRow({required this.show});
+
+  final PastGig show;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Ep.whiteA(.07))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text(
+              show.title,
+              style: epText(
+                size: 12.5,
+                weight: FontWeight.w700,
+                color: Ep.inkA(.75),
+              ),
+            ),
+          ),
+          Text(show.meta, style: epText(size: 11, color: Ep.inkA(.4))),
+        ],
+      ),
+    );
+  }
+}
+
+/// Live history in the same "title — venue" / short-date shape the fan's own
+/// history uses (`ConvexRepository.history`).
+List<PastGig> _pastRowsFrom(BandHistory history) {
+  final rows = <PastGig>[];
+  for (final gig in history.gigs) {
+    final venueName = history.venues[gig.venueId]?.name ?? '';
+    final title = venueName.isEmpty ? gig.title : '${gig.title} — $venueName';
+    rows.add(PastGig(title, gig.dateShort));
+  }
+  return rows;
 }
 
 class _PinnedVideo extends StatelessWidget {

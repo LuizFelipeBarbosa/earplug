@@ -4,10 +4,12 @@ import 'package:earplug/app_state.dart';
 import 'package:earplug/data/convex_repository.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
 void main() {
   group('AppState', () {
@@ -15,6 +17,44 @@ void main() {
       final app = await _demoApp();
       expect(app.current.screen, Screen.home);
       expect(app.feed.length, 7);
+    });
+
+    test('venue directory merges into one sorted, resolvable list', () async {
+      final repository = _DirectoryMergeRepository(auth: FakeAuthService());
+      final app = await _demoApp(repository: repository);
+      final venues = app.venues;
+      final ids = venues.map((venue) => venue.id).toList();
+      final names = venues.map((venue) => venue.name).toList();
+      final sortedNames = List<String>.of(names)..sort();
+
+      expect(ids, contains(_extraVenue.id));
+      expect(ids.toSet(), hasLength(ids.length));
+      expect(names, orderedEquals(sortedNames));
+      expect(app.venue(_extraVenue.id).name, _extraVenue.name);
+    });
+
+    test('realtime feed venue wins a directory id conflict', () async {
+      final repository = _ConflictingVenueRepository(auth: FakeAuthService());
+      final app = await _demoApp(repository: repository);
+      final feedVenue = DemoData.venues['v1']!;
+
+      expect(app.venue('v1').name, feedVenue.name);
+      expect(
+        app.venues.singleWhere((venue) => venue.id == 'v1').name,
+        feedVenue.name,
+      );
+    });
+
+    test('a failed venue directory leaves feed venues intact', () async {
+      final repository = _FailedVenueRepository(auth: FakeAuthService());
+      final app = await _demoApp(repository: repository);
+
+      expect(app.venueStatus, DataStatus.error);
+      expect(app.venueError, isNotNull);
+      expect(
+        app.venues.map((venue) => venue.id),
+        containsAll(DemoData.venues.keys),
+      );
     });
 
     test('filters combine: free + tonight', () async {
@@ -430,6 +470,53 @@ Future<AppState> _demoApp({DemoRepository? repository}) async {
   addTearDown(app.dispose);
   await pumpEventQueue();
   return app;
+}
+
+const _extraVenue = Venue(
+  id: 'v-extra',
+  name: 'Derby Street House',
+  area: 'South Berkeley',
+  addr: '2863 Derby St, Berkeley',
+  distSF: '10.2 mi',
+  distOak: '4.8 mi',
+  point: LatLng(37.8614, -122.2508),
+);
+
+class _DirectoryMergeRepository extends DemoRepository {
+  _DirectoryMergeRepository({required super.auth});
+
+  @override
+  Future<List<Venue>> venues() async => [
+    ...DemoData.venues.values,
+    _extraVenue,
+  ];
+}
+
+class _ConflictingVenueRepository extends DemoRepository {
+  _ConflictingVenueRepository({required super.auth});
+
+  static const _directoryVersion = Venue(
+    id: 'v1',
+    name: 'Stale Directory Name',
+    area: 'Mission, SF',
+    addr: '2455 Harrison St, San Francisco',
+    distSF: '0.8 mi',
+    distOak: '6.3 mi',
+    point: LatLng(37.7524, -122.4180),
+  );
+
+  @override
+  Future<List<Venue>> venues() async => [
+    for (final venue in DemoData.venues.values)
+      if (venue.id == 'v1') _directoryVersion else venue,
+  ];
+}
+
+class _FailedVenueRepository extends DemoRepository {
+  _FailedVenueRepository({required super.auth});
+
+  @override
+  Future<List<Venue>> venues() async => throw Exception('venues failed');
 }
 
 /// Counts profile writes so the debounce is observable, and can fail them on
