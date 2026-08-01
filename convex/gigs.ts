@@ -5,10 +5,11 @@ import {
   FEED_GRACE_MS,
   MAX_FEED_GIGS,
   MAX_PAST_GIGS,
-  assertUploadAcceptable,
+  assertGigPublishable,
   bandPayloadValidator,
-  flyKeyValidator,
+  gigPublishFieldsValidator,
   gigPayloadValidator,
+  insertPublishedGig,
   requireBandAdmin,
   toBandPayload,
   toGigPayload,
@@ -135,71 +136,11 @@ export const pastForBand = query({
 });
 
 export const publishGig = mutation({
-  args: {
-    bandId: v.id("bands"),
-    title: v.string(),
-    startsAt: v.number(),
-    doorsTime: v.string(),
-    venueId: v.id("venues"),
-    price: v.number(),
-    flyKey: flyKeyValidator,
-    flyStorageId: v.optional(v.id("_storage")),
-    ticketing: v.union(v.literal("rsvp"), v.literal("external")),
-    externalUrl: v.optional(v.string()),
-    cap: v.string(),
-  },
+  args: gigPublishFieldsValidator.fields,
   returns: v.object({ gigId: v.id("gigs") }),
   handler: async (ctx, args) => {
     await requireBandAdmin(ctx, args.bandId);
-    if (!Number.isFinite(args.startsAt) || args.startsAt < 0) {
-      throw new Error("Invalid startsAt");
-    }
-    if (!Number.isFinite(args.price) || args.price < 0) {
-      throw new Error("Invalid price");
-    }
-    if (
-      args.ticketing === "external" &&
-      (!args.externalUrl || !/^https?:\/\//.test(args.externalUrl))
-    ) {
-      throw new Error("External ticketing requires a valid http(s) URL");
-    }
-    if (args.flyKey === "custom") {
-      if (args.flyStorageId === undefined) {
-        throw new Error("Custom flyer requires flyStorageId");
-      }
-      const upload = await ctx.db.system.get("_storage", args.flyStorageId);
-      if (!upload) throw new Error("Flyer upload not found");
-      assertUploadAcceptable(
-        { size: upload.size, contentType: upload.contentType },
-        "photo",
-      );
-    }
-    const venue = await ctx.db.get(args.venueId);
-    if (!venue) throw new Error("Venue not found");
-    const band = await ctx.db.get(args.bandId);
-    if (!band) throw new Error("Band not found");
-
-    const gigId = await ctx.db.insert("gigs", {
-      title: args.title,
-      venueId: args.venueId,
-      price: args.price,
-      startsAt: args.startsAt,
-      doorsTime: args.doorsTime,
-      flyKey: args.flyKey,
-      lineup: [args.bandId],
-      genres: band.genres,
-      desc: "",
-      ticketing: args.ticketing,
-      ...(args.ticketing === "external" && args.externalUrl !== undefined
-        ? { externalUrl: args.externalUrl }
-        : {}),
-      ...(args.flyKey === "custom" && args.flyStorageId !== undefined
-        ? { flyStorageId: args.flyStorageId }
-        : {}),
-      cap: args.cap,
-      goingCount: 0,
-      createdByBand: args.bandId,
-    });
-    return { gigId };
+    const { band } = await assertGigPublishable(ctx, args);
+    return { gigId: await insertPublishedGig(ctx, args, band) };
   },
 });

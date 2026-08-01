@@ -94,6 +94,50 @@ describe("interactions", () => {
     expect(band!.followerCount).toBe(10);
   });
 
+  test("toggleFollow preserves the createBand follower invariant", async () => {
+    const t = convexTest(schema);
+    const asAdmin = t.withIdentity({
+      subject: "user_admin",
+      email: "admin@x.com",
+    });
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Invariant Youth",
+      genres: ["punk"],
+      bio: "",
+      inviteHandles: ["@a", "@b"],
+    });
+    const readCounts = () =>
+      t.run(async (ctx) => {
+        const band = await ctx.db.get(bandId);
+        const follows = await ctx.db
+          .query("follows")
+          .withIndex("by_band", (q) => q.eq("bandId", bandId))
+          .take(10);
+        const members = await ctx.db
+          .query("bandMembers")
+          .withIndex("by_band", (q) => q.eq("bandId", bandId))
+          .take(10);
+        return {
+          followerCount: band!.followerCount,
+          rowCount: follows.length + members.length,
+        };
+      });
+
+    expect(await readCounts()).toEqual({ followerCount: 1, rowCount: 1 });
+
+    const asFan = t.withIdentity({
+      subject: "user_fan_2",
+      email: "fan2@x.com",
+    });
+    await asFan.mutation(api.users.ensureUser, {});
+    await asFan.mutation(api.interactions.toggleFollow, { bandId });
+    expect(await readCounts()).toEqual({ followerCount: 2, rowCount: 2 });
+
+    await asFan.mutation(api.interactions.toggleFollow, { bandId });
+    expect(await readCounts()).toEqual({ followerCount: 1, rowCount: 1 });
+  });
+
   test("history returns only past RSVPed gigs, newest first", async () => {
     const { t, asFan, venueId, bandId, gigId } = await setup();
 

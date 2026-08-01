@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { Infer, v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { pastShowValidator } from "../schema";
@@ -143,6 +143,88 @@ export const flyKeyValidator = v.union(
   v.literal("sunburst"),
   v.literal("custom"),
 );
+
+export const gigPublishFieldsValidator = v.object({
+  bandId: v.id("bands"),
+  title: v.string(),
+  startsAt: v.number(),
+  doorsTime: v.string(),
+  venueId: v.id("venues"),
+  price: v.number(),
+  flyKey: flyKeyValidator,
+  flyStorageId: v.optional(v.id("_storage")),
+  ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+  externalUrl: v.optional(v.string()),
+  cap: v.string(),
+});
+export type GigPublishFields = Infer<typeof gigPublishFieldsValidator>;
+
+/** Every non-auth check publishGig performs, in its original order. Throws on
+ * the first failure; returns the resolved rows. Performs no writes. */
+export async function assertGigPublishable(
+  ctx: MutationCtx,
+  args: GigPublishFields,
+): Promise<{ band: Doc<"bands">; venue: Doc<"venues"> }> {
+  if (!Number.isFinite(args.startsAt) || args.startsAt < 0) {
+    throw new Error("Invalid startsAt");
+  }
+  if (!Number.isFinite(args.price) || args.price < 0) {
+    throw new Error("Invalid price");
+  }
+  if (
+    args.ticketing === "external" &&
+    (!args.externalUrl || !/^https?:\/\//.test(args.externalUrl))
+  ) {
+    throw new Error("External ticketing requires a valid http(s) URL");
+  }
+  if (args.flyKey === "custom") {
+    if (args.flyStorageId === undefined) {
+      throw new Error("Custom flyer requires flyStorageId");
+    }
+    const upload = await ctx.db.system.get("_storage", args.flyStorageId);
+    if (!upload) throw new Error("Flyer upload not found");
+    assertUploadAcceptable(
+      { size: upload.size, contentType: upload.contentType },
+      "photo",
+    );
+  }
+  const venue = await ctx.db.get(args.venueId);
+  if (!venue) throw new Error("Venue not found");
+  const band = await ctx.db.get(args.bandId);
+  if (!band) throw new Error("Band not found");
+  return { band, venue };
+}
+
+/** The insert half. `band` must come from assertGigPublishable — call that
+ * first. */
+export async function insertPublishedGig(
+  ctx: MutationCtx,
+  args: GigPublishFields,
+  band: Doc<"bands">,
+): Promise<Id<"gigs">> {
+  const gigId = await ctx.db.insert("gigs", {
+    title: args.title,
+    venueId: args.venueId,
+    price: args.price,
+    startsAt: args.startsAt,
+    doorsTime: args.doorsTime,
+    flyKey: args.flyKey,
+    lineup: [args.bandId],
+    genres: band.genres,
+    desc: "",
+    ticketing: args.ticketing,
+    ...(args.ticketing === "external" && args.externalUrl !== undefined
+      ? { externalUrl: args.externalUrl }
+      : {}),
+    ...(args.flyKey === "custom" && args.flyStorageId !== undefined
+      ? { flyStorageId: args.flyStorageId }
+      : {}),
+    cap: args.cap,
+    goingCount: 0,
+    createdByBand: args.bandId,
+  });
+  return gigId;
+}
 
 export const gigPayloadValidator = v.object({
   _id: v.id("gigs"),

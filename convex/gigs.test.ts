@@ -358,7 +358,8 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(mine.length).toBe(1);
     expect(mine[0].role).toBe("admin");
     expect(mine[0].band.name).toBe("Static Bloom");
-    expect(mine[0].band.followerCount).toBe(3); // 1 + invites
+    // Only the admin member row counts; invite handles are stored strings.
+    expect(mine[0].band.followerCount).toBe(1);
     expect(mine[0].band.initials).toBe("SB");
   });
 });

@@ -107,7 +107,11 @@ export const createBand = mutation({
       area: args.area ?? "Bay Area",
       colorHex: bandColorFor(args.name),
       initials: initialsFor(args.name),
-      followerCount: 1 + args.inviteHandles.length,
+      // Invariant: followerCount == count(follows) + count(bandMembers). This
+      // insert is followed by exactly one bandMembers row (the caller, admin)
+      // and no follows row. inviteHandles are stored strings — nothing converts
+      // them into bandMembers, so they must not be counted here.
+      followerCount: 1,
       pastShows: [],
       inviteHandles: args.inviteHandles,
       linkIg: args.linkIg,

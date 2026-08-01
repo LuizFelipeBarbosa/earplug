@@ -54,9 +54,39 @@ describe("bands: slugs and profile updates", () => {
     expect(doc?.linkYt).toBe("youtube.com/@staticbloom");
     expect(doc?.bio).toBe("Two amps facing each other.");
     expect(doc?.inviteHandles).toEqual(["@mara.k"]);
-    // followerCount seeds from the crew: you plus everyone invited.
-    expect(doc?.followerCount).toBe(2);
+    // Invite handles are stored strings, not members, so only the admin counts.
+    expect(doc?.followerCount).toBe(1);
     expect(doc?.slug).toBe(slug);
+  });
+
+  test("createBand counts only the admin row, not invite handles", async () => {
+    const { t, asAdmin } = await setup();
+    const user = await asAdmin.query(api.users.me, {});
+    const inviteHandles = ["@a", "@b", "@c"];
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Invite Arithmetic",
+      genres: ["math rock"],
+      bio: "",
+      inviteHandles,
+    });
+
+    const { band, memberships, follows } = await t.run(async (ctx) => ({
+      band: await ctx.db.get(bandId),
+      memberships: await ctx.db
+        .query("bandMembers")
+        .withIndex("by_band", (q) => q.eq("bandId", bandId))
+        .take(10),
+      follows: await ctx.db
+        .query("follows")
+        .withIndex("by_band", (q) => q.eq("bandId", bandId))
+        .take(10),
+    }));
+
+    expect(band?.followerCount).toBe(1);
+    expect(memberships).toHaveLength(1);
+    expect(memberships[0]).toMatchObject({ role: "admin", userId: user!._id });
+    expect(follows).toHaveLength(0);
+    expect(band?.inviteHandles).toEqual(inviteHandles);
   });
 
   test("createBand without an area falls back to the Bay Area default", async () => {
