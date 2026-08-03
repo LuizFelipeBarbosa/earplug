@@ -24,8 +24,6 @@ class BandDashScreen extends StatelessWidget {
     final tips = [
       if (mine.isEmpty) 'List your first gig — RSVPs count live.',
       if (clips.isEmpty) 'Post a "this is what we sound like" clip.',
-      if (band.followers < 25)
-        'Analytics unlock at 25 followers — ${25 - band.followers} to go.',
     ];
 
     return ListView(

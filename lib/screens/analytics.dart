@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -13,7 +11,6 @@ class AnalyticsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final unlocked = (app.myBand?.followers ?? 0) >= 25;
     return ListView(
       padding: EdgeInsets.fromLTRB(
         16,
@@ -24,7 +21,7 @@ class AnalyticsScreen extends StatelessWidget {
       children: [
         Text('FAN ANALYTICS', style: epDisplay(size: 18)),
         const SizedBox(height: 14),
-        if (unlocked) ..._open(app) else _Locked(app: app),
+        ..._open(app),
       ],
     );
   }
@@ -43,8 +40,7 @@ class AnalyticsScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(11),
         ),
         child: Text(
-          'Aggregates only. Shown because ${band?.name} passed the 25-follower '
-          'privacy threshold — no individual fan is ever identifiable.',
+          'Aggregates only — no individual fan is ever identifiable.',
           style: epText(size: 11, color: Ep.linkSoft, height: 1.45),
         ),
       ),
@@ -105,59 +101,6 @@ class _StatRow extends StatelessWidget {
           Text(
             value,
             style: epText(size: 12, weight: FontWeight.w800, color: Ep.link),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Locked extends StatelessWidget {
-  final AppState app;
-
-  const _Locked({required this.app});
-
-  @override
-  Widget build(BuildContext context) {
-    final followers = app.myBand?.followers ?? 0;
-    final pct = math.min(1.0, followers / 25);
-    return DashedBox(
-      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 34),
-      child: Column(
-        children: [
-          const Text('🔒', style: TextStyle(fontSize: 26)),
-          const SizedBox(height: 10),
-          Text(
-            'LOCKED UNTIL 25 FOLLOWERS',
-            textAlign: TextAlign.center,
-            style: epDisplay(size: 15),
-          ),
-          const SizedBox(height: 10),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 260),
-            child: Text(
-              '$followers of 25 followers so far. Insights only ever show aggregates — '
-              'the threshold makes sure no individual fan is identifiable.',
-              textAlign: TextAlign.center,
-              style: epText(size: 12, color: Ep.inkA(.55), height: 1.5),
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: 200,
-            height: 7,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: Stack(
-                children: [
-                  Container(color: Ep.whiteA(.1)),
-                  FractionallySizedBox(
-                    widthFactor: pct,
-                    child: Container(color: Ep.blue),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),
