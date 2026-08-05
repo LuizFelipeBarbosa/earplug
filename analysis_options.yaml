@@ -46,8 +46,9 @@ linter:
     - unnecessary_parenthesis
 
     # --- Production hygiene ---
-    # print() has no destination on web or a release device. Route diagnostics
-    # somewhere they can actually be read.
+    # Force diagnostics through `logError` in `lib/errors.dart`: a future real
+    # sink becomes a one-line change there, while today's `debugPrint` throttles
+    # output to avoid Android dropping lines, unlike raw `print`.
     - avoid_print
 
 # Considered and deliberately not enabled — each one's only hit in this

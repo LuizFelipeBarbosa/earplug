@@ -114,3 +114,15 @@ Recorded so they are not "found" again:
 `backups/*.zip` — 260MB of post-migration snapshots sitting in the working
 directory. Correctly gitignored, both migrations they guard completed and were
 verified. Safe to move off-disk whenever you want the space.
+
+## Addendum — PR #6 review, 2026-08-05
+
+**Future analytics need a server-side anonymity floor.** We removed the
+client-only 25-follower gate because it hid only follower count, gig count and
+RSVP total — plain counts that identify nobody. The placeholder copy in
+`lib/screens/analytics.dart`, however, promises fan geography,
+new-vs-returning and turnout charts, which are attribute-level aggregates over
+small populations: geography over three followers is effectively three
+people's cities. Whoever builds those charts must restore a k-anonymity floor
+before shipping them, enforced on the server this time because a client-side
+gate cannot protect the underlying data.

@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.5)
+# EarPlug Convex function contract (FROZEN — v1.6)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -46,6 +46,20 @@ email backfills and authoritative updates are collision-guarded in the shared
 ladder, webhook and backfill paths; the two deliberate ladder deltas are that
 blank-email repair now pays an extra `by_email` read rather than creating a
 duplicate, and email fallback excludes tombstones.
+
+**v1.6 — review fixes to Clerk sync.** The optional ms-since-epoch
+`users.clerkUpdatedAt` mirrors Clerk's `updated_at` from the last applied
+webhook event and now guards authoritative email overwrites in the shared
+adoption ladder. An out-of-order or retried older `user.updated` can therefore
+no longer replace a newer email already applied; events without a timestamp
+retain the prior unguarded behavior. Email-collision refusals are also visible:
+`users:syncFromClerk` returns `emailConflict: boolean`, and the webhook log line
+appends `email_conflict` when manual resolution is required instead of reading
+as ordinary success. `clerkBackfill:listUsersNeedingEmail` now excludes
+tombstones whose blank email would otherwise enter the `email == ""` index
+range, while `clerkBackfill:applyEmails` reports a `skippedTombstoned` counter.
+An all-tombstone page continues the backfill's self-scheduling walk rather than
+halting progress. No client-facing wire shape changed.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
@@ -162,6 +176,11 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
   bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
   its follow row) and `bands:createBand` (seeds 1 with its admin member row).
   `maintenance:recountBandFollowers` checks and can repair drift.
+  `convex/seed.ts`, however, writes decorative follower counts (486, 1214, 743,
+  312, 927, 158) without creating any `follows` or `bandMembers` rows, so every
+  seeded band intentionally violates the invariant. On a seeded dev deployment
+  the reconciler reports every band as drift, and a non-dry run zeroes those
+  counts; non-dry runs are therefore for production or unseeded data only.
 - `gigs.goingCount == count(gigRsvps by gigId)`. Its writers are
   `interactions:toggleRsvp` (±1 with its RSVP row) and every gig insert, which
   seeds it to 0.

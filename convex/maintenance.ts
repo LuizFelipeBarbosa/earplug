@@ -1,7 +1,12 @@
 /** `bands.ts` is pure client-contract surface, while `media.ts` owns
  * `sweepOrphanBlobs` because that sweep is media-domain work. A cross-table
  * counter reconciler and an operator-only gig publisher belong to no single
- * domain, so they live in this dedicated maintenance module. */
+ * domain, so they live in this dedicated maintenance module. `seed.ts` writes
+ * decorative followerCounts such as 486 and 1214 without creating `follows`
+ * or `bandMembers` rows to support them. Every seeded band therefore drifts
+ * from its true zero count, and a non-dry-run `recountBandFollowers` would
+ * zero all of those decorative values. Run it non-dry only against production
+ * or genuinely unseeded data. */
 import { Infer, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
