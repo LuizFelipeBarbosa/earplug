@@ -32,7 +32,10 @@ describe("venues:list", () => {
   test("returns every venue, name-ordered", async () => {
     const { t } = await seedVenues();
     const venues = await t.query(api.venues.list, {});
-    expect(venues.map((v) => v.name)).toEqual(["Kingman Hall", "Oakland Secret"]);
+    expect(venues.map((v) => v.name)).toEqual([
+      "Kingman Hall",
+      "Oakland Secret",
+    ]);
   });
 
   test("includes venues no gig references — the gap that made them unreadable", async () => {
