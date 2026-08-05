@@ -27,6 +27,11 @@ export default defineSchema({
     // Storage references with no home in the v1 UI, kept rather than swept.
     avatarUrl: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
+    // Clerk user.deleted tombstone; milliseconds since epoch.
+    deletedAt: v.optional(v.number()),
+    // Clerk's updated_at (ms epoch) from the last applied webhook guards
+    // authoritative email overwrites against out-of-order Svix delivery.
+    clerkUpdatedAt: v.optional(v.number()),
   })
     .index("by_clerk_id", ["clerkId"])
     .index("by_email", ["email"]),

@@ -32,7 +32,7 @@ export const myInteractions = query({
       rsvpGigIds: rsvps.map((r) => r.gigId),
       followBandIds: follows.map((f) => f.bandId),
       savedGigIds: saves.map((s) => s.gigId),
-      attendedCount: user.attendedCount ?? 0,
+      attendedCount: user.attendedCount,
     };
   },
 });
@@ -106,7 +106,6 @@ export const toggleFollow = mutation({
     const user = await requireUser(ctx);
     const band = await ctx.db.get(args.bandId);
     if (!band) throw new Error("Band not found");
-    const count = band.followerCount ?? 0;
     const existing = await ctx.db
       .query("follows")
       .withIndex("by_user_band", (q) =>
@@ -116,12 +115,12 @@ export const toggleFollow = mutation({
     if (existing) {
       await ctx.db.delete(existing._id);
       await ctx.db.patch(args.bandId, {
-        followerCount: Math.max(0, count - 1),
+        followerCount: Math.max(0, band.followerCount - 1),
       });
       return { on: false };
     }
     await ctx.db.insert("follows", { userId: user._id, bandId: args.bandId });
-    await ctx.db.patch(args.bandId, { followerCount: count + 1 });
+    await ctx.db.patch(args.bandId, { followerCount: band.followerCount + 1 });
     return { on: true };
   },
 });

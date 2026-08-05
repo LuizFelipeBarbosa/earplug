@@ -40,7 +40,27 @@ class BandMembership {
   const BandMembership({required this.band, required this.role});
 }
 
+/// A band's past gigs, newest first, with the venues they were played at.
+///
+/// Separate from [FeedSnapshot] because history carries no band map: the caller
+/// already knows whose profile it is looking at.
+class BandHistory {
+  final List<Gig> gigs;
+  final Map<String, Venue> venues;
+
+  const BandHistory({required this.gigs, required this.venues});
+
+  static const empty = BandHistory(gigs: [], venues: {});
+}
+
 abstract class EarplugRepository {
+  /// Pushes the current auth token to the backend; awaitable so callers can
+  /// sequence mutations after an identity change.
+  Future<void> refreshAuth();
+
+  /// The signed-in user's profile, or null when the backend holds none.
+  Future<UserProfile?> me();
+
   Stream<FeedSnapshot> feed();
   Stream<Interactions> myInteractions();
   Stream<List<BandMembership>> myBands();
@@ -60,6 +80,8 @@ abstract class EarplugRepository {
   Future<void> setBandPhoto({required String bandId, required String mediaId});
   Future<void> clearBandPhoto(String bandId);
   Future<List<PastGig>> history();
+  Future<BandHistory> bandHistory(String bandId);
+  Future<List<Venue>> venues();
   Future<Band?> band(String bandId);
   Future<List<Band>> searchBands(String q);
   Future<void> toggleRsvp(String gigId);

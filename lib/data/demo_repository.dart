@@ -6,6 +6,12 @@ import '../models.dart';
 import '../services/auth_service.dart';
 import 'repository.dart';
 
+/// The URL form of a name, as the backend derives it.
+String _slugify(String value) => value
+    .toLowerCase()
+    .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+    .replaceAll(RegExp(r'^-+|-+$'), '');
+
 class DemoRepository implements EarplugRepository {
   DemoRepository({required this._auth}) {
     _bands = Map<String, Band>.of(DemoData.bands);
@@ -43,6 +49,16 @@ class DemoRepository implements EarplugRepository {
   int _nextGigId = 1;
   int _nextMediaId = 1;
   bool _interactionsSeeded = false;
+
+  /// Nothing to push: the demo data does not check identity.
+  @override
+  Future<void> refreshAuth() async {}
+
+  /// The demo dataset has no user record — no email, and no honest "fan since"
+  /// date to show. Callers fall back to the auth service's display name, which
+  /// is what the demo has always shown.
+  @override
+  Future<UserProfile?> me() async => null;
 
   @override
   Stream<FeedSnapshot> feed() => _replay(_feedController, _currentFeed);
@@ -209,6 +225,16 @@ class DemoRepository implements EarplugRepository {
   Future<List<PastGig>> history() async =>
       _auth.signedIn ? DemoData.fanHistory : const [];
 
+  /// Empty by construction: every demo gig is upcoming, so the demo dataset has
+  /// no history to show. Inventing past shows here would put fabricated dates on
+  /// a real-looking profile.
+  @override
+  Future<BandHistory> bandHistory(String bandId) async => BandHistory.empty;
+
+  @override
+  Future<List<Venue>> venues() async =>
+      DemoData.venues.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+
   @override
   Future<Band?> band(String bandId) async => _bands[bandId];
 
@@ -261,19 +287,12 @@ class DemoRepository implements EarplugRepository {
 
   /// Mirrors the backend: "static-bloom", or "static-bloom-2" when taken.
   String _uniqueSlug(String name) {
-    var base = name
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-        .replaceAll(RegExp(r'^-+|-+$'), '');
+    var base = _slugify(name);
     if (base.isEmpty) base = 'band';
 
     final taken = {
       ..._issuedSlugs,
-      for (final band in _bands.values)
-        band.name
-            .toLowerCase()
-            .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-            .replaceAll(RegExp(r'^-+|-+$'), ''),
+      for (final band in _bands.values) _slugify(band.name),
     };
     for (var n = 1; ; n++) {
       final candidate = n == 1 ? base : '$base-$n';

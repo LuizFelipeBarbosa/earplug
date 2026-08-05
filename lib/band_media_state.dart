@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import 'data/repository.dart';
+import 'errors.dart';
 import 'models.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
@@ -315,8 +316,9 @@ class BandMediaController extends ChangeNotifier {
     try {
       await mutation();
       await refresh(bandId);
-    } catch (_) {
-      say('Something broke — try again.');
+    } catch (error) {
+      logError('band media mutation', error);
+      say(genericErrorMessage);
     }
   }
 

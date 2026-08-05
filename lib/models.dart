@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'date_names.dart';
+
 class Venue {
   final String id;
   final String name;
@@ -181,8 +183,8 @@ class Gig {
 
   static String dateShortFor(int startsAtMs) {
     final startsAt = DateTime.fromMillisecondsSinceEpoch(startsAtMs);
-    return '${_weekdays[startsAt.weekday - 1]} '
-        '${_months[startsAt.month - 1]} ${startsAt.day}';
+    return '${weekdayNamesUpper[startsAt.weekday - 1]} '
+        '${monthNamesUpper[startsAt.month - 1]} ${startsAt.day}';
   }
 
   static String dateLineFor(int startsAtMs, String doorsTime, {DateTime? now}) {
@@ -195,24 +197,8 @@ class Gig {
     }
 
     final startsAt = DateTime.fromMillisecondsSinceEpoch(startsAtMs);
-    return '${_weekdays[startsAt.weekday - 1]} · DOORS $doors';
+    return '${weekdayNamesUpper[startsAt.weekday - 1]} · DOORS $doors';
   }
-
-  static const _weekdays = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-  static const _months = [
-    'JAN',
-    'FEB',
-    'MAR',
-    'APR',
-    'MAY',
-    'JUN',
-    'JUL',
-    'AUG',
-    'SEP',
-    'OCT',
-    'NOV',
-    'DEC',
-  ];
 
   bool get free => price == 0;
   String get priceLabel => free ? 'FREE' : '\$$price';

@@ -7,10 +7,10 @@ class ConvexRepository implements EarplugRepository {
 
   final ConvexService _convexService;
 
-  /// Pushes the current auth token to the websocket; awaitable so callers can
-  /// sequence mutations after the identity change.
+  @override
   Future<void> refreshAuth() => _convexService.refreshAuth();
 
+  @override
   Future<UserProfile?> me() async {
     final result = await _convexService.query('users:me');
     final json = _asMap(result);
@@ -130,6 +130,27 @@ class ConvexRepository implements EarplugRepository {
           Gig.dateShortFor((json['startsAt'] as num).toInt()),
         ),
     ];
+  }
+
+  @override
+  Future<BandHistory> bandHistory(String bandId) async {
+    final json = _asMap(
+      await _convexService.query('gigs:pastForBand', {'bandId': bandId}),
+    );
+    if (json.isEmpty) return BandHistory.empty;
+    return BandHistory(
+      gigs: _mapList(json['gigs']).map(Gig.fromJson).toList(),
+      venues: {
+        for (final venueJson in _mapList(json['venues']))
+          venueJson['_id'] as String: Venue.fromJson(venueJson),
+      },
+    );
+  }
+
+  @override
+  Future<List<Venue>> venues() async {
+    final result = await _convexService.query('venues:list');
+    return [for (final json in _mapList(result)) Venue.fromJson(json)];
   }
 
   @override

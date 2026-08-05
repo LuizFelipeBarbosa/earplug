@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../band_media_state.dart';
+import '../data/repository.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -37,14 +38,22 @@ class BandProfileScreen extends StatelessWidget {
       children: [
         Container(
           padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Ep.whiteA(.09)))),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: Ep.whiteA(.09))),
+          ),
           child: Row(
             children: [
               CircleIconButton(onTap: app.back),
               const SizedBox(width: 10),
-              Text('BAND',
-                  style: epText(
-                      size: 12, weight: FontWeight.w800, letterSpacing: 1.4, color: Ep.inkA(.5))),
+              Text(
+                'BAND',
+                style: epText(
+                  size: 12,
+                  weight: FontWeight.w800,
+                  letterSpacing: 1.4,
+                  color: Ep.inkA(.5),
+                ),
+              ),
             ],
           ),
         ),
@@ -60,7 +69,10 @@ class BandProfileScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(band.name.toUpperCase(), style: epDisplay(size: 22, height: 1)),
+                        Text(
+                          band.name.toUpperCase(),
+                          style: epDisplay(size: 22, height: 1),
+                        ),
                         const SizedBox(height: 7),
                         Wrap(
                           spacing: 5,
@@ -68,35 +80,46 @@ class BandProfileScreen extends StatelessWidget {
                           children: [
                             for (final t in band.genres)
                               Container(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
                                 decoration: BoxDecoration(
                                   border: Border.all(color: Ep.whiteA(.25)),
                                   borderRadius: BorderRadius.circular(99),
                                 ),
-                                child: Text(t.toUpperCase(),
-                                    style: epText(
-                                        size: 10,
-                                        weight: FontWeight.w800,
-                                        letterSpacing: .8,
-                                        color: Ep.inkA(.8))),
+                                child: Text(
+                                  t.toUpperCase(),
+                                  style: epText(
+                                    size: 10,
+                                    weight: FontWeight.w800,
+                                    letterSpacing: .8,
+                                    color: Ep.inkA(.8),
+                                  ),
+                                ),
                               ),
                           ],
                         ),
                         const SizedBox(height: 6),
-                        Text('${band.area} · ${band.followersLabel} followers',
-                            style: epText(size: 11.5, color: Ep.inkA(.5))),
+                        Text(
+                          '${band.area} · ${band.followersLabel} followers',
+                          style: epText(size: 11.5, color: Ep.inkA(.5)),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
-              Text(app.bioFor(bandId),
-                  style: epText(size: 13, color: Ep.inkA(.7), height: 1.5)),
+              Text(
+                app.bioFor(bandId),
+                style: epText(size: 13, color: Ep.inkA(.7), height: 1.5),
+              ),
               const SizedBox(height: 16),
               EpButton(
-                following ? 'FOLLOWING ✓' : '+ FOLLOW ${band.name.toUpperCase()}',
+                following
+                    ? 'FOLLOWING ✓'
+                    : '+ FOLLOW ${band.name.toUpperCase()}',
                 fontSize: 12.5,
                 kind: following ? EpButtonKind.outline : EpButtonKind.filled,
                 padding: const EdgeInsets.symmetric(vertical: 13),
@@ -166,11 +189,7 @@ class BandProfileScreen extends StatelessWidget {
                       );
                       return GestureDetector(
                         onTap: () => showPhotoViewer(context, photos, i),
-                        child: SizedBox(
-                          width: 96,
-                          height: 96,
-                          child: tile,
-                        ),
+                        child: SizedBox(width: 96, height: 96, child: tile),
                       );
                     },
                   ),
@@ -188,34 +207,129 @@ class BandProfileScreen extends StatelessWidget {
                   'Nothing on the calendar right now.',
                   style: epText(size: 11.5, color: Ep.inkA(.4)),
                 ),
-              if (band.past.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                SectionLabel('PAST GIGS · ${band.past.length} PLAYED'),
-                const SizedBox(height: 6),
-              ],
-              for (final p in band.past)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
-                  decoration: BoxDecoration(
-                      border: Border(bottom: BorderSide(color: Ep.whiteA(.07)))),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Expanded(
-                        child: Text(p.title,
-                            style:
-                                epText(size: 12.5, weight: FontWeight.w700, color: Ep.inkA(.75))),
-                      ),
-                      Text(p.meta, style: epText(size: 11, color: Ep.inkA(.4))),
-                    ],
-                  ),
-                ),
+              _PastShows(band: band, app: app),
             ],
           ),
         ),
       ],
     );
   }
+}
+
+class _PastShows extends StatelessWidget {
+  const _PastShows({required this.band, required this.app});
+
+  final Band band;
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final history = app.bandHistory(band.id);
+    final rows = history == null ? const <PastGig>[] : _pastRowsFrom(history);
+    final error = app.bandHistoryError(band.id);
+    final List<Widget> content;
+
+    if (rows.isNotEmpty) {
+      content = [
+        SectionLabel('PAST GIGS · ${rows.length} PLAYED'),
+        const SizedBox(height: 6),
+        for (final row in rows) _PastRow(show: row),
+      ];
+    } else if (band.past.isNotEmpty) {
+      content = [
+        SectionLabel('PAST GIGS · ${band.past.length} PLAYED'),
+        const SizedBox(height: 6),
+        for (final row in band.past) _PastRow(show: row),
+      ];
+    } else if (history == null && error == null) {
+      content = [
+        const SectionLabel('PAST GIGS'),
+        const SizedBox(height: 6),
+        Text(
+          'Loading past shows…',
+          style: epText(size: 11.5, color: Ep.inkA(.4)),
+        ),
+      ];
+    } else if (error != null) {
+      content = [
+        const SectionLabel('PAST GIGS'),
+        const SizedBox(height: 6),
+        Text(
+          "Couldn't load past shows.",
+          style: epText(size: 11.5, color: Ep.inkA(.4)),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: 120,
+          child: EpButton(
+            'RETRY',
+            kind: EpButtonKind.outline,
+            fontSize: 12.5,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            onTap: () => app.refreshBandHistory(band.id),
+          ),
+        ),
+      ];
+    } else {
+      content = [
+        const SectionLabel('PAST GIGS'),
+        const SizedBox(height: 6),
+        Text(
+          'No past shows yet.',
+          style: epText(size: 11.5, color: Ep.inkA(.4)),
+        ),
+      ];
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [const SizedBox(height: 8), ...content],
+    );
+  }
+}
+
+class _PastRow extends StatelessWidget {
+  const _PastRow({required this.show});
+
+  final PastGig show;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Ep.whiteA(.07))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Expanded(
+            child: Text(
+              show.title,
+              style: epText(
+                size: 12.5,
+                weight: FontWeight.w700,
+                color: Ep.inkA(.75),
+              ),
+            ),
+          ),
+          Text(show.meta, style: epText(size: 11, color: Ep.inkA(.4))),
+        ],
+      ),
+    );
+  }
+}
+
+/// Live history in the same "title — venue" / short-date shape the fan's own
+/// history uses (`ConvexRepository.history`).
+List<PastGig> _pastRowsFrom(BandHistory history) {
+  final rows = <PastGig>[];
+  for (final gig in history.gigs) {
+    final venueName = history.venues[gig.venueId]?.name ?? '';
+    final title = venueName.isEmpty ? gig.title : '${gig.title} — $venueName';
+    rows.add(PastGig(title, gig.dateShort));
+  }
+  return rows;
 }
 
 class _PinnedVideo extends StatelessWidget {
@@ -241,9 +355,7 @@ class _PinnedVideo extends StatelessWidget {
       },
       child: Container(
         height: 190,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(14)),
         foregroundDecoration: BoxDecoration(
           border: Border.all(color: Ep.whiteA(.12)),
           borderRadius: BorderRadius.circular(14),
@@ -280,9 +392,10 @@ class _PinnedVideo extends StatelessWidget {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                        color: Ep.blue.withValues(alpha: .5),
-                        blurRadius: 24,
-                        offset: const Offset(0, 6)),
+                      color: Ep.blue.withValues(alpha: .5),
+                      blurRadius: 24,
+                      offset: const Offset(0, 6),
+                    ),
                   ],
                 ),
                 child: const Padding(
@@ -295,16 +408,28 @@ class _PinnedVideo extends StatelessWidget {
               left: 12,
               bottom: 10,
               right: 110,
-              child: Text(pinned.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: epText(size: 11.5, weight: FontWeight.w800, letterSpacing: .4)),
+              child: Text(
+                pinned.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: epText(
+                  size: 11.5,
+                  weight: FontWeight.w800,
+                  letterSpacing: .4,
+                ),
+              ),
             ),
             Positioned(
               right: 12,
               bottom: 10,
-              child: Text('${pinned.viewsLabel} · ${pinned.lenLabel}',
-                  style: epText(size: 10.5, weight: FontWeight.w700, color: Ep.inkA(.55))),
+              child: Text(
+                '${pinned.viewsLabel} · ${pinned.lenLabel}',
+                style: epText(
+                  size: 10.5,
+                  weight: FontWeight.w700,
+                  color: Ep.inkA(.55),
+                ),
+              ),
             ),
           ],
         ),
@@ -318,11 +443,7 @@ class _ClipTile extends StatelessWidget {
   final Band band;
   final AppState app;
 
-  const _ClipTile({
-    required this.clip,
-    required this.band,
-    required this.app,
-  });
+  const _ClipTile({required this.clip, required this.band, required this.app});
 
   @override
   Widget build(BuildContext context) {
@@ -335,9 +456,7 @@ class _ClipTile extends StatelessWidget {
         showBandVideo(context, media: clip, bandName: band.name);
       },
       child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(10)),
         foregroundDecoration: BoxDecoration(
           border: Border.all(color: Ep.whiteA(.1)),
           borderRadius: BorderRadius.circular(10),
@@ -351,10 +470,16 @@ class _ClipTile extends StatelessWidget {
               left: 8,
               right: 8,
               bottom: 7,
-              child: Text(clip.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: epText(size: 10, weight: FontWeight.w700, color: Ep.inkA(.8))),
+              child: Text(
+                clip.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: epText(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  color: Ep.inkA(.8),
+                ),
+              ),
             ),
             Positioned(
               right: 7,
@@ -365,8 +490,10 @@ class _ClipTile extends StatelessWidget {
                   color: Colors.black.withValues(alpha: .6),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(clip.lenLabel,
-                    style: epText(size: 9, weight: FontWeight.w800)),
+                child: Text(
+                  clip.lenLabel,
+                  style: epText(size: 9, weight: FontWeight.w800),
+                ),
               ),
             ),
           ],
@@ -391,24 +518,29 @@ class _UpcomingRow extends StatelessWidget {
       child: Row(
         children: [
           FlyerBox(
-              style: app.flyer(gig.flyKey),
-              width: 40,
-              height: 52,
-              rotationDeg: -2,
-              radius: 5,
-              shadow: false),
+            style: app.flyer(gig.flyKey),
+            width: 40,
+            height: 52,
+            rotationDeg: -2,
+            radius: 5,
+            shadow: false,
+          ),
           const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(gig.title.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: epText(size: 13, weight: FontWeight.w800)),
+                Text(
+                  gig.title.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: epText(size: 13, weight: FontWeight.w800),
+                ),
                 const SizedBox(height: 2),
-                Text('${gig.dateShort} · ${venue.name}',
-                    style: epText(size: 11.5, color: Ep.inkA(.55))),
+                Text(
+                  '${gig.dateShort} · ${venue.name}',
+                  style: epText(size: 11.5, color: Ep.inkA(.55)),
+                ),
               ],
             ),
           ),

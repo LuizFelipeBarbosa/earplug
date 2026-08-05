@@ -7,24 +7,6 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/sheets.dart';
 
-const _monthNames = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
-
-String _monthYear(DateTime date) =>
-    '${_monthNames[date.month - 1]} ${date.year}';
-
 class MyGigsScreen extends StatelessWidget {
   const MyGigsScreen({super.key});
 
@@ -36,7 +18,7 @@ class MyGigsScreen extends StatelessWidget {
     final displayName = profileName == null || profileName.isEmpty
         ? 'YOUR PROFILE'
         : profileName.toUpperCase();
-    final fanSince = profile == null ? '—' : _monthYear(profile.createdAt);
+    final fanSince = profile == null ? '—' : monthLabel(profile.createdAt);
     final upcoming = [
       for (final id in app.rsvps)
         if (app.gig(id) case final Gig g) g,

@@ -24,12 +24,15 @@ class BandDashScreen extends StatelessWidget {
     final tips = [
       if (mine.isEmpty) 'List your first gig — RSVPs count live.',
       if (clips.isEmpty) 'Post a "this is what we sound like" clip.',
-      if (band.followers < 25)
-        'Analytics unlock at 25 followers — ${25 - band.followers} to go.',
     ];
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, tabBarClearance),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        headerTopPad(context),
+        16,
+        tabBarClearance,
+      ),
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -43,15 +46,20 @@ class BandDashScreen extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${band.name.toUpperCase()} ▾',
-                          style: epDisplay(size: 16, height: 1)),
+                      Text(
+                        '${band.name.toUpperCase()} ▾',
+                        style: epDisplay(size: 16, height: 1),
+                      ),
                       const SizedBox(height: 3),
-                      Text('BAND VIEW · ${app.roleFor(band.id).toUpperCase()}',
-                          style: epText(
-                              size: 10,
-                              weight: FontWeight.w800,
-                              letterSpacing: 1,
-                              color: Ep.link)),
+                      Text(
+                        'BAND VIEW · ${app.roleFor(band.id).toUpperCase()}',
+                        style: epText(
+                          size: 10,
+                          weight: FontWeight.w800,
+                          letterSpacing: 1,
+                          color: Ep.link,
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -60,17 +68,23 @@ class BandDashScreen extends StatelessWidget {
             GestureDetector(
               onTap: app.toFanView,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 11,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
                   border: Border.all(color: Ep.whiteA(.2)),
                   borderRadius: BorderRadius.circular(99),
                 ),
-                child: Text('FAN VIEW',
-                    style: epText(
-                        size: 10,
-                        weight: FontWeight.w800,
-                        letterSpacing: .8,
-                        color: Ep.inkA(.7))),
+                child: Text(
+                  'FAN VIEW',
+                  style: epText(
+                    size: 10,
+                    weight: FontWeight.w800,
+                    letterSpacing: .8,
+                    color: Ep.inkA(.7),
+                  ),
+                ),
               ),
             ),
           ],
@@ -79,37 +93,45 @@ class BandDashScreen extends StatelessWidget {
         Row(
           children: [
             _StatCard(
-                label: 'FOLLOWERS',
-                value: band.followersLabel,
-                sub: band.followers == 0
-                    ? 'just the band so far'
-                    : 'and counting'),
+              label: 'FOLLOWERS',
+              value: band.followersLabel,
+              sub: band.followers == 0
+                  ? 'just the band so far'
+                  : 'and counting',
+            ),
             const SizedBox(width: 8),
             _StatCard(
-                label: 'NEXT GIG RSVPS',
-                value: next != null ? '${app.rsvpCount(next)}' : '—',
-                sub: next != null
-                    ? (next.title.length > 16 ? next.title.substring(0, 16) : next.title)
-                    : 'no gig listed'),
+              label: 'NEXT GIG RSVPS',
+              value: next != null ? '${app.rsvpCount(next)}' : '—',
+              sub: next != null
+                  ? (next.title.length > 16
+                        ? next.title.substring(0, 16)
+                        : next.title)
+                  : 'no gig listed',
+            ),
             const SizedBox(width: 8),
             _StatCard(
-                label: 'CLIPS',
-                value: '${clips.length}',
-                sub: clips.isEmpty ? 'post your first clip' : 'on your profile'),
+              label: 'CLIPS',
+              value: '${clips.length}',
+              sub: clips.isEmpty ? 'post your first clip' : 'on your profile',
+            ),
           ],
         ),
         const SizedBox(height: 14),
         Row(
           children: [
-            _ActionButton(
-                label: '▶ POST MEDIA',
-                onTap: app.openBandMedia),
+            _ActionButton(label: '▶ POST MEDIA', onTap: app.openBandMedia),
             const SizedBox(width: 8),
             _ActionButton(
-                label: '+ CREATE GIG', filled: true, onTap: app.startGigCreate),
+              label: '+ CREATE GIG',
+              filled: true,
+              onTap: app.startGigCreate,
+            ),
             const SizedBox(width: 8),
             _ActionButton(
-                label: '▦ ANALYTICS', onTap: () => app.resetTo(Screen.analytics)),
+              label: '▦ ANALYTICS',
+              onTap: () => app.resetTo(Screen.analytics),
+            ),
           ],
         ),
         if (next != null) ...[
@@ -125,18 +147,25 @@ class BandDashScreen extends StatelessWidget {
           for (final tip in tips)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
-              decoration:
-                  BoxDecoration(border: Border(bottom: BorderSide(color: Ep.whiteA(.07)))),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: Ep.whiteA(.07))),
+              ),
               child: Row(
                 children: [
                   Container(
                     width: 6,
                     height: 6,
-                    decoration: const BoxDecoration(color: Ep.blue, shape: BoxShape.circle),
+                    decoration: const BoxDecoration(
+                      color: Ep.blue,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(tip, style: epText(size: 12.5, color: Ep.inkA(.75))),
+                    child: Text(
+                      tip,
+                      style: epText(size: 12.5, color: Ep.inkA(.75)),
+                    ),
                   ),
                 ],
               ),
@@ -152,7 +181,11 @@ class _StatCard extends StatelessWidget {
   final String value;
   final String sub;
 
-  const _StatCard({required this.label, required this.value, required this.sub});
+  const _StatCard({
+    required this.label,
+    required this.value,
+    required this.sub,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -163,18 +196,26 @@ class _StatCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: epText(
-                    size: 9.5, weight: FontWeight.w800, letterSpacing: 1, color: Ep.inkA(.45))),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: epText(
+                size: 9.5,
+                weight: FontWeight.w800,
+                letterSpacing: 1,
+                color: Ep.inkA(.45),
+              ),
+            ),
             const SizedBox(height: 4),
             Text(value, style: epDisplay(size: 22)),
             const SizedBox(height: 2),
-            Text(sub,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: epText(size: 10, weight: FontWeight.w800, color: Ep.link)),
+            Text(
+              sub,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: epText(size: 10, weight: FontWeight.w800, color: Ep.link),
+            ),
           ],
         ),
       ),
@@ -187,7 +228,11 @@ class _ActionButton extends StatelessWidget {
   final bool filled;
   final VoidCallback onTap;
 
-  const _ActionButton({required this.label, this.filled = false, required this.onTap});
+  const _ActionButton({
+    required this.label,
+    this.filled = false,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -202,13 +247,16 @@ class _ActionButton extends StatelessWidget {
             border: filled ? null : Border.all(color: Ep.whiteA(.14)),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Text(label,
-              maxLines: 1,
-              style: epText(
-                  size: 11,
-                  weight: filled ? FontWeight.w900 : FontWeight.w800,
-                  letterSpacing: .6,
-                  color: filled ? Colors.white : Ep.ink)),
+          child: Text(
+            label,
+            maxLines: 1,
+            style: epText(
+              size: 11,
+              weight: filled ? FontWeight.w900 : FontWeight.w800,
+              letterSpacing: .6,
+              color: filled ? Colors.white : Ep.ink,
+            ),
+          ),
         ),
       ),
     );
@@ -231,26 +279,37 @@ class _NextUpCard extends StatelessWidget {
       child: Row(
         children: [
           GigFlyer(
-              gig,
-              app.flyer(gig.flyKey),
-              width: 46,
-              height: 60,
-              rotationDeg: -2,
-              radius: 5,
-              shadow: false),
+            gig,
+            app.flyer(gig.flyKey),
+            width: 46,
+            height: 60,
+            rotationDeg: -2,
+            radius: 5,
+            shadow: false,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(gig.title.toUpperCase(),
-                    style: epText(size: 13.5, weight: FontWeight.w800)),
+                Text(
+                  gig.title.toUpperCase(),
+                  style: epText(size: 13.5, weight: FontWeight.w800),
+                ),
                 const SizedBox(height: 3),
-                Text('${gig.dateShort} · ${app.venue(gig.venueId).name}',
-                    style: epText(size: 11.5, color: Ep.inkA(.55))),
+                Text(
+                  '${gig.dateShort} · ${app.venue(gig.venueId).name}',
+                  style: epText(size: 11.5, color: Ep.inkA(.55)),
+                ),
                 const SizedBox(height: 3),
-                Text('${app.rsvpCount(gig)} RSVPs · counting live',
-                    style: epText(size: 11, weight: FontWeight.w800, color: Ep.link)),
+                Text(
+                  '${app.rsvpCount(gig)} RSVPs · counting live',
+                  style: epText(
+                    size: 11,
+                    weight: FontWeight.w800,
+                    color: Ep.link,
+                  ),
+                ),
               ],
             ),
           ),

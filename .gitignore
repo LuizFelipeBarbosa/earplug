@@ -54,3 +54,11 @@ node_modules/
 
 # Convex backups
 backups/
+
+# Convex agent skills — installed by `npx convex ai-files install` and written
+# byte-identically into both directories, so committing them would store the
+# same ~132KB twice. Regenerable; keep both copies out of the tree. (The
+# clerk-* siblings are committed once under .agents/ and symlinked from
+# .claude/, which is why they are not listed here.)
+.agents/skills/convex*/
+.claude/skills/convex*/

@@ -12,10 +12,9 @@
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-	<!-- TODO(console): replace with real Google iOS OAuth client id -->
+	<!-- Set in ios/Config/Google.xcconfig, never hardcoded here. -->
 	<key>GIDClientID</key>
-	<string>TODO-IOS-CLIENT-ID.apps.googleusercontent.com</string>
-	<!-- TODO(console): replace with real Google iOS OAuth client id -->
+	<string>$(GOOGLE_IOS_CLIENT_ID)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -23,7 +22,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.TODO-IOS-CLIENT-ID</string>
+				<string>$(GOOGLE_IOS_URL_SCHEME)</string>
 			</array>
 		</dict>
 	</array>

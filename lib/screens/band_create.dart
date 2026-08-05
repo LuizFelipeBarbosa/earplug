@@ -11,6 +11,8 @@ import '../genres.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
+import '../widgets/form_bits.dart';
 
 const _tapeTilt = -1.2 * math.pi / 180;
 
@@ -138,7 +140,11 @@ class _LabelPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = stripe;
         for (double d = -size.height; d < size.width; d += stripe * 2) {
-          canvas.drawLine(Offset(d + size.height, 0), Offset(d, size.height), ink);
+          canvas.drawLine(
+            Offset(d + size.height, 0),
+            Offset(d, size.height),
+            ink,
+          );
         }
     }
   }
@@ -211,7 +217,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                   Expanded(
                     child: Text('START A BAND', style: epDisplay(size: 16)),
                   ),
-                  _ReadyPill(ready: app.canCreateBand),
+                  ReadyPill(ready: app.canCreateBand),
                 ],
               ),
             ),
@@ -228,33 +234,6 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
         ),
         const Positioned(left: 0, right: 0, bottom: 0, child: _CreateBar()),
       ],
-    );
-  }
-}
-
-class _ReadyPill extends StatelessWidget {
-  final bool ready;
-
-  const _ReadyPill({required this.ready});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: ready ? Ep.blue.withValues(alpha: .2) : Ep.card,
-        border: Border.all(color: ready ? Ep.blue : Ep.whiteA(.14)),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Text(
-        ready ? 'READY' : 'DRAFT',
-        style: epText(
-          size: 9.5,
-          weight: FontWeight.w900,
-          letterSpacing: 1.2,
-          color: ready ? Ep.linkSoft : Ep.inkA(.45),
-        ),
-      ),
     );
   }
 }
@@ -345,8 +324,11 @@ class _InlaySlot extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.add_photo_alternate_outlined,
-                    size: 22, color: Ep.inkA(.45)),
+                Icon(
+                  Icons.add_photo_alternate_outlined,
+                  size: 22,
+                  color: Ep.inkA(.45),
+                ),
                 const SizedBox(height: 6),
                 Text(
                   'DROP A BAND PHOTO',
@@ -427,7 +409,10 @@ class _Cassette extends StatelessWidget {
       letterSpacing: 1.7,
       color: label.fg.withValues(alpha: .6),
     );
-    final markerLine = _marker(size: 13, color: label.fg.withValues(alpha: .85));
+    final markerLine = _marker(
+      size: 13,
+      color: label.fg.withValues(alpha: .85),
+    );
 
     // Wind the reels toward the right as the form fills.
     final frac = app.nbCompletion;
@@ -443,10 +428,7 @@ class _Cassette extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('SIDE A · DEMO', style: smallStamp),
-            Text(
-              app.nbArea?.toUpperCase() ?? 'HOME TAPING',
-              style: smallStamp,
-            ),
+            Text(app.nbArea?.toUpperCase() ?? 'HOME TAPING', style: smallStamp),
           ],
         ),
         const SizedBox(height: 7),
@@ -469,7 +451,10 @@ class _Cassette extends StatelessWidget {
             ),
           )
         else
-          Text(app.nbName, style: _marker(size: 27, color: label.fg, height: 1.06)),
+          Text(
+            app.nbName,
+            style: _marker(size: 27, color: label.fg, height: 1.06),
+          ),
         const SizedBox(height: 7),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -618,7 +603,7 @@ class _SwatchRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (final MapEntry(key: key, value: label) in _labels.entries) ...[
-          _Swatch(
+          Swatch(
             key: ValueKey('label-$key'),
             selected: app.nbLabel == key,
             onTap: () => app.setNbLabel(key),
@@ -631,7 +616,7 @@ class _SwatchRow extends StatelessWidget {
           ),
           const SizedBox(width: 9),
         ],
-        _Swatch(
+        Swatch(
           key: const ValueKey('label-photo'),
           selected: app.nbPhoto != null,
           dashed: true,
@@ -645,58 +630,6 @@ class _SwatchRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _Swatch extends StatelessWidget {
-  final bool selected;
-  final bool dashed;
-  final VoidCallback onTap;
-  final Widget child;
-
-  const _Swatch({
-    super.key,
-    required this.selected,
-    required this.onTap,
-    required this.child,
-    this.dashed = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          color: dashed ? Ep.bg : null,
-          shape: BoxShape.circle,
-          border: dashed
-              ? null
-              : Border.all(
-                  color: selected ? Ep.link : Ep.whiteA(.18),
-                  width: 2,
-                ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Ep.link.withValues(alpha: .25),
-                    spreadRadius: 3,
-                  ),
-                ]
-              : null,
-        ),
-        child: dashed
-            ? DashedBox(
-                padding: EdgeInsets.zero,
-                radius: 15,
-                color: selected ? Ep.link : Ep.whiteA(.35),
-                child: child,
-              )
-            : child,
-      ),
     );
   }
 }
@@ -863,7 +796,10 @@ class _NameLine extends StatelessWidget {
         children: [
           SizedBox(
             width: 22,
-            child: Text('01', style: _marker(size: 15, color: _numColor(state))),
+            child: Text(
+              '01',
+              style: _marker(size: 15, color: _numColor(state)),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -942,7 +878,10 @@ class _LinerLine extends StatelessWidget {
           children: [
             SizedBox(
               width: 22,
-              child: Text(num, style: _marker(size: 15, color: _numColor(state))),
+              child: Text(
+                num,
+                style: _marker(size: 15, color: _numColor(state)),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -976,10 +915,7 @@ class _LinerLine extends StatelessWidget {
             ),
             Padding(
               padding: const EdgeInsets.only(top: 10),
-              child: Text(
-                '›',
-                style: epText(size: 16, color: Ep.inkA(.3)),
-              ),
+              child: Text('›', style: epText(size: 16, color: Ep.inkA(.3))),
             ),
           ],
         ),
@@ -1039,8 +975,8 @@ class _CreateBar extends StatelessWidget {
               app.nbSaving
                   ? 'SAVING…'
                   : app.nbEditingCreated
-                      ? 'SAVE CHANGES'
-                      : 'CREATE BAND',
+                  ? 'SAVE CHANGES'
+                  : 'CREATE BAND',
               fontSize: 14,
               glow: live,
               kind: live ? EpButtonKind.filled : EpButtonKind.disabled,
@@ -1055,17 +991,6 @@ class _CreateBar extends StatelessWidget {
 }
 
 // ============================ sheets ============================
-
-Future<void> _openSheet(BuildContext context, WidgetBuilder builder) {
-  return showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: .6),
-    isScrollControlled: true,
-    constraints: const BoxConstraints(maxWidth: 480),
-    builder: builder,
-  );
-}
 
 class _Sheet extends StatelessWidget {
   final String title;
@@ -1111,23 +1036,6 @@ class _Sheet extends StatelessWidget {
   }
 }
 
-InputDecoration _sheetInput(String hint) => InputDecoration(
-  hintText: hint,
-  hintStyle: epText(size: 12.5, color: Ep.inkA(.35)),
-  filled: true,
-  fillColor: Ep.bg,
-  isDense: true,
-  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: BorderSide(color: Ep.whiteA(.16)),
-  ),
-  focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: BorderSide(color: Ep.whiteA(.3)),
-  ),
-);
-
 class _SheetHint extends StatelessWidget {
   final String text;
 
@@ -1135,7 +1043,10 @@ class _SheetHint extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: epText(size: 10.5, color: Ep.inkA(.4), height: 1.45));
+    return Text(
+      text,
+      style: epText(size: 10.5, color: Ep.inkA(.4), height: 1.45),
+    );
   }
 }
 
@@ -1162,7 +1073,7 @@ class _DraftRow extends StatelessWidget {
             controller: controller,
             onSubmitted: (_) => onSubmit(),
             style: epText(size: 12.5),
-            decoration: _sheetInput(hint),
+            decoration: sheetInput(hint),
           ),
         ),
         const SizedBox(width: 8),
@@ -1190,24 +1101,13 @@ class _DraftRow extends StatelessWidget {
   }
 }
 
-class _DoneButton extends StatelessWidget {
-  const _DoneButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return EpButton(
-      'DONE',
-      fontSize: 12.5,
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      onTap: () => Navigator.pop(context),
-    );
-  }
-}
-
 // ---------------------------- sound ----------------------------
 
 void showSoundSheet(BuildContext context) {
-  _openSheet(context, (_) => const _Sheet(title: 'Sound', child: _SoundBody()));
+  showEpSheet(
+    context,
+    (_) => const _Sheet(title: 'Sound', child: _SoundBody()),
+  );
 }
 
 class _SoundBody extends StatefulWidget {
@@ -1265,7 +1165,7 @@ class _SoundBodyState extends State<_SoundBody> {
           onSubmit: _add,
         ),
         const SizedBox(height: 12),
-        const _DoneButton(),
+        const DoneButton(),
       ],
     );
   }
@@ -1274,7 +1174,7 @@ class _SoundBodyState extends State<_SoundBody> {
 // ---------------------------- home base ----------------------------
 
 void showHomeBaseSheet(BuildContext context) {
-  _openSheet(
+  showEpSheet(
     context,
     (ctx) => ConstrainedBox(
       constraints: BoxConstraints(
@@ -1371,7 +1271,7 @@ const _bioStarters = [
 ];
 
 void showSleeveNotesSheet(BuildContext context) {
-  _openSheet(
+  showEpSheet(
     context,
     (_) => const _Sheet(title: 'Sleeve notes', child: _SleeveNotesBody()),
   );
@@ -1423,9 +1323,7 @@ class _SleeveNotesBodyState extends State<_SleeveNotesBody> {
           minLines: 4,
           maxLines: 6,
           style: epText(size: 13.5, height: 1.5),
-          decoration: _sheetInput(
-            'What do you sound like, where do you play?',
-          ),
+          decoration: sheetInput('What do you sound like, where do you play?'),
         ),
         const SizedBox(height: 11),
         Row(
@@ -1447,7 +1345,7 @@ class _SleeveNotesBodyState extends State<_SleeveNotesBody> {
           ],
         ),
         const SizedBox(height: 11),
-        const _DoneButton(),
+        const DoneButton(),
       ],
     );
   }
@@ -1462,7 +1360,7 @@ String _handleInitials(String handle) {
 }
 
 void showCreditsSheet(BuildContext context) {
-  _openSheet(
+  showEpSheet(
     context,
     (_) => const _Sheet(title: 'Credits', child: _CreditsBody()),
   );
@@ -1669,7 +1567,7 @@ class _JoinLink extends StatelessWidget {
 // ---------------------------- links ----------------------------
 
 void showLinksSheet(BuildContext context) {
-  _openSheet(
+  showEpSheet(
     context,
     (_) => const _Sheet(title: 'Where to hear you', child: _LinksBody()),
   );
@@ -1732,12 +1630,12 @@ class _LinksBodyState extends State<_LinksBody> {
             controller: controller,
             onChanged: onChanged,
             style: epText(size: 12.5),
-            decoration: _sheetInput(hint),
+            decoration: sheetInput(hint),
           ),
           const SizedBox(height: 10),
         ],
         const SizedBox(height: 2),
-        const _DoneButton(),
+        const DoneButton(),
       ],
     );
   }

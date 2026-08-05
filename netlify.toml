@@ -10,17 +10,22 @@
     export PATH="$HOME/flutter/bin:$PATH"
     flutter --version
     flutter build web --release \
-      --dart-define=CONVEX_URL="$CONVEX_URL" \
-      --dart-define=CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY"
+      --dart-define-from-file="config/${EARPLUG_ENV:-dev}.json"
   """
 
 [build.environment]
+  # Which config/*.json the build reads, and the ONLY environment variable the
+  # build still consumes — the Convex URL and Clerk key travel together inside
+  # that file because they are chosen together, never independently
+  # (docs/environments.md). Set to "prod" in the Netlify UI to publish against
+  # production; unset builds development.
+  EARPLUG_ENV = "dev"
+
   # Every key here is public by design, so finding its value in the repo or the
   # built main.dart.js is expected: browsers connect straight to CONVEX_URL,
   # Clerk publishable keys are client-side credentials, CONVEX_DEPLOYMENT is the
   # deployment name already visible inside CONVEX_URL, and the Clerk issuer
-  # domain is decodable from the publishable key. The latter two are injected by
-  # the Convex/Clerk Netlify extensions, not our build. Scoped to these keys on
+  # domain is decodable from the publishable key. Scoped to these keys on
   # purpose -- do NOT switch this to SECRETS_SCAN_OMIT_PATHS = "build/web/**",
   # which would stop scanning the entire published artifact and hide a real
   # leak (notably CLERK_SECRET_KEY, which the Clerk extension also injects).

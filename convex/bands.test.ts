@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { bandColorFor } from "./lib/helpers";
 import schema from "./schema";
 
@@ -54,9 +54,39 @@ describe("bands: slugs and profile updates", () => {
     expect(doc?.linkYt).toBe("youtube.com/@staticbloom");
     expect(doc?.bio).toBe("Two amps facing each other.");
     expect(doc?.inviteHandles).toEqual(["@mara.k"]);
-    // followerCount seeds from the crew: you plus everyone invited.
-    expect(doc?.followerCount).toBe(2);
+    // Invite handles are stored strings, not members, so only the admin counts.
+    expect(doc?.followerCount).toBe(1);
     expect(doc?.slug).toBe(slug);
+  });
+
+  test("createBand counts only the admin row, not invite handles", async () => {
+    const { t, asAdmin } = await setup();
+    const user = await asAdmin.query(api.users.me, {});
+    const inviteHandles = ["@a", "@b", "@c"];
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Invite Arithmetic",
+      genres: ["math rock"],
+      bio: "",
+      inviteHandles,
+    });
+
+    const { band, memberships, follows } = await t.run(async (ctx) => ({
+      band: await ctx.db.get(bandId),
+      memberships: await ctx.db
+        .query("bandMembers")
+        .withIndex("by_band", (q) => q.eq("bandId", bandId))
+        .take(10),
+      follows: await ctx.db
+        .query("follows")
+        .withIndex("by_band", (q) => q.eq("bandId", bandId))
+        .take(10),
+    }));
+
+    expect(band?.followerCount).toBe(1);
+    expect(memberships).toHaveLength(1);
+    expect(memberships[0]).toMatchObject({ role: "admin", userId: user!._id });
+    expect(follows).toHaveLength(0);
+    expect(band?.inviteHandles).toEqual(inviteHandles);
   });
 
   test("createBand without an area falls back to the Bay Area default", async () => {
@@ -154,5 +184,26 @@ describe("bands: slugs and profile updates", () => {
     expect(
       await t.run(async (ctx) => (await ctx.db.get(bandId))?.imageStorageId),
     ).toBe(storageId);
+  });
+});
+
+describe("bands: array-shaped query contract", () => {
+  test("search is a top-level array; q: '' returns every band", async () => {
+    const t = convexTest(schema);
+    await t.mutation(internal.seed.seedDemo, {});
+
+    const all = await t.query(api.bands.search, { q: "" });
+    expect(Array.isArray(all)).toBe(true);
+    expect(all.length).toBe(6);
+
+    const hits = await t.query(api.bands.search, { q: "Foghorn" });
+    expect(hits.length).toBe(1);
+    expect(hits[0].name).toBe("Foghorn Diet");
+  });
+
+  test("myBands is [] when unauthenticated, even with bands present", async () => {
+    const t = convexTest(schema);
+    await t.mutation(internal.seed.seedDemo, {});
+    expect(await t.query(api.bands.myBands, {})).toEqual([]);
   });
 });

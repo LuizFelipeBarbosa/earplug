@@ -18,9 +18,7 @@ class HomeScreen extends StatelessWidget {
     return Column(
       children: [
         _Header(app: app),
-        Expanded(
-          child: app.mapMode ? const GigMapView() : _FeedList(app: app),
-        ),
+        Expanded(child: app.mapMode ? const GigMapView() : _FeedList(app: app)),
       ],
     );
   }
@@ -76,17 +74,23 @@ class _Header extends StatelessWidget {
   List<Widget> _filterChips(AppState app) {
     return [
       EpChip(
-          label: 'TONIGHT',
-          active: app.fDate == DateFilter.tonight,
-          onTap: () => app.toggleDateFilter(DateFilter.tonight)),
+        label: 'TONIGHT',
+        active: app.fDate == DateFilter.tonight,
+        onTap: () => app.toggleDateFilter(DateFilter.tonight),
+      ),
       EpChip(
-          label: 'THIS WEEK',
-          active: app.fDate == DateFilter.week,
-          onTap: () => app.toggleDateFilter(DateFilter.week)),
+        label: 'THIS WEEK',
+        active: app.fDate == DateFilter.week,
+        onTap: () => app.toggleDateFilter(DateFilter.week),
+      ),
       EpChip(label: 'FREE', active: app.fFree, onTap: app.toggleFree),
       // Only the head of the vocabulary fits the chip row.
       for (final g in kGenres.take(4))
-        EpChip(label: g, active: app.fGenre == g, onTap: () => app.toggleGenre(g)),
+        EpChip(
+          label: g,
+          active: app.fGenre == g,
+          onTap: () => app.toggleGenre(g),
+        ),
     ];
   }
 }
@@ -107,12 +111,15 @@ class _SegmentedToggle extends StatelessWidget {
             color: active ? Ep.blue : null,
             borderRadius: BorderRadius.circular(7),
           ),
-          child: Text(label,
-              style: epText(
-                  size: 10.5,
-                  weight: FontWeight.w900,
-                  letterSpacing: .8,
-                  color: active ? Colors.white : Ep.inkA(.55))),
+          child: Text(
+            label,
+            style: epText(
+              size: 10.5,
+              weight: FontWeight.w900,
+              letterSpacing: .8,
+              color: active ? Colors.white : Ep.inkA(.55),
+            ),
+          ),
         ),
       );
     }
@@ -155,12 +162,19 @@ class _CityPill extends StatelessWidget {
             Container(
               width: 7,
               height: 7,
-              decoration: const BoxDecoration(color: Ep.blue, shape: BoxShape.circle),
+              decoration: const BoxDecoration(
+                color: Ep.blue,
+                shape: BoxShape.circle,
+              ),
             ),
             const SizedBox(width: 6),
             Text(
               '${app.city == 'oak' ? 'TEMESCAL, OAK' : 'MISSION, SF'} ▾',
-              style: epText(size: 11.5, weight: FontWeight.w700, letterSpacing: .4),
+              style: epText(
+                size: 11.5,
+                weight: FontWeight.w700,
+                letterSpacing: .4,
+              ),
             ),
           ],
         ),
@@ -180,8 +194,15 @@ class _FeedList extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
       children: [
-        Text('${feed.length} GIGS NEAR YOU · BY DATE',
-            style: epText(size: 11, weight: FontWeight.w800, letterSpacing: 1.2, color: Ep.inkA(.5))),
+        Text(
+          '${feed.length} GIGS NEAR YOU · BY DATE',
+          style: epText(
+            size: 11,
+            weight: FontWeight.w800,
+            letterSpacing: 1.2,
+            color: Ep.inkA(.5),
+          ),
+        ),
         const SizedBox(height: 10),
         if (feed.isEmpty)
           DashedBox(
@@ -190,7 +211,7 @@ class _FeedList extends StatelessWidget {
               // An empty feed with no filters applied means there genuinely are
               // no upcoming gigs — blaming the filters would be a lie.
               app.allGigs.isEmpty
-                  ? "No upcoming gigs yet.\nWhen a band books one, it shows up here."
+                  ? 'No upcoming gigs yet.\nWhen a band books one, it shows up here.'
                   : "Nothing matches those filters.\nLoosen up — the scene's out there.",
               textAlign: TextAlign.center,
               style: epText(size: 13, color: Ep.inkA(.5), height: 1.4),
@@ -233,16 +254,21 @@ class _FeedCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(gig.title.toUpperCase(),
-                    maxLines: 4,
-                    overflow: TextOverflow.ellipsis,
-                    style: epDisplay(size: 9.5, color: fly.fg, height: 1.08)),
-                Text(gig.dateShort,
-                    style: epText(
-                        size: 7,
-                        weight: FontWeight.w800,
-                        letterSpacing: .6,
-                        color: fly.fg.withValues(alpha: .85))),
+                Text(
+                  gig.title.toUpperCase(),
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                  style: epDisplay(size: 9.5, color: fly.fg, height: 1.08),
+                ),
+                Text(
+                  gig.dateShort,
+                  style: epText(
+                    size: 7,
+                    weight: FontWeight.w800,
+                    letterSpacing: .6,
+                    color: fly.fg.withValues(alpha: .85),
+                  ),
+                ),
               ],
             ),
           ),
@@ -255,25 +281,41 @@ class _FeedCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Text(gig.title.toUpperCase(),
-                          style: epDisplay(size: 14.5, letterSpacing: .2, height: 1.15)),
+                      child: Text(
+                        gig.title.toUpperCase(),
+                        style: epDisplay(
+                          size: 14.5,
+                          letterSpacing: .2,
+                          height: 1.15,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     PriceBadge(gig),
                   ],
                 ),
                 const SizedBox(height: 3),
-                Text('${venue.name} · ${app.distanceOf(venue)}',
-                    style: epText(size: 12, color: Ep.inkA(.65))),
+                Text(
+                  '${venue.name} · ${app.distanceOf(venue)}',
+                  style: epText(size: 12, color: Ep.inkA(.65)),
+                ),
                 const SizedBox(height: 3),
-                Text(gig.dateLine,
-                    style: epText(
-                        size: 12, weight: FontWeight.w800, letterSpacing: .4, color: Ep.link)),
+                Text(
+                  gig.dateLine,
+                  style: epText(
+                    size: 12,
+                    weight: FontWeight.w800,
+                    letterSpacing: .4,
+                    color: Ep.link,
+                  ),
+                ),
                 const SizedBox(height: 3),
-                Text(gig.desc,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: epText(size: 12, color: Ep.inkA(.5))),
+                Text(
+                  gig.desc,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: epText(size: 12, color: Ep.inkA(.5)),
+                ),
               ],
             ),
           ),

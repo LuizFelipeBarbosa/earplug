@@ -10,6 +10,7 @@ import '../genres.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/form_bits.dart';
 
 // Door-stamp accent palette from the Sign In v3 design.
 const _stampAccent = Color(0xFF4B62FF);
@@ -22,8 +23,18 @@ const _stepPadding = EdgeInsets.fromLTRB(22, 24, 22, 30);
 /// "29 JUL 26" — the date pressed into the door stamp.
 String _stampDate() {
   const months = [
-    'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
-    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+    'JAN',
+    'FEB',
+    'MAR',
+    'APR',
+    'MAY',
+    'JUN',
+    'JUL',
+    'AUG',
+    'SEP',
+    'OCT',
+    'NOV',
+    'DEC',
   ];
   final now = DateTime.now();
   final day = now.day.toString().padLeft(2, '0');
@@ -188,13 +199,19 @@ class _DoorStepState extends State<_DoorStep> {
         padding: _stepPadding,
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            minHeight: math.max(0, constraints.maxHeight - _stepPadding.vertical),
+            minHeight: math.max(
+              0,
+              constraints.maxHeight - _stepPadding.vertical,
+            ),
           ),
           child: IntrinsicHeight(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('GET ON\nEARPLUG', style: epDisplay(size: 38, height: .98)),
+                Text(
+                  'GET ON\nEARPLUG',
+                  style: epDisplay(size: 38, height: .98),
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'Browsing needs no account. This does — ten seconds at the door.',
@@ -203,7 +220,9 @@ class _DoorStepState extends State<_DoorStep> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 22),
-                    child: Center(child: _StampWell(stamped: widget.method != null)),
+                    child: Center(
+                      child: _StampWell(stamped: widget.method != null),
+                    ),
                   ),
                 ),
                 if (_stage == _EntryStage.providers)
@@ -252,7 +271,7 @@ class _DoorStepState extends State<_DoorStep> {
       ),
       if (_error != null) ...[const SizedBox(height: 9), _InlineError(_error!)],
       const SizedBox(height: 9),
-      _TextAction('← KEEP BROWSING', onTap: locked ? null : widget.app.back),
+      TextAction('← KEEP BROWSING', onTap: locked ? null : widget.app.back),
     ];
   }
 
@@ -307,7 +326,7 @@ class _DoorStepState extends State<_DoorStep> {
         _InlineError(_error!),
       ],
       const SizedBox(height: 8),
-      _TextAction('← BACK', onTap: _loading ? null : _showProviders),
+      TextAction('← BACK', onTap: _loading ? null : _showProviders),
     ];
   }
 
@@ -341,7 +360,10 @@ class _DoorStepState extends State<_DoorStep> {
           kind: _loading ? EpButtonKind.disabled : EpButtonKind.filled,
           onTap: _loading ? null : verify,
         ),
-        if (_error != null) ...[const SizedBox(height: 9), _InlineError(_error!)],
+        if (_error != null) ...[
+          const SizedBox(height: 9),
+          _InlineError(_error!),
+        ],
         const SizedBox(height: 12),
         GestureDetector(
           onTap: _loading ? null : resend,
@@ -539,15 +561,20 @@ class _PressHerePulseState extends State<_PressHerePulse>
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: Tween<double>(begin: .28, end: .7).animate(
-        CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-      ),
+      opacity: Tween<double>(
+        begin: .28,
+        end: .7,
+      ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
             'PRESS HERE',
-            style: epText(size: 10, weight: FontWeight.w900, letterSpacing: 2.4),
+            style: epText(
+              size: 10,
+              weight: FontWeight.w900,
+              letterSpacing: 2.4,
+            ),
           ),
           const SizedBox(height: 5),
           Text(
@@ -601,10 +628,7 @@ class _StampThudState extends State<_StampThud>
       opacity: _opacity,
       child: ScaleTransition(
         scale: _scale,
-        child: Transform.rotate(
-          angle: _stampAngle,
-          child: widget.child,
-        ),
+        child: Transform.rotate(angle: _stampAngle, child: widget.child),
       ),
     );
   }
@@ -726,33 +750,6 @@ class _MethodTile extends StatelessWidget {
   }
 }
 
-class _TextAction extends StatelessWidget {
-  final String label;
-  final VoidCallback? onTap;
-
-  const _TextAction(this.label, {required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.all(8),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: epText(
-            size: 11.5,
-            weight: FontWeight.w900,
-            letterSpacing: 1.4,
-            color: Ep.inkA(.4),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _InlineError extends StatelessWidget {
   final String message;
 
@@ -780,7 +777,11 @@ class _TasteStep extends StatelessWidget {
   final String? via;
   final VoidCallback onDone;
 
-  const _TasteStep({required this.app, required this.via, required this.onDone});
+  const _TasteStep({
+    required this.app,
+    required this.via,
+    required this.onDone,
+  });
 
   // Each chip sits at its own slight tilt, like slapped-on stickers.
   static const _tilts = [-1.6, 1.2, -.8, 1.7, -1.2, .9, -1.8, 1.1, -.6, 1.5];
@@ -794,7 +795,10 @@ class _TasteStep extends StatelessWidget {
           padding: _stepPadding,
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minHeight: math.max(0, constraints.maxHeight - _stepPadding.vertical),
+              minHeight: math.max(
+                0,
+                constraints.maxHeight - _stepPadding.vertical,
+              ),
             ),
             child: IntrinsicHeight(
               child: Column(
@@ -963,7 +967,10 @@ class _RiseIn extends StatelessWidget {
       curve: Curves.easeOut,
       builder: (context, t, child) => Opacity(
         opacity: t,
-        child: Transform.translate(offset: Offset(0, 10 * (1 - t)), child: child),
+        child: Transform.translate(
+          offset: Offset(0, 10 * (1 - t)),
+          child: child,
+        ),
       ),
       child: child,
     );

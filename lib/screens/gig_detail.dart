@@ -42,7 +42,10 @@ class GigDetailScreen extends StatelessWidget {
                 children: [
                   _InfoCards(gig: gig),
                   const SizedBox(height: 16),
-                  Text(gig.desc, style: epText(size: 13.5, color: Ep.inkA(.75), height: 1.5)),
+                  Text(
+                    gig.desc,
+                    style: epText(size: 13.5, color: Ep.inkA(.75), height: 1.5),
+                  ),
                   const SizedBox(height: 16),
                   const SectionLabel('LINEUP'),
                   const SizedBox(height: 8),
@@ -63,7 +66,12 @@ class GigDetailScreen extends StatelessWidget {
             ),
           ],
         ),
-        Positioned(left: 0, right: 0, bottom: 0, child: _CtaBar(gig: gig, app: app)),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _CtaBar(gig: gig, app: app),
+        ),
       ],
     );
   }
@@ -101,21 +109,33 @@ class _Hero extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(top: 40),
-                  child: Text(gig.title.toUpperCase(),
-                      style: epDisplay(size: 34, color: fly.fg, letterSpacing: -.5, height: .98)),
+                  child: Text(
+                    gig.title.toUpperCase(),
+                    style: epDisplay(
+                      size: 34,
+                      color: fly.fg,
+                      letterSpacing: -.5,
+                      height: .98,
+                    ),
+                  ),
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('${gig.dateShort} · ${venue.name.toUpperCase()}',
-                        style: epDisplay(size: 15, color: fly.fg)),
+                    Text(
+                      '${gig.dateShort} · ${venue.name.toUpperCase()}',
+                      style: epDisplay(size: 15, color: fly.fg),
+                    ),
                     const SizedBox(height: 4),
-                    Text(lineupLine,
-                        style: epText(
-                            size: 11,
-                            weight: FontWeight.w800,
-                            letterSpacing: 1.5,
-                            color: fly.fg.withValues(alpha: .75))),
+                    Text(
+                      lineupLine,
+                      style: epText(
+                        size: 11,
+                        weight: FontWeight.w800,
+                        letterSpacing: 1.5,
+                        color: fly.fg.withValues(alpha: .75),
+                      ),
+                    ),
                   ],
                 ),
               ],
@@ -132,7 +152,11 @@ class _Hero extends StatelessWidget {
                     color: Colors.black.withValues(alpha: .55),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.chevron_left, size: 22, color: Colors.white),
+                  child: const Icon(
+                    Icons.chevron_left,
+                    size: 22,
+                    color: Colors.white,
+                  ),
                 ),
               ),
             ),
@@ -154,9 +178,15 @@ class _Hero extends StatelessWidget {
                     color: Colors.black.withValues(alpha: .55),
                     borderRadius: BorderRadius.circular(99),
                   ),
-                  child: Text('SHARE ↗',
-                      style: epText(
-                          size: 11, weight: FontWeight.w800, letterSpacing: 1, color: Colors.white)),
+                  child: Text(
+                    'SHARE ↗',
+                    style: epText(
+                      size: 11,
+                      weight: FontWeight.w800,
+                      letterSpacing: 1,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -181,14 +211,26 @@ class _InfoCards extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(label,
-                  style: epText(
-                      size: 10, weight: FontWeight.w800, letterSpacing: 1.2, color: Ep.inkA(.45))),
+              Text(
+                label,
+                style: epText(
+                  size: 10,
+                  weight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                  color: Ep.inkA(.45),
+                ),
+              ),
               const SizedBox(height: 3),
-              Text(value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: epText(size: 13, weight: FontWeight.w800, color: valueColor ?? Ep.ink)),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: epText(
+                  size: 13,
+                  weight: FontWeight.w800,
+                  color: valueColor ?? Ep.ink,
+                ),
+              ),
             ],
           ),
         ),
@@ -228,9 +270,18 @@ class _LineupRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(band.name.toUpperCase(),
-                    style: epText(size: 13.5, weight: FontWeight.w800, letterSpacing: .3)),
-                Text(band.genreLine, style: epText(size: 11.5, color: Ep.inkA(.55))),
+                Text(
+                  band.name.toUpperCase(),
+                  style: epText(
+                    size: 13.5,
+                    weight: FontWeight.w800,
+                    letterSpacing: .3,
+                  ),
+                ),
+                Text(
+                  band.genreLine,
+                  style: epText(size: 11.5, color: Ep.inkA(.55)),
+                ),
               ],
             ),
           ),
@@ -267,11 +318,15 @@ class _VenueCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(venue.name.toUpperCase(),
-                          style: epText(size: 13.5, weight: FontWeight.w800)),
+                      Text(
+                        venue.name.toUpperCase(),
+                        style: epText(size: 13.5, weight: FontWeight.w800),
+                      ),
                       const SizedBox(height: 2),
-                      Text('${venue.addr} · ${venue.area}',
-                          style: epText(size: 11.5, color: Ep.inkA(.55))),
+                      Text(
+                        '${venue.addr} · ${venue.area}',
+                        style: epText(size: 11.5, color: Ep.inkA(.55)),
+                      ),
                     ],
                   ),
                 ),
@@ -283,13 +338,22 @@ class _VenueCard extends StatelessWidget {
                     '${venue.point.latitude},${venue.point.longitude}',
                   ),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 11,
+                      vertical: 7,
+                    ),
                     decoration: BoxDecoration(
                       border: Border.all(color: Ep.whiteA(.25)),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text('DIRECTIONS ↗',
-                        style: epText(size: 11, weight: FontWeight.w800, letterSpacing: .8)),
+                    child: Text(
+                      'DIRECTIONS ↗',
+                      style: epText(
+                        size: 11,
+                        weight: FontWeight.w800,
+                        letterSpacing: .8,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -318,9 +382,9 @@ class _WhosGoing extends StatelessWidget {
     final socialLine = !app.authed
         ? 'Log in to see when bands you follow are on the bill.'
         : followedBandNames.isEmpty
-            ? 'None of the bands you follow are on this bill — yet.'
-            : 'Bands you follow on this bill: '
-                '${followedBandNames.join(', ')}.';
+        ? 'None of the bands you follow are on this bill — yet.'
+        : 'Bands you follow on this bill: '
+              '${followedBandNames.join(', ')}.';
 
     return EpCard(
       padding: const EdgeInsets.all(14),
@@ -329,10 +393,15 @@ class _WhosGoing extends StatelessWidget {
         children: [
           Text('$going+ going', style: epDisplay(size: 22)),
           const SizedBox(height: 5),
-          Text(socialLine, style: epText(size: 12, color: Ep.inkA(.6), height: 1.5)),
+          Text(
+            socialLine,
+            style: epText(size: 12, color: Ep.inkA(.6), height: 1.5),
+          ),
           const SizedBox(height: 8),
-          Text('Attendance stays vague on purpose — no public list, ever.',
-              style: epText(size: 10.5, letterSpacing: .3, color: Ep.inkA(.38))),
+          Text(
+            'Attendance stays vague on purpose — no public list, ever.',
+            style: epText(size: 10.5, letterSpacing: .3, color: Ep.inkA(.38)),
+          ),
         ],
       ),
     );
@@ -352,34 +421,40 @@ class _CtaBar extends StatelessWidget {
     final tixNote = external
         ? 'External ticketing'
         : gig.free
-            ? 'Free — RSVP for headcount'
-            : 'Pay at the door · RSVP holds nothing';
+        ? 'Free — RSVP for headcount'
+        : 'Pay at the door · RSVP holds nothing';
 
     final Widget button;
     if (external) {
-      button = EpButton('GET TICKETS ↗',
-          kind: EpButtonKind.light,
-          fontSize: 14,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          onTap: () {
-            final url = gig.externalUrl;
-            if (url == null) {
-              app.say('No ticket link listed for this gig.');
-            } else {
-              _openExternal(app, url);
-            }
-          });
+      button = EpButton(
+        'GET TICKETS ↗',
+        kind: EpButtonKind.light,
+        fontSize: 14,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        onTap: () {
+          final url = gig.externalUrl;
+          if (url == null) {
+            app.say('No ticket link listed for this gig.');
+          } else {
+            _openExternal(app, url);
+          }
+        },
+      );
     } else if (isRsvpd) {
-      button = EpButton('GOING ✓',
-          kind: EpButtonKind.outline,
-          fontSize: 14,
-          onTap: () => app.toggleRsvp(gig.id));
+      button = EpButton(
+        'GOING ✓',
+        kind: EpButtonKind.outline,
+        fontSize: 14,
+        onTap: () => app.toggleRsvp(gig.id),
+      );
     } else {
-      button = EpButton("RSVP — I'M IN",
-          fontSize: 14,
-          glow: true,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          onTap: () => app.requestRsvp(gig.id));
+      button = EpButton(
+        "RSVP — I'M IN",
+        fontSize: 14,
+        glow: true,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        onTap: () => app.requestRsvp(gig.id),
+      );
     }
 
     return Container(
@@ -397,10 +472,19 @@ class _CtaBar extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(gig.priceLabel,
-                  style: epDisplay(size: 17, color: gig.free ? Ep.link : Ep.ink)),
-              Text(tixNote,
-                  style: epText(size: 10, weight: FontWeight.w700, letterSpacing: .5, color: Ep.inkA(.5))),
+              Text(
+                gig.priceLabel,
+                style: epDisplay(size: 17, color: gig.free ? Ep.link : Ep.ink),
+              ),
+              Text(
+                tixNote,
+                style: epText(
+                  size: 10,
+                  weight: FontWeight.w700,
+                  letterSpacing: .5,
+                  color: Ep.inkA(.5),
+                ),
+              ),
             ],
           ),
           const SizedBox(width: 12),

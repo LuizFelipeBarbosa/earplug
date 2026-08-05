@@ -3,6 +3,117 @@ import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
+describe("gigs:pastForBand", () => {
+  /** A band, a venue, and one gig on each side of the feed cutoff. */
+  async function setupHistory() {
+    const t = convexTest(schema);
+    const asAdmin = t.withIdentity({ subject: "user_admin", email: "a@x.com" });
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Ancient Quaffle",
+      genres: ["folk"],
+      bio: "",
+      inviteHandles: [],
+    });
+    const { bandId: otherId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Wet Denim",
+      genres: ["punk"],
+      bio: "",
+      inviteHandles: [],
+    });
+    const venueId = await t.run(async (ctx) =>
+      ctx.db.insert("venues", {
+        name: "Kingman Hall",
+        area: "Berkeley",
+        addr: "1730 La Loma Ave",
+        distSF: "12.1 mi",
+        distOak: "5.4 mi",
+        lat: 37.8792,
+        lng: -122.2611,
+      }),
+    );
+    const base = {
+      venueId,
+      price: 5,
+      doorsTime: "7PM / 8PM",
+      flyKey: "paper",
+      genres: ["folk"],
+      desc: "",
+      ticketing: "rsvp" as const,
+      cap: "No cap",
+      goingCount: 0,
+    };
+    await t.run(async (ctx) => {
+      await ctx.db.insert("gigs", {
+        ...base,
+        title: "Older Show",
+        startsAt: Date.now() - 90 * 86400_000,
+        lineup: [bandId],
+      });
+      await ctx.db.insert("gigs", {
+        ...base,
+        title: "Recent Show",
+        startsAt: Date.now() - 7 * 86400_000,
+        lineup: [bandId],
+      });
+      await ctx.db.insert("gigs", {
+        ...base,
+        title: "Upcoming Show",
+        startsAt: Date.now() + 7 * 86400_000,
+        lineup: [bandId],
+      });
+      await ctx.db.insert("gigs", {
+        ...base,
+        title: "Someone Else's Past Show",
+        startsAt: Date.now() - 30 * 86400_000,
+        lineup: [otherId],
+      });
+    });
+    return { t, bandId, otherId, venueId };
+  }
+
+  test("returns only this band's past gigs, newest first, with their venues", async () => {
+    const { t, bandId, venueId } = await setupHistory();
+    const { gigs, venues } = await t.query(api.gigs.pastForBand, { bandId });
+
+    expect(gigs.map((g) => g.title)).toEqual(["Recent Show", "Older Show"]);
+    expect(venues.length).toBe(1);
+    expect(venues[0]._id).toBe(venueId);
+  });
+
+  test("excludes upcoming gigs, which forBand already covers", async () => {
+    const { t, bandId } = await setupHistory();
+    const { gigs } = await t.query(api.gigs.pastForBand, { bandId });
+    const upcoming = await t.query(api.gigs.forBand, { bandId });
+
+    expect(gigs.some((g) => g.title === "Upcoming Show")).toBe(false);
+    expect(upcoming.map((g) => g.title)).toEqual(["Upcoming Show"]);
+  });
+
+  test("a band with no past gigs gets empty arrays, not an error", async () => {
+    const { t, otherId } = await setupHistory();
+    const asStranger = t.withIdentity({ subject: "user_x", email: "x@x.com" });
+    await asStranger.mutation(api.users.ensureUser, {});
+    const { bandId: emptyBandId } = await asStranger.mutation(
+      api.bands.createBand,
+      { name: "No History", genres: ["noise"], bio: "", inviteHandles: [] },
+    );
+
+    expect(await t.query(api.gigs.pastForBand, { bandId: emptyBandId })).toEqual(
+      { gigs: [], venues: [] },
+    );
+    // The other band's single past gig is still reachable from its own profile.
+    const { gigs } = await t.query(api.gigs.pastForBand, { bandId: otherId });
+    expect(gigs.map((g) => g.title)).toEqual(["Someone Else's Past Show"]);
+  });
+
+  test("is public — an anonymous visitor can read a band's history", async () => {
+    const { t, bandId } = await setupHistory();
+    const { gigs } = await t.query(api.gigs.pastForBand, { bandId });
+    expect(gigs.length).toBe(2);
+  });
+});
+
 describe("gigs:publishGig auth", () => {
   async function setupBand() {
     const t = convexTest(schema);
@@ -231,19 +342,6 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(Array.isArray(forBand)).toBe(true);
     expect(forBand.length).toBe(2); // g2 + g7
     expect(forBand.every((gig) => gig.lineup.includes(foghorn!._id))).toBe(true);
-
-    // bands:search — top-level array; "" → all (capped 50).
-    const all = await t.query(api.bands.search, { q: "" });
-    expect(Array.isArray(all)).toBe(true);
-    expect(all.length).toBe(6);
-    const hits = await t.query(api.bands.search, { q: "Foghorn" });
-    expect(hits.length).toBe(1);
-    expect(hits[0].name).toBe("Foghorn Diet");
-
-    // bands:myBands — [] unauthenticated (never throws).
-    expect(await t.query(api.bands.myBands, {})).toEqual([]);
-    // users:me — null unauthenticated.
-    expect(await t.query(api.users.me, {})).toBeNull();
   });
 
   test("myBands returns band+role entries for the caller", async () => {
@@ -260,7 +358,8 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(mine.length).toBe(1);
     expect(mine[0].role).toBe("admin");
     expect(mine[0].band.name).toBe("Static Bloom");
-    expect(mine[0].band.followerCount).toBe(3); // 1 + invites
+    // Only the admin member row counts; invite handles are stored strings.
+    expect(mine[0].band.followerCount).toBe(1);
     expect(mine[0].band.initials).toBe("SB");
   });
 });

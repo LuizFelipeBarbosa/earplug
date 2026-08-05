@@ -17,7 +17,12 @@ class BandEditScreen extends StatelessWidget {
     final videos = context.watch<BandMediaController>().videosFor(app.bandId);
 
     return ListView(
-      padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, tabBarClearance),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        headerTopPad(context),
+        16,
+        tabBarClearance,
+      ),
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -26,13 +31,22 @@ class BandEditScreen extends StatelessWidget {
             GestureDetector(
               onTap: () => app.openBand(app.bandId),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
+                ),
                 decoration: BoxDecoration(
                   border: Border.all(color: Ep.whiteA(.22)),
                   borderRadius: BorderRadius.circular(99),
                 ),
-                child: Text('PREVIEW AS FAN ›',
-                    style: epText(size: 10, weight: FontWeight.w800, letterSpacing: .8)),
+                child: Text(
+                  'PREVIEW AS FAN ›',
+                  style: epText(
+                    size: 10,
+                    weight: FontWeight.w800,
+                    letterSpacing: .8,
+                  ),
+                ),
               ),
             ),
           ],
@@ -46,8 +60,9 @@ class BandEditScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(11),
           ),
           child: Text(
-              "You're editing the real thing — what you see here is exactly what fans see.",
-              style: epText(size: 11.5, color: Ep.linkSoft, height: 1.45)),
+            "You're editing the real thing — what you see here is exactly what fans see.",
+            style: epText(size: 11.5, color: Ep.linkSoft, height: 1.45),
+          ),
         ),
         const SizedBox(height: 14),
         Row(
@@ -62,12 +77,15 @@ class BandEditScreen extends StatelessWidget {
                   onTap: app.openBandMedia,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Text('CHANGE PHOTO',
-                        style: epText(
-                            size: 11,
-                            weight: FontWeight.w800,
-                            letterSpacing: .5,
-                            color: Ep.link)),
+                    child: Text(
+                      'CHANGE PHOTO',
+                      style: epText(
+                        size: 11,
+                        weight: FontWeight.w800,
+                        letterSpacing: .5,
+                        color: Ep.link,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -121,22 +139,28 @@ class BandEditScreen extends StatelessWidget {
               children: [
                 GestureDetector(
                   onTap: app.openBandMedia,
-                  child: Text('+ UPLOAD CLIP',
-                      style: epText(
-                          size: 11,
-                          weight: FontWeight.w900,
-                          letterSpacing: .6,
-                          color: Ep.link)),
+                  child: Text(
+                    '+ UPLOAD CLIP',
+                    style: epText(
+                      size: 11,
+                      weight: FontWeight.w900,
+                      letterSpacing: .6,
+                      color: Ep.link,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 GestureDetector(
                   onTap: app.openBandMedia,
-                  child: Text('MANAGE ›',
-                      style: epText(
-                          size: 10.5,
-                          weight: FontWeight.w800,
-                          letterSpacing: .6,
-                          color: Ep.inkA(.55))),
+                  child: Text(
+                    'MANAGE ›',
+                    style: epText(
+                      size: 10.5,
+                      weight: FontWeight.w800,
+                      letterSpacing: .6,
+                      color: Ep.inkA(.55),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -150,7 +174,10 @@ class BandEditScreen extends StatelessWidget {
               color: Ep.card,
               borderRadius: BorderRadius.circular(11),
               border: Border.all(
-                  color: v.pinned ? Ep.blue.withValues(alpha: .55) : Ep.whiteA(.1)),
+                color: v.pinned
+                    ? Ep.blue.withValues(alpha: .55)
+                    : Ep.whiteA(.1),
+              ),
             ),
             child: Row(
               children: [
@@ -170,13 +197,17 @@ class BandEditScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(v.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: epText(size: 12.5, weight: FontWeight.w800)),
+                      Text(
+                        v.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: epText(size: 12.5, weight: FontWeight.w800),
+                      ),
                       const SizedBox(height: 2),
-                      Text('${v.viewsLabel} · ${v.lenLabel}',
-                          style: epText(size: 10.5, color: Ep.inkA(.5))),
+                      Text(
+                        '${v.viewsLabel} · ${v.lenLabel}',
+                        style: epText(size: 10.5, color: Ep.inkA(.5)),
+                      ),
                     ],
                   ),
                 ),

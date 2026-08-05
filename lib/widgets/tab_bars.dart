@@ -13,7 +13,12 @@ class _TabItem extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
 
-  const _TabItem({required this.icon, required this.label, required this.active, required this.onTap});
+  const _TabItem({
+    required this.icon,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -29,8 +34,15 @@ class _TabItem extends StatelessWidget {
             children: [
               Icon(icon, size: 19, color: color),
               const SizedBox(height: 3),
-              Text(label,
-                  style: epText(size: 9, weight: FontWeight.w800, letterSpacing: .8, color: color)),
+              Text(
+                label,
+                style: epText(
+                  size: 9,
+                  weight: FontWeight.w800,
+                  letterSpacing: .8,
+                  color: color,
+                ),
+              ),
             ],
           ),
         ),
@@ -75,20 +87,23 @@ class FanTabBar extends StatelessWidget {
       borderColor: Ep.whiteA(.1),
       items: [
         _TabItem(
-            icon: Icons.home_outlined,
-            label: 'GIGS',
-            active: scr == Screen.home,
-            onTap: () => app.resetTo(Screen.home)),
+          icon: Icons.home_outlined,
+          label: 'GIGS',
+          active: scr == Screen.home,
+          onTap: () => app.resetTo(Screen.home),
+        ),
         _TabItem(
-            icon: Icons.search,
-            label: 'EXPLORE',
-            active: scr == Screen.explore,
-            onTap: () => app.resetTo(Screen.explore)),
+          icon: Icons.search,
+          label: 'EXPLORE',
+          active: scr == Screen.explore,
+          onTap: () => app.resetTo(Screen.explore),
+        ),
         _TabItem(
-            icon: Icons.confirmation_number_outlined,
-            label: 'MY GIGS',
-            active: scr == Screen.myGigs,
-            onTap: app.openMyGigsTab),
+          icon: Icons.confirmation_number_outlined,
+          label: 'MY GIGS',
+          active: scr == Screen.myGigs,
+          onTap: app.openMyGigsTab,
+        ),
       ],
     );
   }
@@ -105,25 +120,29 @@ class BandTabBar extends StatelessWidget {
       borderColor: Ep.blue.withValues(alpha: .5),
       items: [
         _TabItem(
-            icon: Icons.grid_view_rounded,
-            label: 'DASH',
-            active: scr == Screen.bandDash,
-            onTap: () => app.resetTo(Screen.bandDash)),
+          icon: Icons.grid_view_rounded,
+          label: 'DASH',
+          active: scr == Screen.bandDash,
+          onTap: () => app.resetTo(Screen.bandDash),
+        ),
         _TabItem(
-            icon: Icons.radio_button_checked,
-            label: 'PROFILE',
-            active: scr == Screen.bandEdit,
-            onTap: () => app.resetTo(Screen.bandEdit)),
+          icon: Icons.radio_button_checked,
+          label: 'PROFILE',
+          active: scr == Screen.bandEdit,
+          onTap: () => app.resetTo(Screen.bandEdit),
+        ),
         _TabItem(
-            icon: Icons.table_rows_outlined,
-            label: 'GIGS',
-            active: scr == Screen.gigMgr,
-            onTap: () => app.resetTo(Screen.gigMgr)),
+          icon: Icons.table_rows_outlined,
+          label: 'GIGS',
+          active: scr == Screen.gigMgr,
+          onTap: () => app.resetTo(Screen.gigMgr),
+        ),
         _TabItem(
-            icon: Icons.insert_chart_outlined_rounded,
-            label: 'INSIGHTS',
-            active: scr == Screen.analytics,
-            onTap: () => app.resetTo(Screen.analytics)),
+          icon: Icons.insert_chart_outlined_rounded,
+          label: 'INSIGHTS',
+          active: scr == Screen.analytics,
+          onTap: () => app.resetTo(Screen.analytics),
+        ),
       ],
     );
   }

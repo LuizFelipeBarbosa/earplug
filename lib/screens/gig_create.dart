@@ -11,6 +11,8 @@ import '../models.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
+import '../widgets/form_bits.dart';
 
 const _posterTilt = -1.6 * math.pi / 180;
 
@@ -76,7 +78,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(child: Text('NEW GIG', style: epDisplay(size: 16))),
-                  _ReadyPill(ready: app.canPublishGig),
+                  ReadyPill(ready: app.canPublishGig),
                 ],
               ),
             ),
@@ -99,33 +101,6 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
         ),
         const Positioned(left: 0, right: 0, bottom: 0, child: _PublishBar()),
       ],
-    );
-  }
-}
-
-class _ReadyPill extends StatelessWidget {
-  final bool ready;
-
-  const _ReadyPill({required this.ready});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: ready ? Ep.blue.withValues(alpha: .2) : Ep.card,
-        border: Border.all(color: ready ? Ep.blue : Ep.whiteA(.14)),
-        borderRadius: BorderRadius.circular(99),
-      ),
-      child: Text(
-        ready ? 'READY' : 'DRAFT',
-        style: epText(
-          size: 9.5,
-          weight: FontWeight.w900,
-          letterSpacing: 1.2,
-          color: ready ? Ep.linkSoft : Ep.inkA(.45),
-        ),
-      ),
     );
   }
 }
@@ -224,14 +199,14 @@ class _Poster extends StatelessWidget {
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: .62),
-                      Colors.black.withValues(alpha: .12),
-                      Colors.black.withValues(alpha: .15),
-                      Colors.black.withValues(alpha: .78),
-                    ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: .62),
+                        Colors.black.withValues(alpha: .12),
+                        Colors.black.withValues(alpha: .15),
+                        Colors.black.withValues(alpha: .78),
+                      ],
                       stops: const [0, .38, .52, 1],
                     ),
                   ),
@@ -288,29 +263,32 @@ class _CustomArtSlot extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.all(10),
               child: DashedBox(
-                  padding: const EdgeInsets.all(12),
-                  color: Ep.whiteA(.28),
-                  radius: 4,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add_photo_alternate_outlined,
-                            size: 22, color: Ep.inkA(.45)),
-                        const SizedBox(height: 6),
-                        Text(
-                          'DROP YOUR FLYER',
-                          style: epText(
-                            size: 10.5,
-                            weight: FontWeight.w900,
-                            letterSpacing: .8,
-                            color: Ep.inkA(.45),
-                          ),
+                padding: const EdgeInsets.all(12),
+                color: Ep.whiteA(.28),
+                radius: 4,
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.add_photo_alternate_outlined,
+                        size: 22,
+                        color: Ep.inkA(.45),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'DROP YOUR FLYER',
+                        style: epText(
+                          size: 10.5,
+                          weight: FontWeight.w900,
+                          letterSpacing: .8,
+                          color: Ep.inkA(.45),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
+              ),
             )
           else
             Image.memory(art.bytes, fit: BoxFit.cover),
@@ -364,8 +342,11 @@ class _PosterOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
-    final titleStyle = epDisplay(size: 23, color: ink, height: 1.02)
-        .copyWith(letterSpacing: -.3);
+    final titleStyle = epDisplay(
+      size: 23,
+      color: ink,
+      height: 1.02,
+    ).copyWith(letterSpacing: -.3);
 
     return Padding(
       padding: const EdgeInsets.all(15),
@@ -480,7 +461,7 @@ class _SwatchRow extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (final key in DemoData.flyerPicks) ...[
-          _Swatch(
+          Swatch(
             key: ValueKey('press-$key'),
             selected: app.gfFly == key,
             onTap: () => app.setGfFly(key),
@@ -495,7 +476,7 @@ class _SwatchRow extends StatelessWidget {
           ),
           const SizedBox(width: 9),
         ],
-        _Swatch(
+        Swatch(
           key: const ValueKey('press-custom'),
           selected: app.gfCustomFlyer,
           dashed: true,
@@ -505,58 +486,6 @@ class _SwatchRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _Swatch extends StatelessWidget {
-  final bool selected;
-  final bool dashed;
-  final VoidCallback onTap;
-  final Widget child;
-
-  const _Swatch({
-    super.key,
-    required this.selected,
-    required this.onTap,
-    required this.child,
-    this.dashed = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          color: dashed ? Ep.bg : null,
-          shape: BoxShape.circle,
-          border: dashed
-              ? null
-              : Border.all(
-                  color: selected ? Ep.link : Ep.whiteA(.18),
-                  width: 2,
-                ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Ep.link.withValues(alpha: .25),
-                    spreadRadius: 3,
-                  ),
-                ]
-              : null,
-        ),
-        child: dashed
-            ? DashedBox(
-                padding: EdgeInsets.zero,
-                radius: 15,
-                color: selected ? Ep.link : Ep.whiteA(.35),
-                child: child,
-              )
-            : child,
-      ),
     );
   }
 }
@@ -743,7 +672,9 @@ class _SlotGrid extends StatelessWidget {
       _SlotCard(
         tag: app.gfDate == null ? 'WHEN · REQUIRED' : 'WHEN ✓',
         tagColor: app.gfDate == null ? Ep.required : Ep.link,
-        value: app.gfDate == null ? 'Pick a date' : app.gfDateLabel.toUpperCase(),
+        value: app.gfDate == null
+            ? 'Pick a date'
+            : app.gfDateLabel.toUpperCase(),
         sub: app.gfDate == null ? '' : 'Doors ${app.gfDoorsLabel}',
         state: app.gfDate == null ? _SlotState.needed : _SlotState.done,
         onTap: () => showWhenSheet(context),
@@ -771,10 +702,10 @@ class _SlotGrid extends StatelessWidget {
         tagColor: Ep.inkA(.5),
         value: app.gfTix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
         sub: switch (app.gfTix) {
-          Ticketing.rsvp when app.gfCap == 'No cap' => 'No cap · QR at the door',
+          Ticketing.rsvp when app.gfCap == 'No cap' =>
+            'No cap · QR at the door',
           Ticketing.rsvp => 'Cap ${app.gfCap} · QR at the door',
-          Ticketing.external =>
-            app.gfExt.isEmpty ? 'Add your link' : app.gfExt,
+          Ticketing.external => app.gfExt.isEmpty ? 'Add your link' : app.gfExt,
         },
         state: _SlotState.optional,
         onTap: () => showTicketsSheet(context),
@@ -840,10 +771,12 @@ class _SlotCard extends StatelessWidget {
           ),
           if (sub.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text(sub,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: epText(size: 10.5, color: Ep.inkA(.45))),
+            Text(
+              sub,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: epText(size: 10.5, color: Ep.inkA(.45)),
+            ),
           ],
         ],
       ),
@@ -911,17 +844,6 @@ class _PublishBar extends StatelessWidget {
 
 // ============================ sheets ============================
 
-Future<void> _openSheet(BuildContext context, WidgetBuilder builder) {
-  return showModalBottomSheet(
-    context: context,
-    backgroundColor: Colors.transparent,
-    barrierColor: Colors.black.withValues(alpha: .6),
-    isScrollControlled: true,
-    constraints: const BoxConstraints(maxWidth: 480),
-    builder: builder,
-  );
-}
-
 class _Sheet extends StatelessWidget {
   final String title;
   final Widget? trailing;
@@ -977,23 +899,6 @@ class _Sheet extends StatelessWidget {
   }
 }
 
-InputDecoration _sheetInput(String hint) => InputDecoration(
-  hintText: hint,
-  hintStyle: epText(size: 13, color: Ep.inkA(.35)),
-  filled: true,
-  fillColor: Ep.bg,
-  isDense: true,
-  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(10),
-    borderSide: BorderSide(color: Ep.whiteA(.16)),
-  ),
-  focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(10),
-    borderSide: BorderSide(color: Ep.whiteA(.3)),
-  ),
-);
-
 /// Full-width option row used by the venue and ticketing sheets.
 class _OptionCard extends StatelessWidget {
   final String title;
@@ -1041,26 +946,14 @@ class _OptionCard extends StatelessWidget {
   }
 }
 
-class _DoneButton extends StatelessWidget {
-  const _DoneButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return EpButton(
-      'DONE',
-      fontSize: 12.5,
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      onTap: () => Navigator.pop(context),
-    );
-  }
-}
-
 // ---------------------------- when ----------------------------
 
 void showWhenSheet(BuildContext context) {
-  _openSheet(context, (ctx) {
+  showEpSheet(context, (ctx) {
     return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * .82),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(ctx).height * .82,
+      ),
       child: const _Sheet(
         title: 'When is it',
         padBody: false,
@@ -1146,7 +1039,8 @@ class _WhenBody extends StatelessWidget {
                   children: [
                     for (final hour in const [18, 19, 20, 21, 22]) ...[
                       EpChip(
-                        label: 'DOORS ${timeLabel(TimeOfDay(hour: hour, minute: 0))}',
+                        label:
+                            'DOORS ${timeLabel(TimeOfDay(hour: hour, minute: 0))}',
                         active: app.gfDoors == TimeOfDay(hour: hour, minute: 0),
                         onTap: () =>
                             app.setGfDoors(TimeOfDay(hour: hour, minute: 0)),
@@ -1157,7 +1051,7 @@ class _WhenBody extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 11),
-              const _DoneButton(),
+              const DoneButton(),
             ],
           ),
         ),
@@ -1188,6 +1082,9 @@ class _Month extends StatelessWidget {
       final selected = date == app.gfDate;
 
       return GestureDetector(
+        // Keyed by the whole date, not the day number: four months are on
+        // screen at once, so '1' alone is ambiguous four times over.
+        key: ValueKey('day-${date.year}-${date.month}-${date.day}'),
         onTap: past ? null : () => app.setGfDate(date),
         child: Container(
           height: 34,
@@ -1274,7 +1171,7 @@ class _Month extends StatelessWidget {
 
 void showVenueSheet(BuildContext context) {
   final app = context.read<AppState>();
-  _openSheet(context, (ctx) {
+  showEpSheet(context, (ctx) {
     return _Sheet(
       title: 'Where is it',
       trailing: GestureDetector(
@@ -1334,7 +1231,10 @@ void showVenueSheet(BuildContext context) {
 const _presetPrices = ['FREE', '\$5', '\$8', '\$10', '\$12', '\$15'];
 
 void showPriceSheet(BuildContext context) {
-  _openSheet(context, (_) => const _Sheet(title: 'Cover', child: _PriceBody()));
+  showEpSheet(
+    context,
+    (_) => const _Sheet(title: 'Cover', child: _PriceBody()),
+  );
 }
 
 class _PriceBody extends StatefulWidget {
@@ -1449,7 +1349,7 @@ class _PriceBodyState extends State<_PriceBody> {
 const _presetCaps = ['No cap', '50', '100', '150'];
 
 void showTicketsSheet(BuildContext context) {
-  _openSheet(
+  showEpSheet(
     context,
     (_) => const _Sheet(title: 'Tickets', child: _TicketsBody()),
   );
@@ -1583,11 +1483,11 @@ class _TicketsBodyState extends State<_TicketsBody> {
               keyboardType: TextInputType.url,
               onChanged: app.setGfExt,
               style: epText(size: 12.5),
-              decoration: _sheetInput('https://…'),
+              decoration: sheetInput('https://…'),
             ),
           ),
         const SizedBox(height: 14),
-        const _DoneButton(),
+        const DoneButton(),
       ],
     );
   }

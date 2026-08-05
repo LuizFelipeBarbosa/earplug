@@ -7,10 +7,10 @@ import { uniqueSlug } from "./lib/helpers";
 // relative to run time so gig 1 lands "tonight" (8PM Pacific) and the rest
 // follow the demo spacing (JUL 28 → AUG 9 = day offsets 0..12).
 //
-// TEST FIXTURE ONLY. This exists for `gigs.test.ts`; it must never be run
-// against a real deployment. Its rows were purged from dev by
-// `cleanup:purgeDemoData`, and re-seeding would put fake bands back in front
-// of real users.
+// TEST FIXTURE ONLY. This exists for the Convex test suite; it must never be
+// run against a real deployment. Its rows were purged from dev once and there
+// is no longer any purger to undo a second seeding, so re-running it against a
+// live deployment would put fake bands back in front of real users for good.
 
 const PT_OFFSET_MS = 7 * 60 * 60 * 1000; // PDT (UTC-7)
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -100,13 +100,6 @@ const DEMO_GIGS = [
   { title: "Trash Panda Riot", venue: "v6", price: 5, dayOffset: 10, hour: 21, minute: 0, doorsTime: "9PM / 10PM", flyKey: "black", lineup: ["b5"], goingCount: 18, genres: ["thrash", "punk"], desc: "One band, ninety minutes, a bunker by the beach.", ticketing: "rsvp" as const },
   { title: "Fog City Fest — Day Show", venue: "v1", price: 15, dayOffset: 12, hour: 12, minute: 0, doorsTime: "12PM / 12:30PM", flyKey: "blue", lineup: ["b1", "b2", "b4", "b5"], goingCount: 112, genres: ["punk", "garage"], desc: "Eight hours, four stages worth of bands on one stage.", ticketing: "external" as const },
 ];
-
-// Names/titles of everything `seedDemo` inserts. `cleanup:purgeDemoData`
-// deletes by these lists, so keeping them derived from the fixtures above is
-// what stops the seeder and the purger from drifting apart.
-export const DEMO_VENUE_NAMES = DEMO_VENUES.map((venue) => venue.name);
-export const DEMO_BAND_NAMES = DEMO_BANDS.map((band) => band.name);
-export const DEMO_GIG_TITLES = DEMO_GIGS.map((gig) => gig.title);
 
 export const seedDemo = internalMutation({
   args: {},

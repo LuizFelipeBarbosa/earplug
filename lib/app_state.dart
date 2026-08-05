@@ -8,7 +8,9 @@ import 'band_media_state.dart';
 import 'data/convex_repository.dart';
 import 'data/demo_repository.dart';
 import 'data/repository.dart';
+import 'date_names.dart';
 import 'demo_data.dart';
+import 'errors.dart';
 import 'models.dart';
 import 'services/auth_service.dart';
 import 'services/media_picker.dart';
@@ -42,6 +44,9 @@ enum PendingKind { rsvp, follow, myGigs, band }
 
 enum DataStatus { connecting, ready, error }
 
+/// The band-profile fields the edit screen writes one keystroke at a time.
+enum _BandField { bio, linkIg, linkBc }
+
 class PendingAuth {
   final PendingKind kind;
   final String? id;
@@ -56,6 +61,8 @@ class AppState extends ChangeNotifier {
   AppState._(AuthService resolvedAuth, EarplugRepository? providedRepository)
     : auth = resolvedAuth,
       repository = providedRepository ?? DemoRepository(auth: resolvedAuth),
+      // Only a real backend has a connection to wait on; the demo data is
+      // already in memory, so it must not show the connecting screen.
       _dataStatus = providedRepository is ConvexRepository
           ? DataStatus.connecting
           : DataStatus.ready {
@@ -68,11 +75,11 @@ class AppState extends ChangeNotifier {
     _subscribeToFeed();
     _interactionsSubscription = repository.myInteractions().listen(
       _cacheInteractions,
-      onError: (_) {},
+      onError: (Object error) => logError('myInteractions', error),
     );
     _bandsSubscription = repository.myBands().listen(
       _cacheMemberships,
-      onError: (_) {},
+      onError: (Object error) => logError('myBands', error),
     );
   }
 
@@ -83,6 +90,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<FeedSnapshot>? _feedSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
+  bool _disposed = false;
 
   DataStatus _dataStatus;
   DataStatus get dataStatus => _dataStatus;
@@ -91,11 +99,37 @@ class AppState extends ChangeNotifier {
   List<Gig> _allGigs = const [];
   Map<String, Band> _bands = {};
   Map<String, Venue> _venues = const {};
-  final Map<String, String> _bandBioOverrides = {};
-  final Map<String, String> _bandLinkIgOverrides = {};
-  final Map<String, String> _bandLinkBcOverrides = {};
+
+  /// The full curated venue table (`venues:list`), including venues no upcoming
+  /// gig references. The feed only carries venues its gigs point at.
+  Map<String, Venue> _venueDirectory = const {};
+  DataStatus _venueStatus = DataStatus.connecting;
+  DataStatus get venueStatus => _venueStatus;
+  String? venueError;
+
   final Map<String, String> _bandRoles = {};
+
+  /// Past gigs per band, from `gigs:pastForBand`. Lazily loaded on first read.
+  /// Follows `BandMediaController.mediaFor` / `_loadMedia`: a read-triggered
+  /// per-band cache with a staleness token and one final notification.
+  /// Deliberate deviation: media retries after its own failure rebuild; this
+  /// cache gates on the error map until an explicit [refreshBandHistory].
+  final Map<String, BandHistory> _bandHistory = {};
+  final Map<String, Object> _bandHistoryTokens = {};
+  final Map<String, String> _bandHistoryErrors = {};
+
   BandMediaController? _media;
+
+  /// What the user typed into the band-edit fields, shown until the server has
+  /// it. Dropped if the write fails, so nothing on screen looks saved when it
+  /// isn't.
+  final Map<(String bandId, _BandField field), String> _bandEdits = {};
+
+  /// One pending write per field. Typing restarts it, so a burst of keystrokes
+  /// costs one mutation instead of one each.
+  final Map<(String bandId, _BandField field), Timer> _bandEditTimers = {};
+
+  static const _bandEditDebounce = Duration(milliseconds: 400);
 
   // ---- navigation
   List<ScreenEntry> _stack = const [ScreenEntry(Screen.home)];
@@ -186,12 +220,23 @@ class AppState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _toastTimer?.cancel();
+    for (final timer in _bandEditTimers.values) {
+      timer.cancel();
+    }
+    _bandEditTimers.clear();
     unawaited(_authSubscription?.cancel());
     unawaited(_feedSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
     unawaited(_bandsSubscription?.cancel());
     super.dispose();
+  }
+
+  /// Assigns, then notifies — the shape every plain form setter has.
+  void _set(void Function() assign) {
+    assign();
+    notifyListeners();
   }
 
   void _handleAuthChange(bool signedIn) {
@@ -201,25 +246,25 @@ class AppState extends ChangeNotifier {
       unawaited(_ensureUser());
     } else {
       profile = null;
-      unawaited(_refreshConvexAuth());
+      unawaited(
+        repository.refreshAuth().catchError(
+          (Object error) => logError('refreshAuth', error),
+        ),
+      );
     }
     notifyListeners();
-  }
-
-  Future<void> _refreshConvexAuth() async {
-    final repo = repository;
-    if (repo is ConvexRepository) await repo.refreshAuth();
   }
 
   Future<void> _ensureUser() async {
     try {
       // The websocket must carry the new identity before the mutation runs.
-      await _refreshConvexAuth();
+      await repository.refreshAuth();
       await repository.ensureUser(name: auth.displayName);
       await _refreshProfile();
       unawaited(_refreshHistory());
-    } catch (_) {
-      say('Something broke — try again.');
+    } catch (error) {
+      logError('ensureUser', error);
+      say(genericErrorMessage);
     }
   }
 
@@ -229,19 +274,20 @@ class AppState extends ChangeNotifier {
       if (!authed) return;
       history = loaded;
       notifyListeners();
-    } catch (_) {}
+    } catch (error) {
+      logError('history', error);
+    }
   }
 
   Future<void> _refreshProfile() async {
     try {
-      final repo = repository;
-      if (repo is ConvexRepository) {
-        final loadedProfile = await repo.me();
-        if (!authed) return;
-        profile = loadedProfile;
-        notifyListeners();
-      }
-    } catch (_) {}
+      final loadedProfile = await repository.me();
+      if (!authed) return;
+      profile = loadedProfile;
+      notifyListeners();
+    } catch (error) {
+      logError('me', error);
+    }
   }
 
   void _subscribeToFeed() {
@@ -270,6 +316,33 @@ class AppState extends ChangeNotifier {
       },
     );
     unawaited(_refreshExploreBands());
+    unawaited(_refreshVenueDirectory());
+  }
+
+  /// One-shot directory refresh, following the `_refreshExploreBands` pattern.
+  Future<void> _refreshVenueDirectory() async {
+    try {
+      final loaded = await repository.venues();
+      if (_disposed) return;
+      _venueDirectory = {for (final venue in loaded) venue.id: venue};
+      _venueStatus = DataStatus.ready;
+      venueError = null;
+      notifyListeners();
+    } catch (error) {
+      logError('venues', error);
+      if (_disposed) return;
+      _venueStatus = DataStatus.error;
+      venueError = '$error';
+      notifyListeners();
+    }
+  }
+
+  void retryVenues() {
+    if (_venueStatus == DataStatus.connecting) return;
+    _venueStatus = DataStatus.connecting;
+    venueError = null;
+    notifyListeners();
+    unawaited(_refreshVenueDirectory());
   }
 
   Future<void> _refreshExploreBands() async {
@@ -282,7 +355,9 @@ class AppState extends ChangeNotifier {
         );
       }
       notifyListeners();
-    } catch (_) {}
+    } catch (error) {
+      logError('searchBands', error);
+    }
   }
 
   void _cacheInteractions(Interactions interactions) {
@@ -312,22 +387,16 @@ class AppState extends ChangeNotifier {
 
   // ========================= navigation =========================
 
-  void go(Screen s, [String? param]) {
-    _stack = [..._stack, ScreenEntry(s, param)];
-    notifyListeners();
-  }
+  void go(Screen s, [String? param]) =>
+      _set(() => _stack = [..._stack, ScreenEntry(s, param)]);
 
   void back() {
     if (_stack.length > 1) {
-      _stack = _stack.sublist(0, _stack.length - 1);
-      notifyListeners();
+      _set(() => _stack = _stack.sublist(0, _stack.length - 1));
     }
   }
 
-  void resetTo(Screen s) {
-    _stack = [ScreenEntry(s)];
-    notifyListeners();
-  }
+  void resetTo(Screen s) => _set(() => _stack = [ScreenEntry(s)]);
 
   void openGig(String id) {
     if (current.screen == Screen.gig && current.param == id) return;
@@ -367,7 +436,7 @@ class AppState extends ChangeNotifier {
     go(Screen.auth);
   }
 
-  Future<void> login() async => await auth.signInDemo();
+  Future<void> login() async => auth.signInDemo();
 
   Future<void> signOut() async {
     await auth.signOut();
@@ -379,20 +448,22 @@ class AppState extends ChangeNotifier {
     profile = null;
     authed = false;
     // Per-band caches outlive the session otherwise, so signing in as someone
-    // else in the same process would show the previous user's unsaved edits.
-    _bandBioOverrides.clear();
-    _bandLinkIgOverrides.clear();
-    _bandLinkBcOverrides.clear();
+    // else in the same process would show the previous user's unsaved edits —
+    // or, worse, write them to their band.
+    for (final timer in _bandEditTimers.values) {
+      timer.cancel();
+    }
+    _bandEditTimers.clear();
+    _bandEdits.clear();
     _bandRoles.clear();
     _media?.clearForSignOut();
     resetTo(Screen.home);
     say('Signed out.');
   }
 
-  void toggleUserGenre(String g) {
-    userGenres.contains(g) ? userGenres.remove(g) : userGenres.add(g);
-    notifyListeners();
-  }
+  void toggleUserGenre(String g) => _set(
+    () => userGenres.contains(g) ? userGenres.remove(g) : userGenres.add(g),
+  );
 
   /// Where [leaveAuth] lands, decided by [commitAuth]; null pops back to
   /// wherever the auth gate was opened from.
@@ -402,13 +473,12 @@ class AppState extends ChangeNotifier {
   /// the action that triggered the gate. Runs before any celebration delay so
   /// backing out (or being killed) mid-splash can't drop the pending action.
   void commitAuth() {
-    if (repository is ConvexRepository) {
-      unawaited(
-        repository.setGenres(userGenres.toList()).catchError((Object _) {
-          say('Something broke — try again.');
-        }),
-      );
-    }
+    unawaited(
+      repository.setGenres(userGenres.toList()).catchError((Object error) {
+        logError('setGenres', error);
+        say(genericErrorMessage);
+      }),
+    );
 
     final p = pending;
     pending = null;
@@ -453,18 +523,30 @@ class AppState extends ChangeNotifier {
 
   // ========================= fan actions =========================
 
-  void toggleRsvp(String id) {
-    final wasOn = rsvps.contains(id);
-    wasOn ? rsvps.remove(id) : rsvps.add(id);
+  /// Flips [id] in [ids] on screen straight away and persists in the
+  /// background; a rejected write puts the flip back and says so. Returns
+  /// whether [id] ended up on.
+  bool _toggleOptimistically(
+    Set<String> ids,
+    String id,
+    Future<void> Function(String) persist,
+  ) {
+    final wasOn = ids.contains(id);
+    wasOn ? ids.remove(id) : ids.add(id);
     notifyListeners();
-    say(wasOn ? 'RSVP removed.' : "You're on the list. QR is in My Gigs.");
     unawaited(
-      repository.toggleRsvp(id).catchError((Object _) {
-        wasOn ? rsvps.add(id) : rsvps.remove(id);
-        say('Something broke — try again.');
-        notifyListeners();
+      persist(id).catchError((Object error) {
+        logError('toggle $id', error);
+        wasOn ? ids.add(id) : ids.remove(id);
+        say(genericErrorMessage); // notifies, so the roll-back shows
       }),
     );
+    return !wasOn;
+  }
+
+  void toggleRsvp(String id) {
+    final nowGoing = _toggleOptimistically(rsvps, id, repository.toggleRsvp);
+    say(nowGoing ? "You're on the list. QR is in My Gigs." : 'RSVP removed.');
   }
 
   void requestRsvp(String id) {
@@ -476,20 +558,10 @@ class AppState extends ChangeNotifier {
   }
 
   void toggleFollow(String id) {
-    final wasOn = follows.contains(id);
-    wasOn ? follows.remove(id) : follows.add(id);
-    notifyListeners();
-    if (!wasOn) {
+    if (_toggleOptimistically(follows, id, repository.toggleFollow)) {
       final name = band(id)?.name;
       say(name == null ? 'Band followed.' : 'Following $name.');
     }
-    unawaited(
-      repository.toggleFollow(id).catchError((Object _) {
-        wasOn ? follows.add(id) : follows.remove(id);
-        say('Something broke — try again.');
-        notifyListeners();
-      }),
-    );
   }
 
   void requestFollow(String id) {
@@ -501,24 +573,12 @@ class AppState extends ChangeNotifier {
   }
 
   void toggleSave(String id) {
-    final wasOn = saved.contains(id);
-    wasOn ? saved.remove(id) : saved.add(id);
-    notifyListeners();
-    unawaited(
-      repository.toggleSave(id).catchError((Object _) {
-        wasOn ? saved.add(id) : saved.remove(id);
-        say('Something broke — try again.');
-        notifyListeners();
-      }),
-    );
+    _toggleOptimistically(saved, id, repository.toggleSave);
   }
 
   // ========================= filters =========================
 
-  void setMapMode(bool on) {
-    mapMode = on;
-    notifyListeners();
-  }
+  void setMapMode(bool on) => _set(() => mapMode = on);
 
   void setCity(String c) {
     city = c;
@@ -529,25 +589,14 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  void toggleDateFilter(DateFilter f) {
-    fDate = fDate == f ? DateFilter.all : f;
-    notifyListeners();
-  }
+  void toggleDateFilter(DateFilter f) =>
+      _set(() => fDate = fDate == f ? DateFilter.all : f);
 
-  void toggleFree() {
-    fFree = !fFree;
-    notifyListeners();
-  }
+  void toggleFree() => _set(() => fFree = !fFree);
 
-  void toggleGenre(String g) {
-    fGenre = fGenre == g ? null : g;
-    notifyListeners();
-  }
+  void toggleGenre(String g) => _set(() => fGenre = fGenre == g ? null : g);
 
-  void setQuery(String q) {
-    query = q;
-    notifyListeners();
-  }
+  void setQuery(String q) => _set(() => query = q);
 
   // ========================= data access =========================
 
@@ -562,14 +611,61 @@ class AppState extends ChangeNotifier {
 
   Band? band(String id) => _bands[id];
 
+  /// A band's past gigs, or null until the first load lands. Kicks the load off
+  /// on first read; a failed load is not retried until [refreshBandHistory].
+  BandHistory? bandHistory(String id) {
+    final cached = _bandHistory[id];
+    if (cached != null) return cached;
+    if (!_bandHistoryTokens.containsKey(id) &&
+        !_bandHistoryErrors.containsKey(id)) {
+      unawaited(_loadBandHistory(id));
+    }
+    return null;
+  }
+
+  /// Why the last load for [id] failed, or null.
+  String? bandHistoryError(String id) => _bandHistoryErrors[id];
+
+  /// Clears any recorded failure and loads again — the RETRY affordance.
+  void refreshBandHistory(String id) {
+    _bandHistoryErrors.remove(id);
+    notifyListeners();
+    unawaited(_loadBandHistory(id));
+  }
+
+  Future<void> _loadBandHistory(String id) async {
+    final token = Object();
+    _bandHistoryTokens[id] = token;
+    try {
+      final loaded = await repository.bandHistory(id);
+      if (_disposed || !identical(_bandHistoryTokens[id], token)) return;
+      _bandHistory[id] = loaded;
+      _bandHistoryErrors.remove(id);
+    } catch (error) {
+      logError('bandHistory', error);
+      if (_disposed || !identical(_bandHistoryTokens[id], token)) return;
+      _bandHistoryErrors[id] = '$error';
+    } finally {
+      if (!_disposed && identical(_bandHistoryTokens[id], token)) {
+        _bandHistoryTokens.remove(id);
+        notifyListeners();
+      }
+    }
+  }
+
   String roleFor(String id) => _bandRoles[id] ?? 'member';
 
   bool isAdminOf(String id) => _bandRoles[id] == 'admin';
 
-  Venue venue(String id) => _venues[id] ?? _unknownVenue;
+  Venue venue(String id) => _venues[id] ?? _venueDirectory[id] ?? _unknownVenue;
 
-  /// Every venue the feed knows about — shared records bands pick from.
-  List<Venue> get venues => _venues.values.toList();
+  /// Every venue the app knows: the curated table plus whatever the live feed
+  /// carries. Feed rows win on id — they are realtime. Name-ordered, one entry
+  /// per id; this is the only venue list any screen reads.
+  List<Venue> get venues {
+    final merged = <String, Venue>{..._venueDirectory, ..._venues};
+    return merged.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+  }
 
   static const _unknownVenue = Venue(
     id: '',
@@ -597,17 +693,17 @@ class AppState extends ChangeNotifier {
   /// RSVP count shown to bands: base demo count plus this user's RSVP.
   int rsvpCount(Gig g) => g.going + (rsvps.contains(g.id) ? 1 : 0);
 
-  String bioFor(String id) {
-    return _bandBioOverrides[id] ?? band(id)?.bio ?? '';
-  }
+  /// The user's own unsaved edit if there is one, else what the server holds.
+  String _bandFieldFor(String id, _BandField field, String? stored) =>
+      _bandEdits[(id, field)] ?? stored ?? '';
 
-  String linkIgFor(String id) {
-    return _bandLinkIgOverrides[id] ?? band(id)?.linkIg ?? '';
-  }
+  String bioFor(String id) => _bandFieldFor(id, _BandField.bio, band(id)?.bio);
 
-  String linkBcFor(String id) {
-    return _bandLinkBcOverrides[id] ?? band(id)?.linkBc ?? '';
-  }
+  String linkIgFor(String id) =>
+      _bandFieldFor(id, _BandField.linkIg, band(id)?.linkIg);
+
+  String linkBcFor(String id) =>
+      _bandFieldFor(id, _BandField.linkBc, band(id)?.linkBc);
 
   void retry() {
     _dataStatus = DataStatus.connecting;
@@ -640,37 +736,55 @@ class AppState extends ChangeNotifier {
 
   void toFanView() => resetTo(Screen.home);
 
-  void setBandBio(String v) {
-    if (bandId.isEmpty) return;
-    _bandBioOverrides[bandId] = v;
-    unawaited(
-      repository
-          .updateBandProfile(bandId: bandId, bio: v)
-          .catchError((Object _) {}),
-    );
+  void setBandBio(String v) => _editBandField(_BandField.bio, v);
+
+  void setLinkIg(String v) => _editBandField(_BandField.linkIg, v);
+
+  void setLinkBc(String v) => _editBandField(_BandField.linkBc, v);
+
+  /// Shows what was typed at once, then persists once typing pauses. These are
+  /// wired to `onChanged`, so writing on every keystroke would be one mutation
+  /// per character.
+  void _editBandField(_BandField field, String value) {
+    final id = bandId;
+    if (id.isEmpty) return;
+
+    final key = (id, field);
+    _bandEdits[key] = value;
     notifyListeners();
+
+    _bandEditTimers.remove(key)?.cancel();
+    _bandEditTimers[key] = Timer(_bandEditDebounce, () {
+      _bandEditTimers.remove(key);
+      unawaited(_persistBandField(id, field, value));
+    });
   }
 
-  void setLinkIg(String v) {
-    if (bandId.isEmpty) return;
-    _bandLinkIgOverrides[bandId] = v;
-    unawaited(
-      repository
-          .updateBandProfile(bandId: bandId, linkIg: v)
-          .catchError((Object _) {}),
-    );
-    notifyListeners();
-  }
-
-  void setLinkBc(String v) {
-    if (bandId.isEmpty) return;
-    _bandLinkBcOverrides[bandId] = v;
-    unawaited(
-      repository
-          .updateBandProfile(bandId: bandId, linkBc: v)
-          .catchError((Object _) {}),
-    );
-    notifyListeners();
+  Future<void> _persistBandField(
+    String id,
+    _BandField field,
+    String value,
+  ) async {
+    try {
+      await switch (field) {
+        _BandField.bio => repository.updateBandProfile(bandId: id, bio: value),
+        _BandField.linkIg => repository.updateBandProfile(
+          bandId: id,
+          linkIg: value,
+        ),
+        _BandField.linkBc => repository.updateBandProfile(
+          bandId: id,
+          linkBc: value,
+        ),
+      };
+    } catch (error) {
+      logError('updateBandProfile', error);
+      // Keeping the override would leave text on screen that was never saved.
+      // Dropping it falls back to the server's value, so what is shown is what
+      // exists — unless the user has typed on since, which supersedes this.
+      if (_bandEdits[(id, field)] == value) _bandEdits.remove((id, field));
+      say(genericErrorMessage); // notifies, so the drop shows
+    }
   }
 
   // ========================= band create =========================
@@ -698,47 +812,25 @@ class AppState extends ChangeNotifier {
     _nbCreatedSlug = null;
   }
 
-  void setNbName(String v) {
-    nbName = v;
-    notifyListeners();
-  }
+  void setNbName(String v) => _set(() => nbName = v);
 
-  void setNbBio(String v) {
-    nbBio = v;
-    notifyListeners();
-  }
+  void setNbBio(String v) => _set(() => nbBio = v);
 
   void setNbArea(String v) {
     final area = v.trim();
     if (area.isEmpty) return;
-    nbArea = area;
-    notifyListeners();
+    _set(() => nbArea = area);
   }
 
-  void setNbIg(String v) {
-    nbIg = v;
-    notifyListeners();
-  }
+  void setNbIg(String v) => _set(() => nbIg = v);
 
-  void setNbBc(String v) {
-    nbBc = v;
-    notifyListeners();
-  }
+  void setNbBc(String v) => _set(() => nbBc = v);
 
-  void setNbYt(String v) {
-    nbYt = v;
-    notifyListeners();
-  }
+  void setNbYt(String v) => _set(() => nbYt = v);
 
-  void setNbLabel(String key) {
-    nbLabel = key;
-    notifyListeners();
-  }
+  void setNbLabel(String key) => _set(() => nbLabel = key);
 
-  void setNbPhoto(PickedMedia? photo) {
-    nbPhoto = photo;
-    notifyListeners();
-  }
+  void setNbPhoto(PickedMedia? photo) => _set(() => nbPhoto = photo);
 
   void toggleNbGenre(String g) {
     if (nbGenres.contains(g)) {
@@ -760,8 +852,7 @@ class AppState extends ChangeNotifier {
       say('Three genres max.');
       return;
     }
-    nbGenres.add(g);
-    notifyListeners();
+    _set(() => nbGenres.add(g));
   }
 
   void addNbInvite(String raw) {
@@ -769,14 +860,10 @@ class AppState extends ChangeNotifier {
     if (n.isEmpty) return;
     final handle = n.startsWith('@') ? n : '@$n';
     if (nbInvites.contains(handle)) return;
-    nbInvites.add(handle);
-    notifyListeners();
+    _set(() => nbInvites.add(handle));
   }
 
-  void removeNbInvite(String handle) {
-    nbInvites.remove(handle);
-    notifyListeners();
-  }
+  void removeNbInvite(String handle) => _set(() => nbInvites.remove(handle));
 
   bool get canCreateBand =>
       nbName.trim().isNotEmpty && nbGenres.isNotEmpty && nbArea != null;
@@ -804,10 +891,7 @@ class AppState extends ChangeNotifier {
   }
 
   String get nbSlug {
-    final slug = (nbName.trim().isEmpty ? 'your-band' : nbName)
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final slug = _slugify(nbName.trim().isEmpty ? 'your-band' : nbName);
     return slug.isEmpty ? 'your-band' : slug;
   }
 
@@ -892,8 +976,8 @@ class AppState extends ChangeNotifier {
         _nbCreatedSlug = created.slug;
       }
     } on Exception catch (error) {
-      debugPrint('createBand failed: $error');
-      say('Something broke — try again.');
+      logError('createBand', error);
+      say(genericErrorMessage);
       return;
     } finally {
       // Notifies on the failure path too, so the bar leaves its pending state
@@ -941,15 +1025,9 @@ class AppState extends ChangeNotifier {
   }
 
   /// "Keep editing" — back to the tape with everything still filled in.
-  void editCreatedBand() {
-    nbCreated = false;
-    notifyListeners();
-  }
+  void editCreatedBand() => _set(() => nbCreated = false);
 
-  void makeAnotherBand() {
-    _resetBandForm();
-    notifyListeners();
-  }
+  void makeAnotherBand() => _set(_resetBandForm);
 
   /// The created view's headline action: straight into posting a gig.
   void postFirstGig() {
@@ -969,72 +1047,36 @@ class AppState extends ChangeNotifier {
     go(Screen.gigCreate);
   }
 
-  void setGfName(String v) {
-    gfName = v;
-    notifyListeners();
-  }
+  void setGfName(String v) => _set(() => gfName = v);
 
   /// Tapping the selected day again clears it, as in the design.
-  void setGfDate(DateTime? v) {
-    gfDate = v == null || v == gfDate ? null : v;
-    notifyListeners();
-  }
+  void setGfDate(DateTime? v) =>
+      _set(() => gfDate = v == null || v == gfDate ? null : v);
 
-  void setGfDoors(TimeOfDay v) {
-    gfDoors = v;
-    notifyListeners();
-  }
+  void setGfDoors(TimeOfDay v) => _set(() => gfDoors = v);
 
-  void setGfVenue(String v) {
-    gfVenueId = v;
-    notifyListeners();
-  }
+  void setGfVenue(String v) => _set(() => gfVenueId = v);
 
-  void setGfPrice(String v) {
-    gfPrice = v;
-    notifyListeners();
-  }
+  void setGfPrice(String v) => _set(() => gfPrice = v);
 
-  void setGfTix(Ticketing t) {
-    gfTix = t;
-    notifyListeners();
-  }
+  void setGfTix(Ticketing t) => _set(() => gfTix = t);
 
-  void setGfCap(String v) {
-    gfCap = v;
-    notifyListeners();
-  }
+  void setGfCap(String v) => _set(() => gfCap = v);
 
-  void setGfExt(String v) {
-    gfExt = v;
-    notifyListeners();
-  }
+  void setGfExt(String v) => _set(() => gfExt = v);
 
-  void setGfFly(String key) {
-    gfFly = key;
-    notifyListeners();
-  }
+  void setGfFly(String key) => _set(() => gfFly = key);
 
-  void setGfFlyerArt(PickedMedia? art) {
+  void setGfFlyerArt(PickedMedia? art) => _set(() {
     gfFlyerArt = art;
     gfFlyerStorageId = null;
-    notifyListeners();
-  }
+  });
 
-  void setGfFlyerUploading(bool v) {
-    gfFlyerUploading = v;
-    notifyListeners();
-  }
+  void setGfFlyerUploading(bool v) => _set(() => gfFlyerUploading = v);
 
-  void setGfFlyerStorageId(String? id) {
-    gfFlyerStorageId = id;
-    notifyListeners();
-  }
+  void setGfFlyerStorageId(String? id) => _set(() => gfFlyerStorageId = id);
 
-  void toggleGfOverlay() {
-    gfOverlay = !gfOverlay;
-    notifyListeners();
-  }
+  void toggleGfOverlay() => _set(() => gfOverlay = !gfOverlay);
 
   /// Band-supplied art rather than one of the presses.
   bool get gfCustomFlyer => gfFly == 'custom';
@@ -1062,10 +1104,7 @@ class AppState extends ChangeNotifier {
   ];
 
   String get gigUrl {
-    final slug = (gfName.trim().isEmpty ? 'your-gig' : gfName.trim())
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-        .replaceAll(RegExp(r'^-+|-+$'), '');
+    final slug = _slugify(gfName.trim().isEmpty ? 'your-gig' : gfName.trim());
     return 'earplug.app/g/${slug.isEmpty ? 'your-gig' : slug}';
   }
 
@@ -1102,8 +1141,8 @@ class AppState extends ChangeNotifier {
         cap: gfCap,
       );
     } on Exception catch (error) {
-      debugPrint('publishGig failed: $error');
-      say('Something broke — try again.');
+      logError('publishGig', error);
+      say(genericErrorMessage);
       return;
     }
 
@@ -1112,22 +1151,15 @@ class AppState extends ChangeNotifier {
   }
 
   /// "Keep editing" — back to the form with everything still filled in.
-  void editPublishedGig() {
-    gfPublished = false;
-    notifyListeners();
-  }
+  void editPublishedGig() => _set(() => gfPublished = false);
 
-  void makeAnotherGig() {
-    _resetGigForm();
-    notifyListeners();
-  }
+  void makeAnotherGig() => _set(_resetGigForm);
 
   /// The ✕ in the header: done here, back to the gig manager.
-  void closeGigCreate() {
+  void closeGigCreate() => _set(() {
     _resetGigForm();
     _stack = const [ScreenEntry(Screen.gigMgr)];
-    notifyListeners();
-  }
+  });
 
   void _resetGigForm() {
     gfName = '';
@@ -1147,28 +1179,18 @@ class AppState extends ChangeNotifier {
   }
 }
 
-const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const _monthNames = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
+/// The URL form of a name: lowercased, with every run of anything else a dash.
+String _slugify(String value) => value
+    .toLowerCase()
+    .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+    .replaceAll(RegExp(r'^-+|-+$'), '');
 
 /// "Sat Aug 15".
 String dateLabel(DateTime d) =>
-    '${_weekdayNames[d.weekday - 1]} ${_monthNames[d.month - 1]} ${d.day}';
+    '${weekdayNames[d.weekday - 1]} ${monthNames[d.month - 1]} ${d.day}';
 
 /// "Aug 2026".
-String monthLabel(DateTime d) => '${_monthNames[d.month - 1]} ${d.year}';
+String monthLabel(DateTime d) => '${monthNames[d.month - 1]} ${d.year}';
 
 /// "8PM" / "9:30PM" — the form the rest of the app stores doors times in.
 String timeLabel(TimeOfDay t) {

@@ -170,6 +170,43 @@ describe("users:ensureUser", () => {
     expect(users.length).toBe(3); // fresh row, neither dup adopted
     expect(users.filter((u) => u.clerkId === "user_dup_new").length).toBe(1);
   });
+
+  test("skips blank-email backfill when another row holds the address", async () => {
+    const t = convexTest(schema);
+    const blankId = await t.run(async (ctx) => {
+      const blankId = await ctx.db.insert("users", {
+        clerkId: "user_blank_collision",
+        name: "Blank Email",
+        email: "",
+        genres: [],
+        attendedCount: 0,
+      });
+      await ctx.db.insert("users", {
+        clerkId: "user_email_owner",
+        name: "Email Owner",
+        email: "shared@example.com",
+        genres: [],
+        attendedCount: 0,
+      });
+      return blankId;
+    });
+
+    const asBlank = t.withIdentity({
+      subject: "user_blank_collision",
+      email: "shared@example.com",
+    });
+    const result = await asBlank.mutation(api.users.ensureUser, {});
+
+    expect(result.userId).toBe(blankId);
+    expect((await t.run(async (ctx) => ctx.db.get(blankId)))?.email).toBe("");
+  });
+});
+
+describe("users:me", () => {
+  test("is null when unauthenticated, never a throw", async () => {
+    const t = convexTest(schema);
+    expect(await t.query(api.users.me, {})).toBeNull();
+  });
 });
 
 describe("users:setGenres", () => {

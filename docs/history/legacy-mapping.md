@@ -1,4 +1,121 @@
-# Legacy data model → new contract: migration mapping
+# Legacy → v1 data migration — post-mortem
+
+> **STATUS: COMPLETE. This is history, not a plan.**
+> Development migrated 2026-07-29, production migrated 2026-07-30. The code
+> that performed both migrations has been deleted from the working tree; §R
+> below is how to get it back. Nothing in this document describes work that is
+> still outstanding, and nothing in it should be used to plan new work — the
+> current contract is [`../backend-contract.md`](../backend-contract.md).
+
+Both surviving EarPlug deployments ran the *legacy* app: a much larger product
+(booking marketplace, DMs, friends, QR tickets and door check-in, Spotify sync,
+event co-hosts) across 141 Convex functions, identical between dev and prod.
+The v1 rebuild froze a far smaller contract, so the legacy rows had to be
+reshaped in place rather than re-created. Both deployments were migrated
+successfully with no data loss beyond what the v1 contract deliberately drops:
+prod ended at 287 users / 11 bands / 12 venues / 14 gigs / 275 RSVPs, dev at 33
+users / 6 bands / 4 venues / 1 gig / 25 RSVPs, zero dangling references on
+either. The only residue is 21 emptied legacy tables that survive as undeclared
+empty shells, because removing a table from `schema.ts` does not drop it.
+
+The forward-looking mapping that was written before any of this ran is
+preserved verbatim below the divider, as **historical context**.
+
+---
+
+# Part 1 — Outcome
+
+## Production `decisive-iguana-759` — migrated 2026-07-30
+
+Prod held the real user base (see §7 for how that was established while its rows
+were still unreadable). It was migrated in place by a prod-specific
+`migrations:migrateAll` + `migrations:purgeLegacy`.
+
+Deviations from the dev design below:
+
+- Clerk linkage needed **no email fallback** — 287/287 rows carried unique live-
+  instance clerkIds.
+- All 14 past events, 275 rsvps, 5 likes and 12 venues **were** migrated (dev
+  dropped its equivalents).
+- `bandMediaSlots` plus band profile images became 40 `bandMedia` rows.
+- `area` is the bare city (`"Berkeley"` / `"Oakland"`), not `"Berkeley, CA"`.
+- `followerCount` = savedArtists + memberships.
+- Migrated gigs briefly carried a `legacyEventId` for idempotency and purge
+  guards; `purgeLegacy` stripped it.
+
+**Final prod state:** 287 users, 11 bands, 12 venues, 14 gigs, 19 bandMembers,
+17 follows, 275 gigRsvps, 5 gigSaves, 40 bandMedia. All 54 storage blobs are
+referenced (`media:sweepOrphanBlobs` dry run reported `wouldDelete: 0`).
+
+## Development `brilliant-cardinal-773` — migrated 2026-07-29
+
+- **Phase 1** — `migrations:migrateAll` reshaped users/bands/venues in place and
+  moved `bandMemberships`→`bandMembers`, `savedArtists`→`follows`,
+  `bandMediaSlots`→`videos`, and the launch-night `events` row→`gigs`.
+- **Phase 2** — `cleanup:cleanupAll` recovered the 25 launch-night RSVPs still
+  stranded in `rsvps`, collapsed 4 duplicate accounts onto 1, and deleted the
+  seeded demo content (6 bands / 6 venues / 7 gigs / 5 videos), the `test band`
+  and e2e rows, and 124 rows across 11 superseded tables.
+- **Then** `schema.ts` dropped the legacy tables and promoted every backfilled
+  field to required.
+
+**Final dev state:** 33 users, 6 bands, 4 venues, 1 gig, 25 gigRsvps, 8 follows,
+12 bandMembers, 4 videos. Zero dangling references.
+
+The `videos` table was itself later folded into `bandMedia`; see the
+`v1.1 — band media` note in [`../backend-contract.md`](../backend-contract.md).
+
+## How the open questions were decided
+
+The mapping below refers to these by number. All are settled.
+
+| | Question | Decision |
+|---|---|---|
+| **Q0** | dev or prod? | **Both**, in sequence — dev first (prod was left frozen and out of scope until 2026-07-30). |
+| **Q1** | empty `email` on 25 dev users | Backfill from the Clerk identity on adoption. |
+| **Q2** | avatars / band images with no home in v1 | Keep the storage ids in optional fields; do not sweep. |
+| **Q3** | delete the obvious test rows | Yes. |
+| **Q4** | `area` format | Dev `"Berkeley, CA"`; prod used the bare city. |
+| **Q5** | migrate `savedArtists` → follows | Yes. **Q5b:** park the non-Instagram links in `legacySocialLinks`. |
+| **Q6** | `bandMediaSlots` | Map the videos across; keep the band image storage ids. |
+| **Q7** | the 4 legacy dev venues | Keep the real ones, drop the demo ones. On prod all 12 venues migrated. |
+| **Q8** | port "EARPLUG LAUNCH NIGHT" as a past gig | Yes, ported. |
+
+## §R — Recovering the migration code
+
+Every migration was written as one-shot code and deleted after it ran. The
+deletion commits, newest first:
+
+| Commit | Deleted | What it migrated |
+|---|---|---|
+| `579e2be` | `convex/migrations.ts` (+ test) | Prod `migrateAll` / `purgeLegacy` |
+| `d1a271a` | `convex/migrations.ts` (+ test), `convex/videos.ts` | `videos` → `bandMedia`, legacy band photos |
+| `4b5c819` | `convex/migrations.ts`, `convex/cleanup.ts` (+ tests) | Dev phase 1 and phase 2 |
+
+Read a file back with the commit's parent, e.g.
+
+```sh
+git show 579e2be^:convex/migrations.ts
+git show 4b5c819^:convex/cleanup.ts
+```
+
+## Known leftover
+
+Removing a table from `schema.ts` does not drop it. The 21 emptied legacy tables
+still exist as empty shells on both deployments. They are undeclared,
+unreachable from code, and harmless — but deleting them is a dashboard-only
+action the CLI cannot perform.
+
+---
+---
+
+# Part 2 — Historical context: the mapping as written 2026-07-28
+
+> Everything from here down is the **original forward-looking plan**, kept for
+> the record of what the legacy schema contained and how each table was mapped.
+> It is written in the future tense and its recommendations and open questions
+> have since been superseded by Part 1. Where the two disagree, Part 1 is what
+> actually happened.
 
 Discovered 2026-07-28 by read-only inspection (Convex MCP) of the two surviving
 EarPlug deployments. Target shapes are the frozen contract in
@@ -12,38 +129,6 @@ EarPlug deployments. Target shapes are the frozen contract in
 Both deployments run the **identical last build** of the legacy app: 141 functions,
 zero diff between dev and prod. The legacy app was far bigger than the new v1
 (booking marketplace, DMs, friends, tickets/check-in, Spotify sync, co-hosts).
-
----
-
-## 0. Outcome (2026-07-29) — migration complete
-
-Everything below is the *design record*. Both phases have now run against
-`dev:brilliant-cardinal-773`, and the code that ran them has been deleted
-(`convex/migrations.ts`, `convex/cleanup.ts` — recoverable from git).
-
-- **Phase 1** — `migrations:migrateAll` reshaped users/bands/venues in place and
-  moved `bandMemberships`→`bandMembers`, `savedArtists`→`follows`,
-  `bandMediaSlots`→`videos`, and the launch-night `events` row→`gigs`.
-- **Phase 2** — `cleanup:cleanupAll` recovered the 25 launch-night RSVPs still
-  stranded in `rsvps`, collapsed 4 duplicate accounts onto 1, and deleted the
-  seeded demo content (6 bands / 6 venues / 7 gigs / 5 videos), the `test band`
-  and e2e rows, and 124 rows across 11 superseded tables.
-- **Then** `schema.ts` dropped the legacy tables and promoted every backfilled
-  field to required.
-
-Final dev state: **33 users, 6 bands, 4 venues, 1 gig, 25 gigRsvps, 8 follows,
-12 bandMembers, 4 videos.** Zero dangling references.
-
-Answers to the open questions in §9: Q0 dev (prod out of scope, left frozen);
-Q1 backfill from the Clerk identity on adoption; Q2 keep the storage ids;
-Q3 yes; Q4 "Berkeley, CA"; Q5 yes + park the extra links in
-`legacySocialLinks`; Q6 map videos across, keep image ids on the band;
-Q7 keep the 4 real venues and drop the demo ones; Q8 yes, ported.
-
-**Known leftover:** removing a table from `schema.ts` does not drop it. The 21
-emptied legacy tables still exist as empty shells in the deployment. They are
-undeclared, unreachable from code, and harmless — but deleting them is a
-dashboard-only action the CLI can't do.
 
 ---
 
@@ -237,6 +322,10 @@ users' clerkIds belong to a different (live) Clerk instance than the new app's
 email — whose coverage on prod is unknown. **This needs an explicit user
 decision before any migration runs.**
 
+*(Resolved: prod was indeed the real user base, and was migrated on 2026-07-30
+against its own live Clerk instance — where clerkId coverage turned out to be
+287/287, so the email fallback was never needed. See Part 1.)*
+
 ---
 
 ## 8. Migration risks
@@ -270,28 +359,3 @@ decision before any migration runs.**
    endpoint registered, it will 404 (or worse, half-create users) once the new
    code replaces `http.ts` — unregister it or reimplement; the new contract
    relies on client-called `ensureUser` instead.
-
----
-
-## 9. Open questions needing user judgment
-
-- **Q0 (blocking): dev or prod?** Is the data you want to keep the dev beta set
-  (36 users / 7 bands, mapped above) or the prod set (unreadable to us, but
-  showing the real event/attendance activity)? If prod: we need a prod export
-  and a Clerk-instance/email strategy before this mapping can be finalized.
-- **Q1:** empty `email` on 25 users — store `""`, or have `ensureUser` backfill
-  from the Clerk identity on adoption (recommended)?
-- **Q2:** band images and user avatars have no home in the new contract — keep
-  the storage ids in optional fields for v2, or drop and sweep storage?
-- **Q3:** delete the obvious test rows ("Test Band", its owner, "Test Event",
-  "TEST TEST") during migration?
-- **Q4:** `area` format — "Berkeley, CA" (recommended) or "Berkeley"?
-- **Q5:** migrate `savedArtists` → follows (recommended yes); and (Q5b) park the
-  non-Instagram social links (`spotify`/`appleMusic`/`tiktok`/`youtube`/
-  `website` — Whalefall has all of them) in an optional field, or lose them?
-- **Q6:** `bandMediaSlots` (5 storage-backed photos/videos) — map the video ones
-  into the new `videos` table with synthesized titles/zero views, or drop?
-- **Q7:** migrate the 4 legacy venues (frat houses + raw addresses) or start
-  from `seed:seedDemo` venues?
-- **Q8:** port "EARPLUG LAUNCH NIGHT" (Apr 2026, 25 RSVPs) as a past gig so
-  EARPLUG's `pastShows` isn't empty, or start with a clean gig history?

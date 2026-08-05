@@ -1,14 +1,15 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart' show TimeOfDay;
-import 'package:flutter_test/flutter_test.dart';
-
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/convex_repository.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:flutter/material.dart' show TimeOfDay;
+import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
 void main() {
   group('AppState', () {
@@ -16,6 +17,44 @@ void main() {
       final app = await _demoApp();
       expect(app.current.screen, Screen.home);
       expect(app.feed.length, 7);
+    });
+
+    test('venue directory merges into one sorted, resolvable list', () async {
+      final repository = _DirectoryMergeRepository(auth: FakeAuthService());
+      final app = await _demoApp(repository: repository);
+      final venues = app.venues;
+      final ids = venues.map((venue) => venue.id).toList();
+      final names = venues.map((venue) => venue.name).toList();
+      final sortedNames = List<String>.of(names)..sort();
+
+      expect(ids, contains(_extraVenue.id));
+      expect(ids.toSet(), hasLength(ids.length));
+      expect(names, orderedEquals(sortedNames));
+      expect(app.venue(_extraVenue.id).name, _extraVenue.name);
+    });
+
+    test('realtime feed venue wins a directory id conflict', () async {
+      final repository = _ConflictingVenueRepository(auth: FakeAuthService());
+      final app = await _demoApp(repository: repository);
+      final feedVenue = DemoData.venues['v1']!;
+
+      expect(app.venue('v1').name, feedVenue.name);
+      expect(
+        app.venues.singleWhere((venue) => venue.id == 'v1').name,
+        feedVenue.name,
+      );
+    });
+
+    test('a failed venue directory leaves feed venues intact', () async {
+      final repository = _FailedVenueRepository(auth: FakeAuthService());
+      final app = await _demoApp(repository: repository);
+
+      expect(app.venueStatus, DataStatus.error);
+      expect(app.venueError, isNotNull);
+      expect(
+        app.venues.map((venue) => venue.id),
+        containsAll(DemoData.venues.keys),
+      );
     });
 
     test('filters combine: free + tonight', () async {
@@ -221,6 +260,56 @@ void main() {
       expect(app.rsvps, isNot(contains('g1')));
       expect(app.toast, 'Something broke — try again.');
     });
+
+    test(
+      'a burst of bio keystrokes persists once, not per character',
+      () async {
+        final repository = _CountingProfileRepository(auth: FakeAuthService());
+        final app = await _demoApp(repository: repository);
+        app.switchToBand('b1');
+
+        for (final draft in ['W', 'We', 'We p', 'We play']) {
+          app.setBandBio(draft);
+        }
+        // Shown immediately; nothing written yet.
+        expect(app.bioFor('b1'), 'We play');
+        expect(repository.profileCalls, 0);
+
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        expect(repository.profileCalls, 1);
+        expect(repository.lastBio, 'We play');
+      },
+    );
+
+    test(
+      'a failed bio write drops the override instead of faking a save',
+      () async {
+        final repository = _CountingProfileRepository(auth: FakeAuthService())
+          ..fail = true;
+        final app = await _demoApp(repository: repository);
+        app.switchToBand('b1');
+        final serverBio = app.bioFor('b1');
+
+        app.setBandBio('never lands');
+        expect(app.bioFor('b1'), 'never lands');
+
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        await pumpEventQueue();
+        expect(app.bioFor('b1'), serverBio);
+        expect(app.toast, 'Something broke — try again.');
+      },
+    );
+
+    test('genre picks persist in demo mode too', () async {
+      final repository = _CountingProfileRepository(auth: FakeAuthService());
+      final app = await _demoApp(repository: repository);
+
+      app.toggleUserGenre('punk');
+      app.commitAuth();
+      await pumpEventQueue();
+
+      expect(repository.storedGenres, ['punk']);
+    });
   });
 
   group('Gig date derivations', () {
@@ -372,15 +461,107 @@ void main() {
   });
 }
 
-Future<AppState> _demoApp() async {
+Future<AppState> _demoApp({DemoRepository? repository}) async {
   final auth = FakeAuthService();
   final app = AppState(
-    repository: DemoRepository(auth: auth),
+    repository: repository ?? DemoRepository(auth: auth),
     auth: auth,
   );
   addTearDown(app.dispose);
   await pumpEventQueue();
   return app;
+}
+
+const _extraVenue = Venue(
+  id: 'v-extra',
+  name: 'Derby Street House',
+  area: 'South Berkeley',
+  addr: '2863 Derby St, Berkeley',
+  distSF: '10.2 mi',
+  distOak: '4.8 mi',
+  point: LatLng(37.8614, -122.2508),
+);
+
+class _DirectoryMergeRepository extends DemoRepository {
+  _DirectoryMergeRepository({required super.auth});
+
+  @override
+  Future<List<Venue>> venues() async => [
+    ...DemoData.venues.values,
+    _extraVenue,
+  ];
+}
+
+class _ConflictingVenueRepository extends DemoRepository {
+  _ConflictingVenueRepository({required super.auth});
+
+  static const _directoryVersion = Venue(
+    id: 'v1',
+    name: 'Stale Directory Name',
+    area: 'Mission, SF',
+    addr: '2455 Harrison St, San Francisco',
+    distSF: '0.8 mi',
+    distOak: '6.3 mi',
+    point: LatLng(37.7524, -122.4180),
+  );
+
+  @override
+  Future<List<Venue>> venues() async => [
+    for (final venue in DemoData.venues.values)
+      if (venue.id == 'v1') _directoryVersion else venue,
+  ];
+}
+
+class _FailedVenueRepository extends DemoRepository {
+  _FailedVenueRepository({required super.auth});
+
+  @override
+  Future<List<Venue>> venues() async => throw Exception('venues failed');
+}
+
+/// Counts profile writes so the debounce is observable, and can fail them on
+/// request. Everything else stays real demo behaviour.
+class _CountingProfileRepository extends DemoRepository {
+  _CountingProfileRepository({required super.auth});
+
+  int profileCalls = 0;
+  String? lastBio;
+  List<String> storedGenres = const [];
+  bool fail = false;
+
+  @override
+  Future<void> updateBandProfile({
+    required String bandId,
+    String? name,
+    List<String>? genres,
+    String? area,
+    String? bio,
+    List<String>? inviteHandles,
+    String? linkIg,
+    String? linkBc,
+    String? linkYt,
+  }) async {
+    profileCalls++;
+    if (fail) throw Exception('updateBandProfile failed');
+    lastBio = bio ?? lastBio;
+    return super.updateBandProfile(
+      bandId: bandId,
+      name: name,
+      genres: genres,
+      area: area,
+      bio: bio,
+      inviteHandles: inviteHandles,
+      linkIg: linkIg,
+      linkBc: linkBc,
+      linkYt: linkYt,
+    );
+  }
+
+  @override
+  Future<void> setGenres(List<String> genres) async {
+    storedGenres = List.of(genres);
+    return super.setGenres(genres);
+  }
 }
 
 /// The minimum the create bar needs before it will fire.
@@ -417,6 +598,12 @@ class _GatedCreateRepository extends _FailingRsvpRepository {
 }
 
 class _FailingRsvpRepository implements EarplugRepository {
+  @override
+  Future<void> refreshAuth() async {}
+
+  @override
+  Future<UserProfile?> me() async => null;
+
   @override
   Stream<FeedSnapshot> feed() => const Stream.empty();
 
@@ -462,6 +649,12 @@ class _FailingRsvpRepository implements EarplugRepository {
 
   @override
   Future<List<PastGig>> history() async => const [];
+
+  @override
+  Future<BandHistory> bandHistory(String bandId) async => BandHistory.empty;
+
+  @override
+  Future<List<Venue>> venues() async => const [];
 
   @override
   Future<Band?> band(String bandId) async => null;
