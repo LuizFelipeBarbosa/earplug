@@ -6,6 +6,7 @@ export type ClerkUserFacts = {
   email: string;
   emailVerified: boolean;
   name?: string;
+  updatedAt?: number;
 };
 
 type PrimaryEmailFacts = {
@@ -56,6 +57,9 @@ export function clerkUserFacts(data: unknown): ClerkUserFacts | null {
     email: primaryEmail?.email ?? "",
     emailVerified: primaryEmail?.verified ?? false,
     ...(name === "" ? {} : { name }),
+    ...(typeof user.updated_at === "number"
+      ? { updatedAt: user.updated_at }
+      : {}),
   };
 }
 
@@ -107,32 +111,52 @@ export async function upsertUserFromClerk(
 ): Promise<{
   userId: Id<"users">;
   outcome: "created" | "adopted_by_clerk_id" | "adopted_by_email";
+  emailConflict: boolean;
 }> {
   const byClerkId = await ctx.db
     .query("users")
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", facts.clerkId))
     .unique();
   if (byClerkId !== null) {
-    if (
-      (byClerkId.email === "" && facts.email !== "") ||
-      (opts.emailIsAuthoritative === true &&
-        facts.email !== "" &&
-        facts.email !== byClerkId.email)
-    ) {
-      await safeSetEmail(ctx, byClerkId._id, facts.email);
+    let emailConflict = false;
+    const shouldFillBlankEmail = byClerkId.email === "" && facts.email !== "";
+    // Clerk's timestamp prevents an out-of-order Svix retry from restoring a
+    // stale email over one from a newer webhook.
+    const shouldOverwriteAuthoritativeEmail =
+      opts.emailIsAuthoritative === true &&
+      facts.email !== "" &&
+      facts.email !== byClerkId.email &&
+      (facts.updatedAt === undefined ||
+        facts.updatedAt >= (byClerkId.clerkUpdatedAt ?? 0));
+    if (shouldFillBlankEmail || shouldOverwriteAuthoritativeEmail) {
+      emailConflict = !(await safeSetEmail(ctx, byClerkId._id, facts.email));
     }
 
-    const patch: { name?: string; deletedAt?: undefined } = {};
+    const patch: {
+      name?: string;
+      deletedAt?: undefined;
+      clerkUpdatedAt?: number;
+    } = {};
     if (byClerkId.name === "" && facts.name !== undefined) {
       patch.name = facts.name;
     }
     if (byClerkId.deletedAt !== undefined) {
       patch.deletedAt = undefined;
     }
+    if (
+      facts.updatedAt !== undefined &&
+      facts.updatedAt > (byClerkId.clerkUpdatedAt ?? -1)
+    ) {
+      patch.clerkUpdatedAt = facts.updatedAt;
+    }
     if (Object.keys(patch).length > 0) {
       await ctx.db.patch(byClerkId._id, patch);
     }
-    return { userId: byClerkId._id, outcome: "adopted_by_clerk_id" };
+    return {
+      userId: byClerkId._id,
+      outcome: "adopted_by_clerk_id",
+      emailConflict,
+    };
   }
 
   if (facts.email !== "" && facts.emailVerified) {
@@ -147,8 +171,16 @@ export async function upsertUserFromClerk(
         ...(adopted.name === "" && facts.name !== undefined
           ? { name: facts.name }
           : {}),
+        ...(facts.updatedAt !== undefined &&
+        facts.updatedAt > (adopted.clerkUpdatedAt ?? -1)
+          ? { clerkUpdatedAt: facts.updatedAt }
+          : {}),
       });
-      return { userId: adopted._id, outcome: "adopted_by_email" };
+      return {
+        userId: adopted._id,
+        outcome: "adopted_by_email",
+        emailConflict: false,
+      };
     }
   }
 
@@ -160,6 +192,9 @@ export async function upsertUserFromClerk(
     email: facts.email,
     genres: [],
     attendedCount: 0,
+    ...(facts.updatedAt === undefined
+      ? {}
+      : { clerkUpdatedAt: facts.updatedAt }),
   });
-  return { userId, outcome: "created" };
+  return { userId, outcome: "created", emailConflict: false };
 }

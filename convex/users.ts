@@ -40,6 +40,7 @@ export const syncFromClerk = internalMutation({
     email: v.string(),
     emailVerified: v.boolean(),
     name: v.optional(v.string()),
+    updatedAt: v.optional(v.number()),
     emailIsAuthoritative: v.boolean(),
   },
   returns: v.object({
@@ -49,6 +50,7 @@ export const syncFromClerk = internalMutation({
       v.literal("adopted_by_clerk_id"),
       v.literal("adopted_by_email"),
     ),
+    emailConflict: v.boolean(),
   }),
   handler: async (ctx, args) => {
     return await upsertUserFromClerk(ctx, args, {

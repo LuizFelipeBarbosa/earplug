@@ -75,7 +75,12 @@ describe("clerkBackfill:backfillEmails", () => {
       });
     });
     const result = await t.action(internal.clerkBackfill.backfillEmails, {});
-    expect(result).toMatchObject({ scanned: 0, fetched: 0, done: true });
+    expect(result).toMatchObject({
+      scanned: 0,
+      fetched: 0,
+      skippedTombstoned: 0,
+      done: true,
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -289,6 +294,43 @@ describe("clerkBackfill:backfillEmails", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  test("continues after a tombstone-only page", async () => {
+    vi.useFakeTimers();
+    const t = convexTest(schema);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        ...blankUserFields("user_page_tombstone"),
+        deletedAt: 1,
+      });
+    });
+    const liveId = await t.run(async (ctx) =>
+      ctx.db.insert("users", blankUserFields("user_after_tombstone")),
+    );
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify([
+            clerkUser("user_after_tombstone", "after@example.com"),
+          ]),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const first = await t.action(internal.clerkBackfill.backfillEmails, {
+      dryRun: false,
+      batchSize: 1,
+    });
+    expect(first).toMatchObject({ scanned: 0, done: false });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+    expect((await t.run(async (ctx) => ctx.db.get(liveId)))?.email).toBe(
+      "after@example.com",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   test("self-schedules monotonic batches until all rows are processed once", async () => {
     vi.useFakeTimers();
     const t = convexTest(schema);
@@ -354,6 +396,33 @@ describe("clerkBackfill:backfillEmails", () => {
   });
 });
 
+describe("clerkBackfill:listUsersNeedingEmail", () => {
+  test("filters a tombstone without corrupting page accounting", async () => {
+    const t = convexTest(schema);
+    const tombstoneId = await t.run(async (ctx) =>
+      ctx.db.insert("users", {
+        ...blankUserFields("user_tombstone_page"),
+        deletedAt: 1,
+      }),
+    );
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", blankUserFields("user_after_page"));
+    });
+
+    const page = await t.query(internal.clerkBackfill.listUsersNeedingEmail, {
+      afterCreationTime: 0,
+      batchSize: 1,
+    });
+    const tombstone = await t.run(async (ctx) => ctx.db.get(tombstoneId));
+    expect(tombstone).not.toBeNull();
+    expect(page.users).toEqual([]);
+    expect(page.isDone).toBe(false);
+    expect(page.lastCreationTime).toBeGreaterThanOrEqual(
+      tombstone!._creationTime,
+    );
+  });
+});
+
 describe("clerkBackfill:applyEmails stale-state checks", () => {
   test("skips a row filled after the action snapshot", async () => {
     const t = convexTest(schema);
@@ -390,5 +459,21 @@ describe("clerkBackfill:applyEmails stale-state checks", () => {
       dryRun: false,
     });
     expect(result).toMatchObject({ skippedMissing: 1, patched: 0 });
+  });
+
+  test("counts and skips a user tombstoned after the action snapshot", async () => {
+    const t = convexTest(schema);
+    const userId = await t.run(async (ctx) =>
+      ctx.db.insert("users", {
+        ...blankUserFields("user_tombstoned"),
+        deletedAt: 1,
+      }),
+    );
+    const result = await t.mutation(internal.clerkBackfill.applyEmails, {
+      updates: [{ userId, email: "tombstoned@example.com" }],
+      dryRun: false,
+    });
+    expect(result).toMatchObject({ skippedTombstoned: 1, patched: 0 });
+    expect((await t.run(async (ctx) => ctx.db.get(userId)))?.email).toBe("");
   });
 });

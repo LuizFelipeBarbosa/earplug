@@ -36,7 +36,9 @@ const clerkWebhook = httpAction(async (ctx, request) => {
           ...facts,
           emailIsAuthoritative: evt.type === "user.updated",
         });
-        console.log(`${svixId} ${evt.type} ${result.outcome}`);
+        console.log(
+          `${svixId} ${evt.type} ${result.outcome}${result.emailConflict ? " email_conflict" : ""}`,
+        );
         return new Response("ok", { status: 200 });
       } catch {
         console.error(`${svixId} ${evt.type} mutation_failed`);

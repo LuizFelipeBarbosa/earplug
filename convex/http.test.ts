@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const TEST_SECRET = "whsec_" + btoa("earplug-test-signing-key-32bytes!");
@@ -49,6 +49,7 @@ function userData(
     verified?: boolean;
     firstName?: string | null;
     lastName?: string | null;
+    updatedAt?: number;
   } = {},
 ) {
   const primaryId = "idn_primary";
@@ -69,6 +70,9 @@ function userData(
           ],
     first_name: options.firstName ?? null,
     last_name: options.lastName ?? null,
+    ...(options.updatedAt === undefined
+      ? {}
+      : { updated_at: options.updatedAt }),
   };
 }
 
@@ -331,6 +335,39 @@ describe("Clerk user webhook synchronization", () => {
     expect((await allUsers(t))[0].email).toBe("new@example.com");
   });
 
+  test("an older user.updated cannot overwrite a newer email", async () => {
+    const t = convexTest(schema);
+    await postEvent(
+      t,
+      "user.created",
+      userData("user_ordered_update", {
+        email: "initial@example.com",
+        updatedAt: 1_000,
+      }),
+    );
+    await postEvent(
+      t,
+      "user.updated",
+      userData("user_ordered_update", {
+        email: "newer@example.com",
+        updatedAt: 3_000,
+      }),
+    );
+    await postEvent(
+      t,
+      "user.updated",
+      userData("user_ordered_update", {
+        email: "stale@example.com",
+        updatedAt: 2_000,
+      }),
+    );
+
+    expect((await allUsers(t))[0]).toMatchObject({
+      email: "newer@example.com",
+      clerkUpdatedAt: 3_000,
+    });
+  });
+
   test("user.updated refuses an email held by another row", async () => {
     const t = convexTest(schema);
     await t.run(async (ctx) => {
@@ -349,11 +386,13 @@ describe("Clerk user webhook synchronization", () => {
         attendedCount: 0,
       });
     });
-    await postEvent(
-      t,
-      "user.updated",
-      userData("user_email_change_collision", { email: "owned@example.com" }),
-    );
+    const result = await t.mutation(internal.users.syncFromClerk, {
+      clerkId: "user_email_change_collision",
+      email: "owned@example.com",
+      emailVerified: true,
+      emailIsAuthoritative: true,
+    });
+    expect(result.emailConflict).toBe(true);
     const rows = await allUsers(t);
     expect(
       rows.find((row) => row.clerkId === "user_email_change_collision")?.email,

@@ -13,6 +13,7 @@ const MAX_BATCH_SIZE = 100;
 const applyResultValidator = v.object({
   patched: v.number(),
   wouldPatch: v.number(),
+  skippedTombstoned: v.number(),
   skippedNotBlank: v.number(),
   skippedCollision: v.number(),
   skippedMissing: v.number(),
@@ -21,6 +22,7 @@ const applyResultValidator = v.object({
 type ApplyResult = {
   patched: number;
   wouldPatch: number;
+  skippedTombstoned: number;
   skippedNotBlank: number;
   skippedCollision: number;
   skippedMissing: number;
@@ -49,23 +51,28 @@ export const listUsersNeedingEmail = internalQuery({
     isDone: v.boolean(),
   }),
   handler: async (ctx, args) => {
-    const users = await ctx.db
+    const page = await ctx.db
       .query("users")
       .withIndex("by_email", (q) =>
         q.eq("email", "").gt("_creationTime", args.afterCreationTime),
       )
       .take(args.batchSize);
+    // Deletion blanks email, placing tombstones in this index range. Cursor
+    // accounting must use the raw page so filtered pages still advance.
+    const lastCreationTime =
+      page.length === 0
+        ? args.afterCreationTime
+        : page[page.length - 1]._creationTime;
+    const isDone = page.length < args.batchSize;
+    const users = page.filter((user) => user.deletedAt === undefined);
     return {
       users: users.map((user) => ({
         userId: user._id,
         clerkId: user.clerkId,
         creationTime: user._creationTime,
       })),
-      lastCreationTime:
-        users.length === 0
-          ? args.afterCreationTime
-          : users[users.length - 1]._creationTime,
-      isDone: users.length < args.batchSize,
+      lastCreationTime,
+      isDone,
     };
   },
 });
@@ -80,6 +87,7 @@ export const applyEmails = internalMutation({
     const result: ApplyResult = {
       patched: 0,
       wouldPatch: 0,
+      skippedTombstoned: 0,
       skippedNotBlank: 0,
       skippedCollision: 0,
       skippedMissing: 0,
@@ -94,6 +102,8 @@ export const applyEmails = internalMutation({
         continue;
       }
       if (user.deletedAt !== undefined) {
+        // A user can be tombstoned after the action's query snapshot.
+        result.skippedTombstoned++;
         console.warn(`Skipping tombstoned user ${update.userId}`);
         continue;
       }
@@ -139,6 +149,7 @@ export const backfillEmails = internalAction({
     skippedNoVerifiedEmail: v.number(),
     skippedNotFoundInClerk: v.number(),
     skippedCollision: v.number(),
+    skippedTombstoned: v.number(),
     skippedNotBlank: v.number(),
     skippedMissing: v.number(),
     done: v.boolean(),
@@ -181,11 +192,19 @@ export const backfillEmails = internalAction({
         skippedNoVerifiedEmail: 0,
         skippedNotFoundInClerk: 0,
         skippedCollision: 0,
+        skippedTombstoned: 0,
         skippedNotBlank: 0,
         skippedMissing: 0,
         done: page.isDone,
         nextAfterCreationTime: page.lastCreationTime,
       };
+      if (!page.isDone) {
+        await ctx.scheduler.runAfter(0, internal.clerkBackfill.backfillEmails, {
+          dryRun,
+          batchSize,
+          afterCreationTime: page.lastCreationTime,
+        });
+      }
       console.log(
         `clerkBackfill scanned=0 fetched=0 patched=0 wouldPatch=0 done=${page.isDone}`,
       );
@@ -263,7 +282,7 @@ export const backfillEmails = internalAction({
       nextAfterCreationTime: page.lastCreationTime,
     };
     console.log(
-      `clerkBackfill scanned=${result.scanned} fetched=${result.fetched} patched=${result.patched} wouldPatch=${result.wouldPatch} noVerifiedEmail=${result.skippedNoVerifiedEmail} notFound=${result.skippedNotFoundInClerk} collisions=${result.skippedCollision} done=${result.done}`,
+      `clerkBackfill scanned=${result.scanned} fetched=${result.fetched} patched=${result.patched} wouldPatch=${result.wouldPatch} noVerifiedEmail=${result.skippedNoVerifiedEmail} notFound=${result.skippedNotFoundInClerk} collisions=${result.skippedCollision} tombstoned=${result.skippedTombstoned} done=${result.done}`,
     );
 
     if (!page.isDone) {
