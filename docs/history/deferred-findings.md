@@ -117,12 +117,18 @@ verified. Safe to move off-disk whenever you want the space.
 
 ## Addendum — PR #6 review, 2026-08-05
 
-**Future analytics need a server-side anonymity floor.** We removed the
-client-only 25-follower gate because it hid only follower count, gig count and
-RSVP total — plain counts that identify nobody. The placeholder copy in
-`lib/screens/analytics.dart`, however, promises fan geography,
-new-vs-returning and turnout charts, which are attribute-level aggregates over
-small populations: geography over three followers is effectively three
-people's cities. Whoever builds those charts must restore a k-anonymity floor
-before shipping them, enforced on the server this time because a client-side
-gate cannot protect the underlying data.
+**The analytics anonymity floor is now server-side.** `convex/analytics.ts`
+applies `partitionMeetsFloor` at `K_ANON_FANS = 5` to every fan breakdown. It
+suppresses the entire partition rather than an individual bucket because each
+breakdown partitions a published total: if every bucket but one remained
+visible, the withheld bucket would be recoverable by complement. Zero-fan
+buckets do not trigger suppression and remain publishable because an empty
+bucket identifies nobody.
+
+Two honest gaps remain. Fan geography was dropped outright, not deferred: no
+user location field exists in the schema, so it was removed from the UI copy
+rather than gated. RSVP lead time is a floor, not a truth. Production RSVP rows
+were inserted at migration time and therefore postdate the gigs they belong to;
+the recap reports those rows as `unmeasurable` instead of inventing a false lead
+time. Separately, an un-RSVP followed by a re-RSVP resets `_creationTime`, so
+lead time for a fan who does that is measured from the wrong moment.

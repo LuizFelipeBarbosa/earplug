@@ -178,26 +178,27 @@ class AnalyticsScreen extends StatelessWidget {
       if (recap.newReturningSuppressed)
         const EpSuppressedNote()
       else
-        for (final show in recap.shows) ...[
-          Text(
-            show.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: epText(
-              size: 11,
-              weight: FontWeight.w800,
-              color: Ep.inkA(.7),
+        for (final show in recap.shows)
+          if (show.newFans != null && show.returningFans != null) ...[
+            Text(
+              show.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: epText(
+                size: 11,
+                weight: FontWeight.w800,
+                color: Ep.inkA(.7),
+              ),
             ),
-          ),
-          const SizedBox(height: 7),
-          EpStackedBar(
-            newValue: show.newFans!,
-            returningValue: show.returningFans!,
-            newLabel: 'NEW ${show.newFans}',
-            returningLabel: 'RETURNING ${show.returningFans}',
-          ),
-          const SizedBox(height: 13),
-        ],
+            const SizedBox(height: 7),
+            EpStackedBar(
+              newValue: show.newFans!,
+              returningValue: show.returningFans!,
+              newLabel: 'NEW ${show.newFans}',
+              returningLabel: 'RETURNING ${show.returningFans}',
+            ),
+            const SizedBox(height: 13),
+          ],
       if (recap.window.truncated) ...[
         const SizedBox(height: 2),
         Text(
