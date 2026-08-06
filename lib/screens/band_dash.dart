@@ -92,28 +92,30 @@ class BandDashScreen extends StatelessWidget {
         const SizedBox(height: 14),
         Row(
           children: [
-            _StatCard(
+            EpStatCard(
               label: 'FOLLOWERS',
               value: band.followersLabel,
-              sub: band.followers == 0
+              caption: band.followers == 0
                   ? 'just the band so far'
                   : 'and counting',
             ),
             const SizedBox(width: 8),
-            _StatCard(
+            EpStatCard(
               label: 'NEXT GIG RSVPS',
               value: next != null ? '${app.rsvpCount(next)}' : '—',
-              sub: next != null
+              caption: next != null
                   ? (next.title.length > 16
                         ? next.title.substring(0, 16)
                         : next.title)
                   : 'no gig listed',
             ),
             const SizedBox(width: 8),
-            _StatCard(
+            EpStatCard(
               label: 'CLIPS',
               value: '${clips.length}',
-              sub: clips.isEmpty ? 'post your first clip' : 'on your profile',
+              caption: clips.isEmpty
+                  ? 'post your first clip'
+                  : 'on your profile',
             ),
           ],
         ),
@@ -172,53 +174,6 @@ class BandDashScreen extends StatelessWidget {
             ),
         ],
       ],
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final String sub;
-
-  const _StatCard({
-    required this.label,
-    required this.value,
-    required this.sub,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: EpCard(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 12),
-        radius: 13,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: epText(
-                size: 9.5,
-                weight: FontWeight.w800,
-                letterSpacing: 1,
-                color: Ep.inkA(.45),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(value, style: epDisplay(size: 22)),
-            const SizedBox(height: 2),
-            Text(
-              sub,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: epText(size: 10, weight: FontWeight.w800, color: Ep.link),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

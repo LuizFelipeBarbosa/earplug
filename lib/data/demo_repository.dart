@@ -232,6 +232,139 @@ class DemoRepository implements EarplugRepository {
   Future<BandHistory> bandHistory(String bandId) async => BandHistory.empty;
 
   @override
+  Future<BandRecap> bandRecap(String bandId) async => const BandRecap(
+    window: RecapWindow(
+      showsAnalyzed: 5,
+      scanned: 5,
+      truncated: false,
+      firstStartsAt: 1774137600000,
+      lastStartsAt: 1784419200000,
+    ),
+    totals: RecapTotals(
+      shows: 5,
+      reportedRsvps: 202,
+      measuredRsvps: 190,
+      avgPerShow: 38,
+      bestShowRsvps: 56,
+      distinctFans: 121,
+      followerCount: 184,
+    ),
+    shows: [
+      RecapShow(
+        gigId: 'recap-gig-5',
+        title: 'Summer Static',
+        startsAt: 1784419200000,
+        venueName: 'The Knockout',
+        price: 18,
+        ticketing: Ticketing.external,
+        goingCount: 59,
+        measuredRsvps: 56,
+        newFans: 24,
+        returningFans: 32,
+      ),
+      RecapShow(
+        gigId: 'recap-gig-4',
+        title: 'No Cover Noise',
+        startsAt: 1782604800000,
+        venueName: 'Bottom of the Hill',
+        price: 0,
+        ticketing: Ticketing.rsvp,
+        goingCount: 49,
+        measuredRsvps: 47,
+        newFans: 21,
+        returningFans: 26,
+      ),
+      RecapShow(
+        gigId: 'recap-gig-3',
+        title: 'Feedback Friday',
+        startsAt: 1780185600000,
+        venueName: 'Kilowatt',
+        price: 12,
+        ticketing: Ticketing.external,
+        goingCount: 41,
+        measuredRsvps: 38,
+        newFans: 19,
+        returningFans: 19,
+      ),
+      RecapShow(
+        gigId: 'recap-gig-2',
+        title: 'Mission Matinee',
+        startsAt: 1777161600000,
+        venueName: 'The Knockout',
+        price: 0,
+        ticketing: Ticketing.rsvp,
+        goingCount: 30,
+        measuredRsvps: 29,
+        newFans: 17,
+        returningFans: 12,
+      ),
+      RecapShow(
+        gigId: 'recap-gig-1',
+        title: 'First Spark',
+        startsAt: 1774137600000,
+        venueName: 'Bottom of the Hill',
+        price: 10,
+        ticketing: Ticketing.rsvp,
+        goingCount: 23,
+        measuredRsvps: 20,
+        newFans: 13,
+        returningFans: 7,
+      ),
+    ],
+    newReturningSuppressed: false,
+    leadTime: RecapLeadTime(
+      buckets: [
+        RecapBucket(key: 'twoWeeksPlus', count: 36),
+        RecapBucket(key: 'oneToTwoWeeks', count: 52),
+        RecapBucket(key: 'underWeek', count: 64),
+        RecapBucket(key: 'dayOf', count: 32),
+      ],
+      medianDays: 6.5,
+      unmeasurable: 6,
+      suppressed: false,
+    ),
+    venues: RecapVenues(
+      rows: [
+        RecapVenue(
+          venueName: 'The Knockout',
+          shows: 2,
+          totalRsvps: 85,
+          avgRsvps: 42.5,
+        ),
+        RecapVenue(
+          venueName: 'Kilowatt',
+          shows: 1,
+          totalRsvps: 38,
+          avgRsvps: 38,
+        ),
+        RecapVenue(
+          venueName: 'Bottom of the Hill',
+          shows: 2,
+          totalRsvps: 67,
+          avgRsvps: 33.5,
+        ),
+      ],
+      suppressed: false,
+    ),
+    weekdays: RecapWeekdays(rows: [], suppressed: true),
+    repeatFans: RecapRepeatFans(
+      tiers: [
+        RecapBucket(key: 'one', count: 78),
+        RecapBucket(key: 'twoToThree', count: 35),
+        RecapBucket(key: 'fourPlus', count: 8),
+      ],
+      suppressed: false,
+    ),
+    pricing: RecapPricing(
+      freeShows: 0,
+      freeAvgRsvps: 0,
+      paidShows: 0,
+      paidAvgRsvps: 0,
+      suppressed: true,
+    ),
+  );
+
+  @override
   Future<List<Venue>> venues() async =>
       DemoData.venues.values.toList()..sort((a, b) => a.name.compareTo(b.name));
 
