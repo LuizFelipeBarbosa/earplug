@@ -132,3 +132,26 @@ were inserted at migration time and therefore postdate the gigs they belong to;
 the recap reports those rows as `unmeasurable` instead of inventing a false lead
 time. Separately, an un-RSVP followed by a re-RSVP resets `_creationTime`, so
 lead time for a fan who does that is measured from the wrong moment.
+
+## Addendum — recap differencing review, 2026-08-06
+
+**Past-gig RSVP changes permit deliberate differencing.** `toggleRsvp` has no
+time gate, so a band admin can RSVP or un-RSVP a fan after a gig's `startsAt`
+and request `analytics:bandRecap` again. A single toggle can move one lead-time
+bucket, one repeat-fan tier and the per-show new/returning split together,
+attaching those attributes to one identifiable fan rather than exposing only
+that someone toggled through the public `gigs.goingCount`. A related delta
+appears when the oldest show slides out of the 30-gig recap window: first-time
+attendees there can be reclassified as new at their next show, including an
+observable 1–4-fan intersection between requests.
+
+The recap is a one-shot query from the client, not a live subscription:
+`ConvexRepository.bandRecap` calls `query(...)` once per invocation, and
+`AppState` caches `_bandRecap` until an explicit `refreshBandRecap` such as a
+manual refresh tap. The risk is materially broader than the existing public
+going-count delta because it reveals attributes, but exploiting it requires a
+band's own admin to deliberately poll the recap repeatedly against their own
+fans; it is not passive and is not available to a third party or ordinary fan.
+That context was accepted for now. The declined remedies were to reject RSVP
+and un-RSVP changes after `startsAt`, or to serve the recap from a periodic
+snapshot instead of computing it live on every request.

@@ -306,6 +306,11 @@ export const bandRecap = query({
       ...LEAD_TIME_KEYS.map((key) => leadBuckets[key].fanIds),
       unmeasurableFanIds,
     ]);
+    // Withhold this count only when its distinct fans form a re-identifying
+    // small cell. Migrated production rows are above the floor and still ship.
+    const publishedUnmeasurable = partitionMeetsFloor([unmeasurableFanIds])
+      ? unmeasurable
+      : 0;
 
     const venueAggregates = new Map<string, AggregateRow>();
     const weekdayAggregates = new Map<number, AggregateRow>();
@@ -343,13 +348,6 @@ export const bandRecap = query({
       for (const fanId of show.fanIds) pricingAggregate.fanIds.add(fanId);
     }
 
-    const venuesSuppressed = !partitionMeetsFloor(
-      [...venueAggregates.values()].map((row) => row.fanIds),
-    );
-    const weekdaysSuppressed = !partitionMeetsFloor(
-      [...weekdayAggregates.values()].map((row) => row.fanIds),
-    );
-
     const repeatFanIds = {
       one: new Set<Id<"users">>(),
       twoToThree: new Set<Id<"users">>(),
@@ -365,11 +363,6 @@ export const bandRecap = query({
       repeatFanIds.twoToThree,
       repeatFanIds.fourPlus,
     ]);
-    const pricingSuppressed = !partitionMeetsFloor([
-      pricingAggregates.free.fanIds,
-      pricingAggregates.paid.fanIds,
-    ]);
-
     const newestFirst = [...analyzed].sort(
       (a, b) => b.gig.startsAt - a.gig.startsAt,
     );
@@ -431,7 +424,7 @@ export const bandRecap = query({
         ? {
             buckets: [],
             medianDays: null,
-            unmeasurable,
+            unmeasurable: publishedUnmeasurable,
             suppressed: true,
           }
         : {
@@ -440,38 +433,40 @@ export const bandRecap = query({
               count: leadBuckets[key].count,
             })),
             medianDays: median(positiveLeadDays),
-            unmeasurable,
+            unmeasurable: publishedUnmeasurable,
             suppressed: false,
           },
-      venues: venuesSuppressed
-        ? { rows: [], suppressed: true }
-        : {
-            rows: [...venueAggregates.entries()]
-              .map(([venueName, row]) => ({
-                venueName,
-                shows: row.shows,
-                totalRsvps: row.totalRsvps,
-                avgRsvps: row.totalRsvps / row.shows,
-              }))
-              .sort(
-                (a, b) =>
-                  b.totalRsvps - a.totalRsvps ||
-                  a.venueName.localeCompare(b.venueName),
-              ),
-            suppressed: false,
-          },
-      weekdays: weekdaysSuppressed
-        ? { rows: [], suppressed: true }
-        : {
-            rows: [...weekdayAggregates.entries()]
-              .map(([weekday, row]) => ({
-                weekday,
-                shows: row.shows,
-                avgRsvps: row.totalRsvps / row.shows,
-              }))
-              .sort((a, b) => a.weekday - b.weekday),
-            suppressed: false,
-          },
+      // Exactly recomputable from the published `shows[]` rows; per-show
+      // turnout is also public through `gigs.goingCount`, so a floor adds no
+      // privacy.
+      venues: {
+        rows: [...venueAggregates.entries()]
+          .map(([venueName, row]) => ({
+            venueName,
+            shows: row.shows,
+            totalRsvps: row.totalRsvps,
+            avgRsvps: row.totalRsvps / row.shows,
+          }))
+          .sort(
+            (a, b) =>
+              b.totalRsvps - a.totalRsvps ||
+              a.venueName.localeCompare(b.venueName),
+          ),
+        suppressed: false,
+      },
+      // Exactly recomputable from the published `shows[]` rows; the same
+      // per-show turnout is public through `gigs.goingCount`, so suppression
+      // protects nothing.
+      weekdays: {
+        rows: [...weekdayAggregates.entries()]
+          .map(([weekday, row]) => ({
+            weekday,
+            shows: row.shows,
+            avgRsvps: row.totalRsvps / row.shows,
+          }))
+          .sort((a, b) => a.weekday - b.weekday),
+        suppressed: false,
+      },
       repeatFans: repeatFansSuppressed
         ? { tiers: [], suppressed: true }
         : {
@@ -485,29 +480,21 @@ export const bandRecap = query({
             ],
             suppressed: false,
           },
-      pricing: pricingSuppressed
-        ? {
-            freeShows: 0,
-            freeAvgRsvps: 0,
-            paidShows: 0,
-            paidAvgRsvps: 0,
-            suppressed: true,
-          }
-        : {
-            freeShows: pricingAggregates.free.shows,
-            freeAvgRsvps:
-              pricingAggregates.free.shows === 0
-                ? 0
-                : pricingAggregates.free.totalRsvps /
-                  pricingAggregates.free.shows,
-            paidShows: pricingAggregates.paid.shows,
-            paidAvgRsvps:
-              pricingAggregates.paid.shows === 0
-                ? 0
-                : pricingAggregates.paid.totalRsvps /
-                  pricingAggregates.paid.shows,
-            suppressed: false,
-          },
+      // Exactly recomputable from each published `shows[]` row's price and
+      // measured turnout, so suppressing this aggregate protects nothing.
+      pricing: {
+        freeShows: pricingAggregates.free.shows,
+        freeAvgRsvps:
+          pricingAggregates.free.shows === 0
+            ? 0
+            : pricingAggregates.free.totalRsvps / pricingAggregates.free.shows,
+        paidShows: pricingAggregates.paid.shows,
+        paidAvgRsvps:
+          pricingAggregates.paid.shows === 0
+            ? 0
+            : pricingAggregates.paid.totalRsvps / pricingAggregates.paid.shows,
+        suppressed: false,
+      },
     };
   },
 });

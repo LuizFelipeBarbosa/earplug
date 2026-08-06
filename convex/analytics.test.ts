@@ -375,6 +375,28 @@ describe("analytics:bandRecap fan measurements", () => {
     expect(recap.leadTime.medianDays).toBeCloseTo(20, 6);
   });
 
+  test("withholds a small unmeasurable lead-time cell", async () => {
+    const setup = await setupMemberBand();
+    const startsAt = NOW - DAY_MS;
+    const gigId = await insertGig(setup, {
+      title: "Small Unmeasurable Cell",
+      startsAt,
+    });
+    const fans = await insertFans(setup.t, 9, "small_unmeasurable_fan");
+    vi.setSystemTime(startsAt - 20 * DAY_MS);
+    await insertRsvps(setup.t, gigId, fans.slice(0, 5));
+    vi.setSystemTime(startsAt + DAY_MS);
+    await insertRsvps(setup.t, gigId, fans.slice(5));
+
+    const recap = await queryRecap(setup);
+    expect(recap.leadTime).toEqual({
+      buckets: [],
+      medianDays: null,
+      unmeasurable: 0,
+      suppressed: true,
+    });
+  });
+
   test("publishes unmeasurable rows while lead-time buckets are suppressed", async () => {
     const setup = await setupMemberBand();
     const startsAt = NOW - DAY_MS;
@@ -417,30 +439,49 @@ describe("analytics:bandRecap fan measurements", () => {
     });
   });
 
-  test("suppresses a four-fan venue row and reveals the five-fan boundary", async () => {
+  test("suppresses a four-fan repeat tier and reveals the five-fan boundary", async () => {
     async function recapWithFanCount(count: number) {
       const setup = await setupMemberBand();
       const gigId = await insertGig(setup, {
         title: `${count} fans`,
         startsAt: NOW - DAY_MS,
       });
-      const fans = await insertFans(setup.t, count, `venue_${count}`);
+      const fans = await insertFans(setup.t, count, `repeat_${count}`);
       await insertRsvps(setup.t, gigId, fans);
       return await queryRecap(setup);
     }
 
     const fourFans = await recapWithFanCount(4);
-    expect(fourFans.venues).toEqual({ rows: [], suppressed: true });
-
-    const fiveFans = await recapWithFanCount(5);
-    expect(fiveFans.venues).toEqual({
+    expect(fourFans.repeatFans).toEqual({ tiers: [], suppressed: true });
+    expect(fourFans.venues).toEqual({
       rows: [
         {
           venueName: "The Recap Room",
           shows: 1,
-          totalRsvps: 5,
-          avgRsvps: 5,
+          totalRsvps: 4,
+          avgRsvps: 4,
         },
+      ],
+      suppressed: false,
+    });
+    expect(fourFans.weekdays).toEqual({
+      rows: [{ weekday: 2, shows: 1, avgRsvps: 4 }],
+      suppressed: false,
+    });
+    expect(fourFans.pricing).toEqual({
+      freeShows: 1,
+      freeAvgRsvps: 4,
+      paidShows: 0,
+      paidAvgRsvps: 0,
+      suppressed: false,
+    });
+
+    const fiveFans = await recapWithFanCount(5);
+    expect(fiveFans.repeatFans).toEqual({
+      tiers: [
+        { key: "one", count: 5 },
+        { key: "twoToThree", count: 0 },
+        { key: "fourPlus", count: 0 },
       ],
       suppressed: false,
     });
@@ -578,15 +619,15 @@ test("analytics:bandRecap returns the complete empty shape for a band with no pa
       unmeasurable: 0,
       suppressed: true,
     },
-    venues: { rows: [], suppressed: true },
-    weekdays: { rows: [], suppressed: true },
+    venues: { rows: [], suppressed: false },
+    weekdays: { rows: [], suppressed: false },
     repeatFans: { tiers: [], suppressed: true },
     pricing: {
       freeShows: 0,
       freeAvgRsvps: 0,
       paidShows: 0,
       paidAvgRsvps: 0,
-      suppressed: true,
+      suppressed: false,
     },
   });
 });

@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.7)
+# EarPlug Convex function contract (FROZEN — v1.8)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -63,12 +63,19 @@ halting progress. No client-facing wire shape changed.
 
 **v1.7 — band-private fan analytics.** Added `analytics:bandRecap`, a bounded
 recap of one band's past-gig RSVP measurements. The query requires a signed-in
-`bandMembers` row (either role) and applies a `K_ANON_FANS = 5` floor to every
-row or bucket in each fan breakdown; one undersized bucket suppresses its
-entire partition. The payload shape below is frozen jointly for this backend
-and the parallel Flutter client workstream: both workstreams must stay in sync
-on every field, literal and nullability change rather than drifting around the
-contract.
+`bandMembers` row (either role) and introduced a `K_ANON_FANS = 5` floor with
+whole-partition suppression. The payload shape below is frozen jointly for
+this backend and the parallel Flutter client workstream: both workstreams must
+stay in sync on every field, literal and nullability change rather than
+drifting around the contract.
+
+**v1.8 — narrowed recap suppression.** The `K_ANON_FANS = 5` floor now applies
+only to `leadTime`, `repeatFans`, `newReturning` and the per-show
+`newFans`/`returningFans` columns. `leadTime.unmeasurable` is independently
+zeroed when it represents 1–4 distinct fans, while zero and cells at or above
+the floor still publish. `venues`, `weekdays` and `pricing` now always publish
+with `suppressed: false` because their values are exactly recomputable from the
+already-published `shows[]` rows. The payload shape did not change.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
@@ -141,15 +148,18 @@ member. **All mutations throw when unauthenticated**.
     "buckets": [
       { "key": "twoWeeksPlus|oneToTwoWeeks|underWeek|dayOf", "count": 20 }
     ],
+    // independently zeroed when the true cell contains 1–4 distinct fans
     "medianDays": 8.5, "unmeasurable": 5, "suppressed": false
   },
   "venues": {
     "rows": [{ "venueName": "...", "shows": 2,
                "totalRsvps": 82, "avgRsvps": 41 }],
+    // always false: exactly recomputable from shows[]
     "suppressed": false
   },
   "weekdays": {
     "rows": [{ "weekday": 6, "shows": 2, "avgRsvps": 41 }],
+    // always false: exactly recomputable from shows[]
     "suppressed": false
   },
   "repeatFans": {
@@ -158,10 +168,15 @@ member. **All mutations throw when unauthenticated**.
   },
   "pricing": { "freeShows": 1, "freeAvgRsvps": 35,
                "paidShows": 1, "paidAvgRsvps": 47,
+               // always false: exactly recomputable from shows[]
                "suppressed": false } }
 
-// For a suppressed partition, rows/buckets/tiers are [], pricing numbers are
-// zero, leadTime.medianDays is null and leadTime.unmeasurable is zero.
+// Suppression applies only to leadTime, repeatFans and newReturning. Suppressed
+// leadTime has empty buckets and a null median; unmeasurable returns its real
+// count only when its distinct-fan set is empty or >= 5, and is zeroed for a
+// 1–4-fan cell. Suppressed repeatFans has empty tiers. Suppressed newReturning
+// makes both per-show split columns null. venues/weekdays/pricing retain the
+// field for the frozen shape but always set suppressed to false.
 ```
 
 ## Queries (client subscribes to the ★ ones)
@@ -180,7 +195,7 @@ member. **All mutations throw when unauthenticated**.
 | `users:me` | `{}` | `UserPayload \| null` |
 | ★ `interactions:myInteractions` | `{}` | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], attendedCount: number }`; empty/0 unauth |
 | `interactions:history` | `{}` | `[{ title: string, venueName: string, startsAt: number }]` — gigs the user RSVPed to with `startsAt < now`, newest first; `[]` unauth. Display string ("title — venue", "SAT JUL 5") derived client-side. |
-| `analytics:bandRecap` | `{ bandId }` | `BandRecap` — signed-in band members only (admin or member); throws otherwise. Reads the 200 most recent globally past gigs, analyzes at most the first 30 whose lineup contains the band, and returns shows newest first. `window.truncated` covers both the matching-show cap and a full global scan. Fan breakdowns are whole-partition suppressed at the five-distinct-fan floor. |
+| `analytics:bandRecap` | `{ bandId }` | `BandRecap` — signed-in band members only (admin or member); throws otherwise. Reads the 200 most recent globally past gigs, analyzes at most the first 30 whose lineup contains the band, and returns shows newest first. `window.truncated` covers both the matching-show cap and a full global scan. The five-distinct-fan floor suppresses `leadTime`, `repeatFans`, `newReturning` and the per-show new/returning columns; `leadTime.unmeasurable` is also independently zeroed for 1–4 distinct fans. `venues`, `weekdays` and `pricing` always publish because they are exactly recomputable from `shows[]`. |
 
 ## Mutations
 
@@ -213,8 +228,12 @@ member. **All mutations throw when unauthenticated**.
 
 - `MAX_RECAP_GIGS = 30` after filtering the 200-row global past-gig scan by
   lineup; `MAX_RSVPS_PER_GIG = 300` per analyzed show.
-- `K_ANON_FANS = 5` distinct fans in every row or bucket of each recap
-  partition. A row with 1–4 fans suppresses it; zero is safe unless every row is empty.
+- `K_ANON_FANS = 5` distinct fans in every populated lead-time bucket, repeat
+  tier and new/returning set. A cell with 1–4 fans suppresses its whole
+  partition; zero is safe, though an entirely empty partition has no data and
+  remains suppressed. `leadTime.unmeasurable` is additionally zeroed when its
+  own distinct-fan set contains 1–4 fans. The floor does not apply to `venues`,
+  `weekdays` or `pricing`.
 - `MAX_MEDIA_PER_BAND = 50` — also the `.take()` bound on every `bandMedia`
   read, so "the whole ordered list fits in one read" holds by construction.
 - `MAX_MEDIA_BYTES = 100 MiB`.
@@ -247,9 +266,16 @@ member. **All mutations throw when unauthenticated**.
   average, best-show value and fan breakdown come only from bounded
   `gigRsvps` rows. Lead-time rows created at or after `startsAt` are
   unmeasurable and excluded from both buckets and the median.
-- Recap suppression is partition-wide: `leadTime`, `venues`, `weekdays`,
-  `repeatFans`, `pricing` and the per-show `newFans`/`returningFans` columns are
-  never partially revealed. `window`, `totals`, `goingCount` and
+- Recap suppression is partition-wide for `leadTime`, `repeatFans` and
+  `newReturning`: their buckets, tiers or per-show `newFans`/`returningFans`
+  columns are never partially revealed. `leadTime.unmeasurable` has its own
+  small-cell gate and can still return its real count when its distinct-fan set
+  is empty or has at least five fans, even when the rest of lead time is
+  suppressed. `venues`, `weekdays` and `pricing` always publish with
+  `suppressed: false` because they are exactly recomputable from the
+  already-visible per-show `venueName`, `startsAt`, `price` and `measuredRsvps`
+  values in `shows[]`; venue and weekday turnout is ultimately also exposed
+  publicly through `gigs.goingCount`. `window`, `totals`, `goingCount` and
   `measuredRsvps` remain visible counts.
 
 ## Client-side derivations (NOT server concerns)
