@@ -112,6 +112,30 @@ export async function requireBandAdmin(
   return user;
 }
 
+/** Throws unless the caller is a member of the band. Returns the band so a
+ * private query can authorize and hydrate band-owned data with one guard. */
+export async function requireBandMember(
+  ctx: QueryCtx,
+  bandId: Id<"bands">,
+): Promise<Doc<"bands">> {
+  const user = await currentUser(ctx);
+  if (!user) {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not signed in");
+    throw new Error("No user record — call users:ensureUser first");
+  }
+  const band = await ctx.db.get(bandId);
+  if (!band) throw new Error("Band not found");
+  const membership = await ctx.db
+    .query("bandMembers")
+    .withIndex("by_band_user", (q) =>
+      q.eq("bandId", bandId).eq("userId", user._id),
+    )
+    .unique();
+  if (!membership) throw new Error("Not a member of this band");
+  return band;
+}
+
 // ─── Contract payload validators + converters ───────────────────────────────
 
 export const bandPayloadValidator = v.object({
@@ -398,6 +422,15 @@ export const MAX_FEED_GIGS = 200;
  * same caveat as the forward reads: a band whose shows fall outside the 200
  * most recent past gigs would not appear. */
 export const MAX_PAST_GIGS = 200;
+
+/** Maximum band gigs included in one fan recap. */
+export const MAX_RECAP_GIGS = 30;
+
+/** Maximum RSVP rows measured for one gig in a fan recap. */
+export const MAX_RSVPS_PER_GIG = 300;
+
+/** Minimum distinct fans required in every row of a private partition. */
+export const K_ANON_FANS = 5;
 
 /** The venue table is a small curated list, not user-generated, so one read
  * returns all of it. */

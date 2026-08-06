@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.6)
+# EarPlug Convex function contract (FROZEN — v1.7)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -61,11 +61,22 @@ range, while `clerkBackfill:applyEmails` reports a `skippedTombstoned` counter.
 An all-tombstone page continues the backfill's self-scheduling walk rather than
 halting progress. No client-facing wire shape changed.
 
+**v1.7 — band-private fan analytics.** Added `analytics:bandRecap`, a bounded
+recap of one band's past-gig RSVP measurements. The query requires a signed-in
+`bandMembers` row (either role) and applies a `K_ANON_FANS = 5` floor to every
+row or bucket in each fan breakdown; one undersized bucket suppresses its
+entire partition. The payload shape below is frozen jointly for this backend
+and the parallel Flutter client workstream: both workstreams must stay in sync
+on every field, literal and nullability change rather than drifting around the
+contract.
+
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
 (UTC). Auth = Clerk JWT (template `convex`) attached by the client; queries that
 depend on identity return empty/null when unauthenticated (they must NOT throw,
-the client subscribes before sign-in); **all mutations throw when unauthenticated**.
+the client subscribes before sign-in); the explicitly band-private
+`analytics:bandRecap` is the query exception and throws unless the caller is a
+member. **All mutations throw when unauthenticated**.
 
 ## Payload shapes
 
@@ -111,6 +122,46 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
   // users.deletedAt is an internal tombstone and is deliberately not exposed
   // the row's _creationTime, surfaced under a stable name
   "createdAt": 1785300000000 }
+
+// BandRecap — shows are newest first; weekday is Monday=1 through Sunday=7
+{ "window": { "showsAnalyzed": 2, "scanned": 14, "truncated": false,
+               "firstStartsAt": 1784000000000, "lastStartsAt": 1785000000000 },
+  "totals": { "shows": 2, "reportedRsvps": 90, "measuredRsvps": 82,
+              "avgPerShow": 41, "bestShowRsvps": 47,
+              "distinctFans": 70, "followerCount": 486 },
+  "shows": [
+    { "gigId": "...", "title": "...", "startsAt": 1785000000000,
+      "venueName": "...", "price": 10, "ticketing": "rsvp|external",
+      "goingCount": 48, "measuredRsvps": 47,
+      // both are null on every show when newReturning.suppressed is true
+      "newFans": 35, "returningFans": 12 }
+  ],
+  "newReturning": { "suppressed": false },
+  "leadTime": {
+    "buckets": [
+      { "key": "twoWeeksPlus|oneToTwoWeeks|underWeek|dayOf", "count": 20 }
+    ],
+    "medianDays": 8.5, "unmeasurable": 5, "suppressed": false
+  },
+  "venues": {
+    "rows": [{ "venueName": "...", "shows": 2,
+               "totalRsvps": 82, "avgRsvps": 41 }],
+    "suppressed": false
+  },
+  "weekdays": {
+    "rows": [{ "weekday": 6, "shows": 2, "avgRsvps": 41 }],
+    "suppressed": false
+  },
+  "repeatFans": {
+    "tiers": [{ "key": "one|twoToThree|fourPlus", "count": 50 }],
+    "suppressed": false
+  },
+  "pricing": { "freeShows": 1, "freeAvgRsvps": 35,
+               "paidShows": 1, "paidAvgRsvps": 47,
+               "suppressed": false } }
+
+// For a suppressed partition, rows/buckets/tiers are [], pricing numbers are
+// zero, leadTime.medianDays is null and leadTime.unmeasurable is zero.
 ```
 
 ## Queries (client subscribes to the ★ ones)
@@ -129,6 +180,7 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 | `users:me` | `{}` | `UserPayload \| null` |
 | ★ `interactions:myInteractions` | `{}` | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], attendedCount: number }`; empty/0 unauth |
 | `interactions:history` | `{}` | `[{ title: string, venueName: string, startsAt: number }]` — gigs the user RSVPed to with `startsAt < now`, newest first; `[]` unauth. Display string ("title — venue", "SAT JUL 5") derived client-side. |
+| `analytics:bandRecap` | `{ bandId }` | `BandRecap` — signed-in band members only (admin or member); throws otherwise. Reads the 200 most recent globally past gigs, analyzes at most the first 30 whose lineup contains the band, and returns shows newest first. `window.truncated` covers both the matching-show cap and a full global scan. Fan breakdowns are whole-partition suppressed at the five-distinct-fan floor. |
 
 ## Mutations
 
@@ -159,6 +211,10 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 
 ## Limits
 
+- `MAX_RECAP_GIGS = 30` after filtering the 200-row global past-gig scan by
+  lineup; `MAX_RSVPS_PER_GIG = 300` per analyzed show.
+- `K_ANON_FANS = 5` distinct fans in every row or bucket of each recap
+  partition. A row with 1–4 fans suppresses it; zero is safe unless every row is empty.
 - `MAX_MEDIA_PER_BAND = 50` — also the `.take()` bound on every `bandMedia`
   read, so "the whole ordered list fits in one read" holds by construction.
 - `MAX_MEDIA_BYTES = 100 MiB`.
@@ -186,6 +242,15 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
   seeds it to 0.
 - `bands.pastShows` is a hand-derived summary with no live writer. No gig
   mutation maintains it, so it is not synchronized automatically.
+- `analytics:bandRecap` copies each gig's `goingCount` only into its show row
+  and the straight-sum `totals.reportedRsvps`. `totals.measuredRsvps`, every
+  average, best-show value and fan breakdown come only from bounded
+  `gigRsvps` rows. Lead-time rows created at or after `startsAt` are
+  unmeasurable and excluded from both buckets and the median.
+- Recap suppression is partition-wide: `leadTime`, `venues`, `weekdays`,
+  `repeatFans`, `pricing` and the per-show `newFans`/`returningFans` columns are
+  never partially revealed. `window`, `totals`, `goingCount` and
+  `measuredRsvps` remain visible counts.
 
 ## Client-side derivations (NOT server concerns)
 
