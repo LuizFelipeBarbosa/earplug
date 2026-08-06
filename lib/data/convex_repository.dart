@@ -148,6 +148,15 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<BandRecap> bandRecap(String bandId) async {
+    final json = _asMap(
+      await _convexService.query('analytics:bandRecap', {'bandId': bandId}),
+    );
+    if (json.isEmpty) return BandRecap.empty;
+    return BandRecap.fromJson(json);
+  }
+
+  @override
   Future<List<Venue>> venues() async {
     final result = await _convexService.query('venues:list');
     return [for (final json in _mapList(result)) Venue.fromJson(json)];

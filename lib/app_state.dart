@@ -118,6 +118,12 @@ class AppState extends ChangeNotifier {
   final Map<String, Object> _bandHistoryTokens = {};
   final Map<String, String> _bandHistoryErrors = {};
 
+  /// Aggregated performance data per band, from `analytics:bandRecap`.
+  /// Lazily loaded and held on failure until an explicit [refreshBandRecap].
+  final Map<String, BandRecap> _bandRecap = {};
+  final Map<String, Object> _bandRecapTokens = {};
+  final Map<String, String> _bandRecapErrors = {};
+
   BandMediaController? _media;
 
   /// What the user typed into the band-edit fields, shown until the server has
@@ -648,6 +654,48 @@ class AppState extends ChangeNotifier {
     } finally {
       if (!_disposed && identical(_bandHistoryTokens[id], token)) {
         _bandHistoryTokens.remove(id);
+        notifyListeners();
+      }
+    }
+  }
+
+  /// A band's performance recap, or null until the first load lands. Kicks the
+  /// load off on first read; failures wait for [refreshBandRecap].
+  BandRecap? bandRecap(String id) {
+    final cached = _bandRecap[id];
+    if (cached != null) return cached;
+    if (!_bandRecapTokens.containsKey(id) &&
+        !_bandRecapErrors.containsKey(id)) {
+      unawaited(_loadBandRecap(id));
+    }
+    return null;
+  }
+
+  /// Why the last recap load for [id] failed, or null.
+  String? bandRecapError(String id) => _bandRecapErrors[id];
+
+  /// Clears any recorded recap failure and loads again — the RETRY affordance.
+  void refreshBandRecap(String id) {
+    _bandRecapErrors.remove(id);
+    notifyListeners();
+    unawaited(_loadBandRecap(id));
+  }
+
+  Future<void> _loadBandRecap(String id) async {
+    final token = Object();
+    _bandRecapTokens[id] = token;
+    try {
+      final loaded = await repository.bandRecap(id);
+      if (_disposed || !identical(_bandRecapTokens[id], token)) return;
+      _bandRecap[id] = loaded;
+      _bandRecapErrors.remove(id);
+    } catch (error) {
+      logError('bandRecap', error);
+      if (_disposed || !identical(_bandRecapTokens[id], token)) return;
+      _bandRecapErrors[id] = '$error';
+    } finally {
+      if (!_disposed && identical(_bandRecapTokens[id], token)) {
+        _bandRecapTokens.remove(id);
         notifyListeners();
       }
     }
