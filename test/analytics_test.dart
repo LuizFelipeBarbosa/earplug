@@ -144,12 +144,7 @@ void main() {
       home: const Scaffold(body: AnalyticsScreen()),
     );
 
-    expect(
-      find.text(
-        'No past gigs yet — your recap fills in after your first show.',
-      ),
-      findsOne,
-    );
+    expect(find.textContaining('No past gigs yet for'), findsOne);
     expect(find.text('TURNOUT BY SHOW'), findsNothing);
   });
 }

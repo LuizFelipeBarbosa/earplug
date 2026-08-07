@@ -7,6 +7,7 @@ import '../date_names.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/sheets.dart';
 
 class AnalyticsScreen extends StatelessWidget {
   const AnalyticsScreen({super.key});
@@ -29,23 +30,46 @@ class AnalyticsScreen extends StatelessWidget {
       ),
       children: [
         Text('FAN ANALYTICS', style: epDisplay(size: 18)),
+        const SizedBox(height: 5),
+        _bandSelector(context, band),
         const SizedBox(height: 14),
-        ..._bodyFor(app, band.id, recap, error),
+        ..._bodyFor(app, band, recap, error),
       ],
+    );
+  }
+
+  /// The recap covers one band, and this tab carries no other band identity —
+  /// on an account in several bands the reader cannot otherwise tell whose
+  /// shows are missing when the recap comes back empty.
+  Widget _bandSelector(BuildContext context, Band band) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showSwitcherSheet(context),
+      child: Text(
+        '${band.name.toUpperCase()} ▾',
+        style: epText(
+          size: 10,
+          weight: FontWeight.w800,
+          letterSpacing: 1,
+          color: Ep.link,
+        ),
+      ),
     );
   }
 
   List<Widget> _bodyFor(
     AppState app,
-    String bandId,
+    Band band,
     BandRecap? recap,
     String? error,
   ) {
     if (recap == null) {
       if (error == null) return [_loadingState()];
-      return [_errorState(app, bandId, error)];
+      return [_errorState(app, band.id, error)];
     }
-    if (recap.shows.isEmpty) return [_emptyState()];
+    if (recap.shows.isEmpty) {
+      return [_emptyState(band.name, hasOtherBands: app.myBands.length > 1)];
+    }
 
     return [
       _privacyNote(),
@@ -96,11 +120,15 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  Widget _emptyState() {
+  Widget _emptyState(String bandName, {required bool hasOtherBands}) {
+    final hint = hasOtherBands
+        ? '\nTap the band name above to switch to another of your bands.'
+        : '';
     return DashedBox(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
       child: Text(
-        'No past gigs yet — your recap fills in after your first show.',
+        'No past gigs yet for ${bandName.toUpperCase()} — this recap fills '
+        'in after its first show.$hint',
         textAlign: TextAlign.center,
         style: epText(size: 12, color: Ep.inkA(.5), height: 1.5),
       ),
