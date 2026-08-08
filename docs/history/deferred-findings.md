@@ -117,12 +117,41 @@ verified. Safe to move off-disk whenever you want the space.
 
 ## Addendum — PR #6 review, 2026-08-05
 
-**Future analytics need a server-side anonymity floor.** We removed the
-client-only 25-follower gate because it hid only follower count, gig count and
-RSVP total — plain counts that identify nobody. The placeholder copy in
-`lib/screens/analytics.dart`, however, promises fan geography,
-new-vs-returning and turnout charts, which are attribute-level aggregates over
-small populations: geography over three followers is effectively three
-people's cities. Whoever builds those charts must restore a k-anonymity floor
-before shipping them, enforced on the server this time because a client-side
-gate cannot protect the underlying data.
+**The analytics anonymity floor is now server-side.** `convex/analytics.ts`
+applies `partitionMeetsFloor` at `K_ANON_FANS = 5` to every fan breakdown. It
+suppresses the entire partition rather than an individual bucket because each
+breakdown partitions a published total: if every bucket but one remained
+visible, the withheld bucket would be recoverable by complement. Zero-fan
+buckets do not trigger suppression and remain publishable because an empty
+bucket identifies nobody.
+
+Two honest gaps remain. Fan geography was dropped outright, not deferred: no
+user location field exists in the schema, so it was removed from the UI copy
+rather than gated. RSVP lead time is a floor, not a truth. Production RSVP rows
+were inserted at migration time and therefore postdate the gigs they belong to;
+the recap reports those rows as `unmeasurable` instead of inventing a false lead
+time. Separately, an un-RSVP followed by a re-RSVP resets `_creationTime`, so
+lead time for a fan who does that is measured from the wrong moment.
+
+## Addendum — recap differencing review, 2026-08-06
+
+**Past-gig RSVP changes permit deliberate differencing.** `toggleRsvp` has no
+time gate, so a band admin can RSVP or un-RSVP a fan after a gig's `startsAt`
+and request `analytics:bandRecap` again. A single toggle can move one lead-time
+bucket, one repeat-fan tier and the per-show new/returning split together,
+attaching those attributes to one identifiable fan rather than exposing only
+that someone toggled through the public `gigs.goingCount`. A related delta
+appears when the oldest show slides out of the 30-gig recap window: first-time
+attendees there can be reclassified as new at their next show, including an
+observable 1–4-fan intersection between requests.
+
+The recap is a one-shot query from the client, not a live subscription:
+`ConvexRepository.bandRecap` calls `query(...)` once per invocation, and
+`AppState` caches `_bandRecap` until an explicit `refreshBandRecap` such as a
+manual refresh tap. The risk is materially broader than the existing public
+going-count delta because it reveals attributes, but exploiting it requires a
+band's own admin to deliberately poll the recap repeatedly against their own
+fans; it is not passive and is not available to a third party or ordinary fan.
+That context was accepted for now. The declined remedies were to reject RSVP
+and un-RSVP changes after `startsAt`, or to serve the recap from a periodic
+snapshot instead of computing it live on every request.

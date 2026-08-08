@@ -2,34 +2,21 @@ import { v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { QueryCtx, mutation, query } from "./_generated/server";
 import {
-  FEED_GRACE_MS,
   MAX_FEED_GIGS,
   MAX_PAST_GIGS,
   assertGigPublishable,
   bandPayloadValidator,
+  feedCutoff,
   gigPublishFieldsValidator,
   gigPayloadValidator,
   insertPublishedGig,
+  pastGigsForBand,
   requireBandAdmin,
   toBandPayload,
   toGigPayload,
   toVenuePayload,
   venuePayloadValidator,
 } from "./lib/helpers";
-
-/** The instant that divides "upcoming" from "past". Every feed-shaped read
- * derives from it so they share one grace window — but each query execution
- * takes its own reading, so a gig sitting right on the boundary can still be
- * upcoming to one query and past to another.
- *
- * Known staleness, deferred for v1: Date.now() is captured when the query
- * executes, and a cached result only recomputes when something writes to the
- * range it read — so on a quiet deployment a gig can linger past the 6h grace.
- * Pre-launch fix: a cron heartbeat that writes the current hour's cutoff to a
- * singleton doc this reads instead of the clock. */
-function feedCutoff(): number {
-  return Date.now() - FEED_GRACE_MS;
-}
 
 /** Gigs at or after the cutoff, ascending. */
 async function upcomingGigs(ctx: QueryCtx): Promise<Doc<"gigs">[]> {
@@ -109,7 +96,11 @@ export const forBand = query({
  * `feed` and `forBand` both look forward from `now - 6h`, so before this the
  * only read path to a band's history was the denormalized `bands.pastShows`
  * strings — title and a short date, no venue, flyer or gig id. On a dataset
- * migrated from past events that left every gig unreachable. */
+ * migrated from past events that left every gig unreachable.
+ *
+ * Read through `gigBands.by_band_startsAt`: this returns the band's own past
+ * gigs, so how far back the history reaches no longer depends on how many
+ * gigs other bands have published since. */
 export const pastForBand = query({
   args: { bandId: v.id("bands") },
   returns: v.object({
@@ -117,16 +108,11 @@ export const pastForBand = query({
     venues: v.array(venuePayloadValidator),
   }),
   handler: async (ctx, args) => {
-    const recent = await ctx.db
-      .query("gigs")
-      .withIndex("by_startsAt", (q) => q.lt("startsAt", feedCutoff()))
-      .order("desc")
-      .take(MAX_PAST_GIGS);
+    const past = await pastGigsForBand(ctx, args.bandId, MAX_PAST_GIGS);
 
     const gigs = [];
     const venueIds = new Set<Id<"venues">>();
-    for (const gig of recent) {
-      if (!gig.lineup.includes(args.bandId)) continue;
+    for (const gig of past) {
       gigs.push(await toGigPayload(ctx, gig));
       venueIds.add(gig.venueId);
     }

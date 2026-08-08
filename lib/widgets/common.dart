@@ -506,6 +506,246 @@ InputDecoration epInputDecoration(String hint) => InputDecoration(
   ),
 );
 
+/// Compact dashboard metric with a label, headline value, and caption.
+class EpStatCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final String caption;
+
+  const EpStatCard({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.caption,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: EpCard(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 12),
+        radius: 13,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: epText(
+                size: 9.5,
+                weight: FontWeight.w800,
+                letterSpacing: 1,
+                color: Ep.inkA(.45),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: epDisplay(size: 22),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: epText(size: 10, weight: FontWeight.w800, color: Ep.link),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Labeled horizontal value bar scaled against a caller-supplied maximum.
+class EpBar extends StatelessWidget {
+  final String label;
+  final num value;
+  final num max;
+  final String valueText;
+
+  const EpBar({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.max,
+    required this.valueText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fraction = max <= 0
+        ? 0.0
+        : (value.toDouble() / max.toDouble()).clamp(0.0, 1.0).toDouble();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: epText(
+                  size: 11,
+                  weight: FontWeight.w800,
+                  color: Ep.inkA(.7),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              valueText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: epText(size: 11, weight: FontWeight.w800, color: Ep.link),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Container(
+          height: 8,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: Ep.whiteA(.06),
+            border: Ep.hairline(),
+            borderRadius: BorderRadius.circular(99),
+          ),
+          alignment: Alignment.centerLeft,
+          child: FractionallySizedBox(
+            widthFactor: fraction,
+            heightFactor: 1,
+            child: const DecoratedBox(
+              decoration: BoxDecoration(color: Ep.blue),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Two-part horizontal bar with a compact new/returning legend.
+class EpStackedBar extends StatelessWidget {
+  final num newValue;
+  final num returningValue;
+  final String newLabel;
+  final String returningLabel;
+
+  const EpStackedBar({
+    super.key,
+    required this.newValue,
+    required this.returningValue,
+    this.newLabel = 'NEW',
+    this.returningLabel = 'RETURNING',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final safeNew = math.max(0.0, newValue.toDouble());
+    final safeReturning = math.max(0.0, returningValue.toDouble());
+    final total = safeNew + safeReturning;
+    final newFlex = total == 0
+        ? 0
+        : math.max(1, (safeNew / total * 1000).round());
+    final returningFlex = total == 0
+        ? 0
+        : math.max(1, (safeReturning / total * 1000).round());
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          height: 8,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: Ep.whiteA(.06),
+            border: Ep.hairline(),
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: total == 0
+              ? null
+              : Row(
+                  children: [
+                    if (safeNew > 0)
+                      Expanded(
+                        flex: newFlex,
+                        child: const DecoratedBox(
+                          decoration: BoxDecoration(color: Ep.blue),
+                        ),
+                      ),
+                    if (safeReturning > 0)
+                      Expanded(
+                        flex: returningFlex,
+                        child: const DecoratedBox(
+                          decoration: BoxDecoration(color: Ep.link),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: Ep.blue,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              newLabel,
+              style: epText(
+                size: 9.5,
+                weight: FontWeight.w800,
+                color: Ep.inkA(.5),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(
+                color: Ep.link,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              returningLabel,
+              style: epText(
+                size: 9.5,
+                weight: FontWeight.w800,
+                color: Ep.inkA(.5),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Inline explanation for a server-suppressed analytics partition.
+class EpSuppressedNote extends StatelessWidget {
+  final String message;
+
+  const EpSuppressedNote({super.key, this.message = '— not enough data yet'});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(message, style: epText(size: 11.5, color: Ep.inkA(.4)));
+  }
+}
+
 /// Dark card container used across screens.
 class EpCard extends StatelessWidget {
   final Widget child;

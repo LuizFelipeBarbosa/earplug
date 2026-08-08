@@ -1,3 +1,4 @@
+import { WithoutSystemFields } from "convex/server";
 import { Infer, v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
@@ -112,6 +113,30 @@ export async function requireBandAdmin(
   return user;
 }
 
+/** Throws unless the caller is a member of the band. Returns the band so a
+ * private query can authorize and hydrate band-owned data with one guard. */
+export async function requireBandMember(
+  ctx: QueryCtx,
+  bandId: Id<"bands">,
+): Promise<Doc<"bands">> {
+  const user = await currentUser(ctx);
+  if (!user) {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not signed in");
+    throw new Error("No user record — call users:ensureUser first");
+  }
+  const band = await ctx.db.get(bandId);
+  if (!band) throw new Error("Band not found");
+  const membership = await ctx.db
+    .query("bandMembers")
+    .withIndex("by_band_user", (q) =>
+      q.eq("bandId", bandId).eq("userId", user._id),
+    )
+    .unique();
+  if (!membership) throw new Error("Not a member of this band");
+  return band;
+}
+
 // ─── Contract payload validators + converters ───────────────────────────────
 
 export const bandPayloadValidator = v.object({
@@ -195,6 +220,62 @@ export async function assertGigPublishable(
   return { band, venue };
 }
 
+/** The instant that divides "upcoming" from "past". Every feed-shaped read
+ * derives from it so they share one grace window — but each query execution
+ * takes its own reading, so a gig sitting right on the boundary can still be
+ * upcoming to one query and past to another.
+ *
+ * Known staleness, deferred for v1: Date.now() is captured when the query
+ * executes, and a cached result only recomputes when something writes to the
+ * range it read — so on a quiet deployment a gig can linger past the 6h grace.
+ * Pre-launch fix: a cron heartbeat that writes the current hour's cutoff to a
+ * singleton doc this reads instead of the clock. */
+export function feedCutoff(): number {
+  return Date.now() - FEED_GRACE_MS;
+}
+
+/** One band's past gigs, newest first, at most `limit` of them.
+ *
+ * Reads `gigBands.by_band_startsAt` rather than filtering the global gig range
+ * by `lineup`, so the window bounds the band's own history and nothing else.
+ * A join row whose gig has been deleted is skipped rather than trusted. */
+export async function pastGigsForBand(
+  ctx: QueryCtx,
+  bandId: Id<"bands">,
+  limit: number,
+): Promise<Doc<"gigs">[]> {
+  const joinRows = await ctx.db
+    .query("gigBands")
+    .withIndex("by_band_startsAt", (q) =>
+      q.eq("bandId", bandId).lt("startsAt", feedCutoff()),
+    )
+    .order("desc")
+    .take(limit);
+
+  const gigs: Doc<"gigs">[] = [];
+  for (const row of joinRows) {
+    const gig = await ctx.db.get(row.gigId);
+    if (gig) gigs.push(gig);
+  }
+  return gigs;
+}
+
+/** The only supported way to create a gig. `gigs.lineup` is an array, which
+ * Convex cannot index, so a band's own history is reachable only through the
+ * `gigBands` join rows written here. A gig inserted straight into `ctx.db`
+ * exists but is invisible to `gigs:pastForBand` and `analytics:bandRecap` —
+ * route every insert through this function, including seeds and fixtures. */
+export async function insertGigWithBandIndex(
+  ctx: MutationCtx,
+  gig: WithoutSystemFields<Doc<"gigs">>,
+): Promise<Id<"gigs">> {
+  const gigId = await ctx.db.insert("gigs", gig);
+  for (const bandId of new Set(gig.lineup)) {
+    await ctx.db.insert("gigBands", { gigId, bandId, startsAt: gig.startsAt });
+  }
+  return gigId;
+}
+
 /** The insert half. `band` must come from assertGigPublishable — call that
  * first. */
 export async function insertPublishedGig(
@@ -202,7 +283,7 @@ export async function insertPublishedGig(
   args: GigPublishFields,
   band: Doc<"bands">,
 ): Promise<Id<"gigs">> {
-  const gigId = await ctx.db.insert("gigs", {
+  const gigId = await insertGigWithBandIndex(ctx, {
     title: args.title,
     venueId: args.venueId,
     price: args.price,
@@ -394,10 +475,24 @@ export const FEED_GRACE_MS = 6 * 60 * 60 * 1000;
 /** Hard ceiling on feed-style index range reads. */
 export const MAX_FEED_GIGS = 200;
 
-/** Ceiling on the backwards scan behind `gigs:pastForBand`. Same bound and
- * same caveat as the forward reads: a band whose shows fall outside the 200
- * most recent past gigs would not appear. */
+/** Ceiling on `gigs:pastForBand`. Read through the `gigBands` index, so this
+ * bounds one band's own past gigs — not, as it once did, a global scan window
+ * that other bands' gigs could crowd a band's history out of. */
 export const MAX_PAST_GIGS = 200;
+
+/** Maximum band gigs included in one fan recap. Every one of them costs up to
+ * MAX_RSVPS_PER_GIG row reads, so this is the number the ~16k document read
+ * limit actually constrains: 40 × 300 = 12,000 worst case, leaving headroom
+ * for the gig, venue and membership reads around it. `pastForBand` lists the
+ * band's history far past this — the cap is on fan-level analysis, not on the
+ * events a band can see. */
+export const MAX_RECAP_GIGS = 40;
+
+/** Maximum RSVP rows measured for one gig in a fan recap. */
+export const MAX_RSVPS_PER_GIG = 300;
+
+/** Minimum distinct fans required in every row of a private partition. */
+export const K_ANON_FANS = 5;
 
 /** The venue table is a small curated list, not user-generated, so one read
  * returns all of it. */

@@ -4,8 +4,8 @@ A live-music app for the Bay Area. Fans get a feed of upcoming gigs — venue,
 door time, price, lineup, flyer — and can RSVP, save a gig for later, follow
 bands, and browse venues on a map. Bands get the other half: create a band
 profile, publish gigs to the same feed, keep an ordered photo/video gallery,
-and read aggregate fan analytics once the band clears a 25-follower privacy
-threshold.
+and read a past-events recap whose fan breakdowns are withheld server-side
+below a 5-fan privacy floor.
 
 One Flutter codebase ships web, iOS and Android. Only the auth service differs
 per platform; every screen, model and repository is shared.

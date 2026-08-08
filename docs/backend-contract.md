@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.6)
+# EarPlug Convex function contract (FROZEN — v1.9)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -61,11 +61,43 @@ range, while `clerkBackfill:applyEmails` reports a `skippedTombstoned` counter.
 An all-tombstone page continues the backfill's self-scheduling walk rather than
 halting progress. No client-facing wire shape changed.
 
+**v1.7 — band-private fan analytics.** Added `analytics:bandRecap`, a bounded
+recap of one band's past-gig RSVP measurements. The query requires a signed-in
+`bandMembers` row (either role) and introduced a `K_ANON_FANS = 5` floor with
+whole-partition suppression. The payload shape below is frozen jointly for
+this backend and the parallel Flutter client workstream: both workstreams must
+stay in sync on every field, literal and nullability change rather than
+drifting around the contract.
+
+**v1.8 — narrowed recap suppression.** The `K_ANON_FANS = 5` floor now applies
+only to `leadTime`, `repeatFans`, `newReturning` and the per-show
+`newFans`/`returningFans` columns. `leadTime.unmeasurable` is independently
+zeroed when it represents 1–4 distinct fans, while zero and cells at or above
+the floor still publish. `venues`, `weekdays` and `pricing` now always publish
+with `suppressed: false` because their values are exactly recomputable from the
+already-published `shows[]` rows. The payload shape did not change.
+
+**v1.9 — a band's history stops depending on other bands.** New `gigBands`
+table, one row per (gig, band in its lineup), indexed `by_band_startsAt` and
+`by_gig`. `gigs:pastForBand` and `analytics:bandRecap` now read a band's own
+past gigs through that index instead of scanning the global `by_startsAt`
+range and filtering `lineup` in memory — a scan that silently dropped a band's
+older shows once other bands' gigs crowded them past the 200-row window.
+`MAX_RECAP_GIGS` rose 30 → 40, and `window.truncated` now means exactly "this
+band has played more than `MAX_RECAP_GIGS` past shows"; `window.scanned` is the
+index rows read for the band, which exceeds `showsAnalyzed` by one precisely
+when the recap is truncated. No payload field changed shape or nullability.
+**Every write path into `gigs` must go through `insertGigWithBandIndex`** — a
+gig inserted directly is invisible to both read paths. Existing rows are
+repaired by `maintenance:backfillGigBands`.
+
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
 (UTC). Auth = Clerk JWT (template `convex`) attached by the client; queries that
 depend on identity return empty/null when unauthenticated (they must NOT throw,
-the client subscribes before sign-in); **all mutations throw when unauthenticated**.
+the client subscribes before sign-in); the explicitly band-private
+`analytics:bandRecap` is the query exception and throws unless the caller is a
+member. **All mutations throw when unauthenticated**.
 
 ## Payload shapes
 
@@ -111,6 +143,54 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
   // users.deletedAt is an internal tombstone and is deliberately not exposed
   // the row's _creationTime, surfaced under a stable name
   "createdAt": 1785300000000 }
+
+// BandRecap — shows are newest first; weekday is Monday=1 through Sunday=7
+{ "window": { "showsAnalyzed": 2, "scanned": 14, "truncated": false,
+               "firstStartsAt": 1784000000000, "lastStartsAt": 1785000000000 },
+  "totals": { "shows": 2, "reportedRsvps": 90, "measuredRsvps": 82,
+              "avgPerShow": 41, "bestShowRsvps": 47,
+              "distinctFans": 70, "followerCount": 486 },
+  "shows": [
+    { "gigId": "...", "title": "...", "startsAt": 1785000000000,
+      "venueName": "...", "price": 10, "ticketing": "rsvp|external",
+      "goingCount": 48, "measuredRsvps": 47,
+      // both are null on every show when newReturning.suppressed is true
+      "newFans": 35, "returningFans": 12 }
+  ],
+  "newReturning": { "suppressed": false },
+  "leadTime": {
+    "buckets": [
+      { "key": "twoWeeksPlus|oneToTwoWeeks|underWeek|dayOf", "count": 20 }
+    ],
+    // independently zeroed when the true cell contains 1–4 distinct fans
+    "medianDays": 8.5, "unmeasurable": 5, "suppressed": false
+  },
+  "venues": {
+    "rows": [{ "venueName": "...", "shows": 2,
+               "totalRsvps": 82, "avgRsvps": 41 }],
+    // always false: exactly recomputable from shows[]
+    "suppressed": false
+  },
+  "weekdays": {
+    "rows": [{ "weekday": 6, "shows": 2, "avgRsvps": 41 }],
+    // always false: exactly recomputable from shows[]
+    "suppressed": false
+  },
+  "repeatFans": {
+    "tiers": [{ "key": "one|twoToThree|fourPlus", "count": 50 }],
+    "suppressed": false
+  },
+  "pricing": { "freeShows": 1, "freeAvgRsvps": 35,
+               "paidShows": 1, "paidAvgRsvps": 47,
+               // always false: exactly recomputable from shows[]
+               "suppressed": false } }
+
+// Suppression applies only to leadTime, repeatFans and newReturning. Suppressed
+// leadTime has empty buckets and a null median; unmeasurable returns its real
+// count only when its distinct-fan set is empty or >= 5, and is zeroed for a
+// 1–4-fan cell. Suppressed repeatFans has empty tiers. Suppressed newReturning
+// makes both per-show split columns null. venues/weekdays/pricing retain the
+// field for the frozen shape but always set suppressed to false.
 ```
 
 ## Queries (client subscribes to the ★ ones)
@@ -129,6 +209,7 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 | `users:me` | `{}` | `UserPayload \| null` |
 | ★ `interactions:myInteractions` | `{}` | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], attendedCount: number }`; empty/0 unauth |
 | `interactions:history` | `{}` | `[{ title: string, venueName: string, startsAt: number }]` — gigs the user RSVPed to with `startsAt < now`, newest first; `[]` unauth. Display string ("title — venue", "SAT JUL 5") derived client-side. |
+| `analytics:bandRecap` | `{ bandId }` | `BandRecap` — signed-in band members only (admin or member); throws otherwise. Reads the 200 most recent globally past gigs, analyzes at most the first 30 whose lineup contains the band, and returns shows newest first. `window.truncated` covers both the matching-show cap and a full global scan. The five-distinct-fan floor suppresses `leadTime`, `repeatFans`, `newReturning` and the per-show new/returning columns; `leadTime.unmeasurable` is also independently zeroed for 1–4 distinct fans. `venues`, `weekdays` and `pricing` always publish because they are exactly recomputable from `shows[]`. |
 
 ## Mutations
 
@@ -159,6 +240,17 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 
 ## Limits
 
+- `MAX_RECAP_GIGS = 40` of the band's own past gigs, read through
+  `gigBands.by_band_startsAt`; `MAX_RSVPS_PER_GIG = 300` per analyzed show.
+  The recap cap is what the ~16k document read limit constrains (40 × 300 =
+  12,000 worst case). `MAX_PAST_GIGS = 200` bounds `gigs:pastForBand`, which
+  reads no RSVP rows and so lists a band's history far past the recap cap.
+- `K_ANON_FANS = 5` distinct fans in every populated lead-time bucket, repeat
+  tier and new/returning set. A cell with 1–4 fans suppresses its whole
+  partition; zero is safe, though an entirely empty partition has no data and
+  remains suppressed. `leadTime.unmeasurable` is additionally zeroed when its
+  own distinct-fan set contains 1–4 fans. The floor does not apply to `venues`,
+  `weekdays` or `pricing`.
 - `MAX_MEDIA_PER_BAND = 50` — also the `.take()` bound on every `bandMedia`
   read, so "the whole ordered list fits in one read" holds by construction.
 - `MAX_MEDIA_BYTES = 100 MiB`.
@@ -186,6 +278,22 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
   seeds it to 0.
 - `bands.pastShows` is a hand-derived summary with no live writer. No gig
   mutation maintains it, so it is not synchronized automatically.
+- `analytics:bandRecap` copies each gig's `goingCount` only into its show row
+  and the straight-sum `totals.reportedRsvps`. `totals.measuredRsvps`, every
+  average, best-show value and fan breakdown come only from bounded
+  `gigRsvps` rows. Lead-time rows created at or after `startsAt` are
+  unmeasurable and excluded from both buckets and the median.
+- Recap suppression is partition-wide for `leadTime`, `repeatFans` and
+  `newReturning`: their buckets, tiers or per-show `newFans`/`returningFans`
+  columns are never partially revealed. `leadTime.unmeasurable` has its own
+  small-cell gate and can still return its real count when its distinct-fan set
+  is empty or has at least five fans, even when the rest of lead time is
+  suppressed. `venues`, `weekdays` and `pricing` always publish with
+  `suppressed: false` because they are exactly recomputable from the
+  already-visible per-show `venueName`, `startsAt`, `price` and `measuredRsvps`
+  values in `shows[]`; venue and weekday turnout is ultimately also exposed
+  publicly through `gigs.goingCount`. `window`, `totals`, `goingCount` and
+  `measuredRsvps` remain visible counts.
 
 ## Client-side derivations (NOT server concerns)
 
@@ -197,6 +305,11 @@ the client subscribes before sign-in); **all mutations throw when unauthenticate
 
 ## Internal (not called by client)
 
+- `maintenance:backfillGigBands` internalMutation — dry-run by default; creates
+  the `gigBands` rows for gigs written before the join table existed (all 14
+  production rows came out of the legacy `events` migration). Idempotent by
+  (gigId, bandId); never deletes or patches. Until it has run non-dry against a
+  deployment, `gigs:pastForBand` and `analytics:bandRecap` return nothing there.
 - `users:syncFromClerk` internalMutation — the webhook's single write entry
   point for a flattened, validated Clerk identity. Runs the same adoption
   ladder as `users:ensureUser`; `user.updated` makes a non-empty, non-colliding
