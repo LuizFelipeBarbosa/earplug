@@ -95,6 +95,23 @@ export default defineSchema({
     .index("by_startsAt", ["startsAt"])
     .index("by_title", ["title"]),
 
+  /** One row per (gig, band in its lineup). `gigs.lineup` is an array and
+   * Convex cannot index array containment, so without this join table the only
+   * way to find a band's own gigs is to scan the global `by_startsAt` range and
+   * filter in memory — which silently truncates a band's history once other
+   * bands' gigs crowd it out of the scan window. `startsAt` is denormalized so
+   * the range and the ordering both come from the index.
+   *
+   * Every write path into `gigs` must also write here; `indexGigForBands` in
+   * `lib/helpers.ts` is the single place that does it. */
+  gigBands: defineTable({
+    gigId: v.id("gigs"),
+    bandId: v.id("bands"),
+    startsAt: v.number(),
+  })
+    .index("by_band_startsAt", ["bandId", "startsAt"])
+    .index("by_gig", ["gigId"]),
+
   bandMembers: defineTable({
     bandId: v.id("bands"),
     userId: v.id("users"),

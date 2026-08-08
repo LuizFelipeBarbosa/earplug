@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
+import { insertGigWithBandIndex } from "./lib/helpers";
 import schema from "./schema";
 
 describe("gigs:pastForBand", () => {
@@ -44,25 +45,25 @@ describe("gigs:pastForBand", () => {
       goingCount: 0,
     };
     await t.run(async (ctx) => {
-      await ctx.db.insert("gigs", {
+      await insertGigWithBandIndex(ctx, {
         ...base,
         title: "Older Show",
         startsAt: Date.now() - 90 * 86400_000,
         lineup: [bandId],
       });
-      await ctx.db.insert("gigs", {
+      await insertGigWithBandIndex(ctx, {
         ...base,
         title: "Recent Show",
         startsAt: Date.now() - 7 * 86400_000,
         lineup: [bandId],
       });
-      await ctx.db.insert("gigs", {
+      await insertGigWithBandIndex(ctx, {
         ...base,
         title: "Upcoming Show",
         startsAt: Date.now() + 7 * 86400_000,
         lineup: [bandId],
       });
-      await ctx.db.insert("gigs", {
+      await insertGigWithBandIndex(ctx, {
         ...base,
         title: "Someone Else's Past Show",
         startsAt: Date.now() - 30 * 86400_000,

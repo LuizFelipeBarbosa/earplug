@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.8)
+# EarPlug Convex function contract (FROZEN — v1.9)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -76,6 +76,20 @@ zeroed when it represents 1–4 distinct fans, while zero and cells at or above
 the floor still publish. `venues`, `weekdays` and `pricing` now always publish
 with `suppressed: false` because their values are exactly recomputable from the
 already-published `shows[]` rows. The payload shape did not change.
+
+**v1.9 — a band's history stops depending on other bands.** New `gigBands`
+table, one row per (gig, band in its lineup), indexed `by_band_startsAt` and
+`by_gig`. `gigs:pastForBand` and `analytics:bandRecap` now read a band's own
+past gigs through that index instead of scanning the global `by_startsAt`
+range and filtering `lineup` in memory — a scan that silently dropped a band's
+older shows once other bands' gigs crowded them past the 200-row window.
+`MAX_RECAP_GIGS` rose 30 → 40, and `window.truncated` now means exactly "this
+band has played more than `MAX_RECAP_GIGS` past shows"; `window.scanned` is the
+index rows read for the band, which exceeds `showsAnalyzed` by one precisely
+when the recap is truncated. No payload field changed shape or nullability.
+**Every write path into `gigs` must go through `insertGigWithBandIndex`** — a
+gig inserted directly is invisible to both read paths. Existing rows are
+repaired by `maintenance:backfillGigBands`.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
@@ -226,8 +240,11 @@ member. **All mutations throw when unauthenticated**.
 
 ## Limits
 
-- `MAX_RECAP_GIGS = 30` after filtering the 200-row global past-gig scan by
-  lineup; `MAX_RSVPS_PER_GIG = 300` per analyzed show.
+- `MAX_RECAP_GIGS = 40` of the band's own past gigs, read through
+  `gigBands.by_band_startsAt`; `MAX_RSVPS_PER_GIG = 300` per analyzed show.
+  The recap cap is what the ~16k document read limit constrains (40 × 300 =
+  12,000 worst case). `MAX_PAST_GIGS = 200` bounds `gigs:pastForBand`, which
+  reads no RSVP rows and so lists a band's history far past the recap cap.
 - `K_ANON_FANS = 5` distinct fans in every populated lead-time bucket, repeat
   tier and new/returning set. A cell with 1–4 fans suppresses its whole
   partition; zero is safe, though an entirely empty partition has no data and
@@ -288,6 +305,11 @@ member. **All mutations throw when unauthenticated**.
 
 ## Internal (not called by client)
 
+- `maintenance:backfillGigBands` internalMutation — dry-run by default; creates
+  the `gigBands` rows for gigs written before the join table existed (all 14
+  production rows came out of the legacy `events` migration). Idempotent by
+  (gigId, bandId); never deletes or patches. Until it has run non-dry against a
+  deployment, `gigs:pastForBand` and `analytics:bandRecap` return nothing there.
 - `users:syncFromClerk` internalMutation — the webhook's single write entry
   point for a flattened, validated Clerk identity. Runs the same adoption
   ladder as `users:ensureUser`; `user.updated` makes a non-empty, non-colliding

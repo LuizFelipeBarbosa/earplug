@@ -18,6 +18,7 @@ import {
 
 const MAX_RECOUNT_BANDS = 1000;
 const MAX_JOIN_ROWS_PER_BAND = 1000;
+const MAX_BACKFILL_GIGS = 2000;
 
 const recountChangeValidator = v.object({
   bandId: v.id("bands"),
@@ -138,6 +139,71 @@ export const recountBandFollowers = internalMutation({
       skipped,
       aborted: false,
       changes,
+    };
+  },
+});
+
+/** Creates the `gigBands` join rows for gigs that predate the join table —
+ * on production that is all 14 rows reshaped out of the legacy `events` table.
+ * A gig with no join row still exists and still appears in the feed, but it is
+ * invisible to `gigs:pastForBand` and `analytics:bandRecap`, so the band's
+ * history reads as empty while the gig sits right there in the table.
+ *
+ * Idempotent by (gigId, bandId): pairs that already have a row are counted and
+ * left alone, so a partial run can simply be re-run. Nothing is ever deleted
+ * or patched here — there is no gig-edit path in v1, so a join row's
+ * denormalized `startsAt` cannot drift from its gig.
+ *
+ * Dry run by default, like every other mutation in this module. */
+export const backfillGigBands = internalMutation({
+  args: { dryRun: v.optional(v.boolean()) },
+  returns: v.object({
+    gigsScanned: v.number(),
+    pairsExisting: v.number(),
+    pairsMissing: v.number(),
+    rowsCreated: v.number(),
+    done: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const dryRun = args.dryRun ?? true;
+    const gigs = await ctx.db
+      .query("gigs")
+      .withIndex("by_startsAt")
+      .take(MAX_BACKFILL_GIGS);
+
+    let pairsExisting = 0;
+    let pairsMissing = 0;
+    let rowsCreated = 0;
+    for (const gig of gigs) {
+      const rows = await ctx.db
+        .query("gigBands")
+        .withIndex("by_gig", (q) => q.eq("gigId", gig._id))
+        .take(MAX_JOIN_ROWS_PER_BAND);
+      const indexed = new Set(rows.map((row) => row.bandId));
+      for (const bandId of new Set(gig.lineup)) {
+        if (indexed.has(bandId)) {
+          pairsExisting++;
+          continue;
+        }
+        pairsMissing++;
+        if (dryRun) continue;
+        await ctx.db.insert("gigBands", {
+          gigId: gig._id,
+          bandId,
+          startsAt: gig.startsAt,
+        });
+        rowsCreated++;
+      }
+    }
+
+    return {
+      gigsScanned: gigs.length,
+      pairsExisting,
+      pairsMissing,
+      rowsCreated,
+      // A truncated read leaves older gigs unvisited. Re-running is safe but
+      // would revisit the same page, so crossing this needs a cursor first.
+      done: gigs.length < MAX_BACKFILL_GIGS,
     };
   },
 });

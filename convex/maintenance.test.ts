@@ -336,3 +336,119 @@ describe("maintenance:publishRealGig", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("maintenance:backfillGigBands", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  /** A band and two past gigs written straight into the table, the way the
+   * legacy migration wrote production's 14 — no `gigBands` rows anywhere. */
+  async function setupUnindexedHistory() {
+    const t = convexTest(schema);
+    const { bandId, otherBandId } = await t.run(async (ctx) => {
+      const bandId = await ctx.db.insert("bands", bandFields("Unindexed", 0));
+      const otherBandId = await ctx.db.insert(
+        "bands",
+        bandFields("Co-headliner", 0),
+      );
+      const venueId = await ctx.db.insert("venues", {
+        name: "The Real Room",
+        area: "Mission, SF",
+        addr: "123 Valencia St",
+        distSF: "0.5 mi",
+        distOak: "7.0 mi",
+        lat: 37.76,
+        lng: -122.42,
+      });
+      const base = {
+        venueId,
+        price: 0,
+        doorsTime: "8PM / 9PM",
+        flyKey: "paper",
+        genres: ["noise"],
+        desc: "",
+        ticketing: "rsvp" as const,
+        cap: "No cap",
+        goingCount: 0,
+      };
+      await ctx.db.insert("gigs", {
+        ...base,
+        title: "Legacy Solo Show",
+        startsAt: Date.now() - 30 * DAY_MS,
+        lineup: [bandId],
+      });
+      await ctx.db.insert("gigs", {
+        ...base,
+        title: "Legacy Split Bill",
+        startsAt: Date.now() - 20 * DAY_MS,
+        lineup: [bandId, otherBandId],
+      });
+      return { bandId, otherBandId };
+    });
+    return { t, bandId, otherBandId };
+  }
+
+  test("dry run by default: reports the gap and writes nothing", async () => {
+    const { t, bandId } = await setupUnindexedHistory();
+
+    expect(await t.mutation(internal.maintenance.backfillGigBands, {})).toEqual(
+      {
+        gigsScanned: 2,
+        pairsExisting: 0,
+        pairsMissing: 3,
+        rowsCreated: 0,
+        done: true,
+      },
+    );
+    const { gigs } = await t.query(api.gigs.pastForBand, { bandId });
+    expect(gigs).toHaveLength(0);
+  });
+
+  test("makes migrated gigs reachable from the band's own history", async () => {
+    const { t, bandId, otherBandId } = await setupUnindexedHistory();
+
+    const report = await t.mutation(internal.maintenance.backfillGigBands, {
+      dryRun: false,
+    });
+    expect(report).toMatchObject({ pairsMissing: 3, rowsCreated: 3 });
+
+    const mine = await t.query(api.gigs.pastForBand, { bandId });
+    expect(mine.gigs.map((gig) => gig.title)).toEqual([
+      "Legacy Split Bill",
+      "Legacy Solo Show",
+    ]);
+    // One row per lineup band, so a co-headliner gets the split bill too.
+    const theirs = await t.query(api.gigs.pastForBand, {
+      bandId: otherBandId,
+    });
+    expect(theirs.gigs.map((gig) => gig.title)).toEqual(["Legacy Split Bill"]);
+  });
+
+  test("is idempotent — a second run creates nothing", async () => {
+    const { t } = await setupUnindexedHistory();
+    await t.mutation(internal.maintenance.backfillGigBands, { dryRun: false });
+
+    expect(
+      await t.mutation(internal.maintenance.backfillGigBands, {
+        dryRun: false,
+      }),
+    ).toEqual({
+      gigsScanned: 2,
+      pairsExisting: 3,
+      pairsMissing: 0,
+      rowsCreated: 0,
+      done: true,
+    });
+  });
+
+  test("leaves gigs published through the normal path alone", async () => {
+    const { t, fields } = await setupPublishFixture();
+    await t.mutation(internal.maintenance.publishRealGig, {
+      ...fields,
+      dryRun: false,
+    });
+
+    expect(
+      await t.mutation(internal.maintenance.backfillGigBands, {}),
+    ).toMatchObject({ pairsExisting: 1, pairsMissing: 0 });
+  });
+});

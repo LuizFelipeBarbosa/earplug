@@ -2,11 +2,10 @@ import { Infer, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import {
-  FEED_GRACE_MS,
   K_ANON_FANS,
-  MAX_PAST_GIGS,
   MAX_RECAP_GIGS,
   MAX_RSVPS_PER_GIG,
+  pastGigsForBand,
   requireBandMember,
 } from "./lib/helpers";
 
@@ -159,12 +158,6 @@ const LEAD_TIME_KEYS = [
   "dayOf",
 ] as const;
 
-/** Must stay identical to `gigs.ts`'s module-private `feedCutoff`, the source
- * of truth for when a gig leaves feed-shaped reads and becomes past. */
-function feedCutoff(): number {
-  return Date.now() - FEED_GRACE_MS;
-}
-
 /** Empty buckets identify nobody and are safe to publish; only buckets with
  * 1..K-1 distinct fans create a re-identification risk. Do not simplify this
  * to "every bucket >= K": that would suppress ordinary partitions containing
@@ -205,12 +198,14 @@ function pacificWeekday(startsAt: number): number {
   return isoWeekdays[weekday];
 }
 
-/** Band-private recap of the bounded past-gig window.
+/** Band-private recap of the band's past gigs, newest first.
  *
- * The global by_startsAt read can exhaust either its 30 matching-show limit or
- * its 200-row scan limit. `window.truncated` reports both cases because a full
- * global scan with few lineup matches still cannot prove that older band gigs
- * do not exist beyond the rows read.
+ * Read through `gigBands.by_band_startsAt`, so the window covers this band's
+ * own history and `window.truncated` means exactly one thing: the band has
+ * played more than MAX_RECAP_GIGS past shows. It is no longer possible for a
+ * band's older shows to fall out of the recap because other bands published
+ * gigs in the meantime. Asking the index for one row beyond the cap is what
+ * makes the flag exact rather than inferred.
  *
  * Lead time uses RSVP row creation time only when it predates the gig. Migrated
  * past gigs commonly have rows created after startsAt; those rows are reported
@@ -220,23 +215,9 @@ export const bandRecap = query({
   returns: bandRecapValidator,
   handler: async (ctx, args) => {
     const band = await requireBandMember(ctx, args.bandId);
-    const recent = await ctx.db
-      .query("gigs")
-      .withIndex("by_startsAt", (q) => q.lt("startsAt", feedCutoff()))
-      .order("desc")
-      .take(MAX_PAST_GIGS);
-
-    const analyzedGigs: Doc<"gigs">[] = [];
-    let recapLimitReachedBeforeScanEnd = false;
-    for (let index = 0; index < recent.length; index++) {
-      const gig = recent[index];
-      if (!gig.lineup.includes(args.bandId)) continue;
-      analyzedGigs.push(gig);
-      if (analyzedGigs.length === MAX_RECAP_GIGS) {
-        recapLimitReachedBeforeScanEnd = index < recent.length - 1;
-        break;
-      }
-    }
+    const probed = await pastGigsForBand(ctx, args.bandId, MAX_RECAP_GIGS + 1);
+    const truncated = probed.length > MAX_RECAP_GIGS;
+    const analyzedGigs = probed.slice(0, MAX_RECAP_GIGS);
 
     const analyzed: AnalyzedShow[] = [];
     for (const gig of analyzedGigs) {
@@ -400,9 +381,10 @@ export const bandRecap = query({
     return {
       window: {
         showsAnalyzed: analyzed.length,
-        scanned: recent.length,
-        truncated:
-          recapLimitReachedBeforeScanEnd || recent.length === MAX_PAST_GIGS,
+        // Index rows read for this band, which is one more than the shows
+        // analyzed exactly when the recap is truncated.
+        scanned: probed.length,
+        truncated,
         firstStartsAt,
         lastStartsAt,
       },

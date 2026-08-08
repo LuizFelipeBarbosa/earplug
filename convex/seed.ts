@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
-import { uniqueSlug } from "./lib/helpers";
+import { insertGigWithBandIndex, uniqueSlug } from "./lib/helpers";
 
 // Port of lib/demo_data.dart (verbatim strings/numbers). startsAt is computed
 // relative to run time so gig 1 lands "tonight" (8PM Pacific) and the rest
@@ -141,7 +141,7 @@ export const seedDemo = internalMutation({
     }
 
     for (const gig of DEMO_GIGS) {
-      await ctx.db.insert("gigs", {
+      await insertGigWithBandIndex(ctx, {
         title: gig.title,
         venueId: venueIds[gig.venue],
         price: gig.price,

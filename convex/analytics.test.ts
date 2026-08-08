@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { BandRecap, computeFanHistory } from "./analytics";
+import { MAX_RECAP_GIGS, insertGigWithBandIndex } from "./lib/helpers";
 import schema from "./schema";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -106,7 +107,7 @@ async function insertGig(
   },
 ): Promise<Id<"gigs">> {
   return await setup.t.run(async (ctx) =>
-    ctx.db.insert("gigs", {
+    insertGigWithBandIndex(ctx, {
       title: options.title,
       venueId: setup.venueId,
       price: options.price ?? 0,
@@ -518,12 +519,12 @@ describe("analytics:bandRecap fan measurements", () => {
   });
 });
 
-describe("analytics:bandRecap scan window", () => {
-  test("marks the window truncated when 30 matches leave scanned rows behind", async () => {
+describe("analytics:bandRecap window", () => {
+  test("truncates at MAX_RECAP_GIGS and says so", async () => {
     const setup = await setupMemberBand();
     await setup.t.run(async (ctx) => {
-      for (let index = 0; index < 31; index++) {
-        await ctx.db.insert("gigs", {
+      for (let index = 0; index < MAX_RECAP_GIGS + 1; index++) {
+        await insertGigWithBandIndex(ctx, {
           title: `Matched ${index}`,
           venueId: setup.venueId,
           price: 0,
@@ -542,14 +543,18 @@ describe("analytics:bandRecap scan window", () => {
 
     const recap = await queryRecap(setup);
     expect(recap.window).toMatchObject({
-      showsAnalyzed: 30,
-      scanned: 31,
+      showsAnalyzed: MAX_RECAP_GIGS,
+      scanned: MAX_RECAP_GIGS + 1,
       truncated: true,
     });
-    expect(recap.shows).toHaveLength(30);
+    expect(recap.shows).toHaveLength(MAX_RECAP_GIGS);
   });
 
-  test("marks the window truncated when the 200-row scan has few matches", async () => {
+  // The regression this join table exists for. Under the old global-scan read
+  // these two shows sat past the 200-row window and vanished from the band's
+  // own history entirely — the band saw an empty recap while its gigs were
+  // right there in the table.
+  test("keeps a band's whole history behind hundreds of other bands' gigs", async () => {
     const setup = await setupMemberBand();
     const otherBandId = await setup.t.run(async (ctx) =>
       ctx.db.insert("bands", {
@@ -565,15 +570,16 @@ describe("analytics:bandRecap scan window", () => {
       }),
     );
     await setup.t.run(async (ctx) => {
-      for (let index = 0; index < 200; index++) {
-        await ctx.db.insert("gigs", {
-          title: `Scanned ${index}`,
+      // Ours are the two oldest; 201 newer gigs belong to someone else.
+      for (let index = 0; index < 203; index++) {
+        await insertGigWithBandIndex(ctx, {
+          title: `Show ${index}`,
           venueId: setup.venueId,
           price: 0,
           startsAt: NOW - DAY_MS - index * HOUR_MS,
           doorsTime: "8PM / 9PM",
           flyKey: "paper",
-          lineup: [index < 2 ? setup.bandId : otherBandId],
+          lineup: [index < 201 ? otherBandId : setup.bandId],
           genres: ["noise"],
           desc: "",
           ticketing: "rsvp",
@@ -586,9 +592,13 @@ describe("analytics:bandRecap scan window", () => {
     const recap = await queryRecap(setup);
     expect(recap.window).toMatchObject({
       showsAnalyzed: 2,
-      scanned: 200,
-      truncated: true,
+      scanned: 2,
+      truncated: false,
     });
+    expect(recap.shows.map((show) => show.title)).toEqual([
+      "Show 201",
+      "Show 202",
+    ]);
   });
 });
 
