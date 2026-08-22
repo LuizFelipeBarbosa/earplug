@@ -710,6 +710,14 @@ class _SlotGrid extends StatelessWidget {
         state: _SlotState.optional,
         onTap: () => showTicketsSheet(context),
       ),
+      _SlotCard(
+        tag: 'AGE',
+        tagColor: Ep.inkA(.5),
+        value: app.gfAgeRequirement.label,
+        sub: 'Who can come through',
+        state: _SlotState.optional,
+        onTap: () => showAgeSheet(context),
+      ),
     ];
 
     Widget row(_SlotCard left, _SlotCard right) => IntrinsicHeight(
@@ -728,6 +736,48 @@ class _SlotGrid extends StatelessWidget {
         row(slots[0], slots[1]),
         const SizedBox(height: 9),
         row(slots[2], slots[3]),
+        const SizedBox(height: 9),
+        SizedBox(width: double.infinity, child: slots[4]),
+      ],
+    );
+  }
+}
+
+// ---------------------------- age ----------------------------
+
+void showAgeSheet(BuildContext context) {
+  showEpSheet(
+    context,
+    (_) => const _Sheet(title: 'Age requirement', child: _AgeBody()),
+  );
+}
+
+class _AgeBody extends StatelessWidget {
+  const _AgeBody();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final requirement in AgeRequirement.values) ...[
+          _OptionCard(
+            title: requirement.label,
+            subtitle: switch (requirement) {
+              AgeRequirement.allAges => 'Everyone is welcome',
+              AgeRequirement.eighteenPlus => 'Guests must be 18 or older',
+              AgeRequirement.twentyOnePlus => 'Guests must be 21 or older',
+            },
+            selected: app.gfAgeRequirement == requirement,
+            onTap: () {
+              app.setGfAgeRequirement(requirement);
+              Navigator.pop(context);
+            },
+          ),
+          if (requirement != AgeRequirement.twentyOnePlus)
+            const SizedBox(height: 8),
+        ],
       ],
     );
   }

@@ -6,6 +6,7 @@ import '../genres.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/fan_event_card.dart';
 
 class ExploreScreen extends StatefulWidget {
   const ExploreScreen({super.key});
@@ -154,7 +155,11 @@ class _SearchResults extends StatelessWidget {
     final gigs = app.allGigs.where((g) {
       return g.title.toLowerCase().contains(q) ||
           app.venue(g.venueId).name.toLowerCase().contains(q) ||
-          g.genres.any((t) => t.contains(q));
+          g.genres.any((genre) => genre.toLowerCase().contains(q)) ||
+          g.lineup.any(
+            (bandId) =>
+                app.band(bandId)?.name.toLowerCase().contains(q) ?? false,
+          );
     }).toList();
     final venues = app.venues.where((venue) {
       return venue.name.toLowerCase().contains(q) ||
@@ -162,36 +167,126 @@ class _SearchResults extends StatelessWidget {
           venue.addr.toLowerCase().contains(q);
     }).toList();
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, tabBarClearance),
+    final type = app.exploreResultType;
+    final showEvents =
+        type == ExploreResultType.all || type == ExploreResultType.events;
+    final showBands =
+        type == ExploreResultType.all || type == ExploreResultType.bands;
+    final showVenues =
+        type == ExploreResultType.all || type == ExploreResultType.venues;
+
+    return Column(
       children: [
-        const SectionLabel('BANDS'),
-        const SizedBox(height: 6),
-        if (bandIds.isEmpty)
-          Text('No bands found.', style: epText(size: 12, color: Ep.inkA(.4))),
-        for (final id in bandIds) ...[
-          _BandRow(bandId: id, app: app),
-          const SizedBox(height: 6),
-        ],
-        const SizedBox(height: 8),
-        const SectionLabel('VENUES'),
-        const SizedBox(height: 6),
-        if (venues.isEmpty)
-          Text('No venues found.', style: epText(size: 12, color: Ep.inkA(.4))),
-        for (final venue in venues) ...[
-          _VenueRow(venue: venue, app: app),
-          const SizedBox(height: 6),
-        ],
-        const SizedBox(height: 8),
-        const SectionLabel('GIGS'),
-        const SizedBox(height: 6),
-        if (gigs.isEmpty)
-          Text('No gigs found.', style: epText(size: 12, color: Ep.inkA(.4))),
-        for (final g in gigs) ...[
-          _GigRow(gig: g, app: app),
-          const SizedBox(height: 6),
-        ],
+        _SearchTypeTabs(app: app),
+        Expanded(
+          child: ListView(
+            key: ValueKey('explore-results-${type.name}'),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
+            children: [
+              if (showEvents) ...[
+                const SectionLabel('EVENTS'),
+                const SizedBox(height: 6),
+                if (gigs.isEmpty)
+                  Text(
+                    type == ExploreResultType.events
+                        ? 'No events found.'
+                        : 'No gigs found.',
+                    style: epText(size: 12, color: Ep.inkA(.4)),
+                  ),
+                for (final gig in gigs) ...[
+                  FanEventCard(gig: gig, app: app),
+                  const SizedBox(height: 8),
+                ],
+                if (type == ExploreResultType.all) const SizedBox(height: 8),
+              ],
+              if (showBands) ...[
+                const SectionLabel('BANDS'),
+                const SizedBox(height: 6),
+                if (bandIds.isEmpty)
+                  Text(
+                    'No bands found.',
+                    style: epText(size: 12, color: Ep.inkA(.4)),
+                  ),
+                for (final id in bandIds) ...[
+                  _BandRow(bandId: id, app: app),
+                  const SizedBox(height: 6),
+                ],
+                if (type == ExploreResultType.all) const SizedBox(height: 8),
+              ],
+              if (showVenues) ...[
+                const SectionLabel('VENUES'),
+                const SizedBox(height: 6),
+                if (venues.isEmpty)
+                  Text(
+                    'No venues found.',
+                    style: epText(size: 12, color: Ep.inkA(.4)),
+                  ),
+                for (final venue in venues) ...[
+                  _VenueRow(venue: venue, app: app),
+                  const SizedBox(height: 6),
+                ],
+              ],
+            ],
+          ),
+        ),
       ],
+    );
+  }
+}
+
+class _SearchTypeTabs extends StatelessWidget {
+  const _SearchTypeTabs({required this.app});
+
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    const labels = {
+      ExploreResultType.all: 'All',
+      ExploreResultType.events: 'Events',
+      ExploreResultType.bands: 'Bands',
+      ExploreResultType.venues: 'Venues',
+    };
+    return Container(
+      key: const Key('explore-result-tabs'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: Ep.whiteA(.07))),
+      ),
+      child: Row(
+        children: [
+          for (final entry in labels.entries) ...[
+            Expanded(
+              child: GestureDetector(
+                key: ValueKey('explore-tab-${entry.key.name}'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => app.setExploreResultType(entry.key),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 7),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: app.exploreResultType == entry.key ? Ep.blue : null,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: Text(
+                    entry.value,
+                    style: epText(
+                      size: 10,
+                      weight: FontWeight.w900,
+                      letterSpacing: .5,
+                      color: app.exploreResultType == entry.key
+                          ? Colors.white
+                          : Ep.inkA(.55),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (entry.key != ExploreResultType.venues) const SizedBox(width: 4),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -228,54 +323,6 @@ class _BandRow extends StatelessWidget {
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GigRow extends StatelessWidget {
-  final Gig gig;
-  final AppState app;
-
-  const _GigRow({required this.gig, required this.app});
-
-  @override
-  Widget build(BuildContext context) {
-    return EpCard(
-      padding: const EdgeInsets.all(9),
-      onTap: () => app.openGig(gig.id),
-      child: Row(
-        children: [
-          GigFlyer(
-            gig,
-            app.flyer(gig.flyKey),
-            width: 34,
-            height: 44,
-            rotationDeg: -2,
-            radius: 4,
-            shadow: false,
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  gig.title.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: epText(size: 13, weight: FontWeight.w800),
-                ),
-                Text(
-                  '${gig.dateShort} · ${app.venue(gig.venueId).name}',
-                  style: epText(size: 11, color: Ep.inkA(.5)),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          PriceBadge(gig),
         ],
       ),
     );
@@ -338,22 +385,28 @@ class _BrowseRows extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         if (showAllBands)
-          GridView.builder(
-            key: const Key('explore-all-bands'),
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: app.exploreBandIds.length,
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: .78,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemBuilder: (context, index) => _BandTile(
-              bandId: app.exploreBandIds[index],
-              app: app,
-              width: double.infinity,
-            ),
+          Column(
+            children: [
+              GridView.builder(
+                key: const Key('explore-all-bands'),
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: app.exploreBandIds.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  childAspectRatio: .78,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemBuilder: (context, index) => _BandTile(
+                  bandId: app.exploreBandIds[index],
+                  app: app,
+                  width: double.infinity,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _BandPageStatus(app: app),
+            ],
           )
         else
           SizedBox(
@@ -368,13 +421,53 @@ class _BrowseRows extends StatelessWidget {
             ),
           ),
         const SizedBox(height: 18),
-        _VenueRows(
-          app: app,
-          showAll: showAllVenues,
-          onToggle: onToggleVenues,
-          onSearch: onSearch,
-        ),
+        _VenueRows(app: app, showAll: showAllVenues, onToggle: onToggleVenues),
       ],
+    );
+  }
+}
+
+class _BandPageStatus extends StatelessWidget {
+  const _BandPageStatus({required this.app});
+
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    if (app.exploreBandsLoading) {
+      return Text(
+        'Loading bands…',
+        key: const Key('explore-bands-loading'),
+        style: epText(size: 11, color: Ep.inkA(.45)),
+      );
+    }
+    if (app.exploreBandsError != null) {
+      return Column(
+        children: [
+          Text(
+            "Couldn't load more bands.",
+            style: epText(size: 11, color: Ep.inkA(.45)),
+          ),
+          const SizedBox(height: 7),
+          TextButton(
+            key: const Key('explore-bands-retry'),
+            onPressed: app.retryExploreBands,
+            child: const Text('RETRY'),
+          ),
+        ],
+      );
+    }
+    if (app.hasMoreExploreBands) {
+      return TextButton(
+        key: const Key('explore-bands-load-more'),
+        onPressed: app.loadMoreExploreBands,
+        child: const Text('LOAD MORE BANDS'),
+      );
+    }
+    return Text(
+      'All bands loaded.',
+      key: const Key('explore-bands-end'),
+      style: epText(size: 10.5, color: Ep.inkA(.35)),
     );
   }
 }
@@ -425,13 +518,11 @@ class _VenueRows extends StatelessWidget {
     required this.app,
     required this.showAll,
     required this.onToggle,
-    required this.onSearch,
   });
 
   final AppState app;
   final bool showAll;
   final VoidCallback onToggle;
-  final ValueChanged<String> onSearch;
 
   @override
   Widget build(BuildContext context) {
@@ -449,7 +540,7 @@ class _VenueRows extends StatelessWidget {
         const SizedBox(height: 8),
         if (venues.isNotEmpty)
           for (final venue in visibleVenues) ...[
-            _VenueRow(venue: venue, app: app, onSearch: onSearch),
+            _VenueRow(venue: venue, app: app),
             const SizedBox(height: 6),
           ]
         else if (app.venueStatus == DataStatus.connecting)
@@ -480,24 +571,16 @@ class _VenueRows extends StatelessWidget {
 }
 
 class _VenueRow extends StatelessWidget {
-  const _VenueRow({required this.venue, required this.app, this.onSearch});
+  const _VenueRow({required this.venue, required this.app});
 
   final Venue venue;
   final AppState app;
-  final ValueChanged<String>? onSearch;
 
   @override
   Widget build(BuildContext context) {
     return EpCard(
       padding: const EdgeInsets.all(9),
-      onTap: () {
-        final search = onSearch;
-        if (search != null) {
-          search(venue.name);
-        } else {
-          app.setQuery(venue.name);
-        }
-      },
+      onTap: () => app.openVenue(venue.id),
       child: Row(
         children: [
           Expanded(

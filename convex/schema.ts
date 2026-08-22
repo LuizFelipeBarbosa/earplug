@@ -17,6 +17,12 @@ export const pastShowValidator = v.object({
   meta: v.string(),
 });
 
+export const ageRequirementValidator = v.union(
+  v.literal("allAges"),
+  v.literal("18Plus"),
+  v.literal("21Plus"),
+);
+
 export default defineSchema({
   users: defineTable({
     clerkId: v.string(),
@@ -83,6 +89,10 @@ export default defineSchema({
     genres: v.array(v.string()),
     desc: v.string(),
     ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+    // Optional only while legacy rows remain in deployed data. Every supported
+    // write path supplies this explicitly; readers normalize absence to
+    // "allAges" until the compatibility rollout can be tightened.
+    ageRequirement: v.optional(ageRequirementValidator),
     externalUrl: v.optional(v.string()),
     cap: v.string(),
     goingCount: v.number(),
@@ -93,6 +103,7 @@ export default defineSchema({
     flyStorageId: v.optional(v.id("_storage")),
   })
     .index("by_startsAt", ["startsAt"])
+    .index("by_venueId_and_startsAt", ["venueId", "startsAt"])
     .index("by_title", ["title"]),
 
   /** One row per (gig, band in its lineup). `gigs.lineup` is an array and

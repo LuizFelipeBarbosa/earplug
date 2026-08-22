@@ -2,7 +2,7 @@ import { WithoutSystemFields } from "convex/server";
 import { Infer, v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
-import { pastShowValidator } from "../schema";
+import { ageRequirementValidator, pastShowValidator } from "../schema";
 
 // ─── Deterministic band identity ────────────────────────────────────────────
 // Every band's colour, initials and slug are derived from its name rather than
@@ -169,6 +169,8 @@ export const flyKeyValidator = v.union(
   v.literal("custom"),
 );
 
+export type AgeRequirement = Infer<typeof ageRequirementValidator>;
+
 export const gigPublishFieldsValidator = v.object({
   bandId: v.id("bands"),
   title: v.string(),
@@ -179,6 +181,7 @@ export const gigPublishFieldsValidator = v.object({
   flyKey: flyKeyValidator,
   flyStorageId: v.optional(v.id("_storage")),
   ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+  ageRequirement: ageRequirementValidator,
   externalUrl: v.optional(v.string()),
   cap: v.string(),
 });
@@ -267,7 +270,9 @@ export async function pastGigsForBand(
  * route every insert through this function, including seeds and fixtures. */
 export async function insertGigWithBandIndex(
   ctx: MutationCtx,
-  gig: WithoutSystemFields<Doc<"gigs">>,
+  gig: WithoutSystemFields<Doc<"gigs">> & {
+    ageRequirement: AgeRequirement;
+  },
 ): Promise<Id<"gigs">> {
   const gigId = await ctx.db.insert("gigs", gig);
   for (const bandId of new Set(gig.lineup)) {
@@ -294,6 +299,7 @@ export async function insertPublishedGig(
     genres: band.genres,
     desc: "",
     ticketing: args.ticketing,
+    ageRequirement: args.ageRequirement,
     ...(args.ticketing === "external" && args.externalUrl !== undefined
       ? { externalUrl: args.externalUrl }
       : {}),
@@ -320,6 +326,7 @@ export const gigPayloadValidator = v.object({
   genres: v.array(v.string()),
   desc: v.string(),
   ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+  ageRequirement: ageRequirementValidator,
   externalUrl: v.union(v.string(), v.null()),
   cap: v.string(),
   goingCount: v.number(),
@@ -413,6 +420,7 @@ export async function toGigPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
     genres: gig.genres,
     desc: gig.desc,
     ticketing: gig.ticketing,
+    ageRequirement: gig.ageRequirement ?? "allAges",
     externalUrl: gig.externalUrl ?? null,
     cap: gig.cap,
     goingCount: gig.goingCount,

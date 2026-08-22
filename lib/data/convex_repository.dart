@@ -163,6 +163,14 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<VenueDetail?> venueDetail(String venueId) async {
+    final result = await _convexService.query('venues:detail', {
+      'venueId': venueId,
+    });
+    return parseVenueDetail(result);
+  }
+
+  @override
   Future<Band?> band(String bandId) async {
     final result = await _convexService.query('bands:get', {'bandId': bandId});
     final json = _asMap(result);
@@ -173,6 +181,14 @@ class ConvexRepository implements EarplugRepository {
   Future<List<Band>> searchBands(String q) async {
     final result = await _convexService.query('bands:search', {'q': q});
     return [for (final json in _mapList(result)) Band.fromJson(json)];
+  }
+
+  @override
+  Future<BandPage> listBands({String? cursor, int numItems = 50}) async {
+    final result = await _convexService.query('bands:list', {
+      'paginationOpts': {'numItems': numItems, 'cursor': cursor},
+    });
+    return parseBandPage(result);
   }
 
   @override
@@ -266,6 +282,7 @@ class ConvexRepository implements EarplugRepository {
     required String flyKey,
     String? flyStorageId,
     required Ticketing ticketing,
+    required AgeRequirement ageRequirement,
     String? externalUrl,
     required String cap,
   }) async {
@@ -279,11 +296,38 @@ class ConvexRepository implements EarplugRepository {
       'flyKey': flyKey,
       'flyStorageId': ?flyStorageId,
       'ticketing': ticketing.name,
+      'ageRequirement': ageRequirement.wireValue,
       'externalUrl': ?externalUrl,
       'cap': cap,
     });
     return _asMap(result)['gigId'] as String;
   }
+}
+
+BandPage parseBandPage(dynamic decoded) {
+  final json = _asMap(decoded);
+  final cursor = json['continueCursor'];
+  return BandPage(
+    items: [
+      for (final bandJson in _mapList(json['page'])) Band.fromJson(bandJson),
+    ],
+    continueCursor: cursor is String ? cursor : null,
+    isDone: json['isDone'] == true,
+  );
+}
+
+VenueDetail? parseVenueDetail(dynamic decoded) {
+  final json = _asMap(decoded);
+  if (json.isEmpty) return null;
+  return VenueDetail(
+    venue: Venue.fromJson(_asMap(json['venue'])),
+    gigs: [for (final gigJson in _mapList(json['gigs'])) Gig.fromJson(gigJson)],
+    bands: {
+      for (final bandJson in _mapList(json['bands']))
+        bandJson['_id'] as String: Band.fromJson(bandJson),
+    },
+    truncated: json['truncated'] == true,
+  );
 }
 
 FeedSnapshot parseFeedSnapshot(dynamic decoded) {

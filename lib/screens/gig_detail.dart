@@ -163,34 +163,81 @@ class _Hero extends StatelessWidget {
             Positioned(
               right: -8,
               top: -2,
-              child: GestureDetector(
-                onTap: () {
-                  Clipboard.setData(
-                    ClipboardData(text: 'https://earplug.app/g/${gig.id}'),
-                  );
-                  app.say('Link copied — earplug.app/g/${gig.id}');
-                },
-                child: Container(
-                  height: 36,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: .55),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    'SHARE ↗',
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w800,
-                      letterSpacing: 1,
+              child: Row(
+                children: [
+                  _HeroAction(
+                    key: ValueKey('gig-detail-save-${gig.id}'),
+                    tooltip: app.saved.contains(gig.id)
+                        ? 'Remove saved event'
+                        : 'Save event',
+                    onTap: () => app.requestSave(gig.id),
+                    child: Icon(
+                      app.saved.contains(gig.id)
+                          ? Icons.bookmark
+                          : Icons.bookmark_border,
+                      size: 18,
                       color: Colors.white,
                     ),
                   ),
-                ),
+                  const SizedBox(width: 6),
+                  _HeroAction(
+                    key: ValueKey('gig-detail-share-${gig.id}'),
+                    tooltip: 'Share event',
+                    onTap: () {
+                      Clipboard.setData(
+                        ClipboardData(text: 'https://earplug.app/g/${gig.id}'),
+                      );
+                      app.say('Link copied — earplug.app/g/${gig.id}');
+                    },
+                    child: Text(
+                      'SHARE ↗',
+                      style: epText(
+                        size: 11,
+                        weight: FontWeight.w800,
+                        letterSpacing: 1,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroAction extends StatelessWidget {
+  const _HeroAction({
+    super.key,
+    required this.tooltip,
+    required this.onTap,
+    required this.child,
+  });
+
+  final String tooltip;
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          height: 36,
+          constraints: const BoxConstraints(minWidth: 36),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: .55),
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: child,
         ),
       ),
     );
@@ -237,13 +284,27 @@ class _InfoCards extends StatelessWidget {
       );
     }
 
-    return Row(
+    return Column(
       children: [
-        cell('DATE', gig.dateShort),
-        const SizedBox(width: 8),
-        cell('DOORS / SET', gig.time),
-        const SizedBox(width: 8),
-        cell('PRICE', gig.priceLabel, valueColor: gig.free ? Ep.link : Ep.ink),
+        Row(
+          children: [
+            cell('DATE', gig.dateShort),
+            const SizedBox(width: 8),
+            cell('DOORS / SET', gig.time),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            cell(
+              'PRICE',
+              gig.priceLabel,
+              valueColor: gig.free ? Ep.link : Ep.ink,
+            ),
+            const SizedBox(width: 8),
+            cell('AGE', gig.ageRequirement.label),
+          ],
+        ),
       ],
     );
   }
@@ -309,25 +370,33 @@ class _VenueCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          VenueMiniMap(venue: venue),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => app.openVenue(venue.id),
+            child: VenueMiniMap(venue: venue),
+          ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        venue.name.toUpperCase(),
-                        style: epText(size: 13.5, weight: FontWeight.w800),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${venue.addr} · ${venue.area}',
-                        style: epText(size: 11.5, color: Ep.inkA(.55)),
-                      ),
-                    ],
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => app.openVenue(venue.id),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          venue.name.toUpperCase(),
+                          style: epText(size: 13.5, weight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${venue.addr} · ${venue.area}',
+                          style: epText(size: 11.5, color: Ep.inkA(.55)),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),

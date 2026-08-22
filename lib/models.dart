@@ -102,6 +102,25 @@ enum GigWhen { tonight, week, later }
 
 enum Ticketing { rsvp, external }
 
+enum AgeRequirement {
+  allAges('allAges', 'All ages'),
+  eighteenPlus('18Plus', '18+'),
+  twentyOnePlus('21Plus', '21+');
+
+  const AgeRequirement(this.wireValue, this.label);
+
+  final String wireValue;
+  final String label;
+
+  /// Legacy gigs did not store an age requirement. They remain visible as
+  /// all-ages shows until the backend data is optionally backfilled.
+  static AgeRequirement fromJson(Object? value) => switch (value) {
+    '18Plus' => AgeRequirement.eighteenPlus,
+    '21Plus' => AgeRequirement.twentyOnePlus,
+    _ => AgeRequirement.allAges,
+  };
+}
+
 class Gig {
   final String id;
   final String title;
@@ -121,6 +140,7 @@ class Gig {
   final String? externalUrl;
   final String? flyerUrl;
   final String cap;
+  final AgeRequirement ageRequirement;
 
   const Gig({
     required this.id,
@@ -141,6 +161,7 @@ class Gig {
     this.externalUrl,
     this.flyerUrl,
     this.cap = 'No cap',
+    this.ageRequirement = AgeRequirement.allAges,
   });
 
   factory Gig.fromJson(Map<String, dynamic> json) {
@@ -167,6 +188,7 @@ class Gig {
       externalUrl: json['externalUrl'] as String?,
       flyerUrl: json['flyerUrl'] as String?,
       cap: json['cap'] as String,
+      ageRequirement: AgeRequirement.fromJson(json['ageRequirement']),
     );
   }
 

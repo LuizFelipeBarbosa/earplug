@@ -152,6 +152,7 @@ export const seedDemo = internalMutation({
         genres: gig.genres,
         desc: gig.desc,
         ticketing: gig.ticketing,
+        ageRequirement: "allAges",
         cap: "No cap",
         goingCount: gig.goingCount,
       });

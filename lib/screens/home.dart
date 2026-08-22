@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/discovery_filters_sheet.dart';
+import '../widgets/fan_event_card.dart';
 import '../widgets/map_view.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -216,7 +216,7 @@ class _FeedList extends StatelessWidget {
         ],
         if (feed.isEmpty) _DiscoveryEmptyState(app: app),
         for (final g in feed) ...[
-          _FeedCard(gig: g, app: app),
+          FanEventCard(gig: g, app: app, showDistance: true),
           const SizedBox(height: 10),
         ],
       ],
@@ -378,105 +378,6 @@ class _RecoveryButton extends StatelessWidget {
             color: primary ? Colors.white : Ep.inkA(.75),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _FeedCard extends StatelessWidget {
-  final Gig gig;
-  final AppState app;
-
-  const _FeedCard({required this.gig, required this.app});
-
-  @override
-  Widget build(BuildContext context) {
-    final venue = app.venue(gig.venueId);
-    final fly = app.flyer(gig.flyKey);
-    return EpCard(
-      padding: const EdgeInsets.all(11),
-      radius: 14,
-      onTap: () => app.openGig(gig.id),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GigFlyer(
-            gig,
-            fly,
-            width: 74,
-            height: 98,
-            rotationDeg: -1.4,
-            padding: const EdgeInsets.all(7),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  gig.title.toUpperCase(),
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                  style: epDisplay(size: 9.5, color: fly.fg, height: 1.08),
-                ),
-                Text(
-                  gig.dateShort,
-                  style: epText(
-                    size: 7,
-                    weight: FontWeight.w800,
-                    letterSpacing: .6,
-                    color: fly.fg.withValues(alpha: .85),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        gig.title.toUpperCase(),
-                        style: epDisplay(
-                          size: 14.5,
-                          letterSpacing: .2,
-                          height: 1.15,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    PriceBadge(gig),
-                  ],
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${venue.name} · ${app.distanceOf(venue)}',
-                  style: epText(size: 12, color: Ep.inkA(.65)),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  gig.dateLine,
-                  style: epText(
-                    size: 12,
-                    weight: FontWeight.w800,
-                    letterSpacing: .4,
-                    color: Ep.link,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  gig.desc,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: epText(size: 12, color: Ep.inkA(.5)),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
