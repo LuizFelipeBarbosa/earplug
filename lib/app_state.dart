@@ -20,6 +20,7 @@ enum Screen {
   home,
   gig,
   band,
+  venue,
   explore,
   myGigs,
   auth,
@@ -94,9 +95,11 @@ class DiscoveryFilters {
       (maxDistanceMiles == null ? 0 : 1);
 }
 
-enum PendingKind { rsvp, follow, myGigs, band }
+enum PendingKind { rsvp, follow, save, myGigs, band }
 
 enum DataStatus { connecting, ready, error }
+
+enum ExploreResultType { all, events, bands, venues }
 
 /// The band-profile fields the edit screen writes one keystroke at a time.
 enum _BandField { bio, linkIg, linkBc }
@@ -163,6 +166,7 @@ class AppState extends ChangeNotifier {
 
   List<Gig> _allGigs = const [];
   DateTime? _nextFeedStartsAt;
+  bool _hasFeedSnapshot = false;
   Map<String, Band> _bands = {};
   Map<String, Venue> _venues = const {};
 
@@ -189,6 +193,16 @@ class AppState extends ChangeNotifier {
   final Map<String, BandRecap> _bandRecap = {};
   final Map<String, Object> _bandRecapTokens = {};
   final Map<String, String> _bandRecapErrors = {};
+
+  /// Venue relationship payloads are separate from the discovery feed. They
+  /// stay cached across rebuilds; feed changes and venue revisits invalidate
+  /// the affected key so its next read refetches authoritative relationships.
+  final Map<String, VenueDetail> _venueDetails = {};
+  final Set<String> _missingVenueDetails = {};
+  final Map<String, Object> _venueDetailTokens = {};
+  final Map<String, String> _venueDetailErrors = {};
+  final Map<String, Gig> _relationshipGigs = {};
+  final Map<String, Gig> _interactionGigs = {};
 
   BandMediaController? _media;
 
@@ -249,7 +263,25 @@ class AppState extends ChangeNotifier {
 
   // ---- explore
   String query = '';
+  ExploreResultType exploreResultType = ExploreResultType.all;
   List<String> exploreBandIds = [];
+  bool exploreBandsLoading = false;
+  bool _exploreBandsDone = false;
+  bool _exploreBandsRefreshQueued = false;
+  String? _exploreBandsCursor;
+  String? exploreBandsError;
+
+  DataStatus get exploreBandsStatus {
+    if (exploreBandIds.isEmpty && exploreBandsError != null) {
+      return DataStatus.error;
+    }
+    if (exploreBandIds.isEmpty && exploreBandsLoading) {
+      return DataStatus.connecting;
+    }
+    return DataStatus.ready;
+  }
+
+  bool get hasMoreExploreBands => !_exploreBandsDone;
 
   // ---- band membership
   List<String> myBands = [];
@@ -291,6 +323,7 @@ class AppState extends ChangeNotifier {
   String? gfVenueId;
   String gfPrice = 'FREE';
   Ticketing gfTix = Ticketing.rsvp;
+  AgeRequirement gfAgeRequirement = AgeRequirement.allAges;
   String gfCap = 'No cap';
   String gfExt = '';
   String gfFly = 'xerox';
@@ -379,6 +412,14 @@ class AppState extends ChangeNotifier {
   void _subscribeToFeed() {
     _feedSubscription = repository.feed().listen(
       (snapshot) {
+        if (_hasFeedSnapshot) {
+          _invalidateVenueDetails({
+            for (final gig in _allGigs) gig.venueId,
+            for (final gig in snapshot.gigs) gig.venueId,
+          });
+        } else {
+          _hasFeedSnapshot = true;
+        }
         _allGigs = List<Gig>.of(snapshot.gigs);
         _nextFeedStartsAt = snapshot.nextStartsAt;
         _venues = Map<String, Venue>.of(snapshot.venues);
@@ -403,7 +444,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
-    unawaited(_refreshExploreBands());
+    unawaited(_loadExploreBandPage());
     unawaited(_refreshVenueDirectory());
   }
 
@@ -433,25 +474,69 @@ class AppState extends ChangeNotifier {
     unawaited(_refreshVenueDirectory());
   }
 
-  Future<void> _refreshExploreBands() async {
+  Future<void> _loadExploreBandPage() async {
+    if (exploreBandsLoading || _exploreBandsDone) return;
+    exploreBandsLoading = true;
+    exploreBandsError = null;
+    notifyListeners();
     try {
-      final bands = await repository.searchBands('');
-      exploreBandIds = [for (final band in bands) band.id];
-      for (final band in bands) {
-        _bands[band.id] = band.copyWith(
-          upcoming: _bands[band.id]?.upcoming ?? const [],
-        );
+      final page = await repository.listBands(cursor: _exploreBandsCursor);
+      if (_disposed) return;
+      final ids = exploreBandIds.toSet();
+      for (final band in page.items) {
+        if (ids.add(band.id)) exploreBandIds.add(band.id);
+        // Feed and membership payloads carry live relationship state that a
+        // directory page cannot improve on. Pagination only fills gaps; a
+        // duplicate id still belongs in the directory id list, but must not
+        // replace the richer cached band.
+        _bands.putIfAbsent(band.id, () => band);
       }
-      notifyListeners();
+      _exploreBandsCursor = page.continueCursor;
+      _exploreBandsDone = page.isDone;
     } catch (error) {
-      logError('searchBands', error);
+      logError('listBands', error);
+      if (!_disposed) exploreBandsError = '$error';
+    } finally {
+      if (!_disposed) {
+        exploreBandsLoading = false;
+        if (_exploreBandsRefreshQueued) {
+          _exploreBandsRefreshQueued = false;
+          _refreshExploreBands();
+        } else {
+          notifyListeners();
+        }
+      }
     }
+  }
+
+  void loadMoreExploreBands() => unawaited(_loadExploreBandPage());
+
+  void retryExploreBands() {
+    if (exploreBandsLoading) return;
+    exploreBandsError = null;
+    notifyListeners();
+    unawaited(_loadExploreBandPage());
+  }
+
+  void _refreshExploreBands() {
+    if (exploreBandsLoading) {
+      _exploreBandsRefreshQueued = true;
+      return;
+    }
+    exploreBandIds = [];
+    _exploreBandsCursor = null;
+    _exploreBandsDone = false;
+    exploreBandsError = null;
+    unawaited(_loadExploreBandPage());
   }
 
   void _cacheInteractions(Interactions interactions) {
     rsvps = Set<String>.of(interactions.rsvpGigIds);
     follows = Set<String>.of(interactions.followBandIds);
     saved = Set<String>.of(interactions.savedGigIds);
+    _interactionGigs
+      ..clear()
+      ..addEntries(interactions.gigs.map((gig) => MapEntry(gig.id, gig)));
     attended = interactions.attendedCount;
     notifyListeners();
   }
@@ -492,6 +577,12 @@ class AppState extends ChangeNotifier {
   }
 
   void openBand(String id) => go(Screen.band, id);
+
+  void openVenue(String id) {
+    if (current.screen == Screen.venue && current.param == id) return;
+    _invalidateVenueDetails({id});
+    go(Screen.venue, id);
+  }
 
   void openBandMedia() => go(Screen.bandMedia, bandId);
 
@@ -577,6 +668,9 @@ class AppState extends ChangeNotifier {
       case PendingKind.follow:
         _postAuthScreen = null;
         toggleFollow(p!.id!);
+      case PendingKind.save:
+        _postAuthScreen = null;
+        toggleSave(p!.id!);
       case PendingKind.myGigs:
         _postAuthScreen = Screen.myGigs;
         final name = (profile?.name ?? auth.displayName)?.trim();
@@ -662,6 +756,14 @@ class AppState extends ChangeNotifier {
 
   void toggleSave(String id) {
     _toggleOptimistically(saved, id, repository.toggleSave);
+  }
+
+  void requestSave(String id) {
+    if (authed) {
+      toggleSave(id);
+    } else {
+      needAuth(PendingAuth(PendingKind.save, id));
+    }
   }
 
   // ========================= filters =========================
@@ -891,7 +993,13 @@ class AppState extends ChangeNotifier {
   void clearDiscoveryFilters() =>
       _set(() => filters = const DiscoveryFilters());
 
-  void setQuery(String q) => _set(() => query = q);
+  void setQuery(String q) => _set(() {
+    query = q;
+    exploreResultType = ExploreResultType.all;
+  });
+
+  void setExploreResultType(ExploreResultType type) =>
+      _set(() => exploreResultType = type);
 
   // ========================= data access =========================
 
@@ -901,10 +1009,85 @@ class AppState extends ChangeNotifier {
     for (final g in allGigs) {
       if (g.id == id) return g;
     }
-    return null;
+    return _interactionGigs[id] ?? _relationshipGigs[id];
   }
 
   Band? band(String id) => _bands[id];
+
+  VenueDetail? venueDetail(String id) {
+    final cached = _venueDetails[id];
+    if (cached != null) return cached;
+    if (!_missingVenueDetails.contains(id) &&
+        !_venueDetailTokens.containsKey(id) &&
+        !_venueDetailErrors.containsKey(id)) {
+      unawaited(_loadVenueDetail(id));
+    }
+    return null;
+  }
+
+  void _invalidateVenueDetails(Set<String> ids) {
+    for (final id in ids) {
+      _venueDetails.remove(id);
+      _missingVenueDetails.remove(id);
+      _venueDetailErrors.remove(id);
+      // Removing the token makes any older response fail the identity check in
+      // `_loadVenueDetail`, so a pre-change payload cannot overwrite a reload.
+      _venueDetailTokens.remove(id);
+    }
+  }
+
+  bool venueDetailLoading(String id) => _venueDetailTokens.containsKey(id);
+
+  bool venueDetailMissing(String id) => _missingVenueDetails.contains(id);
+
+  String? venueDetailError(String id) => _venueDetailErrors[id];
+
+  void retryVenueDetail(String id) {
+    if (_venueDetailTokens.containsKey(id)) return;
+    _venueDetailErrors.remove(id);
+    _missingVenueDetails.remove(id);
+    notifyListeners();
+    unawaited(_loadVenueDetail(id));
+  }
+
+  Future<void> _loadVenueDetail(String id) async {
+    final token = Object();
+    _venueDetailTokens[id] = token;
+    try {
+      final detail = await repository.venueDetail(id);
+      if (_disposed || !identical(_venueDetailTokens[id], token)) return;
+      _venueDetailErrors.remove(id);
+      if (detail == null) {
+        _missingVenueDetails.add(id);
+        return;
+      }
+      _missingVenueDetails.remove(id);
+      _venueDetails[id] = detail;
+      _venueDirectory = {..._venueDirectory, detail.venue.id: detail.venue};
+      for (final gig in detail.gigs) {
+        _relationshipGigs[gig.id] = gig;
+      }
+      for (final entry in detail.bands.entries) {
+        final relatedGigIds = [
+          for (final gig in detail.gigs)
+            if (gig.lineup.contains(entry.key)) gig.id,
+        ];
+        final existingUpcoming = _bands[entry.key]?.upcoming ?? const [];
+        _bands[entry.key] = entry.value.copyWith(
+          upcoming: {...existingUpcoming, ...relatedGigIds}.toList(),
+        );
+      }
+    } catch (error) {
+      logError('venueDetail', error);
+      if (_disposed || !identical(_venueDetailTokens[id], token)) return;
+      _venueDetailErrors[id] = '$error';
+    } finally {
+      if (!_disposed && identical(_venueDetailTokens[id], token)) {
+        _venueDetailTokens.remove(id);
+        notifyListeners();
+      }
+    }
+  }
 
   /// A band's past gigs, or null until the first load lands. Kicks the load off
   /// on first read; a failed load is not retried until [refreshBandHistory].
@@ -1407,7 +1590,7 @@ class AppState extends ChangeNotifier {
     }
     nbCreated = true;
     notifyListeners();
-    unawaited(_refreshExploreBands());
+    _refreshExploreBands();
   }
 
   Future<void> _uploadBandPhoto(String bandId, PickedMedia photo) async {
@@ -1475,6 +1658,9 @@ class AppState extends ChangeNotifier {
 
   void setGfTix(Ticketing t) => _set(() => gfTix = t);
 
+  void setGfAgeRequirement(AgeRequirement value) =>
+      _set(() => gfAgeRequirement = value);
+
   void setGfCap(String v) => _set(() => gfCap = v);
 
   void setGfExt(String v) => _set(() => gfExt = v);
@@ -1534,11 +1720,12 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    final venueId = gfVenueId!;
     try {
       await repository.publishGig(
         bandId: bandId,
         title: gfName.trim(),
-        venueId: gfVenueId!,
+        venueId: venueId,
         price: gfPrice == 'FREE' ? 0 : int.parse(gfPrice.substring(1)),
         startsAt: DateTime(
           date.year,
@@ -1551,6 +1738,7 @@ class AppState extends ChangeNotifier {
         flyKey: gfFly,
         flyStorageId: gfFlyerStorageId,
         ticketing: gfTix,
+        ageRequirement: gfAgeRequirement,
         externalUrl: gfExt.isEmpty ? null : gfExt,
         cap: gfCap,
       );
@@ -1560,6 +1748,9 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    // A publish beyond the bounded global feed may not change its payload, so
+    // do not rely on the feed subscription alone to retire this venue cache.
+    _invalidateVenueDetails({venueId});
     gfPublished = true;
     notifyListeners();
   }
@@ -1582,6 +1773,7 @@ class AppState extends ChangeNotifier {
     gfVenueId = null;
     gfPrice = 'FREE';
     gfTix = Ticketing.rsvp;
+    gfAgeRequirement = AgeRequirement.allAges;
     gfCap = 'No cap';
     gfExt = '';
     gfFly = 'xerox';

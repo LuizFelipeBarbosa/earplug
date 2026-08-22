@@ -207,6 +207,27 @@ void main() {
     // Flush app.say's 2.2s toast-clear timers so teardown sees none pending.
     await tester.pump(const Duration(seconds: 3));
   });
+
+  testWidgets('new gigs default to all ages and offer every age choice', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    expect(app.gfAgeRequirement, AgeRequirement.allAges);
+
+    final ageSlot = find.text('AGE');
+    await tester.drag(find.byType(ListView), const Offset(0, -350));
+    await tester.pumpAndSettle();
+    await tester.tap(ageSlot);
+    await tester.pumpAndSettle();
+
+    expect(find.text('All ages'), findsWidgets);
+    expect(find.text('18+'), findsOne);
+    expect(find.text('21+'), findsOne);
+    await tester.tap(find.text('21+'));
+    await tester.pumpAndSettle();
+    expect(app.gfAgeRequirement, AgeRequirement.twentyOnePlus);
+    expect(find.text('21+'), findsOne);
+  });
 }
 
 Future<AppHarness> _pumpGigCreate(
@@ -248,6 +269,7 @@ class _GatedFlyerRepository extends DemoRepository {
     required String flyKey,
     String? flyStorageId,
     required Ticketing ticketing,
+    required AgeRequirement ageRequirement,
     String? externalUrl,
     required String cap,
   }) async {
@@ -263,6 +285,7 @@ class _GatedFlyerRepository extends DemoRepository {
       flyKey: flyKey,
       flyStorageId: flyStorageId,
       ticketing: ticketing,
+      ageRequirement: ageRequirement,
       externalUrl: externalUrl,
       cap: cap,
     );

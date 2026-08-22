@@ -51,12 +51,14 @@ class Interactions {
   final Set<String> rsvpGigIds;
   final Set<String> followBandIds;
   final Set<String> savedGigIds;
+  final List<Gig> gigs;
   final int attendedCount;
 
   const Interactions({
     required this.rsvpGigIds,
     required this.followBandIds,
     required this.savedGigIds,
+    this.gigs = const [],
     required this.attendedCount,
   });
 
@@ -64,6 +66,7 @@ class Interactions {
     rsvpGigIds: {},
     followBandIds: {},
     savedGigIds: {},
+    gigs: [],
     attendedCount: 0,
   );
 }
@@ -86,6 +89,34 @@ class BandHistory {
   const BandHistory({required this.gigs, required this.venues});
 
   static const empty = BandHistory(gigs: [], venues: {});
+}
+
+/// One page from the name-ordered band directory.
+class BandPage {
+  final List<Band> items;
+  final String? continueCursor;
+  final bool isDone;
+
+  const BandPage({
+    required this.items,
+    required this.continueCursor,
+    required this.isDone,
+  });
+}
+
+/// A venue and the bounded set of upcoming relationships needed by its page.
+class VenueDetail {
+  final Venue venue;
+  final List<Gig> gigs;
+  final Map<String, Band> bands;
+  final bool truncated;
+
+  const VenueDetail({
+    required this.venue,
+    required this.gigs,
+    required this.bands,
+    required this.truncated,
+  });
 }
 
 /// Aggregated performance data for a band's past events.
@@ -435,8 +466,11 @@ abstract class EarplugRepository {
   Future<BandHistory> bandHistory(String bandId);
   Future<BandRecap> bandRecap(String bandId);
   Future<List<Venue>> venues();
+  Future<VenueDetail?> venueDetail(String venueId);
   Future<Band?> band(String bandId);
   Future<List<Band>> searchBands(String q);
+  Future<BandPage> listBands({String? cursor, int numItems = 50});
+
   Future<void> toggleRsvp(String gigId);
   Future<void> toggleFollow(String bandId);
   Future<void> toggleSave(String gigId);
@@ -475,6 +509,7 @@ abstract class EarplugRepository {
     required String flyKey,
     String? flyStorageId,
     required Ticketing ticketing,
+    required AgeRequirement ageRequirement,
     String? externalUrl,
     required String cap,
   });

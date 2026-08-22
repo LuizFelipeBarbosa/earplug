@@ -183,6 +183,7 @@ abstract final class DemoData {
       desc:
           'Four bands, one basement, zero cover. Bring earplugs (the foam kind).',
       tix: Ticketing.rsvp,
+      ageRequirement: AgeRequirement.eighteenPlus,
     ),
     Gig(
       id: 'g2',
@@ -218,6 +219,7 @@ abstract final class DemoData {
       genres: ['noise', 'shoegaze'],
       desc: 'In-store racket between the record bins. BYO earplugs, again.',
       tix: Ticketing.rsvp,
+      ageRequirement: AgeRequirement.eighteenPlus,
     ),
     Gig(
       id: 'g4',
@@ -235,6 +237,7 @@ abstract final class DemoData {
       genres: ['post-punk', 'hardcore'],
       desc: 'Double bill. Loud then louder. Tickets through the venue.',
       tix: Ticketing.external,
+      ageRequirement: AgeRequirement.twentyOnePlus,
       externalUrl: 'https://example.com/tickets/pigeon-court',
     ),
     Gig(
@@ -253,6 +256,7 @@ abstract final class DemoData {
       genres: ['punk'],
       desc: 'Daylight punk. Kids welcome, chaperones tolerated.',
       tix: Ticketing.rsvp,
+      ageRequirement: AgeRequirement.allAges,
     ),
     Gig(
       id: 'g6',

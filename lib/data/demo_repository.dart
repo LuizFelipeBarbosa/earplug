@@ -369,6 +369,36 @@ class DemoRepository implements EarplugRepository {
       DemoData.venues.values.toList()..sort((a, b) => a.name.compareTo(b.name));
 
   @override
+  Future<VenueDetail?> venueDetail(String venueId) async {
+    final venue = DemoData.venues[venueId];
+    if (venue == null) return null;
+    final gigs =
+        [...DemoData.gigs, ..._publishedGigs]
+            .where(
+              (gig) =>
+                  gig.venueId == venueId &&
+                  gig.startsAt.isAfter(
+                    DateTime.now().subtract(const Duration(hours: 6)),
+                  ),
+            )
+            .toList()
+          ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    final bands = <String, Band>{};
+    for (final gig in gigs) {
+      for (final bandId in gig.lineup) {
+        final band = _bands[bandId];
+        if (band != null) bands[bandId] = band;
+      }
+    }
+    return VenueDetail(
+      venue: venue,
+      gigs: gigs,
+      bands: bands,
+      truncated: false,
+    );
+  }
+
+  @override
   Future<Band?> band(String bandId) async => _bands[bandId];
 
   @override
@@ -378,6 +408,29 @@ class DemoRepository implements EarplugRepository {
         .where((band) => band.name.toLowerCase().contains(normalized))
         .take(50)
         .toList();
+  }
+
+  @override
+  Future<BandPage> listBands({String? cursor, int numItems = 50}) async {
+    final ordered = _bands.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    final requestedStart = int.tryParse(cursor ?? '') ?? 0;
+    final start = requestedStart < 0
+        ? 0
+        : requestedStart > ordered.length
+        ? ordered.length
+        : requestedStart;
+    final requestedEnd = start + numItems;
+    final end = requestedEnd < start
+        ? start
+        : requestedEnd > ordered.length
+        ? ordered.length
+        : requestedEnd;
+    return BandPage(
+      items: ordered.sublist(start, end),
+      continueCursor: end.toString(),
+      isDone: end == ordered.length,
+    );
   }
 
   @override
@@ -521,6 +574,7 @@ class DemoRepository implements EarplugRepository {
     required String flyKey,
     String? flyStorageId,
     required Ticketing ticketing,
+    required AgeRequirement ageRequirement,
     String? externalUrl,
     required String cap,
   }) async {
@@ -546,6 +600,7 @@ class DemoRepository implements EarplugRepository {
             '${ticketing == Ticketing.external ? 'Tickets via external link. ' : 'RSVP in app. '}'
             'Listed by $bandName.',
         tix: ticketing,
+        ageRequirement: ageRequirement,
         externalUrl: externalUrl,
         cap: cap,
       ),
@@ -563,10 +618,18 @@ class DemoRepository implements EarplugRepository {
 
   Interactions _currentInteractions() {
     if (!_auth.signedIn) return Interactions.empty;
+    final cutoff = DateTime.now().subtract(const Duration(hours: 6));
+    final gigsById = {
+      for (final gig in [...DemoData.gigs, ..._publishedGigs])
+        if (!gig.startsAt.isBefore(cutoff)) gig.id: gig,
+    };
     return Interactions(
       rsvpGigIds: Set<String>.unmodifiable(_rsvpGigIds),
       followBandIds: Set<String>.unmodifiable(_followBandIds),
       savedGigIds: Set<String>.unmodifiable(_savedGigIds),
+      gigs: List<Gig>.unmodifiable([
+        for (final id in {..._rsvpGigIds, ..._savedGigIds}) ?gigsById[id],
+      ]),
       attendedCount: _attendedCount,
     );
   }

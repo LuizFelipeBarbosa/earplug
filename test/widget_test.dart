@@ -672,10 +672,17 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<List<Venue>> venues() async => const [];
 
   @override
+  Future<VenueDetail?> venueDetail(String venueId) async => null;
+
+  @override
   Future<Band?> band(String bandId) async => null;
 
   @override
   Future<List<Band>> searchBands(String q) async => const [];
+
+  @override
+  Future<BandPage> listBands({String? cursor, int numItems = 50}) async =>
+      const BandPage(items: [], continueCursor: null, isDone: true);
 
   @override
   Future<void> toggleRsvp(String gigId) =>
@@ -729,6 +736,7 @@ class _FailingRsvpRepository implements EarplugRepository {
     required String flyKey,
     String? flyStorageId,
     required Ticketing ticketing,
+    required AgeRequirement ageRequirement,
     String? externalUrl,
     required String cap,
   }) async => 'unused';

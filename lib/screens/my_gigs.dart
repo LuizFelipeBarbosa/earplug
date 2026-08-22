@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/fan_event_card.dart';
 import '../widgets/sheets.dart';
 
 class MyGigsScreen extends StatelessWidget {
@@ -74,20 +75,28 @@ class MyGigsScreen extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'SWITCH TO BAND VIEW',
-                style: epText(
-                  size: 12,
-                  weight: FontWeight.w800,
-                  letterSpacing: .8,
+              Expanded(
+                child: Text(
+                  'SWITCH TO BAND VIEW',
+                  style: epText(
+                    size: 12,
+                    weight: FontWeight.w800,
+                    letterSpacing: .8,
+                  ),
                 ),
               ),
-              Text(
-                '${app.myBandNames} ›',
-                style: epText(
-                  size: 11,
-                  weight: FontWeight.w800,
-                  color: Ep.link,
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  '${app.myBandNames} ›',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.end,
+                  style: epText(
+                    size: 11,
+                    weight: FontWeight.w800,
+                    color: Ep.link,
+                  ),
                 ),
               ),
             ],
@@ -105,7 +114,11 @@ class MyGigsScreen extends StatelessWidget {
             ),
           ),
         for (final g in upcoming) ...[
-          _UpcomingCard(gig: g, app: app),
+          FanEventCard(
+            gig: g,
+            app: app,
+            trailingAction: _QrAction(gig: g, venue: app.venue(g.venueId)),
+          ),
           const SizedBox(height: 8),
         ],
         const SizedBox(height: 8),
@@ -117,7 +130,7 @@ class MyGigsScreen extends StatelessWidget {
             style: epText(size: 11.5, color: Ep.inkA(.4)),
           ),
         for (final g in savedGigs) ...[
-          _SavedRow(gig: g, app: app),
+          FanEventCard(gig: g, app: app),
           const SizedBox(height: 8),
         ],
         const SizedBox(height: 8),
@@ -194,124 +207,33 @@ class MyGigsScreen extends StatelessWidget {
   }
 }
 
-class _UpcomingCard extends StatelessWidget {
-  final Gig gig;
-  final AppState app;
+class _QrAction extends StatelessWidget {
+  const _QrAction({required this.gig, required this.venue});
 
-  const _UpcomingCard({required this.gig, required this.app});
+  final Gig gig;
+  final Venue venue;
 
   @override
   Widget build(BuildContext context) {
-    final venue = app.venue(gig.venueId);
-    return EpCard(
-      padding: const EdgeInsets.all(11),
-      radius: 13,
-      borderColor: Ep.whiteA(.12),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => app.openGig(gig.id),
-            child: GigFlyer(
-              gig,
-              app.flyer(gig.flyKey),
-              width: 44,
-              height: 58,
-              rotationDeg: -2,
-              radius: 5,
-              shadow: false,
-            ),
+    return GestureDetector(
+      key: ValueKey('show-qr-${gig.id}'),
+      behavior: HitTestBehavior.opaque,
+      onTap: () => showQrDialog(context, gig, venue),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+        decoration: BoxDecoration(
+          color: Ep.blue,
+          borderRadius: BorderRadius.circular(7),
+        ),
+        child: Text(
+          'SHOW QR',
+          style: epText(
+            size: 8.5,
+            weight: FontWeight.w900,
+            letterSpacing: .4,
+            color: Colors.white,
           ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => app.openGig(gig.id),
-              behavior: HitTestBehavior.opaque,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    gig.title.toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: epText(size: 13, weight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${gig.dateShort} · ${venue.name}',
-                    style: epText(size: 11.5, color: Ep.inkA(.55)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () => showQrDialog(context, gig, venue),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-              decoration: BoxDecoration(
-                color: Ep.blue,
-                borderRadius: BorderRadius.circular(9),
-              ),
-              child: Text(
-                'SHOW QR',
-                style: epText(
-                  size: 10.5,
-                  weight: FontWeight.w900,
-                  letterSpacing: .8,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SavedRow extends StatelessWidget {
-  final Gig gig;
-  final AppState app;
-
-  const _SavedRow({required this.gig, required this.app});
-
-  @override
-  Widget build(BuildContext context) {
-    return EpCard(
-      padding: const EdgeInsets.all(10),
-      onTap: () => app.openGig(gig.id),
-      child: Row(
-        children: [
-          GigFlyer(
-            gig,
-            app.flyer(gig.flyKey),
-            width: 38,
-            height: 50,
-            rotationDeg: -2,
-            radius: 4,
-            shadow: false,
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  gig.title.toUpperCase(),
-                  style: epText(size: 12.5, weight: FontWeight.w800),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${gig.dateShort} · ${app.venue(gig.venueId).name}',
-                  style: epText(size: 11, color: Ep.inkA(.5)),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          PriceBadge(gig),
-        ],
+        ),
       ),
     );
   }

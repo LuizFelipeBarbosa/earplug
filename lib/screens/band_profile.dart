@@ -9,6 +9,7 @@ import '../data/repository.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/fan_event_card.dart';
 import '../widgets/photo_viewer.dart';
 import '../widgets/video_player_sheet.dart';
 
@@ -199,7 +200,7 @@ class BandProfileScreen extends StatelessWidget {
               const SectionLabel('UPCOMING GIGS'),
               const SizedBox(height: 8),
               for (final g in upcoming) ...[
-                _UpcomingRow(gig: g, app: app),
+                FanEventCard(gig: g, app: app),
                 const SizedBox(height: 8),
               ],
               if (upcoming.isEmpty)
@@ -498,55 +499,6 @@ class _ClipTile extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _UpcomingRow extends StatelessWidget {
-  final Gig gig;
-  final AppState app;
-
-  const _UpcomingRow({required this.gig, required this.app});
-
-  @override
-  Widget build(BuildContext context) {
-    final venue = app.venue(gig.venueId);
-    return EpCard(
-      padding: const EdgeInsets.all(10),
-      onTap: () => app.openGig(gig.id),
-      child: Row(
-        children: [
-          FlyerBox(
-            style: app.flyer(gig.flyKey),
-            width: 40,
-            height: 52,
-            rotationDeg: -2,
-            radius: 5,
-            shadow: false,
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  gig.title.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: epText(size: 13, weight: FontWeight.w800),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${gig.dateShort} · ${venue.name}',
-                  style: epText(size: 11.5, color: Ep.inkA(.55)),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          PriceBadge(gig),
-        ],
       ),
     );
   }

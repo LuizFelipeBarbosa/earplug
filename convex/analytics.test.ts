@@ -118,6 +118,7 @@ async function insertGig(
       genres: ["noise"],
       desc: "",
       ticketing: "rsvp",
+      ageRequirement: "allAges",
       cap: "No cap",
       goingCount: options.goingCount ?? 0,
     }),
@@ -535,6 +536,7 @@ describe("analytics:bandRecap window", () => {
           genres: ["noise"],
           desc: "",
           ticketing: "rsvp",
+          ageRequirement: "allAges",
           cap: "No cap",
           goingCount: 0,
         });
@@ -583,6 +585,7 @@ describe("analytics:bandRecap window", () => {
           genres: ["noise"],
           desc: "",
           ticketing: "rsvp",
+          ageRequirement: "allAges",
           cap: "No cap",
           goingCount: 0,
         });

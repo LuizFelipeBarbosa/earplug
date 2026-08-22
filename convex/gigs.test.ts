@@ -41,6 +41,7 @@ describe("gigs:pastForBand", () => {
       genres: ["folk"],
       desc: "",
       ticketing: "rsvp" as const,
+      ageRequirement: "allAges" as const,
       cap: "No cap",
       goingCount: 0,
     };
@@ -147,6 +148,7 @@ describe("gigs:publishGig auth", () => {
     price: 10,
     flyKey: "riso" as const,
     ticketing: "rsvp" as const,
+    ageRequirement: "allAges" as const,
     cap: "No cap",
   };
 
@@ -173,18 +175,41 @@ describe("gigs:publishGig auth", () => {
     ).rejects.toThrow("Not an admin");
   });
 
-  test("admin publishes; flyKey is the chosen press, goingCount 0", async () => {
+  test("admin publishes the explicit age requirement with the gig", async () => {
     const { t, asAdmin, bandId, venueId } = await setupBand();
     const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
       bandId,
       venueId,
       ...gigArgs,
+      ageRequirement: "21Plus",
     });
     const gig = await t.run(async (ctx) => ctx.db.get(gigId));
     expect(gig!.flyKey).toBe("riso");
+    expect(gig!.ageRequirement).toBe("21Plus");
     expect(gig!.goingCount).toBe(0);
     expect(gig!.lineup).toEqual([bandId]);
     expect(gig!.createdByBand).toBe(bandId);
+  });
+
+  test("requires one of the three supported age requirements", async () => {
+    const { asAdmin, bandId, venueId } = await setupBand();
+    const { ageRequirement: _ageRequirement, ...withoutAge } = gigArgs;
+
+    await expect(
+      asAdmin.mutation(api.gigs.publishGig, {
+        bandId,
+        venueId,
+        ...withoutAge,
+      } as never),
+    ).rejects.toThrow("Validator error");
+    await expect(
+      asAdmin.mutation(api.gigs.publishGig, {
+        bandId,
+        venueId,
+        ...gigArgs,
+        ageRequirement: "16Plus" as never,
+      }),
+    ).rejects.toThrow("Validator error: Expected one of");
   });
 
   test("rejects a flyKey outside the press list", async () => {
@@ -303,6 +328,51 @@ describe("gigs:publishGig auth", () => {
 });
 
 describe("feed and array-shaped queries (contract clarifications)", () => {
+  test("normalizes a legacy gig without stored age to allAges", async () => {
+    const t = convexTest(schema);
+    const { bandId, venueId } = await t.run(async (ctx) => {
+      const bandId = await ctx.db.insert("bands", {
+        name: "Legacy Bill",
+        slug: "legacy-bill",
+        genres: ["punk"],
+        area: "Bay Area",
+        colorHex: "#7B8FFF",
+        initials: "LB",
+        followerCount: 0,
+        bio: "",
+        pastShows: [],
+      });
+      const venueId = await ctx.db.insert("venues", {
+        name: "Legacy Hall",
+        area: "Oakland",
+        addr: "1 Archive Way",
+        distSF: "7 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.27,
+      });
+      await ctx.db.insert("gigs", {
+        title: "Before Age Fields",
+        venueId,
+        price: 0,
+        startsAt: Date.now() + 86_400_000,
+        doorsTime: "7PM / 8PM",
+        flyKey: "paper",
+        lineup: [bandId],
+        genres: ["punk"],
+        desc: "",
+        ticketing: "rsvp",
+        cap: "No cap",
+        goingCount: 0,
+      });
+      return { bandId, venueId };
+    });
+
+    const feed = await t.query(api.gigs.feed, {});
+    expect(feed.gigs).toHaveLength(1);
+    expect(feed.gigs[0].ageRequirement).toBe("allAges");
+  });
+
   test("seedDemo then feed: object with arrays; band summaries always carry pastShows; explicit nulls", async () => {
     const t = convexTest(schema);
     await t.mutation(internal.seed.seedDemo, {});
@@ -328,6 +398,7 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(gig.externalUrl).toBeNull();
     expect(gig.createdByBand).toBeNull();
     expect(gig.cap).toBe("No cap");
+    expect(gig.ageRequirement).toBe("allAges");
 
     // Band summaries always include pastShows.
     for (const band of feed.bands) {

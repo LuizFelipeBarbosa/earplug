@@ -188,6 +188,56 @@ describe("bands: slugs and profile updates", () => {
 });
 
 describe("bands: array-shaped query contract", () => {
+  test("list paginates every band continuously in name order", async () => {
+    const t = convexTest(schema);
+    await t.run(async (ctx) => {
+      for (const name of [
+        "Zulu Static",
+        "Beta Noise",
+        "Echo Park",
+        "Alpha Set",
+        "Delta Wave",
+      ]) {
+        await ctx.db.insert("bands", {
+          name,
+          slug: name.toLowerCase().replace(/\s+/g, "-"),
+          genres: ["punk"],
+          area: "Bay Area",
+          colorHex: "#7B8FFF",
+          initials: name.slice(0, 2).toUpperCase(),
+          followerCount: 0,
+          bio: "",
+          pastShows: [],
+        });
+      }
+    });
+
+    const names: string[] = [];
+    let cursor: string | null = null;
+    let isDone = false;
+    do {
+      const result: {
+        page: Array<{ name: string }>;
+        continueCursor: string;
+        isDone: boolean;
+      } = await t.query(api.bands.list, {
+        paginationOpts: { numItems: 2, cursor },
+      });
+      names.push(...result.page.map((band) => band.name));
+      cursor = result.continueCursor;
+      isDone = result.isDone;
+    } while (!isDone);
+
+    expect(names).toEqual([
+      "Alpha Set",
+      "Beta Noise",
+      "Delta Wave",
+      "Echo Park",
+      "Zulu Static",
+    ]);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
   test("search is a top-level array; q: '' returns every band", async () => {
     const t = convexTest(schema);
     await t.mutation(internal.seed.seedDemo, {});

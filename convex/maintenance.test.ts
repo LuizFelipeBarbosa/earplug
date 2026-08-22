@@ -58,6 +58,7 @@ async function setupPublishFixture() {
       price: 18,
       flyKey: "blueprint" as const,
       ticketing: "rsvp" as const,
+      ageRequirement: "allAges" as const,
       cap: "150",
     },
   };

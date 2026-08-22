@@ -1,3 +1,7 @@
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import {
@@ -17,6 +21,24 @@ export const get = query({
   handler: async (ctx, args) => {
     const band = await ctx.db.get(args.bandId);
     return band === null ? null : await toBandPayload(ctx, band);
+  },
+});
+
+/** Every band, name-ordered, through Convex's standard cursor pagination. */
+export const list = query({
+  args: { paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(bandPayloadValidator),
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("bands")
+      .withIndex("by_name")
+      .order("asc")
+      .paginate(args.paginationOpts);
+    const page = [];
+    for (const band of result.page) {
+      page.push(await toBandPayload(ctx, band));
+    }
+    return { ...result, page };
   },
 });
 

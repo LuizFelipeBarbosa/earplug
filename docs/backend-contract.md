@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.9)
+# EarPlug Convex function contract (FROZEN — v1.10)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -91,6 +91,19 @@ when the recap is truncated. No payload field changed shape or nullability.
 gig inserted directly is invisible to both read paths. Existing rows are
 repaired by `maintenance:backfillGigBands`.
 
+**v1.10 — relationship-based discovery.** Added `bands:list` with standard
+Convex cursor pagination over `bands.by_name`, plus `venues:detail` with the
+next 200 chronological venue gigs and their deduplicated lineup bands. Venue
+detail reads `gigs.by_venueId_and_startsAt` and reports whether a 201st event
+was omitted. `GigPayload` and gig publishing now carry `ageRequirement` as one
+of `allAges`, `18Plus` or `21Plus`. The stored column remains optional during
+the compatibility rollout, but every supported write path requires an explicit
+value and every reader normalizes an absent legacy value to `allAges`.
+`gigs:feed` retains its existing 200-row window and `nextStartsAt` sentinel.
+`interactions:myInteractions` now includes deduplicated upcoming/grace-window
+`GigPayload` rows for RSVP and saved ids so My Gigs remains complete outside
+that feed window without moving historical RSVPs back into Upcoming.
+
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
 (UTC). Auth = Clerk JWT (template `convex`) attached by the client; queries that
@@ -111,7 +124,9 @@ member. **All mutations throw when unauthenticated**.
   // resolved from flyStorageId; null when no custom flyer is stored/live
   "flyerUrl": null,
   "lineup": ["<bandId>"], "genres": ["punk"], "desc": "...",
-  "ticketing": "rsvp|external", "externalUrl": null, "cap": "No cap",
+  "ticketing": "rsvp|external",
+  "ageRequirement": "allAges|18Plus|21Plus",
+  "externalUrl": null, "cap": "No cap",
   "goingCount": 43, "createdByBand": null }
 
 // VenuePayload
@@ -197,17 +212,19 @@ member. **All mutations throw when unauthenticated**.
 
 | Function | Args | Returns |
 |---|---|---|
-| ★ `gigs:feed` | `{}` | `{ gigs: GigPayload[], venues: VenuePayload[], bands: BandPayload[] }` — all gigs with `startsAt >= now - 6h`, ascending, plus every venue/band they reference. Public. Bounded to the 200 nearest upcoming gigs. |
+| ★ `gigs:feed` | `{}` | `{ gigs: GigPayload[], venues: VenuePayload[], bands: BandPayload[], nextStartsAt: number\|null }` — all gigs with `startsAt >= now - 6h`, ascending, plus every venue/band they reference. Public. Bounded to the 200 nearest upcoming gigs; `nextStartsAt` is the first omitted timestamp or `null`. |
 | `gigs:forBand` | `{ bandId }` | `GigPayload[]` upcoming gigs whose lineup contains bandId, ascending. Filtered out of the same 200-gig forward window as `gigs:feed`. |
-| `gigs:pastForBand` | `{ bandId }` | `{ gigs: GigPayload[], venues: VenuePayload[] }` — past gigs whose lineup contains bandId, **descending**, plus the venues they reference. Public. Reads the 200 most recent past gigs **globally** and then filters by lineup, so a band whose shows fall outside that window returns empty — the same trap `gigs:forBand` carries forward. |
+| `gigs:pastForBand` | `{ bandId }` | `{ gigs: GigPayload[], venues: VenuePayload[] }` — the band's 200 most recent past gigs, **descending**, plus the venues they reference. Public. Reads `gigBands.by_band_startsAt`, so other bands cannot crowd its history out of the window. |
 | `venues:list` | `{}` | `VenuePayload[]` — every venue, name-ascending, capped at 500. Public. |
+| `venues:detail` | `{ venueId }` | `null` or `{ venue: VenuePayload, gigs: GigPayload[], bands: BandPayload[], truncated: boolean }` — venue-isolated gigs with `startsAt >= now - 6h`, ascending and capped at 200, plus unique existing bands referenced by those gigs' lineups. `truncated` is true when a 201st venue gig exists. Public. |
 | `bands:get` | `{ bandId }` | `BandPayload` (full) or `null` |
+| `bands:list` | `{ paginationOpts }` | Standard Convex pagination result with `page: BandPayload[]`, name-ascending through `bands.by_name`; pass `continueCursor` into the next request unchanged. Public. |
 | `bands:search` | `{ q: string }` | `BandPayload[]` — name search-index match; `q: ""` → all bands (capped 50) |
 | `bands:bySlug` | `{ slug: string }` | `BandPayload` (full) or `null` — resolves a shared profile link. Public. Duplicate slugs degrade to the older band rather than throwing. |
 | ★ `bands:myBands` | `{}` | `[{ band: BandPayload, role: "admin"\|"member" }]`; `[]` unauth. Capped at 100 memberships. |
 | `media:forBand` | `{ bandId }` | `MediaPayload[]` — public; one list across both kinds, ordered by `order` asc |
 | `users:me` | `{}` | `UserPayload \| null` |
-| ★ `interactions:myInteractions` | `{}` | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], attendedCount: number }`; empty/0 unauth |
+| ★ `interactions:myInteractions` | `{}` | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], gigs: GigPayload[], attendedCount: number }`; `gigs` deduplicates and hydrates upcoming/grace-window RSVP/saved rows beyond the feed window; empty/0 unauth |
 | `interactions:history` | `{}` | `[{ title: string, venueName: string, startsAt: number }]` — gigs the user RSVPed to with `startsAt < now`, newest first; `[]` unauth. Display string ("title — venue", "SAT JUL 5") derived client-side. |
 | `analytics:bandRecap` | `{ bandId }` | `BandRecap` — signed-in band members only (admin or member); throws otherwise. Reads the 200 most recent globally past gigs, analyzes at most the first 30 whose lineup contains the band, and returns shows newest first. `window.truncated` covers both the matching-show cap and a full global scan. The five-distinct-fan floor suppresses `leadTime`, `repeatFans`, `newReturning` and the per-show new/returning columns; `leadTime.unmeasurable` is also independently zeroed for 1–4 distinct fans. `venues`, `weekdays` and `pricing` always publish because they are exactly recomputable from `shows[]`. |
 
@@ -222,7 +239,7 @@ member. **All mutations throw when unauthenticated**.
 | `interactions:toggleSave` | `{ gigId }` | `{ on: boolean }` | |
 | `bands:createBand` | `{ name, genres: string[], bio, inviteHandles: string[], area?, linkIg?, linkBc?, linkYt? }` | `{ bandId, slug }` | Inserts band (colorHex/initials/slug computed server-side; `area` defaults to "Bay Area"; `followerCount = 1` — the single admin `bandMembers` row this insert is always followed by, per the v1.4 invariant; invites are stored/ignored for v1 and are deliberately not counted). |
 | `bands:updateProfile` | `{ bandId, name?, genres?, area?, bio?, inviteHandles?, linkIg?, linkBc?, linkYt? }` | `null` | requireBandAdmin. Only the keys supplied are patched. A rename recomputes `initials` but deliberately NOT `slug` (shared links keep resolving) or `colorHex` (the band's visual identity in the feed). |
-| `gigs:publishGig` | `{ bandId, title, startsAt, doorsTime, venueId, price: number, flyKey: "xerox"\|"riso"\|"marquee"\|"blueprint"\|"sunburst"\|"custom", ticketing, externalUrl?, cap }` | `{ gigId }` | requireBandAdmin(bandId); flyKey client-chosen from the six listed literals; `ticketing === "external"` requires a valid http(s) `externalUrl`; `externalUrl` is dropped for `ticketing === "rsvp"`; `startsAt`/`price` must be finite and non-negative and the venue must exist. `lineup` is `[bandId]`, `genres` are copied from the band, `desc` starts empty, `createdByBand = bandId`, goingCount 0. |
+| `gigs:publishGig` | `{ bandId, title, startsAt, doorsTime, venueId, price: number, flyKey: "xerox"\|"riso"\|"marquee"\|"blueprint"\|"sunburst"\|"custom", ticketing, ageRequirement: "allAges"\|"18Plus"\|"21Plus", externalUrl?, cap }` | `{ gigId }` | requireBandAdmin(bandId); age requirement is explicit on every new write; flyKey client-chosen from the six listed literals; `ticketing === "external"` requires a valid http(s) `externalUrl`; `externalUrl` is dropped for `ticketing === "rsvp"`; `startsAt`/`price` must be finite and non-negative and the venue must exist. `lineup` is `[bandId]`, `genres` are copied from the band, `desc` starts empty, `createdByBand = bandId`, goingCount 0. |
 | ↳ v1.1 args/rules for `gigs:publishGig` | Adds `flyStorageId?` to the args above | `{ gigId }` | `flyKey === "custom"` requires a live `flyStorageId` or throws. A non-`"custom"` flyKey silently drops any supplied `flyStorageId`; nothing is stored. |
 | `media:generateUploadUrl` | `{ bandId }` | upload URL string | requireBandAdmin(bandId) and nothing else — the 50-row cap is NOT checked here, because this URL also uploads gig flyers. `media:addMedia` is the only place the cap is enforced. |
 | `media:addMedia` | `{ bandId, kind: "video"\|"photo", storageId, title, caption?, lengthSec? }` | `{ mediaId }` | requireBandAdmin(bandId); requires a live, acceptable, non-duplicate upload and room under the 50-row per-band cap. Ordering is appended **globally** — `max(order) + 1` across both kinds, one list per band, not one per kind. The first video auto-pins. |
@@ -253,6 +270,12 @@ member. **All mutations throw when unauthenticated**.
   `weekdays` or `pricing`.
 - `MAX_MEDIA_PER_BAND = 50` — also the `.take()` bound on every `bandMedia`
   read, so "the whole ordered list fits in one read" holds by construction.
+- `MAX_VENUE_GIGS = 200`; `venues:detail` reads one extra indexed row only to
+  compute `truncated`, and hydrates gigs/bands from the returned 200-row page.
+- `interactions:myInteractions` reads at most 500 RSVP, 500 follow and 500 save
+  rows, then point-reads at most 1,000 deduplicated RSVP/save gigs. Only gigs at
+  or after the shared six-hour feed cutoff are returned, but those hydrated
+  rows make the reactive query depend on their gig and flyer-storage data.
 - `MAX_MEDIA_BYTES = 100 MiB`.
 - Titles ≤ 200 chars, captions ≤ 500. `lengthSec` is video-only and ≤ 4 hours.
 - Photo content types: `image/jpeg`, `image/png`, `image/webp`, `image/heic`,
@@ -276,6 +299,9 @@ member. **All mutations throw when unauthenticated**.
 - `gigs.goingCount == count(gigRsvps by gigId)`. Its writers are
   `interactions:toggleRsvp` (±1 with its RSVP row) and every gig insert, which
   seeds it to 0.
+- Every supported gig insert supplies `ageRequirement` explicitly. The stored
+  field is temporarily optional solely so deployed legacy rows remain valid;
+  `toGigPayload` always emits it and maps absence to `allAges`.
 - `bands.pastShows` is a hand-derived summary with no live writer. No gig
   mutation maintains it, so it is not synchronized automatically.
 - `analytics:bandRecap` copies each gig's `goingCount` only into its show row

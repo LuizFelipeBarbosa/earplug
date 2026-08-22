@@ -19,6 +19,7 @@ import 'screens/gig_detail.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
 import 'screens/my_gigs.dart';
+import 'screens/venue_detail.dart';
 import 'services/auth_service.dart';
 import 'services/auth_service_factory.dart';
 import 'services/convex_service.dart';
@@ -227,6 +228,7 @@ class RootShell extends StatelessWidget {
       Screen.home => const HomeScreen(),
       Screen.gig => GigDetailScreen(gigId: entry.param!),
       Screen.band => BandProfileScreen(bandId: entry.param!),
+      Screen.venue => VenueDetailScreen(venueId: entry.param!),
       Screen.explore => const ExploreScreen(),
       Screen.myGigs => const MyGigsScreen(),
       Screen.auth => const AuthScreen(),
