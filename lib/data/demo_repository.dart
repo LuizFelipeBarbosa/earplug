@@ -618,10 +618,18 @@ class DemoRepository implements EarplugRepository {
 
   Interactions _currentInteractions() {
     if (!_auth.signedIn) return Interactions.empty;
+    final cutoff = DateTime.now().subtract(const Duration(hours: 6));
+    final gigsById = {
+      for (final gig in [...DemoData.gigs, ..._publishedGigs])
+        if (!gig.startsAt.isBefore(cutoff)) gig.id: gig,
+    };
     return Interactions(
       rsvpGigIds: Set<String>.unmodifiable(_rsvpGigIds),
       followBandIds: Set<String>.unmodifiable(_followBandIds),
       savedGigIds: Set<String>.unmodifiable(_savedGigIds),
+      gigs: List<Gig>.unmodifiable([
+        for (final id in {..._rsvpGigIds, ..._savedGigIds}) ?gigsById[id],
+      ]),
       attendedCount: _attendedCount,
     );
   }

@@ -59,6 +59,21 @@ void main() {
       expect(detail.truncated, isTrue);
       expect(parseVenueDetail(null), isNull);
     });
+
+    test('parses hydrated interaction gigs outside the feed payload', () {
+      final interactions = parseInteractions({
+        'rsvpGigIds': ['outside-feed'],
+        'followBandIds': <String>[],
+        'savedGigIds': ['outside-feed'],
+        'gigs': [_gigJson(id: 'outside-feed')],
+        'attendedCount': 7,
+      });
+
+      expect(interactions.rsvpGigIds, {'outside-feed'});
+      expect(interactions.savedGigIds, {'outside-feed'});
+      expect(interactions.gigs.single.id, 'outside-feed');
+      expect(interactions.attendedCount, 7);
+    });
   });
 
   test(
@@ -109,6 +124,32 @@ void main() {
     },
   );
 
+  test(
+    'band creation queues a directory restart during an active page',
+    () async {
+      final auth = FakeAuthService();
+      final repository = _QueuedRefreshRepository(auth: auth);
+      final app = AppState(repository: repository, auth: auth);
+      addTearDown(app.dispose);
+
+      await repository.firstPageStarted.future;
+      app.setNbName('Refresh Youth');
+      app.toggleNbGenre('punk');
+      app.setNbArea('Oakland');
+
+      await app.createBand();
+      final createdBandId = app.bandId;
+      expect(repository.cursors, [null]);
+
+      repository.releaseFirstPage.complete();
+      await _flushAsyncWork();
+
+      expect(repository.cursors, [null, null]);
+      expect(app.exploreBandIds, contains(createdBandId));
+      expect(app.hasMoreExploreBands, isFalse);
+    },
+  );
+
   test('venue detail retries, caches, and supports venue navigation', () async {
     final auth = FakeAuthService();
     final repository = _VenueRepository(auth: auth);
@@ -136,6 +177,72 @@ void main() {
     app.back();
     expect(app.current.screen, Screen.home);
   });
+
+  test('feed changes invalidate cached venue details', () async {
+    final auth = FakeAuthService();
+    final freshGig = Gig.fromJson(
+      _gigJson(id: 'fresh-gig', title: 'Just announced'),
+    );
+    final repository = _RefreshingVenueRepository(
+      auth: auth,
+      freshGig: freshGig,
+    );
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(() async {
+      app.dispose();
+      await repository.dispose();
+    });
+
+    repository.emitFeed([repository.oldGig]);
+    await _flushAsyncWork();
+    expect(app.venueDetail('v1'), isNull);
+    await _flushAsyncWork();
+    expect(app.venueDetail('v1')?.gigs.map((gig) => gig.id), [
+      repository.oldGig.id,
+    ]);
+    expect(repository.detailCalls, 1);
+
+    repository.emitFeed([repository.oldGig, freshGig]);
+    await _flushAsyncWork();
+    expect(app.venueDetail('v1'), isNull);
+    await _flushAsyncWork();
+
+    expect(app.venueDetail('v1')?.gigs.map((gig) => gig.id), [
+      repository.oldGig.id,
+      freshGig.id,
+    ]);
+    expect(repository.detailCalls, 2);
+  });
+
+  test(
+    'publishing invalidates venue details without a feed emission',
+    () async {
+      final auth = FakeAuthService();
+      final repository = _SilentPublishRepository(auth: auth);
+      final app = AppState(repository: repository, auth: auth);
+      addTearDown(app.dispose);
+
+      await _flushAsyncWork();
+      expect(app.venueDetail('v1'), isNull);
+      await _flushAsyncWork();
+      expect(repository.detailCalls, 1);
+
+      app.startGigCreate();
+      app.setGfName('Beyond the feed');
+      app.setGfDate(DateTime.now().add(const Duration(days: 30)));
+      app.setGfVenue('v1');
+      await app.publishGig();
+      expect(app.gfPublished, isTrue);
+
+      expect(app.venueDetail('v1'), isNull);
+      await _flushAsyncWork();
+      expect(repository.detailCalls, 2);
+      expect(
+        app.venueDetail('v1')?.gigs.map((gig) => gig.title),
+        contains('Beyond the feed'),
+      );
+    },
+  );
 
   test('save requests require auth and roll back rejected writes', () async {
     final auth = FakeAuthService();
@@ -202,6 +309,27 @@ class _PagedRepository extends DemoRepository {
   }
 }
 
+class _QueuedRefreshRepository extends DemoRepository {
+  _QueuedRefreshRepository({required super.auth});
+
+  final firstPageStarted = Completer<void>();
+  final releaseFirstPage = Completer<void>();
+  final List<String?> cursors = [];
+  var _firstCall = true;
+
+  @override
+  Future<BandPage> listBands({String? cursor, int numItems = 50}) async {
+    cursors.add(cursor);
+    final page = await super.listBands(cursor: cursor, numItems: numItems);
+    if (_firstCall) {
+      _firstCall = false;
+      firstPageStarted.complete();
+      await releaseFirstPage.future;
+    }
+    return page;
+  }
+}
+
 class _VenueRepository extends DemoRepository {
   _VenueRepository({required super.auth});
 
@@ -219,6 +347,58 @@ class _VenueRepository extends DemoRepository {
       },
       truncated: false,
     );
+  }
+}
+
+class _RefreshingVenueRepository extends DemoRepository {
+  _RefreshingVenueRepository({required super.auth, required this.freshGig});
+
+  final Gig freshGig;
+  final oldGig = DemoData.gigs.firstWhere((gig) => gig.venueId == 'v1');
+  final _feedController = StreamController<FeedSnapshot>.broadcast();
+  var detailCalls = 0;
+
+  @override
+  Stream<FeedSnapshot> feed() => _feedController.stream;
+
+  void emitFeed(List<Gig> gigs) {
+    _feedController.add(
+      FeedSnapshot(gigs: gigs, venues: DemoData.venues, bands: DemoData.bands),
+    );
+  }
+
+  @override
+  Future<VenueDetail?> venueDetail(String venueId) async {
+    detailCalls++;
+    return VenueDetail(
+      venue: DemoData.venues[venueId]!,
+      gigs: detailCalls == 1 ? [oldGig] : [oldGig, freshGig],
+      bands: const {},
+      truncated: false,
+    );
+  }
+
+  Future<void> dispose() => _feedController.close();
+}
+
+class _SilentPublishRepository extends DemoRepository {
+  _SilentPublishRepository({required super.auth});
+
+  var detailCalls = 0;
+
+  @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: DemoData.gigs,
+      venues: DemoData.venues,
+      bands: DemoData.bands,
+    ),
+  );
+
+  @override
+  Future<VenueDetail?> venueDetail(String venueId) {
+    detailCalls++;
+    return super.venueDetail(venueId);
   }
 }
 
@@ -298,9 +478,13 @@ Map<String, dynamic> _bandJson(String id, String name) => {
   'bio': 'Loud.',
 };
 
-Map<String, dynamic> _gigJson({String? ageRequirement}) => {
-  '_id': 'g1',
-  'title': 'Show',
+Map<String, dynamic> _gigJson({
+  String id = 'g1',
+  String title = 'Show',
+  String? ageRequirement,
+}) => {
+  '_id': id,
+  'title': title,
   'venueId': 'v1',
   'price': 0,
   'startsAt': DateTime.now()

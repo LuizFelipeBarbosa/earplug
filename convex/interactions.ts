@@ -1,6 +1,13 @@
 import { v } from "convex/values";
+import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
-import { currentUser, requireUser } from "./lib/helpers";
+import {
+  currentUser,
+  feedCutoff,
+  gigPayloadValidator,
+  requireUser,
+  toGigPayload,
+} from "./lib/helpers";
 
 /** Per-user interaction state; empty/0 when unauthenticated (never throws). */
 export const myInteractions = query({
@@ -9,12 +16,19 @@ export const myInteractions = query({
     rsvpGigIds: v.array(v.id("gigs")),
     followBandIds: v.array(v.id("bands")),
     savedGigIds: v.array(v.id("gigs")),
+    gigs: v.array(gigPayloadValidator),
     attendedCount: v.number(),
   }),
   handler: async (ctx) => {
     const user = await currentUser(ctx);
     if (user === null) {
-      return { rsvpGigIds: [], followBandIds: [], savedGigIds: [], attendedCount: 0 };
+      return {
+        rsvpGigIds: [],
+        followBandIds: [],
+        savedGigIds: [],
+        gigs: [],
+        attendedCount: 0,
+      };
     }
     const rsvps = await ctx.db
       .query("gigRsvps")
@@ -28,10 +42,23 @@ export const myInteractions = query({
       .query("gigSaves")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .take(500);
+    const gigIds = new Set<Id<"gigs">>([
+      ...rsvps.map((rsvp) => rsvp.gigId),
+      ...saves.map((save) => save.gigId),
+    ]);
+    const cutoff = feedCutoff();
+    const gigs = [];
+    for (const gigId of gigIds) {
+      const gig = await ctx.db.get(gigId);
+      if (gig && gig.startsAt >= cutoff) {
+        gigs.push(await toGigPayload(ctx, gig));
+      }
+    }
     return {
       rsvpGigIds: rsvps.map((r) => r.gigId),
       followBandIds: follows.map((f) => f.bandId),
       savedGigIds: saves.map((s) => s.gigId),
+      gigs,
       attendedCount: user.attendedCount,
     };
   },

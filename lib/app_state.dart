@@ -166,6 +166,7 @@ class AppState extends ChangeNotifier {
 
   List<Gig> _allGigs = const [];
   DateTime? _nextFeedStartsAt;
+  bool _hasFeedSnapshot = false;
   Map<String, Band> _bands = {};
   Map<String, Venue> _venues = const {};
 
@@ -193,13 +194,15 @@ class AppState extends ChangeNotifier {
   final Map<String, Object> _bandRecapTokens = {};
   final Map<String, String> _bandRecapErrors = {};
 
-  /// Venue relationship payloads are separate from the discovery feed. Keep
-  /// them lazy and keyed so revisiting a venue does not refetch it.
+  /// Venue relationship payloads are separate from the discovery feed. They
+  /// stay cached across rebuilds; feed changes and venue revisits invalidate
+  /// the affected key so its next read refetches authoritative relationships.
   final Map<String, VenueDetail> _venueDetails = {};
   final Set<String> _missingVenueDetails = {};
   final Map<String, Object> _venueDetailTokens = {};
   final Map<String, String> _venueDetailErrors = {};
   final Map<String, Gig> _relationshipGigs = {};
+  final Map<String, Gig> _interactionGigs = {};
 
   BandMediaController? _media;
 
@@ -264,6 +267,7 @@ class AppState extends ChangeNotifier {
   List<String> exploreBandIds = [];
   bool exploreBandsLoading = false;
   bool _exploreBandsDone = false;
+  bool _exploreBandsRefreshQueued = false;
   String? _exploreBandsCursor;
   String? exploreBandsError;
 
@@ -408,6 +412,14 @@ class AppState extends ChangeNotifier {
   void _subscribeToFeed() {
     _feedSubscription = repository.feed().listen(
       (snapshot) {
+        if (_hasFeedSnapshot) {
+          _invalidateVenueDetails({
+            for (final gig in _allGigs) gig.venueId,
+            for (final gig in snapshot.gigs) gig.venueId,
+          });
+        } else {
+          _hasFeedSnapshot = true;
+        }
         _allGigs = List<Gig>.of(snapshot.gigs);
         _nextFeedStartsAt = snapshot.nextStartsAt;
         _venues = Map<String, Venue>.of(snapshot.venues);
@@ -487,7 +499,12 @@ class AppState extends ChangeNotifier {
     } finally {
       if (!_disposed) {
         exploreBandsLoading = false;
-        notifyListeners();
+        if (_exploreBandsRefreshQueued) {
+          _exploreBandsRefreshQueued = false;
+          _refreshExploreBands();
+        } else {
+          notifyListeners();
+        }
       }
     }
   }
@@ -502,7 +519,10 @@ class AppState extends ChangeNotifier {
   }
 
   void _refreshExploreBands() {
-    if (exploreBandsLoading) return;
+    if (exploreBandsLoading) {
+      _exploreBandsRefreshQueued = true;
+      return;
+    }
     exploreBandIds = [];
     _exploreBandsCursor = null;
     _exploreBandsDone = false;
@@ -514,6 +534,9 @@ class AppState extends ChangeNotifier {
     rsvps = Set<String>.of(interactions.rsvpGigIds);
     follows = Set<String>.of(interactions.followBandIds);
     saved = Set<String>.of(interactions.savedGigIds);
+    _interactionGigs
+      ..clear()
+      ..addEntries(interactions.gigs.map((gig) => MapEntry(gig.id, gig)));
     attended = interactions.attendedCount;
     notifyListeners();
   }
@@ -557,6 +580,7 @@ class AppState extends ChangeNotifier {
 
   void openVenue(String id) {
     if (current.screen == Screen.venue && current.param == id) return;
+    _invalidateVenueDetails({id});
     go(Screen.venue, id);
   }
 
@@ -985,7 +1009,7 @@ class AppState extends ChangeNotifier {
     for (final g in allGigs) {
       if (g.id == id) return g;
     }
-    return _relationshipGigs[id];
+    return _interactionGigs[id] ?? _relationshipGigs[id];
   }
 
   Band? band(String id) => _bands[id];
@@ -999,6 +1023,17 @@ class AppState extends ChangeNotifier {
       unawaited(_loadVenueDetail(id));
     }
     return null;
+  }
+
+  void _invalidateVenueDetails(Set<String> ids) {
+    for (final id in ids) {
+      _venueDetails.remove(id);
+      _missingVenueDetails.remove(id);
+      _venueDetailErrors.remove(id);
+      // Removing the token makes any older response fail the identity check in
+      // `_loadVenueDetail`, so a pre-change payload cannot overwrite a reload.
+      _venueDetailTokens.remove(id);
+    }
   }
 
   bool venueDetailLoading(String id) => _venueDetailTokens.containsKey(id);
@@ -1685,11 +1720,12 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    final venueId = gfVenueId!;
     try {
       await repository.publishGig(
         bandId: bandId,
         title: gfName.trim(),
-        venueId: gfVenueId!,
+        venueId: venueId,
         price: gfPrice == 'FREE' ? 0 : int.parse(gfPrice.substring(1)),
         startsAt: DateTime(
           date.year,
@@ -1712,6 +1748,9 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    // A publish beyond the bounded global feed may not change its payload, so
+    // do not rely on the feed subscription alone to retire this venue cache.
+    _invalidateVenueDetails({venueId});
     gfPublished = true;
     notifyListeners();
   }

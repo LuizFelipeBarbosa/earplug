@@ -310,11 +310,24 @@ class _ExternalRsvpRepository extends DemoRepository {
   _ExternalRsvpRepository({required super.auth});
 
   @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: [
+        for (final gig in DemoData.gigs)
+          if (gig.id != 'g4') gig,
+      ],
+      venues: DemoData.venues,
+      bands: DemoData.bands,
+    ),
+  );
+
+  @override
   Stream<Interactions> myInteractions() => Stream.value(
-    const Interactions(
+    Interactions(
       rsvpGigIds: {'g4'},
       followBandIds: {},
       savedGigIds: {},
+      gigs: [DemoData.gigs.firstWhere((gig) => gig.id == 'g4')],
       attendedCount: 0,
     ),
   );

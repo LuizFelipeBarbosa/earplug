@@ -27,7 +27,7 @@ class ConvexRepository implements EarplugRepository {
     return _convexService.subscribe(
       'interactions:myInteractions',
       const {},
-      _interactionsFromJson,
+      parseInteractions,
     );
   }
 
@@ -352,13 +352,14 @@ FeedSnapshot parseFeedSnapshot(dynamic decoded) {
   );
 }
 
-Interactions _interactionsFromJson(dynamic decoded) {
+Interactions parseInteractions(dynamic decoded) {
   final json = _asMap(decoded);
   if (json.isEmpty) return Interactions.empty;
   return Interactions(
     rsvpGigIds: Set<String>.from(json['rsvpGigIds'] as List? ?? const []),
     followBandIds: Set<String>.from(json['followBandIds'] as List? ?? const []),
     savedGigIds: Set<String>.from(json['savedGigIds'] as List? ?? const []),
+    gigs: [for (final gigJson in _mapList(json['gigs'])) Gig.fromJson(gigJson)],
     attendedCount: (json['attendedCount'] as num?)?.toInt() ?? 0,
   );
 }

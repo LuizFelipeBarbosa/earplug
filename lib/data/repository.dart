@@ -51,12 +51,14 @@ class Interactions {
   final Set<String> rsvpGigIds;
   final Set<String> followBandIds;
   final Set<String> savedGigIds;
+  final List<Gig> gigs;
   final int attendedCount;
 
   const Interactions({
     required this.rsvpGigIds,
     required this.followBandIds,
     required this.savedGigIds,
+    this.gigs = const [],
     required this.attendedCount,
   });
 
@@ -64,6 +66,7 @@ class Interactions {
     rsvpGigIds: {},
     followBandIds: {},
     savedGigIds: {},
+    gigs: [],
     attendedCount: 0,
   );
 }

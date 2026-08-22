@@ -100,6 +100,9 @@ of `allAges`, `18Plus` or `21Plus`. The stored column remains optional during
 the compatibility rollout, but every supported write path requires an explicit
 value and every reader normalizes an absent legacy value to `allAges`.
 `gigs:feed` retains its existing 200-row window and `nextStartsAt` sentinel.
+`interactions:myInteractions` now includes deduplicated upcoming/grace-window
+`GigPayload` rows for RSVP and saved ids so My Gigs remains complete outside
+that feed window without moving historical RSVPs back into Upcoming.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
@@ -221,7 +224,7 @@ member. **All mutations throw when unauthenticated**.
 | ★ `bands:myBands` | `{}` | `[{ band: BandPayload, role: "admin"\|"member" }]`; `[]` unauth. Capped at 100 memberships. |
 | `media:forBand` | `{ bandId }` | `MediaPayload[]` — public; one list across both kinds, ordered by `order` asc |
 | `users:me` | `{}` | `UserPayload \| null` |
-| ★ `interactions:myInteractions` | `{}` | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], attendedCount: number }`; empty/0 unauth |
+| ★ `interactions:myInteractions` | `{}` | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], gigs: GigPayload[], attendedCount: number }`; `gigs` deduplicates and hydrates upcoming/grace-window RSVP/saved rows beyond the feed window; empty/0 unauth |
 | `interactions:history` | `{}` | `[{ title: string, venueName: string, startsAt: number }]` — gigs the user RSVPed to with `startsAt < now`, newest first; `[]` unauth. Display string ("title — venue", "SAT JUL 5") derived client-side. |
 | `analytics:bandRecap` | `{ bandId }` | `BandRecap` — signed-in band members only (admin or member); throws otherwise. Reads the 200 most recent globally past gigs, analyzes at most the first 30 whose lineup contains the band, and returns shows newest first. `window.truncated` covers both the matching-show cap and a full global scan. The five-distinct-fan floor suppresses `leadTime`, `repeatFans`, `newReturning` and the per-show new/returning columns; `leadTime.unmeasurable` is also independently zeroed for 1–4 distinct fans. `venues`, `weekdays` and `pricing` always publish because they are exactly recomputable from `shows[]`. |
 
@@ -269,6 +272,10 @@ member. **All mutations throw when unauthenticated**.
   read, so "the whole ordered list fits in one read" holds by construction.
 - `MAX_VENUE_GIGS = 200`; `venues:detail` reads one extra indexed row only to
   compute `truncated`, and hydrates gigs/bands from the returned 200-row page.
+- `interactions:myInteractions` reads at most 500 RSVP, 500 follow and 500 save
+  rows, then point-reads at most 1,000 deduplicated RSVP/save gigs. Only gigs at
+  or after the shared six-hour feed cutoff are returned, but those hydrated
+  rows make the reactive query depend on their gig and flyer-storage data.
 - `MAX_MEDIA_BYTES = 100 MiB`.
 - Titles ≤ 200 chars, captions ≤ 500. `lengthSec` is video-only and ≤ 4 hours.
 - Photo content types: `image/jpeg`, `image/png`, `image/webp`, `image/heic`,

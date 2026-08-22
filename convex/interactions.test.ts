@@ -62,7 +62,58 @@ describe("interactions", () => {
       rsvpGigIds: [],
       followBandIds: [],
       savedGigIds: [],
+      gigs: [],
       attendedCount: 0,
+    });
+  });
+
+  test("hydrates a deduplicated interacted gig beyond the feed window", async () => {
+    const { t, asFan, venueId, bandId } = await setup();
+    const firstStartsAt = Date.now() + 2 * 3600_000;
+    const outsideGigId = await t.run(async (ctx) => {
+      const common = {
+        venueId,
+        price: 0,
+        doorsTime: "8PM / 9PM",
+        flyKey: "paper",
+        lineup: [bandId],
+        genres: ["hardcore"],
+        desc: "",
+        ticketing: "rsvp" as const,
+        ageRequirement: "allAges" as const,
+        cap: "No cap",
+        goingCount: 0,
+      };
+      for (let index = 0; index < 200; index++) {
+        await ctx.db.insert("gigs", {
+          ...common,
+          title: `Feed gig ${index}`,
+          startsAt: firstStartsAt + index * 3600_000,
+        });
+      }
+      return await ctx.db.insert("gigs", {
+        ...common,
+        title: "Beyond the global feed",
+        startsAt: firstStartsAt + 200 * 3600_000,
+      });
+    });
+
+    const feed = await t.query(api.gigs.feed, {});
+    expect(feed.gigs).toHaveLength(200);
+    expect(feed.gigs.map((gig) => gig._id)).not.toContain(outsideGigId);
+
+    await asFan.mutation(api.interactions.toggleRsvp, {
+      gigId: outsideGigId,
+    });
+    await asFan.mutation(api.interactions.toggleSave, { gigId: outsideGigId });
+
+    const mine = await asFan.query(api.interactions.myInteractions, {});
+    expect(mine.rsvpGigIds).toEqual([outsideGigId]);
+    expect(mine.savedGigIds).toEqual([outsideGigId]);
+    expect(mine.gigs).toHaveLength(1);
+    expect(mine.gigs[0]).toMatchObject({
+      _id: outsideGigId,
+      title: "Beyond the global feed",
     });
   });
 
@@ -177,6 +228,12 @@ describe("interactions", () => {
     const history = await asFan.query(api.interactions.history, {});
     expect(history.map((h) => h.title)).toEqual(["Last Month", "Two Months Back"]);
     expect(history[0].venueName).toBe("Casa Quake");
+
+    const interactions = await asFan.query(api.interactions.myInteractions, {});
+    expect(interactions.rsvpGigIds).toEqual(
+      expect.arrayContaining([olderGigId, gigId, oldGigId]),
+    );
+    expect(interactions.gigs.map((gig) => gig._id)).toEqual([gigId]);
   });
 
   test("toggleSave double-toggle", async () => {
