@@ -162,6 +162,7 @@ class AppState extends ChangeNotifier {
   String? dataError;
 
   List<Gig> _allGigs = const [];
+  DateTime? _nextFeedStartsAt;
   Map<String, Band> _bands = {};
   Map<String, Venue> _venues = const {};
 
@@ -379,6 +380,7 @@ class AppState extends ChangeNotifier {
     _feedSubscription = repository.feed().listen(
       (snapshot) {
         _allGigs = List<Gig>.of(snapshot.gigs);
+        _nextFeedStartsAt = snapshot.nextStartsAt;
         _venues = Map<String, Venue>.of(snapshot.venues);
         _bands = {
           ..._bands,
@@ -390,6 +392,7 @@ class AppState extends ChangeNotifier {
               ],
             ),
         };
+        _normalizeCustomDateRange();
         _dataStatus = DataStatus.ready;
         dataError = null;
         notifyListeners();
@@ -747,12 +750,15 @@ class AppState extends ChangeNotifier {
   });
 
   void setDateRange(DateTimeRange range) => _set(() {
-    final start = DateTime(
-      range.start.year,
-      range.start.month,
-      range.start.day,
-    );
-    final end = DateTime(range.end.year, range.end.month, range.end.day);
+    if (!canSelectCustomDate) return;
+    final first = firstSelectableDiscoveryDate;
+    final last = lastSelectableDiscoveryDate;
+    var start = DateTime(range.start.year, range.start.month, range.start.day);
+    var end = DateTime(range.end.year, range.end.month, range.end.day);
+    if (start.isBefore(first)) start = first;
+    if (start.isAfter(last)) start = last;
+    if (end.isBefore(start)) end = start;
+    if (end.isAfter(last)) end = last;
     filters = filters.copyWith(
       date: DateFilter.custom,
       dateRange: DateTimeRange(start: start, end: end),
@@ -796,9 +802,62 @@ class AppState extends ChangeNotifier {
     return DateTime(today.year, today.month, today.day);
   }
 
+  bool get canSelectCustomDate => _lastCompleteDiscoveryDate != null;
+
   DateTime get lastSelectableDiscoveryDate {
     final first = firstSelectableDiscoveryDate;
-    return DateTime(first.year, first.month, first.day + 365);
+    return _lastCompleteDiscoveryDate ?? first;
+  }
+
+  DateTime? get _lastCompleteDiscoveryDate {
+    final first = firstSelectableDiscoveryDate;
+    final pickerLimit = DateTime(first.year, first.month, first.day + 365);
+    if (_allGigs.isEmpty) {
+      return _nextFeedStartsAt == null ? first : null;
+    }
+
+    final latestStart = _allGigs
+        .map((gig) => gig.startsAt)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    var lastComplete = DateTime(
+      latestStart.year,
+      latestStart.month,
+      latestStart.day,
+    );
+    if (_nextFeedStartsAt case final next?) {
+      final nextDay = DateTime(next.year, next.month, next.day);
+      if (!nextDay.isAfter(lastComplete)) {
+        lastComplete = DateTime(
+          lastComplete.year,
+          lastComplete.month,
+          lastComplete.day - 1,
+        );
+      }
+    } else if (lastComplete.isBefore(first)) {
+      lastComplete = first;
+    }
+
+    if (lastComplete.isBefore(first)) return null;
+    return lastComplete.isAfter(pickerLimit) ? pickerLimit : lastComplete;
+  }
+
+  void _normalizeCustomDateRange() {
+    if (filters.date != DateFilter.custom) return;
+    final range = filters.dateRange;
+    if (range == null || !canSelectCustomDate) {
+      filters = filters.copyWith(date: DateFilter.all, dateRange: null);
+      return;
+    }
+
+    final first = firstSelectableDiscoveryDate;
+    final last = lastSelectableDiscoveryDate;
+    var start = range.start.isBefore(first) ? first : range.start;
+    if (start.isAfter(last)) start = last;
+    var end = range.end.isAfter(last) ? last : range.end;
+    if (end.isBefore(start)) end = start;
+    filters = filters.copyWith(
+      dateRange: DateTimeRange(start: start, end: end),
+    );
   }
 
   void toggleFree() => setPriceFilter(
@@ -935,7 +994,10 @@ class AppState extends ChangeNotifier {
 
   bool isAdminOf(String id) => _bandRoles[id] == 'admin';
 
-  Venue venue(String id) => _venues[id] ?? _venueDirectory[id] ?? _unknownVenue;
+  /// Returns only a real feed or directory venue, never the display fallback.
+  Venue? knownVenue(String id) => _venues[id] ?? _venueDirectory[id];
+
+  Venue venue(String id) => knownVenue(id) ?? _unknownVenue;
 
   /// Every venue the app knows: the curated table plus whatever the live feed
   /// carries. Feed rows win on id — they are realtime. Name-ordered, one entry
@@ -972,9 +1034,8 @@ class AppState extends ChangeNotifier {
   }
 
   String distanceOf(Venue venue) {
-    final calculated = distanceMilesFromCurrent(venue);
-    if (calculated != null) return '${calculated.toStringAsFixed(1)} mi';
-    return city == 'oak' ? venue.distOak : venue.distSF;
+    final calculated = _distanceMilesFromDiscoveryCenter(venue);
+    return '${calculated.toStringAsFixed(1)} mi';
   }
 
   double _distanceMilesFromDiscoveryCenter(Venue venue) => distanceInMiles(

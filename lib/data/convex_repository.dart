@@ -289,6 +289,7 @@ class ConvexRepository implements EarplugRepository {
 FeedSnapshot parseFeedSnapshot(dynamic decoded) {
   final json = _asMap(decoded);
   final gigs = _mapList(json['gigs']).map(Gig.fromJson).toList();
+  final nextStartsAt = json['nextStartsAt'];
   final venues = <String, Venue>{
     for (final venueJson in _mapList(json['venues']))
       venueJson['_id'] as String: Venue.fromJson(venueJson),
@@ -297,7 +298,14 @@ FeedSnapshot parseFeedSnapshot(dynamic decoded) {
     for (final bandJson in _mapList(json['bands']))
       bandJson['_id'] as String: Band.fromJson(bandJson),
   };
-  return FeedSnapshot(gigs: gigs, venues: venues, bands: bands);
+  return FeedSnapshot(
+    gigs: gigs,
+    venues: venues,
+    bands: bands,
+    nextStartsAt: nextStartsAt is num
+        ? DateTime.fromMillisecondsSinceEpoch(nextStartsAt.toInt())
+        : null,
+  );
 }
 
 Interactions _interactionsFromJson(dynamic decoded) {

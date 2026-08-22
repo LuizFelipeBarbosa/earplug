@@ -1,7 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
-import { insertGigWithBandIndex } from "./lib/helpers";
+import { insertGigWithBandIndex, MAX_FEED_GIGS } from "./lib/helpers";
 import schema from "./schema";
 
 describe("gigs:pastForBand", () => {
@@ -317,6 +317,7 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(feed.gigs.length).toBe(7);
     expect(feed.venues.length).toBe(6);
     expect(feed.bands.length).toBe(6);
+    expect(feed.nextStartsAt).toBeNull();
 
     // Ascending startsAt.
     const starts = feed.gigs.map((gig) => gig.startsAt);
@@ -343,6 +344,56 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(Array.isArray(forBand)).toBe(true);
     expect(forBand.length).toBe(2); // g2 + g7
     expect(forBand.every((gig) => gig.lineup.includes(foghorn!._id))).toBe(true);
+  });
+
+  test("reports the first gig omitted from the bounded feed", async () => {
+    const t = convexTest(schema);
+    const asAdmin = t.withIdentity({ subject: "user_admin", email: "a@x.com" });
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Long Calendar",
+      genres: ["punk"],
+      bio: "",
+      inviteHandles: [],
+    });
+    const venueId = await t.run(async (ctx) =>
+      ctx.db.insert("venues", {
+        name: "Calendar Hall",
+        area: "Mission, SF",
+        addr: "1 Date St",
+        distSF: "1.0 mi",
+        distOak: "7.0 mi",
+        lat: 37.75,
+        lng: -122.42,
+      }),
+    );
+    const firstStartsAt = Date.now() + 86_400_000;
+    await t.run(async (ctx) => {
+      for (let index = 0; index <= MAX_FEED_GIGS; index++) {
+        await ctx.db.insert("gigs", {
+          title: `Gig ${index}`,
+          venueId,
+          price: 0,
+          startsAt: firstStartsAt + index * 60_000,
+          doorsTime: "7PM / 8PM",
+          flyKey: "paper",
+          lineup: [bandId],
+          genres: ["punk"],
+          desc: "",
+          ticketing: "rsvp",
+          cap: "No cap",
+          goingCount: 0,
+        });
+      }
+    });
+
+    const feed = await t.query(api.gigs.feed, {});
+
+    expect(feed.gigs).toHaveLength(MAX_FEED_GIGS);
+    expect(feed.gigs[0].startsAt).toBe(firstStartsAt);
+    expect(feed.nextStartsAt).toBe(
+      firstStartsAt + MAX_FEED_GIGS * 60_000,
+    );
   });
 
   test("myBands returns band+role entries for the caller", async () => {

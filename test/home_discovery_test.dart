@@ -1,5 +1,10 @@
 import 'package:earplug/app_state.dart';
+import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
+import 'package:earplug/demo_data.dart';
+import 'package:earplug/models.dart';
 import 'package:earplug/screens/home.dart';
+import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
@@ -67,6 +72,54 @@ void main() {
     expect(harness.app.authed, isFalse);
     expect(harness.app.current.screen, Screen.gig);
     expect(harness.app.current.param, 'g1');
+  });
+
+  testWidgets('co-located gigs share a marker and remain individually usable', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: HomeScreen()),
+    );
+
+    expect(find.byKey(const Key('venue-marker-v1')), findsOne);
+    expect(find.byKey(const Key('gig-marker-g2')), findsNothing);
+    expect(find.byKey(const Key('gig-marker-g7')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('venue-marker-v1')));
+    await tester.pumpAndSettle();
+    expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
+    expect(find.text('1 OF 2 GIGS AT THIS VENUE'), findsOne);
+
+    await tester.tap(find.byKey(const Key('previous-map-gig')));
+    await tester.pumpAndSettle();
+    expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
+
+    await tester.tap(find.byKey(const Key('next-map-gig')));
+    await tester.pumpAndSettle();
+    expect(find.text('FOG CITY FEST — DAY SHOW'), findsOne);
+    expect(find.text('2 OF 2 GIGS AT THIS VENUE'), findsOne);
+
+    await tester.tap(find.byKey(const Key('next-map-gig')));
+    await tester.pumpAndSettle();
+    expect(find.text('FOG CITY FEST — DAY SHOW'), findsOne);
+
+    await tester.tap(find.text('OPEN GIG →'));
+    await tester.pumpAndSettle();
+    expect(harness.app.current.param, 'g7');
+  });
+
+  testWidgets('gigs without a resolved venue stay off the map', (tester) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _MissingVenueRepository(auth: auth),
+      home: const Scaffold(body: HomeScreen()),
+    );
+
+    expect(find.byKey(const Key('gig-marker-g1')), findsOne);
+    expect(find.byKey(const Key('gig-marker-missing-venue')), findsNothing);
   });
 
   testWidgets('Filters apply live and the results button closes the sheet', (
@@ -158,3 +211,37 @@ class _SuccessfulLocationService implements LocationService {
   @override
   Future<bool> openLocationSettings() async => true;
 }
+
+class _MissingVenueRepository extends DemoRepository {
+  _MissingVenueRepository({required super.auth});
+
+  @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: [DemoData.gigs.first, _missingVenueGig],
+      venues: {'v3': DemoData.venues['v3']!},
+      bands: const {},
+    ),
+  );
+
+  @override
+  Future<List<Venue>> venues() async => const [];
+}
+
+final _missingVenueGig = Gig(
+  id: 'missing-venue',
+  title: 'Nowhere Show',
+  venueId: 'deleted-venue',
+  price: 0,
+  startsAt: DemoData.gigs.first.startsAt.add(const Duration(hours: 1)),
+  dateShort: DemoData.gigs.first.dateShort,
+  dateLine: DemoData.gigs.first.dateLine,
+  time: DemoData.gigs.first.time,
+  when: DemoData.gigs.first.when,
+  flyKey: DemoData.gigs.first.flyKey,
+  lineup: DemoData.gigs.first.lineup,
+  going: 0,
+  genres: DemoData.gigs.first.genres,
+  desc: 'The venue row was deleted.',
+  tix: Ticketing.rsvp,
+);

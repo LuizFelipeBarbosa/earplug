@@ -250,7 +250,9 @@ class _FiltersSheet extends StatelessWidget {
               EpChip(
                 label: _dateRangeLabel(context, app.fDateRange),
                 active: app.fDate == DateFilter.custom,
-                onTap: () => _pickDateRange(context, app),
+                onTap: app.canSelectCustomDate
+                    ? () => _pickDateRange(context, app)
+                    : null,
               ),
             ],
           ),

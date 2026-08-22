@@ -558,6 +558,7 @@ class DemoRepository implements EarplugRepository {
     gigs: List<Gig>.unmodifiable([...DemoData.gigs, ..._publishedGigs]),
     venues: DemoData.venues,
     bands: Map<String, Band>.unmodifiable(_bands),
+    nextStartsAt: null,
   );
 
   Interactions _currentInteractions() {

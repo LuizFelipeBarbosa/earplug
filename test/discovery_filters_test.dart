@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
+import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
@@ -39,9 +41,65 @@ void main() {
       final app = await _app();
 
       expect(app.feed.first.venueId, 'v1');
+      _expectLabelsFollowDistanceOrder(app);
       app.setCity('oak');
 
       expect(app.feed.first.venueId, 'v2');
+      _expectLabelsFollowDistanceOrder(app);
+    });
+
+    test('custom dates stop before a partially loaded calendar day', () async {
+      final latest = DemoData.gigs
+          .map((gig) => gig.startsAt)
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+      final app = await _app(
+        nextFeedStartsAt: latest.add(const Duration(hours: 1)),
+      );
+      final expectedLast = DateTime(latest.year, latest.month, latest.day - 1);
+
+      expect(app.lastSelectableDiscoveryDate, expectedLast);
+
+      app.setDateRange(DateTimeRange(start: latest, end: latest));
+      expect(
+        app.fDateRange,
+        DateTimeRange(start: expectedLast, end: expectedLast),
+      );
+    });
+
+    test('custom dates include a fully loaded final calendar day', () async {
+      final latest = DemoData.gigs
+          .map((gig) => gig.startsAt)
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+      final app = await _app(
+        nextFeedStartsAt: DateTime(latest.year, latest.month, latest.day + 1),
+      );
+
+      expect(
+        app.lastSelectableDiscoveryDate,
+        DateTime(latest.year, latest.month, latest.day),
+      );
+    });
+
+    test('custom dates allow today for an exhaustive empty feed', () async {
+      final app = await _app(feedGigs: const []);
+
+      expect(app.canSelectCustomDate, isTrue);
+      expect(app.lastSelectableDiscoveryDate, app.firstSelectableDiscoveryDate);
+    });
+
+    test('custom dates disable when today is only partially loaded', () async {
+      final todayGig = DemoData.gigs.first;
+      final app = await _app(
+        feedGigs: [todayGig],
+        nextFeedStartsAt: todayGig.startsAt.add(const Duration(hours: 1)),
+      );
+
+      expect(app.canSelectCustomDate, isFalse);
+      app.setDateRange(
+        DateTimeRange(start: todayGig.startsAt, end: todayGig.startsAt),
+      );
+      expect(app.fDate, DateFilter.all);
+      expect(app.fDateRange, isNull);
     });
 
     test(
@@ -172,16 +230,55 @@ void main() {
   });
 }
 
-Future<AppState> _app({LocationService? locationService}) async {
+void _expectLabelsFollowDistanceOrder(AppState app) {
+  final displayed = [
+    for (final gig in app.feed)
+      double.parse(app.distanceOf(app.venue(gig.venueId)).split(' ').first),
+  ];
+  expect(displayed, orderedEquals([...displayed]..sort()));
+}
+
+Future<AppState> _app({
+  LocationService? locationService,
+  DateTime? nextFeedStartsAt,
+  List<Gig>? feedGigs,
+}) async {
   final auth = FakeAuthService();
   final app = AppState(
-    repository: DemoRepository(auth: auth),
+    repository: nextFeedStartsAt == null && feedGigs == null
+        ? DemoRepository(auth: auth)
+        : _BoundedFeedRepository(
+            auth: auth,
+            gigs: feedGigs ?? DemoData.gigs,
+            nextStartsAt: nextFeedStartsAt,
+          ),
     auth: auth,
     locationService: locationService,
   );
   addTearDown(app.dispose);
   await pumpEventQueue();
   return app;
+}
+
+class _BoundedFeedRepository extends DemoRepository {
+  _BoundedFeedRepository({
+    required super.auth,
+    required this.gigs,
+    required this.nextStartsAt,
+  });
+
+  final List<Gig> gigs;
+  final DateTime? nextStartsAt;
+
+  @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: gigs,
+      venues: DemoData.venues,
+      bands: DemoData.bands,
+      nextStartsAt: nextStartsAt,
+    ),
+  );
 }
 
 class _FakeLocationService implements LocationService {

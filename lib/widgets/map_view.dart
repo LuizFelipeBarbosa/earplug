@@ -43,16 +43,21 @@ Widget _attribution() {
 
 class _Pin extends StatelessWidget {
   final bool free;
+  final int count;
 
-  const _Pin({required this.free});
+  const _Pin({required this.free, this.count = 1});
 
   @override
   Widget build(BuildContext context) {
+    final grouped = count > 1;
     return Container(
       decoration: BoxDecoration(
-        color: free ? Ep.blue : Colors.black,
+        color: grouped ? Colors.black : (free ? Ep.blue : Colors.black),
         shape: BoxShape.circle,
-        border: Border.all(color: free ? Colors.white : Ep.blue, width: 2.5),
+        border: Border.all(
+          color: grouped || !free ? Ep.blue : Colors.white,
+          width: 2.5,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: .6),
@@ -61,6 +66,18 @@ class _Pin extends StatelessWidget {
           ),
         ],
       ),
+      child: grouped
+          ? Center(
+              child: Text(
+                '$count',
+                style: epText(
+                  size: 10,
+                  weight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+            )
+          : null,
     );
   }
 }
@@ -95,6 +112,13 @@ class _UserPin extends StatelessWidget {
   }
 }
 
+class _VenueGigGroup {
+  const _VenueGigGroup({required this.venue, required this.gigs});
+
+  final Venue venue;
+  final List<Gig> gigs;
+}
+
 /// Full-screen gig map with tappable pins and a bottom gig card.
 class GigMapView extends StatefulWidget {
   const GigMapView({super.key, this.emptyState});
@@ -117,26 +141,47 @@ class _GigMapViewState extends State<GigMapView> {
     super.dispose();
   }
 
-  void _updateCamera(AppState app, List<Gig> gigs) {
+  List<_VenueGigGroup> _mapGroups(AppState app, List<Gig> gigs) {
+    final gigsByVenue = <String, List<Gig>>{};
+    for (final gig in gigs) {
+      if (app.knownVenue(gig.venueId) == null) continue;
+      gigsByVenue.putIfAbsent(gig.venueId, () => []).add(gig);
+    }
+
+    return [
+      for (final entry in gigsByVenue.entries)
+        _VenueGigGroup(
+          venue: app.knownVenue(entry.key)!,
+          gigs: entry.value..sort((a, b) => a.startsAt.compareTo(b.startsAt)),
+        ),
+    ];
+  }
+
+  void _updateCamera(AppState app, List<_VenueGigGroup> groups) {
     final center = app.discoveryCenter;
     final signature = <String>[
       center.latitude.toStringAsFixed(5),
       center.longitude.toStringAsFixed(5),
-      for (final gig in gigs) gig.id,
+      for (final group in groups) ...[
+        group.venue.id,
+        group.venue.point.latitude.toStringAsFixed(5),
+        group.venue.point.longitude.toStringAsFixed(5),
+        for (final gig in group.gigs) gig.id,
+      ],
     ].join('|');
     if (!_mapReady || signature == _cameraSignature) return;
     _cameraSignature = signature;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_mapReady) return;
-      if (gigs.isEmpty) {
+      if (groups.isEmpty) {
         _controller.move(center, 13);
         return;
       }
 
       final points = [
         app.discoveryCenter,
-        for (final gig in gigs) app.venue(gig.venueId).point,
+        for (final group in groups) group.venue.point,
       ];
       _controller.fitCamera(
         CameraFit.coordinates(
@@ -152,10 +197,22 @@ class _GigMapViewState extends State<GigMapView> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final gigs = app.feed;
-    if (selected != null && !gigs.any((gig) => gig.id == selected!.id)) {
+    final groups = _mapGroups(app, gigs);
+    _VenueGigGroup? selectedGroup;
+    var selectedIndex = -1;
+    if (selected != null) {
+      for (final group in groups) {
+        final index = group.gigs.indexWhere((gig) => gig.id == selected!.id);
+        if (index == -1) continue;
+        selectedGroup = group;
+        selectedIndex = index;
+        break;
+      }
+    }
+    if (selected != null && selectedGroup == null) {
       selected = null;
     }
-    _updateCamera(app, gigs);
+    _updateCamera(app, groups);
 
     return Stack(
       children: [
@@ -172,7 +229,7 @@ class _GigMapViewState extends State<GigMapView> {
             onMapReady: () {
               _mapReady = true;
               _cameraSignature = null;
-              _updateCamera(app, gigs);
+              _updateCamera(app, groups);
             },
           ),
           children: [
@@ -188,15 +245,24 @@ class _GigMapViewState extends State<GigMapView> {
                       height: 24,
                       child: const _UserPin(),
                     ),
-                for (final g in gigs)
+                for (final group in groups)
                   Marker(
-                    key: Key('gig-marker-${g.id}'),
-                    point: app.venue(g.venueId).point,
-                    width: 18,
-                    height: 18,
+                    key: Key(
+                      group.gigs.length == 1
+                          ? 'gig-marker-${group.gigs.single.id}'
+                          : 'venue-marker-${group.venue.id}',
+                    ),
+                    point: group.venue.point,
+                    width: group.gigs.length == 1 ? 18 : 26,
+                    height: group.gigs.length == 1 ? 18 : 26,
                     child: GestureDetector(
-                      onTap: () => setState(() => selected = g),
-                      child: _Pin(free: g.free),
+                      onTap: () => setState(() => selected = group.gigs.first),
+                      child: _Pin(
+                        free: group.gigs.length == 1
+                            ? group.gigs.single.free
+                            : false,
+                        count: group.gigs.length,
+                      ),
                     ),
                   ),
               ],
@@ -206,14 +272,26 @@ class _GigMapViewState extends State<GigMapView> {
         _attribution(),
         if (gigs.isEmpty && widget.emptyState != null)
           Positioned(left: 18, right: 18, top: 18, child: widget.emptyState!),
-        if (selected case final Gig g)
+        if (selected case final Gig g when selectedGroup != null)
           Positioned(
             left: 12,
             right: 12,
             bottom: tabBarClearance + 10,
             child: _MapGigCard(
               gig: g,
-              venue: app.venue(g.venueId),
+              venue: selectedGroup.venue,
+              position: selectedIndex,
+              total: selectedGroup.gigs.length,
+              onPrevious: selectedIndex > 0
+                  ? () => setState(
+                      () => selected = selectedGroup!.gigs[selectedIndex - 1],
+                    )
+                  : null,
+              onNext: selectedIndex < selectedGroup.gigs.length - 1
+                  ? () => setState(
+                      () => selected = selectedGroup!.gigs[selectedIndex + 1],
+                    )
+                  : null,
               onOpen: () {
                 setState(() => selected = null);
                 app.openGig(g.id);
@@ -228,11 +306,19 @@ class _GigMapViewState extends State<GigMapView> {
 class _MapGigCard extends StatelessWidget {
   final Gig gig;
   final Venue venue;
+  final int position;
+  final int total;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
   final VoidCallback onOpen;
 
   const _MapGigCard({
     required this.gig,
     required this.venue,
+    required this.position,
+    required this.total,
+    required this.onPrevious,
+    required this.onNext,
     required this.onOpen,
   });
 
@@ -255,6 +341,35 @@ class _MapGigCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (total > 1) ...[
+            Row(
+              children: [
+                Text(
+                  '${position + 1} OF $total GIGS AT THIS VENUE',
+                  key: const Key('map-gig-position'),
+                  style: epText(
+                    size: 10,
+                    weight: FontWeight.w900,
+                    letterSpacing: .7,
+                    color: Ep.inkA(.5),
+                  ),
+                ),
+                const Spacer(),
+                _CarouselButton(
+                  key: const Key('previous-map-gig'),
+                  icon: Icons.chevron_left,
+                  onTap: onPrevious,
+                ),
+                const SizedBox(width: 6),
+                _CarouselButton(
+                  key: const Key('next-map-gig'),
+                  icon: Icons.chevron_right,
+                  onTap: onNext,
+                ),
+              ],
+            ),
+            const SizedBox(height: 7),
+          ],
           Text(
             gig.title.toUpperCase(),
             style: epText(size: 15, weight: FontWeight.w800, letterSpacing: .2),
@@ -294,6 +409,29 @@ class _MapGigCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CarouselButton extends StatelessWidget {
+  const _CarouselButton({super.key, required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 28,
+        height: 24,
+        decoration: BoxDecoration(
+          border: Border.all(color: Ep.whiteA(onTap == null ? .08 : .2)),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Icon(icon, size: 18, color: Ep.inkA(onTap == null ? .2 : .7)),
       ),
     );
   }
