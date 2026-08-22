@@ -7,6 +7,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_media.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/media_upload_service.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -105,7 +106,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('members are gated from uploads and management controls', (
+  testWidgets('members see disabled uploads and no management controls', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -121,12 +122,11 @@ void main() {
     expect(find.text('↓'), findsNothing);
     expect(find.text('✕'), findsNothing);
 
-    await tester.tap(find.text('+ CLIP'));
-    await tester.pump();
-
-    expect(harness.app.toast, 'Only band admins can post media.');
-
-    await tester.pump(const Duration(seconds: 3));
+    final clipSlot = tester.widget<EpCard>(
+      find.ancestor(of: find.text('+ CLIP'), matching: find.byType(EpCard)),
+    );
+    expect(clipSlot.variant, EpCardVariant.disabled);
+    expect(harness.app.toast, isEmpty);
     expect(tester.takeException(), isNull);
   });
 

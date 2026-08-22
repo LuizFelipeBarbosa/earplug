@@ -7,43 +7,64 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../theme.dart';
 
-class _TabItem extends StatelessWidget {
+class EpNavigationItem extends StatelessWidget {
   final IconData icon;
   final String label;
-  final bool active;
-  final VoidCallback onTap;
+  final bool selected;
+  final VoidCallback onPressed;
 
-  const _TabItem({
+  const EpNavigationItem({
+    super.key,
     required this.icon,
     required this.label,
-    required this.active,
-    required this.onTap,
+    required this.selected,
+    required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = active ? Colors.white : Ep.inkA(.4);
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 19, color: color),
-              const SizedBox(height: 3),
-              Text(
-                label,
-                style: epText(
-                  size: 9,
-                  weight: FontWeight.w800,
-                  letterSpacing: .8,
-                  color: color,
-                ),
+    final color = selected ? Colors.white : Ep.contentSecondary;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      excludeSemantics: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          focusColor: Ep.accent.withValues(alpha: .2),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56, minWidth: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    width: 32,
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: selected ? Ep.brand : Colors.transparent,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Icon(icon, size: 19, color: color),
+                  const SizedBox(height: 3),
+                  Text(
+                    label,
+                    style: Theme.of(context).textTheme.epCaption.copyWith(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: .8,
+                      color: color,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -66,10 +87,12 @@ class _TabBarShell extends StatelessWidget {
         child: Container(
           padding: EdgeInsets.fromLTRB(10, 8, 10, bottomPad),
           decoration: BoxDecoration(
-            color: Ep.bg.withValues(alpha: .92),
+            color: Ep.background.withValues(alpha: .96),
             border: Border(top: BorderSide(color: borderColor)),
           ),
-          child: Row(children: items),
+          child: Row(
+            children: [for (final item in items) Expanded(child: item)],
+          ),
         ),
       ),
     );
@@ -84,25 +107,25 @@ class FanTabBar extends StatelessWidget {
     final app = context.watch<AppState>();
     final scr = app.current.screen;
     return _TabBarShell(
-      borderColor: Ep.whiteA(.1),
+      borderColor: Ep.border,
       items: [
-        _TabItem(
+        EpNavigationItem(
           icon: Icons.home_outlined,
           label: 'GIGS',
-          active: scr == Screen.home,
-          onTap: () => app.resetTo(Screen.home),
+          selected: scr == Screen.home,
+          onPressed: () => app.resetTo(Screen.home),
         ),
-        _TabItem(
+        EpNavigationItem(
           icon: Icons.search,
           label: 'EXPLORE',
-          active: scr == Screen.explore,
-          onTap: () => app.resetTo(Screen.explore),
+          selected: scr == Screen.explore,
+          onPressed: () => app.resetTo(Screen.explore),
         ),
-        _TabItem(
+        EpNavigationItem(
           icon: Icons.confirmation_number_outlined,
           label: 'MY GIGS',
-          active: scr == Screen.myGigs,
-          onTap: app.openMyGigsTab,
+          selected: scr == Screen.myGigs,
+          onPressed: app.openMyGigsTab,
         ),
       ],
     );
@@ -117,31 +140,31 @@ class BandTabBar extends StatelessWidget {
     final app = context.watch<AppState>();
     final scr = app.current.screen;
     return _TabBarShell(
-      borderColor: Ep.blue.withValues(alpha: .5),
+      borderColor: Ep.border,
       items: [
-        _TabItem(
+        EpNavigationItem(
           icon: Icons.grid_view_rounded,
           label: 'DASH',
-          active: scr == Screen.bandDash,
-          onTap: () => app.resetTo(Screen.bandDash),
+          selected: scr == Screen.bandDash,
+          onPressed: () => app.resetTo(Screen.bandDash),
         ),
-        _TabItem(
-          icon: Icons.radio_button_checked,
+        EpNavigationItem(
+          icon: Icons.person_outline,
           label: 'PROFILE',
-          active: scr == Screen.bandEdit,
-          onTap: () => app.resetTo(Screen.bandEdit),
+          selected: scr == Screen.bandEdit,
+          onPressed: () => app.resetTo(Screen.bandEdit),
         ),
-        _TabItem(
+        EpNavigationItem(
           icon: Icons.table_rows_outlined,
           label: 'GIGS',
-          active: scr == Screen.gigMgr,
-          onTap: () => app.resetTo(Screen.gigMgr),
+          selected: scr == Screen.gigMgr,
+          onPressed: () => app.resetTo(Screen.gigMgr),
         ),
-        _TabItem(
+        EpNavigationItem(
           icon: Icons.insert_chart_outlined_rounded,
           label: 'INSIGHTS',
-          active: scr == Screen.analytics,
-          onTap: () => app.resetTo(Screen.analytics),
+          selected: scr == Screen.analytics,
+          onPressed: () => app.resetTo(Screen.analytics),
         ),
       ],
     );

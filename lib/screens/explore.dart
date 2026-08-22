@@ -53,13 +53,17 @@ class _ExploreScreenState extends State<ExploreScreen> {
       children: [
         Container(
           padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 12),
-          decoration: BoxDecoration(
-            border: Border(bottom: BorderSide(color: Ep.whiteA(.09))),
+          decoration: const BoxDecoration(
+            color: Ep.background,
+            border: Border(bottom: BorderSide(color: Ep.border)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('SEARCH & EXPLORE', style: epDisplay(size: 20)),
+              Text(
+                'SEARCH & EXPLORE',
+                style: Theme.of(context).textTheme.epPageHeading,
+              ),
               const SizedBox(height: 10),
               TextField(
                 key: const Key('explore-search-field'),
@@ -67,7 +71,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 textInputAction: TextInputAction.search,
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => _submitSearch(app),
-                style: epText(size: 14),
+                style: Theme.of(context).textTheme.epBody,
                 decoration: epInputDecoration('Bands, gigs, venues…').copyWith(
                   suffixIcon: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -179,54 +183,57 @@ class _SearchResults extends StatelessWidget {
       children: [
         _SearchTypeTabs(app: app),
         Expanded(
-          child: ListView(
+          child: SingleChildScrollView(
             key: ValueKey('explore-results-${type.name}'),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
-            children: [
-              if (showEvents) ...[
-                const SectionLabel('EVENTS'),
-                const SizedBox(height: 6),
-                if (gigs.isEmpty)
-                  Text(
-                    type == ExploreResultType.events
-                        ? 'No events found.'
-                        : 'No gigs found.',
-                    style: epText(size: 12, color: Ep.inkA(.4)),
-                  ),
-                for (final gig in gigs) ...[
-                  FanEventCard(gig: gig, app: app),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (showEvents) ...[
+                  const SectionLabel('EVENTS'),
                   const SizedBox(height: 8),
+                  if (gigs.isEmpty)
+                    Text(
+                      type == ExploreResultType.events
+                          ? 'No events found.'
+                          : 'No gigs found.',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  for (final gig in gigs) ...[
+                    FanEventCard(gig: gig, app: app),
+                    const SizedBox(height: 8),
+                  ],
+                  if (type == ExploreResultType.all) const SizedBox(height: 8),
                 ],
-                if (type == ExploreResultType.all) const SizedBox(height: 8),
-              ],
-              if (showBands) ...[
-                const SectionLabel('BANDS'),
-                const SizedBox(height: 6),
-                if (bandIds.isEmpty)
-                  Text(
-                    'No bands found.',
-                    style: epText(size: 12, color: Ep.inkA(.4)),
-                  ),
-                for (final id in bandIds) ...[
-                  _BandRow(bandId: id, app: app),
+                if (showBands) ...[
+                  const SectionLabel('BANDS'),
                   const SizedBox(height: 6),
+                  if (bandIds.isEmpty)
+                    Text(
+                      'No bands found.',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  for (final id in bandIds) ...[
+                    _BandRow(bandId: id, app: app),
+                    const SizedBox(height: 6),
+                  ],
+                  if (type == ExploreResultType.all) const SizedBox(height: 8),
                 ],
-                if (type == ExploreResultType.all) const SizedBox(height: 8),
-              ],
-              if (showVenues) ...[
-                const SectionLabel('VENUES'),
-                const SizedBox(height: 6),
-                if (venues.isEmpty)
-                  Text(
-                    'No venues found.',
-                    style: epText(size: 12, color: Ep.inkA(.4)),
-                  ),
-                for (final venue in venues) ...[
-                  _VenueRow(venue: venue, app: app),
+                if (showVenues) ...[
+                  const SectionLabel('VENUES'),
                   const SizedBox(height: 6),
+                  if (venues.isEmpty)
+                    Text(
+                      'No venues found.',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  for (final venue in venues) ...[
+                    _VenueRow(venue: venue, app: app),
+                    const SizedBox(height: 6),
+                  ],
                 ],
               ],
-            ],
+            ),
           ),
         ),
       ],
@@ -251,41 +258,47 @@ class _SearchTypeTabs extends StatelessWidget {
       key: const Key('explore-result-tabs'),
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Ep.whiteA(.07))),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Ep.border)),
       ),
-      child: Row(
-        children: [
-          for (final entry in labels.entries) ...[
-            Expanded(
-              child: GestureDetector(
+      child: SegmentedButton<ExploreResultType>(
+        segments: [
+          for (final entry in labels.entries)
+            ButtonSegment(
+              value: entry.key,
+              label: Text(
+                entry.value,
                 key: ValueKey('explore-tab-${entry.key.name}'),
-                behavior: HitTestBehavior.opaque,
-                onTap: () => app.setExploreResultType(entry.key),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 7),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: app.exploreResultType == entry.key ? Ep.blue : null,
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: Text(
-                    entry.value,
-                    style: epText(
-                      size: 10,
-                      weight: FontWeight.w900,
-                      letterSpacing: .5,
-                      color: app.exploreResultType == entry.key
-                          ? Colors.white
-                          : Ep.inkA(.55),
-                    ),
-                  ),
-                ),
               ),
             ),
-            if (entry.key != ExploreResultType.venues) const SizedBox(width: 4),
-          ],
         ],
+        selected: {app.exploreResultType},
+        showSelectedIcon: false,
+        onSelectionChanged: (selection) {
+          app.setExploreResultType(selection.single);
+        },
+        style: ButtonStyle(
+          minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 6),
+          ),
+          textStyle: WidgetStatePropertyAll(
+            Theme.of(
+              context,
+            ).textTheme.epLabel.copyWith(fontSize: 10, letterSpacing: .4),
+          ),
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? Ep.surfaceSelected
+                : Ep.surface,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? Ep.contentPrimary
+                : Ep.contentSecondary,
+          ),
+          side: const WidgetStatePropertyAll(BorderSide(color: Ep.border)),
+        ),
       ),
     );
   }
@@ -306,7 +319,7 @@ class _BandRow extends StatelessWidget {
       onTap: () => app.openBand(bandId),
       child: Row(
         children: [
-          BandAvatar(band, size: 36, radius: 8, fontSize: 12, rotationDeg: 0),
+          BandAvatar(band, size: 36, radius: 8, fontSize: 12),
           const SizedBox(width: 11),
           Expanded(
             child: Column(
@@ -314,11 +327,11 @@ class _BandRow extends StatelessWidget {
               children: [
                 Text(
                   band.name.toUpperCase(),
-                  style: epText(size: 13, weight: FontWeight.w800),
+                  style: Theme.of(context).textTheme.epLabel,
                 ),
                 Text(
                   band.genreLine,
-                  style: epText(size: 11, color: Ep.inkA(.5)),
+                  style: Theme.of(context).textTheme.epCaption,
                 ),
               ],
             ),
@@ -360,22 +373,32 @@ class _BrowseRows extends StatelessWidget {
       children: [
         const SectionLabel('GENRES'),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 7,
-          runSpacing: 7,
-          children: [
-            for (final t in kGenres)
-              EpChip(label: t, active: false, onTap: () => onSearch(t)),
-          ],
+        SizedBox(
+          height:
+              48 +
+              12 * (MediaQuery.textScalerOf(context).scale(1).clamp(1, 2) - 1),
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: kGenres.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 7),
+            itemBuilder: (context, index) {
+              final genre = kGenres[index];
+              return EpChip(
+                label: genre,
+                active: false,
+                onTap: () => onSearch(genre),
+              );
+            },
+          ),
         ),
         const SizedBox(height: 18),
         const SectionLabel('TONIGHT NEAR YOU', blue: true),
         const SizedBox(height: 8),
-        _FlyerRail(gigs: tonight, app: app, tilt: -1.2),
+        _FlyerRail(gigs: tonight, app: app),
         const SizedBox(height: 18),
         const SectionLabel('FREE THIS WEEK', blue: true),
         const SizedBox(height: 8),
-        _FlyerRail(gigs: free, app: app, tilt: 1.2, freeTag: true),
+        _FlyerRail(gigs: free, app: app, freeTag: true),
         const SizedBox(height: 18),
         _SectionHeading(
           label: 'BANDS ON EARPLUG',
@@ -392,11 +415,17 @@ class _BrowseRows extends StatelessWidget {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: app.exploreBandIds.length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
-                  childAspectRatio: .78,
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
+                  mainAxisExtent:
+                      126 +
+                      40 *
+                          (MediaQuery.textScalerOf(
+                                context,
+                              ).scale(1).clamp(1, 2) -
+                              1),
                 ),
                 itemBuilder: (context, index) => _BandTile(
                   bandId: app.exploreBandIds[index],
@@ -411,7 +440,10 @@ class _BrowseRows extends StatelessWidget {
         else
           SizedBox(
             key: const Key('explore-band-preview'),
-            height: 118,
+            height:
+                126 +
+                40 *
+                    (MediaQuery.textScalerOf(context).scale(1).clamp(1, 2) - 1),
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
@@ -438,7 +470,7 @@ class _BandPageStatus extends StatelessWidget {
       return Text(
         'Loading bands…',
         key: const Key('explore-bands-loading'),
-        style: epText(size: 11, color: Ep.inkA(.45)),
+        style: Theme.of(context).textTheme.epCaption,
       );
     }
     if (app.exploreBandsError != null) {
@@ -446,7 +478,7 @@ class _BandPageStatus extends StatelessWidget {
         children: [
           Text(
             "Couldn't load more bands.",
-            style: epText(size: 11, color: Ep.inkA(.45)),
+            style: Theme.of(context).textTheme.epCaption,
           ),
           const SizedBox(height: 7),
           TextButton(
@@ -467,7 +499,7 @@ class _BandPageStatus extends StatelessWidget {
     return Text(
       'All bands loaded.',
       key: const Key('explore-bands-end'),
-      style: epText(size: 10.5, color: Ep.inkA(.35)),
+      style: Theme.of(context).textTheme.epCaption,
     );
   }
 }
@@ -490,21 +522,17 @@ class _SectionHeading extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: SectionLabel(label)),
-        TextButton(
-          key: actionKey,
-          onPressed: onAction,
-          style: TextButton.styleFrom(
-            minimumSize: Size.zero,
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: Text(
-            actionLabel,
-            style: epText(
-              size: 10,
-              weight: FontWeight.w900,
-              letterSpacing: .7,
-              color: Ep.link,
+        Flexible(
+          child: TextButton(
+            key: actionKey,
+            onPressed: onAction,
+            child: Text(
+              actionLabel,
+              maxLines: 2,
+              textAlign: TextAlign.end,
+              style: Theme.of(
+                context,
+              ).textTheme.epLabel.copyWith(fontSize: 10, letterSpacing: .7),
             ),
           ),
         ),
@@ -544,11 +572,11 @@ class _VenueRows extends StatelessWidget {
             const SizedBox(height: 6),
           ]
         else if (app.venueStatus == DataStatus.connecting)
-          Text('Loading venues…', style: epText(size: 11.5, color: Ep.inkA(.4)))
+          Text('Loading venues…', style: Theme.of(context).textTheme.epCaption)
         else if (app.venueStatus == DataStatus.error) ...[
           Text(
             "Couldn't load venues.",
-            style: epText(size: 11.5, color: Ep.inkA(.4)),
+            style: Theme.of(context).textTheme.epCaption,
           ),
           const SizedBox(height: 10),
           SizedBox(
@@ -563,7 +591,7 @@ class _VenueRows extends StatelessWidget {
         ] else
           Text(
             'No venues listed yet.',
-            style: epText(size: 11.5, color: Ep.inkA(.4)),
+            style: Theme.of(context).textTheme.epCaption,
           ),
       ],
     );
@@ -589,11 +617,11 @@ class _VenueRow extends StatelessWidget {
               children: [
                 Text(
                   venue.name.toUpperCase(),
-                  style: epText(size: 13, weight: FontWeight.w800),
+                  style: Theme.of(context).textTheme.epLabel,
                 ),
                 Text(
                   '${venue.addr} · ${venue.area}',
-                  style: epText(size: 11, color: Ep.inkA(.5)),
+                  style: Theme.of(context).textTheme.epCaption,
                 ),
               ],
             ),
@@ -601,7 +629,7 @@ class _VenueRow extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             app.distanceOf(venue),
-            style: epText(size: 11, color: Ep.inkA(.5)),
+            style: Theme.of(context).textTheme.epCaption,
           ),
         ],
       ),
@@ -612,20 +640,20 @@ class _VenueRow extends StatelessWidget {
 class _FlyerRail extends StatelessWidget {
   final List<Gig> gigs;
   final AppState app;
-  final double tilt;
   final bool freeTag;
 
   const _FlyerRail({
     required this.gigs,
     required this.app,
-    required this.tilt,
     this.freeTag = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 186,
+      height:
+          186 +
+          36 * (MediaQuery.textScalerOf(context).scale(1).clamp(1, 2) - 1),
       child: ListView(
         scrollDirection: Axis.horizontal,
         clipBehavior: Clip.none,
@@ -633,10 +661,12 @@ class _FlyerRail extends StatelessWidget {
           for (final g in gigs)
             Padding(
               padding: const EdgeInsets.only(right: 10),
-              child: GestureDetector(
-                onTap: () => app.openGig(g.id),
-                child: SizedBox(
-                  width: 118,
+              child: SizedBox(
+                width: 134,
+                child: EpCard(
+                  variant: EpCardVariant.raised,
+                  padding: const EdgeInsets.all(8),
+                  onTap: () => app.openGig(g.id),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -647,63 +677,63 @@ class _FlyerRail extends StatelessWidget {
                             g,
                             app.flyer(g.flyKey),
                             width: 118,
-                            height: 150,
-                            rotationDeg: tilt,
+                            height: 130,
                             radius: 8,
                             padding: const EdgeInsets.all(10),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  g.title.toUpperCase(),
-                                  maxLines: 5,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: epDisplay(
-                                    size: 12,
-                                    color: app.flyer(g.flyKey).fg,
-                                    height: 1.1,
+                            child: MediaQuery.withNoTextScaling(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    g.title.toUpperCase(),
+                                    maxLines: 5,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: epDisplay(
+                                      size: 12,
+                                      color: app.flyer(g.flyKey).fg,
+                                      height: 1.1,
+                                    ),
                                   ),
-                                ),
-                                Text(
-                                  g.dateShort,
-                                  style: epText(
-                                    size: 9,
-                                    weight: FontWeight.w800,
-                                    letterSpacing: .5,
-                                    color: app
-                                        .flyer(g.flyKey)
-                                        .fg
-                                        .withValues(alpha: .85),
+                                  Text(
+                                    g.dateShort,
+                                    style: epText(
+                                      size: 9,
+                                      weight: FontWeight.w800,
+                                      letterSpacing: .5,
+                                      color: app
+                                          .flyer(g.flyKey)
+                                          .fg
+                                          .withValues(alpha: .85),
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                           if (freeTag)
                             Positioned(
-                              top: -6,
-                              right: -6,
-                              child: Transform.rotate(
-                                angle: 6 * 3.14159 / 180,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 7,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Ep.blue,
-                                    borderRadius: BorderRadius.circular(5),
-                                  ),
-                                  child: Text(
-                                    'FREE',
-                                    style: epText(
-                                      size: 9,
-                                      weight: FontWeight.w900,
-                                      letterSpacing: .8,
-                                      color: Colors.white,
-                                    ),
-                                  ),
+                              top: 6,
+                              right: 6,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Ep.brand,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Text(
+                                  'FREE',
+                                  style: Theme.of(context).textTheme.epCaption
+                                      .copyWith(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: .8,
+                                        color: Colors.white,
+                                      ),
                                 ),
                               ),
                             ),
@@ -714,11 +744,7 @@ class _FlyerRail extends StatelessWidget {
                         app.venue(g.venueId).name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: epText(
-                          size: 10.5,
-                          weight: FontWeight.w700,
-                          color: Ep.inkA(.55),
-                        ),
+                        style: Theme.of(context).textTheme.epCaption,
                       ),
                     ],
                   ),
@@ -736,26 +762,30 @@ class _BandTile extends StatelessWidget {
   final AppState app;
   final double width;
 
-  const _BandTile({required this.bandId, required this.app, this.width = 86});
+  const _BandTile({required this.bandId, required this.app, this.width = 100});
 
   @override
   Widget build(BuildContext context) {
     final band = app.band(bandId);
     if (band == null) return const SizedBox.shrink();
-    return GestureDetector(
-      onTap: () => app.openBand(bandId),
-      child: SizedBox(
-        width: width,
+    return SizedBox(
+      width: width,
+      child: EpCard(
+        variant: EpCardVariant.raised,
+        padding: const EdgeInsets.all(6),
+        onTap: () => app.openBand(bandId),
         child: Column(
           children: [
-            BandAvatar(band, size: 64, radius: 13, fontSize: 20),
-            const SizedBox(height: 7),
+            BandAvatar(band, size: 56, radius: 12, fontSize: 18),
+            const SizedBox(height: 5),
             Text(
               band.name.toUpperCase(),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: epText(size: 10.5, weight: FontWeight.w800, height: 1.2),
+              style: Theme.of(
+                context,
+              ).textTheme.epLabel.copyWith(fontSize: 10.5, height: 1.2),
             ),
             const SizedBox(height: 2),
             if (band.genres.isNotEmpty)
@@ -763,7 +793,9 @@ class _BandTile extends StatelessWidget {
                 band.genres.first,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: epText(size: 9.5, color: Ep.inkA(.45)),
+                style: Theme.of(
+                  context,
+                ).textTheme.epCaption.copyWith(fontSize: 9.5),
               ),
           ],
         ),

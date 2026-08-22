@@ -9,13 +9,14 @@ import '../app_state.dart';
 import '../genres.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
+import '../widgets/branding.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
 
 // Door-stamp accent palette from the Sign In v3 design.
-const _stampAccent = Color(0xFF4B62FF);
-const _stampInk = Color(0xFF8C9DFF);
-const _errorColor = Color(0xFFFF6B6B);
+const _stampAccent = Ep.accent;
+const _stampInk = Ep.accent;
+const _errorColor = Ep.destructive;
 // The stamp's fixed tilt, used everywhere the door stamp is drawn.
 const _stampAngle = -9 * math.pi / 180;
 const _stepPadding = EdgeInsets.fromLTRB(22, 24, 22, 30);
@@ -123,7 +124,7 @@ class _AuthScreenState extends State<AuthScreen> {
         gradient: RadialGradient(
           center: Alignment.topCenter,
           radius: 1.1,
-          colors: [Color(0xFF191920), Ep.bg],
+          colors: [Ep.surfaceRaised, Ep.background],
           stops: [0, .68],
         ),
       ),
@@ -134,14 +135,14 @@ class _AuthScreenState extends State<AuthScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Image.asset('assets/images/listen_local_bw.png', width: 98),
+                const EpLogo.full(width: 118),
                 Text(
                   'DOOR · 21:00',
                   style: epText(
                     size: 9,
                     weight: FontWeight.w900,
                     letterSpacing: 1.9,
-                    color: Ep.inkA(.36),
+                    color: Ep.contentDisabled,
                   ),
                 ),
               ],
@@ -215,7 +216,11 @@ class _DoorStepState extends State<_DoorStep> {
                 const SizedBox(height: 12),
                 Text(
                   'Browsing needs no account. This does — ten seconds at the door.',
-                  style: epText(size: 11.5, color: Ep.inkA(.42), height: 1.5),
+                  style: epText(
+                    size: 11.5,
+                    color: Ep.contentSecondary,
+                    height: 1.5,
+                  ),
                 ),
                 Expanded(
                   child: Padding(
@@ -225,10 +230,19 @@ class _DoorStepState extends State<_DoorStep> {
                     ),
                   ),
                 ),
-                if (_stage == _EntryStage.providers)
-                  ..._buildProviders()
-                else
-                  ..._buildEntry(),
+                EpCard(
+                  variant: EpCardVariant.raised,
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_stage == _EntryStage.providers)
+                        ..._buildProviders()
+                      else
+                        ..._buildEntry(),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -347,7 +361,7 @@ class _DoorStepState extends State<_DoorStep> {
             FilteringTextInputFormatter.digitsOnly,
             LengthLimitingTextInputFormatter(6),
           ],
-          style: epDisplay(size: 18, letterSpacing: 5),
+          style: epText(size: 18, weight: FontWeight.w800, letterSpacing: 5),
           decoration: epInputDecoration(
             '6-digit code',
           ).copyWith(counterText: ''),
@@ -365,17 +379,10 @@ class _DoorStepState extends State<_DoorStep> {
           _InlineError(_error!),
         ],
         const SizedBox(height: 12),
-        GestureDetector(
+        TextAction(
+          'RESEND CODE',
           onTap: _loading ? null : resend,
-          child: Text(
-            'resend code',
-            textAlign: TextAlign.center,
-            style: epText(size: 11.5, weight: FontWeight.w700, color: Ep.link)
-                .copyWith(
-                  decoration: TextDecoration.underline,
-                  decorationColor: Ep.link,
-                ),
-          ),
+          color: Ep.accent,
         ),
       ],
     );
@@ -579,7 +586,11 @@ class _PressHerePulseState extends State<_PressHerePulse>
           const SizedBox(height: 5),
           Text(
             'pick a method below',
-            style: epText(size: 9.5, color: Ep.inkA(.5), letterSpacing: .6),
+            style: epText(
+              size: 9.5,
+              color: Ep.contentSecondary,
+              letterSpacing: .6,
+            ),
           ),
         ],
       ),
@@ -727,26 +738,7 @@ class _MethodTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          border: Border.all(color: Ep.whiteA(.16)),
-          borderRadius: BorderRadius.circular(13),
-        ),
-        child: Text(
-          label,
-          style: epText(
-            size: 12,
-            weight: FontWeight.w900,
-            letterSpacing: 1.2,
-            color: Ep.inkA(.8),
-          ),
-        ),
-      ),
-    );
+    return EpButton(label, kind: EpButtonKind.outline, onTap: onTap);
   }
 }
 
@@ -782,9 +774,6 @@ class _TasteStep extends StatelessWidget {
     required this.via,
     required this.onDone,
   });
-
-  // Each chip sits at its own slight tilt, like slapped-on stickers.
-  static const _tilts = [-1.6, 1.2, -.8, 1.7, -1.2, .9, -1.8, 1.1, -.6, 1.5];
 
   @override
   Widget build(BuildContext context) {
@@ -831,7 +820,7 @@ class _TasteStep extends StatelessWidget {
                           size: 11,
                           weight: FontWeight.w900,
                           letterSpacing: 1.5,
-                          color: Ep.inkA(.55),
+                          color: Ep.contentSecondary,
                         ),
                       ),
                     ],
@@ -844,78 +833,33 @@ class _TasteStep extends StatelessWidget {
                   const SizedBox(height: 10),
                   Text(
                     'Optional — skip it and we read it off the shows you hit.',
-                    style: epText(size: 11.5, color: Ep.inkA(.42), height: 1.5),
+                    style: epText(
+                      size: 11.5,
+                      color: Ep.contentSecondary,
+                      height: 1.5,
+                    ),
                   ),
                   const SizedBox(height: 20),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
-                      for (final (i, genre) in kGenres.indexed)
-                        _TasteChip(
+                      for (final genre in kGenres)
+                        EpChip(
                           label: genre,
                           active: app.userGenres.contains(genre),
-                          tiltDeg: _tilts[i % _tilts.length],
                           onTap: () => app.toggleUserGenre(genre),
                         ),
                     ],
                   ),
                   const Expanded(child: SizedBox(height: 24)),
                   EpButton(
-                    picked > 0
-                        ? 'INTO THE ROOM — $picked PICKED'
-                        : 'INTO THE ROOM',
-                    glow: true,
+                    picked > 0 ? 'PLUG IN — $picked PICKED' : 'PLUG IN',
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     onTap: onDone,
                   ),
                 ],
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TasteChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final double tiltDeg;
-  final VoidCallback onTap;
-
-  const _TasteChip({
-    required this.label,
-    required this.active,
-    required this.tiltDeg,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Transform.rotate(
-      angle: tiltDeg * math.pi / 180,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: active ? Ep.blue.withValues(alpha: .24) : null,
-            border: Border.all(
-              color: active ? _stampAccent : Ep.whiteA(.17),
-              width: 1.5,
-            ),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(
-            label.toUpperCase(),
-            style: epText(
-              size: 10.5,
-              weight: FontWeight.w900,
-              letterSpacing: 1.4,
-              color: active ? const Color(0xFFA9B8FF) : Ep.inkA(.68),
             ),
           ),
         ),

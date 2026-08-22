@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -14,11 +13,17 @@ import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 
-const _tapeTilt = -1.2 * math.pi / 180;
-
 /// Permanent Marker — the hand-written tape-label voice of this screen.
-TextStyle _marker({double size = 13, Color color = Ep.ink, double? height}) =>
-    GoogleFonts.permanentMarker(fontSize: size, color: color, height: height);
+TextStyle _marker({
+  double size = 13,
+  Color color = Ep.contentPrimary,
+  double? height,
+}) => TextStyle(
+  fontFamily: 'Permanent Marker',
+  fontSize: size,
+  color: color,
+  height: height,
+);
 
 Future<void> _pickBandPhoto(BuildContext context) async {
   final app = context.read<AppState>();
@@ -69,7 +74,7 @@ const _labels = <String, _TapeLabel>{
   ),
   'riso': _TapeLabel(
     base: Color(0xFFF4F4F0),
-    fg: Ep.blue,
+    fg: Ep.brand,
     texture: _LabelTexture.dots,
     labelInk: Color(0x66F0456B),
     swatchInk: Color(0xBFF0456B),
@@ -81,14 +86,14 @@ const _labels = <String, _TapeLabel>{
   ),
   'ink': _TapeLabel(
     base: Color(0xFF17171B),
-    fg: Ep.ink,
+    fg: Ep.contentPrimary,
     texture: _LabelTexture.scan,
     labelInk: Color(0x0DFFFFFF),
     swatchInk: Color(0x29FFFFFF),
   ),
   'blue': _TapeLabel(
-    base: Ep.blue,
-    fg: Ep.ink,
+    base: Ep.brand,
+    fg: Ep.contentPrimary,
     texture: _LabelTexture.diagonal,
     labelInk: Color(0x12FFFFFF),
     swatchInk: Color(0x38FFFFFF),
@@ -165,33 +170,23 @@ class BandCreateScreen extends StatefulWidget {
 }
 
 class _BandCreateScreenState extends State<BandCreateScreen> {
-  final _tapeName = TextEditingController();
   final _lineName = TextEditingController();
-  final _tapeFocus = FocusNode();
   final _lineFocus = FocusNode();
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // The name is editable in two places — whichever field is idle follows.
     final name = context.read<AppState>().nbName;
-    for (final (controller, focus) in [
-      (_tapeName, _tapeFocus),
-      (_lineName, _lineFocus),
-    ]) {
-      if (focus.hasFocus || controller.text == name) continue;
-      controller.value = TextEditingValue(
-        text: name,
-        selection: TextSelection.collapsed(offset: name.length),
-      );
-    }
+    if (_lineFocus.hasFocus || _lineName.text == name) return;
+    _lineName.value = TextEditingValue(
+      text: name,
+      selection: TextSelection.collapsed(offset: name.length),
+    );
   }
 
   @override
   void dispose() {
-    _tapeName.dispose();
     _lineName.dispose();
-    _tapeFocus.dispose();
     _lineFocus.dispose();
     super.dispose();
   }
@@ -207,8 +202,8 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
           children: [
             Container(
               padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Ep.whiteA(.09))),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Ep.border)),
               ),
               child: Row(
                 children: [
@@ -225,7 +220,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 150),
                 children: [
-                  _TapeHero(nameController: _tapeName, nameFocus: _tapeFocus),
+                  const _TapeHero(),
                   _LinerNotes(nameController: _lineName, nameFocus: _lineFocus),
                 ],
               ),
@@ -242,10 +237,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
 
 /// Photo inlay behind the cassette, the cassette itself, label swatches, hint.
 class _TapeHero extends StatelessWidget {
-  final TextEditingController nameController;
-  final FocusNode nameFocus;
-
-  const _TapeHero({required this.nameController, required this.nameFocus});
+  const _TapeHero();
 
   @override
   Widget build(BuildContext context) {
@@ -263,27 +255,43 @@ class _TapeHero extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 26, 16, 34),
           child: Column(
             children: [
-              Center(
-                child: _Cassette(
-                  nameController: nameController,
-                  nameFocus: nameFocus,
-                ),
-              ),
+              const Center(child: _Cassette()),
               const SizedBox(height: 13),
               const _SwatchRow(),
+              if (app.nbPhoto != null) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    TextButton.icon(
+                      onPressed: () => _pickBandPhoto(context),
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text('CHANGE PHOTO'),
+                    ),
+                    TextButton.icon(
+                      key: const ValueKey('clear-band-photo'),
+                      onPressed: () => app.setNbPhoto(null),
+                      icon: const Icon(Icons.close),
+                      label: const Text('REMOVE PHOTO'),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 13),
               SizedBox(
                 width: 262,
                 child: Text(
                   app.nbPhoto != null
-                      ? 'Photo sits behind the tape — drop one in above.'
-                      : 'Type on the label, tap the marker lines, or work the '
-                            'notes below.',
+                      ? 'Photo sits behind the tape as a preview.'
+                      : 'Use the standard fields below; the tape previews '
+                            'your profile as you go.',
                   textAlign: TextAlign.center,
                   style: epText(
                     size: 10.5,
                     weight: FontWeight.w600,
-                    color: Ep.inkA(.45),
+                    color: Ep.contentDisabled,
                     height: 1.4,
                   ),
                 ),
@@ -296,7 +304,7 @@ class _TapeHero extends StatelessWidget {
   }
 }
 
-/// The strip behind the tape: a photo drop zone, or a soft blue glow.
+/// The strip behind the tape is an upright, non-interactive preview.
 class _InlaySlot extends StatelessWidget {
   final PickedMedia? photo;
 
@@ -304,43 +312,34 @@ class _InlaySlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.read<AppState>();
     final picked = photo;
     if (picked == null) {
-      return GestureDetector(
-        // Opaque so the whole slot hits, not just the icon/text pixels.
-        behavior: HitTestBehavior.opaque,
-        onTap: () => _pickBandPhoto(context),
-        child: DecoratedBox(
-          decoration: const BoxDecoration(
-            color: Color(0xFF101014),
-            gradient: RadialGradient(
-              center: Alignment(0, -1),
-              radius: 1.1,
-              colors: [Color(0x381435F0), Colors.transparent],
-            ),
+      return DecoratedBox(
+        decoration: const BoxDecoration(
+          color: Ep.surface,
+          gradient: RadialGradient(
+            center: Alignment(0, -1),
+            radius: 1.1,
+            colors: [Ep.surfaceSelected, Colors.transparent],
           ),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.add_photo_alternate_outlined,
-                  size: 22,
-                  color: Ep.inkA(.45),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'DROP A BAND PHOTO',
-                  style: epText(
-                    size: 10.5,
-                    weight: FontWeight.w900,
-                    letterSpacing: .8,
-                    color: Ep.inkA(.45),
-                  ),
-                ),
-              ],
-            ),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.photo_outlined,
+                size: 22,
+                color: Ep.contentSecondary,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'BAND PHOTO PREVIEW',
+                style: Theme.of(
+                  context,
+                ).textTheme.epLabel.copyWith(color: Ep.contentSecondary),
+              ),
+            ],
           ),
         ),
       );
@@ -363,24 +362,6 @@ class _InlaySlot extends StatelessWidget {
           ),
           child: Image.memory(picked.bytes, fit: BoxFit.cover),
         ),
-        Positioned(
-          top: 8,
-          right: 8,
-          child: GestureDetector(
-            key: const ValueKey('clear-band-photo'),
-            onTap: () => app.setNbPhoto(null),
-            child: Container(
-              width: 24,
-              height: 24,
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: .72),
-                shape: BoxShape.circle,
-                border: Border.all(color: Ep.whiteA(.3)),
-              ),
-              child: const Icon(Icons.close, size: 14, color: Colors.white),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -389,13 +370,9 @@ class _InlaySlot extends StatelessWidget {
 /// The cassette. In the editor the label is live; the created view shows it
 /// finished with both reels wound.
 class _Cassette extends StatelessWidget {
-  final TextEditingController? nameController;
-  final FocusNode? nameFocus;
   final double maxWidth;
 
-  const _Cassette({this.nameController, this.nameFocus, this.maxWidth = 334});
-
-  bool get _editable => nameController != null;
+  const _Cassette({this.maxWidth = 334});
 
   @override
   Widget build(BuildContext context) {
@@ -417,9 +394,7 @@ class _Cassette extends StatelessWidget {
     // Wind the reels toward the right as the form fills.
     final frac = app.nbCompletion;
     final wound = (frac * 16).round();
-    final (discLeft, discRight) = _editable
-        ? (31.0 - wound, 15.0 + wound)
-        : (24.0, 24.0);
+    final (discLeft, discRight) = (31.0 - wound, 15.0 + wound);
 
     final labelBody = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,29 +407,12 @@ class _Cassette extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 7),
-        if (_editable)
-          TextField(
-            controller: nameController,
-            focusNode: nameFocus,
-            onChanged: app.setNbName,
-            minLines: 1,
-            maxLines: 2,
-            cursorColor: label.fg,
-            style: _marker(size: 27, color: label.fg, height: 1.06),
-            decoration: InputDecoration.collapsed(
-              hintText: 'band name',
-              hintStyle: _marker(
-                size: 27,
-                color: label.fg.withValues(alpha: .32),
-                height: 1.06,
-              ),
-            ),
-          )
-        else
-          Text(
-            app.nbName,
-            style: _marker(size: 27, color: label.fg, height: 1.06),
-          ),
+        Text(
+          app.nbName.trim().isEmpty ? 'band name' : app.nbName,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: _marker(size: 27, color: label.fg, height: 1.06),
+        ),
         const SizedBox(height: 7),
         Row(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -463,21 +421,12 @@ class _Cassette extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GestureDetector(
-                    onTap: _editable ? () => showSoundSheet(context) : null,
-                    child: Text(
-                      genreLine.isEmpty ? 'what do you sound like?' : genreLine,
-                      style: markerLine,
-                    ),
+                  Text(
+                    genreLine.isEmpty ? 'what do you sound like?' : genreLine,
+                    style: markerLine,
                   ),
                   const SizedBox(height: 3),
-                  GestureDetector(
-                    onTap: _editable ? () => showHomeBaseSheet(context) : null,
-                    child: Text(
-                      app.nbArea ?? 'where are you from?',
-                      style: markerLine,
-                    ),
-                  ),
+                  Text(app.nbArea ?? 'where are you from?', style: markerLine),
                 ],
               ),
             ),
@@ -497,8 +446,8 @@ class _Cassette extends StatelessWidget {
       ],
     );
 
-    return Transform.rotate(
-      angle: _tapeTilt,
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(textScaler: TextScaler.noScaling),
       child: Container(
         constraints: BoxConstraints(maxWidth: maxWidth),
         padding: const EdgeInsets.all(9),
@@ -531,33 +480,32 @@ class _Cassette extends StatelessWidget {
                 ),
               ),
             ),
-            if (_editable)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      frac == 1 ? 'FULL TAPE' : 'TAPE FILLS AS YOU GO',
-                      style: epText(
-                        size: 8.5,
-                        weight: FontWeight.w900,
-                        letterSpacing: 1.5,
-                        color: Ep.inkA(.4),
-                      ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    frac == 1 ? 'FULL TAPE' : 'TAPE FILLS AS YOU GO',
+                    style: epText(
+                      size: 8.5,
+                      weight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                      color: Ep.contentSecondary,
                     ),
-                    Text(
-                      '${(frac * 100).round()}%',
-                      style: epText(
-                        size: 8.5,
-                        weight: FontWeight.w900,
-                        letterSpacing: 1.5,
-                        color: Ep.link,
-                      ),
+                  ),
+                  Text(
+                    '${(frac * 100).round()}%',
+                    style: epText(
+                      size: 8.5,
+                      weight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                      color: Ep.accent,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+            ),
           ],
         ),
       ),
@@ -625,7 +573,7 @@ class _SwatchRow extends StatelessWidget {
             child: Icon(
               app.nbPhoto != null ? Icons.check : Icons.arrow_upward,
               size: 13,
-              color: Ep.link,
+              color: Ep.accent,
             ),
           ),
         ),
@@ -639,15 +587,15 @@ class _SwatchRow extends StatelessWidget {
 enum _LineState { required, done, optional }
 
 Color _numColor(_LineState state) => switch (state) {
-  _LineState.required => Ep.required,
-  _LineState.done => Ep.link,
-  _LineState.optional => Ep.inkA(.3),
+  _LineState.required => Ep.warning,
+  _LineState.done => Ep.accent,
+  _LineState.optional => Ep.contentDisabled,
 };
 
 Color _labelColor(_LineState state) => switch (state) {
-  _LineState.required => Ep.required,
-  _LineState.done => Ep.link,
-  _LineState.optional => Ep.inkA(.45),
+  _LineState.required => Ep.warning,
+  _LineState.done => Ep.accent,
+  _LineState.optional => Ep.contentDisabled,
 };
 
 String _lineLabel(String label, _LineState state) => switch (state) {
@@ -741,17 +689,20 @@ class _LinerNotes extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'liner notes',
-                  style: _marker(size: 15, color: Ep.inkA(.75)),
+                  'BAND DETAILS',
+                  style: Theme.of(context).textTheme.epSectionHeading,
                 ),
               ),
-              Text(
-                'TAP ANY LINE · ANY ORDER',
-                style: epText(
-                  size: 9.5,
-                  weight: FontWeight.w900,
-                  letterSpacing: 1.3,
-                  color: Ep.inkA(.35),
+              Flexible(
+                child: Text(
+                  'TAP ANY LINE · ANY ORDER',
+                  textAlign: TextAlign.end,
+                  style: epText(
+                    size: 9.5,
+                    weight: FontWeight.w900,
+                    letterSpacing: 1.3,
+                    color: Ep.contentDisabled,
+                  ),
                 ),
               ),
             ],
@@ -759,7 +710,7 @@ class _LinerNotes extends StatelessWidget {
           const SizedBox(height: 9),
           Container(
             decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: Ep.whiteA(.1))),
+              border: const Border(top: BorderSide(color: Ep.border)),
             ),
             child: Column(
               children: [
@@ -789,7 +740,7 @@ class _NameLine extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 13),
       decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Ep.whiteA(.1))),
+        border: const Border(bottom: BorderSide(color: Ep.border)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -798,7 +749,9 @@ class _NameLine extends StatelessWidget {
             width: 22,
             child: Text(
               '01',
-              style: _marker(size: 15, color: _numColor(state)),
+              style: Theme.of(
+                context,
+              ).textTheme.epLabel.copyWith(color: _numColor(state)),
             ),
           ),
           const SizedBox(width: 12),
@@ -826,7 +779,7 @@ class _NameLine extends StatelessWidget {
                     hintStyle: epText(
                       size: 14.5,
                       weight: FontWeight.w800,
-                      color: Ep.inkA(.35),
+                      color: Ep.contentDisabled,
                     ),
                   ),
                 ),
@@ -835,7 +788,7 @@ class _NameLine extends StatelessWidget {
                   filled
                       ? 'earplug.app/${app.nbShareSlug}'
                       : 'Your profile URL comes from this',
-                  style: epText(size: 10, color: Ep.inkA(.4)),
+                  style: epText(size: 10, color: Ep.contentDisabled),
                 ),
               ],
             ),
@@ -865,59 +818,72 @@ class _LinerLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 13),
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: Ep.whiteA(.1))),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 22,
-              child: Text(
-                num,
-                style: _marker(size: 15, color: _numColor(state)),
-              ),
+    return Semantics(
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 13),
+            decoration: BoxDecoration(
+              border: const Border(bottom: BorderSide(color: Ep.border)),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _lineLabel(label, state),
-                    style: epText(
-                      size: 9.5,
-                      weight: FontWeight.w900,
-                      letterSpacing: 1.3,
-                      color: _labelColor(state),
-                    ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 22,
+                  child: Text(
+                    num,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epLabel.copyWith(color: _numColor(state)),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    value,
-                    style: epText(
-                      size: 14.5,
-                      weight: FontWeight.w800,
-                      color: state == _LineState.required
-                          ? Ep.inkA(.42)
-                          : Ep.ink,
-                    ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _lineLabel(label, state),
+                        style: epText(
+                          size: 9.5,
+                          weight: FontWeight.w900,
+                          letterSpacing: 1.3,
+                          color: _labelColor(state),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        value,
+                        style: epText(
+                          size: 14.5,
+                          weight: FontWeight.w800,
+                          color: state == _LineState.required
+                              ? Ep.contentDisabled
+                              : Ep.contentPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        sub,
+                        style: epText(size: 10, color: Ep.contentDisabled),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(sub, style: epText(size: 10, color: Ep.inkA(.4))),
-                ],
-              ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Text(
+                    '›',
+                    style: epText(size: 16, color: Ep.contentDisabled),
+                  ),
+                ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text('›', style: epText(size: 16, color: Ep.inkA(.3))),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -945,7 +911,7 @@ class _CreateBar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Ep.bg.withValues(alpha: 0), Ep.bg],
+          colors: [Ep.background.withValues(alpha: 0), Ep.background],
           stops: const [0, .34],
         ),
       ),
@@ -962,27 +928,20 @@ class _CreateBar extends StatelessWidget {
             style: epText(
               size: 11,
               weight: FontWeight.w700,
-              color: missing.isEmpty ? Ep.link : Ep.inkA(.5),
+              color: missing.isEmpty ? Ep.accent : Ep.contentSecondary,
             ),
           ),
           const SizedBox(height: 9),
-          // The wrapper owns the tap; EpButton only renders. That way an
-          // unready press still lands here and says what is missing, instead
-          // of being swallowed by a disabled button.
-          GestureDetector(
-            onTap: app.nbSaving ? null : app.createBand,
-            child: EpButton(
-              app.nbSaving
-                  ? 'SAVING…'
-                  : app.nbEditingCreated
-                  ? 'SAVE CHANGES'
-                  : 'CREATE BAND',
-              fontSize: 14,
-              glow: live,
-              kind: live ? EpButtonKind.filled : EpButtonKind.disabled,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              onTap: null,
-            ),
+          EpButton(
+            app.nbSaving
+                ? 'SAVING…'
+                : app.nbEditingCreated
+                ? 'SAVE CHANGES'
+                : 'CREATE BAND',
+            fontSize: 14,
+            kind: live ? EpButtonKind.filled : EpButtonKind.disabled,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            onTap: live ? app.createBand : null,
           ),
         ],
       ),
@@ -1003,7 +962,7 @@ class _Sheet extends StatelessWidget {
     return Container(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       decoration: const BoxDecoration(
-        color: Ep.card,
+        color: Ep.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       child: Column(
@@ -1017,9 +976,10 @@ class _Sheet extends StatelessWidget {
                 Expanded(
                   child: Text(title.toUpperCase(), style: epDisplay(size: 15)),
                 ),
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Icon(Icons.close, size: 18, color: Ep.inkA(.5)),
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
                 ),
               ],
             ),
@@ -1045,7 +1005,7 @@ class _SheetHint extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: epText(size: 10.5, color: Ep.inkA(.4), height: 1.45),
+      style: epText(size: 10.5, color: Ep.contentDisabled, height: 1.45),
     );
   }
 }
@@ -1077,25 +1037,7 @@ class _DraftRow extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        GestureDetector(
-          onTap: onSubmit,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            decoration: BoxDecoration(
-              color: Ep.blue,
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Text(
-              action,
-              style: epText(
-                size: 11.5,
-                weight: FontWeight.w900,
-                letterSpacing: .7,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ),
+        FilledButton(onPressed: onSubmit, child: Text(action)),
       ],
     );
   }
@@ -1218,34 +1160,28 @@ class _HomeBaseBodyState extends State<_HomeBaseBody> {
         const _SheetHint('Fans browsing nearby see you first.'),
         for (final area in app.knownAreas) ...[
           const SizedBox(height: 10),
-          GestureDetector(
+          EpCard(
+            variant: app.nbArea == area.name
+                ? EpCardVariant.selected
+                : EpCardVariant.standard,
             onTap: () {
               app.setNbArea(area.name);
               Navigator.pop(context);
             },
-            behavior: HitTestBehavior.opaque,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-              decoration: BoxDecoration(
-                color: app.nbArea == area.name
-                    ? Ep.blue.withValues(alpha: .16)
-                    : Ep.bg,
-                border: app.nbArea == area.name
-                    ? Border.all(color: Ep.blue, width: 1.5)
-                    : Border.all(color: Ep.whiteA(.14)),
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    area.name.toUpperCase(),
-                    style: epText(size: 12.5, weight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(area.sub, style: epText(size: 10.5, color: Ep.inkA(.5))),
-                ],
-              ),
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  area.name.toUpperCase(),
+                  style: epText(size: 12.5, weight: FontWeight.w800),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  area.sub,
+                  style: epText(size: 10.5, color: Ep.contentSecondary),
+                ),
+              ],
             ),
           ),
         ],
@@ -1330,17 +1266,11 @@ class _SleeveNotesBodyState extends State<_SleeveNotesBody> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             _SheetHint('$count characters${count > 180 ? ' — trim it' : ''}'),
-            GestureDetector(
+            TextAction(
+              'USE A STARTER LINE',
               onTap: _useStarter,
-              child: Text(
-                'USE A STARTER LINE',
-                style: epText(
-                  size: 10.5,
-                  weight: FontWeight.w900,
-                  letterSpacing: .6,
-                  color: Ep.link,
-                ),
-              ),
+              size: 10.5,
+              letterSpacing: .6,
             ),
           ],
         ),
@@ -1396,8 +1326,8 @@ class _CreditsBodyState extends State<_CreditsBody> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: Ep.bg,
-        border: Border.all(color: borderColor ?? Ep.whiteA(.1)),
+        color: Ep.background,
+        border: Border.all(color: borderColor ?? Ep.border),
         borderRadius: BorderRadius.circular(11),
       ),
       child: Row(
@@ -1419,7 +1349,7 @@ class _CreditsBodyState extends State<_CreditsBody> {
       height: 30,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color ?? Ep.whiteA(.12),
+        color: color ?? Ep.surfaceRaised,
         shape: BoxShape.circle,
       ),
       child: Text(text, style: epText(size: 11, weight: FontWeight.w800)),
@@ -1452,17 +1382,17 @@ class _CreditsBodyState extends State<_CreditsBody> {
             adminName == null || adminName.isEmpty
                 ? 'YOU'
                 : profileInitials(adminName),
-            color: Ep.link.withValues(alpha: .25),
+            color: Ep.surfaceSelected,
           ),
           name: adminName == null || adminName.isEmpty ? 'You' : adminName,
-          borderColor: Ep.link.withValues(alpha: .35),
+          borderColor: Ep.accent,
           trailing: Text(
             'ADMIN',
             style: epText(
               size: 10,
               weight: FontWeight.w800,
               letterSpacing: .8,
-              color: Ep.link,
+              color: Ep.accent,
             ),
           ),
         ),
@@ -1480,13 +1410,14 @@ class _CreditsBodyState extends State<_CreditsBody> {
                     size: 10,
                     weight: FontWeight.w800,
                     letterSpacing: .8,
-                    color: Ep.inkA(.45),
+                    color: Ep.contentDisabled,
                   ),
                 ),
                 const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () => app.removeNbInvite(handle),
-                  child: Icon(Icons.close, size: 14, color: Ep.inkA(.4)),
+                IconButton(
+                  tooltip: 'Remove invite',
+                  onPressed: () => app.removeNbInvite(handle),
+                  icon: const Icon(Icons.close),
                 ),
               ],
             ),
@@ -1514,51 +1445,47 @@ class _JoinLink extends StatelessWidget {
       return DashedBox(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         radius: 11,
-        color: Ep.whiteA(.15),
+        color: Ep.border,
         child: Text(
           'Your join link lands with the tape. Invites you add now go out the '
           'moment it does.',
-          style: epText(size: 11, color: Ep.inkA(.42), height: 1.45),
+          style: epText(size: 11, color: Ep.contentDisabled, height: 1.45),
         ),
       );
     }
 
     final url = 'earplug.app/join/${app.nbShareSlug}';
-    return GestureDetector(
+    return EpCard(
       onTap: () {
         Clipboard.setData(ClipboardData(text: 'https://$url'));
         app.say('Join link copied — $url');
       },
-      child: DashedBox(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        radius: 11,
-        color: Ep.whiteA(.25),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Flexible(
-              child: Text(
-                url,
-                overflow: TextOverflow.ellipsis,
-                style: epText(
-                  size: 12,
-                  weight: FontWeight.w700,
-                  color: Ep.inkA(.7),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'COPY LINK',
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(
+            child: Text(
+              url,
+              overflow: TextOverflow.ellipsis,
               style: epText(
-                size: 10.5,
-                weight: FontWeight.w900,
-                letterSpacing: .8,
-                color: Ep.link,
+                size: 12,
+                weight: FontWeight.w700,
+                color: Ep.contentSecondary,
               ),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'COPY LINK',
+            style: epText(
+              size: 10.5,
+              weight: FontWeight.w900,
+              letterSpacing: .8,
+              color: Ep.accent,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1622,7 +1549,7 @@ class _LinksBodyState extends State<_LinksBody> {
               size: 9.5,
               weight: FontWeight.w900,
               letterSpacing: 1.2,
-              color: Ep.inkA(.45),
+              color: Ep.contentDisabled,
             ),
           ),
           const SizedBox(height: 5),
@@ -1653,7 +1580,7 @@ class _CreatedView extends StatelessWidget {
     final profileUrl = 'earplug.app/${app.nbShareSlug}';
 
     return ColoredBox(
-      color: Ep.bg,
+      color: Ep.background,
       child: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -1666,7 +1593,7 @@ class _CreatedView extends StatelessWidget {
                   size: 10.5,
                   weight: FontWeight.w900,
                   letterSpacing: 2,
-                  color: Ep.link,
+                  color: Ep.accent,
                 ),
               ),
               const SizedBox(height: 18),
@@ -1687,20 +1614,23 @@ class _CreatedView extends StatelessWidget {
                       size: 11,
                       weight: FontWeight.w800,
                       letterSpacing: .6,
-                      color: Ep.inkA(.5),
+                      color: Ep.contentSecondary,
                     ),
                   )
                 else
                   _QuietAction(
                     'RETRY PHOTO',
                     onTap: app.retryNbPhoto,
-                    color: Ep.link,
+                    color: Ep.accent,
                   ),
               ],
               const SizedBox(height: 18),
               Text("You're on the map.", style: epDisplay(size: 20)),
               const SizedBox(height: 4),
-              Text(profileUrl, style: epText(size: 12, color: Ep.inkA(.55))),
+              Text(
+                profileUrl,
+                style: epText(size: 12, color: Ep.contentSecondary),
+              ),
               const SizedBox(height: 18),
               SizedBox(
                 width: 300,
@@ -1742,17 +1672,17 @@ class _CreatedView extends StatelessWidget {
                   _QuietAction(
                     'KEEP EDITING',
                     onTap: app.editCreatedBand,
-                    color: Ep.inkA(.5),
+                    color: Ep.contentSecondary,
                   ),
                   _QuietAction(
                     'GO TO BAND',
                     onTap: app.openCreatedBand,
-                    color: Ep.inkA(.5),
+                    color: Ep.contentSecondary,
                   ),
                   _QuietAction(
                     'START ANOTHER',
                     onTap: app.makeAnotherBand,
-                    color: Ep.link,
+                    color: Ep.accent,
                   ),
                 ],
               ),
@@ -1774,17 +1704,12 @@ class _QuietAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return TextAction(
+      label,
       onTap: onTap,
-      child: Text(
-        label,
-        style: epText(
-          size: 11,
-          weight: FontWeight.w800,
-          letterSpacing: .6,
-          color: color,
-        ),
-      ),
+      color: color,
+      size: 11,
+      letterSpacing: .6,
     );
   }
 }

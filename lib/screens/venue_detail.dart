@@ -59,8 +59,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: Ep.whiteA(.09))),
+      decoration: const BoxDecoration(
+        color: Ep.background,
+        border: Border(bottom: BorderSide(color: Ep.border)),
       ),
       child: Row(
         children: [
@@ -68,11 +69,9 @@ class _Header extends StatelessWidget {
           const SizedBox(width: 10),
           Text(
             'VENUE',
-            style: epText(
-              size: 12,
-              weight: FontWeight.w800,
+            style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1.4,
-              color: Ep.inkA(.5),
+              color: Ep.contentSecondary,
             ),
           ),
         ],
@@ -148,13 +147,15 @@ class _CenteredState extends StatelessWidget {
             Text(
               title,
               textAlign: TextAlign.center,
-              style: epDisplay(size: 18),
+              style: Theme.of(context).textTheme.epSectionHeading,
             ),
             const SizedBox(height: 7),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: epText(size: 12.5, color: Ep.inkA(.5)),
+              style: Theme.of(
+                context,
+              ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
             ),
             if (action != null) ...[
               const SizedBox(height: 16),
@@ -192,14 +193,17 @@ class _VenueContent extends StatelessWidget {
       key: const Key('venue-detail-content'),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
       children: [
-        Text(venue.name.toUpperCase(), style: epDisplay(size: 25, height: 1)),
+        Text(
+          venue.name.toUpperCase(),
+          style: Theme.of(context).textTheme.epPageHeading,
+        ),
         const SizedBox(height: 7),
-        Text(venue.addr, style: epText(size: 13, weight: FontWeight.w700)),
+        Text(venue.addr, style: Theme.of(context).textTheme.epBody),
         const SizedBox(height: 3),
         Text(
           '${venue.area} · ${app.distanceOf(venue)}',
           key: const Key('venue-detail-distance'),
-          style: epText(size: 12, color: Ep.inkA(.55)),
+          style: Theme.of(context).textTheme.epCaption,
         ),
         const SizedBox(height: 14),
         ClipRRect(
@@ -214,7 +218,9 @@ class _VenueContent extends StatelessWidget {
             child: Text(
               'Nothing on the calendar right now.',
               textAlign: TextAlign.center,
-              style: epText(size: 12.5, color: Ep.inkA(.45)),
+              style: Theme.of(
+                context,
+              ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
             ),
           ),
         for (final gig in gigs) ...[
@@ -225,7 +231,7 @@ class _VenueContent extends StatelessWidget {
           Text(
             'Showing the next 200 events.',
             key: const Key('venue-detail-truncated'),
-            style: epText(size: 10.5, color: Ep.inkA(.4)),
+            style: Theme.of(context).textTheme.epCaption,
           ),
           const SizedBox(height: 8),
         ],
@@ -235,7 +241,7 @@ class _VenueContent extends StatelessWidget {
         if (performerIds.isEmpty)
           Text(
             'No performers announced yet.',
-            style: epText(size: 11.5, color: Ep.inkA(.4)),
+            style: Theme.of(context).textTheme.epCaption,
           ),
         for (final bandId in performerIds) ...[
           _PerformerRow(band: detail.bands[bandId]!, app: app),
@@ -260,7 +266,7 @@ class _PerformerRow extends StatelessWidget {
       onTap: () => app.openBand(band.id),
       child: Row(
         children: [
-          BandAvatar(band, size: 38, radius: 8, fontSize: 12, rotationDeg: 0),
+          BandAvatar(band, size: 38, radius: 8, fontSize: 12),
           const SizedBox(width: 11),
           Expanded(
             child: Column(
@@ -268,16 +274,16 @@ class _PerformerRow extends StatelessWidget {
               children: [
                 Text(
                   band.name.toUpperCase(),
-                  style: epText(size: 13, weight: FontWeight.w800),
+                  style: Theme.of(context).textTheme.epLabel,
                 ),
                 Text(
                   band.genreLine,
-                  style: epText(size: 11, color: Ep.inkA(.5)),
+                  style: Theme.of(context).textTheme.epCaption,
                 ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right, size: 18, color: Ep.inkA(.4)),
+          const Icon(Icons.chevron_right, size: 18, color: Ep.contentSecondary),
         ],
       ),
     );

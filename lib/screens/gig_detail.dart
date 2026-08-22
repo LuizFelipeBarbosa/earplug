@@ -44,7 +44,11 @@ class GigDetailScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   Text(
                     gig.desc,
-                    style: epText(size: 13.5, color: Ep.inkA(.75), height: 1.5),
+                    style: epText(
+                      size: 13.5,
+                      color: Ep.contentSecondary,
+                      height: 1.5,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   const SectionLabel('LINEUP'),
@@ -143,21 +147,11 @@ class _Hero extends StatelessWidget {
             Positioned(
               left: -8,
               top: -2,
-              child: GestureDetector(
+              child: CircleIconButton(
+                tooltip: 'Back',
                 onTap: app.back,
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: .55),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.chevron_left,
-                    size: 22,
-                    color: Colors.white,
-                  ),
-                ),
+                background: Colors.black.withValues(alpha: .55),
+                bordered: false,
               ),
             ),
             Positioned(
@@ -223,21 +217,22 @@ class _HeroAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Container(
-          height: 36,
-          constraints: const BoxConstraints(minWidth: 36),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: .55),
-            borderRadius: BorderRadius.circular(99),
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: Material(
+        color: Colors.black.withValues(alpha: .55),
+        borderRadius: BorderRadius.circular(99),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            height: 48,
+            constraints: const BoxConstraints(minWidth: 48),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            alignment: Alignment.center,
+            child: child,
           ),
-          child: child,
         ),
       ),
     );
@@ -264,7 +259,7 @@ class _InfoCards extends StatelessWidget {
                   size: 10,
                   weight: FontWeight.w800,
                   letterSpacing: 1.2,
-                  color: Ep.inkA(.45),
+                  color: Ep.contentDisabled,
                 ),
               ),
               const SizedBox(height: 3),
@@ -275,7 +270,7 @@ class _InfoCards extends StatelessWidget {
                 style: epText(
                   size: 13,
                   weight: FontWeight.w800,
-                  color: valueColor ?? Ep.ink,
+                  color: valueColor ?? Ep.contentPrimary,
                 ),
               ),
             ],
@@ -299,7 +294,7 @@ class _InfoCards extends StatelessWidget {
             cell(
               'PRICE',
               gig.priceLabel,
-              valueColor: gig.free ? Ep.link : Ep.ink,
+              valueColor: gig.free ? Ep.accent : Ep.contentPrimary,
             ),
             const SizedBox(width: 8),
             cell('AGE', gig.ageRequirement.label),
@@ -341,12 +336,12 @@ class _LineupRow extends StatelessWidget {
                 ),
                 Text(
                   band.genreLine,
-                  style: epText(size: 11.5, color: Ep.inkA(.55)),
+                  style: epText(size: 11.5, color: Ep.contentSecondary),
                 ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right, size: 18, color: Ep.inkA(.4)),
+          const Icon(Icons.chevron_right, color: Ep.contentSecondary),
         ],
       ),
     );
@@ -361,69 +356,60 @@ class _VenueCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Ep.card,
-        border: Border.all(color: Ep.whiteA(.1)),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
+    return EpCard(
+      padding: EdgeInsets.zero,
       child: Column(
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => app.openVenue(venue.id),
-            child: VenueMiniMap(venue: venue),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => app.openVenue(venue.id),
+              child: VenueMiniMap(venue: venue),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
                 Expanded(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => app.openVenue(venue.id),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          venue.name.toUpperCase(),
-                          style: epText(size: 13.5, weight: FontWeight.w800),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => app.openVenue(venue.id),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              venue.name.toUpperCase(),
+                              style: epText(
+                                size: 13.5,
+                                weight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${venue.addr} · ${venue.area}',
+                              style: epText(
+                                size: 11.5,
+                                color: Ep.contentSecondary,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${venue.addr} · ${venue.area}',
-                          style: epText(size: 11.5, color: Ep.inkA(.55)),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(width: 10),
-                GestureDetector(
-                  onTap: () => _openExternal(
+                OutlinedButton(
+                  onPressed: () => _openExternal(
                     app,
                     'https://www.google.com/maps/search/?api=1&query='
                     '${venue.point.latitude},${venue.point.longitude}',
                   ),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 11,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Ep.whiteA(.25)),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      'DIRECTIONS ↗',
-                      style: epText(
-                        size: 11,
-                        weight: FontWeight.w800,
-                        letterSpacing: .8,
-                      ),
-                    ),
-                  ),
+                  child: const Text('DIRECTIONS ↗'),
                 ),
               ],
             ),
@@ -464,12 +450,16 @@ class _WhosGoing extends StatelessWidget {
           const SizedBox(height: 5),
           Text(
             socialLine,
-            style: epText(size: 12, color: Ep.inkA(.6), height: 1.5),
+            style: epText(size: 12, color: Ep.contentSecondary, height: 1.5),
           ),
           const SizedBox(height: 8),
           Text(
             'Attendance stays vague on purpose — no public list, ever.',
-            style: epText(size: 10.5, letterSpacing: .3, color: Ep.inkA(.38)),
+            style: epText(
+              size: 10.5,
+              letterSpacing: .3,
+              color: Ep.contentDisabled,
+            ),
           ),
         ],
       ),
@@ -520,7 +510,6 @@ class _CtaBar extends StatelessWidget {
       button = EpButton(
         "RSVP — I'M IN",
         fontSize: 14,
-        glow: true,
         padding: const EdgeInsets.symmetric(vertical: 16),
         onTap: () => app.requestRsvp(gig.id),
       );
@@ -533,28 +522,33 @@ class _CtaBar extends StatelessWidget {
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
           stops: [0, .75, 1],
-          colors: [Ep.bg, Ep.bg, Color(0x000A0A0C)],
+          colors: [Ep.background, Ep.background, Colors.transparent],
         ),
       ),
       child: Row(
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                gig.priceLabel,
-                style: epDisplay(size: 17, color: gig.free ? Ep.link : Ep.ink),
-              ),
-              Text(
-                tixNote,
-                style: epText(
-                  size: 10,
-                  weight: FontWeight.w700,
-                  letterSpacing: .5,
-                  color: Ep.inkA(.5),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  gig.priceLabel,
+                  style: epDisplay(
+                    size: 17,
+                    color: gig.free ? Ep.accent : Ep.contentPrimary,
+                  ),
                 ),
-              ),
-            ],
+                Text(
+                  tixNote,
+                  style: epText(
+                    size: 10,
+                    weight: FontWeight.w700,
+                    letterSpacing: .5,
+                    color: Ep.contentSecondary,
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(child: button),

@@ -41,10 +41,10 @@ class _SheetFrame extends StatelessWidget {
       child: Container(
         height: height,
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-        decoration: BoxDecoration(
-          color: Ep.card,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border(top: BorderSide(color: Ep.whiteA(.14))),
+        decoration: const BoxDecoration(
+          color: Ep.surfaceRaised,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          border: Border(top: BorderSide(color: Ep.border)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -54,7 +54,7 @@ class _SheetFrame extends StatelessWidget {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Ep.whiteA(.25),
+                  color: Ep.contentDisabled,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
@@ -62,11 +62,16 @@ class _SheetFrame extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                Expanded(child: Text(title, style: epDisplay(size: 17))),
+                Expanded(
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.epSectionHeading,
+                  ),
+                ),
                 IconButton(
                   tooltip: 'Close',
                   onPressed: () => Navigator.pop(context),
-                  icon: Icon(Icons.close, color: Ep.inkA(.7)),
+                  icon: const Icon(Icons.close),
                 ),
               ],
             ),
@@ -96,7 +101,9 @@ class _LocationSheet extends StatelessWidget {
         children: [
           Text(
             'Use your position once, or pick a scene manually.',
-            style: epText(size: 12, color: Ep.inkA(.55), height: 1.4),
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
           ),
           const SizedBox(height: 10),
           _OptionTile(
@@ -111,7 +118,7 @@ class _LocationSheet extends StatelessWidget {
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.my_location, color: Ep.link, size: 20),
+                : const Icon(Icons.my_location, color: Ep.accent, size: 20),
             onTap: app.locating
                 ? null
                 : () async {
@@ -176,30 +183,21 @@ class _LocationFailureMessage extends StatelessWidget {
       ),
     };
 
-    return Container(
+    return EpCard(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Ep.bg,
-        border: Border.all(color: Ep.required.withValues(alpha: .45)),
-        borderRadius: BorderRadius.circular(10),
-      ),
+      borderColor: Ep.warning,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(message, style: epText(size: 11.5, height: 1.4)),
+          Text(message, style: Theme.of(context).textTheme.epBody),
           if (action != null) ...[
-            const SizedBox(height: 8),
-            GestureDetector(
-              onTap: app.openLocationRecoverySettings,
-              child: Text(
-                action,
-                style: epText(
-                  size: 11,
-                  weight: FontWeight.w900,
-                  letterSpacing: .6,
-                  color: Ep.link,
-                ),
+            const SizedBox(height: 4),
+            TextButton(
+              onPressed: app.openLocationRecoverySettings,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
               ),
+              child: Text(action),
             ),
           ],
         ],
@@ -292,33 +290,29 @@ class _FiltersSheet extends StatelessWidget {
             app.discoveryLocation == DiscoveryLocation.current
                 ? 'Measured from your current location.'
                 : 'Choose Current location to filter by distance.',
-            style: epText(size: 11, color: Ep.inkA(.48)),
+            style: Theme.of(context).textTheme.epCaption,
           ),
           const SizedBox(height: 9),
-          IgnorePointer(
-            ignoring: app.discoveryLocation != DiscoveryLocation.current,
-            child: Opacity(
-              opacity: app.discoveryLocation == DiscoveryLocation.current
-                  ? 1
-                  : .38,
-              child: Wrap(
-                spacing: 7,
-                runSpacing: 7,
-                children: [
-                  _ChoiceChip(
-                    label: 'Any',
-                    selected: app.fMaxDistanceMiles == null,
-                    onTap: () => app.setDistanceFilter(null),
-                  ),
-                  for (final miles in const [5.0, 10.0, 25.0])
-                    _ChoiceChip(
-                      label: '${miles.toInt()} MI',
-                      selected: app.fMaxDistanceMiles == miles,
-                      onTap: () => app.setDistanceFilter(miles),
-                    ),
-                ],
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _ChoiceChip(
+                label: 'Any',
+                selected: app.fMaxDistanceMiles == null,
+                onTap: app.discoveryLocation == DiscoveryLocation.current
+                    ? () => app.setDistanceFilter(null)
+                    : null,
               ),
-            ),
+              for (final miles in const [5.0, 10.0, 25.0])
+                _ChoiceChip(
+                  label: '${miles.toInt()} MI',
+                  selected: app.fMaxDistanceMiles == miles,
+                  onTap: app.discoveryLocation == DiscoveryLocation.current
+                      ? () => app.setDistanceFilter(miles)
+                      : null,
+                ),
+            ],
           ),
           const _Divider(),
           const _FilterHeading('PRICE'),
@@ -368,11 +362,6 @@ class _FiltersSheet extends StatelessWidget {
             onPressed: app.activeFilterCount == 0
                 ? null
                 : app.clearDiscoveryFilters,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Ep.ink,
-              side: BorderSide(color: Ep.whiteA(.2)),
-              padding: const EdgeInsets.symmetric(vertical: 13),
-            ),
             child: const Text('CLEAR ALL'),
           ),
         ],
@@ -408,7 +397,7 @@ class _FiltersSheet extends StatelessWidget {
         data: Theme.of(context).copyWith(
           colorScheme: Theme.of(
             context,
-          ).colorScheme.copyWith(primary: Ep.blue, surface: Ep.card),
+          ).colorScheme.copyWith(primary: Ep.brand, surface: Ep.surfaceRaised),
         ),
         child: child!,
       ),
@@ -427,15 +416,9 @@ class _ResultsButton extends StatelessWidget {
     return FilledButton(
       key: const Key('show-filter-results'),
       onPressed: () => Navigator.pop(context),
-      style: FilledButton.styleFrom(
-        backgroundColor: Ep.blue,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
       child: Text(
         'SHOW $count ${count == 1 ? 'RESULT' : 'RESULTS'}',
-        style: epText(size: 12, weight: FontWeight.w900, letterSpacing: .8),
+        style: Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .8),
       ),
     );
   }
@@ -459,19 +442,19 @@ class _OptionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(top: 8),
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: EpCard(
+        variant: onTap == null
+            ? EpCardVariant.disabled
+            : selected
+            ? EpCardVariant.selected
+            : EpCardVariant.standard,
+        // Passing a callback lets EpCard expose button semantics; the disabled
+        // variant still suppresses the actual InkWell and reports enabled=false.
+        onTap: onTap ?? () {},
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-        decoration: BoxDecoration(
-          color: selected ? Ep.blue.withValues(alpha: .14) : Ep.bg,
-          border: Border.all(
-            color: selected ? Ep.blue : Ep.whiteA(.14),
-            width: selected ? 1.5 : 1,
-          ),
-          borderRadius: BorderRadius.circular(10),
-        ),
+        radius: 10,
         child: Row(
           children: [
             if (leading != null) ...[leading!, const SizedBox(width: 10)],
@@ -481,20 +464,29 @@ class _OptionTile extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: epText(size: 12.5, weight: FontWeight.w800),
+                    style: Theme.of(context).textTheme.epBody.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: onTap == null
+                          ? Ep.contentDisabled
+                          : Ep.contentPrimary,
+                    ),
                   ),
                   if (subtitle != null) ...[
                     const SizedBox(height: 2),
                     Text(
                       subtitle!,
-                      style: epText(size: 10.5, color: Ep.inkA(.48)),
+                      style: Theme.of(context).textTheme.epCaption.copyWith(
+                        color: onTap == null
+                            ? Ep.contentDisabled
+                            : Ep.contentSecondary,
+                      ),
                     ),
                   ],
                 ],
               ),
             ),
             if (selected)
-              const Icon(Icons.check_circle, color: Ep.blue, size: 19),
+              const Icon(Icons.check_circle, color: Ep.accent, size: 19),
           ],
         ),
       ),
@@ -511,7 +503,7 @@ class _ChoiceChip extends StatelessWidget {
 
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -528,11 +520,9 @@ class _FilterHeading extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       label,
-      style: epText(
-        size: 11,
-        weight: FontWeight.w900,
+      style: Theme.of(context).textTheme.epLabel.copyWith(
         letterSpacing: 1,
-        color: Ep.inkA(.6),
+        color: Ep.contentSecondary,
       ),
     );
   }
@@ -546,20 +536,12 @@ class _TextAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Text(
-          label,
-          style: epText(
-            size: 10.5,
-            weight: FontWeight.w900,
-            letterSpacing: .5,
-            color: Ep.link,
-          ),
-        ),
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
       ),
+      child: Text(label),
     );
   }
 }
@@ -571,7 +553,7 @@ class _Divider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 18),
-      child: Divider(height: 1, color: Ep.whiteA(.1)),
+      child: const Divider(height: 1),
     );
   }
 }

@@ -15,31 +15,42 @@ class _SheetShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 44),
-      decoration: BoxDecoration(
-        color: Ep.card,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        border: Border(top: BorderSide(color: Ep.whiteA(.14))),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Ep.whiteA(.25),
-                borderRadius: BorderRadius.circular(99),
+    return SafeArea(
+      top: false,
+      child: Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * .88,
+        ),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+        decoration: const BoxDecoration(
+          color: Ep.surfaceRaised,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          border: Border(top: BorderSide(color: Ep.border)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Ep.contentDisabled,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 10),
+              Text(
+                title.toUpperCase(),
+                style: Theme.of(context).textTheme.epSectionHeading,
+              ),
+              ...children,
+            ],
           ),
-          const SizedBox(height: 10),
-          Text(title.toUpperCase(), style: epDisplay(size: 15)),
-          ...children,
-        ],
+        ),
       ),
     );
   }
@@ -60,18 +71,12 @@ class _SheetOption extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        margin: const EdgeInsets.only(top: 10),
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: EpCard(
+        variant: selected ? EpCardVariant.selected : EpCardVariant.standard,
+        onTap: onTap,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        decoration: BoxDecoration(
-          color: selected ? Ep.blue.withValues(alpha: .16) : Ep.bg,
-          border: selected
-              ? Border.all(color: Ep.blue, width: 1.5)
-              : Border.all(color: Ep.whiteA(.14)),
-          borderRadius: BorderRadius.circular(12),
-        ),
         child: Row(
           children: [
             Expanded(child: leading),
@@ -96,15 +101,8 @@ void showCitySheet(BuildContext context) {
           Navigator.pop(ctx);
           app.setCity(value);
         },
-        leading: Text(title, style: epText(size: 13, weight: FontWeight.w800)),
-        trailing: Text(
-          sub,
-          style: epText(
-            size: 10.5,
-            weight: FontWeight.w800,
-            color: Ep.inkA(.45),
-          ),
-        ),
+        leading: Text(title, style: Theme.of(ctx).textTheme.epLabel),
+        trailing: Text(sub, style: Theme.of(ctx).textTheme.epCaption),
       );
     }
 
@@ -114,7 +112,9 @@ void showCitySheet(BuildContext context) {
         const SizedBox(height: 6),
         Text(
           "Pick a scene — everything's within BART distance anyway.",
-          style: epText(size: 11.5, color: Ep.inkA(.5), height: 1.45),
+          style: Theme.of(
+            ctx,
+          ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
         ),
         option('San Francisco', 'Mission & around', 'sf'),
         option('Oakland', 'Temescal & around', 'oak'),
@@ -142,31 +142,13 @@ void showSwitcherSheet(BuildContext context) {
           },
           leading: Row(
             children: [
-              Container(
-                width: 34,
-                height: 34,
-                alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: Ep.blue,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  profileInitials(profileName),
-                  style: epDisplay(size: 12, color: Colors.white),
-                ),
-              ),
+              EpProfileAvatar(name: profileName, size: 34, radius: 9),
               const SizedBox(width: 11),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    displayName,
-                    style: epText(size: 13, weight: FontWeight.w800),
-                  ),
-                  Text(
-                    'Fan view',
-                    style: epText(size: 10.5, color: Ep.inkA(.5)),
-                  ),
+                  Text(displayName, style: Theme.of(ctx).textTheme.epLabel),
+                  Text('Fan view', style: Theme.of(ctx).textTheme.epCaption),
                 ],
               ),
             ],
@@ -189,11 +171,11 @@ void showSwitcherSheet(BuildContext context) {
                       children: [
                         Text(
                           band.name.toUpperCase(),
-                          style: epText(size: 13, weight: FontWeight.w800),
+                          style: Theme.of(ctx).textTheme.epLabel,
                         ),
                         Text(
                           'Band view · admin',
-                          style: epText(size: 10.5, color: Ep.inkA(.5)),
+                          style: Theme.of(ctx).textTheme.epCaption,
                         ),
                       ],
                     ),
@@ -203,23 +185,13 @@ void showSwitcherSheet(BuildContext context) {
             ),
         Padding(
           padding: const EdgeInsets.only(top: 10),
-          child: GestureDetector(
-            onTap: () {
+          child: OutlinedButton.icon(
+            onPressed: () {
               Navigator.pop(ctx);
               app.startBandCreate();
             },
-            child: DashedBox(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-              child: Text(
-                '+ START A BAND',
-                style: epText(
-                  size: 13,
-                  weight: FontWeight.w900,
-                  letterSpacing: .4,
-                  color: Ep.link,
-                ),
-              ),
-            ),
+            icon: const Icon(Icons.add),
+            label: const Text('START A BAND'),
           ),
         ),
       ],
@@ -266,7 +238,7 @@ class _QrPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final n = cells.length;
     final cell = size.width / n;
-    final paint = Paint()..color = Ep.bg;
+    final paint = Paint()..color = Ep.background;
     for (var r = 0; r < n; r++) {
       for (var c = 0; c < n; c++) {
         if (cells[r][c]) {
@@ -290,7 +262,7 @@ void showQrDialog(BuildContext context, Gig gig, Venue venue) {
     barrierColor: Colors.black.withValues(alpha: .72),
     builder: (ctx) {
       return Dialog(
-        backgroundColor: Ep.ink,
+        backgroundColor: Ep.contentPrimary,
         insetPadding: const EdgeInsets.all(30),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: Padding(
@@ -301,7 +273,7 @@ void showQrDialog(BuildContext context, Gig gig, Venue venue) {
               Text(
                 gig.title.toUpperCase(),
                 textAlign: TextAlign.center,
-                style: epDisplay(size: 14, color: Ep.bg, height: 1.2),
+                style: epDisplay(size: 14, color: Ep.background, height: 1.2),
               ),
               const SizedBox(height: 12),
               Container(
@@ -316,12 +288,9 @@ void showQrDialog(BuildContext context, Gig gig, Venue venue) {
               Text(
                 '${gig.dateShort} · ${venue.name}\nFlash this at the door.',
                 textAlign: TextAlign.center,
-                style: epText(
-                  size: 11,
-                  weight: FontWeight.w700,
-                  color: Ep.bg.withValues(alpha: .6),
-                  height: 1.4,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.epCaption.copyWith(color: Ep.surface),
               ),
             ],
           ),

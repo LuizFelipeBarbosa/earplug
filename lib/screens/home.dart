@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../theme.dart';
+import '../widgets/branding.dart';
 import '../widgets/common.dart';
 import '../widgets/discovery_filters_sheet.dart';
 import '../widgets/fan_event_card.dart';
@@ -38,24 +39,24 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-      decoration: BoxDecoration(
-        color: Ep.bg,
-        border: Border(bottom: BorderSide(color: Ep.whiteA(.09))),
+      decoration: const BoxDecoration(
+        color: Ep.background,
+        border: Border(bottom: BorderSide(color: Ep.border)),
       ),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Image.asset('assets/images/listen_local_bw.png', height: 46),
+              const EpLogo.compact(height: 42),
               _SegmentedToggle(app: app),
             ],
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              _CityPill(app: app),
-              const Spacer(),
+              Expanded(child: _CityPill(app: app)),
+              const SizedBox(width: 8),
               EpChip(
                 label: app.activeFilterCount == 0
                     ? 'FILTERS'
@@ -71,13 +72,10 @@ class _Header extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              for (final chip in _shortcutChips(app)) ...[
-                chip,
-                const SizedBox(width: 6),
-              ],
-            ],
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [for (final chip in _shortcutChips(app)) chip],
           ),
         ],
       ),
@@ -108,41 +106,33 @@ class _SegmentedToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget seg(String label, bool active, VoidCallback onTap) {
-      return GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-          decoration: BoxDecoration(
-            color: active ? Ep.blue : null,
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: Text(
-            label,
-            style: epText(
-              size: 10.5,
-              weight: FontWeight.w900,
-              letterSpacing: .8,
-              color: active ? Colors.white : Ep.inkA(.55),
-            ),
-          ),
+    return SegmentedButton<bool>(
+      segments: const [
+        ButtonSegment(value: false, label: Text('LIST')),
+        ButtonSegment(value: true, label: Text('MAP')),
+      ],
+      selected: {app.mapMode},
+      showSelectedIcon: false,
+      onSelectionChanged: (selection) => app.setMapMode(selection.single),
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(56, 48)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 10),
         ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: Ep.card,
-        border: Border.all(color: Ep.whiteA(.14)),
-        borderRadius: BorderRadius.circular(9),
-      ),
-      child: Row(
-        children: [
-          seg('LIST', !app.mapMode, () => app.setMapMode(false)),
-          const SizedBox(width: 2),
-          seg('MAP', app.mapMode, () => app.setMapMode(true)),
-        ],
+        textStyle: WidgetStatePropertyAll(
+          Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .8),
+        ),
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Ep.surfaceSelected
+              : Ep.surface,
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Ep.contentPrimary
+              : Ep.contentSecondary,
+        ),
+        side: const WidgetStatePropertyAll(BorderSide(color: Ep.border)),
       ),
     );
   }
@@ -155,37 +145,19 @@ class _CityPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => showDiscoveryLocationSheet(context),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-        decoration: BoxDecoration(
-          border: Border.all(color: Ep.whiteA(.2)),
-          borderRadius: BorderRadius.circular(99),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: const BoxDecoration(
-                color: Ep.blue,
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '${app.locationLabel} ▾',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: epText(
-                size: 11.5,
-                weight: FontWeight.w700,
-                letterSpacing: .4,
-              ),
-            ),
-          ],
-        ),
+    return OutlinedButton.icon(
+      onPressed: () => showDiscoveryLocationSheet(context),
+      style: OutlinedButton.styleFrom(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.symmetric(horizontal: 11),
+        foregroundColor: Ep.contentPrimary,
+      ),
+      icon: const Icon(Icons.location_on, color: Ep.accent, size: 18),
+      label: Text(
+        '${app.locationLabel} ▾',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.epLabel,
       ),
     );
   }
@@ -205,11 +177,9 @@ class _FeedList extends StatelessWidget {
         if (feed.isNotEmpty) ...[
           Text(
             '${feed.length} GIGS NEAR YOU · NEAREST FIRST',
-            style: epText(
-              size: 11,
-              weight: FontWeight.w800,
+            style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1.2,
-              color: Ep.inkA(.5),
+              color: Ep.contentSecondary,
             ),
           ),
           const SizedBox(height: 10),
@@ -243,11 +213,9 @@ class _DiscoveryEmptyState extends StatelessWidget {
         children: [
           Text(
             '0 GIGS NEAR YOU · NEAREST FIRST',
-            style: epText(
-              size: 10.5,
-              weight: FontWeight.w900,
+            style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1,
-              color: Ep.inkA(.48),
+              color: Ep.contentSecondary,
             ),
           ),
           const SizedBox(height: 10),
@@ -256,7 +224,9 @@ class _DiscoveryEmptyState extends StatelessWidget {
                 ? 'No upcoming gigs yet.\nWhen a band books one, it shows up here.'
                 : "Nothing matches those filters.\nLoosen up — the scene's out there.",
             textAlign: TextAlign.center,
-            style: epText(size: 13, color: Ep.inkA(.6), height: 1.4),
+            style: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
           ),
           if (!noGigs) ...[
             const SizedBox(height: 14),
@@ -360,25 +330,17 @@ class _RecoveryButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
-        decoration: BoxDecoration(
-          color: primary ? Ep.blue : Ep.card,
-          border: Border.all(color: primary ? Ep.blue : Ep.whiteA(.2)),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: epText(
-            size: 10,
-            weight: FontWeight.w900,
-            letterSpacing: .4,
-            color: primary ? Colors.white : Ep.inkA(.75),
-          ),
-        ),
+    final style = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 11),
+      ),
+      textStyle: WidgetStatePropertyAll(
+        Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .4),
       ),
     );
+    return primary
+        ? FilledButton(onPressed: onTap, style: style, child: Text(label))
+        : OutlinedButton(onPressed: onTap, style: style, child: Text(label));
   }
 }

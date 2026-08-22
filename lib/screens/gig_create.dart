@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -14,9 +12,29 @@ import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 
-const _posterTilt = -1.6 * math.pi / 180;
+Future<void> _pickGigFlyerArt(BuildContext context) async {
+  final app = context.read<AppState>();
+  final media = context.read<BandMediaController>();
+  final PickedMedia? picked;
+  try {
+    picked = await media.pickFlyerArt();
+  } on MediaPickException catch (error) {
+    if (!context.mounted) return;
+    app.say(error.message);
+    return;
+  }
+  if (!context.mounted || picked == null) return;
 
-/// Everything on this screen edits one live flyer: the poster is the form.
+  app.setGfFlyerArt(picked);
+  app.setGfFlyerUploading(true);
+  final storageId = await media.uploadFlyerArt(app.bandId, picked);
+  if (identical(app.gfFlyerArt, picked)) {
+    app.setGfFlyerStorageId(storageId);
+  }
+  app.setGfFlyerUploading(false);
+}
+
+/// Gig creation with an upright decorative poster preview and standard fields.
 class GigCreateScreen extends StatefulWidget {
   const GigCreateScreen({super.key});
 
@@ -25,33 +43,23 @@ class GigCreateScreen extends StatefulWidget {
 }
 
 class _GigCreateScreenState extends State<GigCreateScreen> {
-  final _posterName = TextEditingController();
   final _cardName = TextEditingController();
-  final _posterFocus = FocusNode();
   final _cardFocus = FocusNode();
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // The name is editable in two places — whichever field is idle follows.
     final name = context.read<AppState>().gfName;
-    for (final (controller, focus) in [
-      (_posterName, _posterFocus),
-      (_cardName, _cardFocus),
-    ]) {
-      if (focus.hasFocus || controller.text == name) continue;
-      controller.value = TextEditingValue(
-        text: name,
-        selection: TextSelection.collapsed(offset: name.length),
-      );
-    }
+    if (_cardFocus.hasFocus || _cardName.text == name) return;
+    _cardName.value = TextEditingValue(
+      text: name,
+      selection: TextSelection.collapsed(offset: name.length),
+    );
   }
 
   @override
   void dispose() {
-    _posterName.dispose();
     _cardName.dispose();
-    _posterFocus.dispose();
     _cardFocus.dispose();
     super.dispose();
   }
@@ -67,8 +75,8 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
           children: [
             Container(
               padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Ep.whiteA(.09))),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Ep.border)),
               ),
               child: Row(
                 children: [
@@ -86,10 +94,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 18, 16, 150),
                 children: [
-                  _FlyerStudio(
-                    nameController: _posterName,
-                    nameFocus: _posterFocus,
-                  ),
+                  const _FlyerStudio(),
                   const SizedBox(height: 14),
                   _NameCard(controller: _cardName, focusNode: _cardFocus),
                   const SizedBox(height: 9),
@@ -109,20 +114,39 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
 
 /// The poster plus its press picker — the hero of the screen.
 class _FlyerStudio extends StatelessWidget {
-  final TextEditingController nameController;
-  final FocusNode nameFocus;
-
-  const _FlyerStudio({required this.nameController, required this.nameFocus});
+  const _FlyerStudio();
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     return Column(
       children: [
-        _Poster(nameController: nameController, nameFocus: nameFocus),
+        const _Poster(),
         const SizedBox(height: 12),
         const _SwatchRow(),
         if (app.gfCustomFlyer) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: () => _pickGigFlyerArt(context),
+                icon: const Icon(Icons.add_photo_alternate_outlined),
+                label: Text(
+                  app.gfFlyerArt == null ? 'ADD FLYER ART' : 'CHANGE ART',
+                ),
+              ),
+              if (app.gfFlyerArt != null)
+                TextButton.icon(
+                  key: const ValueKey('clear-flyer-art'),
+                  onPressed: () => app.setGfFlyerArt(null),
+                  icon: const Icon(Icons.close),
+                  label: const Text('REMOVE ART'),
+                ),
+            ],
+          ),
           const SizedBox(height: 12),
           const _OverlayToggle(),
         ],
@@ -132,15 +156,15 @@ class _FlyerStudio extends StatelessWidget {
           child: Text(
             app.gfCustomFlyer
                 ? (app.gfShowOverlay
-                      ? 'Drop your flyer art — the text stays editable on top.'
+                      ? 'Your flyer art previews with listing details on top.'
                       : 'Overlay off — your art shows clean. Details still fill in below.')
-                : 'Everything is tappable — fill it in any order.',
+                : 'Use the fields below; the poster previews changes live.',
             textAlign: TextAlign.center,
             style: epText(
               size: 10.5,
               weight: FontWeight.w600,
               letterSpacing: .3,
-              color: Ep.inkA(.4),
+              color: Ep.contentDisabled,
               height: 1.4,
             ),
           ),
@@ -151,70 +175,58 @@ class _FlyerStudio extends StatelessWidget {
 }
 
 class _Poster extends StatelessWidget {
-  final TextEditingController? nameController;
-  final FocusNode? nameFocus;
   final double width;
   final double height;
 
-  const _Poster({
-    this.nameController,
-    this.nameFocus,
-    this.width = 216,
-    this.height = 284,
-  });
+  const _Poster({this.width = 216, this.height = 284});
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final fly = app.flyer(app.gfFly);
 
-    return Transform.rotate(
-      angle: _posterTilt,
-      child: Container(
-        width: width,
-        height: height,
-        clipBehavior: Clip.antiAlias,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(6),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: .55),
-              blurRadius: 40,
-              offset: const Offset(0, 16),
-            ),
-          ],
-        ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (app.gfCustomFlyer)
-              _CustomArtSlot(base: fly.base)
-            else
-              FlyerBox(style: fly, radius: 0, shadow: false),
-            // Keeps printed text legible over photographic art. Purely visual:
-            // without IgnorePointer this gradient hit-tests as opaque and eats
-            // every tap meant for the drop zone underneath.
-            if (app.gfCustomFlyer && app.gfShowOverlay)
-              IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: .62),
-                        Colors.black.withValues(alpha: .12),
-                        Colors.black.withValues(alpha: .15),
-                        Colors.black.withValues(alpha: .78),
-                      ],
-                      stops: const [0, .38, .52, 1],
-                    ),
+    return Container(
+      width: width,
+      height: height,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .55),
+            blurRadius: 40,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (app.gfCustomFlyer)
+            _CustomArtSlot(base: fly.base)
+          else
+            FlyerBox(style: fly, radius: 0, shadow: false),
+          // Readability overlay for uploaded artwork.
+          if (app.gfCustomFlyer && app.gfShowOverlay)
+            IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: .62),
+                      Colors.black.withValues(alpha: .12),
+                      Colors.black.withValues(alpha: .15),
+                      Colors.black.withValues(alpha: .78),
+                    ],
+                    stops: const [0, .38, .52, 1],
                   ),
                 ),
               ),
-            if (app.gfShowOverlay) _PosterOverlay(ink: fly.fg, poster: this),
-          ],
-        ),
+            ),
+          if (app.gfShowOverlay) _PosterOverlay(ink: fly.fg),
+        ],
       ),
     );
   }
@@ -224,31 +236,6 @@ class _CustomArtSlot extends StatelessWidget {
   final Color base;
 
   const _CustomArtSlot({required this.base});
-
-  Future<void> _pick(BuildContext context) async {
-    final app = context.read<AppState>();
-    final media = context.read<BandMediaController>();
-    final PickedMedia? picked;
-    try {
-      picked = await media.pickFlyerArt();
-    } on MediaPickException catch (error) {
-      if (!context.mounted) return;
-      app.say(error.message);
-      return;
-    }
-    if (!context.mounted || picked == null) return;
-
-    app.setGfFlyerArt(picked);
-    app.setGfFlyerUploading(true);
-    final storageId = await media.uploadFlyerArt(app.bandId, picked);
-
-    // Clearing the preview while its upload is in flight must not let the
-    // stale completion restore a storage id for art that is no longer shown.
-    if (identical(app.gfFlyerArt, picked)) {
-      app.setGfFlyerStorageId(storageId);
-    }
-    app.setGfFlyerUploading(false);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -264,7 +251,7 @@ class _CustomArtSlot extends StatelessWidget {
               padding: const EdgeInsets.all(10),
               child: DashedBox(
                 padding: const EdgeInsets.all(12),
-                color: Ep.whiteA(.28),
+                color: Ep.border,
                 radius: 4,
                 child: Center(
                   child: Column(
@@ -273,16 +260,16 @@ class _CustomArtSlot extends StatelessWidget {
                       Icon(
                         Icons.add_photo_alternate_outlined,
                         size: 22,
-                        color: Ep.inkA(.45),
+                        color: Ep.contentDisabled,
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'DROP YOUR FLYER',
+                        'CUSTOM FLYER PREVIEW',
                         style: epText(
                           size: 10.5,
                           weight: FontWeight.w900,
                           letterSpacing: .8,
-                          color: Ep.inkA(.45),
+                          color: Ep.contentDisabled,
                         ),
                       ),
                     ],
@@ -292,25 +279,6 @@ class _CustomArtSlot extends StatelessWidget {
             )
           else
             Image.memory(art.bytes, fit: BoxFit.cover),
-          if (art != null)
-            Positioned(
-              top: 0,
-              right: 0,
-              child: GestureDetector(
-                key: const ValueKey('clear-flyer-art'),
-                onTap: () => app.setGfFlyerArt(null),
-                child: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: .72),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Ep.whiteA(.3)),
-                  ),
-                  child: const Icon(Icons.close, size: 14, color: Colors.white),
-                ),
-              ),
-            ),
           if (app.gfFlyerUploading)
             const Align(
               alignment: Alignment.bottomCenter,
@@ -319,24 +287,15 @@ class _CustomArtSlot extends StatelessWidget {
         ],
       ),
     );
-    if (art != null) return slot;
-    // The tap target must be the whole opaque slot, exactly the footprint the
-    // original single-detector layout had: a detector wrapping only the inner
-    // drop-zone content loses the hit test to poster-stack siblings.
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => _pick(context),
-      child: slot,
-    );
+    return slot;
   }
 }
 
-/// Name at the top, the three tappable details at the foot.
+/// Non-interactive listing details printed on the decorative poster.
 class _PosterOverlay extends StatelessWidget {
   final Color ink;
-  final _Poster poster;
 
-  const _PosterOverlay({required this.ink, required this.poster});
+  const _PosterOverlay({required this.ink});
 
   @override
   Widget build(BuildContext context) {
@@ -355,23 +314,14 @@ class _PosterOverlay extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Flexible(
-            child: poster.nameController == null
-                ? Text(app.gfName.toUpperCase(), style: titleStyle)
-                : TextField(
-                    controller: poster.nameController,
-                    focusNode: poster.nameFocus,
-                    onChanged: app.setGfName,
-                    maxLines: 4,
-                    minLines: 1,
-                    cursorColor: ink,
-                    style: titleStyle,
-                    decoration: InputDecoration.collapsed(
-                      hintText: 'TYPE YOUR GIG NAME',
-                      hintStyle: titleStyle.copyWith(
-                        color: ink.withValues(alpha: .35),
-                      ),
-                    ),
-                  ),
+            child: Text(
+              app.gfName.trim().isEmpty
+                  ? 'YOUR GIG NAME'
+                  : app.gfName.toUpperCase(),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: titleStyle,
+            ),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -383,7 +333,6 @@ class _PosterOverlay extends StatelessWidget {
                     : '${app.gfDateLabel.toUpperCase()} · DOORS ${app.gfDoorsLabel}',
                 unset: app.gfDate == null,
                 ink: ink,
-                onTap: () => showWhenSheet(context),
               ),
               const SizedBox(height: 7),
               _PosterLine(
@@ -392,7 +341,6 @@ class _PosterOverlay extends StatelessWidget {
                     : '${venue.name.toUpperCase()} · ${venue.area.toUpperCase()}',
                 unset: venue == null,
                 ink: ink,
-                onTap: () => showVenueSheet(context),
               ),
               const SizedBox(height: 7),
               _PosterLine(
@@ -401,7 +349,6 @@ class _PosterOverlay extends StatelessWidget {
                     : '${app.gfPrice} AT THE DOOR',
                 unset: false,
                 ink: ink,
-                onTap: () => showPriceSheet(context),
               ),
             ],
           ),
@@ -416,13 +363,11 @@ class _PosterLine extends StatelessWidget {
   final String label;
   final bool unset;
   final Color ink;
-  final VoidCallback onTap;
 
   const _PosterLine({
     required this.label,
     required this.unset,
     required this.ink,
-    required this.onTap,
   });
 
   @override
@@ -436,18 +381,15 @@ class _PosterLine extends StatelessWidget {
         color: unset ? ink.withValues(alpha: .55) : ink,
       ),
     );
-    return GestureDetector(
-      onTap: onTap,
-      child: unset
-          ? DashedBox(
-              expand: false,
-              radius: 6,
-              color: ink.withValues(alpha: .55),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              child: text,
-            )
-          : text,
-    );
+    return unset
+        ? DashedBox(
+            expand: false,
+            radius: 6,
+            color: ink.withValues(alpha: .55),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            child: text,
+          )
+        : text;
   }
 }
 
@@ -482,7 +424,7 @@ class _SwatchRow extends StatelessWidget {
           dashed: true,
           onTap: () => app.setGfFly('custom'),
           child: const Center(
-            child: Icon(Icons.arrow_upward, size: 15, color: Ep.link),
+            child: Icon(Icons.arrow_upward, size: 15, color: Ep.accent),
           ),
         ),
       ],
@@ -498,64 +440,17 @@ class _OverlayToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final on = app.gfShowOverlay;
-    return GestureDetector(
-      onTap: app.toggleGfOverlay,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(8, 7, 13, 7),
-        decoration: BoxDecoration(
-          color: on ? Ep.blue.withValues(alpha: .16) : Ep.card,
-          border: Border.all(
-            color: on ? Ep.blue.withValues(alpha: .7) : Ep.whiteA(.14),
-          ),
-          borderRadius: BorderRadius.circular(99),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 32,
-              height: 19,
-              padding: const EdgeInsets.all(2),
-              alignment: on ? Alignment.centerRight : Alignment.centerLeft,
-              decoration: BoxDecoration(
-                color: on ? Ep.blue : Ep.whiteA(.16),
-                borderRadius: BorderRadius.circular(99),
-              ),
-              child: Container(
-                width: 15,
-                height: 15,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Text overlay',
-                    style: epText(
-                      size: 11.5,
-                      weight: FontWeight.w800,
-                      letterSpacing: .3,
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    on
-                        ? 'Name, date and venue printed on the art'
-                        : 'Art only — details show in the listing',
-                    style: epText(size: 10, color: Ep.inkA(.45)),
-                  ),
-                ],
-              ),
-            ),
-          ],
+    return EpCard(
+      variant: on ? EpCardVariant.selected : EpCardVariant.standard,
+      padding: EdgeInsets.zero,
+      child: SwitchListTile.adaptive(
+        value: on,
+        onChanged: (_) => app.toggleGfOverlay(),
+        title: const Text('Text overlay'),
+        subtitle: Text(
+          on
+              ? 'Name, date and venue printed on the art'
+              : 'Art only — details show in the listing',
         ),
       ),
     );
@@ -576,26 +471,13 @@ class _SlotShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const padding = EdgeInsets.symmetric(horizontal: 13, vertical: 12);
-    final card = DecoratedBox(
-      decoration: BoxDecoration(
-        color: Ep.card,
-        borderRadius: BorderRadius.circular(13),
-        border: switch (state) {
-          _SlotState.done => Border.all(color: Ep.link.withValues(alpha: .45)),
-          _SlotState.needed => null,
-          _SlotState.optional => Border.all(color: Ep.whiteA(.12)),
-        },
-      ),
-      child: state == _SlotState.needed
-          ? DashedBox(padding: padding, color: Ep.whiteA(.3), child: child)
-          : Padding(padding: padding, child: child),
-    );
-    if (onTap == null) return card;
-    return GestureDetector(
+    return EpCard(
+      variant: state == _SlotState.done
+          ? EpCardVariant.selected
+          : EpCardVariant.standard,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: card,
+      child: child,
     );
   }
 }
@@ -637,7 +519,7 @@ class _NameCard extends StatelessWidget {
         children: [
           _SlotTag(
             filled ? 'GIG NAME ✓' : 'GIG NAME · REQUIRED',
-            filled ? Ep.link : Ep.required,
+            filled ? Ep.accent : Ep.warning,
           ),
           const SizedBox(height: 5),
           TextField(
@@ -650,7 +532,7 @@ class _NameCard extends StatelessWidget {
               hintStyle: epText(
                 size: 15,
                 weight: FontWeight.w800,
-                color: Ep.inkA(.35),
+                color: Ep.contentDisabled,
               ),
             ),
           ),
@@ -671,7 +553,7 @@ class _SlotGrid extends StatelessWidget {
     final slots = [
       _SlotCard(
         tag: app.gfDate == null ? 'WHEN · REQUIRED' : 'WHEN ✓',
-        tagColor: app.gfDate == null ? Ep.required : Ep.link,
+        tagColor: app.gfDate == null ? Ep.warning : Ep.accent,
         value: app.gfDate == null
             ? 'Pick a date'
             : app.gfDateLabel.toUpperCase(),
@@ -681,7 +563,7 @@ class _SlotGrid extends StatelessWidget {
       ),
       _SlotCard(
         tag: venue == null ? 'VENUE · REQUIRED' : 'VENUE ✓',
-        tagColor: venue == null ? Ep.required : Ep.link,
+        tagColor: venue == null ? Ep.warning : Ep.accent,
         value: venue?.name ?? 'Where is it',
         sub: venue?.area ?? '',
         state: venue == null ? _SlotState.needed : _SlotState.done,
@@ -689,7 +571,7 @@ class _SlotGrid extends StatelessWidget {
       ),
       _SlotCard(
         tag: 'PRICE',
-        tagColor: Ep.inkA(.5),
+        tagColor: Ep.contentSecondary,
         value: app.gfPrice,
         sub: app.gfPrice == 'FREE'
             ? 'Free gigs pull bigger crowds'
@@ -699,7 +581,7 @@ class _SlotGrid extends StatelessWidget {
       ),
       _SlotCard(
         tag: 'TICKETS',
-        tagColor: Ep.inkA(.5),
+        tagColor: Ep.contentSecondary,
         value: app.gfTix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
         sub: switch (app.gfTix) {
           Ticketing.rsvp when app.gfCap == 'No cap' =>
@@ -712,7 +594,7 @@ class _SlotGrid extends StatelessWidget {
       ),
       _SlotCard(
         tag: 'AGE',
-        tagColor: Ep.inkA(.5),
+        tagColor: Ep.contentSecondary,
         value: app.gfAgeRequirement.label,
         sub: 'Who can come through',
         state: _SlotState.optional,
@@ -816,7 +698,9 @@ class _SlotCard extends StatelessWidget {
             style: epText(
               size: 13,
               weight: FontWeight.w800,
-              color: state == _SlotState.needed ? Ep.inkA(.45) : Ep.ink,
+              color: state == _SlotState.needed
+                  ? Ep.contentDisabled
+                  : Ep.contentPrimary,
             ),
           ),
           if (sub.isNotEmpty) ...[
@@ -825,7 +709,7 @@ class _SlotCard extends StatelessWidget {
               sub,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: epText(size: 10.5, color: Ep.inkA(.45)),
+              style: epText(size: 10.5, color: Ep.contentDisabled),
             ),
           ],
         ],
@@ -852,7 +736,7 @@ class _PublishBar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Ep.bg.withValues(alpha: 0), Ep.bg],
+          colors: [Ep.background.withValues(alpha: 0), Ep.background],
           stops: const [0, .34],
         ),
       ),
@@ -868,23 +752,18 @@ class _PublishBar extends StatelessWidget {
               size: 11,
               weight: FontWeight.w700,
               letterSpacing: .3,
-              color: missing.isEmpty ? Ep.link : Ep.inkA(.5),
+              color: missing.isEmpty ? Ep.accent : Ep.contentSecondary,
             ),
           ),
           const SizedBox(height: 9),
-          // Disabled-looking but still tappable: it says what is missing.
-          GestureDetector(
-            onTap: app.publishGig,
-            child: EpButton(
-              'PUBLISH GIG',
-              fontSize: 14,
-              glow: app.canPublishGig,
-              kind: app.canPublishGig
-                  ? EpButtonKind.filled
-                  : EpButtonKind.disabled,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              onTap: app.publishGig,
-            ),
+          EpButton(
+            'PUBLISH GIG',
+            fontSize: 14,
+            kind: app.canPublishGig
+                ? EpButtonKind.filled
+                : EpButtonKind.disabled,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            onTap: app.canPublishGig ? app.publishGig : null,
           ),
         ],
       ),
@@ -914,7 +793,7 @@ class _Sheet extends StatelessWidget {
     return Container(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       decoration: const BoxDecoration(
-        color: Ep.card,
+        color: Ep.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       child: Column(
@@ -929,9 +808,10 @@ class _Sheet extends StatelessWidget {
                   child: Text(title.toUpperCase(), style: epDisplay(size: 15)),
                 ),
                 trailing ??
-                    GestureDetector(
-                      onTap: () => Navigator.pop(context),
-                      child: Icon(Icons.close, size: 18, color: Ep.inkA(.5)),
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
                     ),
               ],
             ),
@@ -967,30 +847,20 @@ class _OptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return EpCard(
+      variant: selected ? EpCardVariant.selected : EpCardVariant.standard,
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-        decoration: BoxDecoration(
-          color: selected ? Ep.blue.withValues(alpha: .16) : Ep.bg,
-          border: selected
-              ? Border.all(color: Ep.blue, width: 1.5)
-              : Border.all(color: Ep.whiteA(.14)),
-          borderRadius: BorderRadius.circular(11),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              titleCaps ? title.toUpperCase() : title,
-              style: epText(size: 12.5, weight: FontWeight.w800),
-            ),
-            const SizedBox(height: 2),
-            Text(subtitle, style: epText(size: 10.5, color: Ep.inkA(.5))),
-          ],
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            titleCaps ? title.toUpperCase() : title,
+            style: epText(size: 12.5, weight: FontWeight.w800),
+          ),
+          const SizedBox(height: 2),
+          Text(subtitle, style: epText(size: 10.5, color: Ep.contentSecondary)),
+        ],
       ),
     );
   }
@@ -1039,7 +909,7 @@ class _WhenBody extends StatelessWidget {
         Container(
           padding: const EdgeInsets.fromLTRB(16, 13, 16, 34),
           decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: Ep.whiteA(.09))),
+            border: const Border(top: BorderSide(color: Ep.border)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1053,32 +923,18 @@ class _WhenBody extends StatelessWidget {
                       size: 10.5,
                       weight: FontWeight.w800,
                       letterSpacing: 1.3,
-                      color: Ep.inkA(.5),
+                      color: Ep.contentSecondary,
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () async {
+                  OutlinedButton(
+                    onPressed: () async {
                       final picked = await showTimePicker(
                         context: context,
                         initialTime: app.gfDoors,
                       );
                       if (picked != null) app.setGfDoors(picked);
                     },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Ep.bg,
-                        border: Border.all(color: Ep.whiteA(.16)),
-                        borderRadius: BorderRadius.circular(9),
-                      ),
-                      child: Text(
-                        app.gfDoorsLabel,
-                        style: epText(size: 12.5, weight: FontWeight.w800),
-                      ),
-                    ),
+                    child: Text(app.gfDoorsLabel),
                   ),
                 ],
               ),
@@ -1126,46 +982,52 @@ class _Month extends StatelessWidget {
 
     Widget cell(int slot) {
       final day = slot - lead + 1;
-      if (day < 1 || day > days) return const SizedBox(height: 34);
+      if (day < 1 || day > days) return const SizedBox(height: 48);
       final date = DateTime(first.year, first.month, day);
       final past = date.isBefore(today);
       final selected = date == app.gfDate;
 
-      return GestureDetector(
+      return Semantics(
         // Keyed by the whole date, not the day number: four months are on
         // screen at once, so '1' alone is ambiguous four times over.
-        key: ValueKey('day-${date.year}-${date.month}-${date.day}'),
-        onTap: past ? null : () => app.setGfDate(date),
-        child: Container(
-          height: 34,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: past
-                ? null
-                : selected
-                ? Ep.blue
-                : Ep.bg,
-            border: past
-                ? null
-                : Border.all(
-                    color: selected
-                        ? Ep.blue
-                        : date == today
-                        ? Ep.link.withValues(alpha: .55)
-                        : Ep.whiteA(.1),
-                  ),
+        button: !past,
+        selected: selected,
+        enabled: !past,
+        label: '${date.year}-${date.month}-$day',
+        child: Material(
+          color: past
+              ? Colors.transparent
+              : selected
+              ? Ep.surfaceSelected
+              : Ep.surface,
+          shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            '$day',
-            style: epText(
-              size: 12,
-              weight: FontWeight.w800,
+            side: BorderSide(
               color: past
-                  ? Ep.inkA(.16)
-                  : selected
-                  ? Colors.white
-                  : Ep.inkA(.8),
+                  ? Ep.surfaceDisabled
+                  : selected || date == today
+                  ? Ep.accent
+                  : Ep.border,
+            ),
+          ),
+          child: InkWell(
+            key: ValueKey('day-${date.year}-${date.month}-${date.day}'),
+            onTap: past ? null : () => app.setGfDate(date),
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              height: 48,
+              child: Center(
+                child: Text(
+                  '$day',
+                  style: Theme.of(context).textTheme.epLabel.copyWith(
+                    color: past
+                        ? Ep.contentDisabled
+                        : selected
+                        ? Ep.contentPrimary
+                        : Ep.contentSecondary,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -1175,7 +1037,7 @@ class _Month extends StatelessWidget {
     Widget grid(int row, Widget Function(int) child) => Row(
       children: [
         for (var column = 0; column < 7; column++) ...[
-          if (column > 0) const SizedBox(width: 5),
+          if (column > 0) const SizedBox(width: 4),
           Expanded(child: child(row * 7 + column)),
         ],
       ],
@@ -1190,7 +1052,7 @@ class _Month extends StatelessWidget {
             size: 10.5,
             weight: FontWeight.w900,
             letterSpacing: 1.3,
-            color: Ep.inkA(.45),
+            color: Ep.contentDisabled,
           ),
         ),
         const SizedBox(height: 8),
@@ -1203,13 +1065,13 @@ class _Month extends StatelessWidget {
               size: 8.5,
               weight: FontWeight.w900,
               letterSpacing: .5,
-              color: Ep.inkA(.3),
+              color: Ep.contentDisabled,
             ),
           ),
         ),
         const SizedBox(height: 5),
         for (var row = 0; row < rows; row++) ...[
-          if (row > 0) const SizedBox(height: 5),
+          if (row > 0) const SizedBox(height: 4),
           grid(row, cell),
         ],
       ],
@@ -1224,22 +1086,16 @@ void showVenueSheet(BuildContext context) {
   showEpSheet(context, (ctx) {
     return _Sheet(
       title: 'Where is it',
-      trailing: GestureDetector(
+      trailing: TextAction(
+        '+ NEW VENUE',
         onTap: () {
           Navigator.pop(ctx);
           app.say(
             "Adding venues isn't ready yet — pick from the list for now.",
           );
         },
-        child: Text(
-          '+ NEW VENUE',
-          style: epText(
-            size: 11,
-            weight: FontWeight.w900,
-            letterSpacing: .6,
-            color: Ep.link,
-          ),
-        ),
+        size: 11,
+        letterSpacing: .6,
       ),
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -1251,7 +1107,11 @@ void showVenueSheet(BuildContext context) {
             Text(
               'Venues are shared records — the address stays consistent across '
               "every band's listings.",
-              style: epText(size: 10.5, color: Ep.inkA(.4), height: 1.45),
+              style: epText(
+                size: 10.5,
+                color: Ep.contentDisabled,
+                height: 1.45,
+              ),
             ),
             for (final venue in app.venues)
               Padding(
@@ -1340,15 +1200,18 @@ class _PriceBodyState extends State<_PriceBody> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
           decoration: BoxDecoration(
-            color: isCustom ? Ep.blue.withValues(alpha: .16) : Ep.bg,
+            color: isCustom ? Ep.surfaceSelected : Ep.background,
             border: isCustom
-                ? Border.all(color: Ep.blue, width: 1.5)
-                : Border.all(color: Ep.whiteA(.14)),
+                ? Border.all(color: Ep.accent, width: 1.5)
+                : Border.all(color: Ep.border),
             borderRadius: BorderRadius.circular(11),
           ),
           child: Row(
             children: [
-              Text('\$', style: epDisplay(size: 19, color: Ep.inkA(.6))),
+              Text(
+                '\$',
+                style: epDisplay(size: 19, color: Ep.contentSecondary),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: TextField(
@@ -1365,7 +1228,7 @@ class _PriceBodyState extends State<_PriceBody> {
                     hintStyle: epText(
                       size: 16,
                       weight: FontWeight.w800,
-                      color: Ep.inkA(.35),
+                      color: Ep.contentDisabled,
                     ),
                   ),
                 ),
@@ -1377,7 +1240,7 @@ class _PriceBodyState extends State<_PriceBody> {
                   size: 10.5,
                   weight: FontWeight.w800,
                   letterSpacing: .6,
-                  color: Ep.inkA(.4),
+                  color: Ep.contentDisabled,
                 ),
               ),
             ],
@@ -1387,7 +1250,7 @@ class _PriceBodyState extends State<_PriceBody> {
         Text(
           'Free gigs get roughly twice the RSVPs. Sliding scale? Put the range '
           'in the gig name.',
-          style: epText(size: 10.5, color: Ep.inkA(.4), height: 1.45),
+          style: epText(size: 10.5, color: Ep.contentDisabled, height: 1.45),
         ),
       ],
     );
@@ -1473,10 +1336,10 @@ class _TicketsBodyState extends State<_TicketsBody> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: capIsCustom ? Ep.blue.withValues(alpha: .16) : Ep.bg,
+                    color: capIsCustom ? Ep.surfaceSelected : Ep.background,
                     border: capIsCustom
-                        ? Border.all(color: Ep.blue, width: 1.5)
-                        : Border.all(color: Ep.whiteA(.14)),
+                        ? Border.all(color: Ep.accent, width: 1.5)
+                        : Border.all(color: Ep.border),
                     borderRadius: BorderRadius.circular(11),
                   ),
                   child: Row(
@@ -1498,7 +1361,7 @@ class _TicketsBodyState extends State<_TicketsBody> {
                             hintStyle: epText(
                               size: 14,
                               weight: FontWeight.w800,
-                              color: Ep.inkA(.35),
+                              color: Ep.contentDisabled,
                             ),
                           ),
                         ),
@@ -1509,7 +1372,7 @@ class _TicketsBodyState extends State<_TicketsBody> {
                           size: 10.5,
                           weight: FontWeight.w800,
                           letterSpacing: .6,
-                          color: Ep.inkA(.4),
+                          color: Ep.contentDisabled,
                         ),
                       ),
                     ],
@@ -1552,7 +1415,7 @@ class _PublishedView extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     return ColoredBox(
-      color: Ep.bg,
+      color: Ep.background,
       child: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -1565,7 +1428,7 @@ class _PublishedView extends StatelessWidget {
                   size: 10.5,
                   weight: FontWeight.w900,
                   letterSpacing: 2,
-                  color: Ep.link,
+                  color: Ep.accent,
                 ),
               ),
               const SizedBox(height: 16),
@@ -1580,7 +1443,10 @@ class _PublishedView extends StatelessWidget {
               const SizedBox(height: 16),
               Text("IT'S LIVE.", style: epDisplay(size: 20)),
               const SizedBox(height: 4),
-              Text(app.gigUrl, style: epText(size: 12, color: Ep.inkA(.55))),
+              Text(
+                app.gigUrl,
+                style: epText(size: 12, color: Ep.contentSecondary),
+              ),
               const SizedBox(height: 16),
               SizedBox(
                 width: 300,
@@ -1615,48 +1481,33 @@ class _PublishedView extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  GestureDetector(
+                  TextAction(
+                    'KEEP EDITING',
                     onTap: app.editPublishedGig,
-                    child: Text(
-                      'KEEP EDITING',
-                      style: epText(
-                        size: 11,
-                        weight: FontWeight.w800,
-                        letterSpacing: .6,
-                        color: Ep.inkA(.5),
-                      ),
-                    ),
+                    color: Ep.contentSecondary,
+                    size: 11,
+                    letterSpacing: .6,
                   ),
-                  const SizedBox(width: 18),
-                  GestureDetector(
+                  TextAction(
+                    'MAKE ANOTHER',
                     onTap: app.makeAnotherGig,
-                    child: Text(
-                      'MAKE ANOTHER',
-                      style: epText(
-                        size: 11,
-                        weight: FontWeight.w800,
-                        letterSpacing: .6,
-                        color: Ep.link,
-                      ),
-                    ),
+                    size: 11,
+                    letterSpacing: .6,
                   ),
                 ],
               ),
               const SizedBox(height: 10),
-              GestureDetector(
+              TextAction(
+                'BACK TO GIGS',
                 onTap: app.closeGigCreate,
-                child: Text(
-                  'BACK TO GIGS',
-                  style: epText(
-                    size: 11,
-                    weight: FontWeight.w800,
-                    letterSpacing: .6,
-                    color: Ep.inkA(.35),
-                  ),
-                ),
+                color: Ep.contentDisabled,
+                size: 11,
+                letterSpacing: .6,
               ),
             ],
           ),

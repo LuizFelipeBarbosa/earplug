@@ -20,13 +20,13 @@ void main() {
       // Header, live flyer and the four slot cards.
       expect(find.text('NEW GIG'), findsOne);
       expect(find.text('DRAFT'), findsOne);
-      expect(find.text('TYPE YOUR GIG NAME'), findsOne);
+      expect(find.text('YOUR GIG NAME'), findsOne);
       expect(find.text('+ DATE & DOORS'), findsOne);
       expect(find.text('WHEN · REQUIRED'), findsOne);
       expect(find.text('VENUE · REQUIRED'), findsOne);
       expect(find.text('Still needs a name + a date + a venue'), findsOne);
 
-      // Typing on the poster fills the name card below it too.
+      // Typing in the standard name card updates the decorative poster.
       await tester.enterText(find.byType(TextField).first, 'Riptide Release');
       await tester.pump();
       expect(app.gfName, 'Riptide Release');
@@ -78,7 +78,10 @@ void main() {
       );
 
       // Price sheet — a preset closes it, the custom field stays open.
-      await tester.tap(find.text('PRICE'));
+      final priceSlot = find.text('PRICE');
+      await tester.ensureVisible(priceSlot);
+      await tester.pumpAndSettle();
+      await tester.tap(priceSlot);
       await tester.pumpAndSettle();
       expect(find.text('COVER'), findsOne);
       await tester.enterText(
@@ -92,7 +95,10 @@ void main() {
       expect(app.gfPrice, '\$10');
 
       // Tickets sheet — cap chips, then swap to an external link.
-      await tester.tap(find.text('TICKETS'));
+      final ticketSlot = find.text('TICKETS');
+      await tester.ensureVisible(ticketSlot);
+      await tester.pumpAndSettle();
+      await tester.tap(ticketSlot);
       await tester.pumpAndSettle();
       await tester.tap(find.text('100'));
       await tester.pump();
@@ -120,7 +126,7 @@ void main() {
 
       await tester.tap(find.text('MAKE ANOTHER'));
       await tester.pumpAndSettle();
-      expect(find.text('TYPE YOUR GIG NAME'), findsOne);
+      expect(find.text('YOUR GIG NAME'), findsOne);
       expect(app.gfPrice, 'FREE');
     },
   );
@@ -134,10 +140,11 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('press-custom')));
       await tester.pump();
       expect(app.gfCustomFlyer, isTrue);
-      expect(find.text('DROP YOUR FLYER'), findsOne);
+      expect(find.text('CUSTOM FLYER PREVIEW'), findsOne);
+      expect(find.text('ADD FLYER ART'), findsOne);
       expect(find.text('Text overlay'), findsOne);
       expect(
-        find.text('Drop your flyer art — the text stays editable on top.'),
+        find.text('Your flyer art previews with listing details on top.'),
         findsOne,
       );
 
@@ -158,13 +165,13 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('press-custom')));
     await tester.pump();
-    await tester.tap(find.text('DROP YOUR FLYER'));
+    await tester.tap(find.text('ADD FLYER ART'));
     await tester.pumpAndSettle();
 
     expect(harness.app.gfFlyerArt, isNotNull);
     expect(harness.app.gfFlyerStorageId, isNotNull);
     expect(find.byType(Image), findsOne);
-    expect(find.text('DROP YOUR FLYER'), findsNothing);
+    expect(find.text('CUSTOM FLYER PREVIEW'), findsNothing);
   });
 
   testWidgets('custom flyer upload gates publish and threads its storage id', (
@@ -180,16 +187,17 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('press-custom')));
     await tester.pump();
-    await tester.tap(find.text('DROP YOUR FLYER'));
+    await tester.tap(find.text('ADD FLYER ART'));
     await tester.pump();
 
     expect(app.gfFlyerUploading, isTrue);
     expect(app.gigMissing, contains('your flyer art'));
-    await tester.tap(find.text('PUBLISH GIG'));
-    await tester.pump();
+    final disabledPublish = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'PUBLISH GIG'),
+    );
+    expect(disabledPublish.onPressed, isNull);
     expect(repository.publishCalls, 0);
     expect(app.gfPublished, isFalse);
-    expect(app.toast, 'Still uploading your flyer — one sec.');
 
     repository.uploadGate.complete();
     await tester.pumpAndSettle();
