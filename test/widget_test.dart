@@ -453,6 +453,10 @@ void main() {
     expect(snapshot.bands['b1']!.past.single.meta, 'JUL 12');
     expect(snapshot.gigs.first.dateShort, Gig.dateShortFor(firstStartsAt));
     expect(
+      snapshot.gigs.first.startsAt,
+      DateTime.fromMillisecondsSinceEpoch(firstStartsAt),
+    );
+    expect(
       snapshot.gigs.first.dateLine,
       Gig.dateLineFor(firstStartsAt, '8PM / 9PM'),
     );

@@ -140,14 +140,40 @@ abstract final class DemoData {
     'sunburst',
   ];
 
-  static const gigs = <Gig>[
+  static final _demoToday = () {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }();
+
+  static DateTime _demoStartsAt(int daysFromToday, int hour) => DateTime(
+    _demoToday.year,
+    _demoToday.month,
+    _demoToday.day + daysFromToday,
+    hour,
+  );
+
+  static String _demoDateShort(int daysFromToday, int hour) => Gig.dateShortFor(
+    _demoStartsAt(daysFromToday, hour).millisecondsSinceEpoch,
+  );
+
+  static String _demoDateLine(int daysFromToday, int hour, String doorsTime) =>
+      Gig.dateLineFor(
+        _demoStartsAt(daysFromToday, hour).millisecondsSinceEpoch,
+        doorsTime,
+        now: _demoToday,
+      );
+
+  /// Dates stay relative to app startup so every demo session has useful
+  /// Tonight, This Week, and later results for discovery filtering.
+  static final gigs = <Gig>[
     Gig(
       id: 'g1',
       title: 'Basement Blowout',
       venueId: 'v3',
       price: 0,
-      dateShort: 'TUE JUL 28',
-      dateLine: 'TONIGHT · DOORS 8PM',
+      startsAt: _demoStartsAt(0, 21),
+      dateShort: _demoDateShort(0, 21),
+      dateLine: _demoDateLine(0, 21, '8PM / 9PM'),
       time: '8PM / 9PM',
       when: GigWhen.tonight,
       flyKey: 'paper',
@@ -163,8 +189,9 @@ abstract final class DemoData {
       title: 'Riptide Release Show',
       venueId: 'v1',
       price: 10,
-      dateShort: 'THU JUL 30',
-      dateLine: 'THU · DOORS 8PM',
+      startsAt: _demoStartsAt(2, 21),
+      dateShort: _demoDateShort(2, 21),
+      dateLine: _demoDateLine(2, 21, '8PM / 9PM'),
       time: '8PM / 9PM',
       when: GigWhen.week,
       flyKey: 'blue',
@@ -180,8 +207,9 @@ abstract final class DemoData {
       title: 'Noise Night Vol. 12',
       venueId: 'v2',
       price: 8,
-      dateShort: 'FRI JUL 31',
-      dateLine: 'FRI · DOORS 9PM',
+      startsAt: _demoStartsAt(3, 21),
+      dateShort: _demoDateShort(3, 21),
+      dateLine: _demoDateLine(3, 21, '9PM / 9:30PM'),
       time: '9PM / 9:30PM',
       when: GigWhen.week,
       flyKey: 'black',
@@ -196,8 +224,9 @@ abstract final class DemoData {
       title: 'Pigeon Court + Mission Creep',
       venueId: 'v4',
       price: 12,
-      dateShort: 'SAT AUG 1',
-      dateLine: 'SAT · DOORS 8PM',
+      startsAt: _demoStartsAt(4, 21),
+      dateShort: _demoDateShort(4, 21),
+      dateLine: _demoDateLine(4, 21, '8PM / 8:45PM'),
       time: '8PM / 8:45PM',
       when: GigWhen.week,
       flyKey: 'bluetype',
@@ -213,8 +242,9 @@ abstract final class DemoData {
       title: 'All-Ages Matinee',
       venueId: 'v5',
       price: 0,
-      dateShort: 'SUN AUG 2',
-      dateLine: 'SUN · 2PM SHARP',
+      startsAt: _demoStartsAt(5, 14),
+      dateShort: _demoDateShort(5, 14),
+      dateLine: _demoDateLine(5, 14, '1:30PM / 2PM'),
       time: '1:30PM / 2PM',
       when: GigWhen.week,
       flyKey: 'yellow',
@@ -229,8 +259,9 @@ abstract final class DemoData {
       title: 'Trash Panda Riot',
       venueId: 'v6',
       price: 5,
-      dateShort: 'FRI AUG 7',
-      dateLine: 'FRI · DOORS 9PM',
+      startsAt: _demoStartsAt(10, 22),
+      dateShort: _demoDateShort(10, 22),
+      dateLine: _demoDateLine(10, 22, '9PM / 10PM'),
       time: '9PM / 10PM',
       when: GigWhen.later,
       flyKey: 'black',
@@ -245,8 +276,9 @@ abstract final class DemoData {
       title: 'Fog City Fest — Day Show',
       venueId: 'v1',
       price: 15,
-      dateShort: 'SUN AUG 9',
-      dateLine: 'SUN · NOON–8PM',
+      startsAt: _demoStartsAt(12, 12),
+      dateShort: _demoDateShort(12, 12),
+      dateLine: _demoDateLine(12, 12, '12PM / 12:30PM'),
       time: '12PM / 12:30PM',
       when: GigWhen.later,
       flyKey: 'blue',

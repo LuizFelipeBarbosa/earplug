@@ -65,43 +65,132 @@ class _Pin extends StatelessWidget {
   }
 }
 
+class _UserPin extends StatelessWidget {
+  const _UserPin();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Ep.linkSoft,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: Ep.blue.withValues(alpha: .45),
+            blurRadius: 12,
+            spreadRadius: 5,
+          ),
+        ],
+      ),
+      child: const Center(
+        child: SizedBox.square(
+          dimension: 6,
+          child: DecoratedBox(
+            decoration: BoxDecoration(color: Ep.blue, shape: BoxShape.circle),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Full-screen gig map with tappable pins and a bottom gig card.
 class GigMapView extends StatefulWidget {
-  const GigMapView({super.key});
+  const GigMapView({super.key, this.emptyState});
+
+  final Widget? emptyState;
 
   @override
   State<GigMapView> createState() => _GigMapViewState();
 }
 
 class _GigMapViewState extends State<GigMapView> {
+  final MapController _controller = MapController();
   Gig? selected;
+  bool _mapReady = false;
+  String? _cameraSignature;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _updateCamera(AppState app, List<Gig> gigs) {
+    final center = app.discoveryCenter;
+    final signature = <String>[
+      center.latitude.toStringAsFixed(5),
+      center.longitude.toStringAsFixed(5),
+      for (final gig in gigs) gig.id,
+    ].join('|');
+    if (!_mapReady || signature == _cameraSignature) return;
+    _cameraSignature = signature;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_mapReady) return;
+      if (gigs.isEmpty) {
+        _controller.move(center, 13);
+        return;
+      }
+
+      final points = [
+        app.discoveryCenter,
+        for (final gig in gigs) app.venue(gig.venueId).point,
+      ];
+      _controller.fitCamera(
+        CameraFit.coordinates(
+          coordinates: points,
+          padding: const EdgeInsets.fromLTRB(46, 46, 46, 180),
+          maxZoom: 14,
+        ),
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final gigs = app.allGigs;
-    final points = [for (final g in gigs) app.venue(g.venueId).point];
+    final gigs = app.feed;
+    if (selected != null && !gigs.any((gig) => gig.id == selected!.id)) {
+      selected = null;
+    }
+    _updateCamera(app, gigs);
 
     return Stack(
       children: [
         FlutterMap(
+          mapController: _controller,
           options: MapOptions(
-            initialCameraFit: CameraFit.coordinates(
-              coordinates: points,
-              padding: const EdgeInsets.all(40),
-            ),
+            initialCenter: app.discoveryCenter,
+            initialZoom: 13,
             backgroundColor: Ep.bg,
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
             ),
             onTap: (_, _) => setState(() => selected = null),
+            onMapReady: () {
+              _mapReady = true;
+              _cameraSignature = null;
+              _updateCamera(app, gigs);
+            },
           ),
           children: [
             _darkTiles(),
             MarkerLayer(
               markers: [
+                if (app.currentPosition case final position?)
+                  if (app.discoveryLocation == DiscoveryLocation.current)
+                    Marker(
+                      key: const Key('current-location-marker'),
+                      point: position,
+                      width: 24,
+                      height: 24,
+                      child: const _UserPin(),
+                    ),
                 for (final g in gigs)
                   Marker(
+                    key: Key('gig-marker-${g.id}'),
                     point: app.venue(g.venueId).point,
                     width: 18,
                     height: 18,
@@ -115,11 +204,13 @@ class _GigMapViewState extends State<GigMapView> {
           ],
         ),
         _attribution(),
+        if (gigs.isEmpty && widget.emptyState != null)
+          Positioned(left: 18, right: 18, top: 18, child: widget.emptyState!),
         if (selected case final Gig g)
           Positioned(
             left: 12,
             right: 12,
-            bottom: 14,
+            bottom: tabBarClearance + 10,
             child: _MapGigCard(
               gig: g,
               venue: app.venue(g.venueId),

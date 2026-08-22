@@ -1,0 +1,575 @@
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../app_state.dart';
+import '../genres.dart';
+import '../services/location_service.dart';
+import '../theme.dart';
+import 'common.dart';
+import 'ep_sheet.dart';
+
+void showDiscoveryLocationSheet(BuildContext context) {
+  showEpSheet(
+    context,
+    (context) => Consumer<AppState>(
+      builder: (context, app, _) => _LocationSheet(app: app),
+    ),
+  );
+}
+
+void showDiscoveryFiltersSheet(BuildContext context) {
+  showEpSheet(
+    context,
+    (context) => Consumer<AppState>(
+      builder: (context, app, _) => _FiltersSheet(app: app),
+    ),
+  );
+}
+
+class _SheetFrame extends StatelessWidget {
+  const _SheetFrame({required this.title, required this.child, this.footer});
+
+  final String title;
+  final Widget child;
+  final Widget? footer;
+
+  @override
+  Widget build(BuildContext context) {
+    final height = MediaQuery.sizeOf(context).height * .88;
+    return SafeArea(
+      top: false,
+      child: Container(
+        height: height,
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+        decoration: BoxDecoration(
+          color: Ep.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          border: Border(top: BorderSide(color: Ep.whiteA(.14))),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Ep.whiteA(.25),
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(child: Text(title, style: epDisplay(size: 17))),
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(context),
+                  icon: Icon(Icons.close, color: Ep.inkA(.7)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Expanded(child: child),
+            if (footer case final Widget footer) ...[
+              const SizedBox(height: 12),
+              footer,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LocationSheet extends StatelessWidget {
+  const _LocationSheet({required this.app});
+
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetFrame(
+      title: 'WHERE ARE YOU?',
+      child: ListView(
+        children: [
+          Text(
+            'Use your position once, or pick a scene manually.',
+            style: epText(size: 12, color: Ep.inkA(.55), height: 1.4),
+          ),
+          const SizedBox(height: 10),
+          _OptionTile(
+            key: const Key('current-location-option'),
+            title: 'Current location',
+            subtitle: app.locating
+                ? 'Finding you…'
+                : 'Foreground location · not stored',
+            selected: app.discoveryLocation == DiscoveryLocation.current,
+            leading: app.locating
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.my_location, color: Ep.link, size: 20),
+            onTap: app.locating
+                ? null
+                : () async {
+                    final selected = await app.selectCurrentLocation();
+                    if (selected && context.mounted) Navigator.pop(context);
+                  },
+          ),
+          if (app.locationFailure case final LocationFailure failure) ...[
+            const SizedBox(height: 8),
+            _LocationFailureMessage(failure: failure, app: app),
+          ],
+          _OptionTile(
+            title: 'Mission, SF',
+            subtitle: 'San Francisco',
+            selected: app.discoveryLocation == DiscoveryLocation.sf,
+            leading: const Icon(Icons.location_on_outlined, size: 20),
+            onTap: () {
+              app.setCity('sf');
+              Navigator.pop(context);
+            },
+          ),
+          _OptionTile(
+            title: 'Temescal, OAK',
+            subtitle: 'Oakland',
+            selected: app.discoveryLocation == DiscoveryLocation.oak,
+            leading: const Icon(Icons.location_on_outlined, size: 20),
+            onTap: () {
+              app.setCity('oak');
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationFailureMessage extends StatelessWidget {
+  const _LocationFailureMessage({required this.failure, required this.app});
+
+  final LocationFailure failure;
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final (message, action) = switch (failure.reason) {
+      LocationFailureReason.servicesDisabled => (
+        'Location services are off. Turn them on or choose a city below.',
+        'OPEN LOCATION SETTINGS',
+      ),
+      LocationFailureReason.permissionDeniedForever => (
+        'Location access is blocked. Allow it in settings or choose a city.',
+        'OPEN APP SETTINGS',
+      ),
+      LocationFailureReason.permissionDenied => (
+        'Location access was denied. You can try again or choose a city.',
+        null,
+      ),
+      LocationFailureReason.unavailable => (
+        'Your location is unavailable right now. Try again or choose a city.',
+        null,
+      ),
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Ep.bg,
+        border: Border.all(color: Ep.required.withValues(alpha: .45)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(message, style: epText(size: 11.5, height: 1.4)),
+          if (action != null) ...[
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: app.openLocationRecoverySettings,
+              child: Text(
+                action,
+                style: epText(
+                  size: 11,
+                  weight: FontWeight.w900,
+                  letterSpacing: .6,
+                  color: Ep.link,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _FiltersSheet extends StatelessWidget {
+  const _FiltersSheet({required this.app});
+
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetFrame(
+      title: 'FILTERS',
+      footer: _ResultsButton(count: app.feed.length),
+      child: ListView(
+        children: [
+          Row(
+            children: [
+              const Expanded(child: _FilterHeading('DATE')),
+              if (app.fDate != DateFilter.all)
+                _TextAction(label: 'CLEAR DATE', onTap: app.clearDateFilter),
+            ],
+          ),
+          const SizedBox(height: 9),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              EpChip(
+                label: 'Any date',
+                active: app.fDate == DateFilter.all,
+                onTap: app.clearDateFilter,
+              ),
+              EpChip(
+                label: 'Tonight',
+                active: app.fDate == DateFilter.tonight,
+                onTap: () => app.toggleDateFilter(DateFilter.tonight),
+              ),
+              EpChip(
+                label: 'This week',
+                active: app.fDate == DateFilter.week,
+                onTap: () => app.toggleDateFilter(DateFilter.week),
+              ),
+              EpChip(
+                label: _dateRangeLabel(context, app.fDateRange),
+                active: app.fDate == DateFilter.custom,
+                onTap: () => _pickDateRange(context, app),
+              ),
+            ],
+          ),
+          const _Divider(),
+          Row(
+            children: [
+              const Expanded(child: _FilterHeading('GENRES · CHOOSE ANY')),
+              if (app.fGenres.isNotEmpty)
+                _TextAction(
+                  label: 'CLEAR GENRES',
+                  onTap: app.clearGenreFilters,
+                ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              EpChip(
+                label: "Any genre · I'm open",
+                active: app.fGenres.isEmpty,
+                onTap: app.clearGenreFilters,
+              ),
+              for (final genre in kGenres)
+                EpChip(
+                  label: genre,
+                  active: app.fGenres.contains(genre),
+                  onTap: () => app.toggleGenre(genre),
+                ),
+            ],
+          ),
+          const _Divider(),
+          const _FilterHeading('DISTANCE'),
+          const SizedBox(height: 5),
+          Text(
+            app.discoveryLocation == DiscoveryLocation.current
+                ? 'Measured from your current location.'
+                : 'Choose Current location to filter by distance.',
+            style: epText(size: 11, color: Ep.inkA(.48)),
+          ),
+          const SizedBox(height: 9),
+          IgnorePointer(
+            ignoring: app.discoveryLocation != DiscoveryLocation.current,
+            child: Opacity(
+              opacity: app.discoveryLocation == DiscoveryLocation.current
+                  ? 1
+                  : .38,
+              child: Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  _ChoiceChip(
+                    label: 'Any',
+                    selected: app.fMaxDistanceMiles == null,
+                    onTap: () => app.setDistanceFilter(null),
+                  ),
+                  for (final miles in const [5.0, 10.0, 25.0])
+                    _ChoiceChip(
+                      label: '${miles.toInt()} MI',
+                      selected: app.fMaxDistanceMiles == miles,
+                      onTap: () => app.setDistanceFilter(miles),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const _Divider(),
+          const _FilterHeading('PRICE'),
+          const SizedBox(height: 9),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final option in PriceFilter.values)
+                _ChoiceChip(
+                  label: switch (option) {
+                    PriceFilter.any => 'Any',
+                    PriceFilter.free => 'Free',
+                    PriceFilter.paid => 'Paid',
+                  },
+                  selected: app.fPrice == option,
+                  onTap: () => app.setPriceFilter(option),
+                ),
+            ],
+          ),
+          const _Divider(),
+          Row(
+            children: [
+              const Expanded(child: _FilterHeading('VENUE')),
+              if (app.fVenueId != null)
+                _TextAction(
+                  label: 'ANY VENUE',
+                  onTap: () => app.setVenueFilter(null),
+                ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          _OptionTile(
+            title: 'Any venue',
+            selected: app.fVenueId == null,
+            onTap: () => app.setVenueFilter(null),
+          ),
+          for (final venue in app.venues)
+            _OptionTile(
+              title: venue.name,
+              subtitle: venue.area,
+              selected: app.fVenueId == venue.id,
+              onTap: () => app.setVenueFilter(venue.id),
+            ),
+          const SizedBox(height: 16),
+          OutlinedButton(
+            onPressed: app.activeFilterCount == 0
+                ? null
+                : app.clearDiscoveryFilters,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Ep.ink,
+              side: BorderSide(color: Ep.whiteA(.2)),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+            ),
+            child: const Text('CLEAR ALL'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _dateRangeLabel(BuildContext context, DateTimeRange? range) {
+    if (range == null) return 'Date or range';
+    final localizations = MaterialLocalizations.of(context);
+    final start = localizations.formatShortDate(range.start);
+    final end = localizations.formatShortDate(range.end);
+    return start == end ? start : '$start – $end';
+  }
+
+  static Future<void> _pickDateRange(BuildContext context, AppState app) async {
+    final firstDate = app.firstSelectableDiscoveryDate;
+    final lastDate = app.lastSelectableDiscoveryDate;
+    final initial = app.fDateRange;
+    final selected = await showDateRangePicker(
+      context: context,
+      firstDate: firstDate,
+      lastDate: lastDate,
+      initialDateRange:
+          initial == null ||
+              initial.start.isBefore(firstDate) ||
+              initial.end.isAfter(lastDate)
+          ? null
+          : initial,
+      helpText: 'CHOOSE A DATE OR RANGE',
+      saveText: 'USE DATES',
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(
+            context,
+          ).colorScheme.copyWith(primary: Ep.blue, surface: Ep.card),
+        ),
+        child: child!,
+      ),
+    );
+    if (selected != null) app.setDateRange(selected);
+  }
+}
+
+class _ResultsButton extends StatelessWidget {
+  const _ResultsButton({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      key: const Key('show-filter-results'),
+      onPressed: () => Navigator.pop(context),
+      style: FilledButton.styleFrom(
+        backgroundColor: Ep.blue,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(vertical: 15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+      child: Text(
+        'SHOW $count ${count == 1 ? 'RESULT' : 'RESULTS'}',
+        style: epText(size: 12, weight: FontWeight.w900, letterSpacing: .8),
+      ),
+    );
+  }
+}
+
+class _OptionTile extends StatelessWidget {
+  const _OptionTile({
+    super.key,
+    required this.title,
+    this.subtitle,
+    this.leading,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget? leading;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+        decoration: BoxDecoration(
+          color: selected ? Ep.blue.withValues(alpha: .14) : Ep.bg,
+          border: Border.all(
+            color: selected ? Ep.blue : Ep.whiteA(.14),
+            width: selected ? 1.5 : 1,
+          ),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 10)],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: epText(size: 12.5, weight: FontWeight.w800),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle!,
+                      style: epText(size: 10.5, color: Ep.inkA(.48)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (selected)
+              const Icon(Icons.check_circle, color: Ep.blue, size: 19),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChoiceChip extends StatelessWidget {
+  const _ChoiceChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return EpChip(label: label, active: selected, onTap: onTap);
+  }
+}
+
+class _FilterHeading extends StatelessWidget {
+  const _FilterHeading(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: epText(
+        size: 11,
+        weight: FontWeight.w900,
+        letterSpacing: 1,
+        color: Ep.inkA(.6),
+      ),
+    );
+  }
+}
+
+class _TextAction extends StatelessWidget {
+  const _TextAction({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Text(
+          label,
+          style: epText(
+            size: 10.5,
+            weight: FontWeight.w900,
+            letterSpacing: .5,
+            color: Ep.link,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Divider extends StatelessWidget {
+  const _Divider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 18),
+      child: Divider(height: 1, color: Ep.whiteA(.1)),
+    );
+  }
+}

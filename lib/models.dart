@@ -107,6 +107,7 @@ class Gig {
   final String title;
   final String venueId;
   final int price; // dollars; 0 == free
+  final DateTime startsAt;
   final String dateShort; // "TUE JUL 28"
   final String dateLine; // "TONIGHT · DOORS 8PM"
   final String time; // "8PM / 9PM"
@@ -126,6 +127,7 @@ class Gig {
     required this.title,
     required this.venueId,
     required this.price,
+    required this.startsAt,
     required this.dateShort,
     required this.dateLine,
     required this.time,
@@ -151,6 +153,7 @@ class Gig {
       title: json['title'] as String,
       venueId: json['venueId'] as String,
       price: (json['price'] as num).toInt(),
+      startsAt: DateTime.fromMillisecondsSinceEpoch(startsAt),
       dateShort: dateShortFor(startsAt),
       dateLine: dateLineFor(startsAt, doorsTime, now: now),
       time: doorsTime,

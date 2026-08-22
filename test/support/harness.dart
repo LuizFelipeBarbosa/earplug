@@ -5,6 +5,7 @@ import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/location_service.dart';
 import 'package:earplug/services/media_upload_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +44,7 @@ Future<AppHarness> pumpApp(
   FakeAuthService? auth,
   EarplugRepository? repository,
   MediaUploadService? uploader,
+  LocationService? locationService,
   FutureOr<void> Function(AppState app)? beforePump,
   Duration? pumpFor,
 }) async {
@@ -53,7 +55,11 @@ Future<AppHarness> pumpApp(
 
   final resolvedAuth = auth ?? FakeAuthService();
   final resolvedRepository = repository ?? DemoRepository(auth: resolvedAuth);
-  final app = AppState(repository: resolvedRepository, auth: resolvedAuth);
+  final app = AppState(
+    repository: resolvedRepository,
+    auth: resolvedAuth,
+    locationService: locationService,
+  );
   addTearDown(app.dispose);
 
   final picker = FakeMediaPicker();

@@ -42,6 +42,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Earplug needs camera access to record band photos and videos.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Earplug uses your location while the app is open to show nearby live music.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Earplug needs access to your photo library to attach band photos and videos.</string>
 	<key>UIApplicationSceneManifest</key>

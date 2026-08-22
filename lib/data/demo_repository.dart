@@ -533,6 +533,7 @@ class DemoRepository implements EarplugRepository {
         title: title,
         venueId: venueId,
         price: price,
+        startsAt: DateTime.fromMillisecondsSinceEpoch(startsAt),
         dateShort: Gig.dateShortFor(startsAt),
         dateLine: Gig.dateLineFor(startsAt, doorsTime, now: now),
         time: doorsTime,

@@ -1,0 +1,217 @@
+import 'dart:async';
+
+import 'package:earplug/app_state.dart';
+import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/demo_data.dart';
+import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/location_service.dart';
+import 'package:flutter/material.dart' show DateTimeRange;
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('discovery filters', () {
+    test(
+      'starts on Map and combines multi-genre filters with OR semantics',
+      () async {
+        final app = await _app();
+
+        expect(app.mapMode, isTrue);
+        app.toggleGenre('hardcore');
+        app.toggleGenre('surf');
+
+        expect(app.feed.map((gig) => gig.id), ['g2', 'g1', 'g4']);
+        app.toggleFree();
+        expect(app.feed.map((gig) => gig.id), ['g1']);
+      },
+    );
+
+    test('custom date ranges include the whole selected end date', () async {
+      final app = await _app();
+      final selected = DemoData.gigs[1].startsAt;
+
+      app.setDateRange(DateTimeRange(start: selected, end: selected));
+
+      expect(app.fDate, DateFilter.custom);
+      expect(app.feed.map((gig) => gig.id), ['g2']);
+    });
+
+    test('manual city selection prioritizes the nearest scene', () async {
+      final app = await _app();
+
+      expect(app.feed.first.venueId, 'v1');
+      app.setCity('oak');
+
+      expect(app.feed.first.venueId, 'v2');
+    });
+
+    test(
+      'GPS distance uses venue coordinates and manual city clears it',
+      () async {
+        final venue = DemoData.venues['v1']!;
+        final location = _FakeLocationService(
+          LocationSuccess(
+            UserLocation(
+              latitude: venue.point.latitude,
+              longitude: venue.point.longitude,
+              accuracyMeters: 5,
+            ),
+          ),
+        );
+        final app = await _app(locationService: location);
+
+        expect(await app.selectCurrentLocation(), isTrue);
+        app.setDistanceFilter(1);
+
+        expect(app.discoveryLocation, DiscoveryLocation.current);
+        expect(app.fMaxDistanceMiles, 1);
+        expect(
+          app.feed.every(
+            (gig) => app.distanceMilesFromCurrent(app.venue(gig.venueId))! <= 1,
+          ),
+          isTrue,
+        );
+
+        app.setCity('oak');
+        expect(app.discoveryLocation, DiscoveryLocation.oak);
+        expect(app.fMaxDistanceMiles, isNull);
+      },
+    );
+
+    test('all advanced filters combine in one result set', () async {
+      final venue = DemoData.venues['v1']!;
+      final show = DemoData.gigs[1];
+      final app = await _app();
+      app.useCurrentPosition(venue.point);
+      app.setDateRange(DateTimeRange(start: show.startsAt, end: show.startsAt));
+      app.toggleGenre('surf');
+      app.setPriceFilter(PriceFilter.paid);
+      app.setVenueFilter(venue.id);
+      app.setDistanceFilter(1);
+
+      expect(app.feed.map((gig) => gig.id), ['g2']);
+    });
+
+    test('location failures preserve the selected city', () async {
+      final app = await _app(
+        locationService: _FakeLocationService(
+          const LocationFailure(LocationFailureReason.permissionDenied),
+        ),
+      );
+
+      expect(await app.selectCurrentLocation(), isFalse);
+
+      expect(app.discoveryLocation, DiscoveryLocation.sf);
+      expect(app.currentPosition, isNull);
+      expect(
+        app.locationFailure?.reason,
+        LocationFailureReason.permissionDenied,
+      );
+    });
+
+    test('a late GPS result cannot override a newer manual city', () async {
+      final location = _DeferredLocationService();
+      final app = await _app(locationService: location);
+
+      final pendingSelection = app.selectCurrentLocation();
+      expect(app.locating, isTrue);
+      app.setCity('oak');
+      location.complete(
+        const UserLocation(
+          latitude: 37.7524,
+          longitude: -122.4180,
+          accuracyMeters: 5,
+        ),
+      );
+
+      expect(await pendingSelection, isFalse);
+      expect(app.locating, isFalse);
+      expect(app.discoveryLocation, DiscoveryLocation.oak);
+      expect(app.currentPosition, isNull);
+    });
+
+    test('widened ranges stay within the date picker horizon', () async {
+      final app = await _app();
+      final lastDate = app.lastSelectableDiscoveryDate;
+      app.setDateRange(
+        DateTimeRange(
+          start: DateTime(lastDate.year, lastDate.month, lastDate.day - 2),
+          end: lastDate,
+        ),
+      );
+
+      app.widenDateFilter();
+
+      expect(app.fDateRange!.end, lastDate);
+      expect(
+        app.fDateRange!.start.isBefore(app.firstSelectableDiscoveryDate),
+        isFalse,
+      );
+    });
+
+    test(
+      'clear all preserves location and the intentional view switch',
+      () async {
+        final venue = DemoData.venues['v1']!;
+        final app = await _app();
+        app.useCurrentPosition(venue.point);
+        app.setMapMode(false);
+        app.toggleDateFilter(DateFilter.tonight);
+        app.toggleGenre('punk');
+        app.setPriceFilter(PriceFilter.paid);
+        app.setVenueFilter('v1');
+        app.setDistanceFilter(5);
+
+        app.clearDiscoveryFilters();
+
+        expect(app.filters.activeCount, 0);
+        expect(app.discoveryLocation, DiscoveryLocation.current);
+        expect(app.currentPosition, venue.point);
+        expect(app.mapMode, isFalse);
+      },
+    );
+  });
+}
+
+Future<AppState> _app({LocationService? locationService}) async {
+  final auth = FakeAuthService();
+  final app = AppState(
+    repository: DemoRepository(auth: auth),
+    auth: auth,
+    locationService: locationService,
+  );
+  addTearDown(app.dispose);
+  await pumpEventQueue();
+  return app;
+}
+
+class _FakeLocationService implements LocationService {
+  const _FakeLocationService(this.result);
+
+  final LocationResult result;
+
+  @override
+  Future<LocationResult> requestCurrentLocation() async => result;
+
+  @override
+  Future<bool> openAppSettings() async => true;
+
+  @override
+  Future<bool> openLocationSettings() async => true;
+}
+
+class _DeferredLocationService implements LocationService {
+  final _result = Completer<LocationResult>();
+
+  void complete(UserLocation location) {
+    _result.complete(LocationSuccess(location));
+  }
+
+  @override
+  Future<LocationResult> requestCurrentLocation() => _result.future;
+
+  @override
+  Future<bool> openAppSettings() async => true;
+
+  @override
+  Future<bool> openLocationSettings() async => true;
+}

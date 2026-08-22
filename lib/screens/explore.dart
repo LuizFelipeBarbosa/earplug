@@ -16,11 +16,15 @@ class ExploreScreen extends StatefulWidget {
 
 class _ExploreScreenState extends State<ExploreScreen> {
   late final TextEditingController _controller;
+  late String _lastSubmittedQuery;
+  bool _showAllBands = false;
+  bool _showAllVenues = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: context.read<AppState>().query);
+    _lastSubmittedQuery = context.read<AppState>().query;
+    _controller = TextEditingController(text: _lastSubmittedQuery);
   }
 
   @override
@@ -32,9 +36,14 @@ class _ExploreScreenState extends State<ExploreScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    // Genre chips set the query from outside the text field.
-    if (_controller.text != app.query) {
-      _controller.text = app.query;
+    // Keep programmatic query changes in sync without discarding a draft when
+    // unrelated AppState notifications rebuild this screen.
+    if (_lastSubmittedQuery != app.query) {
+      _lastSubmittedQuery = app.query;
+      _controller.value = TextEditingValue(
+        text: app.query,
+        selection: TextSelection.collapsed(offset: app.query.length),
+      );
     }
     final q = app.query.trim().toLowerCase();
     final searching = q.isNotEmpty;
@@ -52,10 +61,32 @@ class _ExploreScreenState extends State<ExploreScreen> {
               Text('SEARCH & EXPLORE', style: epDisplay(size: 20)),
               const SizedBox(height: 10),
               TextField(
+                key: const Key('explore-search-field'),
                 controller: _controller,
-                onChanged: app.setQuery,
+                textInputAction: TextInputAction.search,
+                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _submitSearch(app),
                 style: epText(size: 14),
-                decoration: epInputDecoration('Bands, gigs, venues…'),
+                decoration: epInputDecoration('Bands, gigs, venues…').copyWith(
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        key: const Key('explore-search-submit'),
+                        tooltip: 'Search',
+                        onPressed: () => _submitSearch(app),
+                        icon: const Icon(Icons.search),
+                      ),
+                      if (_controller.text.isNotEmpty || searching)
+                        IconButton(
+                          key: const Key('explore-search-clear'),
+                          tooltip: 'Clear search',
+                          onPressed: () => _clearSearch(app),
+                          icon: const Icon(Icons.close),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -63,10 +94,45 @@ class _ExploreScreenState extends State<ExploreScreen> {
         Expanded(
           child: searching
               ? _SearchResults(app: app, q: q)
-              : _BrowseRows(app: app),
+              : _BrowseRows(
+                  app: app,
+                  showAllBands: _showAllBands,
+                  showAllVenues: _showAllVenues,
+                  onSearch: (query) {
+                    _controller.value = TextEditingValue(
+                      text: query,
+                      selection: TextSelection.collapsed(offset: query.length),
+                    );
+                    _submitSearch(app);
+                  },
+                  onToggleBands: () {
+                    setState(() => _showAllBands = !_showAllBands);
+                  },
+                  onToggleVenues: () {
+                    setState(() => _showAllVenues = !_showAllVenues);
+                  },
+                ),
         ),
       ],
     );
+  }
+
+  void _submitSearch(AppState app) {
+    final query = _controller.text.trim();
+    _lastSubmittedQuery = query;
+    if (_controller.text != query) {
+      _controller.value = TextEditingValue(
+        text: query,
+        selection: TextSelection.collapsed(offset: query.length),
+      );
+    }
+    app.setQuery(query);
+  }
+
+  void _clearSearch(AppState app) {
+    _controller.clear();
+    _lastSubmittedQuery = '';
+    app.setQuery('');
   }
 }
 
@@ -218,8 +284,20 @@ class _GigRow extends StatelessWidget {
 
 class _BrowseRows extends StatelessWidget {
   final AppState app;
+  final bool showAllBands;
+  final bool showAllVenues;
+  final ValueChanged<String> onSearch;
+  final VoidCallback onToggleBands;
+  final VoidCallback onToggleVenues;
 
-  const _BrowseRows({required this.app});
+  const _BrowseRows({
+    required this.app,
+    required this.showAllBands,
+    required this.showAllVenues,
+    required this.onSearch,
+    required this.onToggleBands,
+    required this.onToggleVenues,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -240,7 +318,7 @@ class _BrowseRows extends StatelessWidget {
           runSpacing: 7,
           children: [
             for (final t in kGenres)
-              EpChip(label: t, active: false, onTap: () => app.setQuery(t)),
+              EpChip(label: t, active: false, onTap: () => onSearch(t)),
           ],
         ),
         const SizedBox(height: 18),
@@ -252,41 +330,126 @@ class _BrowseRows extends StatelessWidget {
         const SizedBox(height: 8),
         _FlyerRail(gigs: free, app: app, tilt: 1.2, freeTag: true),
         const SizedBox(height: 18),
-        const SectionLabel('BANDS ON EARPLUG'),
+        _SectionHeading(
+          label: 'BANDS ON EARPLUG',
+          actionLabel: showAllBands ? 'SEE LESS BANDS' : 'SEE ALL BANDS',
+          actionKey: const Key('explore-toggle-bands'),
+          onAction: onToggleBands,
+        ),
         const SizedBox(height: 8),
-        SizedBox(
-          height: 118,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            children: [
-              for (final id in app.exploreBandIds)
-                _BandTile(bandId: id, app: app),
-            ],
+        if (showAllBands)
+          GridView.builder(
+            key: const Key('explore-all-bands'),
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: app.exploreBandIds.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              childAspectRatio: .78,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemBuilder: (context, index) => _BandTile(
+              bandId: app.exploreBandIds[index],
+              app: app,
+              width: double.infinity,
+            ),
+          )
+        else
+          SizedBox(
+            key: const Key('explore-band-preview'),
+            height: 118,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final id in app.exploreBandIds.take(4))
+                  _BandTile(bandId: id, app: app),
+              ],
+            ),
+          ),
+        const SizedBox(height: 18),
+        _VenueRows(
+          app: app,
+          showAll: showAllVenues,
+          onToggle: onToggleVenues,
+          onSearch: onSearch,
+        ),
+      ],
+    );
+  }
+}
+
+class _SectionHeading extends StatelessWidget {
+  const _SectionHeading({
+    required this.label,
+    required this.actionLabel,
+    required this.actionKey,
+    required this.onAction,
+  });
+
+  final String label;
+  final String actionLabel;
+  final Key actionKey;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: SectionLabel(label)),
+        TextButton(
+          key: actionKey,
+          onPressed: onAction,
+          style: TextButton.styleFrom(
+            minimumSize: Size.zero,
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text(
+            actionLabel,
+            style: epText(
+              size: 10,
+              weight: FontWeight.w900,
+              letterSpacing: .7,
+              color: Ep.link,
+            ),
           ),
         ),
-        const SizedBox(height: 18),
-        _VenueRows(app: app),
       ],
     );
   }
 }
 
 class _VenueRows extends StatelessWidget {
-  const _VenueRows({required this.app});
+  const _VenueRows({
+    required this.app,
+    required this.showAll,
+    required this.onToggle,
+    required this.onSearch,
+  });
 
   final AppState app;
+  final bool showAll;
+  final VoidCallback onToggle;
+  final ValueChanged<String> onSearch;
 
   @override
   Widget build(BuildContext context) {
     final venues = app.venues;
+    final visibleVenues = showAll ? venues : venues.take(3);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SectionLabel('VENUES'),
+        _SectionHeading(
+          label: 'VENUES',
+          actionLabel: showAll ? 'SEE LESS VENUES' : 'SEE ALL VENUES',
+          actionKey: const Key('explore-toggle-venues'),
+          onAction: onToggle,
+        ),
         const SizedBox(height: 8),
         if (venues.isNotEmpty)
-          for (final venue in venues) ...[
-            _VenueRow(venue: venue, app: app),
+          for (final venue in visibleVenues) ...[
+            _VenueRow(venue: venue, app: app, onSearch: onSearch),
             const SizedBox(height: 6),
           ]
         else if (app.venueStatus == DataStatus.connecting)
@@ -317,16 +480,24 @@ class _VenueRows extends StatelessWidget {
 }
 
 class _VenueRow extends StatelessWidget {
-  const _VenueRow({required this.venue, required this.app});
+  const _VenueRow({required this.venue, required this.app, this.onSearch});
 
   final Venue venue;
   final AppState app;
+  final ValueChanged<String>? onSearch;
 
   @override
   Widget build(BuildContext context) {
     return EpCard(
       padding: const EdgeInsets.all(9),
-      onTap: () => app.setQuery(venue.name),
+      onTap: () {
+        final search = onSearch;
+        if (search != null) {
+          search(venue.name);
+        } else {
+          app.setQuery(venue.name);
+        }
+      },
       child: Row(
         children: [
           Expanded(
@@ -480,8 +651,9 @@ class _FlyerRail extends StatelessWidget {
 class _BandTile extends StatelessWidget {
   final String bandId;
   final AppState app;
+  final double width;
 
-  const _BandTile({required this.bandId, required this.app});
+  const _BandTile({required this.bandId, required this.app, this.width = 86});
 
   @override
   Widget build(BuildContext context) {
@@ -490,7 +662,7 @@ class _BandTile extends StatelessWidget {
     return GestureDetector(
       onTap: () => app.openBand(bandId),
       child: SizedBox(
-        width: 86,
+        width: width,
         child: Column(
           children: [
             BandAvatar(band, size: 64, radius: 13, fontSize: 20),

@@ -35,6 +35,7 @@ dependencies:
   google_fonts: ^8.2.0
   flutter_map: ^8.3.1
   latlong2: ^0.10.1
+  geolocator: ^14.0.3
   convex_flutter: ^3.0.1
   clerk_auth: ^0.0.18-beta
   path_provider: ^2.1.5
@@ -70,6 +71,11 @@ dependency_overrides:
 
 # The following section is specific to Flutter packages.
 flutter:
+  # geolocator_apple 2.3.14 cannot receive its foreground-only compile flag
+  # through Flutter's generated Swift package. CocoaPods applies the flag in
+  # ios/Podfile until upstream SwiftPM support lands.
+  config:
+    enable-swift-package-manager: false
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
