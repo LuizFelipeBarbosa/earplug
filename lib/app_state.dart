@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart' show TimeOfDay;
+import 'package:flutter/material.dart' show DateTimeRange, TimeOfDay;
 import 'package:latlong2/latlong.dart';
 
 import 'band_media_state.dart';
@@ -13,6 +13,7 @@ import 'demo_data.dart';
 import 'errors.dart';
 import 'models.dart';
 import 'services/auth_service.dart';
+import 'services/location_service.dart';
 import 'services/media_picker.dart';
 
 enum Screen {
@@ -38,7 +39,60 @@ class ScreenEntry {
   const ScreenEntry(this.screen, [this.param]);
 }
 
-enum DateFilter { all, tonight, week }
+enum DateFilter { all, tonight, week, custom }
+
+enum PriceFilter { any, free, paid }
+
+enum DiscoveryLocation { sf, oak, current }
+
+class DiscoveryFilters {
+  const DiscoveryFilters({
+    this.date = DateFilter.all,
+    this.dateRange,
+    this.genres = const {},
+    this.price = PriceFilter.any,
+    this.venueId,
+    this.maxDistanceMiles,
+  });
+
+  final DateFilter date;
+  final DateTimeRange? dateRange;
+  final Set<String> genres;
+  final PriceFilter price;
+  final String? venueId;
+  final double? maxDistanceMiles;
+
+  static const _unset = Object();
+
+  DiscoveryFilters copyWith({
+    DateFilter? date,
+    Object? dateRange = _unset,
+    Set<String>? genres,
+    PriceFilter? price,
+    Object? venueId = _unset,
+    Object? maxDistanceMiles = _unset,
+  }) {
+    return DiscoveryFilters(
+      date: date ?? this.date,
+      dateRange: identical(dateRange, _unset)
+          ? this.dateRange
+          : dateRange as DateTimeRange?,
+      genres: genres == null ? this.genres : Set.unmodifiable(genres),
+      price: price ?? this.price,
+      venueId: identical(venueId, _unset) ? this.venueId : venueId as String?,
+      maxDistanceMiles: identical(maxDistanceMiles, _unset)
+          ? this.maxDistanceMiles
+          : maxDistanceMiles as double?,
+    );
+  }
+
+  int get activeCount =>
+      (date == DateFilter.all ? 0 : 1) +
+      (genres.isEmpty ? 0 : 1) +
+      (price == PriceFilter.any ? 0 : 1) +
+      (venueId == null ? 0 : 1) +
+      (maxDistanceMiles == null ? 0 : 1);
+}
 
 enum PendingKind { rsvp, follow, myGigs, band }
 
@@ -55,11 +109,21 @@ class PendingAuth {
 }
 
 class AppState extends ChangeNotifier {
-  AppState({EarplugRepository? repository, AuthService? auth})
-    : this._(auth ?? FakeAuthService(), repository);
+  AppState({
+    EarplugRepository? repository,
+    AuthService? auth,
+    LocationService? locationService,
+  }) : this._(
+         auth ?? FakeAuthService(),
+         repository,
+         locationService ?? GeolocatorLocationService(),
+       );
 
-  AppState._(AuthService resolvedAuth, EarplugRepository? providedRepository)
-    : auth = resolvedAuth,
+  AppState._(
+    AuthService resolvedAuth,
+    EarplugRepository? providedRepository,
+    this.locationService,
+  ) : auth = resolvedAuth,
       repository = providedRepository ?? DemoRepository(auth: resolvedAuth),
       // Only a real backend has a connection to wait on; the demo data is
       // already in memory, so it must not show the connecting screen.
@@ -85,6 +149,7 @@ class AppState extends ChangeNotifier {
 
   final EarplugRepository repository;
   final AuthService auth;
+  final LocationService locationService;
 
   StreamSubscription<bool>? _authSubscription;
   StreamSubscription<FeedSnapshot>? _feedSubscription;
@@ -97,6 +162,7 @@ class AppState extends ChangeNotifier {
   String? dataError;
 
   List<Gig> _allGigs = const [];
+  DateTime? _nextFeedStartsAt;
   Map<String, Band> _bands = {};
   Map<String, Venue> _venues = const {};
 
@@ -161,11 +227,25 @@ class AppState extends ChangeNotifier {
   int get gigsAttended => attended > history.length ? attended : history.length;
 
   // ---- home filters
-  bool mapMode = false;
+  bool mapMode = true;
   String city = 'sf'; // 'sf' | 'oak'
-  DateFilter fDate = DateFilter.all;
-  bool fFree = false;
-  String? fGenre;
+  DiscoveryLocation discoveryLocation = DiscoveryLocation.sf;
+  LatLng? currentPosition;
+  bool locating = false;
+  LocationFailure? locationFailure;
+  DiscoveryFilters filters = const DiscoveryFilters();
+  int _locationRequestGeneration = 0;
+
+  DateFilter get fDate => filters.date;
+  DateTimeRange? get fDateRange => filters.dateRange;
+  bool get fFree => filters.price == PriceFilter.free;
+  Set<String> get fGenres => filters.genres;
+  String? get fGenre =>
+      filters.genres.length == 1 ? filters.genres.single : null;
+  PriceFilter get fPrice => filters.price;
+  String? get fVenueId => filters.venueId;
+  double? get fMaxDistanceMiles => filters.maxDistanceMiles;
+  int get activeFilterCount => filters.activeCount;
 
   // ---- explore
   String query = '';
@@ -300,6 +380,7 @@ class AppState extends ChangeNotifier {
     _feedSubscription = repository.feed().listen(
       (snapshot) {
         _allGigs = List<Gig>.of(snapshot.gigs);
+        _nextFeedStartsAt = snapshot.nextStartsAt;
         _venues = Map<String, Venue>.of(snapshot.venues);
         _bands = {
           ..._bands,
@@ -311,6 +392,7 @@ class AppState extends ChangeNotifier {
               ],
             ),
         };
+        _normalizeCustomDateRange();
         _dataStatus = DataStatus.ready;
         dataError = null;
         notifyListeners();
@@ -587,7 +669,15 @@ class AppState extends ChangeNotifier {
   void setMapMode(bool on) => _set(() => mapMode = on);
 
   void setCity(String c) {
+    _locationRequestGeneration++;
     city = c;
+    discoveryLocation = c == 'oak'
+        ? DiscoveryLocation.oak
+        : DiscoveryLocation.sf;
+    currentPosition = null;
+    locating = false;
+    locationFailure = null;
+    filters = filters.copyWith(maxDistanceMiles: null);
     say(
       c == 'oak'
           ? 'Showing gigs near Temescal.'
@@ -595,12 +685,211 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  void toggleDateFilter(DateFilter f) =>
-      _set(() => fDate = fDate == f ? DateFilter.all : f);
+  void useCurrentPosition(LatLng position) => _set(() {
+    _locationRequestGeneration++;
+    currentPosition = position;
+    discoveryLocation = DiscoveryLocation.current;
+    locating = false;
+    locationFailure = null;
+  });
 
-  void toggleFree() => _set(() => fFree = !fFree);
+  Future<bool> selectCurrentLocation() async {
+    if (locating) return false;
+    final requestGeneration = ++_locationRequestGeneration;
+    locating = true;
+    locationFailure = null;
+    notifyListeners();
 
-  void toggleGenre(String g) => _set(() => fGenre = fGenre == g ? null : g);
+    final result = await locationService.requestCurrentLocation();
+    if (_disposed || requestGeneration != _locationRequestGeneration) {
+      return false;
+    }
+    locating = false;
+    switch (result) {
+      case LocationSuccess(:final location):
+        currentPosition = LatLng(location.latitude, location.longitude);
+        discoveryLocation = DiscoveryLocation.current;
+        locationFailure = null;
+        say('Showing gigs near your current location.');
+        return true;
+      case final LocationFailure failure:
+        locationFailure = failure;
+        notifyListeners();
+        return false;
+    }
+  }
+
+  Future<bool> openLocationRecoverySettings() {
+    return switch (locationFailure?.reason) {
+      LocationFailureReason.servicesDisabled =>
+        locationService.openLocationSettings(),
+      LocationFailureReason.permissionDeniedForever =>
+        locationService.openAppSettings(),
+      _ => Future.value(false),
+    };
+  }
+
+  String get locationLabel => switch (discoveryLocation) {
+    DiscoveryLocation.current => 'CURRENT LOCATION',
+    DiscoveryLocation.oak => 'TEMESCAL, OAK',
+    DiscoveryLocation.sf => 'MISSION, SF',
+  };
+
+  LatLng get discoveryCenter => switch (discoveryLocation) {
+    DiscoveryLocation.current =>
+      currentPosition ?? const LatLng(37.7599, -122.4148),
+    DiscoveryLocation.oak => const LatLng(37.8378, -122.2628),
+    DiscoveryLocation.sf => const LatLng(37.7599, -122.4148),
+  };
+
+  void toggleDateFilter(DateFilter value) => _set(() {
+    filters = filters.copyWith(
+      date: filters.date == value ? DateFilter.all : value,
+      dateRange: null,
+    );
+  });
+
+  void setDateRange(DateTimeRange range) => _set(() {
+    if (!canSelectCustomDate) return;
+    final first = firstSelectableDiscoveryDate;
+    final last = lastSelectableDiscoveryDate;
+    var start = DateTime(range.start.year, range.start.month, range.start.day);
+    var end = DateTime(range.end.year, range.end.month, range.end.day);
+    if (start.isBefore(first)) start = first;
+    if (start.isAfter(last)) start = last;
+    if (end.isBefore(start)) end = start;
+    if (end.isAfter(last)) end = last;
+    filters = filters.copyWith(
+      date: DateFilter.custom,
+      dateRange: DateTimeRange(start: start, end: end),
+    );
+  });
+
+  void clearDateFilter() => _set(() {
+    filters = filters.copyWith(date: DateFilter.all, dateRange: null);
+  });
+
+  void widenDateFilter() => _set(() {
+    final range = filters.dateRange;
+    if (filters.date == DateFilter.tonight) {
+      filters = filters.copyWith(date: DateFilter.week, dateRange: null);
+    } else if (filters.date == DateFilter.week) {
+      filters = filters.copyWith(date: DateFilter.all, dateRange: null);
+    } else if (filters.date == DateFilter.custom && range != null) {
+      final earliest = firstSelectableDiscoveryDate;
+      final latest = lastSelectableDiscoveryDate;
+      final expandedStart = DateTime(
+        range.start.year,
+        range.start.month,
+        range.start.day - 7,
+      );
+      final expandedEnd = DateTime(
+        range.end.year,
+        range.end.month,
+        range.end.day + 7,
+      );
+      filters = filters.copyWith(
+        dateRange: DateTimeRange(
+          start: expandedStart.isBefore(earliest) ? earliest : expandedStart,
+          end: expandedEnd.isAfter(latest) ? latest : expandedEnd,
+        ),
+      );
+    }
+  });
+
+  DateTime get firstSelectableDiscoveryDate {
+    final today = DateTime.now();
+    return DateTime(today.year, today.month, today.day);
+  }
+
+  bool get canSelectCustomDate => _lastCompleteDiscoveryDate != null;
+
+  DateTime get lastSelectableDiscoveryDate {
+    final first = firstSelectableDiscoveryDate;
+    return _lastCompleteDiscoveryDate ?? first;
+  }
+
+  DateTime? get _lastCompleteDiscoveryDate {
+    final first = firstSelectableDiscoveryDate;
+    final pickerLimit = DateTime(first.year, first.month, first.day + 365);
+    if (_allGigs.isEmpty) {
+      return _nextFeedStartsAt == null ? first : null;
+    }
+
+    final latestStart = _allGigs
+        .map((gig) => gig.startsAt)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    var lastComplete = DateTime(
+      latestStart.year,
+      latestStart.month,
+      latestStart.day,
+    );
+    if (_nextFeedStartsAt case final next?) {
+      final nextDay = DateTime(next.year, next.month, next.day);
+      if (!nextDay.isAfter(lastComplete)) {
+        lastComplete = DateTime(
+          lastComplete.year,
+          lastComplete.month,
+          lastComplete.day - 1,
+        );
+      }
+    } else if (lastComplete.isBefore(first)) {
+      lastComplete = first;
+    }
+
+    if (lastComplete.isBefore(first)) return null;
+    return lastComplete.isAfter(pickerLimit) ? pickerLimit : lastComplete;
+  }
+
+  void _normalizeCustomDateRange() {
+    if (filters.date != DateFilter.custom) return;
+    final range = filters.dateRange;
+    if (range == null || !canSelectCustomDate) {
+      filters = filters.copyWith(date: DateFilter.all, dateRange: null);
+      return;
+    }
+
+    final first = firstSelectableDiscoveryDate;
+    final last = lastSelectableDiscoveryDate;
+    var start = range.start.isBefore(first) ? first : range.start;
+    if (start.isAfter(last)) start = last;
+    var end = range.end.isAfter(last) ? last : range.end;
+    if (end.isBefore(start)) end = start;
+    filters = filters.copyWith(
+      dateRange: DateTimeRange(start: start, end: end),
+    );
+  }
+
+  void toggleFree() => setPriceFilter(
+    filters.price == PriceFilter.free ? PriceFilter.any : PriceFilter.free,
+  );
+
+  void setPriceFilter(PriceFilter price) =>
+      _set(() => filters = filters.copyWith(price: price));
+
+  void toggleGenre(String genre) => _set(() {
+    final selected = Set<String>.of(filters.genres);
+    selected.contains(genre) ? selected.remove(genre) : selected.add(genre);
+    filters = filters.copyWith(genres: selected);
+  });
+
+  void clearGenreFilters() =>
+      _set(() => filters = filters.copyWith(genres: const {}));
+
+  void setVenueFilter(String? venueId) =>
+      _set(() => filters = filters.copyWith(venueId: venueId));
+
+  void setDistanceFilter(double? miles) => _set(() {
+    final canFilterByDistance =
+        discoveryLocation == DiscoveryLocation.current &&
+        currentPosition != null;
+    filters = filters.copyWith(
+      maxDistanceMiles: canFilterByDistance ? miles : null,
+    );
+  });
+
+  void clearDiscoveryFilters() =>
+      _set(() => filters = const DiscoveryFilters());
 
   void setQuery(String q) => _set(() => query = q);
 
@@ -705,7 +994,10 @@ class AppState extends ChangeNotifier {
 
   bool isAdminOf(String id) => _bandRoles[id] == 'admin';
 
-  Venue venue(String id) => _venues[id] ?? _venueDirectory[id] ?? _unknownVenue;
+  /// Returns only a real feed or directory venue, never the display fallback.
+  Venue? knownVenue(String id) => _venues[id] ?? _venueDirectory[id];
+
+  Venue venue(String id) => knownVenue(id) ?? _unknownVenue;
 
   /// Every venue the app knows: the curated table plus whatever the live feed
   /// carries. Feed rows win on id — they are realtime. Name-ordered, one entry
@@ -728,15 +1020,89 @@ class AppState extends ChangeNotifier {
   FlyerStyle flyer(String key) =>
       DemoData.flyers[key] ?? DemoData.flyers['paper']!;
 
-  String distanceOf(Venue v) => city == 'oak' ? v.distOak : v.distSF;
+  double? distanceMilesFromCurrent(Venue venue) {
+    final origin = currentPosition;
+    if (discoveryLocation != DiscoveryLocation.current || origin == null) {
+      return null;
+    }
+    return distanceInMiles(
+      startLatitude: origin.latitude,
+      startLongitude: origin.longitude,
+      endLatitude: venue.point.latitude,
+      endLongitude: venue.point.longitude,
+    );
+  }
 
-  List<Gig> get feed => allGigs.where((g) {
-    if (fDate == DateFilter.tonight && g.when != GigWhen.tonight) return false;
-    if (fDate == DateFilter.week && g.when == GigWhen.later) return false;
-    if (fFree && !g.free) return false;
-    if (fGenre != null && !g.genres.contains(fGenre)) return false;
-    return true;
-  }).toList();
+  String distanceOf(Venue venue) {
+    final calculated = _distanceMilesFromDiscoveryCenter(venue);
+    return '${calculated.toStringAsFixed(1)} mi';
+  }
+
+  double _distanceMilesFromDiscoveryCenter(Venue venue) => distanceInMiles(
+    startLatitude: discoveryCenter.latitude,
+    startLongitude: discoveryCenter.longitude,
+    endLatitude: venue.point.latitude,
+    endLongitude: venue.point.longitude,
+  );
+
+  List<Gig> get feed {
+    final today = DateTime.now();
+    final startOfToday = DateTime(today.year, today.month, today.day);
+    final endOfTonight = DateTime(today.year, today.month, today.day + 1);
+    final endOfWeek = DateTime(today.year, today.month, today.day + 8);
+    final filtered = allGigs.where((gig) {
+      final startsAt = gig.startsAt;
+      switch (filters.date) {
+        case DateFilter.all:
+          break;
+        case DateFilter.tonight:
+          if (startsAt.isBefore(startOfToday) ||
+              !startsAt.isBefore(endOfTonight)) {
+            return false;
+          }
+        case DateFilter.week:
+          if (startsAt.isBefore(startOfToday) ||
+              !startsAt.isBefore(endOfWeek)) {
+            return false;
+          }
+        case DateFilter.custom:
+          final range = filters.dateRange;
+          if (range == null) return false;
+          final endExclusive = DateTime(
+            range.end.year,
+            range.end.month,
+            range.end.day + 1,
+          );
+          if (startsAt.isBefore(range.start) ||
+              !startsAt.isBefore(endExclusive)) {
+            return false;
+          }
+      }
+
+      if (filters.price == PriceFilter.free && !gig.free) return false;
+      if (filters.price == PriceFilter.paid && gig.free) return false;
+      if (filters.genres.isNotEmpty &&
+          !gig.genres.any(filters.genres.contains)) {
+        return false;
+      }
+      if (filters.venueId case final String venueId) {
+        if (gig.venueId != venueId) return false;
+      }
+      if (filters.maxDistanceMiles case final double maxMiles) {
+        final distance = distanceMilesFromCurrent(venue(gig.venueId));
+        if (distance != null && distance > maxMiles) return false;
+      }
+      return true;
+    }).toList();
+
+    filtered.sort((a, b) {
+      final proximity = _distanceMilesFromDiscoveryCenter(
+        venue(a.venueId),
+      ).compareTo(_distanceMilesFromDiscoveryCenter(venue(b.venueId)));
+      return proximity != 0 ? proximity : a.startsAt.compareTo(b.startsAt);
+    });
+    return filtered;
+  }
 
   /// RSVP count shown to bands: base demo count plus this user's RSVP.
   int rsvpCount(Gig g) => g.going + (rsvps.contains(g.id) ? 1 : 0);

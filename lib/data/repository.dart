@@ -35,10 +35,15 @@ class FeedSnapshot {
   final Map<String, Venue> venues;
   final Map<String, Band> bands;
 
+  /// Start time of the first row beyond [gigs], or null when the feed is
+  /// exhaustive. Discovery uses this to avoid offering a partially loaded day.
+  final DateTime? nextStartsAt;
+
   const FeedSnapshot({
     required this.gigs,
     required this.venues,
     required this.bands,
+    this.nextStartsAt,
   });
 }
 

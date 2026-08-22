@@ -533,6 +533,7 @@ class DemoRepository implements EarplugRepository {
         title: title,
         venueId: venueId,
         price: price,
+        startsAt: DateTime.fromMillisecondsSinceEpoch(startsAt),
         dateShort: Gig.dateShortFor(startsAt),
         dateLine: Gig.dateLineFor(startsAt, doorsTime, now: now),
         time: doorsTime,
@@ -557,6 +558,7 @@ class DemoRepository implements EarplugRepository {
     gigs: List<Gig>.unmodifiable([...DemoData.gigs, ..._publishedGigs]),
     venues: DemoData.venues,
     bands: Map<String, Band>.unmodifiable(_bands),
+    nextStartsAt: null,
   );
 
   Interactions _currentInteractions() {

@@ -355,6 +355,9 @@ void main() {
     final secondStartsAt = DateTime.now()
         .add(const Duration(days: 9))
         .millisecondsSinceEpoch;
+    final nextStartsAt = DateTime.now()
+        .add(const Duration(days: 10))
+        .millisecondsSinceEpoch;
     final fixture = <String, dynamic>{
       'gigs': [
         {
@@ -444,6 +447,7 @@ void main() {
           'pastShows': <Map<String, dynamic>>[],
         },
       ],
+      'nextStartsAt': nextStartsAt,
     };
 
     final snapshot = parseFeedSnapshot(fixture);
@@ -453,11 +457,19 @@ void main() {
     expect(snapshot.bands['b1']!.past.single.meta, 'JUL 12');
     expect(snapshot.gigs.first.dateShort, Gig.dateShortFor(firstStartsAt));
     expect(
+      snapshot.gigs.first.startsAt,
+      DateTime.fromMillisecondsSinceEpoch(firstStartsAt),
+    );
+    expect(
       snapshot.gigs.first.dateLine,
       Gig.dateLineFor(firstStartsAt, '8PM / 9PM'),
     );
     expect(snapshot.gigs.first.when, Gig.whenFor(firstStartsAt));
     expect(snapshot.gigs.last.tix, Ticketing.external);
+    expect(
+      snapshot.nextStartsAt,
+      DateTime.fromMillisecondsSinceEpoch(nextStartsAt),
+    );
   });
 }
 

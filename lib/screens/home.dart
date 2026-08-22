@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../genres.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/discovery_filters_sheet.dart';
 import '../widgets/map_view.dart';
-import '../widgets/sheets.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -18,7 +17,13 @@ class HomeScreen extends StatelessWidget {
     return Column(
       children: [
         _Header(app: app),
-        Expanded(child: app.mapMode ? const GigMapView() : _FeedList(app: app)),
+        Expanded(
+          child: app.mapMode
+              ? GigMapView(
+                  emptyState: _DiscoveryEmptyState(app: app, compact: true),
+                )
+              : _FeedList(app: app),
+        ),
       ],
     );
   }
@@ -50,20 +55,28 @@ class _Header extends StatelessWidget {
           Row(
             children: [
               _CityPill(app: app),
-              const SizedBox(width: 8),
-              Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final chip in _filterChips(app)) ...[
-                        chip,
-                        const SizedBox(width: 6),
-                      ],
-                    ],
-                  ),
-                ),
+              const Spacer(),
+              EpChip(
+                label: app.activeFilterCount == 0
+                    ? 'FILTERS'
+                    : 'FILTERS · ${app.activeFilterCount}',
+                active:
+                    app.fGenres.isNotEmpty ||
+                    app.fVenueId != null ||
+                    app.fMaxDistanceMiles != null ||
+                    app.fPrice == PriceFilter.paid ||
+                    app.fDate == DateFilter.custom,
+                onTap: () => showDiscoveryFiltersSheet(context),
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              for (final chip in _shortcutChips(app)) ...[
+                chip,
+                const SizedBox(width: 6),
+              ],
             ],
           ),
         ],
@@ -71,7 +84,7 @@ class _Header extends StatelessWidget {
     );
   }
 
-  List<Widget> _filterChips(AppState app) {
+  List<Widget> _shortcutChips(AppState app) {
     return [
       EpChip(
         label: 'TONIGHT',
@@ -84,13 +97,6 @@ class _Header extends StatelessWidget {
         onTap: () => app.toggleDateFilter(DateFilter.week),
       ),
       EpChip(label: 'FREE', active: app.fFree, onTap: app.toggleFree),
-      // Only the head of the vocabulary fits the chip row.
-      for (final g in kGenres.take(4))
-        EpChip(
-          label: g,
-          active: app.fGenre == g,
-          onTap: () => app.toggleGenre(g),
-        ),
     ];
   }
 }
@@ -150,7 +156,7 @@ class _CityPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => showCitySheet(context),
+      onTap: () => showDiscoveryLocationSheet(context),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
         decoration: BoxDecoration(
@@ -169,7 +175,9 @@ class _CityPill extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             Text(
-              '${app.city == 'oak' ? 'TEMESCAL, OAK' : 'MISSION, SF'} ▾',
+              '${app.locationLabel} ▾',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: epText(
                 size: 11.5,
                 weight: FontWeight.w700,
@@ -194,34 +202,183 @@ class _FeedList extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
       children: [
-        Text(
-          '${feed.length} GIGS NEAR YOU · BY DATE',
-          style: epText(
-            size: 11,
-            weight: FontWeight.w800,
-            letterSpacing: 1.2,
-            color: Ep.inkA(.5),
-          ),
-        ),
-        const SizedBox(height: 10),
-        if (feed.isEmpty)
-          DashedBox(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 36),
-            child: Text(
-              // An empty feed with no filters applied means there genuinely are
-              // no upcoming gigs — blaming the filters would be a lie.
-              app.allGigs.isEmpty
-                  ? 'No upcoming gigs yet.\nWhen a band books one, it shows up here.'
-                  : "Nothing matches those filters.\nLoosen up — the scene's out there.",
-              textAlign: TextAlign.center,
-              style: epText(size: 13, color: Ep.inkA(.5), height: 1.4),
+        if (feed.isNotEmpty) ...[
+          Text(
+            '${feed.length} GIGS NEAR YOU · NEAREST FIRST',
+            style: epText(
+              size: 11,
+              weight: FontWeight.w800,
+              letterSpacing: 1.2,
+              color: Ep.inkA(.5),
             ),
           ),
+          const SizedBox(height: 10),
+        ],
+        if (feed.isEmpty) _DiscoveryEmptyState(app: app),
         for (final g in feed) ...[
           _FeedCard(gig: g, app: app),
           const SizedBox(height: 10),
         ],
       ],
+    );
+  }
+}
+
+class _DiscoveryEmptyState extends StatelessWidget {
+  const _DiscoveryEmptyState({required this.app, this.compact = false});
+
+  final AppState app;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final noGigs = app.allGigs.isEmpty;
+    return DashedBox(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 16 : 20,
+        vertical: compact ? 18 : 28,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '0 GIGS NEAR YOU · NEAREST FIRST',
+            style: epText(
+              size: 10.5,
+              weight: FontWeight.w900,
+              letterSpacing: 1,
+              color: Ep.inkA(.48),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            noGigs
+                ? 'No upcoming gigs yet.\nWhen a band books one, it shows up here.'
+                : "Nothing matches those filters.\nLoosen up — the scene's out there.",
+            textAlign: TextAlign.center,
+            style: epText(size: 13, color: Ep.inkA(.6), height: 1.4),
+          ),
+          if (!noGigs) ...[
+            const SizedBox(height: 14),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 7,
+              runSpacing: 7,
+              children: _recoveryActions(app),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _recoveryActions(AppState app) {
+    final actions = <Widget>[];
+    switch (app.fDate) {
+      case DateFilter.tonight:
+        actions.add(
+          _RecoveryButton(
+            label: 'SHOW THIS WEEK',
+            onTap: () => app.toggleDateFilter(DateFilter.week),
+          ),
+        );
+      case DateFilter.week:
+        actions.add(
+          _RecoveryButton(label: 'SHOW ALL DATES', onTap: app.clearDateFilter),
+        );
+      case DateFilter.custom:
+        actions.add(
+          _RecoveryButton(
+            label: 'WIDEN DATE RANGE',
+            onTap: app.widenDateFilter,
+          ),
+        );
+        actions.add(
+          _RecoveryButton(label: 'CLEAR DATES', onTap: app.clearDateFilter),
+        );
+      case DateFilter.all:
+        break;
+    }
+
+    if (app.fMaxDistanceMiles case final double distance) {
+      final nextDistance = distance < 10
+          ? 10.0
+          : distance < 25
+          ? 25.0
+          : null;
+      actions.add(
+        _RecoveryButton(
+          label: nextDistance == null
+              ? 'ANY DISTANCE'
+              : 'EXPAND TO ${nextDistance.toInt()} MI',
+          onTap: () => app.setDistanceFilter(nextDistance),
+        ),
+      );
+    }
+    if (app.fGenres.isNotEmpty) {
+      actions.add(
+        _RecoveryButton(label: 'CLEAR GENRES', onTap: app.clearGenreFilters),
+      );
+    }
+    if (app.fPrice != PriceFilter.any) {
+      actions.add(
+        _RecoveryButton(
+          label: 'ANY PRICE',
+          onTap: () => app.setPriceFilter(PriceFilter.any),
+        ),
+      );
+    }
+    if (app.fVenueId != null) {
+      actions.add(
+        _RecoveryButton(
+          label: 'ANY VENUE',
+          onTap: () => app.setVenueFilter(null),
+        ),
+      );
+    }
+    actions.add(
+      _RecoveryButton(
+        label: 'VIEW ALL NEARBY SHOWS',
+        primary: true,
+        onTap: app.clearDiscoveryFilters,
+      ),
+    );
+    return actions;
+  }
+}
+
+class _RecoveryButton extends StatelessWidget {
+  const _RecoveryButton({
+    required this.label,
+    required this.onTap,
+    this.primary = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 8),
+        decoration: BoxDecoration(
+          color: primary ? Ep.blue : Ep.card,
+          border: Border.all(color: primary ? Ep.blue : Ep.whiteA(.2)),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: epText(
+            size: 10,
+            weight: FontWeight.w900,
+            letterSpacing: .4,
+            color: primary ? Colors.white : Ep.inkA(.75),
+          ),
+        ),
+      ),
     );
   }
 }

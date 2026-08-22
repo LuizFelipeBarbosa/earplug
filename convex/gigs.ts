@@ -18,13 +18,22 @@ import {
   venuePayloadValidator,
 } from "./lib/helpers";
 
-/** Gigs at or after the cutoff, ascending. */
-async function upcomingGigs(ctx: QueryCtx): Promise<Doc<"gigs">[]> {
-  return await ctx.db
+type UpcomingGigs = {
+  gigs: Doc<"gigs">[];
+  nextStartsAt: number | null;
+};
+
+/** Gigs at or after the cutoff, ascending, plus the first omitted timestamp. */
+async function upcomingGigs(ctx: QueryCtx): Promise<UpcomingGigs> {
+  const rows = await ctx.db
     .query("gigs")
     .withIndex("by_startsAt", (q) => q.gte("startsAt", feedCutoff()))
     .order("asc")
-    .take(MAX_FEED_GIGS);
+    .take(MAX_FEED_GIGS + 1);
+  return {
+    gigs: rows.slice(0, MAX_FEED_GIGS),
+    nextStartsAt: rows[MAX_FEED_GIGS]?.startsAt ?? null,
+  };
 }
 
 /** Venue payloads for the ids a set of gigs referenced, skipping any venue that
@@ -46,9 +55,10 @@ export const feed = query({
     gigs: v.array(gigPayloadValidator),
     venues: v.array(venuePayloadValidator),
     bands: v.array(bandPayloadValidator),
+    nextStartsAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx) => {
-    const gigs = await upcomingGigs(ctx);
+    const { gigs, nextStartsAt } = await upcomingGigs(ctx);
 
     const venueIds = new Set<Id<"venues">>();
     const bandIds = new Set<Id<"bands">>();
@@ -70,7 +80,7 @@ export const feed = query({
       gigPayloads.push(await toGigPayload(ctx, gig));
     }
 
-    return { gigs: gigPayloads, venues, bands };
+    return { gigs: gigPayloads, venues, bands, nextStartsAt };
   },
 });
 
@@ -79,7 +89,7 @@ export const forBand = query({
   args: { bandId: v.id("bands") },
   returns: v.array(gigPayloadValidator),
   handler: async (ctx, args) => {
-    const gigs = await upcomingGigs(ctx);
+    const { gigs } = await upcomingGigs(ctx);
     const out = [];
     for (const gig of gigs) {
       if (gig.lineup.includes(args.bandId)) {

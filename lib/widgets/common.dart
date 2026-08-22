@@ -62,7 +62,7 @@ class SectionLabel extends StatelessWidget {
 class EpChip extends StatelessWidget {
   final String label;
   final bool active;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const EpChip({
     super.key,
@@ -88,7 +88,7 @@ class EpChip extends StatelessWidget {
             size: 11,
             weight: FontWeight.w800,
             letterSpacing: .5,
-            color: active ? Colors.white : Ep.inkA(.65),
+            color: active ? Colors.white : Ep.inkA(onTap == null ? .3 : .65),
           ),
         ),
       ),
