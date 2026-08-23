@@ -39,28 +39,19 @@ class MyGigsScreen extends StatelessWidget {
       children: [
         Row(
           children: [
-            Container(
-              width: 56,
-              height: 56,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: Ep.blue,
-                shape: BoxShape.circle,
-              ),
-              child: Text(
-                profileInitials(profileName),
-                style: epDisplay(size: 19, color: Colors.white),
-              ),
-            ),
+            EpProfileAvatar(name: profileName, size: 56, radius: 16),
             const SizedBox(width: 13),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(displayName, style: epDisplay(size: 19)),
+                  Text(
+                    displayName,
+                    style: Theme.of(context).textTheme.epSectionHeading,
+                  ),
                   Text(
                     '${app.gigsAttended} gigs attended · fan since $fanSince',
-                    style: epText(size: 11.5, color: Ep.inkA(.5)),
+                    style: Theme.of(context).textTheme.epCaption,
                   ),
                 ],
               ),
@@ -70,7 +61,6 @@ class MyGigsScreen extends StatelessWidget {
         const SizedBox(height: 16),
         EpCard(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-          borderColor: Ep.whiteA(.16),
           onTap: () => showSwitcherSheet(context),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -78,11 +68,9 @@ class MyGigsScreen extends StatelessWidget {
               Expanded(
                 child: Text(
                   'SWITCH TO BAND VIEW',
-                  style: epText(
-                    size: 12,
-                    weight: FontWeight.w800,
-                    letterSpacing: .8,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epLabel.copyWith(letterSpacing: .8),
                 ),
               ),
               const SizedBox(width: 8),
@@ -92,11 +80,9 @@ class MyGigsScreen extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.end,
-                  style: epText(
-                    size: 11,
-                    weight: FontWeight.w800,
-                    color: Ep.link,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epLabel.copyWith(color: Ep.accent),
                 ),
               ),
             ],
@@ -110,7 +96,9 @@ class MyGigsScreen extends StatelessWidget {
             child: Text(
               'No RSVPs yet — go find a show.',
               textAlign: TextAlign.center,
-              style: epText(size: 12.5, color: Ep.inkA(.45)),
+              style: Theme.of(
+                context,
+              ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
             ),
           ),
         for (final g in upcoming) ...[
@@ -127,7 +115,7 @@ class MyGigsScreen extends StatelessWidget {
         if (savedGigs.isEmpty)
           Text(
             'Nothing saved — tap the bookmark on a gig to stash it here.',
-            style: epText(size: 11.5, color: Ep.inkA(.4)),
+            style: Theme.of(context).textTheme.epCaption,
           ),
         for (final g in savedGigs) ...[
           FanEventCard(gig: g, app: app),
@@ -139,7 +127,7 @@ class MyGigsScreen extends StatelessWidget {
         if (app.follows.isEmpty)
           Text(
             'Not following any bands yet.',
-            style: epText(size: 11.5, color: Ep.inkA(.4)),
+            style: Theme.of(context).textTheme.epCaption,
           ),
         for (final id in app.follows.toList())
           if (app.band(id) != null) ...[
@@ -154,14 +142,14 @@ class MyGigsScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text(
               'No gigs on record yet — RSVP and show up, this fills itself in.',
-              style: epText(size: 11.5, color: Ep.inkA(.4)),
+              style: Theme.of(context).textTheme.epCaption,
             ),
           ),
         for (final p in app.history)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Ep.whiteA(.07))),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Ep.border)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -169,36 +157,27 @@ class MyGigsScreen extends StatelessWidget {
                 Expanded(
                   child: Text(
                     p.title,
-                    style: epText(
-                      size: 12.5,
-                      weight: FontWeight.w700,
-                      color: Ep.inkA(.75),
-                    ),
+                    style: Theme.of(context).textTheme.epBody,
                   ),
                 ),
-                Text(p.meta, style: epText(size: 11, color: Ep.inkA(.4))),
+                const SizedBox(width: 8),
+                Text(p.meta, style: Theme.of(context).textTheme.epCaption),
               ],
             ),
           ),
         const SizedBox(height: 4),
         Text(
           'Your history powers new-vs-returning fan stats for bands — always aggregated, never named.',
-          style: epText(size: 10.5, color: Ep.inkA(.35), height: 1.4),
+          style: Theme.of(context).textTheme.epCaption,
         ),
         const SizedBox(height: 14),
-        GestureDetector(
-          onTap: app.signOut,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10),
-            child: Text(
-              'SIGN OUT',
-              textAlign: TextAlign.center,
-              style: epText(
-                size: 11,
-                weight: FontWeight.w800,
-                letterSpacing: 1,
-                color: Ep.inkA(.45),
-              ),
+        TextButton(
+          onPressed: app.signOut,
+          child: Text(
+            'SIGN OUT',
+            style: Theme.of(context).textTheme.epLabel.copyWith(
+              letterSpacing: 1,
+              color: Ep.contentSecondary,
             ),
           ),
         ),
@@ -215,26 +194,21 @@ class _QrAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return FilledButton(
       key: ValueKey('show-qr-${gig.id}'),
-      behavior: HitTestBehavior.opaque,
-      onTap: () => showQrDialog(context, gig, venue),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
-        decoration: BoxDecoration(
-          color: Ep.blue,
-          borderRadius: BorderRadius.circular(7),
+      onPressed: () => showQrDialog(context, gig, venue),
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+        padding: const WidgetStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 9),
         ),
-        child: Text(
-          'SHOW QR',
-          style: epText(
-            size: 8.5,
-            weight: FontWeight.w900,
-            letterSpacing: .4,
-            color: Colors.white,
-          ),
+        textStyle: WidgetStatePropertyAll(
+          Theme.of(
+            context,
+          ).textTheme.epLabel.copyWith(fontSize: 9, letterSpacing: .4),
         ),
       ),
+      child: const Text('SHOW QR'),
     );
   }
 }
@@ -251,57 +225,41 @@ class _FollowRow extends StatelessWidget {
     if (band == null) return const SizedBox.shrink();
     return EpCard(
       padding: const EdgeInsets.all(9),
+      onTap: () => app.openBand(bandId),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => app.openBand(bandId),
-            child: BandAvatar(
-              band,
-              size: 36,
-              radius: 8,
-              fontSize: 12,
-              rotationDeg: 0,
-            ),
-          ),
+          BandAvatar(band, size: 36, radius: 8, fontSize: 12),
           const SizedBox(width: 11),
           Expanded(
-            child: GestureDetector(
-              onTap: () => app.openBand(bandId),
-              behavior: HitTestBehavior.opaque,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    band.name.toUpperCase(),
-                    style: epText(size: 13, weight: FontWeight.w800),
-                  ),
-                  Text(
-                    band.genreLine,
-                    style: epText(size: 11, color: Ep.inkA(.5)),
-                  ),
-                ],
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  band.name.toUpperCase(),
+                  style: Theme.of(context).textTheme.epLabel,
+                ),
+                Text(
+                  band.genreLine,
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () => app.toggleFollow(bandId),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                border: Border.all(color: Ep.whiteA(.22)),
-                borderRadius: BorderRadius.circular(8),
+          OutlinedButton(
+            onPressed: () => app.toggleFollow(bandId),
+            style: ButtonStyle(
+              minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+              padding: const WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 10),
               ),
-              child: Text(
-                'FOLLOWING ✓',
-                style: epText(
-                  size: 10,
-                  weight: FontWeight.w800,
-                  letterSpacing: .6,
-                  color: Ep.inkA(.7),
-                ),
+              textStyle: WidgetStatePropertyAll(
+                Theme.of(
+                  context,
+                ).textTheme.epLabel.copyWith(fontSize: 10, letterSpacing: .4),
               ),
             ),
+            child: const Text('FOLLOWING ✓'),
           ),
         ],
       ),

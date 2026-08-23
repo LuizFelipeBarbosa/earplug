@@ -30,7 +30,7 @@ void main() {
       expect(find.text('0%'), findsOne);
       expect(find.text('Still needs a name + a genre + a home base'), findsOne);
 
-      // Writing on the tape label fills the liner-notes line below it too.
+      // The standard name field updates the decorative cassette preview.
       await tester.enterText(find.byType(TextField).first, 'Static Bloom');
       await tester.pump();
       expect(app.nbName, 'Static Bloom');
@@ -43,6 +43,8 @@ void main() {
       expect(app.nbLabel, 'riso');
 
       // Sound sheet — chips cap at three, plus one of your own.
+      await tester.ensureVisible(find.text('SOUND · REQUIRED'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('SOUND · REQUIRED'));
       await tester.pumpAndSettle();
       expect(find.text('Up to three — this is what fans filter by.'), findsOne);
@@ -69,6 +71,8 @@ void main() {
       expect(find.text('SOUND ✓'), findsOne);
 
       // Home base sheet — the scene picks come with band and venue counts.
+      await tester.ensureVisible(find.text('HOME BASE · REQUIRED'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('HOME BASE · REQUIRED'));
       await tester.pumpAndSettle();
       expect(find.text('Fans browsing nearby see you first.'), findsOne);
@@ -230,23 +234,20 @@ void main() {
     final harness = await _pumpBandCreate(tester);
     final app = harness.app;
     harness.picker.nextPhoto = photoFixture();
-    expect(find.text('DROP A BAND PHOTO'), findsOne);
+    expect(find.text('BAND PHOTO PREVIEW'), findsOne);
 
     await tester.tap(find.byKey(const ValueKey('label-photo')));
     await tester.pumpAndSettle();
     expect(app.nbPhoto, isNotNull);
     expect(find.byType(Image), findsOne);
     expect(find.byIcon(Icons.check), findsOne);
-    expect(find.text('DROP A BAND PHOTO'), findsNothing);
-    expect(
-      find.text('Photo sits behind the tape — drop one in above.'),
-      findsOne,
-    );
+    expect(find.text('BAND PHOTO PREVIEW'), findsNothing);
+    expect(find.text('Photo sits behind the tape as a preview.'), findsOne);
 
     await tester.tap(find.byKey(const ValueKey('clear-band-photo')));
     await tester.pump();
     expect(app.nbPhoto, isNull);
-    expect(find.text('DROP A BAND PHOTO'), findsOne);
+    expect(find.text('BAND PHOTO PREVIEW'), findsOne);
     expect(find.byIcon(Icons.arrow_upward), findsOne);
   });
 
@@ -269,21 +270,16 @@ void main() {
     expect(photos.single.isHero, isTrue);
   });
 
-  testWidgets('an unready create explains itself instead of firing', (
+  testWidgets('an unready create is visibly and semantically disabled', (
     tester,
   ) async {
     final app = (await _pumpBandCreate(tester)).app;
 
-    await tester.tap(find.text('CREATE BAND'));
-    await tester.pump();
-    expect(app.nbCreated, isFalse);
-    expect(
-      app.toast,
-      'Add a name + a genre + a home base first — tap any line.',
+    final disabledCreate = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'CREATE BAND'),
     );
-
-    // Let the toast expire so no timer outlives the test.
-    await tester.pump(const Duration(seconds: 3));
+    expect(disabledCreate.onPressed, isNull);
+    expect(app.nbCreated, isFalse);
   });
 }
 
@@ -307,14 +303,20 @@ Future<void> _fillForm(WidgetTester tester) async {
   await tester.enterText(find.byType(TextField).first, 'Static Bloom');
   await tester.pump();
 
-  await tester.tap(find.text('SOUND · REQUIRED'));
+  final sound = find.text('SOUND · REQUIRED');
+  await tester.ensureVisible(sound);
+  await tester.pumpAndSettle();
+  await tester.tap(sound);
   await tester.pumpAndSettle();
   await tester.tap(find.text('PUNK'));
   await tester.pump();
   await tester.tap(find.text('DONE'));
   await tester.pumpAndSettle();
 
-  await tester.tap(find.text('HOME BASE · REQUIRED'));
+  final homeBase = find.text('HOME BASE · REQUIRED');
+  await tester.ensureVisible(homeBase);
+  await tester.pumpAndSettle();
+  await tester.tap(homeBase);
   await tester.pumpAndSettle();
   await tester.tap(find.text('MISSION, SF'));
   await tester.pumpAndSettle();

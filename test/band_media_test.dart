@@ -7,6 +7,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_media.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/media_upload_service.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -25,6 +26,23 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Riptide (practice take, one mic)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('header remains usable at increased text scale', (tester) async {
+    await pumpApp(
+      tester,
+      home: const MediaQuery(
+        data: MediaQueryData(
+          size: Size(402, 900),
+          textScaler: TextScaler.linear(1.5),
+        ),
+        child: Scaffold(body: BandMediaScreen(bandId: 'b1')),
+      ),
+    );
+
+    expect(find.text('BAND MEDIA'), findsOneWidget);
+    expect(find.textContaining('ITEMS'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -105,7 +123,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('members are gated from uploads and management controls', (
+  testWidgets('members see disabled uploads and no management controls', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -121,12 +139,11 @@ void main() {
     expect(find.text('↓'), findsNothing);
     expect(find.text('✕'), findsNothing);
 
-    await tester.tap(find.text('+ CLIP'));
-    await tester.pump();
-
-    expect(harness.app.toast, 'Only band admins can post media.');
-
-    await tester.pump(const Duration(seconds: 3));
+    final clipSlot = tester.widget<EpCard>(
+      find.ancestor(of: find.text('+ CLIP'), matching: find.byType(EpCard)),
+    );
+    expect(clipSlot.variant, EpCardVariant.disabled);
+    expect(harness.app.toast, isEmpty);
     expect(tester.takeException(), isNull);
   });
 

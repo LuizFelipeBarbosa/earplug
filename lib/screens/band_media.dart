@@ -37,49 +37,43 @@ class BandMediaScreen extends StatelessWidget {
         : () => app.say(_adminGateMessage);
 
     return ColoredBox(
-      color: Ep.bg,
+      color: Ep.background,
       child: Column(
         children: [
           Container(
             padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Ep.whiteA(.09))),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Ep.border)),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    CircleIconButton(onTap: app.back),
-                    const SizedBox(width: 10),
-                    Text(
-                      'BAND MEDIA',
-                      style: epText(
-                        size: 12,
-                        weight: FontWeight.w800,
-                        letterSpacing: 1.4,
-                        color: Ep.inkA(.5),
-                      ),
+                CircleIconButton(onTap: app.back),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'BAND MEDIA',
+                    style: epText(
+                      size: 12,
+                      weight: FontWeight.w800,
+                      letterSpacing: 1.4,
+                      color: Ep.contentSecondary,
                     ),
-                  ],
+                  ),
                 ),
+                const SizedBox(width: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 5,
+                    horizontal: 10,
+                    vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    border: Border.all(color: Ep.whiteA(.16)),
+                    color: Ep.surface,
+                    border: Border.all(color: Ep.border),
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: Text(
                     '${items.length} ITEMS',
-                    style: epText(
-                      size: 10,
-                      weight: FontWeight.w800,
-                      letterSpacing: .7,
-                      color: Ep.inkA(.6),
-                    ),
+                    style: Theme.of(context).textTheme.epCaption,
                   ),
                 ),
               ],
@@ -159,7 +153,7 @@ class BandMediaScreen extends StatelessWidget {
                     ),
                     child: Column(
                       children: [
-                        PlayTriangle(size: 18, color: Ep.inkA(.3)),
+                        const PlayTriangle(size: 18, color: Ep.contentDisabled),
                         const SizedBox(height: 12),
                         Text('NOTHING POSTED YET', style: epDisplay(size: 15)),
                         const SizedBox(height: 7),
@@ -169,7 +163,7 @@ class BandMediaScreen extends StatelessWidget {
                           textAlign: TextAlign.center,
                           style: epText(
                             size: 11.5,
-                            color: Ep.inkA(.45),
+                            color: Ep.contentDisabled,
                             height: 1.45,
                           ),
                         ),
@@ -192,7 +186,7 @@ class BandMediaScreen extends StatelessWidget {
                           loadError,
                           style: epText(
                             size: 11.5,
-                            color: Ep.inkA(.7),
+                            color: Ep.contentSecondary,
                             height: 1.4,
                           ),
                         ),
@@ -228,11 +222,13 @@ class _UploadSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final slot = DashedBox(
+    return EpCard(
+      variant: enabled ? EpCardVariant.standard : EpCardVariant.disabled,
+      onTap: onTap,
       padding: const EdgeInsets.symmetric(vertical: 22),
       child: Column(
         children: [
-          Icon(icon, size: 23, color: Ep.link),
+          Icon(icon, size: 23, color: enabled ? Ep.accent : Ep.contentDisabled),
           const SizedBox(height: 7),
           Text(
             label,
@@ -246,17 +242,11 @@ class _UploadSlot extends StatelessWidget {
               size: 9,
               weight: FontWeight.w800,
               letterSpacing: .5,
-              color: Ep.inkA(.4),
+              color: enabled ? Ep.contentSecondary : Ep.contentDisabled,
             ),
           ),
         ],
       ),
-    );
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: enabled ? slot : Opacity(opacity: .4, child: slot),
     );
   }
 }
@@ -271,7 +261,7 @@ class _UploadTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final failed = upload.phase == MediaUploadPhase.failed;
     return EpCard(
-      borderColor: failed ? Ep.required : Ep.blue.withValues(alpha: .4),
+      borderColor: failed ? Ep.destructive : Ep.accent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -285,9 +275,12 @@ class _UploadTile extends StatelessWidget {
                   child: upload.preview != null
                       ? Image.memory(upload.preview!, fit: BoxFit.cover)
                       : ColoredBox(
-                          color: const Color(0xFF1A1A20),
+                          color: Ep.surfaceRaised,
                           child: Center(
-                            child: PlayTriangle(size: 11, color: Ep.whiteA(.8)),
+                            child: const PlayTriangle(
+                              size: 11,
+                              color: Ep.contentPrimary,
+                            ),
                           ),
                         ),
                 ),
@@ -309,7 +302,7 @@ class _UploadTile extends StatelessWidget {
                         upload.error ?? 'Upload failed.',
                         style: epText(
                           size: 10.5,
-                          color: Ep.required,
+                          color: Ep.destructive,
                           height: 1.35,
                         ),
                       )
@@ -320,7 +313,7 @@ class _UploadTile extends StatelessWidget {
                           size: 10,
                           weight: FontWeight.w900,
                           letterSpacing: .8,
-                          color: Ep.link,
+                          color: Ep.accent,
                         ),
                       ),
                   ],
@@ -335,7 +328,7 @@ class _UploadTile extends StatelessWidget {
               children: [
                 TextAction(
                   'RETRY',
-                  color: Ep.link,
+                  color: Ep.accent,
                   size: 10.5,
                   letterSpacing: .7,
                   padding: _uploadActionPadding,
@@ -344,7 +337,7 @@ class _UploadTile extends StatelessWidget {
                 const SizedBox(width: 18),
                 TextAction(
                   'DISCARD',
-                  color: Ep.inkA(.55),
+                  color: Ep.contentSecondary,
                   size: 10.5,
                   letterSpacing: .7,
                   padding: _uploadActionPadding,
@@ -356,8 +349,8 @@ class _UploadTile extends StatelessWidget {
             const SizedBox(height: 11),
             LinearProgressIndicator(
               minHeight: 2,
-              color: Ep.blue,
-              backgroundColor: Ep.whiteA(.08),
+              color: Ep.brand,
+              backgroundColor: Ep.surfaceDisabled,
             ),
           ],
         ],
@@ -404,7 +397,7 @@ class _HeroStrip extends StatelessWidget {
                   Icon(
                     Icons.add_photo_alternate_outlined,
                     size: 25,
-                    color: Ep.inkA(.35),
+                    color: Ep.contentDisabled,
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -418,7 +411,7 @@ class _HeroStrip extends StatelessWidget {
                   const SizedBox(height: 5),
                   Text(
                     'Replaces the initials tile everywhere.',
-                    style: epText(size: 10.5, color: Ep.inkA(.45)),
+                    style: epText(size: 10.5, color: Ep.contentDisabled),
                   ),
                 ],
               ),
@@ -439,8 +432,8 @@ class _HeroStrip extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: Ep.bg.withValues(alpha: .82),
-                      border: Border.all(color: Ep.whiteA(.25)),
+                      color: Ep.background.withValues(alpha: .82),
+                      border: Border.all(color: Ep.border),
                       borderRadius: BorderRadius.circular(99),
                     ),
                     child: Text(
@@ -457,13 +450,11 @@ class _HeroStrip extends StatelessWidget {
             ),
           );
 
-    return GestureDetector(
+    return EpCard(
+      variant: isAdmin ? EpCardVariant.standard : EpCardVariant.disabled,
+      padding: EdgeInsets.zero,
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Opacity(
-        opacity: isAdmin ? 1 : .7,
-        child: AspectRatio(aspectRatio: 16 / 9, child: child),
-      ),
+      child: AspectRatio(aspectRatio: 16 / 9, child: child),
     );
   }
 }
@@ -483,99 +474,109 @@ class _MediaRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return EpCard(
+      variant: item.pinned ? EpCardVariant.selected : EpCardVariant.standard,
       padding: const EdgeInsets.all(9),
-      decoration: BoxDecoration(
-        color: Ep.card,
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(
-          color: item.pinned ? Ep.blue.withValues(alpha: .55) : Ep.whiteA(.1),
-        ),
-      ),
-      child: Row(
+      child: Column(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: SizedBox(
-              width: 52,
-              height: 36,
-              child: item.isVideo
-                  ? ColoredBox(
-                      color: const Color(0xFF1A1A20),
-                      child: Stack(
-                        children: [
-                          Center(
-                            child: PlayTriangle(size: 9, color: Ep.whiteA(.8)),
-                          ),
-                          if (item.lenLabel.isNotEmpty)
-                            Positioned(
-                              right: 3,
-                              bottom: 3,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 3,
-                                  vertical: 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: .68),
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                                child: Text(
-                                  item.lenLabel,
-                                  style: epText(
-                                    size: 7.5,
-                                    weight: FontWeight.w900,
-                                  ),
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  width: 52,
+                  height: 48,
+                  child: item.isVideo
+                      ? ColoredBox(
+                          color: Ep.surfaceRaised,
+                          child: Stack(
+                            children: [
+                              Center(
+                                child: PlayTriangle(
+                                  size: 9,
+                                  color: Ep.contentPrimary,
                                 ),
                               ),
-                            ),
-                        ],
-                      ),
-                    )
-                  : _PhotoSurface(item: item),
-            ),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: epText(size: 12.5, weight: FontWeight.w800),
+                              if (item.lenLabel.isNotEmpty)
+                                Positioned(
+                                  right: 3,
+                                  bottom: 3,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 3,
+                                      vertical: 1,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(
+                                        alpha: .68,
+                                      ),
+                                      borderRadius: BorderRadius.circular(3),
+                                    ),
+                                    child: Text(
+                                      item.lenLabel,
+                                      style: epText(
+                                        size: 7.5,
+                                        weight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        )
+                      : _PhotoSurface(item: item),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  item.isVideo ? 'CLIP · ${item.lenLabel}' : 'PHOTO',
-                  style: epText(size: 10.5, color: Ep.inkA(.5)),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.epBody.copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.isVideo ? 'CLIP · ${item.lenLabel}' : 'PHOTO',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
           if (isAdmin) ...[
-            const SizedBox(width: 7),
-            if (item.isVideo) ...[
-              _PinButton(
-                pinned: item.pinned,
-                onTap: () => media.pin(bandId, item.id),
-              ),
-              const SizedBox(width: 5),
-            ],
-            _GlyphButton.arrow(
-              glyph: '↑',
-              onTap: () => media.move(bandId, item.id, 'up'),
-            ),
-            const SizedBox(width: 5),
-            _GlyphButton.arrow(
-              glyph: '↓',
-              onTap: () => media.move(bandId, item.id, 'down'),
-            ),
-            const SizedBox(width: 5),
-            _GlyphButton.delete(
-              key: ValueKey('delete-${item.id}'),
-              onTap: () => _showDeleteSheet(context, media, bandId, item),
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                if (item.isVideo)
+                  _PinButton(
+                    pinned: item.pinned,
+                    onTap: () => media.pin(bandId, item.id),
+                  ),
+                _GlyphButton.arrow(
+                  glyph: '↑',
+                  tooltip: 'Move up',
+                  onTap: () => media.move(bandId, item.id, 'up'),
+                ),
+                _GlyphButton.arrow(
+                  glyph: '↓',
+                  tooltip: 'Move down',
+                  onTap: () => media.move(bandId, item.id, 'down'),
+                ),
+                _GlyphButton.delete(
+                  key: ValueKey('delete-${item.id}'),
+                  onTap: () => _showDeleteSheet(context, media, bandId, item),
+                ),
+              ],
             ),
           ],
         ],
@@ -592,26 +593,9 @@ class _PinButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
-        decoration: BoxDecoration(
-          color: pinned ? Ep.blue : null,
-          border: pinned ? null : Border.all(color: Ep.whiteA(.18)),
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: Text(
-          pinned ? 'PINNED ★' : 'PIN',
-          style: epText(
-            size: 8.5,
-            weight: FontWeight.w900,
-            letterSpacing: .4,
-            color: pinned ? Colors.white : Ep.inkA(.7),
-          ),
-        ),
-      ),
-    );
+    return pinned
+        ? FilledButton(onPressed: onTap, child: const Text('PINNED ★'))
+        : OutlinedButton(onPressed: onTap, child: const Text('PIN'));
   }
 }
 
@@ -619,33 +603,29 @@ class _PinButton extends StatelessWidget {
 /// and the delete cross.
 class _GlyphButton extends StatelessWidget {
   final String glyph;
-  final TextStyle glyphStyle;
+  final String tooltip;
   final VoidCallback onTap;
 
-  _GlyphButton.arrow({required this.glyph, required this.onTap})
-    : glyphStyle = epText(size: 12, color: Ep.inkA(.7));
+  const _GlyphButton.arrow({
+    required this.glyph,
+    required this.tooltip,
+    required this.onTap,
+  });
 
-  _GlyphButton.delete({super.key, required this.onTap})
+  const _GlyphButton.delete({super.key, required this.onTap})
     : glyph = '\u2715',
-      glyphStyle = epText(
-        size: 10.5,
-        weight: FontWeight.w900,
-        color: Ep.inkA(.62),
-      );
+      tooltip = 'Delete';
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 28,
-        height: 28,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          border: Border.all(color: Ep.whiteA(.18)),
-          borderRadius: BorderRadius.circular(7),
+    return IconButton.outlined(
+      onPressed: onTap,
+      tooltip: tooltip,
+      icon: Text(
+        glyph,
+        style: Theme.of(context).textTheme.epLabel.copyWith(
+          color: tooltip == 'Delete' ? Ep.destructive : Ep.contentSecondary,
         ),
-        child: Text(glyph, style: glyphStyle),
       ),
     );
   }
@@ -660,7 +640,7 @@ class _PhotoSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final placeholder = ColoredBox(
-      color: Ep.card,
+      color: Ep.surface,
       child: placeholderLabel == null
           ? const SizedBox.expand()
           : Center(
@@ -671,7 +651,7 @@ class _PhotoSurface extends StatelessWidget {
                   size: 9.5,
                   weight: FontWeight.w900,
                   letterSpacing: .7,
-                  color: Ep.inkA(.45),
+                  color: Ep.contentDisabled,
                 ),
               ),
             ),
@@ -694,7 +674,7 @@ class _MediaSheet extends StatelessWidget {
     return Container(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       decoration: const BoxDecoration(
-        color: Ep.card,
+        color: Ep.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       child: Column(
@@ -708,9 +688,10 @@ class _MediaSheet extends StatelessWidget {
                 Expanded(
                   child: Text(title.toUpperCase(), style: epDisplay(size: 15)),
                 ),
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Icon(Icons.close, size: 18, color: Ep.inkA(.5)),
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
                 ),
               ],
             ),
@@ -748,14 +729,16 @@ void _showHeroSheet(
                 ),
                 itemBuilder: (context, index) {
                   final photo = media.photosFor(bandId)[index];
-                  return GestureDetector(
-                    onTap: () async {
-                      await media.setHero(bandId, photo.id);
-                      if (!context.mounted) return;
-                      Navigator.pop(context);
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(9),
+                  return Material(
+                    color: Ep.surface,
+                    borderRadius: BorderRadius.circular(9),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () async {
+                        await media.setHero(bandId, photo.id);
+                        if (!context.mounted) return;
+                        Navigator.pop(context);
+                      },
                       child: _PhotoSurface(
                         item: photo,
                         placeholderLabel: photo.title,
@@ -766,31 +749,14 @@ void _showHeroSheet(
               ),
             ),
             const SizedBox(height: 14),
-            GestureDetector(
+            EpButton(
+              'USE INITIALS INSTEAD',
+              kind: EpButtonKind.ghost,
               onTap: () async {
                 await media.clearHero(bandId);
                 if (!sheetContext.mounted) return;
                 Navigator.pop(sheetContext);
               },
-              behavior: HitTestBehavior.opaque,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Ep.whiteA(.2)),
-                  borderRadius: BorderRadius.circular(11),
-                ),
-                child: Text(
-                  'USE INITIALS INSTEAD',
-                  style: epText(
-                    size: 11,
-                    weight: FontWeight.w900,
-                    letterSpacing: .7,
-                    color: Ep.inkA(.7),
-                  ),
-                ),
-              ),
             ),
           ],
         ),
@@ -817,34 +783,17 @@ void _showDeleteSheet(
             item.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: epText(size: 12, color: Ep.inkA(.58), height: 1.4),
+            style: epText(size: 12, color: Ep.contentSecondary, height: 1.4),
           ),
           const SizedBox(height: 16),
-          GestureDetector(
-            onTap: () async {
+          OutlinedButton(
+            style: OutlinedButton.styleFrom(foregroundColor: Ep.destructive),
+            onPressed: () async {
               await media.remove(bandId, item.id);
               if (!sheetContext.mounted) return;
               Navigator.pop(sheetContext);
             },
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: const Color(0xFFFF6B6B).withValues(alpha: .65),
-                ),
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Text(
-                'DELETE',
-                style: epText(
-                  size: 11.5,
-                  weight: FontWeight.w900,
-                  letterSpacing: .8,
-                  color: const Color(0xFFFF7A7A),
-                ),
-              ),
-            ),
+            child: const Text('DELETE'),
           ),
           const SizedBox(height: 9),
           EpButton(

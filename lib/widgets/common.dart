@@ -48,11 +48,10 @@ class SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: epText(
-        size: 11,
-        weight: FontWeight.w800,
+      style: Theme.of(context).textTheme.epLabel.copyWith(
+        fontWeight: FontWeight.w800,
         letterSpacing: 1.4,
-        color: blue ? Ep.link : Ep.inkA(.5),
+        color: blue ? Ep.accent : Ep.contentSecondary,
       ),
     );
   }
@@ -73,24 +72,22 @@ class EpChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: active ? Ep.blue : null,
-          border: Border.all(color: active ? Ep.blue : Ep.whiteA(.2)),
-          borderRadius: BorderRadius.circular(99),
-        ),
-        child: Text(
-          label.toUpperCase(),
-          style: epText(
-            size: 11,
-            weight: FontWeight.w800,
-            letterSpacing: .5,
-            color: active ? Colors.white : Ep.inkA(onTap == null ? .3 : .65),
-          ),
-        ),
+    final textStyle = Theme.of(context).textTheme.epLabel.copyWith(
+      color: onTap == null
+          ? Ep.contentDisabled
+          : active
+          ? Ep.contentPrimary
+          : Ep.contentSecondary,
+      letterSpacing: .5,
+    );
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+      child: FilterChip(
+        label: Text(label.toUpperCase(), style: textStyle),
+        selected: active,
+        onSelected: onTap == null ? null : (_) => onTap!(),
+        showCheckmark: false,
+        side: BorderSide(color: active ? Ep.accent : Ep.border),
       ),
     );
   }
@@ -107,17 +104,17 @@ class PriceBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: gig.free ? Ep.blue : null,
-        border: gig.free ? null : Border.all(color: Ep.whiteA(.3)),
+        color: gig.free ? Ep.brand : null,
+        border: gig.free ? null : Border.all(color: Ep.border),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         gig.priceLabel,
-        style: epText(
-          size: 10,
-          weight: FontWeight.w900,
+        style: Theme.of(context).textTheme.epLabel.copyWith(
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
           letterSpacing: .8,
-          color: gig.free ? Colors.white : Ep.inkA(.85),
+          color: gig.free ? Colors.white : Ep.contentPrimary,
         ),
       ),
     );
@@ -202,15 +199,15 @@ class ClipTexture extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = FlyerStyle(
-      base: Ep.card,
+      base: Ep.surface,
       patternColor: Ep.whiteA(.06),
-      fg: Ep.ink,
+      fg: Ep.contentPrimary,
       pattern: FlyerPattern.scan,
     );
     return Stack(
       fit: StackFit.expand,
       children: [
-        const ColoredBox(color: Ep.card),
+        const ColoredBox(color: Ep.surface),
         ColoredBox(color: bandColor.withValues(alpha: .14)),
         CustomPaint(painter: _FlyerPatternPainter(style, patternScale)),
       ],
@@ -218,14 +215,15 @@ class ClipTexture extends StatelessWidget {
   }
 }
 
-/// Xeroxed-flyer block: solid base color under a faint print texture, slightly
-/// rotated. The visual signature of the whole app.
+/// Xeroxed-flyer block: solid base color under a faint print texture.
+///
+/// Rotation belongs only in an outer, explicitly decorative preview. Keeping
+/// it out of this shared primitive makes functional artwork upright by default.
 class FlyerBox extends StatelessWidget {
   final FlyerStyle style;
   final String? imageUrl;
   final double? width;
   final double? height;
-  final double rotationDeg;
   final double radius;
   final EdgeInsets padding;
   final Widget? child;
@@ -240,7 +238,6 @@ class FlyerBox extends StatelessWidget {
     this.imageUrl,
     this.width,
     this.height,
-    this.rotationDeg = 0,
     this.radius = 6,
     this.padding = EdgeInsets.zero,
     this.child,
@@ -250,7 +247,7 @@ class FlyerBox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget box = Container(
+    return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
@@ -286,10 +283,6 @@ class FlyerBox extends StatelessWidget {
               ],
             ),
     );
-    if (rotationDeg != 0) {
-      box = Transform.rotate(angle: rotationDeg * math.pi / 180, child: box);
-    }
-    return box;
   }
 }
 
@@ -298,7 +291,6 @@ class GigFlyer extends StatelessWidget {
   final FlyerStyle style;
   final double? width;
   final double? height;
-  final double rotationDeg;
   final double radius;
   final EdgeInsets padding;
   final Widget? child;
@@ -311,7 +303,6 @@ class GigFlyer extends StatelessWidget {
     super.key,
     this.width,
     this.height,
-    this.rotationDeg = 0,
     this.radius = 6,
     this.padding = EdgeInsets.zero,
     this.child,
@@ -326,7 +317,6 @@ class GigFlyer extends StatelessWidget {
       imageUrl: gig.flyKey == 'custom' ? gig.flyerUrl : null,
       width: width,
       height: height,
-      rotationDeg: rotationDeg,
       radius: radius,
       padding: padding,
       shadow: shadow,
@@ -336,13 +326,66 @@ class GigFlyer extends StatelessWidget {
   }
 }
 
-/// Rotated square initials tile used everywhere a band appears.
+/// Upright shared profile treatment for people and bands.
+class EpProfileAvatar extends StatelessWidget {
+  const EpProfileAvatar({
+    super.key,
+    required this.name,
+    this.imageUrl,
+    this.size = 40,
+    this.radius = 9,
+    this.fontSize,
+  });
+
+  final String? name;
+  final String? imageUrl;
+  final double size;
+  final double radius;
+  final double? fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final initials = profileInitials(name);
+    final fallback = ColoredBox(
+      color: Ep.brand,
+      child: Center(
+        child: initials == '??'
+            ? Icon(Icons.person, size: size * .52, color: Colors.white)
+            : Text(
+                initials,
+                style: Theme.of(context).textTheme.epLabel.copyWith(
+                  color: Colors.white,
+                  fontSize: fontSize ?? size * .34,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+      ),
+    );
+
+    return Semantics(
+      image: true,
+      label: name == null || name!.trim().isEmpty
+          ? 'Profile avatar'
+          : '${name!.trim()} avatar',
+      child: ExcludeSemantics(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: SizedBox.square(
+            dimension: size,
+            child: EpNetworkImage(url: imageUrl, fallback: fallback),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Convenience adapter for existing band call sites.
 class BandAvatar extends StatelessWidget {
   final Band band;
   final double size;
   final double radius;
   final double fontSize;
-  final double rotationDeg;
 
   const BandAvatar(
     this.band, {
@@ -350,72 +393,50 @@ class BandAvatar extends StatelessWidget {
     this.size = 40,
     this.radius = 9,
     this.fontSize = 14,
-    this.rotationDeg = -3,
   });
 
   @override
   Widget build(BuildContext context) {
-    final square = Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: band.color,
-        borderRadius: BorderRadius.circular(radius),
-      ),
-      child: Text(
-        band.initials,
-        style: epDisplay(size: fontSize, color: Ep.bg),
-      ),
-    );
-    if (band.heroUrl == null || band.heroUrl!.isEmpty) {
-      return Transform.rotate(
-        angle: rotationDeg * math.pi / 180,
-        child: square,
-      );
-    }
-    return Transform.rotate(
-      angle: rotationDeg * math.pi / 180,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(radius),
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: EpNetworkImage(url: band.heroUrl, fallback: square),
-        ),
-      ),
+    return EpProfileAvatar(
+      name: band.name,
+      imageUrl: band.heroUrl,
+      size: size,
+      radius: radius,
+      fontSize: fontSize,
     );
   }
 }
 
 class CircleIconButton extends StatelessWidget {
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final IconData icon;
   final Color background;
   final bool bordered;
+  final String? tooltip;
 
   const CircleIconButton({
     super.key,
     required this.onTap,
     this.icon = Icons.chevron_left,
-    this.background = Ep.card,
+    this.background = Ep.surface,
     this.bordered = true,
+    this.tooltip,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: background,
-          shape: BoxShape.circle,
-          border: bordered ? Border.all(color: Ep.whiteA(.14)) : null,
-        ),
-        child: Icon(icon, size: 20, color: Colors.white),
+    return IconButton(
+      onPressed: onTap,
+      tooltip: tooltip,
+      style: ButtonStyle(
+        fixedSize: const WidgetStatePropertyAll(Size.square(48)),
+        backgroundColor: WidgetStatePropertyAll(background),
+        side: bordered
+            ? const WidgetStatePropertyAll(BorderSide(color: Ep.border))
+            : null,
+        shape: const WidgetStatePropertyAll(CircleBorder()),
       ),
+      icon: Icon(icon, size: 20),
     );
   }
 }
@@ -429,7 +450,6 @@ class EpButton extends StatelessWidget {
   final EpButtonKind kind;
   final double fontSize;
   final EdgeInsets padding;
-  final bool glow;
 
   const EpButton(
     this.label, {
@@ -438,71 +458,97 @@ class EpButton extends StatelessWidget {
     this.kind = EpButtonKind.filled,
     this.fontSize = 13.5,
     this.padding = const EdgeInsets.symmetric(vertical: 15),
-    this.glow = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final (Color? bg, Color fg, Border? border) = switch (kind) {
-      EpButtonKind.filled => (Ep.blue, Colors.white, null),
-      EpButtonKind.light => (Ep.ink, Ep.bg, null),
-      EpButtonKind.outline => (
-        null,
-        Ep.link,
-        Border.all(color: Ep.blue, width: 1.5),
-      ),
-      EpButtonKind.ghost => (null, Ep.ink, Border.all(color: Ep.whiteA(.3))),
-      EpButtonKind.disabled => (Ep.whiteA(.08), Ep.inkA(.35), null),
+    final callback = kind == EpButtonKind.disabled ? null : onTap;
+    final (Color background, Color foreground) = switch (kind) {
+      EpButtonKind.light => (Ep.contentPrimary, Ep.background),
+      EpButtonKind.filled ||
+      EpButtonKind.outline ||
+      EpButtonKind.ghost => (Ep.brand, Colors.white),
+      EpButtonKind.disabled => (Ep.surfaceDisabled, Ep.contentDisabled),
     };
-    return GestureDetector(
-      onTap: kind == EpButtonKind.disabled ? null : onTap,
-      child: Container(
-        width: double.infinity,
-        padding: padding,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: bg,
-          border: border,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: glow
-              ? [
-                  BoxShadow(
-                    color: Ep.blue.withValues(alpha: .45),
-                    blurRadius: 22,
-                    offset: const Offset(0, 6),
-                  ),
-                ]
-              : null,
+    final style = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+      padding: WidgetStatePropertyAll(padding),
+      backgroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.disabled)
+            ? Ep.surfaceDisabled
+            : background,
+      ),
+      foregroundColor: WidgetStateProperty.resolveWith(
+        (states) => states.contains(WidgetState.disabled)
+            ? Ep.contentDisabled
+            : foreground,
+      ),
+      textStyle: WidgetStatePropertyAll(
+        Theme.of(context).textTheme.epLabel.copyWith(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w800,
+          letterSpacing: .8,
         ),
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: epText(
-            size: fontSize,
-            weight: FontWeight.w900,
-            letterSpacing: .8,
-            color: fg,
+      ),
+      side: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return const BorderSide(color: Ep.surfaceDisabled);
+        }
+        if (states.contains(WidgetState.focused)) {
+          return const BorderSide(color: Ep.contentPrimary, width: 2);
+        }
+        return switch (kind) {
+          EpButtonKind.outline => const BorderSide(
+            color: Ep.accent,
+            width: 1.5,
           ),
-        ),
+          EpButtonKind.ghost => const BorderSide(color: Ep.border),
+          _ => BorderSide.none,
+        };
+      }),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
+    final button = switch (kind) {
+      EpButtonKind.outline || EpButtonKind.ghost => OutlinedButton(
+        onPressed: callback,
+        style: style.copyWith(
+          backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled)
+                ? Ep.contentDisabled
+                : kind == EpButtonKind.outline
+                ? Ep.accent
+                : Ep.contentPrimary,
+          ),
+        ),
+        child: Text(label, textAlign: TextAlign.center),
+      ),
+      _ => FilledButton(
+        onPressed: callback,
+        style: style,
+        child: Text(label, textAlign: TextAlign.center),
+      ),
+    };
+    return SizedBox(width: double.infinity, child: button);
   }
 }
 
 InputDecoration epInputDecoration(String hint) => InputDecoration(
   hintText: hint,
-  hintStyle: epText(size: 14, color: Ep.inkA(.35)),
   filled: true,
-  fillColor: Ep.card,
+  fillColor: Ep.surface,
   isDense: true,
-  contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+  constraints: const BoxConstraints(minHeight: 48),
+  contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
   enabledBorder: OutlineInputBorder(
     borderRadius: BorderRadius.circular(11),
-    borderSide: BorderSide(color: Ep.whiteA(.16)),
+    borderSide: const BorderSide(color: Ep.border),
   ),
   focusedBorder: OutlineInputBorder(
     borderRadius: BorderRadius.circular(11),
-    borderSide: BorderSide(color: Ep.whiteA(.3)),
+    borderSide: const BorderSide(color: Ep.accent, width: 2),
   ),
 );
 
@@ -532,11 +578,11 @@ class EpStatCard extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: epText(
-                size: 9.5,
-                weight: FontWeight.w800,
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
                 letterSpacing: 1,
-                color: Ep.inkA(.45),
+                color: Ep.contentSecondary,
               ),
             ),
             const SizedBox(height: 4),
@@ -544,14 +590,20 @@ class EpStatCard extends StatelessWidget {
               value,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: epDisplay(size: 22),
+              style: Theme.of(
+                context,
+              ).textTheme.epDisplay.copyWith(fontSize: 22),
             ),
             const SizedBox(height: 2),
             Text(
               caption,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: epText(size: 10, weight: FontWeight.w800, color: Ep.link),
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: Ep.accent,
+              ),
             ),
           ],
         ),
@@ -591,10 +643,9 @@ class EpBar extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: epText(
-                  size: 11,
-                  weight: FontWeight.w800,
-                  color: Ep.inkA(.7),
+                style: Theme.of(context).textTheme.epCaption.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: Ep.contentSecondary,
                 ),
               ),
             ),
@@ -603,7 +654,10 @@ class EpBar extends StatelessWidget {
               valueText,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: epText(size: 11, weight: FontWeight.w800, color: Ep.link),
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                fontWeight: FontWeight.w800,
+                color: Ep.accent,
+              ),
             ),
           ],
         ),
@@ -612,8 +666,8 @@ class EpBar extends StatelessWidget {
           height: 8,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: Ep.whiteA(.06),
-            border: Ep.hairline(),
+            color: Ep.surfaceDisabled,
+            border: Border.all(color: Ep.border),
             borderRadius: BorderRadius.circular(99),
           ),
           alignment: Alignment.centerLeft,
@@ -621,7 +675,7 @@ class EpBar extends StatelessWidget {
             widthFactor: fraction,
             heightFactor: 1,
             child: const DecoratedBox(
-              decoration: BoxDecoration(color: Ep.blue),
+              decoration: BoxDecoration(color: Ep.brand),
             ),
           ),
         ),
@@ -664,8 +718,8 @@ class EpStackedBar extends StatelessWidget {
           height: 8,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: Ep.whiteA(.06),
-            border: Ep.hairline(),
+            color: Ep.surfaceDisabled,
+            border: Border.all(color: Ep.border),
             borderRadius: BorderRadius.circular(99),
           ),
           child: total == 0
@@ -676,14 +730,14 @@ class EpStackedBar extends StatelessWidget {
                       Expanded(
                         flex: newFlex,
                         child: const DecoratedBox(
-                          decoration: BoxDecoration(color: Ep.blue),
+                          decoration: BoxDecoration(color: Ep.brand),
                         ),
                       ),
                     if (safeReturning > 0)
                       Expanded(
                         flex: returningFlex,
                         child: const DecoratedBox(
-                          decoration: BoxDecoration(color: Ep.link),
+                          decoration: BoxDecoration(color: Ep.accent),
                         ),
                       ),
                   ],
@@ -696,17 +750,17 @@ class EpStackedBar extends StatelessWidget {
               width: 6,
               height: 6,
               decoration: BoxDecoration(
-                color: Ep.blue,
+                color: Ep.brand,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(width: 4),
             Text(
               newLabel,
-              style: epText(
-                size: 9.5,
-                weight: FontWeight.w800,
-                color: Ep.inkA(.5),
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                color: Ep.contentSecondary,
               ),
             ),
             const SizedBox(width: 12),
@@ -714,17 +768,17 @@ class EpStackedBar extends StatelessWidget {
               width: 6,
               height: 6,
               decoration: BoxDecoration(
-                color: Ep.link,
+                color: Ep.accent,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
             const SizedBox(width: 4),
             Text(
               returningLabel,
-              style: epText(
-                size: 9.5,
-                weight: FontWeight.w800,
-                color: Ep.inkA(.5),
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                color: Ep.contentSecondary,
               ),
             ),
           ],
@@ -742,17 +796,25 @@ class EpSuppressedNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(message, style: epText(size: 11.5, color: Ep.inkA(.4)));
+    return Text(
+      message,
+      style: Theme.of(
+        context,
+      ).textTheme.epCaption.copyWith(fontSize: 11.5, color: Ep.contentDisabled),
+    );
   }
 }
 
-/// Dark card container used across screens.
+enum EpCardVariant { standard, raised, selected, disabled }
+
+/// Semantic card container used across screens.
 class EpCard extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
   final double radius;
   final Color? borderColor;
   final VoidCallback? onTap;
+  final EpCardVariant variant;
 
   const EpCard({
     super.key,
@@ -761,25 +823,45 @@ class EpCard extends StatelessWidget {
     this.radius = 12,
     this.borderColor,
     this.onTap,
+    this.variant = EpCardVariant.standard,
   });
 
   @override
   Widget build(BuildContext context) {
-    final card = Container(
-      width: double.infinity,
-      padding: padding,
-      decoration: BoxDecoration(
-        color: Ep.card,
-        border: Border.all(color: borderColor ?? Ep.whiteA(.1)),
-        borderRadius: BorderRadius.circular(radius),
-      ),
-      child: child,
+    final (color, defaultBorder) = switch (variant) {
+      EpCardVariant.standard => (Ep.surface, Ep.border),
+      EpCardVariant.raised => (Ep.surfaceRaised, Ep.border),
+      EpCardVariant.selected => (Ep.surfaceSelected, Ep.accent),
+      EpCardVariant.disabled => (Ep.surfaceDisabled, Ep.surfaceDisabled),
+    };
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(radius),
+      side: BorderSide(color: borderColor ?? defaultBorder),
     );
-    if (onTap == null) return card;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: card,
+    final enabledOnTap = variant == EpCardVariant.disabled ? null : onTap;
+    final content = Padding(padding: padding, child: child);
+
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      enabled: onTap == null ? null : variant != EpCardVariant.disabled,
+      selected: variant == EpCardVariant.selected ? true : null,
+      child: Material(
+        color: color,
+        surfaceTintColor: Colors.transparent,
+        shape: shape,
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          width: double.infinity,
+          child: enabledOnTap == null
+              ? content
+              : InkWell(
+                  onTap: enabledOnTap,
+                  customBorder: shape,
+                  child: content,
+                ),
+        ),
+      ),
     );
   }
 }
@@ -806,7 +888,7 @@ class DashedBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _DashedBorderPainter(color ?? Ep.whiteA(.18), radius),
+      painter: _DashedBorderPainter(color ?? Ep.border, radius),
       child: Container(
         width: expand ? double.infinity : null,
         padding: padding,

@@ -29,7 +29,7 @@ class AnalyticsScreen extends StatelessWidget {
         tabBarClearance,
       ),
       children: [
-        Text('FAN ANALYTICS', style: epDisplay(size: 18)),
+        Text('FAN ANALYTICS', style: Theme.of(context).textTheme.epPageHeading),
         const SizedBox(height: 5),
         _bandSelector(context, band),
         const SizedBox(height: 14),
@@ -42,17 +42,11 @@ class AnalyticsScreen extends StatelessWidget {
   /// on an account in several bands the reader cannot otherwise tell whose
   /// shows are missing when the recap comes back empty.
   Widget _bandSelector(BuildContext context, Band band) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => showSwitcherSheet(context),
-      child: Text(
-        '${band.name.toUpperCase()} ▾',
-        style: epText(
-          size: 10,
-          weight: FontWeight.w800,
-          letterSpacing: 1,
-          color: Ep.link,
-        ),
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton(
+        onPressed: () => showSwitcherSheet(context),
+        child: Text('${band.name.toUpperCase()} ▾'),
       ),
     );
   }
@@ -94,7 +88,7 @@ class AnalyticsScreen extends StatelessWidget {
   Widget _loadingState() {
     return Text(
       'Loading fan analytics…',
-      style: epText(size: 11.5, color: Ep.inkA(.4)),
+      style: epText(size: 11.5, color: Ep.contentDisabled),
     );
   }
 
@@ -104,7 +98,7 @@ class AnalyticsScreen extends StatelessWidget {
       children: [
         Text(
           "Couldn't load fan analytics. $error",
-          style: epText(size: 11.5, color: Ep.inkA(.4), height: 1.45),
+          style: epText(size: 11.5, color: Ep.contentDisabled, height: 1.45),
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -130,23 +124,19 @@ class AnalyticsScreen extends StatelessWidget {
         'No past gigs yet for ${bandName.toUpperCase()} — this recap fills '
         'in after its first show.$hint',
         textAlign: TextAlign.center,
-        style: epText(size: 12, color: Ep.inkA(.5), height: 1.5),
+        style: epText(size: 12, color: Ep.contentSecondary, height: 1.5),
       ),
     );
   }
 
   Widget _privacyNote() {
-    return Container(
+    return EpCard(
+      variant: EpCardVariant.selected,
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-      decoration: BoxDecoration(
-        color: Ep.blue.withValues(alpha: .14),
-        border: Border.all(color: Ep.blue.withValues(alpha: .5)),
-        borderRadius: BorderRadius.circular(11),
-      ),
       child: Text(
         'Aggregate data only. Any breakdown covering fewer than 5 fans is '
         'withheld entirely. No individual fan is ever identifiable.',
-        style: epText(size: 11, color: Ep.linkSoft, height: 1.45),
+        style: epText(size: 11, color: Ep.contentPrimary, height: 1.45),
       ),
     );
   }
@@ -189,14 +179,14 @@ class AnalyticsScreen extends StatelessWidget {
           '${Gig.dateShortFor(show.startsAt)} · ${show.venueName}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: epText(size: 10.5, color: Ep.inkA(.45)),
+          style: epText(size: 10.5, color: Ep.contentDisabled),
         ),
         const SizedBox(height: 13),
       ],
       Text(
         'avg ${recap.totals.avgPerShow.toStringAsFixed(1)} · '
         'best ${recap.totals.bestShowRsvps}',
-        style: epText(size: 11, weight: FontWeight.w800, color: Ep.link),
+        style: epText(size: 11, weight: FontWeight.w800, color: Ep.accent),
       ),
     ]);
   }
@@ -215,7 +205,7 @@ class AnalyticsScreen extends StatelessWidget {
               style: epText(
                 size: 11,
                 weight: FontWeight.w800,
-                color: Ep.inkA(.7),
+                color: Ep.contentSecondary,
               ),
             ),
             const SizedBox(height: 7),
@@ -233,7 +223,7 @@ class AnalyticsScreen extends StatelessWidget {
           '“New” means new within this analyzed window, not new-ever. The '
           'oldest analyzed show reads as 100% new because earlier shows '
           'were outside the measurement window.',
-          style: epText(size: 10.5, color: Ep.inkA(.45), height: 1.45),
+          style: epText(size: 10.5, color: Ep.contentDisabled, height: 1.45),
         ),
       ],
     ]);
@@ -263,14 +253,14 @@ class AnalyticsScreen extends StatelessWidget {
           Text(
             'Median RSVP: ${_formatNumber(leadTime.medianDays!)} days '
             'before the show.',
-            style: epText(size: 11, color: Ep.inkA(.55)),
+            style: epText(size: 11, color: Ep.contentSecondary),
           ),
       ],
       if (leadTime.unmeasurable > 0) ...[
         const SizedBox(height: 12),
         Text(
           _unmeasurableLeadTimeNote(leadTime.unmeasurable),
-          style: epText(size: 10.5, color: Ep.inkA(.45), height: 1.45),
+          style: epText(size: 10.5, color: Ep.contentDisabled, height: 1.45),
         ),
       ],
     ]);
@@ -357,7 +347,7 @@ class AnalyticsScreen extends StatelessWidget {
       const SizedBox(height: 14),
       Text(
         notes.join('\n'),
-        style: epText(size: 10.5, color: Ep.inkA(.4), height: 1.5),
+        style: epText(size: 10.5, color: Ep.contentDisabled, height: 1.5),
       ),
     ];
   }

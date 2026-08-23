@@ -37,55 +37,46 @@ class BandDashScreen extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            GestureDetector(
-              onTap: () => showSwitcherSheet(context),
-              child: Row(
-                children: [
-                  BandAvatar(band, size: 38, radius: 9, fontSize: 13),
-                  const SizedBox(width: 9),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${band.name.toUpperCase()} ▾',
-                        style: epDisplay(size: 16, height: 1),
+            Expanded(
+              child: TextButton(
+                onPressed: () => showSwitcherSheet(context),
+                style: TextButton.styleFrom(
+                  alignment: Alignment.centerLeft,
+                  padding: EdgeInsets.zero,
+                ),
+                child: Row(
+                  children: [
+                    BandAvatar(band, size: 38, radius: 9, fontSize: 13),
+                    const SizedBox(width: 9),
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${band.name.toUpperCase()} ▾',
+                            style: epDisplay(size: 16, height: 1),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            'BAND VIEW · ${app.roleFor(band.id).toUpperCase()}',
+                            style: epText(
+                              size: 10,
+                              weight: FontWeight.w800,
+                              letterSpacing: 1,
+                              color: Ep.accent,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        'BAND VIEW · ${app.roleFor(band.id).toUpperCase()}',
-                        style: epText(
-                          size: 10,
-                          weight: FontWeight.w800,
-                          letterSpacing: 1,
-                          color: Ep.link,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                    ),
+                  ],
+                ),
               ),
             ),
-            GestureDetector(
-              onTap: app.toFanView,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 11,
-                  vertical: 7,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Ep.whiteA(.2)),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  'FAN VIEW',
-                  style: epText(
-                    size: 10,
-                    weight: FontWeight.w800,
-                    letterSpacing: .8,
-                    color: Ep.inkA(.7),
-                  ),
-                ),
-              ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: app.toFanView,
+              child: const Text('FAN VIEW'),
             ),
           ],
         ),
@@ -150,7 +141,7 @@ class BandDashScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
               decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: Ep.whiteA(.07))),
+                border: const Border(bottom: BorderSide(color: Ep.border)),
               ),
               child: Row(
                 children: [
@@ -158,7 +149,7 @@ class BandDashScreen extends StatelessWidget {
                     width: 6,
                     height: 6,
                     decoration: const BoxDecoration(
-                      color: Ep.blue,
+                      color: Ep.brand,
                       shape: BoxShape.circle,
                     ),
                   ),
@@ -166,7 +157,9 @@ class BandDashScreen extends StatelessWidget {
                   Expanded(
                     child: Text(
                       tip,
-                      style: epText(size: 12.5, color: Ep.inkA(.75)),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
                     ),
                   ),
                 ],
@@ -192,28 +185,9 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 13),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: filled ? Ep.blue : Ep.card,
-            border: filled ? null : Border.all(color: Ep.whiteA(.14)),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            label,
-            maxLines: 1,
-            style: epText(
-              size: 11,
-              weight: filled ? FontWeight.w900 : FontWeight.w800,
-              letterSpacing: .6,
-              color: filled ? Colors.white : Ep.ink,
-            ),
-          ),
-        ),
-      ),
+      child: filled
+          ? FilledButton(onPressed: onTap, child: Text(label))
+          : OutlinedButton(onPressed: onTap, child: Text(label)),
     );
   }
 }
@@ -229,7 +203,6 @@ class _NextUpCard extends StatelessWidget {
     return EpCard(
       padding: const EdgeInsets.all(12),
       radius: 13,
-      borderColor: Ep.whiteA(.12),
       onTap: () => app.openGig(gig.id),
       child: Row(
         children: [
@@ -238,7 +211,6 @@ class _NextUpCard extends StatelessWidget {
             app.flyer(gig.flyKey),
             width: 46,
             height: 60,
-            rotationDeg: -2,
             radius: 5,
             shadow: false,
           ),
@@ -254,7 +226,7 @@ class _NextUpCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   '${gig.dateShort} · ${app.venue(gig.venueId).name}',
-                  style: epText(size: 11.5, color: Ep.inkA(.55)),
+                  style: Theme.of(context).textTheme.epCaption,
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -262,13 +234,13 @@ class _NextUpCard extends StatelessWidget {
                   style: epText(
                     size: 11,
                     weight: FontWeight.w800,
-                    color: Ep.link,
+                    color: Ep.accent,
                   ),
                 ),
               ],
             ),
           ),
-          Icon(Icons.chevron_right, size: 18, color: Ep.inkA(.4)),
+          const Icon(Icons.chevron_right, color: Ep.contentSecondary),
         ],
       ),
     );

@@ -80,7 +80,7 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Ep.bg,
+      backgroundColor: Ep.background,
       body: SafeArea(
         child: Column(
           children: [
@@ -102,7 +102,7 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
                         size: 11,
                         weight: FontWeight.w800,
                         letterSpacing: 1.2,
-                        color: Ep.inkA(.55),
+                        color: Ep.contentSecondary,
                       ),
                     ),
                   ),
@@ -126,7 +126,7 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
             Text(
               error,
               textAlign: TextAlign.center,
-              style: epText(size: 13, color: Ep.inkA(.7), height: 1.4),
+              style: epText(size: 13, color: Ep.contentSecondary, height: 1.4),
             ),
             const SizedBox(height: 18),
             EpButton('CLOSE', onTap: () => Navigator.of(context).pop()),
@@ -139,7 +139,7 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
     if (controller == null) {
       return Text(
         'LOADING…',
-        style: epText(size: 11, color: Ep.inkA(.5), letterSpacing: 1.4),
+        style: epText(size: 11, color: Ep.contentSecondary, letterSpacing: 1.4),
       );
     }
 
@@ -162,25 +162,12 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
                   : (value.position.inMilliseconds / duration).clamp(0.0, 1.0);
               return Row(
                 children: [
-                  GestureDetector(
-                    onTap: _togglePlayback,
-                    behavior: HitTestBehavior.opaque,
-                    child: SizedBox(
-                      width: 34,
-                      height: 34,
-                      child: Center(
-                        child: value.isPlaying
-                            ? const Icon(
-                                Icons.pause,
-                                size: 20,
-                                color: Colors.white,
-                              )
-                            : const Padding(
-                                padding: EdgeInsets.only(left: 2),
-                                child: PlayTriangle(size: 13),
-                              ),
-                      ),
-                    ),
+                  IconButton(
+                    onPressed: _togglePlayback,
+                    tooltip: value.isPlaying ? 'Pause' : 'Play',
+                    icon: value.isPlaying
+                        ? const Icon(Icons.pause)
+                        : const Icon(Icons.play_arrow),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -191,14 +178,14 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
                           return Stack(
                             children: [
                               Positioned.fill(
-                                child: ColoredBox(color: Ep.whiteA(.12)),
+                                child: ColoredBox(color: Ep.surfaceDisabled),
                               ),
                               Align(
                                 alignment: Alignment.centerLeft,
                                 child: Container(
                                   width: constraints.maxWidth * progress,
                                   height: 3,
-                                  color: Ep.blue,
+                                  color: Ep.brand,
                                 ),
                               ),
                             ],
@@ -223,7 +210,7 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
           padding: const EdgeInsets.fromLTRB(16, 5, 16, 16),
           child: Text(
             '${widget.media.viewsLabel} · ${widget.media.lenLabel}',
-            style: epText(size: 11, color: Ep.inkA(.55)),
+            style: epText(size: 11, color: Ep.contentSecondary),
           ),
         ),
       ],

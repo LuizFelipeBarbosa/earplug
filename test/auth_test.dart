@@ -20,8 +20,8 @@ void main() {
     );
 
     // Signed in, so the taste step is up with its committing button.
-    expect(find.text('INTO THE ROOM'), findsOne);
-    await tester.tap(find.text('INTO THE ROOM'));
+    expect(find.text('PLUG IN'), findsOne);
+    await tester.tap(find.text('PLUG IN'));
     await tester.pump(const Duration(milliseconds: 200));
     expect(find.text("YOU'RE THROUGH"), findsOne);
 
@@ -49,7 +49,7 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('INTO THE ROOM'));
+    await tester.tap(find.text('PLUG IN'));
     await tester.pump(const Duration(seconds: 3));
 
     expect(app.rsvps, contains('g1'));
@@ -61,7 +61,7 @@ void main() {
   ) async {
     final app = await _pumpAuth(tester, openGate: (app) => app.openMyGigsTab());
 
-    await tester.tap(find.text('INTO THE ROOM'));
+    await tester.tap(find.text('PLUG IN'));
     await tester.pump(const Duration(seconds: 3));
 
     expect(app.current.screen, Screen.myGigs);
@@ -78,12 +78,27 @@ void main() {
       },
     );
 
-    await tester.tap(find.text('INTO THE ROOM'));
-    await tester.tap(find.text('INTO THE ROOM'));
+    await tester.tap(find.text('PLUG IN'));
+    await tester.tap(find.text('PLUG IN'));
     await tester.pump(const Duration(seconds: 3));
 
     expect(app.rsvps, contains('g1'));
     expect(app.current.screen, Screen.gig);
+  });
+
+  testWidgets('PLUG IN keeps the selected genre count at larger text scale', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.4;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await _pumpAuth(tester, openGate: (app) => app.openMyGigsTab());
+
+    await tester.tap(find.text('PUNK'));
+    await tester.pump();
+
+    expect(find.text('PLUG IN — 1 PICKED'), findsOne);
+    expect(tester.takeException(), isNull);
   });
 }
 

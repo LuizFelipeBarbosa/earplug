@@ -27,6 +27,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(harness.app.query, 'Mission Creep');
+    await tester.scrollUntilVisible(
+      find.text('MISSION CREEP'),
+      200,
+      scrollable: _allResultsScrollable(),
+    );
     expect(find.text('MISSION CREEP'), findsOne);
     expect(find.text('GENRES'), findsNothing);
   });
@@ -80,7 +85,36 @@ void main() {
           .text,
       'punk',
     );
+    await tester.scrollUntilVisible(
+      find.text('BANDS'),
+      200,
+      scrollable: _allResultsScrollable(),
+    );
     expect(find.text('BANDS'), findsOne);
+  });
+
+  testWidgets('search results construct off-screen rows lazily', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: ExploreScreen()));
+
+    await tester.enterText(find.byKey(const Key('explore-search-field')), 'a');
+    await tester.tap(find.byKey(const Key('explore-search-submit')));
+    await tester.pumpAndSettle();
+
+    final results = find.byKey(const Key('explore-results-all'));
+    final list = tester.widget<ListView>(results);
+    expect(list.childrenDelegate, isA<SliverChildBuilderDelegate>());
+    expect(find.text('SUNSET BUNKER'), findsNothing);
+
+    await tester.scrollUntilVisible(
+      find.text('SUNSET BUNKER'),
+      400,
+      scrollable: _allResultsScrollable(),
+    );
+
+    expect(find.text('SUNSET BUNKER'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('band and venue previews expand and collapse in place', (
@@ -124,3 +158,8 @@ void main() {
     expect(find.text('SEE LESS VENUES'), findsOne);
   });
 }
+
+Finder _allResultsScrollable() => find.descendant(
+  of: find.byKey(const Key('explore-results-all')),
+  matching: find.byType(Scrollable),
+);

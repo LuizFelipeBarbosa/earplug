@@ -1,7 +1,6 @@
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
-import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,17 +21,18 @@ void main() {
 
   testWidgets('profile renders all demo photo tiles', (tester) async {
     await _pumpProfile(tester);
-    final photoCount = DemoData.b1Media
-        .where((media) => media.kind == MediaKind.photo)
-        .length;
 
-    expect(find.text('PHOTOS'), findsOne);
-    // The strip sits below the initial test viewport; offstage widgets are
-    // still built, just excluded by the default skipOffstage.
-    expect(
-      find.byType(EpNetworkImage, skipOffstage: false),
-      findsNWidgets(photoCount),
+    await tester.scrollUntilVisible(
+      find.text('PHOTOS'),
+      200,
+      scrollable: find.byType(Scrollable).first,
     );
+    expect(find.text('PHOTOS'), findsOne);
+    for (final photo in DemoData.b1Media.where(
+      (media) => media.kind == MediaKind.photo,
+    )) {
+      expect(find.byKey(ValueKey('band-photo-${photo.id}')), findsOne);
+    }
   });
 
   testWidgets('a processing clip stays on the profile and shows a toast', (

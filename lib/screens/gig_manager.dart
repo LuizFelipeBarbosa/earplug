@@ -26,28 +26,16 @@ class GigManagerScreen extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('GIG MANAGER', style: epDisplay(size: 18)),
-            GestureDetector(
-              onTap: app.startGigCreate,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 9,
-                ),
-                decoration: BoxDecoration(
-                  color: Ep.blue,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  '+ NEW GIG',
-                  style: epText(
-                    size: 10.5,
-                    weight: FontWeight.w900,
-                    letterSpacing: .8,
-                    color: Colors.white,
-                  ),
-                ),
+            Expanded(
+              child: Text(
+                'GIG MANAGER',
+                style: Theme.of(context).textTheme.epPageHeading,
               ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: app.startGigCreate,
+              child: const Text('+ NEW GIG'),
             ),
           ],
         ),
@@ -59,7 +47,11 @@ class GigManagerScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 26),
             child: Text.rich(
               TextSpan(
-                style: epText(size: 12.5, color: Ep.inkA(.45), height: 1.5),
+                style: epText(
+                  size: 12.5,
+                  color: Ep.contentDisabled,
+                  height: 1.5,
+                ),
                 children: [
                   const TextSpan(text: 'No gigs yet.\n'),
                   TextSpan(
@@ -83,14 +75,14 @@ class GigManagerScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: Text(
               'Played gigs will collect here after your first show.',
-              style: epText(size: 11.5, color: Ep.inkA(.4)),
+              style: epText(size: 11.5, color: Ep.contentDisabled),
             ),
           ),
         for (final p in past)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Ep.whiteA(.07))),
+              border: const Border(bottom: BorderSide(color: Ep.border)),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -101,11 +93,14 @@ class GigManagerScreen extends StatelessWidget {
                     style: epText(
                       size: 12.5,
                       weight: FontWeight.w700,
-                      color: Ep.inkA(.75),
+                      color: Ep.contentSecondary,
                     ),
                   ),
                 ),
-                Text(p.meta, style: epText(size: 10.5, color: Ep.inkA(.4))),
+                Text(
+                  p.meta,
+                  style: epText(size: 10.5, color: Ep.contentDisabled),
+                ),
               ],
             ),
           ),
@@ -130,7 +125,6 @@ class _ManagerRow extends StatelessWidget {
     return EpCard(
       padding: const EdgeInsets.all(12),
       radius: 13,
-      borderColor: Ep.whiteA(.12),
       onTap: () => app.openGig(gig.id),
       child: Row(
         children: [
@@ -139,7 +133,6 @@ class _ManagerRow extends StatelessWidget {
             app.flyer(gig.flyKey),
             width: 46,
             height: 60,
-            rotationDeg: -2,
             radius: 5,
             shadow: false,
           ),
@@ -157,7 +150,7 @@ class _ManagerRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   '${gig.dateShort} · ${app.venue(gig.venueId).name}',
-                  style: epText(size: 11, color: Ep.inkA(.55)),
+                  style: epText(size: 11, color: Ep.contentSecondary),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -166,7 +159,7 @@ class _ManagerRow extends StatelessWidget {
                     size: 10,
                     weight: FontWeight.w700,
                     letterSpacing: .4,
-                    color: Ep.inkA(.4),
+                    color: Ep.contentDisabled,
                   ),
                 ),
               ],
@@ -178,7 +171,7 @@ class _ManagerRow extends StatelessWidget {
             children: [
               Text(
                 '${app.rsvpCount(gig)}',
-                style: epDisplay(size: 20, color: Ep.link),
+                style: epDisplay(size: 20, color: Ep.accent),
               ),
               Text(
                 'RSVPS',
@@ -186,7 +179,7 @@ class _ManagerRow extends StatelessWidget {
                   size: 9,
                   weight: FontWeight.w800,
                   letterSpacing: .8,
-                  color: Ep.inkA(.45),
+                  color: Ep.contentDisabled,
                 ),
               ),
             ],

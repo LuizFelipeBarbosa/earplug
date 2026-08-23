@@ -14,17 +14,17 @@ class ReadyPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: ready ? Ep.blue.withValues(alpha: .2) : Ep.card,
-        border: Border.all(color: ready ? Ep.blue : Ep.whiteA(.14)),
+        color: ready ? Ep.surfaceSelected : Ep.surfaceDisabled,
+        border: Border.all(color: ready ? Ep.accent : Ep.border),
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
         ready ? 'READY' : 'DRAFT',
-        style: epText(
-          size: 9.5,
-          weight: FontWeight.w900,
+        style: Theme.of(context).textTheme.epCaption.copyWith(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w900,
           letterSpacing: 1.2,
-          color: ready ? Ep.linkSoft : Ep.inkA(.45),
+          color: ready ? Ep.contentPrimary : Ep.contentDisabled,
         ),
       ),
     );
@@ -38,6 +38,7 @@ class Swatch extends StatelessWidget {
   final bool dashed;
   final VoidCallback onTap;
   final Widget child;
+  final String semanticLabel;
 
   const Swatch({
     super.key,
@@ -45,41 +46,42 @@ class Swatch extends StatelessWidget {
     required this.onTap,
     required this.child,
     this.dashed = false,
+    this.semanticLabel = 'Color swatch',
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 30,
-        height: 30,
-        decoration: BoxDecoration(
-          color: dashed ? Ep.bg : null,
-          shape: BoxShape.circle,
-          border: dashed
-              ? null
-              : Border.all(
-                  color: selected ? Ep.link : Ep.whiteA(.18),
-                  width: 2,
-                ),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Ep.link.withValues(alpha: .25),
-                    spreadRadius: 3,
-                  ),
-                ]
-              : null,
+    final swatch = Container(
+      width: 30,
+      height: 30,
+      decoration: BoxDecoration(
+        color: dashed ? Ep.background : null,
+        shape: BoxShape.circle,
+        border: dashed
+            ? null
+            : Border.all(color: selected ? Ep.accent : Ep.border, width: 2),
+      ),
+      child: dashed
+          ? DashedBox(
+              padding: EdgeInsets.zero,
+              radius: 15,
+              color: selected ? Ep.accent : Ep.border,
+              child: child,
+            )
+          : child,
+    );
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: semanticLabel,
+      child: Material(
+        color: Colors.transparent,
+        child: InkResponse(
+          onTap: onTap,
+          containedInkWell: true,
+          customBorder: const CircleBorder(),
+          child: SizedBox.square(dimension: 48, child: Center(child: swatch)),
         ),
-        child: dashed
-            ? DashedBox(
-                padding: EdgeInsets.zero,
-                radius: 15,
-                color: selected ? Ep.link : Ep.whiteA(.35),
-                child: child,
-              )
-            : child,
       ),
     );
   }
@@ -103,18 +105,18 @@ class DoneButton extends StatelessWidget {
 /// Text-field styling for inputs that sit inside a create-flow sheet.
 InputDecoration sheetInput(String hint) => InputDecoration(
   hintText: hint,
-  hintStyle: epText(size: 12.5, color: Ep.inkA(.35)),
   filled: true,
-  fillColor: Ep.bg,
+  fillColor: Ep.background,
   isDense: true,
-  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+  constraints: const BoxConstraints(minHeight: 48),
+  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
   enabledBorder: OutlineInputBorder(
     borderRadius: BorderRadius.circular(11),
-    borderSide: BorderSide(color: Ep.whiteA(.16)),
+    borderSide: const BorderSide(color: Ep.border),
   ),
   focusedBorder: OutlineInputBorder(
     borderRadius: BorderRadius.circular(11),
-    borderSide: BorderSide(color: Ep.whiteA(.3)),
+    borderSide: const BorderSide(color: Ep.accent, width: 2),
   ),
 );
 
@@ -140,21 +142,25 @@ class TextAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: padding,
-        child: Text(
-          label,
-          textAlign: TextAlign.center,
-          style: epText(
-            size: size,
-            weight: FontWeight.w900,
+    return TextButton(
+      onPressed: onTap,
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+        padding: WidgetStatePropertyAll(padding),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled)
+              ? Ep.contentDisabled
+              : color ?? Ep.accent,
+        ),
+        textStyle: WidgetStatePropertyAll(
+          Theme.of(context).textTheme.epLabel.copyWith(
+            fontSize: size,
+            fontWeight: FontWeight.w800,
             letterSpacing: letterSpacing,
-            color: color ?? Ep.inkA(.4),
           ),
         ),
       ),
+      child: Text(label, textAlign: TextAlign.center),
     );
   }
 }

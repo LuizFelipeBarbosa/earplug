@@ -61,7 +61,7 @@ class _PhotoViewerModalState extends State<_PhotoViewerModal> {
                   child: EpNetworkImage(
                     url: widget.photos[index].url,
                     fit: BoxFit.contain,
-                    fallback: const ColoredBox(color: Ep.card),
+                    fallback: const ColoredBox(color: Ep.surface),
                   ),
                 ),
               );
@@ -98,7 +98,9 @@ class _PhotoViewerModalState extends State<_PhotoViewerModal> {
                     Container(
                       width: 4,
                       height: 4,
-                      color: index == _currentIndex ? Ep.ink : Ep.inkA(.3),
+                      color: index == _currentIndex
+                          ? Ep.contentPrimary
+                          : Ep.contentDisabled,
                     ),
                   ],
                 ],

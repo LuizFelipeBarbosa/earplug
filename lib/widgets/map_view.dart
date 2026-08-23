@@ -26,7 +26,7 @@ Widget _darkTiles() {
   );
 }
 
-Widget _attribution() {
+Widget _attribution(BuildContext context) {
   return Positioned(
     right: 4,
     bottom: 2,
@@ -35,7 +35,9 @@ Widget _attribution() {
       color: Colors.black.withValues(alpha: .7),
       child: Text(
         '© OpenStreetMap contributors',
-        style: epText(size: 9, color: Ep.whiteA(.5)),
+        style: Theme.of(
+          context,
+        ).textTheme.epCaption.copyWith(fontSize: 9, color: Colors.white),
       ),
     ),
   );
@@ -52,10 +54,10 @@ class _Pin extends StatelessWidget {
     final grouped = count > 1;
     return Container(
       decoration: BoxDecoration(
-        color: grouped ? Colors.black : (free ? Ep.blue : Colors.black),
+        color: grouped ? Colors.black : (free ? Ep.brand : Colors.black),
         shape: BoxShape.circle,
         border: Border.all(
-          color: grouped || !free ? Ep.blue : Colors.white,
+          color: grouped || !free ? Ep.brand : Colors.white,
           width: 2.5,
         ),
         boxShadow: [
@@ -70,11 +72,9 @@ class _Pin extends StatelessWidget {
           ? Center(
               child: Text(
                 '$count',
-                style: epText(
-                  size: 10,
-                  weight: FontWeight.w900,
-                  color: Colors.white,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.epLabel.copyWith(fontSize: 10, color: Colors.white),
               ),
             )
           : null,
@@ -89,12 +89,12 @@ class _UserPin extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Ep.linkSoft,
+        color: Ep.accent,
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white, width: 3),
         boxShadow: [
           BoxShadow(
-            color: Ep.blue.withValues(alpha: .45),
+            color: Ep.brand.withValues(alpha: .45),
             blurRadius: 12,
             spreadRadius: 5,
           ),
@@ -104,7 +104,7 @@ class _UserPin extends StatelessWidget {
         child: SizedBox.square(
           dimension: 6,
           child: DecoratedBox(
-            decoration: BoxDecoration(color: Ep.blue, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: Ep.brand, shape: BoxShape.circle),
           ),
         ),
       ),
@@ -148,13 +148,17 @@ class _GigMapViewState extends State<GigMapView> {
       gigsByVenue.putIfAbsent(gig.venueId, () => []).add(gig);
     }
 
-    return [
+    final groups = [
       for (final entry in gigsByVenue.entries)
         _VenueGigGroup(
           venue: app.knownVenue(entry.key)!,
           gigs: entry.value..sort((a, b) => a.startsAt.compareTo(b.startsAt)),
         ),
     ];
+    // Paint denser venue groups last so their larger count marker remains
+    // usable when nearby 48px touch targets overlap at a wide map zoom.
+    groups.sort((a, b) => a.gigs.length.compareTo(b.gigs.length));
+    return groups;
   }
 
   void _updateCamera(AppState app, List<_VenueGigGroup> groups) {
@@ -186,7 +190,7 @@ class _GigMapViewState extends State<GigMapView> {
       _controller.fitCamera(
         CameraFit.coordinates(
           coordinates: points,
-          padding: const EdgeInsets.fromLTRB(46, 46, 46, 180),
+          padding: const EdgeInsets.fromLTRB(46, 46, 46, 240),
           maxZoom: 14,
         ),
       );
@@ -212,6 +216,13 @@ class _GigMapViewState extends State<GigMapView> {
     if (selected != null && selectedGroup == null) {
       selected = null;
     }
+    final groupsByLatitude = [
+      ...groups,
+    ]..sort((a, b) => b.venue.point.latitude.compareTo(a.venue.point.latitude));
+    final markersAbovePoint = <String>{
+      for (var index = 0; index < groupsByLatitude.length; index += 2)
+        groupsByLatitude[index].venue.id,
+    };
     _updateCamera(app, groups);
 
     return Stack(
@@ -221,7 +232,7 @@ class _GigMapViewState extends State<GigMapView> {
           options: MapOptions(
             initialCenter: app.discoveryCenter,
             initialZoom: 13,
-            backgroundColor: Ep.bg,
+            backgroundColor: Ep.background,
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
             ),
@@ -253,15 +264,31 @@ class _GigMapViewState extends State<GigMapView> {
                           : 'venue-marker-${group.venue.id}',
                     ),
                     point: group.venue.point,
-                    width: group.gigs.length == 1 ? 18 : 26,
-                    height: group.gigs.length == 1 ? 18 : 26,
-                    child: GestureDetector(
-                      onTap: () => setState(() => selected = group.gigs.first),
-                      child: _Pin(
-                        free: group.gigs.length == 1
-                            ? group.gigs.single.free
-                            : false,
-                        count: group.gigs.length,
+                    width: 48,
+                    height: 48,
+                    alignment: markersAbovePoint.contains(group.venue.id)
+                        ? Alignment.topCenter
+                        : Alignment.bottomCenter,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkResponse(
+                        onTap: () =>
+                            setState(() => selected = group.gigs.first),
+                        radius: 24,
+                        child: Align(
+                          alignment: markersAbovePoint.contains(group.venue.id)
+                              ? Alignment.bottomCenter
+                              : Alignment.topCenter,
+                          child: SizedBox.square(
+                            dimension: group.gigs.length == 1 ? 18 : 26,
+                            child: _Pin(
+                              free: group.gigs.length == 1
+                                  ? group.gigs.single.free
+                                  : false,
+                              count: group.gigs.length,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -269,7 +296,7 @@ class _GigMapViewState extends State<GigMapView> {
             ),
           ],
         ),
-        _attribution(),
+        _attribution(context),
         if (gigs.isEmpty && widget.emptyState != null)
           Positioned(left: 18, right: 18, top: 18, child: widget.emptyState!),
         if (selected case final Gig g when selectedGroup != null)
@@ -324,37 +351,27 @@ class _MapGigCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return EpCard(
+      variant: EpCardVariant.raised,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF101014),
-        border: Border.all(color: Ep.whiteA(.14)),
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: .6),
-            blurRadius: 30,
-            offset: const Offset(0, 12),
-          ),
-        ],
-      ),
+      radius: 14,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (total > 1) ...[
             Row(
               children: [
-                Text(
-                  '${position + 1} OF $total GIGS AT THIS VENUE',
-                  key: const Key('map-gig-position'),
-                  style: epText(
-                    size: 10,
-                    weight: FontWeight.w900,
-                    letterSpacing: .7,
-                    color: Ep.inkA(.5),
+                Expanded(
+                  child: Text(
+                    '${position + 1} OF $total GIGS AT THIS VENUE',
+                    key: const Key('map-gig-position'),
+                    style: Theme.of(context).textTheme.epCaption.copyWith(
+                      fontSize: 10,
+                      letterSpacing: .7,
+                    ),
                   ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 _CarouselButton(
                   key: const Key('previous-map-gig'),
                   icon: Icons.chevron_left,
@@ -372,40 +389,22 @@ class _MapGigCard extends StatelessWidget {
           ],
           Text(
             gig.title.toUpperCase(),
-            style: epText(size: 15, weight: FontWeight.w800, letterSpacing: .2),
+            style: Theme.of(context).textTheme.epSectionHeading.copyWith(
+              fontSize: 15,
+              letterSpacing: .2,
+            ),
           ),
           const SizedBox(height: 3),
           Text(
             '${venue.name} · ${venue.area} · ${gig.dateLine}',
-            style: epText(size: 12, color: Ep.inkA(.6)),
+            style: Theme.of(context).textTheme.epCaption,
           ),
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               PriceBadge(gig),
-              GestureDetector(
-                onTap: onOpen,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 9,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Ep.blue,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'OPEN GIG →',
-                    style: epText(
-                      size: 12,
-                      weight: FontWeight.w800,
-                      letterSpacing: .8,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
+              FilledButton(onPressed: onOpen, child: const Text('OPEN GIG →')),
             ],
           ),
         ],
@@ -422,17 +421,12 @@ class _CarouselButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 28,
-        height: 24,
-        decoration: BoxDecoration(
-          border: Border.all(color: Ep.whiteA(onTap == null ? .08 : .2)),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Icon(icon, size: 18, color: Ep.inkA(onTap == null ? .2 : .7)),
+    return IconButton(
+      onPressed: onTap,
+      style: const ButtonStyle(
+        fixedSize: WidgetStatePropertyAll(Size.square(48)),
       ),
+      icon: Icon(icon, size: 20),
     );
   }
 }
@@ -453,7 +447,7 @@ class VenueMiniMap extends StatelessWidget {
             options: MapOptions(
               initialCenter: venue.point,
               initialZoom: 15,
-              backgroundColor: Ep.bg,
+              backgroundColor: Ep.background,
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.none,
               ),
@@ -472,7 +466,7 @@ class VenueMiniMap extends StatelessWidget {
               ),
             ],
           ),
-          _attribution(),
+          _attribution(context),
         ],
       ),
     );

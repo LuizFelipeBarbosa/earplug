@@ -46,33 +46,34 @@ class FanEventCard extends StatelessWidget {
             app.flyer(gig.flyKey),
             width: 72,
             height: 96,
-            rotationDeg: -1.4,
             radius: 6,
             shadow: false,
             padding: const EdgeInsets.all(7),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  gig.title.toUpperCase(),
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                  style: epDisplay(
-                    size: 9,
-                    height: 1.08,
-                    color: app.flyer(gig.flyKey).fg,
+            child: MediaQuery.withNoTextScaling(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    gig.title.toUpperCase(),
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: epDisplay(
+                      size: 9,
+                      height: 1.08,
+                      color: app.flyer(gig.flyKey).fg,
+                    ),
                   ),
-                ),
-                Text(
-                  gig.dateShort,
-                  style: epText(
-                    size: 7,
-                    weight: FontWeight.w900,
-                    color: app.flyer(gig.flyKey).fg.withValues(alpha: .8),
+                  Text(
+                    gig.dateShort,
+                    style: epText(
+                      size: 7,
+                      weight: FontWeight.w900,
+                      color: app.flyer(gig.flyKey).fg.withValues(alpha: .8),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -88,7 +89,8 @@ class FanEventCard extends StatelessWidget {
                         gig.title.toUpperCase(),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: epDisplay(size: 14, height: 1.12),
+                        style: Theme.of(context).textTheme.epSectionHeading
+                            .copyWith(fontSize: 14, height: 1.12),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -98,18 +100,18 @@ class FanEventCard extends StatelessWidget {
                 const SizedBox(height: 3),
                 Text(
                   '${gig.dateShort} · DOORS ${_doorsTime(gig.time)}',
-                  style: epText(
-                    size: 11.5,
-                    weight: FontWeight.w800,
-                    color: Ep.link,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epLabel.copyWith(color: Ep.accent),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '${venue.name}${showDistance ? ' · ${app.distanceOf(venue)}' : ''}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: epText(size: 11.5, color: Ep.inkA(.62)),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epCaption.copyWith(color: Ep.contentSecondary),
                 ),
                 if (lineup.isNotEmpty) ...[
                   const SizedBox(height: 2),
@@ -117,7 +119,7 @@ class FanEventCard extends StatelessWidget {
                     lineup.join(' · '),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: epText(size: 10.5, color: Ep.inkA(.48)),
+                    style: Theme.of(context).textTheme.epCaption,
                   ),
                 ],
                 const SizedBox(height: 7),
@@ -200,16 +202,16 @@ class _AgeBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
-        border: Border.all(color: Ep.whiteA(.22)),
+        border: Border.all(color: Ep.border),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         label.toUpperCase(),
-        style: epText(
-          size: 9,
-          weight: FontWeight.w900,
+        style: Theme.of(context).textTheme.epCaption.copyWith(
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
           letterSpacing: .5,
-          color: Ep.inkA(.68),
+          color: Ep.contentSecondary,
         ),
       ),
     );
@@ -232,17 +234,16 @@ class _IconAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox(
-          width: 28,
-          height: 28,
-          child: Icon(icon, size: 17, color: active ? Ep.link : Ep.inkA(.62)),
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onTap,
+      style: ButtonStyle(
+        fixedSize: const WidgetStatePropertyAll(Size.square(48)),
+        foregroundColor: WidgetStatePropertyAll(
+          active ? Ep.accent : Ep.contentSecondary,
         ),
       ),
+      icon: Icon(icon, size: 19),
     );
   }
 }
@@ -258,31 +259,34 @@ class _TicketAction extends StatelessWidget {
     final external = gig.tix == Ticketing.external;
     final going = app.rsvps.contains(gig.id);
     final label = external ? 'GET TICKETS ↗' : (going ? 'GOING ✓' : 'RSVP');
-    return GestureDetector(
-      key: ValueKey('ticket-action-${gig.id}'),
-      behavior: HitTestBehavior.opaque,
-      onTap: external
-          ? () => _openTickets(app, gig)
-          : () => going ? app.toggleRsvp(gig.id) : app.requestRsvp(gig.id),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-          color: !external && !going ? Ep.blue : null,
-          border: Border.all(
-            color: !external && !going ? Ep.blue : Ep.whiteA(.24),
-          ),
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: Text(
-          label,
-          style: epText(
-            size: external ? 8.5 : 9.5,
-            weight: FontWeight.w900,
-            letterSpacing: .4,
-            color: !external && !going ? Colors.white : Ep.inkA(.75),
-          ),
+    final onPressed = external
+        ? () => _openTickets(app, gig)
+        : () => going ? app.toggleRsvp(gig.id) : app.requestRsvp(gig.id);
+    final style = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 10),
+      ),
+      textStyle: WidgetStatePropertyAll(
+        Theme.of(context).textTheme.epLabel.copyWith(
+          fontSize: external ? 9 : 10,
+          letterSpacing: .4,
         ),
       ),
+    );
+    if (!external && !going) {
+      return FilledButton(
+        key: ValueKey('ticket-action-${gig.id}'),
+        onPressed: onPressed,
+        style: style,
+        child: Text(label),
+      );
+    }
+    return OutlinedButton(
+      key: ValueKey('ticket-action-${gig.id}'),
+      onPressed: onPressed,
+      style: style,
+      child: Text(label),
     );
   }
 }

@@ -24,6 +24,7 @@ import 'services/auth_service.dart';
 import 'services/auth_service_factory.dart';
 import 'services/convex_service.dart';
 import 'theme.dart';
+import 'widgets/branding.dart';
 import 'widgets/common.dart';
 import 'widgets/tab_bars.dart';
 
@@ -63,7 +64,7 @@ class _ConfigErrorApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: buildEpTheme(),
       home: ColoredBox(
-        color: Ep.bg,
+        color: Ep.background,
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(28),
@@ -75,7 +76,11 @@ class _ConfigErrorApp extends StatelessWidget {
                 Text(
                   message,
                   textAlign: TextAlign.center,
-                  style: epText(size: 13, color: Ep.inkA(.75), height: 1.5),
+                  style: epText(
+                    size: 13,
+                    color: Ep.contentSecondary,
+                    height: 1.5,
+                  ),
                 ),
               ],
             ),
@@ -126,7 +131,7 @@ class EarplugApp extends StatelessWidget {
           return Banner(
             message: label,
             location: BannerLocation.topEnd,
-            color: Ep.ink,
+            color: Ep.contentPrimary,
             child: app,
           );
         },
@@ -160,11 +165,11 @@ class RootShell extends StatelessWidget {
 
     final body = switch (app.dataStatus) {
       DataStatus.connecting => ColoredBox(
-        color: Ep.bg,
-        child: Center(child: Text('EARPLUG', style: epDisplay(size: 28))),
+        color: Ep.background,
+        child: const Center(child: EpLogo.full(width: 190)),
       ),
       DataStatus.error => ColoredBox(
-        color: Ep.bg,
+        color: Ep.background,
         child: Center(
           child: Padding(
             padding: const EdgeInsets.all(28),
@@ -174,7 +179,11 @@ class RootShell extends StatelessWidget {
                 Text(
                   app.dataError ?? "Couldn't load the feed.",
                   textAlign: TextAlign.center,
-                  style: epText(size: 14, color: Ep.inkA(.75), height: 1.4),
+                  style: epText(
+                    size: 14,
+                    color: Ep.contentSecondary,
+                    height: 1.4,
+                  ),
                 ),
                 const SizedBox(height: 20),
                 SizedBox(
@@ -212,7 +221,7 @@ class RootShell extends StatelessWidget {
         if (!didPop) app.back();
       },
       child: ColoredBox(
-        color: Ep.pageBackdrop,
+        color: Ep.surface,
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
@@ -266,7 +275,7 @@ class _Toast extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Ep.ink,
+          color: Ep.contentPrimary,
           borderRadius: BorderRadius.circular(12),
           boxShadow: [
             BoxShadow(
@@ -279,7 +288,11 @@ class _Toast extends StatelessWidget {
         child: Text(
           message,
           textAlign: TextAlign.center,
-          style: epText(size: 12.5, weight: FontWeight.w800, color: Ep.bg),
+          style: epText(
+            size: 12.5,
+            weight: FontWeight.w800,
+            color: Ep.background,
+          ),
         ),
       ),
     );

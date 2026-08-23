@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../band_media_state.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/form_bits.dart';
 
 class BandEditScreen extends StatelessWidget {
   const BandEditScreen({super.key});
@@ -24,44 +25,29 @@ class BandEditScreen extends StatelessWidget {
         tabBarClearance,
       ),
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('PUBLIC PROFILE', style: epDisplay(size: 18)),
-            GestureDetector(
-              onTap: () => app.openBand(app.bandId),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 7,
-                ),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Ep.whiteA(.22)),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  'PREVIEW AS FAN ›',
-                  style: epText(
-                    size: 10,
-                    weight: FontWeight.w800,
-                    letterSpacing: .8,
-                  ),
-                ),
-              ),
+            Text(
+              'PUBLIC PROFILE',
+              style: Theme.of(context).textTheme.epPageHeading,
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: () => app.openBand(app.bandId),
+              child: const Text('PREVIEW AS FAN'),
             ),
           ],
         ),
         const SizedBox(height: 14),
-        Container(
+        EpCard(
+          variant: EpCardVariant.selected,
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-          decoration: BoxDecoration(
-            color: Ep.blue.withValues(alpha: .14),
-            border: Border.all(color: Ep.blue.withValues(alpha: .5)),
-            borderRadius: BorderRadius.circular(11),
-          ),
           child: Text(
             "You're editing the real thing — what you see here is exactly what fans see.",
-            style: epText(size: 11.5, color: Ep.linkSoft, height: 1.45),
+            style: Theme.of(
+              context,
+            ).textTheme.epCaption.copyWith(color: Ep.contentPrimary),
           ),
         ),
         const SizedBox(height: 14),
@@ -69,26 +55,23 @@ class BandEditScreen extends StatelessWidget {
           children: [
             BandAvatar(band, size: 64, radius: 13, fontSize: 22),
             const SizedBox(width: 13),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(band.name.toUpperCase(), style: epDisplay(size: 18)),
-                GestureDetector(
-                  onTap: app.openBandMedia,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Text(
-                      'CHANGE PHOTO',
-                      style: epText(
-                        size: 11,
-                        weight: FontWeight.w800,
-                        letterSpacing: .5,
-                        color: Ep.link,
-                      ),
-                    ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    band.name.toUpperCase(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: epDisplay(size: 18),
                   ),
-                ),
-              ],
+                  TextAction(
+                    'CHANGE PHOTO',
+                    onTap: app.openBandMedia,
+                    padding: EdgeInsets.zero,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -131,36 +114,25 @@ class BandEditScreen extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SectionLabel('VIDEOS'),
-            Row(
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
               children: [
-                GestureDetector(
+                TextAction(
+                  '+ UPLOAD CLIP',
                   onTap: app.openBandMedia,
-                  child: Text(
-                    '+ UPLOAD CLIP',
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w900,
-                      letterSpacing: .6,
-                      color: Ep.link,
-                    ),
-                  ),
+                  padding: EdgeInsets.zero,
                 ),
-                const SizedBox(width: 12),
-                GestureDetector(
+                TextAction(
+                  'MANAGE',
                   onTap: app.openBandMedia,
-                  child: Text(
-                    'MANAGE ›',
-                    style: epText(
-                      size: 10.5,
-                      weight: FontWeight.w800,
-                      letterSpacing: .6,
-                      color: Ep.inkA(.55),
-                    ),
-                  ),
+                  color: Ep.contentSecondary,
+                  padding: EdgeInsets.zero,
                 ),
               ],
             ),
@@ -168,17 +140,9 @@ class BandEditScreen extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         for (final v in videos) ...[
-          Container(
+          EpCard(
+            variant: v.pinned ? EpCardVariant.selected : EpCardVariant.standard,
             padding: const EdgeInsets.all(9),
-            decoration: BoxDecoration(
-              color: Ep.card,
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(
-                color: v.pinned
-                    ? Ep.blue.withValues(alpha: .55)
-                    : Ep.whiteA(.1),
-              ),
-            ),
             child: Row(
               children: [
                 Container(
@@ -186,11 +150,11 @@ class BandEditScreen extends StatelessWidget {
                   height: 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A20),
-                    border: Border.all(color: Ep.whiteA(.12)),
+                    color: Ep.surfaceRaised,
+                    border: Border.all(color: Ep.border),
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: PlayTriangle(size: 9, color: Ep.whiteA(.8)),
+                  child: const PlayTriangle(size: 9, color: Ep.contentPrimary),
                 ),
                 const SizedBox(width: 9),
                 Expanded(
@@ -206,7 +170,7 @@ class BandEditScreen extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         '${v.viewsLabel} · ${v.lenLabel}',
-                        style: epText(size: 10.5, color: Ep.inkA(.5)),
+                        style: epText(size: 10.5, color: Ep.contentSecondary),
                       ),
                     ],
                   ),
