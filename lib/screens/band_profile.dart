@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../band_media_state.dart';
@@ -105,6 +106,7 @@ class BandProfileScreen extends StatelessWidget {
                   height: 1.5,
                 ),
               ),
+              _BandLinks(app: app, bandId: bandId),
               const SizedBox(height: 16),
               EpButton(
                 following
@@ -207,6 +209,57 @@ class BandProfileScreen extends StatelessWidget {
       ],
     );
   }
+}
+
+class _BandLinks extends StatelessWidget {
+  const _BandLinks({required this.app, required this.bandId});
+
+  final AppState app;
+  final String bandId;
+
+  @override
+  Widget build(BuildContext context) {
+    final links = [
+      (label: 'INSTAGRAM', value: app.linkIgFor(bandId), instagram: true),
+      (label: 'BANDCAMP', value: app.linkBcFor(bandId), instagram: false),
+      (label: 'YOUTUBE', value: app.linkYtFor(bandId), instagram: false),
+    ].where((link) => link.value.trim().isNotEmpty).toList();
+    if (links.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Wrap(
+        spacing: 7,
+        runSpacing: 7,
+        children: [
+          for (final link in links)
+            OutlinedButton(
+              onPressed: () =>
+                  _openBandLink(app, link.value, instagram: link.instagram),
+              child: Text('${link.label} ↗'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _openBandLink(
+  AppState app,
+  String raw, {
+  required bool instagram,
+}) async {
+  final value = raw.trim();
+  final Uri uri;
+  if (value.startsWith('https://') || value.startsWith('http://')) {
+    uri = Uri.parse(value);
+  } else if (instagram) {
+    uri = Uri.https('instagram.com', value.replaceFirst(RegExp(r'^@'), ''));
+  } else {
+    uri = Uri.parse('https://$value');
+  }
+  final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+  if (!opened) app.say("Couldn't open that link.");
 }
 
 class _PastShows extends StatelessWidget {
@@ -313,13 +366,13 @@ class _PastRow extends StatelessWidget {
   }
 }
 
-/// Live history in the same "title — venue" / short-date shape the fan's own
+/// Live history in the same "title · venue" / short-date shape the fan's own
 /// history uses (`ConvexRepository.history`).
 List<PastGig> _pastRowsFrom(BandHistory history) {
   final rows = <PastGig>[];
   for (final gig in history.gigs) {
     final venueName = history.venues[gig.venueId]?.name ?? '';
-    final title = venueName.isEmpty ? gig.title : '${gig.title} — $venueName';
+    final title = venueName.isEmpty ? gig.title : '${gig.title} · $venueName';
     rows.add(PastGig(title, gig.dateShort));
   }
   return rows;

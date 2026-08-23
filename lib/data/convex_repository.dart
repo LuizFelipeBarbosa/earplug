@@ -126,7 +126,7 @@ class ConvexRepository implements EarplugRepository {
         PastGig(
           (json['venueName'] as String).isEmpty
               ? json['title'] as String
-              : '${json['title']} — ${json['venueName']}',
+              : '${json['title']} · ${json['venueName']}',
           Gig.dateShortFor((json['startsAt'] as num).toInt()),
         ),
     ];
@@ -209,8 +209,49 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<void> ensureRsvp(String gigId) async {
+    await _convexService.mutation('interactions:toggleRsvp', {
+      'gigId': gigId,
+      'on': true,
+    });
+  }
+
+  @override
+  Future<void> ensureFollow(String bandId) async {
+    await _convexService.mutation('interactions:toggleFollow', {
+      'bandId': bandId,
+      'on': true,
+    });
+  }
+
+  @override
+  Future<void> ensureSave(String gigId) async {
+    await _convexService.mutation('interactions:toggleSave', {
+      'gigId': gigId,
+      'on': true,
+    });
+  }
+
+  @override
   Future<void> setGenres(List<String> genres) async {
     await _convexService.mutation('users:setGenres', {'genres': genres});
+  }
+
+  @override
+  Future<void> updateFanOnboarding({
+    FanCity? preferredCity,
+    FanGenreChoice? genreChoice,
+    bool? collapsed,
+    List<String>? genres,
+  }) async {
+    final preferredCityValue = preferredCity?.name;
+    final genreChoiceValue = genreChoice?.name;
+    await _convexService.mutation('users:updateFanOnboarding', {
+      'preferredCity': ?preferredCityValue,
+      'genreChoice': ?genreChoiceValue,
+      'collapsed': ?collapsed,
+      'genres': ?genres,
+    });
   }
 
   @override
@@ -219,7 +260,7 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<({String bandId, String slug})> createBand({
+  Future<({Band band, String slug})> createBand({
     required String name,
     required List<String> genres,
     required String bio,
@@ -241,7 +282,7 @@ class ConvexRepository implements EarplugRepository {
     });
     final payload = _asMap(result);
     return (
-      bandId: payload['bandId'] as String,
+      band: Band.fromJson(_asMap(payload['band'])),
       slug: payload['slug'] as String,
     );
   }

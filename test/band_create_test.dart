@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_create.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/material.dart';
@@ -15,17 +16,22 @@ void main() {
   testWidgets(
     'the tape, its labels and every sheet render and drive the form',
     (tester) async {
-      final app = (await _pumpBandCreate(tester)).app;
+      final harness = await _pumpBandCreate(tester);
+      final app = harness.app;
+      harness.picker.nextPhoto = photoFixture();
 
       // Header, blank cassette and the liner notes.
       expect(find.text('START A BAND'), findsOne);
       expect(find.text('DRAFT'), findsOne);
-      expect(find.text('SIDE A · DEMO'), findsOne);
-      expect(find.text('HOME TAPING'), findsOne);
+      expect(find.text('SIDE A · SAMPLE'), findsOne);
+      expect(find.text('SET HOME BASE'), findsOne);
       expect(find.text('what do you sound like?'), findsOne);
       expect(find.text('BAND NAME · REQUIRED'), findsOne);
       expect(find.text('SOUND · REQUIRED'), findsOne);
       expect(find.text('HOME BASE · REQUIRED'), findsOne);
+      expect(find.text('PROFILE IMAGE · OPTIONAL'), findsOne);
+      expect(find.text('SHORT BIO · OPTIONAL'), findsOne);
+      expect(find.text('LINKS · OPTIONAL'), findsOne);
       expect(find.text('TAPE FILLS AS YOU GO'), findsOne);
       expect(find.text('0%'), findsOne);
       expect(find.text('Still needs a name + a genre + a home base'), findsOne);
@@ -36,7 +42,7 @@ void main() {
       expect(app.nbName, 'Static Bloom');
       expect(find.text('BAND NAME ✓'), findsOne);
       expect(find.text('earplug.app/static-bloom'), findsOne);
-      expect(find.text('20%'), findsOne);
+      expect(find.text('17%'), findsOne);
 
       await tester.tap(find.byKey(const ValueKey('label-riso')));
       await tester.pump();
@@ -47,7 +53,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('SOUND · REQUIRED'));
       await tester.pumpAndSettle();
-      expect(find.text('Up to three — this is what fans filter by.'), findsOne);
+      expect(
+        find.text('Choose up to three. Fans use these to find you.'),
+        findsOne,
+      );
       await tester.tap(find.text('PUNK'));
       await tester.tap(find.text('HARDCORE'));
       await tester.tap(find.text('GARAGE'));
@@ -55,7 +64,7 @@ void main() {
       await tester.tap(find.text('THRASH'));
       await tester.pump();
       expect(app.nbGenres, ['punk', 'hardcore', 'garage']);
-      expect(app.toast, 'Three genres max — it keeps discovery honest.');
+      expect(app.toast, 'Three genres max. It keeps discovery honest.');
       await tester.tap(find.text('HARDCORE'));
       await tester.pump();
       await tester.enterText(
@@ -67,7 +76,7 @@ void main() {
       expect(app.nbGenres, ['punk', 'garage', 'surf punk']);
       await tester.tap(find.text('DONE'));
       await tester.pumpAndSettle();
-      expect(find.text('punk · garage · surf punk'), findsOne);
+      expect(find.text('PUNK · GARAGE · SURF PUNK'), findsOne);
       expect(find.text('SOUND ✓'), findsOne);
 
       // Home base sheet — the scene picks come with band and venue counts.
@@ -80,10 +89,10 @@ void main() {
       await tester.tap(find.text('MISSION, SF'));
       await tester.pumpAndSettle();
       expect(app.nbArea, 'Mission, SF');
-      expect(find.text('MISSION, SF'), findsOne); // the tape stamp
+      expect(find.text('HOME BASE ✓'), findsOne);
       expect(find.text('READY'), findsOne);
       expect(
-        find.text('Ready — you can post a gig the moment this lands.'),
+        find.text('Ready. Profile image, short bio, and links can wait.'),
         findsOne,
       );
 
@@ -91,20 +100,26 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -280));
       await tester.pumpAndSettle();
 
-      // Sleeve notes sheet — the starter line fills the bio.
-      await tester.tap(find.text('SLEEVE NOTES'));
+      // The optional profile image is part of the same visible checklist.
+      await tester.tap(find.text('PROFILE IMAGE · OPTIONAL'));
+      await tester.pumpAndSettle();
+      expect(app.nbPhoto, isNotNull);
+      expect(find.text('PROFILE IMAGE ✓'), findsOne);
+
+      // Short bio sheet: the starter line fills the profile copy.
+      await tester.tap(find.text('SHORT BIO · OPTIONAL'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('USE A STARTER LINE'));
       await tester.pump();
       expect(app.nbBio, isNotEmpty);
       await tester.tap(find.text('DONE'));
       await tester.pumpAndSettle();
-      expect(find.text('SLEEVE NOTES ✓'), findsOne);
+      expect(find.text('SHORT BIO ✓'), findsOne);
 
       // Credits sheet — invite a bandmate, then change your mind.
       await tester.drag(find.byType(ListView), const Offset(0, -280));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('CREDITS'));
+      await tester.tap(find.text('INVITE BANDMATES (OPTIONAL)'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.widgetWithText(TextField, '@username'),
@@ -134,7 +149,7 @@ void main() {
       // Links sheet.
       await tester.drag(find.byType(ListView), const Offset(0, -280));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('LINKS'));
+      await tester.tap(find.text('LINKS · OPTIONAL'));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.widgetWithText(TextField, '@yourband'),
@@ -144,7 +159,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(app.nbIg, '@staticbloom');
       expect(find.text('Instagram'), findsOne);
-      // Links fill the fifth liner line, so the tape is fully wound.
+      // All six profile checklist steps are now complete.
+      await tester.drag(find.byType(ListView), const Offset(0, 900));
+      await tester.pumpAndSettle();
       expect(find.text('FULL TAPE'), findsOne);
       expect(find.text('100%'), findsOne);
 
@@ -164,22 +181,47 @@ void main() {
       await tester.pumpAndSettle();
       expect(app.nbName, isEmpty);
       expect(find.text('DRAFT'), findsOne);
-      expect(find.text('HOME TAPING'), findsOne);
+      expect(find.text('SET HOME BASE'), findsOne);
 
       // Let the genre-cap toast expire so no timer outlives the test.
       await tester.pump(const Duration(seconds: 3));
     },
   );
 
-  testWidgets('the created view leads out three ways', (tester) async {
+  testWidgets('the created view offers next steps and a clear not-now exit', (
+    tester,
+  ) async {
     final app = (await _pumpBandCreate(tester)).app;
     await _fillAndCreate(tester);
 
-    // The header ✕ is gone on this screen, so a plain exit has to live here.
-    expect(find.text('GO TO BAND'), findsOne);
-    await tester.tap(find.text('GO TO BAND'));
+    expect(find.text('POST A MUSIC CLIP'), findsOne);
+    expect(find.text('PUBLISH A GIG'), findsOne);
+    expect(find.text('NOT NOW'), findsOne);
+    await tester.tap(find.text('NOT NOW'));
     await tester.pumpAndSettle();
     expect(app.current.screen, Screen.bandDash);
+  });
+
+  testWidgets('the created view opens the music clip workflow', (tester) async {
+    final app = (await _pumpBandCreate(tester)).app;
+    await _fillAndCreate(tester);
+
+    await tester.tap(find.text('POST A MUSIC CLIP'));
+    await tester.pump();
+
+    expect(app.current.screen, Screen.bandMedia);
+  });
+
+  testWidgets('the created view opens the gig publishing workflow', (
+    tester,
+  ) async {
+    final app = (await _pumpBandCreate(tester)).app;
+    await _fillAndCreate(tester);
+
+    await tester.tap(find.text('PUBLISH A GIG'));
+    await tester.pump();
+
+    expect(app.current.screen, Screen.gigCreate);
   });
 
   testWidgets('the join link becomes copyable once the slug is real', (
@@ -195,7 +237,7 @@ void main() {
 
     await tester.drag(find.byType(ListView), const Offset(0, -560));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('CREDITS'));
+    await tester.tap(find.text('INVITE BANDMATES (OPTIONAL)'));
     await tester.pumpAndSettle();
 
     // Now it is the server's slug, and it can be copied.
@@ -270,6 +312,22 @@ void main() {
     expect(photos.single.isHero, isTrue);
   });
 
+  testWidgets(
+    'created band is usable before membership subscription catches up',
+    (tester) async {
+      final repository = _SilentCreateRepository(auth: FakeAuthService());
+      final app = (await _pumpBandCreate(tester, repository: repository)).app;
+
+      await _fillAndCreate(tester);
+
+      expect(app.bandId, 'silent-band');
+      expect(app.myBand?.name, 'Static Bloom');
+      expect(app.myBands, contains('silent-band'));
+      expect(app.roleFor('silent-band'), 'admin');
+      expect(app.isAdminOf('silent-band'), isTrue);
+    },
+  );
+
   testWidgets('an unready create is visibly and semantically disabled', (
     tester,
   ) async {
@@ -336,7 +394,7 @@ class _GatedDemoRepository extends DemoRepository {
   int createCalls = 0;
 
   @override
-  Future<({String bandId, String slug})> createBand({
+  Future<({Band band, String slug})> createBand({
     required String name,
     required List<String> genres,
     required String bio,
@@ -359,4 +417,37 @@ class _GatedDemoRepository extends DemoRepository {
       linkYt: linkYt,
     );
   }
+}
+
+/// Returns the mutation payload without publishing a matching myBands event,
+/// reproducing the short websocket lag that can follow a live create.
+class _SilentCreateRepository extends DemoRepository {
+  _SilentCreateRepository({required super.auth});
+
+  @override
+  Future<({Band band, String slug})> createBand({
+    required String name,
+    required List<String> genres,
+    required String bio,
+    required List<String> inviteHandles,
+    String? area,
+    String? linkIg,
+    String? linkBc,
+    String? linkYt,
+  }) async => (
+    band: Band(
+      id: 'silent-band',
+      name: name,
+      genres: genres,
+      area: area ?? 'Bay Area',
+      color: const Color(0xFF8FE6C4),
+      initials: 'SB',
+      followers: 1,
+      bio: bio,
+      linkIg: linkIg,
+      linkBc: linkBc,
+      linkYt: linkYt,
+    ),
+    slug: 'static-bloom',
+  );
 }

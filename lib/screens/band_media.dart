@@ -93,7 +93,7 @@ class BandMediaScreen extends StatelessWidget {
                     Expanded(
                       child: _UploadSlot(
                         icon: Icons.videocam_outlined,
-                        label: '+ CLIP',
+                        label: '+ MUSIC CLIP',
                         sub: 'MP4 · 25 MB MAX',
                         enabled: isAdmin,
                         onTap: gatedVideoUpload,
@@ -133,7 +133,7 @@ class BandMediaScreen extends StatelessWidget {
                       : () => app.say(_adminGateMessage),
                 ),
                 const SizedBox(height: 18),
-                const SectionLabel('ORDER · PINNED PLAYS FIRST'),
+                const SectionLabel('ORDER · PINNED MUSIC CLIP PLAYS FIRST'),
                 const SizedBox(height: 8),
                 for (final item in items) ...[
                   _MediaRow(
@@ -158,8 +158,8 @@ class BandMediaScreen extends StatelessWidget {
                         Text('NOTHING POSTED YET', style: epDisplay(size: 15)),
                         const SizedBox(height: 7),
                         Text(
-                          'One clip and a couple of photos is the whole job — '
-                          'fans decide from the pinned clip.',
+                          'Start with one music clip and a couple of photos. '
+                          'Fans hear the pinned clip first.',
                           textAlign: TextAlign.center,
                           style: epText(
                             size: 11.5,
@@ -169,7 +169,7 @@ class BandMediaScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
                         EpButton(
-                          '+ POST YOUR FIRST CLIP',
+                          '+ POST YOUR FIRST MUSIC CLIP',
                           onTap: gatedVideoUpload,
                         ),
                       ],
@@ -542,7 +542,7 @@ class _MediaRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      item.isVideo ? 'CLIP · ${item.lenLabel}' : 'PHOTO',
+                      item.isVideo ? 'MUSIC CLIP · ${item.lenLabel}' : 'PHOTO',
                       style: Theme.of(context).textTheme.epCaption,
                     ),
                   ],

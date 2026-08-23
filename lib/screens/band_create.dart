@@ -13,7 +13,7 @@ import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 
-/// Permanent Marker — the hand-written tape-label voice of this screen.
+/// Permanent Marker gives the screen its hand-written tape-label voice.
 TextStyle _marker({
   double size = 13,
   Color color = Ep.contentPrimary,
@@ -402,8 +402,11 @@ class _Cassette extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('SIDE A · DEMO', style: smallStamp),
-            Text(app.nbArea?.toUpperCase() ?? 'HOME TAPING', style: smallStamp),
+            Text('SIDE A · SAMPLE', style: smallStamp),
+            Text(
+              app.nbArea?.toUpperCase() ?? 'SET HOME BASE',
+              style: smallStamp,
+            ),
           ],
         ),
         const SizedBox(height: 7),
@@ -601,7 +604,7 @@ Color _labelColor(_LineState state) => switch (state) {
 String _lineLabel(String label, _LineState state) => switch (state) {
   _LineState.required => '$label · REQUIRED',
   _LineState.done => '$label ✓',
-  _LineState.optional => label,
+  _LineState.optional => '$label · OPTIONAL',
 };
 
 class _LinerNotes extends StatelessWidget {
@@ -615,7 +618,6 @@ class _LinerNotes extends StatelessWidget {
     final app = context.watch<AppState>();
 
     final bio = app.nbBio.trim();
-    final crew = 1 + app.nbInvites.length;
     final inviteCount = app.nbInvites.length;
     final links = [
       if (app.nbIg.trim().isNotEmpty) 'Instagram',
@@ -648,25 +650,25 @@ class _LinerNotes extends StatelessWidget {
       ),
       _LinerLine(
         num: '04',
-        label: 'SLEEVE NOTES',
-        state: bio.isEmpty ? _LineState.optional : _LineState.done,
-        value: bio.isEmpty
-            ? 'Two sentences'
-            : (bio.length > 46 ? '${bio.substring(0, 46)}…' : bio),
-        sub: bio.isEmpty
-            ? 'Optional, but fans read it'
-            : '${bio.length} characters',
-        onTap: () => showSleeveNotesSheet(context),
+        label: 'PROFILE IMAGE',
+        state: app.nbPhoto == null ? _LineState.optional : _LineState.done,
+        value: app.nbPhoto == null ? 'Add a band photo' : 'Photo selected',
+        sub: app.nbPhoto == null
+            ? 'Optional; you can add one later'
+            : 'Shown across your profile',
+        onTap: () => _pickBandPhoto(context),
       ),
       _LinerLine(
         num: '05',
-        label: 'CREDITS',
-        state: inviteCount == 0 ? _LineState.optional : _LineState.done,
-        value: crew == 1 ? 'Just you' : '$crew people',
-        sub: inviteCount == 0
-            ? 'Invite bandmates anytime'
-            : '$inviteCount invite${inviteCount > 1 ? 's' : ''} pending',
-        onTap: () => showCreditsSheet(context),
+        label: 'SHORT BIO',
+        state: bio.isEmpty ? _LineState.optional : _LineState.done,
+        value: bio.isEmpty
+            ? 'Tell fans about the band'
+            : (bio.length > 46 ? '${bio.substring(0, 46)}…' : bio),
+        sub: bio.isEmpty
+            ? 'Optional; two sentences is plenty'
+            : '${bio.length} characters',
+        onTap: () => showShortBioSheet(context),
       ),
       _LinerLine(
         num: '06',
@@ -689,13 +691,13 @@ class _LinerNotes extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'BAND DETAILS',
+                  'BAND SETUP CHECKLIST',
                   style: Theme.of(context).textTheme.epSectionHeading,
                 ),
               ),
               Flexible(
                 child: Text(
-                  'TAP ANY LINE · ANY ORDER',
+                  '3 REQUIRED · 3 OPTIONAL',
                   textAlign: TextAlign.end,
                   style: epText(
                     size: 9.5,
@@ -717,6 +719,16 @@ class _LinerNotes extends StatelessWidget {
                 _NameLine(controller: nameController, focusNode: nameFocus),
                 ...lines,
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => showCreditsSheet(context),
+            icon: const Icon(Icons.group_add_outlined),
+            label: Text(
+              inviteCount == 0
+                  ? 'INVITE BANDMATES (OPTIONAL)'
+                  : '$inviteCount BANDMATE INVITE${inviteCount == 1 ? '' : 'S'}',
             ),
           ),
         ],
@@ -922,8 +934,8 @@ class _CreateBar extends StatelessWidget {
             missing.isNotEmpty
                 ? 'Still needs ${missing.join(' + ')}'
                 : app.nbEditingCreated
-                ? 'Your band is live — saving updates it.'
-                : 'Ready — you can post a gig the moment this lands.',
+                ? 'Your band is live. Save to publish these updates.'
+                : 'Ready. Profile image, short bio, and links can wait.',
             textAlign: TextAlign.center,
             style: epText(
               size: 11,
@@ -1010,7 +1022,7 @@ class _SheetHint extends StatelessWidget {
   }
 }
 
-/// Input plus a filled action button — the "add one of your own" row.
+/// Input plus a filled action button for adding a custom option.
 class _DraftRow extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
@@ -1085,7 +1097,7 @@ class _SoundBodyState extends State<_SoundBody> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const _SheetHint('Up to three — this is what fans filter by.'),
+        const _SheetHint('Choose up to three. Fans use these to find you.'),
         const SizedBox(height: 12),
         Wrap(
           spacing: 7,
@@ -1197,7 +1209,7 @@ class _HomeBaseBodyState extends State<_HomeBaseBody> {
   }
 }
 
-// ---------------------------- sleeve notes ----------------------------
+// ---------------------------- short bio ----------------------------
 
 const _bioStarters = [
   'Two amps facing each other, one long argument. You will hear it in your '
@@ -1206,21 +1218,21 @@ const _bioStarters = [
   'Reverb-soaked garage punk from a basement that actually floods.',
 ];
 
-void showSleeveNotesSheet(BuildContext context) {
+void showShortBioSheet(BuildContext context) {
   showEpSheet(
     context,
-    (_) => const _Sheet(title: 'Sleeve notes', child: _SleeveNotesBody()),
+    (_) => const _Sheet(title: 'Short bio', child: _ShortBioBody()),
   );
 }
 
-class _SleeveNotesBody extends StatefulWidget {
-  const _SleeveNotesBody();
+class _ShortBioBody extends StatefulWidget {
+  const _ShortBioBody();
 
   @override
-  State<_SleeveNotesBody> createState() => _SleeveNotesBodyState();
+  State<_ShortBioBody> createState() => _ShortBioBodyState();
 }
 
-class _SleeveNotesBodyState extends State<_SleeveNotesBody> {
+class _ShortBioBodyState extends State<_ShortBioBody> {
   late final TextEditingController _bio;
 
   @override
@@ -1265,7 +1277,9 @@ class _SleeveNotesBodyState extends State<_SleeveNotesBody> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            _SheetHint('$count characters${count > 180 ? ' — trim it' : ''}'),
+            _SheetHint(
+              '$count characters${count > 180 ? '. Try trimming it.' : ''}',
+            ),
             TextAction(
               'USE A STARTER LINE',
               onTap: _useStarter,
@@ -1366,8 +1380,8 @@ class _CreditsBodyState extends State<_CreditsBody> {
       mainAxisSize: MainAxisSize.min,
       children: [
         const _SheetHint(
-          "You're admin. Members can post gigs and media. Invites can wait — "
-          'the band works solo.',
+          "You're the admin. Members can post gigs and media. Invites can "
+          'wait; the band works with just you.',
         ),
         const SizedBox(height: 10),
         _DraftRow(
@@ -1458,7 +1472,7 @@ class _JoinLink extends StatelessWidget {
     return EpCard(
       onTap: () {
         Clipboard.setData(ClipboardData(text: 'https://$url'));
-        app.say('Join link copied — $url');
+        app.say('Join link copied: $url');
       },
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
@@ -1632,32 +1646,35 @@ class _CreatedView extends StatelessWidget {
                 style: epText(size: 12, color: Ep.contentSecondary),
               ),
               const SizedBox(height: 18),
+              Text(
+                'WHAT WOULD YOU LIKE TO DO NEXT?',
+                style: epDisplay(size: 13),
+              ),
+              const SizedBox(height: 10),
               SizedBox(
                 width: 300,
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: EpButton(
-                        'POST FIRST GIG',
-                        fontSize: 11.5,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        onTap: app.postFirstGig,
-                      ),
+                    EpButton(
+                      'POST A MUSIC CLIP',
+                      fontSize: 11.5,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      onTap: app.openBandMedia,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: EpButton(
-                        'SHARE PROFILE',
-                        kind: EpButtonKind.ghost,
-                        fontSize: 11.5,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        onTap: () {
-                          Clipboard.setData(
-                            ClipboardData(text: 'https://$profileUrl'),
-                          );
-                          app.say('Link copied — $profileUrl');
-                        },
-                      ),
+                    const SizedBox(height: 8),
+                    EpButton(
+                      'PUBLISH A GIG',
+                      kind: EpButtonKind.outline,
+                      fontSize: 11.5,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      onTap: app.postFirstGig,
+                    ),
+                    const SizedBox(height: 4),
+                    TextAction(
+                      'NOT NOW',
+                      onTap: app.openCreatedBand,
+                      color: Ep.contentSecondary,
                     ),
                   ],
                 ),
@@ -1675,8 +1692,13 @@ class _CreatedView extends StatelessWidget {
                     color: Ep.contentSecondary,
                   ),
                   _QuietAction(
-                    'GO TO BAND',
-                    onTap: app.openCreatedBand,
+                    'SHARE PROFILE',
+                    onTap: () {
+                      Clipboard.setData(
+                        ClipboardData(text: 'https://$profileUrl'),
+                      );
+                      app.say('Link copied: $profileUrl');
+                    },
                     color: Ep.contentSecondary,
                   ),
                   _QuietAction(

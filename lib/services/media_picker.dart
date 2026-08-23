@@ -87,12 +87,12 @@ class MediaPicker {
     final media = await _read(file);
     if (media.sizeBytes > maxVideoBytes) {
       throw const MediaPickException(
-        'That video is over 25 MB — trim it or export smaller.',
+        'That video is over 25 MB. Trim it or export a smaller file.',
       );
     }
     if (!videoTypes.contains(media.contentType)) {
       throw const MediaPickException(
-        "That file type won't play everywhere — export as MP4.",
+        "That file type won't play everywhere. Export it as MP4.",
       );
     }
     return media;
@@ -102,7 +102,7 @@ class MediaPicker {
     final media = await _read(file);
     if (media.sizeBytes > maxPhotoBytes) {
       throw const MediaPickException(
-        'That photo is over 8 MB — resize it or export smaller.',
+        'That photo is over 8 MB. Resize it or export a smaller file.',
       );
     }
     return media;

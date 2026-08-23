@@ -157,7 +157,7 @@ class _FlyerStudio extends StatelessWidget {
             app.gfCustomFlyer
                 ? (app.gfShowOverlay
                       ? 'Your flyer art previews with listing details on top.'
-                      : 'Overlay off — your art shows clean. Details still fill in below.')
+                      : 'Overlay off. Your art stays clean, and details still appear below.')
                 : 'Use the fields below; the poster previews changes live.',
             textAlign: TextAlign.center,
             style: epText(
@@ -450,7 +450,7 @@ class _OverlayToggle extends StatelessWidget {
         subtitle: Text(
           on
               ? 'Name, date and venue printed on the art'
-              : 'Art only — details show in the listing',
+              : 'Art only. Details appear in the listing.',
         ),
       ),
     );
@@ -745,7 +745,7 @@ class _PublishBar extends StatelessWidget {
         children: [
           Text(
             missing.isEmpty
-                ? 'Ready — fans nearby see it the second you post.'
+                ? 'Ready. Fans nearby see it as soon as you publish.'
                 : 'Still needs ${missing.join(' + ')}',
             textAlign: TextAlign.center,
             style: epText(
@@ -1090,9 +1090,7 @@ void showVenueSheet(BuildContext context) {
         '+ NEW VENUE',
         onTap: () {
           Navigator.pop(ctx);
-          app.say(
-            "Adding venues isn't ready yet — pick from the list for now.",
-          );
+          app.say("Adding venues isn't ready yet. Pick from the list for now.");
         },
         size: 11,
         letterSpacing: .6,
@@ -1105,7 +1103,7 @@ void showVenueSheet(BuildContext context) {
           shrinkWrap: true,
           children: [
             Text(
-              'Venues are shared records — the address stays consistent across '
+              'Venues are shared records, so the address stays consistent across '
               "every band's listings.",
               style: epText(
                 size: 10.5,
@@ -1461,7 +1459,7 @@ class _PublishedView extends StatelessWidget {
                           Clipboard.setData(
                             ClipboardData(text: 'https://${app.gigUrl}'),
                           );
-                          app.say('Link copied — ${app.gigUrl}');
+                          app.say('Link copied: ${app.gigUrl}');
                         },
                       ),
                     ),
@@ -1473,7 +1471,7 @@ class _PublishedView extends StatelessWidget {
                         fontSize: 11.5,
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         onTap: () => app.say(
-                          "Door QR isn't ready yet — RSVPs still count live.",
+                          "Door QR isn't ready yet. RSVPs still count live.",
                         ),
                       ),
                     ),

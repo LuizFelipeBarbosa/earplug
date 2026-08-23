@@ -792,7 +792,7 @@ class EpStackedBar extends StatelessWidget {
 class EpSuppressedNote extends StatelessWidget {
   final String message;
 
-  const EpSuppressedNote({super.key, this.message = '— not enough data yet'});
+  const EpSuppressedNote({super.key, this.message = 'Not enough data yet'});
 
   @override
   Widget build(BuildContext context) {

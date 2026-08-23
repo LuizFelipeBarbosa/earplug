@@ -31,12 +31,14 @@ describe("bands: slugs and profile updates", () => {
       slug: "static-bloom-2",
     });
     expect(resolved?._id).toBe(second.bandId);
+    expect(first.band._id).toBe(first.bandId);
+    expect(second.band._id).toBe(second.bandId);
     expect(await t.query(api.bands.bySlug, { slug: "nobody" })).toBeNull();
   });
 
   test("createBand persists the area and links the sheets collect", async () => {
     const { t, asAdmin } = await setup();
-    const { bandId, slug } = await asAdmin.mutation(api.bands.createBand, {
+    const { bandId, slug, band } = await asAdmin.mutation(api.bands.createBand, {
       name: "Static Bloom",
       genres: ["punk", "shoegaze"],
       bio: "Two amps facing each other.",
@@ -52,6 +54,10 @@ describe("bands: slugs and profile updates", () => {
     expect(doc?.linkIg).toBe("@staticbloom");
     expect(doc?.linkBc).toBe("staticbloom.bandcamp.com");
     expect(doc?.linkYt).toBe("youtube.com/@staticbloom");
+    expect(band.linkYt).toBe("youtube.com/@staticbloom");
+    expect((await t.query(api.bands.bySlug, { slug }))?.linkYt).toBe(
+      "youtube.com/@staticbloom",
+    );
     expect(doc?.bio).toBe("Two amps facing each other.");
     expect(doc?.inviteHandles).toEqual(["@mara.k"]);
     // Invite handles are stored strings, not members, so only the admin counts.

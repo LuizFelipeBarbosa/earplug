@@ -19,7 +19,7 @@ void main() {
   testWidgets('renders seeded media and both upload slots', (tester) async {
     await _pumpBandMedia(tester);
 
-    expect(find.text('+ CLIP'), findsOneWidget);
+    expect(find.text('+ MUSIC CLIP'), findsOneWidget);
     expect(find.text('+ PHOTOS'), findsOneWidget);
     expect(
       find.text('This is what we sound like — live at Foghorn Club'),
@@ -57,7 +57,7 @@ void main() {
     );
 
     expect(find.text('NOTHING POSTED YET'), findsOneWidget);
-    expect(find.text('+ POST YOUR FIRST CLIP'), findsOneWidget);
+    expect(find.text('+ POST YOUR FIRST MUSIC CLIP'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -73,7 +73,7 @@ void main() {
     );
     harness.picker.nextVideo = videoFixture();
 
-    await tester.tap(find.text('+ CLIP'));
+    await tester.tap(find.text('+ MUSIC CLIP'));
     await tester.pump();
 
     expect(find.text('UPLOADING'), findsOneWidget);
@@ -108,7 +108,7 @@ void main() {
     );
     harness.picker.nextVideo = videoFixture();
 
-    await tester.tap(find.text('+ CLIP'));
+    await tester.tap(find.text('+ MUSIC CLIP'));
     await tester.pumpAndSettle();
 
     expect(find.text('RETRY'), findsOneWidget);
@@ -140,7 +140,10 @@ void main() {
     expect(find.text('✕'), findsNothing);
 
     final clipSlot = tester.widget<EpCard>(
-      find.ancestor(of: find.text('+ CLIP'), matching: find.byType(EpCard)),
+      find.ancestor(
+        of: find.text('+ MUSIC CLIP'),
+        matching: find.byType(EpCard),
+      ),
     );
     expect(clipSlot.variant, EpCardVariant.disabled);
     expect(harness.app.toast, isEmpty);

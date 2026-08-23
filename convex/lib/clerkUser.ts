@@ -192,6 +192,10 @@ export async function upsertUserFromClerk(
     email: facts.email,
     genres: [],
     attendedCount: 0,
+    fanOnboarding: {
+      genreChoice: "pending",
+      collapsed: false,
+    },
     ...(facts.updatedAt === undefined
       ? {}
       : { clerkUpdatedAt: facts.updatedAt }),

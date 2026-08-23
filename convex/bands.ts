@@ -118,7 +118,11 @@ export const createBand = mutation({
     linkBc: v.optional(v.string()),
     linkYt: v.optional(v.string()),
   },
-  returns: v.object({ bandId: v.id("bands"), slug: v.string() }),
+  returns: v.object({
+    bandId: v.id("bands"),
+    slug: v.string(),
+    band: bandPayloadValidator,
+  }),
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     const slug = await uniqueSlug(ctx, args.name);
@@ -146,7 +150,9 @@ export const createBand = mutation({
       userId: user._id,
       role: "admin",
     });
-    return { bandId, slug };
+    const band = await ctx.db.get(bandId);
+    if (band === null) throw new Error("Created band not found");
+    return { bandId, slug, band: await toBandPayload(ctx, band) };
   },
 });
 

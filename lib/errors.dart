@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 
 /// What the app says when something went wrong that it cannot explain to the
 /// user in their own terms. One string so every surface says it the same way.
-const String genericErrorMessage = 'Something broke — try again.';
+const String genericErrorMessage = 'Something broke. Try again.';
 
 /// Records a failure the caller deliberately swallows.
 ///

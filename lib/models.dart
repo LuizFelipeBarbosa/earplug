@@ -36,12 +36,38 @@ class Venue {
   );
 }
 
+enum FanCity { sf, oak }
+
+enum FanGenreChoice { pending, selected, open }
+
+class FanOnboarding {
+  final FanCity? preferredCity;
+  final FanGenreChoice genreChoice;
+  final bool collapsed;
+
+  const FanOnboarding({
+    this.preferredCity,
+    required this.genreChoice,
+    required this.collapsed,
+  });
+
+  factory FanOnboarding.fromJson(Map<String, dynamic> json) => FanOnboarding(
+    preferredCity: switch (json['preferredCity']) {
+      final String value => FanCity.values.byName(value),
+      _ => null,
+    },
+    genreChoice: FanGenreChoice.values.byName(json['genreChoice'] as String),
+    collapsed: json['collapsed'] as bool,
+  );
+}
+
 class UserProfile {
   final String name;
   final String email;
   final List<String> genres;
   final int attendedCount;
   final DateTime createdAt;
+  final FanOnboarding? fanOnboarding;
 
   const UserProfile({
     required this.name,
@@ -49,6 +75,7 @@ class UserProfile {
     required this.genres,
     required this.attendedCount,
     required this.createdAt,
+    this.fanOnboarding,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
@@ -59,6 +86,12 @@ class UserProfile {
     createdAt: DateTime.fromMillisecondsSinceEpoch(
       (json['createdAt'] as num).toInt(),
     ),
+    fanOnboarding: switch (json['fanOnboarding']) {
+      final Map<Object?, Object?> value => FanOnboarding.fromJson(
+        Map<String, dynamic>.from(value),
+      ),
+      _ => null,
+    },
   );
 }
 
@@ -247,6 +280,7 @@ class Band {
   final String bio;
   final String? linkIg;
   final String? linkBc;
+  final String? linkYt;
   final String? heroUrl;
   final List<String> upcoming; // gig ids
   final List<PastGig> past;
@@ -262,6 +296,7 @@ class Band {
     required this.bio,
     this.linkIg,
     this.linkBc,
+    this.linkYt,
     this.heroUrl,
     this.upcoming = const [],
     this.past = const [],
@@ -281,6 +316,7 @@ class Band {
       bio: json['bio'] as String,
       linkIg: json['linkIg'] as String?,
       linkBc: json['linkBc'] as String?,
+      linkYt: json['linkYt'] as String?,
       heroUrl: json['heroUrl'] as String?,
       upcoming: const [],
       past: [
@@ -301,6 +337,7 @@ class Band {
     String? bio,
     String? linkIg,
     String? linkBc,
+    String? linkYt,
     String? heroUrl,
     List<String>? upcoming,
   }) => Band(
@@ -314,6 +351,7 @@ class Band {
     bio: bio ?? this.bio,
     linkIg: linkIg ?? this.linkIg,
     linkBc: linkBc ?? this.linkBc,
+    linkYt: linkYt ?? this.linkYt,
     heroUrl: heroUrl ?? this.heroUrl,
     upcoming: upcoming ?? this.upcoming,
     past: past,

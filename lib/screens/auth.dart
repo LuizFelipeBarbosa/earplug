@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../genres.dart';
 import '../services/auth_service.dart';
 import '../theme.dart';
 import '../widgets/branding.dart';
@@ -43,9 +42,9 @@ String _stampDate() {
   return '$day ${months[now.month - 1]} $year';
 }
 
-/// Sign In v3 — auth as getting stamped at the door. Step 1 picks a method
-/// (the stamp thuds down), step 2 is the optional taste picker, then a short
-/// "you're through" splash before the pending action completes.
+/// Auth as getting stamped at the door. A successful sign-in immediately
+/// replays the action that brought the fan here, then shows a short
+/// confirmation before returning them to where they started.
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
 
@@ -55,61 +54,66 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   String? _method; // 'Apple' | 'Google' | 'Email' | 'Phone'
-  bool _holdingStamp = false; // keeps step 1 up while the stamp thud plays
-  bool _leaving = false; // "you're through" splash before finishAuth
-  Timer? _holdTimer;
+  bool _leaving = false;
+  bool _completionScheduled = false;
+  PendingKind? _completedKind;
+  String? _completionError;
   Timer? _leaveTimer;
 
   @override
   void dispose() {
-    _holdTimer?.cancel();
     _leaveTimer?.cancel();
     super.dispose();
   }
 
   void _pickMethod(String method) {
-    _holdTimer?.cancel();
-    setState(() {
-      _method = method;
-      _holdingStamp = true;
-    });
-    _holdTimer = Timer(const Duration(milliseconds: 1150), () {
-      if (mounted) setState(() => _holdingStamp = false);
-    });
+    setState(() => _method = method);
   }
 
   void _clearMethod() {
-    _holdTimer?.cancel();
-    setState(() {
-      _method = null;
-      _holdingStamp = false;
+    setState(() => _method = null);
+  }
+
+  void _scheduleCompletion(AppState app) {
+    if (_leaving || _completionScheduled) return;
+    _completionScheduled = true;
+    final completedKind = app.pending?.kind ?? app.authConfirmationKind;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(() async {
+        try {
+          await app.commitAuth();
+          if (!mounted) return;
+          setState(() {
+            _completedKind = completedKind;
+            _leaving = true;
+          });
+          _leaveTimer = Timer(const Duration(milliseconds: 900), () {
+            if (mounted) app.leaveAuth();
+          });
+        } catch (error) {
+          if (!mounted) return;
+          setState(() {
+            _completionScheduled = false;
+            _completionError = error.toString().trim();
+          });
+        }
+      }());
     });
   }
 
-  void _enterTheRoom(AppState app) {
-    if (_leaving) return;
-    // Commit genres + the pending action now; the splash only delays the
-    // navigation, so backing out mid-splash can't drop what they signed in for.
-    app.commitAuth();
-    setState(() => _leaving = true);
-    _leaveTimer = Timer(const Duration(milliseconds: 1200), () {
-      if (mounted) app.leaveAuth();
-    });
-  }
+  void _retryCompletion() => setState(() => _completionError = null);
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
 
     final Widget step;
-    if (_leaving) {
-      step = const _ThroughStep();
-    } else if (app.authStep == 2 && !_holdingStamp) {
-      step = _TasteStep(
-        app: app,
-        via: _method,
-        onDone: () => _enterTheRoom(app),
-      );
+    if (_leaving || app.authStep == 2) {
+      if (_completionError == null) _scheduleCompletion(app);
+      step = _leaving
+          ? _ThroughStep(kind: _completedKind)
+          : _CompletingStep(error: _completionError, onRetry: _retryCompletion);
     } else {
       step = _DoorStep(
         app: app,
@@ -155,7 +159,7 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 }
 
-// ========================= step 1 — the door =========================
+// ========================= the door =========================
 
 enum _EntryStage { providers, email, emailCode, phone, phoneCode }
 
@@ -215,7 +219,7 @@ class _DoorStepState extends State<_DoorStep> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Browsing needs no account. This does — ten seconds at the door.',
+                  'Browse freely. Create an account when you RSVP, save a show, or start a band. It takes about ten seconds.',
                   style: epText(
                     size: 11.5,
                     color: Ep.contentSecondary,
@@ -511,7 +515,7 @@ class _DoorStepState extends State<_DoorStep> {
 
   String _messageFor(Object error) {
     final message = error.toString().trim();
-    return message.isEmpty ? 'Something went wrong — try again.' : message;
+    return message.isEmpty ? 'Something went wrong. Try again.' : message;
   }
 }
 
@@ -762,116 +766,49 @@ class _InlineError extends StatelessWidget {
   }
 }
 
-// ========================= step 2 — taste =========================
+// ========================= confirmation =========================
 
-class _TasteStep extends StatelessWidget {
-  final AppState app;
-  final String? via;
-  final VoidCallback onDone;
+class _CompletingStep extends StatelessWidget {
+  const _CompletingStep({required this.error, required this.onRetry});
 
-  const _TasteStep({
-    required this.app,
-    required this.via,
-    required this.onDone,
-  });
+  final String? error;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final picked = app.userGenres.length;
-    return _RiseIn(
-      child: LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          padding: _stepPadding,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: math.max(
-                0,
-                constraints.maxHeight - _stepPadding.vertical,
-              ),
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (error == null) ...[
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            child: IntrinsicHeight(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Transform.rotate(
-                        angle: _stampAngle,
-                        child: Container(
-                          width: 44,
-                          height: 44,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: _stampAccent, width: 2),
-                          ),
-                          child: Text(
-                            'IN',
-                            style: epDisplay(size: 15, color: _stampInk),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        via == null
-                            ? 'PLUGGED IN'
-                            : 'PLUGGED IN VIA ${via!.toUpperCase()}',
-                        style: epText(
-                          size: 11,
-                          weight: FontWeight.w900,
-                          letterSpacing: 1.5,
-                          color: Ep.contentSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'WHAT DO YOU\nLIKE LOUD?',
-                    style: epDisplay(size: 30, height: 1.02),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Optional — skip it and we read it off the shows you hit.',
-                    style: epText(
-                      size: 11.5,
-                      color: Ep.contentSecondary,
-                      height: 1.5,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final genre in kGenres)
-                        EpChip(
-                          label: genre,
-                          active: app.userGenres.contains(genre),
-                          onTap: () => app.toggleUserGenre(genre),
-                        ),
-                    ],
-                  ),
-                  const Expanded(child: SizedBox(height: 24)),
-                  EpButton(
-                    picked > 0 ? 'PLUG IN — $picked PICKED' : 'PLUG IN',
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    onTap: onDone,
-                  ),
-                ],
-              ),
+            const SizedBox(height: 16),
+            const Text('FINISHING SIGN-IN'),
+          ] else ...[
+            const Icon(Icons.error_outline, color: _errorColor, size: 32),
+            const SizedBox(height: 12),
+            Text(
+              error!,
+              textAlign: TextAlign.center,
+              style: epText(size: 12, color: _errorColor),
             ),
-          ),
-        ),
+            const SizedBox(height: 16),
+            EpButton('TRY AGAIN', onTap: onRetry),
+          ],
+        ],
       ),
     );
   }
 }
 
-// ========================= step 3 — through =========================
-
 class _ThroughStep extends StatelessWidget {
-  const _ThroughStep();
+  const _ThroughStep({required this.kind});
+
+  final PendingKind? kind;
 
   @override
   Widget build(BuildContext context) {
@@ -889,7 +826,13 @@ class _ThroughStep extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            Text("YOU'RE THROUGH", style: epDisplay(size: 19)),
+            Text(switch (kind) {
+              PendingKind.rsvp => 'RSVP CONFIRMED',
+              PendingKind.save => 'SHOW SAVED',
+              PendingKind.follow => 'BAND FOLLOWED',
+              PendingKind.band => "LET'S START YOUR BAND",
+              PendingKind.myGigs || null => 'ACCOUNT READY',
+            }, style: epDisplay(size: 19)),
           ],
         ),
       ),

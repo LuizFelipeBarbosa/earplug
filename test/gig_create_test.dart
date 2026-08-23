@@ -73,7 +73,7 @@ void main() {
       expect(app.gfVenueId, 'v1');
       expect(find.text('READY'), findsOne);
       expect(
-        find.text('Ready — fans nearby see it the second you post.'),
+        find.text('Ready. Fans nearby see it as soon as you publish.'),
         findsOne,
       );
 

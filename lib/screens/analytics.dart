@@ -121,7 +121,7 @@ class AnalyticsScreen extends StatelessWidget {
     return DashedBox(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
       child: Text(
-        'No past gigs yet for ${bandName.toUpperCase()} — this recap fills '
+        'No past gigs yet for ${bandName.toUpperCase()}. This recap fills '
         'in after its first show.$hint',
         textAlign: TextAlign.center,
         style: epText(size: 12, color: Ep.contentSecondary, height: 1.5),

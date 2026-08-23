@@ -111,7 +111,7 @@ void showCitySheet(BuildContext context) {
       children: [
         const SizedBox(height: 6),
         Text(
-          "Pick a scene — everything's within BART distance anyway.",
+          "Pick a scene. Everything's within BART distance anyway.",
           style: Theme.of(
             ctx,
           ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
@@ -125,6 +125,12 @@ void showCitySheet(BuildContext context) {
 
 // ============================ view switcher ============================
 
+String bandEntryLabel(int bandCount) => switch (bandCount) {
+  0 => 'Start a band',
+  1 => 'Manage band',
+  _ => 'Switch band',
+};
+
 void showSwitcherSheet(BuildContext context) {
   final app = context.read<AppState>();
   showEpSheet(context, (ctx) {
@@ -133,7 +139,7 @@ void showSwitcherSheet(BuildContext context) {
         ? 'You'
         : profileName;
     return _SheetShell(
-      title: 'Switch view',
+      title: bandEntryLabel(app.myBands.length),
       children: [
         _SheetOption(
           onTap: () {
@@ -148,7 +154,10 @@ void showSwitcherSheet(BuildContext context) {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(displayName, style: Theme.of(ctx).textTheme.epLabel),
-                  Text('Fan view', style: Theme.of(ctx).textTheme.epCaption),
+                  Text(
+                    'Personal account',
+                    style: Theme.of(ctx).textTheme.epCaption,
+                  ),
                 ],
               ),
             ],
@@ -174,7 +183,7 @@ void showSwitcherSheet(BuildContext context) {
                           style: Theme.of(ctx).textTheme.epLabel,
                         ),
                         Text(
-                          'Band view · admin',
+                          'Manage band · ${app.roleFor(id)}',
                           style: Theme.of(ctx).textTheme.epCaption,
                         ),
                       ],
@@ -191,7 +200,9 @@ void showSwitcherSheet(BuildContext context) {
               app.startBandCreate();
             },
             icon: const Icon(Icons.add),
-            label: const Text('START A BAND'),
+            label: Text(
+              app.myBands.isEmpty ? 'START A BAND' : 'START ANOTHER BAND',
+            ),
           ),
         ),
       ],

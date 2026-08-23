@@ -155,7 +155,7 @@ class BandMediaController extends ChangeNotifier {
     if (oversized.isNotEmpty) {
       final count = oversized.length;
       final subject = count == 1 ? 'photo was' : 'photos were';
-      say('$count $subject over 8 MB — export smaller and retry.');
+      say('$count $subject over 8 MB. Export smaller files and retry.');
     }
     for (final photo in photos) {
       await _beginUpload(bandId, MediaKind.photo, photo);

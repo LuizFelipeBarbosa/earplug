@@ -32,11 +32,11 @@ void main() {
     );
     expect(find.text('PAST GIGS · 2 PLAYED', skipOffstage: false), findsOne);
     expect(
-      find.text('Riptide Release Show — The Foghorn Club', skipOffstage: false),
+      find.text('Riptide Release Show · The Foghorn Club', skipOffstage: false),
       findsOne,
     );
     expect(
-      find.text('Basement Blowout — Casa Quake', skipOffstage: false),
+      find.text('Basement Blowout · Casa Quake', skipOffstage: false),
       findsOne,
     );
     expect(
@@ -120,12 +120,12 @@ void main() {
 
     expect(repository.calls, 2);
     await tester.scrollUntilVisible(
-      find.text('Basement Blowout — Casa Quake'),
+      find.text('Basement Blowout · Casa Quake'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
     expect(
-      find.text('Basement Blowout — Casa Quake', skipOffstage: false),
+      find.text('Basement Blowout · Casa Quake', skipOffstage: false),
       findsOne,
     );
     expect(

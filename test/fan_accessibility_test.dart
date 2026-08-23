@@ -41,7 +41,7 @@ void main() {
       home: _scaledScreen(const MyGigsScreen()),
     );
 
-    expect(find.text("UPCOMING — YOU'RE GOING"), findsOne);
+    expect(find.text("UPCOMING: YOU'RE GOING"), findsOne);
     expect(tester.takeException(), isNull);
   });
 }

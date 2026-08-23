@@ -119,7 +119,7 @@ void main() {
         await harness.controller.pickAndUploadPhotos(bandId);
 
         expect(harness.said, [
-          '2 photos were over 8 MB — export smaller and retry.',
+          '2 photos were over 8 MB. Export smaller files and retry.',
         ]);
         expect(harness.controller.photosFor(bandId), hasLength(1));
       },
@@ -131,7 +131,7 @@ void main() {
         final harness = _makeController();
         const bandId = 'invalid-band';
         harness.picker.nextException = const MediaPickException(
-          "That file type won't play everywhere — export as MP4.",
+          "That file type won't play everywhere. Export it as MP4.",
         );
 
         await harness.controller.pickAndUploadVideo(bandId);
@@ -139,7 +139,7 @@ void main() {
         expect(harness.picker.videoCalls, 1);
         expect(harness.controller.uploadsFor(bandId), isEmpty);
         expect(harness.said, [
-          "That file type won't play everywhere — export as MP4.",
+          "That file type won't play everywhere. Export it as MP4.",
         ]);
       },
     );

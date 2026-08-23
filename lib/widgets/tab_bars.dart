@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../theme.dart';
+import 'sheets.dart';
 
 class EpNavigationItem extends StatelessWidget {
   final IconData icon;
@@ -127,6 +128,20 @@ class FanTabBar extends StatelessWidget {
           label: 'MY GIGS',
           selected: scr == Screen.myGigs,
           onPressed: app.openMyGigsTab,
+        ),
+        EpNavigationItem(
+          icon: Icons.groups_outlined,
+          label: bandEntryLabel(app.myBands.length).toUpperCase(),
+          selected: false,
+          onPressed: () {
+            if (app.myBands.isEmpty) {
+              app.requestStartBand();
+            } else if (app.myBands.length == 1) {
+              app.switchToBand(app.myBands.single);
+            } else {
+              showSwitcherSheet(context);
+            }
+          },
         ),
       ],
     );
