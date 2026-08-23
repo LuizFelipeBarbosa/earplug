@@ -28,6 +28,7 @@ class EpNavigationItem extends StatelessWidget {
       button: true,
       selected: selected,
       label: label,
+      onTap: onPressed,
       excludeSemantics: true,
       child: Material(
         color: Colors.transparent,

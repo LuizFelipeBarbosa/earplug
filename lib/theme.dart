@@ -14,7 +14,7 @@ abstract final class Ep {
   static const background = Color(0xFF0A0A0C);
   static const surface = Color(0xFF17191F);
   static const surfaceRaised = Color(0xFF22252E);
-  static const surfaceSelected = Color(0xFF1C2C69);
+  static const surfaceSelected = Color(0xFF182559);
   static const border = Color(0xFF3C414F);
   static const surfaceDisabled = Color(0xFF262831);
 

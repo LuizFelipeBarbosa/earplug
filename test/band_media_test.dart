@@ -29,6 +29,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('header remains usable at increased text scale', (tester) async {
+    await pumpApp(
+      tester,
+      home: const MediaQuery(
+        data: MediaQueryData(
+          size: Size(402, 900),
+          textScaler: TextScaler.linear(1.5),
+        ),
+        child: Scaffold(body: BandMediaScreen(bandId: 'b1')),
+      ),
+    );
+
+    expect(find.text('BAND MEDIA'), findsOneWidget);
+    expect(find.textContaining('ITEMS'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('shows the empty state when the repository has no media', (
     tester,
   ) async {

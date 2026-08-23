@@ -46,23 +46,21 @@ class BandMediaScreen extends StatelessWidget {
               border: Border(bottom: BorderSide(color: Ep.border)),
             ),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    CircleIconButton(onTap: app.back),
-                    const SizedBox(width: 10),
-                    Text(
-                      'BAND MEDIA',
-                      style: epText(
-                        size: 12,
-                        weight: FontWeight.w800,
-                        letterSpacing: 1.4,
-                        color: Ep.contentSecondary,
-                      ),
+                CircleIconButton(onTap: app.back),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'BAND MEDIA',
+                    style: epText(
+                      size: 12,
+                      weight: FontWeight.w800,
+                      letterSpacing: 1.4,
+                      color: Ep.contentSecondary,
                     ),
-                  ],
+                  ),
                 ),
+                const SizedBox(width: 10),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,

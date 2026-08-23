@@ -6,6 +6,7 @@ import 'package:earplug/widgets/branding.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -17,8 +18,10 @@ void main() {
         (Ep.contentPrimary, Ep.surface),
         (Ep.contentSecondary, Ep.surface),
         (Ep.contentDisabled, Ep.surfaceDisabled),
+        (Ep.contentDisabled, Ep.surfaceSelected),
         (Ep.accent, Ep.background),
         (Ep.accent, Ep.surface),
+        (Ep.accent, Ep.surfaceSelected),
         (Ep.success, Ep.background),
         (Ep.warning, Ep.background),
         (Ep.destructive, Ep.background),
@@ -131,6 +134,7 @@ void main() {
       tester,
     ) async {
       final semantics = tester.ensureSemantics();
+      var pressed = false;
 
       await tester.pumpWidget(
         _host(
@@ -140,18 +144,22 @@ void main() {
               icon: Icons.person_outline,
               label: 'PROFILE',
               selected: true,
-              onPressed: () {},
+              onPressed: () => pressed = true,
             ),
           ),
         ),
       );
 
-      final data = tester
-          .getSemantics(find.byType(EpNavigationItem))
-          .getSemanticsData();
+      final node = tester.getSemantics(find.byType(EpNavigationItem));
+      final data = node.getSemanticsData();
       expect(data.label, 'PROFILE');
       expect(data.flagsCollection.isButton, isTrue);
       expect(data.flagsCollection.isSelected, Tristate.isTrue);
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
+
+      node.owner!.performAction(node.id, SemanticsAction.tap);
+      await tester.pump();
+      expect(pressed, isTrue);
 
       final indicator = tester.widgetList<AnimatedContainer>(
         find.descendant(

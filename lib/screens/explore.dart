@@ -178,62 +178,103 @@ class _SearchResults extends StatelessWidget {
         type == ExploreResultType.all || type == ExploreResultType.bands;
     final showVenues =
         type == ExploreResultType.all || type == ExploreResultType.venues;
+    final resultBuilders = <WidgetBuilder>[];
+
+    if (showEvents) {
+      resultBuilders.add(
+        (_) => const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: SectionLabel('EVENTS'),
+        ),
+      );
+      if (gigs.isEmpty) {
+        resultBuilders.add(
+          (context) => Text(
+            type == ExploreResultType.events
+                ? 'No events found.'
+                : 'No gigs found.',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+        );
+      } else {
+        for (final gig in gigs) {
+          resultBuilders.add(
+            (_) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: FanEventCard(gig: gig, app: app),
+            ),
+          );
+        }
+      }
+      if (type == ExploreResultType.all) {
+        resultBuilders.add((_) => const SizedBox(height: 8));
+      }
+    }
+
+    if (showBands) {
+      resultBuilders.add(
+        (_) => const Padding(
+          padding: EdgeInsets.only(bottom: 6),
+          child: SectionLabel('BANDS'),
+        ),
+      );
+      if (bandIds.isEmpty) {
+        resultBuilders.add(
+          (context) => Text(
+            'No bands found.',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+        );
+      } else {
+        for (final id in bandIds) {
+          resultBuilders.add(
+            (_) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: _BandRow(bandId: id, app: app),
+            ),
+          );
+        }
+      }
+      if (type == ExploreResultType.all) {
+        resultBuilders.add((_) => const SizedBox(height: 8));
+      }
+    }
+
+    if (showVenues) {
+      resultBuilders.add(
+        (_) => const Padding(
+          padding: EdgeInsets.only(bottom: 6),
+          child: SectionLabel('VENUES'),
+        ),
+      );
+      if (venues.isEmpty) {
+        resultBuilders.add(
+          (context) => Text(
+            'No venues found.',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+        );
+      } else {
+        for (final venue in venues) {
+          resultBuilders.add(
+            (_) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: _VenueRow(venue: venue, app: app),
+            ),
+          );
+        }
+      }
+    }
 
     return Column(
       children: [
         _SearchTypeTabs(app: app),
         Expanded(
-          child: SingleChildScrollView(
+          child: ListView.builder(
             key: ValueKey('explore-results-${type.name}'),
             padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (showEvents) ...[
-                  const SectionLabel('EVENTS'),
-                  const SizedBox(height: 8),
-                  if (gigs.isEmpty)
-                    Text(
-                      type == ExploreResultType.events
-                          ? 'No events found.'
-                          : 'No gigs found.',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                  for (final gig in gigs) ...[
-                    FanEventCard(gig: gig, app: app),
-                    const SizedBox(height: 8),
-                  ],
-                  if (type == ExploreResultType.all) const SizedBox(height: 8),
-                ],
-                if (showBands) ...[
-                  const SectionLabel('BANDS'),
-                  const SizedBox(height: 6),
-                  if (bandIds.isEmpty)
-                    Text(
-                      'No bands found.',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                  for (final id in bandIds) ...[
-                    _BandRow(bandId: id, app: app),
-                    const SizedBox(height: 6),
-                  ],
-                  if (type == ExploreResultType.all) const SizedBox(height: 8),
-                ],
-                if (showVenues) ...[
-                  const SectionLabel('VENUES'),
-                  const SizedBox(height: 6),
-                  if (venues.isEmpty)
-                    Text(
-                      'No venues found.',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                  for (final venue in venues) ...[
-                    _VenueRow(venue: venue, app: app),
-                    const SizedBox(height: 6),
-                  ],
-                ],
-              ],
-            ),
+            itemCount: resultBuilders.length,
+            itemBuilder: (context, index) => resultBuilders[index](context),
           ),
         ),
       ],
