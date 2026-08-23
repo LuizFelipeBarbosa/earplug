@@ -145,10 +145,14 @@ class AppState extends ChangeNotifier {
       _cacheInteractions,
       onError: (Object error) => logError('myInteractions', error),
     );
-    _bandsSubscription = repository.myBands().listen(
-      _cacheMemberships,
-      onError: (Object error) => logError('myBands', error),
-    );
+    // Public demo mode may preload membership-shaped sample data, but
+    // authenticated routing waits for the post-refresh stream below.
+    if (!authed) {
+      _bandsSubscription = _listenToMemberships(
+        ++_membershipsGeneration,
+        requireAuthentication: false,
+      );
+    }
   }
 
   final EarplugRepository repository;
@@ -159,6 +163,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<FeedSnapshot>? _feedSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
+  int _membershipsGeneration = 0;
   bool _disposed = false;
 
   DataStatus _dataStatus;
@@ -304,6 +309,8 @@ class AppState extends ChangeNotifier {
   // ---- band membership
   List<String> myBands = [];
   String bandId = '';
+  bool _membershipsLoaded = false;
+  bool get membershipsLoaded => authed && _membershipsLoaded;
 
   // ---- band create form (the cassette canvas)
   String nbName = '';
@@ -358,6 +365,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _membershipsGeneration++;
     _toastTimer?.cancel();
     for (final timer in _bandEditTimers.values) {
       timer.cancel();
@@ -378,6 +386,7 @@ class AppState extends ChangeNotifier {
 
   void _handleAuthChange(bool signedIn) {
     authed = signedIn;
+    _clearMemberships();
     if (signedIn) {
       authStep = 2;
       _authReady = _ensureUser();
@@ -401,6 +410,7 @@ class AppState extends ChangeNotifier {
       // The websocket must carry the new identity before the mutation runs.
       await repository.refreshAuth();
       await repository.ensureUser(name: auth.displayName);
+      _restartMemberships();
       await _refreshProfile();
       unawaited(_refreshHistory());
       return true;
@@ -573,6 +583,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _cacheMemberships(List<BandMembership> memberships) {
+    _membershipsLoaded = true;
     myBands = [for (final membership in memberships) membership.band.id];
     if (myBands.isEmpty) {
       bandId = '';
@@ -587,6 +598,51 @@ class AppState extends ChangeNotifier {
       );
     }
     notifyListeners();
+  }
+
+  void _restartMemberships() {
+    final generation = ++_membershipsGeneration;
+    final previousSubscription = _bandsSubscription;
+    _bandsSubscription = null;
+    unawaited(previousSubscription?.cancel());
+    if (_disposed || !authed || generation != _membershipsGeneration) return;
+
+    _bandsSubscription = _listenToMemberships(
+      generation,
+      requireAuthentication: true,
+    );
+  }
+
+  StreamSubscription<List<BandMembership>> _listenToMemberships(
+    int generation, {
+    required bool requireAuthentication,
+  }) {
+    return repository.myBands().listen(
+      (memberships) {
+        if (_disposed ||
+            (requireAuthentication && !authed) ||
+            generation != _membershipsGeneration) {
+          return;
+        }
+        _cacheMemberships(memberships);
+      },
+      onError: (Object error) {
+        if (generation == _membershipsGeneration) {
+          logError('myBands', error);
+        }
+      },
+    );
+  }
+
+  void _clearMemberships() {
+    _membershipsGeneration++;
+    final subscription = _bandsSubscription;
+    _bandsSubscription = null;
+    unawaited(subscription?.cancel());
+    _membershipsLoaded = false;
+    myBands = [];
+    bandId = '';
+    _bandRoles.clear();
   }
 
   // ========================= navigation =========================
@@ -653,6 +709,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> signOut() async {
     await auth.signOut();
+    _clearMemberships();
     rsvps = {};
     follows = {};
     saved = {};
@@ -668,7 +725,6 @@ class AppState extends ChangeNotifier {
     }
     _bandEditTimers.clear();
     _bandEdits.clear();
-    _bandRoles.clear();
     _media?.clearForSignOut();
     resetTo(Screen.home);
     say('Signed out.');
@@ -853,7 +909,14 @@ class AppState extends ChangeNotifier {
   void selectFanCity(FanCity preferredCity) {
     final previous = fanOnboarding;
     if (previous == null) return;
-    final previousCity = city;
+    final previousDiscoveryState = (
+      city: city,
+      location: discoveryLocation,
+      position: currentPosition,
+      locating: locating,
+      failure: locationFailure,
+      filters: filters,
+    );
 
     _applyDiscoveryCity(preferredCity.name);
     _setLocalFanOnboarding(
@@ -876,7 +939,13 @@ class AppState extends ChangeNotifier {
         logError('updateFanOnboarding city', error);
         final current = fanOnboarding;
         if (current?.preferredCity == preferredCity) {
-          _applyDiscoveryCity(previousCity);
+          _locationRequestGeneration++;
+          city = previousDiscoveryState.city;
+          discoveryLocation = previousDiscoveryState.location;
+          currentPosition = previousDiscoveryState.position;
+          locating = previousDiscoveryState.locating;
+          locationFailure = previousDiscoveryState.failure;
+          filters = previousDiscoveryState.filters;
           _setLocalFanOnboarding(
             FanOnboarding(
               preferredCity: previous.preferredCity,

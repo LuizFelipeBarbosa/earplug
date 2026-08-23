@@ -7,6 +7,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/harness.dart';
 
 void main() {
+  test('Instagram links normalize handles and scheme-less profile URLs', () {
+    expect(
+      bandLinkUri('@foghorn.diet', instagram: true).toString(),
+      'https://instagram.com/foghorn.diet',
+    );
+    expect(
+      bandLinkUri('instagram.com/foghorn.diet', instagram: true).toString(),
+      'https://instagram.com/foghorn.diet',
+    );
+    expect(
+      bandLinkUri('www.instagram.com/foghorn.diet', instagram: true).toString(),
+      'https://instagram.com/foghorn.diet',
+    );
+    expect(
+      bandLinkUri(
+        'http://www.instagram.com/foghorn.diet?hl=en',
+        instagram: true,
+      ).toString(),
+      'https://instagram.com/foghorn.diet?hl=en',
+    );
+  });
+
   testWidgets('profile renders the pinned video and clip grid', (tester) async {
     await _pumpProfile(tester);
     final pinned = DemoData.b1Media.singleWhere((media) => media.pinned);

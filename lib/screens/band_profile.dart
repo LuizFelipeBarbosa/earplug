@@ -249,17 +249,32 @@ Future<void> _openBandLink(
   String raw, {
   required bool instagram,
 }) async {
-  final value = raw.trim();
-  final Uri uri;
-  if (value.startsWith('https://') || value.startsWith('http://')) {
-    uri = Uri.parse(value);
-  } else if (instagram) {
-    uri = Uri.https('instagram.com', value.replaceFirst(RegExp(r'^@'), ''));
-  } else {
-    uri = Uri.parse('https://$value');
-  }
+  final uri = bandLinkUri(raw, instagram: instagram);
   final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
   if (!opened) app.say("Couldn't open that link.");
+}
+
+@visibleForTesting
+Uri bandLinkUri(String raw, {required bool instagram}) {
+  final value = raw.trim();
+  final hasHttpScheme = RegExp(
+    r'^https?://',
+    caseSensitive: false,
+  ).hasMatch(value);
+
+  if (!instagram) {
+    return Uri.parse(hasHttpScheme ? value : 'https://$value');
+  }
+
+  final parsed = Uri.tryParse(hasHttpScheme ? value : 'https://$value');
+  final host = parsed?.host.toLowerCase();
+  if (parsed != null &&
+      (host == 'instagram.com' || host == 'www.instagram.com')) {
+    return parsed.replace(scheme: 'https', host: 'instagram.com');
+  }
+  if (hasHttpScheme) return Uri.parse(value);
+
+  return Uri.https('instagram.com', value.replaceFirst(RegExp(r'^@'), ''));
 }
 
 class _PastShows extends StatelessWidget {

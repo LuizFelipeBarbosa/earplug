@@ -358,9 +358,14 @@ class _BandEntry extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final count = app.myBands.length;
-    final label = bandEntryLabel(count).toUpperCase();
-    final detail = count == 0
+    final membershipsLoading = app.authed && !app.membershipsLoaded;
+    final count = app.membershipsLoaded ? app.myBands.length : 0;
+    final label = membershipsLoading
+        ? 'BANDS'
+        : bandEntryLabel(count).toUpperCase();
+    final detail = membershipsLoading
+        ? 'Loading your bands'
+        : count == 0
         ? 'Create a band profile'
         : count == 1
         ? (app.band(app.myBands.single)?.name ?? 'Your band')
@@ -370,7 +375,11 @@ class _BandEntry extends StatelessWidget {
       key: const Key('band-entry'),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       onTap: () {
-        if (count == 0) {
+        if (!app.authed) {
+          app.requestStartBand();
+        } else if (!app.membershipsLoaded) {
+          return;
+        } else if (count == 0) {
           app.requestStartBand();
         } else if (count == 1) {
           app.switchToBand(app.myBands.single);

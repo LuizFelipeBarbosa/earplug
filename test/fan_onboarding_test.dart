@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
@@ -119,7 +121,6 @@ void main() {
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: _MembershipRepository(auth: auth, count: 0),
         home: const Scaffold(
           body: SizedBox.shrink(),
           bottomNavigationBar: FanTabBar(),
@@ -134,6 +135,88 @@ void main() {
       expect(harness.app.pending?.kind, PendingKind.band);
     },
   );
+
+  testWidgets('band navigation waits for authenticated memberships', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _DeferredMembershipRepository(auth: auth);
+    addTearDown(repository.close);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(
+        body: SizedBox.shrink(),
+        bottomNavigationBar: FanTabBar(),
+      ),
+    );
+    await harness.app.commitAuth();
+    await tester.pump();
+
+    expect(find.text('BANDS'), findsOne);
+    expect(repository.hasMembershipListener, isTrue);
+    await tester.tap(find.text('BANDS'));
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.home);
+
+    repository.addMemberships([
+      BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
+    ]);
+    await tester.pumpAndSettle();
+
+    expect(harness.app.membershipsLoaded, isTrue);
+    expect(harness.app.myBands, ['b1']);
+    expect(find.text('MANAGE BAND'), findsOne);
+    await tester.tap(find.text('MANAGE BAND'));
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.bandDash);
+    expect(harness.app.bandId, 'b1');
+
+    await harness.app.signOut();
+    await tester.pump();
+    expect(harness.app.myBands, isEmpty);
+    expect(harness.app.membershipsLoaded, isFalse);
+    expect(find.text('START A BAND'), findsOne);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('failed city onboarding restores current-location discovery', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _ProfileRepository(
+      auth: auth,
+      onboarding: const FanOnboarding(
+        preferredCity: FanCity.sf,
+        genreChoice: FanGenreChoice.pending,
+        collapsed: false,
+      ),
+      failCityUpdates: true,
+    );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+    final position = DemoData.venues['v1']!.point;
+    harness.app.useCurrentPosition(position);
+    harness.app.setDistanceFilter(5);
+
+    harness.app.selectFanCity(FanCity.oak);
+    await tester.pump();
+
+    expect(harness.app.city, 'sf');
+    expect(harness.app.discoveryLocation, DiscoveryLocation.current);
+    expect(harness.app.currentPosition, position);
+    expect(harness.app.fMaxDistanceMiles, 5);
+    expect(harness.app.fanOnboarding?.preferredCity, FanCity.sf);
+
+    await tester.pump(const Duration(seconds: 3));
+  });
 
   testWidgets('one-band entry opens its dashboard', (tester) async {
     final auth = FakeAuthService();
@@ -171,10 +254,15 @@ void main() {
 }
 
 class _ProfileRepository extends DemoRepository {
-  _ProfileRepository({required super.auth, required this.onboarding});
+  _ProfileRepository({
+    required super.auth,
+    required this.onboarding,
+    this.failCityUpdates = false,
+  });
 
   FanOnboarding? onboarding;
   List<String> genres = const [];
+  final bool failCityUpdates;
 
   @override
   Stream<Interactions> myInteractions() => Stream.value(Interactions.empty);
@@ -201,6 +289,9 @@ class _ProfileRepository extends DemoRepository {
     bool? collapsed,
     List<String>? genres,
   }) async {
+    if (failCityUpdates && preferredCity != null) {
+      throw StateError('city update failed');
+    }
     final current = onboarding;
     if (current == null) return;
     if (genres != null) this.genres = List.of(genres);
@@ -210,6 +301,23 @@ class _ProfileRepository extends DemoRepository {
       collapsed: collapsed ?? current.collapsed,
     );
   }
+}
+
+class _DeferredMembershipRepository extends DemoRepository {
+  _DeferredMembershipRepository({required super.auth});
+
+  final _memberships = StreamController<List<BandMembership>>.broadcast();
+
+  @override
+  Stream<List<BandMembership>> myBands() => _memberships.stream;
+
+  void addMemberships(List<BandMembership> memberships) {
+    _memberships.add(memberships);
+  }
+
+  bool get hasMembershipListener => _memberships.hasListener;
+
+  Future<void> close() => _memberships.close();
 }
 
 class _MembershipRepository extends DemoRepository {

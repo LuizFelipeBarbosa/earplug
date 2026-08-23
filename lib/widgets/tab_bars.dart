@@ -108,6 +108,8 @@ class FanTabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final scr = app.current.screen;
+    final membershipsLoading = app.authed && !app.membershipsLoaded;
+    final bandCount = app.membershipsLoaded ? app.myBands.length : 0;
     return _TabBarShell(
       borderColor: Ep.border,
       items: [
@@ -131,12 +133,18 @@ class FanTabBar extends StatelessWidget {
         ),
         EpNavigationItem(
           icon: Icons.groups_outlined,
-          label: bandEntryLabel(app.myBands.length).toUpperCase(),
+          label: membershipsLoading
+              ? 'BANDS'
+              : bandEntryLabel(bandCount).toUpperCase(),
           selected: false,
           onPressed: () {
-            if (app.myBands.isEmpty) {
+            if (!app.authed) {
               app.requestStartBand();
-            } else if (app.myBands.length == 1) {
+            } else if (!app.membershipsLoaded) {
+              return;
+            } else if (bandCount == 0) {
+              app.requestStartBand();
+            } else if (bandCount == 1) {
               app.switchToBand(app.myBands.single);
             } else {
               showSwitcherSheet(context);
