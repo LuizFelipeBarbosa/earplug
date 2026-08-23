@@ -53,7 +53,7 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
     } catch (_) {
       await controller?.dispose();
       if (!mounted) return;
-      setState(() => _error = "Couldn't play this clip — try again on wifi.");
+      setState(() => _error = "Couldn't play this clip. Try again on Wi-Fi.");
     }
   }
 

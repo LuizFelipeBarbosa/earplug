@@ -79,7 +79,7 @@ void main() {
     expect(
       find.descendant(
         of: card,
-        matching: find.text('— not enough data yet', skipOffstage: false),
+        matching: find.text('Not enough data yet', skipOffstage: false),
       ),
       findsOne,
     );

@@ -245,4 +245,32 @@ describe("interactions", () => {
     mine = await asFan.query(api.interactions.myInteractions, {});
     expect(mine.savedGigIds).toEqual([]);
   });
+
+  test("explicit on writes are idempotent for auth-replayed intents", async () => {
+    const { t, asFan, gigId, bandId } = await setup();
+
+    for (let index = 0; index < 2; index++) {
+      expect(
+        await asFan.mutation(api.interactions.toggleRsvp, { gigId, on: true }),
+      ).toEqual({ on: true });
+      expect(
+        await asFan.mutation(api.interactions.toggleFollow, {
+          bandId,
+          on: true,
+        }),
+      ).toEqual({ on: true });
+      expect(
+        await asFan.mutation(api.interactions.toggleSave, { gigId, on: true }),
+      ).toEqual({ on: true });
+    }
+
+    const gig = await t.run(async (ctx) => ctx.db.get(gigId));
+    const band = await t.run(async (ctx) => ctx.db.get(bandId));
+    expect(gig?.goingCount).toBe(44);
+    expect(band?.followerCount).toBe(11);
+    const mine = await asFan.query(api.interactions.myInteractions, {});
+    expect(mine.rsvpGigIds).toEqual([gigId]);
+    expect(mine.followBandIds).toEqual([bandId]);
+    expect(mine.savedGigIds).toEqual([gigId]);
+  });
 });

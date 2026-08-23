@@ -14,7 +14,7 @@ import 'support/harness.dart';
 const _noGigs =
     'No upcoming gigs yet.\nWhen a band books one, it shows up here.';
 const _noMatches =
-    "Nothing matches those filters.\nLoosen up — the scene's out there.";
+    'Nothing matches those filters.\nLoosen them up and see what is out there.';
 
 void main() {
   testWidgets('an empty backend blames nobody', (tester) async {

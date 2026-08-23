@@ -2,7 +2,12 @@ import { WithoutSystemFields } from "convex/server";
 import { Infer, v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
-import { ageRequirementValidator, pastShowValidator } from "../schema";
+import {
+  ageRequirementValidator,
+  fanCityValidator,
+  fanGenreChoiceValidator,
+  pastShowValidator,
+} from "../schema";
 
 // ─── Deterministic band identity ────────────────────────────────────────────
 // Every band's colour, initials and slug are derived from its name rather than
@@ -151,6 +156,7 @@ export const bandPayloadValidator = v.object({
   bio: v.string(),
   linkIg: v.union(v.string(), v.null()),
   linkBc: v.union(v.string(), v.null()),
+  linkYt: v.union(v.string(), v.null()),
   // The wire shape is the stored shape here; reuse it rather than restating it.
   pastShows: v.array(pastShowValidator),
 });
@@ -376,6 +382,14 @@ export const userPayloadValidator = v.object({
   genres: v.array(v.string()),
   attendedCount: v.number(),
   createdAt: v.number(),
+  fanOnboarding: v.union(
+    v.object({
+      preferredCity: v.union(fanCityValidator, v.null()),
+      genreChoice: fanGenreChoiceValidator,
+      collapsed: v.boolean(),
+    }),
+    v.null(),
+  ),
 });
 
 // `?? null` on the optional fields is the payload contract (explicit nulls,
@@ -400,6 +414,7 @@ export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
     bio: band.bio ?? "",
     linkIg: band.linkIg ?? null,
     linkBc: band.linkBc ?? null,
+    linkYt: band.linkYt ?? null,
     pastShows: band.pastShows,
   };
 }
@@ -472,6 +487,14 @@ export function toUserPayload(user: Doc<"users">) {
     genres: user.genres,
     attendedCount: user.attendedCount,
     createdAt: user._creationTime,
+    fanOnboarding:
+      user.fanOnboarding === undefined
+        ? null
+        : {
+            preferredCity: user.fanOnboarding.preferredCity ?? null,
+            genreChoice: user.fanOnboarding.genreChoice,
+            collapsed: user.fanOnboarding.collapsed,
+          },
   };
 }
 

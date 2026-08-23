@@ -102,7 +102,7 @@ enum DataStatus { connecting, ready, error }
 enum ExploreResultType { all, events, bands, venues }
 
 /// The band-profile fields the edit screen writes one keystroke at a time.
-enum _BandField { bio, linkIg, linkBc }
+enum _BandField { bio, linkIg, linkBc, linkYt }
 
 class PendingAuth {
   final PendingKind kind;
@@ -136,7 +136,8 @@ class AppState extends ChangeNotifier {
     authed = auth.signedIn;
     if (authed) {
       authStep = 2;
-      unawaited(_ensureUser());
+      _authReady = _ensureUser();
+      unawaited(_authReady);
     }
     _authSubscription = auth.signedInChanges.listen(_handleAuthChange);
     _subscribeToFeed();
@@ -144,10 +145,14 @@ class AppState extends ChangeNotifier {
       _cacheInteractions,
       onError: (Object error) => logError('myInteractions', error),
     );
-    _bandsSubscription = repository.myBands().listen(
-      _cacheMemberships,
-      onError: (Object error) => logError('myBands', error),
-    );
+    // Public demo mode may preload membership-shaped sample data, but
+    // authenticated routing waits for the post-refresh stream below.
+    if (!authed) {
+      _bandsSubscription = _listenToMemberships(
+        ++_membershipsGeneration,
+        requireAuthentication: false,
+      );
+    }
   }
 
   final EarplugRepository repository;
@@ -158,6 +163,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<FeedSnapshot>? _feedSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
+  int _membershipsGeneration = 0;
   bool _disposed = false;
 
   DataStatus _dataStatus;
@@ -225,8 +231,13 @@ class AppState extends ChangeNotifier {
   // ---- session
   bool authed = false;
   PendingAuth? pending;
+  PendingKind? _authConfirmationKind;
+  PendingKind? get authConfirmationKind => _authConfirmationKind;
   int authStep = 1;
   final Set<String> userGenres = {};
+  Future<bool>? _authReady;
+  Future<void>? _authCommit;
+  Future<void> _fanGenreWrite = Future.value();
 
   // ---- fan data
   Set<String> rsvps = {};
@@ -235,6 +246,18 @@ class AppState extends ChangeNotifier {
   int attended = 0;
   List<PastGig> history = const [];
   UserProfile? profile;
+
+  FanOnboarding? get fanOnboarding => profile?.fanOnboarding;
+
+  bool get fanOnboardingComplete {
+    final onboarding = fanOnboarding;
+    return onboarding != null &&
+        onboarding.preferredCity != null &&
+        onboarding.genreChoice != FanGenreChoice.pending &&
+        saved.isNotEmpty;
+  }
+
+  bool get showFanOnboarding => fanOnboarding != null && !fanOnboardingComplete;
 
   /// Legacy-imported count and RSVP-derived history can disagree; show
   /// whichever credits the fan more.
@@ -286,6 +309,8 @@ class AppState extends ChangeNotifier {
   // ---- band membership
   List<String> myBands = [];
   String bandId = '';
+  bool _membershipsLoaded = false;
+  bool get membershipsLoaded => authed && _membershipsLoaded;
 
   // ---- band create form (the cassette canvas)
   String nbName = '';
@@ -340,6 +365,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _membershipsGeneration++;
     _toastTimer?.cancel();
     for (final timer in _bandEditTimers.values) {
       timer.cancel();
@@ -360,10 +386,15 @@ class AppState extends ChangeNotifier {
 
   void _handleAuthChange(bool signedIn) {
     authed = signedIn;
+    _clearMemberships();
     if (signedIn) {
       authStep = 2;
-      unawaited(_ensureUser());
+      _authReady = _ensureUser();
+      unawaited(_authReady);
     } else {
+      _authReady = null;
+      _authCommit = null;
+      _authConfirmationKind = null;
       profile = null;
       unawaited(
         repository.refreshAuth().catchError(
@@ -374,16 +405,19 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _ensureUser() async {
+  Future<bool> _ensureUser() async {
     try {
       // The websocket must carry the new identity before the mutation runs.
       await repository.refreshAuth();
       await repository.ensureUser(name: auth.displayName);
+      _restartMemberships();
       await _refreshProfile();
       unawaited(_refreshHistory());
+      return true;
     } catch (error) {
       logError('ensureUser', error);
       say(genericErrorMessage);
+      return false;
     }
   }
 
@@ -403,6 +437,13 @@ class AppState extends ChangeNotifier {
       final loadedProfile = await repository.me();
       if (!authed) return;
       profile = loadedProfile;
+      userGenres
+        ..clear()
+        ..addAll(loadedProfile?.genres ?? const []);
+      final preferredCity = loadedProfile?.fanOnboarding?.preferredCity;
+      if (preferredCity != null) {
+        _applyDiscoveryCity(preferredCity.name);
+      }
       notifyListeners();
     } catch (error) {
       logError('me', error);
@@ -542,6 +583,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _cacheMemberships(List<BandMembership> memberships) {
+    _membershipsLoaded = true;
     myBands = [for (final membership in memberships) membership.band.id];
     if (myBands.isEmpty) {
       bandId = '';
@@ -556,6 +598,51 @@ class AppState extends ChangeNotifier {
       );
     }
     notifyListeners();
+  }
+
+  void _restartMemberships() {
+    final generation = ++_membershipsGeneration;
+    final previousSubscription = _bandsSubscription;
+    _bandsSubscription = null;
+    unawaited(previousSubscription?.cancel());
+    if (_disposed || !authed || generation != _membershipsGeneration) return;
+
+    _bandsSubscription = _listenToMemberships(
+      generation,
+      requireAuthentication: true,
+    );
+  }
+
+  StreamSubscription<List<BandMembership>> _listenToMemberships(
+    int generation, {
+    required bool requireAuthentication,
+  }) {
+    return repository.myBands().listen(
+      (memberships) {
+        if (_disposed ||
+            (requireAuthentication && !authed) ||
+            generation != _membershipsGeneration) {
+          return;
+        }
+        _cacheMemberships(memberships);
+      },
+      onError: (Object error) {
+        if (generation == _membershipsGeneration) {
+          logError('myBands', error);
+        }
+      },
+    );
+  }
+
+  void _clearMemberships() {
+    _membershipsGeneration++;
+    final subscription = _bandsSubscription;
+    _bandsSubscription = null;
+    unawaited(subscription?.cancel());
+    _membershipsLoaded = false;
+    myBands = [];
+    bandId = '';
+    _bandRoles.clear();
   }
 
   // ========================= navigation =========================
@@ -611,7 +698,10 @@ class AppState extends ChangeNotifier {
 
   void needAuth(PendingAuth p) {
     pending = p;
+    _authConfirmationKind = p.kind;
     authStep = 1;
+    _authCommit = null;
+    _postAuthScreen = null;
     go(Screen.auth);
   }
 
@@ -619,6 +709,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> signOut() async {
     await auth.signOut();
+    _clearMemberships();
     rsvps = {};
     follows = {};
     saved = {};
@@ -634,43 +725,55 @@ class AppState extends ChangeNotifier {
     }
     _bandEditTimers.clear();
     _bandEdits.clear();
-    _bandRoles.clear();
     _media?.clearForSignOut();
     resetTo(Screen.home);
     say('Signed out.');
   }
 
-  void toggleUserGenre(String g) => _set(
-    () => userGenres.contains(g) ? userGenres.remove(g) : userGenres.add(g),
-  );
-
   /// Where [leaveAuth] lands, decided by [commitAuth]; null pops back to
   /// wherever the auth gate was opened from.
   Screen? _postAuthScreen;
 
-  /// The durable half of finishing auth: persists genre picks and completes
-  /// the action that triggered the gate. Runs before any celebration delay so
+  /// The durable half of finishing auth: completes the action that triggered
+  /// the gate. Runs before any confirmation delay so
   /// backing out (or being killed) mid-splash can't drop the pending action.
-  void commitAuth() {
+  Future<void> commitAuth() {
+    final inProgress = _authCommit;
+    if (inProgress != null) return inProgress;
+    final commit = _commitAuth();
+    _authCommit = commit;
     unawaited(
-      repository.setGenres(userGenres.toList()).catchError((Object error) {
-        logError('setGenres', error);
-        say(genericErrorMessage);
+      commit.catchError((Object _) {
+        if (identical(_authCommit, commit)) _authCommit = null;
       }),
     );
+    return commit;
+  }
 
+  Future<void> _commitAuth() async {
+    final ready = await (_authReady ??= _ensureUser());
+    if (!ready) {
+      _authReady = null;
+      throw const AuthException("Couldn't finish sign-in. Try again.");
+    }
     final p = pending;
-    pending = null;
     switch (p?.kind) {
       case PendingKind.rsvp:
+        await repository.ensureRsvp(p!.id!);
+        rsvps.add(p.id!);
+        say("You're on the list. QR is in My Gigs.");
         _postAuthScreen = null;
-        toggleRsvp(p!.id!);
       case PendingKind.follow:
+        await repository.ensureFollow(p!.id!);
+        follows.add(p.id!);
+        final name = band(p.id!)?.name;
+        say(name == null ? 'Band followed.' : 'Following $name.');
         _postAuthScreen = null;
-        toggleFollow(p!.id!);
       case PendingKind.save:
+        await repository.ensureSave(p!.id!);
+        saved.add(p.id!);
+        say('Show saved.');
         _postAuthScreen = null;
-        toggleSave(p!.id!);
       case PendingKind.myGigs:
         _postAuthScreen = Screen.myGigs;
         final name = (profile?.name ?? auth.displayName)?.trim();
@@ -680,10 +783,12 @@ class AppState extends ChangeNotifier {
               : 'Welcome back, ${name.split(' ').first}.',
         );
       case PendingKind.band:
-        _postAuthScreen = Screen.bandDash;
+        _resetBandForm();
+        _postAuthScreen = Screen.bandCreate;
       case null:
         _postAuthScreen = null;
     }
+    pending = null;
   }
 
   /// The navigation half: leaves the auth screen for wherever [commitAuth]
@@ -696,10 +801,11 @@ class AppState extends ChangeNotifier {
     } else {
       resetTo(destination);
     }
+    _authConfirmationKind = null;
   }
 
-  void finishAuth() {
-    commitAuth();
+  Future<void> finishAuth() async {
+    await commitAuth();
     leaveAuth();
   }
 
@@ -755,7 +861,8 @@ class AppState extends ChangeNotifier {
   }
 
   void toggleSave(String id) {
-    _toggleOptimistically(saved, id, repository.toggleSave);
+    final nowSaved = _toggleOptimistically(saved, id, repository.toggleSave);
+    say(nowSaved ? 'Show saved.' : 'Removed from saved shows.');
   }
 
   void requestSave(String id) {
@@ -766,11 +873,186 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// Starts band creation immediately for members and preserves the attempted
+  /// action for everyone else.
+  void requestStartBand() {
+    if (authed) {
+      startBandCreate();
+    } else {
+      needAuth(const PendingAuth(PendingKind.band));
+    }
+  }
+
+  // ========================= fan onboarding =========================
+
+  void _setLocalFanOnboarding(
+    FanOnboarding onboarding, {
+    List<String>? genres,
+  }) {
+    final current = profile;
+    if (current == null) return;
+    final nextGenres = genres ?? current.genres;
+    profile = UserProfile(
+      name: current.name,
+      email: current.email,
+      genres: List.unmodifiable(nextGenres),
+      attendedCount: current.attendedCount,
+      createdAt: current.createdAt,
+      fanOnboarding: onboarding,
+    );
+    userGenres
+      ..clear()
+      ..addAll(nextGenres);
+    notifyListeners();
+  }
+
+  void selectFanCity(FanCity preferredCity) {
+    final previous = fanOnboarding;
+    if (previous == null) return;
+    final previousDiscoveryState = (
+      city: city,
+      location: discoveryLocation,
+      position: currentPosition,
+      locating: locating,
+      failure: locationFailure,
+      filters: filters,
+    );
+
+    _applyDiscoveryCity(preferredCity.name);
+    _setLocalFanOnboarding(
+      FanOnboarding(
+        preferredCity: preferredCity,
+        genreChoice: previous.genreChoice,
+        collapsed: previous.collapsed,
+      ),
+    );
+    say(
+      preferredCity == FanCity.oak
+          ? 'Browsing Oakland shows.'
+          : 'Browsing San Francisco shows.',
+    );
+
+    unawaited(
+      repository.updateFanOnboarding(preferredCity: preferredCity).catchError((
+        Object error,
+      ) {
+        logError('updateFanOnboarding city', error);
+        final current = fanOnboarding;
+        if (current?.preferredCity == preferredCity) {
+          _locationRequestGeneration++;
+          city = previousDiscoveryState.city;
+          discoveryLocation = previousDiscoveryState.location;
+          currentPosition = previousDiscoveryState.position;
+          locating = previousDiscoveryState.locating;
+          locationFailure = previousDiscoveryState.failure;
+          filters = previousDiscoveryState.filters;
+          _setLocalFanOnboarding(
+            FanOnboarding(
+              preferredCity: previous.preferredCity,
+              genreChoice: current!.genreChoice,
+              collapsed: current.collapsed,
+            ),
+          );
+        }
+        say(genericErrorMessage);
+      }),
+    );
+  }
+
+  void toggleFanGenre(String genre) {
+    final selected = Set<String>.of(userGenres);
+    selected.contains(genre) ? selected.remove(genre) : selected.add(genre);
+    _saveFanGenreChoice(
+      selected.toList(),
+      selected.isEmpty ? FanGenreChoice.pending : FanGenreChoice.selected,
+    );
+  }
+
+  void chooseOpenGenres() => _saveFanGenreChoice(const [], FanGenreChoice.open);
+
+  void _saveFanGenreChoice(List<String> genres, FanGenreChoice genreChoice) {
+    final previous = fanOnboarding;
+    if (previous == null) return;
+    final previousGenres = List<String>.of(userGenres);
+    _setLocalFanOnboarding(
+      FanOnboarding(
+        preferredCity: previous.preferredCity,
+        genreChoice: genreChoice,
+        collapsed: previous.collapsed,
+      ),
+      genres: genres,
+    );
+
+    _fanGenreWrite = _fanGenreWrite.then((_) async {
+      try {
+        await repository.updateFanOnboarding(
+          genreChoice: genreChoice,
+          genres: genres,
+        );
+      } catch (error) {
+        logError('updateFanOnboarding genres', error);
+        final current = fanOnboarding;
+        if (current?.genreChoice == genreChoice &&
+            setEquals(userGenres, genres.toSet())) {
+          _setLocalFanOnboarding(
+            FanOnboarding(
+              preferredCity: current!.preferredCity,
+              genreChoice: previous.genreChoice,
+              collapsed: current.collapsed,
+            ),
+            genres: previousGenres,
+          );
+        }
+        say(genericErrorMessage);
+      }
+    });
+    unawaited(_fanGenreWrite);
+  }
+
+  void setFanOnboardingCollapsed(bool collapsed) {
+    final previous = fanOnboarding;
+    if (previous == null || previous.collapsed == collapsed) return;
+    _setLocalFanOnboarding(
+      FanOnboarding(
+        preferredCity: previous.preferredCity,
+        genreChoice: previous.genreChoice,
+        collapsed: collapsed,
+      ),
+    );
+    unawaited(
+      repository.updateFanOnboarding(collapsed: collapsed).catchError((
+        Object error,
+      ) {
+        logError('updateFanOnboarding collapsed', error);
+        final current = fanOnboarding;
+        if (current?.collapsed == collapsed) {
+          _setLocalFanOnboarding(
+            FanOnboarding(
+              preferredCity: current!.preferredCity,
+              genreChoice: current.genreChoice,
+              collapsed: previous.collapsed,
+            ),
+          );
+        }
+        say(genericErrorMessage);
+      }),
+    );
+  }
+
   // ========================= filters =========================
 
   void setMapMode(bool on) => _set(() => mapMode = on);
 
   void setCity(String c) {
+    _applyDiscoveryCity(c);
+    say(
+      c == 'oak'
+          ? 'Showing gigs near Temescal.'
+          : 'Showing gigs near the Mission.',
+    );
+  }
+
+  void _applyDiscoveryCity(String c) {
     _locationRequestGeneration++;
     city = c;
     discoveryLocation = c == 'oak'
@@ -780,11 +1062,6 @@ class AppState extends ChangeNotifier {
     locating = false;
     locationFailure = null;
     filters = filters.copyWith(maxDistanceMiles: null);
-    say(
-      c == 'oak'
-          ? 'Showing gigs near Temescal.'
-          : 'Showing gigs near the Mission.',
-    );
   }
 
   void useCurrentPosition(LatLng position) => _set(() {
@@ -1302,6 +1579,9 @@ class AppState extends ChangeNotifier {
   String linkBcFor(String id) =>
       _bandFieldFor(id, _BandField.linkBc, band(id)?.linkBc);
 
+  String linkYtFor(String id) =>
+      _bandFieldFor(id, _BandField.linkYt, band(id)?.linkYt);
+
   void retry() {
     _dataStatus = DataStatus.connecting;
     dataError = null;
@@ -1339,6 +1619,8 @@ class AppState extends ChangeNotifier {
 
   void setLinkBc(String v) => _editBandField(_BandField.linkBc, v);
 
+  void setLinkYt(String v) => _editBandField(_BandField.linkYt, v);
+
   /// Shows what was typed at once, then persists once typing pauses. These are
   /// wired to `onChanged`, so writing on every keystroke would be one mutation
   /// per character.
@@ -1372,6 +1654,10 @@ class AppState extends ChangeNotifier {
         _BandField.linkBc => repository.updateBandProfile(
           bandId: id,
           linkBc: value,
+        ),
+        _BandField.linkYt => repository.updateBandProfile(
+          bandId: id,
+          linkYt: value,
         ),
       };
     } catch (error) {
@@ -1433,7 +1719,7 @@ class AppState extends ChangeNotifier {
     if (nbGenres.contains(g)) {
       nbGenres.remove(g);
     } else if (nbGenres.length >= 3) {
-      say('Three genres max — it keeps discovery honest.');
+      say('Three genres max. It keeps discovery honest.');
       return;
     } else {
       nbGenres.add(g);
@@ -1472,15 +1758,15 @@ class AppState extends ChangeNotifier {
     if (nbArea == null) 'a home base',
   ];
 
-  /// How full the tape winds: the five liner-note lines, equally weighted.
+  /// How full the tape winds: the six setup checklist lines, equally weighted.
   double get nbCompletion {
     final done = [
       nbName.trim().isNotEmpty,
       nbGenres.isNotEmpty,
       nbArea != null,
+      nbPhoto != null,
       nbBio.trim().isNotEmpty,
-      nbInvites.isNotEmpty ||
-          nbIg.trim().isNotEmpty ||
+      nbIg.trim().isNotEmpty ||
           nbBc.trim().isNotEmpty ||
           nbYt.trim().isNotEmpty,
     ];
@@ -1536,7 +1822,7 @@ class AppState extends ChangeNotifier {
   Future<void> createBand() async {
     if (_nbSaving) return;
     if (!canCreateBand) {
-      say('Add ${bandMissing.join(' + ')} first — tap any line.');
+      say('Add ${bandMissing.join(' + ')} first. Tap any line.');
       return;
     }
 
@@ -1568,8 +1854,12 @@ class AppState extends ChangeNotifier {
           linkBc: nbBc.trim().isEmpty ? null : nbBc.trim(),
           linkYt: nbYt.trim().isEmpty ? null : nbYt.trim(),
         );
-        bandId = created.bandId;
-        _nbBandId = created.bandId;
+        final band = created.band;
+        bandId = band.id;
+        _bands[band.id] = band;
+        _bandRoles[band.id] = 'admin';
+        if (!myBands.contains(band.id)) myBands = [...myBands, band.id];
+        _nbBandId = band.id;
         _nbCreatedSlug = created.slug;
       }
     } on Exception catch (error) {
@@ -1606,7 +1896,7 @@ class AppState extends ChangeNotifier {
       nbPhotoUploading = false;
       nbPhotoError = 'upload failed';
       notifyListeners();
-      say("Band's up. The photo didn't upload — add it from Media.");
+      say("Band's up. The photo didn't upload. Add it from Media.");
       return;
     }
 
@@ -1710,13 +2000,13 @@ class AppState extends ChangeNotifier {
 
   Future<void> publishGig() async {
     if (gfFlyerUploading) {
-      say('Still uploading your flyer — one sec.');
+      say('Still uploading your flyer. One sec.');
       return;
     }
 
     final date = gfDate;
     if (!canPublishGig || date == null) {
-      say('Add ${gigMissing.join(' + ')} first — tap any card.');
+      say('Add ${gigMissing.join(' + ')} first. Tap any card.');
       return;
     }
 

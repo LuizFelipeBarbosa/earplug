@@ -7,7 +7,7 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:flutter/material.dart' show TimeOfDay;
+import 'package:flutter/material.dart' show Color, TimeOfDay;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -70,7 +70,7 @@ void main() {
       app.requestRsvp('g1');
       expect(app.current.screen, Screen.auth);
       await app.login();
-      app.finishAuth();
+      await app.finishAuth();
       expect(app.rsvps, contains('g1'));
       expect(app.current.screen, Screen.gig);
     });
@@ -115,7 +115,7 @@ void main() {
       // Publishing while incomplete only nudges — nothing is written.
       await app.publishGig();
       expect(app.gfPublished, isFalse);
-      expect(app.toast, 'Add a date first — tap any card.');
+      expect(app.toast, 'Add a date first. Tap any card.');
 
       // Tapping the selected day again clears it.
       final date = DateTime(2026, 8, 15);
@@ -149,7 +149,7 @@ void main() {
       // Genres and a home base gate the create; the button explains instead.
       await app.createBand();
       expect(app.nbCreated, isFalse);
-      expect(app.toast, 'Add a genre + a home base first — tap any line.');
+      expect(app.toast, 'Add a genre + a home base first. Tap any line.');
 
       app.toggleNbGenre('punk');
       app.setNbArea('Berkeley');
@@ -220,7 +220,7 @@ void main() {
       await pumpEventQueue();
 
       expect(app.nbCreated, isFalse);
-      expect(app.toast, 'Something broke — try again.');
+      expect(app.toast, 'Something broke. Try again.');
       // No half-created band to save onto, so a retry creates rather than
       // updates — and the bar is usable again rather than stuck pending.
       expect(app.nbEditingCreated, isFalse);
@@ -258,7 +258,7 @@ void main() {
 
       await pumpEventQueue();
       expect(app.rsvps, isNot(contains('g1')));
-      expect(app.toast, 'Something broke — try again.');
+      expect(app.toast, 'Something broke. Try again.');
     });
 
     test(
@@ -296,19 +296,21 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 500));
         await pumpEventQueue();
         expect(app.bioFor('b1'), serverBio);
-        expect(app.toast, 'Something broke — try again.');
+        expect(app.toast, 'Something broke. Try again.');
       },
     );
 
-    test('genre picks persist in demo mode too', () async {
-      final repository = _CountingProfileRepository(auth: FakeAuthService());
-      final app = await _demoApp(repository: repository);
+    test('starting a band resumes creation after authentication', () async {
+      final app = await _demoApp();
 
-      app.toggleUserGenre('punk');
-      app.commitAuth();
-      await pumpEventQueue();
+      app.requestStartBand();
+      expect(app.current.screen, Screen.auth);
+      expect(app.pending?.kind, PendingKind.band);
 
-      expect(repository.storedGenres, ['punk']);
+      await app.login();
+      await app.finishAuth();
+
+      expect(app.current.screen, Screen.bandCreate);
     });
   });
 
@@ -538,7 +540,6 @@ class _CountingProfileRepository extends DemoRepository {
 
   int profileCalls = 0;
   String? lastBio;
-  List<String> storedGenres = const [];
   bool fail = false;
 
   @override
@@ -568,12 +569,6 @@ class _CountingProfileRepository extends DemoRepository {
       linkYt: linkYt,
     );
   }
-
-  @override
-  Future<void> setGenres(List<String> genres) async {
-    storedGenres = List.of(genres);
-    return super.setGenres(genres);
-  }
 }
 
 /// The minimum the create bar needs before it will fire.
@@ -592,7 +587,7 @@ class _GatedCreateRepository extends _FailingRsvpRepository {
   int createCalls = 0;
 
   @override
-  Future<({String bandId, String slug})> createBand({
+  Future<({Band band, String slug})> createBand({
     required String name,
     required List<String> genres,
     required String bio,
@@ -605,7 +600,10 @@ class _GatedCreateRepository extends _FailingRsvpRepository {
     createCalls++;
     if (fail) throw Exception('createBand failed');
     await gate.future;
-    return (bandId: 'nb1', slug: 'static-bloom');
+    return (
+      band: _bandFixture(id: 'nb1', name: name, genres: genres, area: area),
+      slug: 'static-bloom',
+    );
   }
 }
 
@@ -695,13 +693,30 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<void> toggleSave(String gigId) async {}
 
   @override
+  Future<void> ensureRsvp(String gigId) async {}
+
+  @override
+  Future<void> ensureFollow(String bandId) async {}
+
+  @override
+  Future<void> ensureSave(String gigId) async {}
+
+  @override
   Future<void> setGenres(List<String> genres) async {}
+
+  @override
+  Future<void> updateFanOnboarding({
+    FanCity? preferredCity,
+    FanGenreChoice? genreChoice,
+    bool? collapsed,
+    List<String>? genres,
+  }) async {}
 
   @override
   Future<void> ensureUser({String? name}) async {}
 
   @override
-  Future<({String bandId, String slug})> createBand({
+  Future<({Band band, String slug})> createBand({
     required String name,
     required List<String> genres,
     required String bio,
@@ -710,7 +725,10 @@ class _FailingRsvpRepository implements EarplugRepository {
     String? linkIg,
     String? linkBc,
     String? linkYt,
-  }) async => (bandId: 'unused', slug: 'unused');
+  }) async => (
+    band: _bandFixture(id: 'unused', name: name, genres: genres, area: area),
+    slug: 'unused',
+  );
 
   @override
   Future<void> updateBandProfile({
@@ -741,3 +759,25 @@ class _FailingRsvpRepository implements EarplugRepository {
     required String cap,
   }) async => 'unused';
 }
+
+Band _bandFixture({
+  required String id,
+  required String name,
+  required List<String> genres,
+  String? area,
+}) => Band(
+  id: id,
+  name: name,
+  genres: genres,
+  area: area ?? 'San Francisco',
+  color: const Color(0xFF222222),
+  initials: name
+      .split(' ')
+      .where((part) => part.isNotEmpty)
+      .map((part) => part[0])
+      .take(2)
+      .join()
+      .toUpperCase(),
+  followers: 0,
+  bio: '',
+);

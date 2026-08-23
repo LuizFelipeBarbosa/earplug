@@ -118,7 +118,7 @@ abstract final class Env {
           'Frontend API host.';
     }
     if (clerkTier != convexTier) {
-      return 'Environment mismatch — refusing to start.\n\n'
+      return 'Environment mismatch. Refusing to start.\n\n'
           'A ${clerkTier!.label} Clerk key is paired with the '
           '${convexTier.label} Convex\ndeployment "$convexDeployment".\n\n'
           'Pair pk_live_ with "$productionConvexDeployment",\n'

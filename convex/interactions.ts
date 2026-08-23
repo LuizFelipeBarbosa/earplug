@@ -101,7 +101,7 @@ export const history = query({
 });
 
 export const toggleRsvp = mutation({
-  args: { gigId: v.id("gigs") },
+  args: { gigId: v.id("gigs"), on: v.optional(v.boolean()) },
   returns: v.object({ on: v.boolean() }),
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
@@ -113,6 +113,8 @@ export const toggleRsvp = mutation({
         q.eq("userId", user._id).eq("gigId", args.gigId),
       )
       .unique();
+    const shouldBeOn = args.on ?? existing === null;
+    if (existing && shouldBeOn) return { on: true };
     if (existing) {
       await ctx.db.delete(existing._id);
       await ctx.db.patch(args.gigId, {
@@ -120,6 +122,7 @@ export const toggleRsvp = mutation({
       });
       return { on: false };
     }
+    if (!shouldBeOn) return { on: false };
     await ctx.db.insert("gigRsvps", { userId: user._id, gigId: args.gigId });
     await ctx.db.patch(args.gigId, { goingCount: gig.goingCount + 1 });
     return { on: true };
@@ -127,7 +130,7 @@ export const toggleRsvp = mutation({
 });
 
 export const toggleFollow = mutation({
-  args: { bandId: v.id("bands") },
+  args: { bandId: v.id("bands"), on: v.optional(v.boolean()) },
   returns: v.object({ on: v.boolean() }),
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
@@ -139,6 +142,8 @@ export const toggleFollow = mutation({
         q.eq("userId", user._id).eq("bandId", args.bandId),
       )
       .unique();
+    const shouldBeOn = args.on ?? existing === null;
+    if (existing && shouldBeOn) return { on: true };
     if (existing) {
       await ctx.db.delete(existing._id);
       await ctx.db.patch(args.bandId, {
@@ -146,6 +151,7 @@ export const toggleFollow = mutation({
       });
       return { on: false };
     }
+    if (!shouldBeOn) return { on: false };
     await ctx.db.insert("follows", { userId: user._id, bandId: args.bandId });
     await ctx.db.patch(args.bandId, { followerCount: band.followerCount + 1 });
     return { on: true };
@@ -153,7 +159,7 @@ export const toggleFollow = mutation({
 });
 
 export const toggleSave = mutation({
-  args: { gigId: v.id("gigs") },
+  args: { gigId: v.id("gigs"), on: v.optional(v.boolean()) },
   returns: v.object({ on: v.boolean() }),
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
@@ -165,10 +171,13 @@ export const toggleSave = mutation({
         q.eq("userId", user._id).eq("gigId", args.gigId),
       )
       .unique();
+    const shouldBeOn = args.on ?? existing === null;
+    if (existing && shouldBeOn) return { on: true };
     if (existing) {
       await ctx.db.delete(existing._id);
       return { on: false };
     }
+    if (!shouldBeOn) return { on: false };
     await ctx.db.insert("gigSaves", { userId: user._id, gigId: args.gigId });
     return { on: true };
   },

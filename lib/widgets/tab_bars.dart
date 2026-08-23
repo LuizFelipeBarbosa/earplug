@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../theme.dart';
+import 'sheets.dart';
 
 class EpNavigationItem extends StatelessWidget {
   final IconData icon;
@@ -107,6 +108,8 @@ class FanTabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final scr = app.current.screen;
+    final membershipsLoading = app.authed && !app.membershipsLoaded;
+    final bandCount = app.membershipsLoaded ? app.myBands.length : 0;
     return _TabBarShell(
       borderColor: Ep.border,
       items: [
@@ -127,6 +130,26 @@ class FanTabBar extends StatelessWidget {
           label: 'MY GIGS',
           selected: scr == Screen.myGigs,
           onPressed: app.openMyGigsTab,
+        ),
+        EpNavigationItem(
+          icon: Icons.groups_outlined,
+          label: membershipsLoading
+              ? 'BANDS'
+              : bandEntryLabel(bandCount).toUpperCase(),
+          selected: false,
+          onPressed: () {
+            if (!app.authed) {
+              app.requestStartBand();
+            } else if (!app.membershipsLoaded) {
+              return;
+            } else if (bandCount == 0) {
+              app.requestStartBand();
+            } else if (bandCount == 1) {
+              app.switchToBand(app.myBands.single);
+            } else {
+              showSwitcherSheet(context);
+            }
+          },
         ),
       ],
     );

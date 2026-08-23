@@ -176,7 +176,7 @@ String _doorsTime(String value) {
 void _share(AppState app, Gig gig) {
   final url = 'https://earplug.app/g/${gig.id}';
   Clipboard.setData(ClipboardData(text: url));
-  app.say('Link copied — earplug.app/g/${gig.id}');
+  app.say('Link copied: earplug.app/g/${gig.id}');
 }
 
 Future<void> _openTickets(AppState app, Gig gig) async {

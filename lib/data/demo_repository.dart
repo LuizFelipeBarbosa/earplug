@@ -42,6 +42,11 @@ class DemoRepository implements EarplugRepository {
   final Set<String> _savedGigIds = {};
   final Set<String> _userGenres = {};
   final Map<String, String> _heroByBand = {};
+  FanOnboarding _fanOnboarding = const FanOnboarding(
+    preferredCity: null,
+    genreChoice: FanGenreChoice.pending,
+    collapsed: false,
+  );
 
   String? _userName;
   int _attendedCount = 0;
@@ -452,10 +457,47 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<void> ensureRsvp(String gigId) async {
+    _rsvpGigIds.add(gigId);
+    _emitInteractionsIfSignedIn();
+  }
+
+  @override
+  Future<void> ensureFollow(String bandId) async {
+    _followBandIds.add(bandId);
+    _emitInteractionsIfSignedIn();
+  }
+
+  @override
+  Future<void> ensureSave(String gigId) async {
+    _savedGigIds.add(gigId);
+    _emitInteractionsIfSignedIn();
+  }
+
+  @override
   Future<void> setGenres(List<String> genres) async {
     _userGenres
       ..clear()
       ..addAll(genres);
+  }
+
+  @override
+  Future<void> updateFanOnboarding({
+    FanCity? preferredCity,
+    FanGenreChoice? genreChoice,
+    bool? collapsed,
+    List<String>? genres,
+  }) async {
+    if (genres != null) {
+      _userGenres
+        ..clear()
+        ..addAll(genres);
+    }
+    _fanOnboarding = FanOnboarding(
+      preferredCity: preferredCity ?? _fanOnboarding.preferredCity,
+      genreChoice: genreChoice ?? _fanOnboarding.genreChoice,
+      collapsed: collapsed ?? _fanOnboarding.collapsed,
+    );
   }
 
   @override
@@ -492,7 +534,7 @@ class DemoRepository implements EarplugRepository {
   final Set<String> _issuedSlugs = {};
 
   @override
-  Future<({String bandId, String slug})> createBand({
+  Future<({Band band, String slug})> createBand({
     required String name,
     required List<String> genres,
     required String bio,
@@ -513,18 +555,17 @@ class DemoRepository implements EarplugRepository {
       color: const Color(0xFF8FE6C4),
       initials: _initialsFor(bandName),
       followers: 1 + inviteHandles.length,
-      bio: bio.isEmpty
-          ? 'New band. No recordings yet. Come see us anyway.'
-          : bio,
+      bio: bio,
       linkIg: linkIg,
       linkBc: linkBc,
+      linkYt: linkYt,
     );
 
     _bands[id] = created;
     _memberships.add(BandMembership(band: created, role: 'admin'));
     _feedController.add(_currentFeed());
     _bandsController.add(_currentMemberships());
-    return (bandId: id, slug: slug);
+    return (band: created, slug: slug);
   }
 
   @override
@@ -551,6 +592,7 @@ class DemoRepository implements EarplugRepository {
       bio: bio,
       linkIg: linkIg,
       linkBc: linkBc,
+      linkYt: linkYt,
     );
     _bands[bandId] = updated;
     for (var i = 0; i < _memberships.length; i++) {

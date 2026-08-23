@@ -474,11 +474,20 @@ abstract class EarplugRepository {
   Future<void> toggleRsvp(String gigId);
   Future<void> toggleFollow(String bandId);
   Future<void> toggleSave(String gigId);
+  Future<void> ensureRsvp(String gigId);
+  Future<void> ensureFollow(String bandId);
+  Future<void> ensureSave(String gigId);
   Future<void> setGenres(List<String> genres);
+  Future<void> updateFanOnboarding({
+    FanCity? preferredCity,
+    FanGenreChoice? genreChoice,
+    bool? collapsed,
+    List<String>? genres,
+  });
   Future<void> ensureUser({String? name});
 
-  /// Returns the new band's id and its server-issued unique profile slug.
-  Future<({String bandId, String slug})> createBand({
+  /// Returns the new band and its server-issued unique profile slug.
+  Future<({Band band, String slug})> createBand({
     required String name,
     required List<String> genres,
     required String bio,

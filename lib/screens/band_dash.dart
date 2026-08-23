@@ -19,12 +19,45 @@ class BandDashScreen extends StatelessWidget {
 
     final mine = app.myBandGigs;
     final next = mine.isEmpty ? null : mine.first;
-    final clips = context.watch<BandMediaController>().videosFor(band.id);
-
-    final tips = [
-      if (mine.isEmpty) 'List your first gig — RSVPs count live.',
-      if (clips.isEmpty) 'Post a "this is what we sound like" clip.',
+    final media = context.watch<BandMediaController>();
+    final clips = media.videosFor(band.id);
+    final hasProfileImage =
+        band.heroUrl?.isNotEmpty == true ||
+        media.photosFor(band.id).any((item) => item.isHero);
+    final tasks = [
+      _BandTask(
+        label: 'Add a profile image',
+        complete: hasProfileImage,
+        onTap: app.openBandMedia,
+      ),
+      _BandTask(
+        label: 'Write a short bio',
+        complete: app.bioFor(band.id).trim().isNotEmpty,
+        onTap: () => app.resetTo(Screen.bandEdit),
+      ),
+      _BandTask(
+        label: 'Add a band link',
+        complete:
+            app.linkIgFor(band.id).trim().isNotEmpty ||
+            app.linkBcFor(band.id).trim().isNotEmpty ||
+            app.linkYtFor(band.id).trim().isNotEmpty,
+        onTap: () => app.resetTo(Screen.bandEdit),
+      ),
+      _BandTask(
+        label: 'Post a music clip',
+        complete: clips.isNotEmpty,
+        onTap: app.openBandMedia,
+      ),
+      _BandTask(
+        label: 'Publish a gig',
+        complete:
+            mine.isNotEmpty ||
+            band.past.isNotEmpty ||
+            (app.bandHistory(band.id)?.gigs.isNotEmpty ?? false),
+        onTap: app.startGigCreate,
+      ),
     ];
+    final remainingTasks = tasks.where((task) => !task.complete).toList();
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -58,7 +91,7 @@ class BandDashScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            'BAND VIEW · ${app.roleFor(band.id).toUpperCase()}',
+                            'MANAGING · ${app.roleFor(band.id).toUpperCase()}',
                             style: epText(
                               size: 10,
                               weight: FontWeight.w800,
@@ -76,7 +109,7 @@ class BandDashScreen extends StatelessWidget {
             const SizedBox(width: 8),
             OutlinedButton(
               onPressed: app.toFanView,
-              child: const Text('FAN VIEW'),
+              child: const Text('DISCOVER'),
             ),
           ],
         ),
@@ -93,7 +126,7 @@ class BandDashScreen extends StatelessWidget {
             const SizedBox(width: 8),
             EpStatCard(
               label: 'NEXT GIG RSVPS',
-              value: next != null ? '${app.rsvpCount(next)}' : '—',
+              value: next != null ? '${app.rsvpCount(next)}' : '0',
               caption: next != null
                   ? (next.title.length > 16
                         ? next.title.substring(0, 16)
@@ -102,30 +135,19 @@ class BandDashScreen extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             EpStatCard(
-              label: 'CLIPS',
+              label: 'MUSIC CLIPS',
               value: '${clips.length}',
               caption: clips.isEmpty
-                  ? 'post your first clip'
+                  ? 'post your first sample'
                   : 'on your profile',
             ),
           ],
         ),
         const SizedBox(height: 14),
-        Row(
-          children: [
-            _ActionButton(label: '▶ POST MEDIA', onTap: app.openBandMedia),
-            const SizedBox(width: 8),
-            _ActionButton(
-              label: '+ CREATE GIG',
-              filled: true,
-              onTap: app.startGigCreate,
-            ),
-            const SizedBox(width: 8),
-            _ActionButton(
-              label: '▦ ANALYTICS',
-              onTap: () => app.resetTo(Screen.analytics),
-            ),
-          ],
+        _DashboardActions(
+          openMedia: app.openBandMedia,
+          publishGig: app.startGigCreate,
+          openAnalytics: () => app.resetTo(Screen.analytics),
         ),
         if (next != null) ...[
           const SizedBox(height: 14),
@@ -133,40 +155,77 @@ class BandDashScreen extends StatelessWidget {
           const SizedBox(height: 8),
           _NextUpCard(gig: next, app: app),
         ],
-        if (tips.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          const SectionLabel('GET ROLLING'),
-          const SizedBox(height: 6),
-          for (final tip in tips)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 9),
-              decoration: BoxDecoration(
-                border: const Border(bottom: BorderSide(color: Ep.border)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: const BoxDecoration(
-                      color: Ep.brand,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      tip,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
-                    ),
-                  ),
-                ],
-              ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            const Expanded(child: SectionLabel('BAND CHECKLIST')),
+            const SizedBox(width: 8),
+            Text(
+              '${tasks.length - remainingTasks.length} OF ${tasks.length} DONE',
+              style: Theme.of(context).textTheme.epCaption,
             ),
-        ],
+          ],
+        ),
+        const SizedBox(height: 6),
+        if (remainingTasks.isEmpty)
+          const EpCard(
+            variant: EpCardVariant.selected,
+            child: Text('Your band profile is ready for the next show.'),
+          )
+        else
+          for (final task in remainingTasks) _BandTaskRow(task: task),
       ],
+    );
+  }
+}
+
+class _BandTask {
+  final String label;
+  final bool complete;
+  final VoidCallback onTap;
+
+  const _BandTask({
+    required this.label,
+    required this.complete,
+    required this.onTap,
+  });
+}
+
+class _BandTaskRow extends StatelessWidget {
+  final _BandTask task;
+
+  const _BandTaskRow({required this.task});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: task.onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: Ep.border)),
+          ),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.radio_button_unchecked,
+                size: 16,
+                color: Ep.accent,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  task.label,
+                  style: Theme.of(context).textTheme.epBody,
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Ep.contentSecondary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -184,10 +243,50 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: filled
-          ? FilledButton(onPressed: onTap, child: Text(label))
-          : OutlinedButton(onPressed: onTap, child: Text(label)),
+    return filled
+        ? FilledButton(onPressed: onTap, child: Text(label))
+        : OutlinedButton(onPressed: onTap, child: Text(label));
+  }
+}
+
+class _DashboardActions extends StatelessWidget {
+  final VoidCallback openMedia;
+  final VoidCallback publishGig;
+  final VoidCallback openAnalytics;
+
+  const _DashboardActions({
+    required this.openMedia,
+    required this.publishGig,
+    required this.openAnalytics,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final actions = [
+      _ActionButton(label: '▶ ADD MEDIA', onTap: openMedia),
+      _ActionButton(label: '+ PUBLISH GIG', filled: true, onTap: publishGig),
+      _ActionButton(label: '▦ ANALYTICS', onTap: openAnalytics),
+    ];
+
+    if (MediaQuery.textScalerOf(context).scale(1) > 1.25) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var index = 0; index < actions.length; index++) ...[
+            actions[index],
+            if (index < actions.length - 1) const SizedBox(height: 8),
+          ],
+        ],
+      );
+    }
+
+    return Row(
+      children: [
+        for (var index = 0; index < actions.length; index++) ...[
+          Expanded(child: actions[index]),
+          if (index < actions.length - 1) const SizedBox(width: 8),
+        ],
+      ],
     );
   }
 }

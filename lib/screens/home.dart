@@ -222,7 +222,7 @@ class _DiscoveryEmptyState extends StatelessWidget {
           Text(
             noGigs
                 ? 'No upcoming gigs yet.\nWhen a band books one, it shows up here.'
-                : "Nothing matches those filters.\nLoosen up — the scene's out there.",
+                : 'Nothing matches those filters.\nLoosen them up and see what is out there.',
             textAlign: TextAlign.center,
             style: Theme.of(
               context,

@@ -29,6 +29,11 @@ describe("users:ensureUser", () => {
     expect(me!.email).toBe("sam@example.com");
     expect(me!.genres).toEqual([]);
     expect(me!.attendedCount).toBe(0);
+    expect(me!.fanOnboarding).toEqual({
+      preferredCity: null,
+      genreChoice: "pending",
+      collapsed: false,
+    });
 
     const count = await t.run(
       async (ctx) => (await ctx.db.query("users").take(10)).length,
@@ -58,6 +63,8 @@ describe("users:ensureUser", () => {
     const row = await t.run(async (ctx) => ctx.db.get(existingId));
     expect(row!.email).toBe("luiz@example.com"); // backfilled
     expect(row!.name).toBe("Luiz B."); // kept
+    expect(row!.fanOnboarding).toBeUndefined();
+    expect((await asLegacy.query(api.users.me, {}))!.fanOnboarding).toBeNull();
   });
 
   test("adopts by email only on a unique match", async () => {
@@ -80,6 +87,7 @@ describe("users:ensureUser", () => {
     expect(userId).toBe(uniqueId);
     const row = await t.run(async (ctx) => ctx.db.get(uniqueId));
     expect(row!.clerkId).toBe("user_new_a");
+    expect(row!.fanOnboarding).toBeUndefined();
   });
 
   test("does NOT adopt unique email matches that are unverified", async () => {
@@ -220,5 +228,82 @@ describe("users:setGenres", () => {
     await asSam.mutation(api.users.setGenres, { genres: ["punk", "garage"] });
     const me = await asSam.query(api.users.me, {});
     expect(me!.genres).toEqual(["punk", "garage"]);
+    expect(me!.fanOnboarding?.genreChoice).toBe("pending");
+  });
+});
+
+describe("users:updateFanOnboarding", () => {
+  test("requires auth and rejects accounts that were not enrolled", async () => {
+    const t = convexTest(schema);
+    await expect(
+      t.mutation(api.users.updateFanOnboarding, { collapsed: true }),
+    ).rejects.toThrow("Not signed in");
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("users", {
+        clerkId: "user_legacy",
+        name: "Legacy Fan",
+        email: "legacy@example.com",
+        genres: [],
+        attendedCount: 0,
+      });
+    });
+    const asLegacy = t.withIdentity({ subject: "user_legacy" });
+    await expect(
+      asLegacy.mutation(api.users.updateFanOnboarding, { collapsed: true }),
+    ).rejects.toThrow("Fan onboarding is not available for this account");
+  });
+
+  test("applies partial updates without erasing other onboarding state", async () => {
+    const t = convexTest(schema);
+    const asSam = t.withIdentity({ subject: "user_sam", email: "s@x.com" });
+    await asSam.mutation(api.users.ensureUser, {});
+
+    await asSam.mutation(api.users.updateFanOnboarding, {
+      preferredCity: "oak",
+    });
+    await asSam.mutation(api.users.updateFanOnboarding, { collapsed: true });
+
+    expect((await asSam.query(api.users.me, {}))!.fanOnboarding).toEqual({
+      preferredCity: "oak",
+      genreChoice: "pending",
+      collapsed: true,
+    });
+  });
+
+  test("records genres and an explicit choice atomically", async () => {
+    const t = convexTest(schema);
+    const asSam = t.withIdentity({ subject: "user_sam", email: "s@x.com" });
+    await asSam.mutation(api.users.ensureUser, {});
+    await asSam.mutation(api.users.setGenres, { genres: ["punk"] });
+
+    await asSam.mutation(api.users.updateFanOnboarding, {
+      genreChoice: "open",
+      genres: [],
+    });
+
+    const me = await asSam.query(api.users.me, {});
+    expect(me!.genres).toEqual([]);
+    expect(me!.fanOnboarding?.genreChoice).toBe("open");
+  });
+
+  test("validates city and genre choice and rejects empty updates", async () => {
+    const t = convexTest(schema);
+    const asSam = t.withIdentity({ subject: "user_sam", email: "s@x.com" });
+    await asSam.mutation(api.users.ensureUser, {});
+
+    await expect(
+      asSam.mutation(api.users.updateFanOnboarding, {
+        preferredCity: "berkeley" as "sf",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      asSam.mutation(api.users.updateFanOnboarding, {
+        genreChoice: "skipped" as "pending",
+      }),
+    ).rejects.toThrow();
+    await expect(
+      asSam.mutation(api.users.updateFanOnboarding, {}),
+    ).rejects.toThrow("No fan onboarding fields provided");
   });
 });

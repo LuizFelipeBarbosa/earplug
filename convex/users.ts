@@ -7,6 +7,7 @@ import {
   toUserPayload,
   userPayloadValidator,
 } from "./lib/helpers";
+import { fanOnboardingValidator } from "./schema";
 
 export const me = query({
   args: {},
@@ -86,6 +87,43 @@ export const setGenres = mutation({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     await ctx.db.patch(user._id, { genres: args.genres });
+    return null;
+  },
+});
+
+export const updateFanOnboarding = mutation({
+  args: {
+    ...fanOnboardingValidator.partial().fields,
+    genres: v.optional(v.array(v.string())),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    if (user.fanOnboarding === undefined) {
+      throw new Error("Fan onboarding is not available for this account");
+    }
+    if (
+      args.preferredCity === undefined &&
+      args.genreChoice === undefined &&
+      args.collapsed === undefined &&
+      args.genres === undefined
+    ) {
+      throw new Error("No fan onboarding fields provided");
+    }
+
+    await ctx.db.patch(user._id, {
+      ...(args.genres === undefined ? {} : { genres: args.genres }),
+      fanOnboarding: {
+        ...(user.fanOnboarding.preferredCity === undefined
+          ? {}
+          : { preferredCity: user.fanOnboarding.preferredCity }),
+        ...(args.preferredCity === undefined
+          ? {}
+          : { preferredCity: args.preferredCity }),
+        genreChoice: args.genreChoice ?? user.fanOnboarding.genreChoice,
+        collapsed: args.collapsed ?? user.fanOnboarding.collapsed,
+      },
+    });
     return null;
   },
 });

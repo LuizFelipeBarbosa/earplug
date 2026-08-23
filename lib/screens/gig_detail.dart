@@ -181,7 +181,7 @@ class _Hero extends StatelessWidget {
                       Clipboard.setData(
                         ClipboardData(text: 'https://earplug.app/g/${gig.id}'),
                       );
-                      app.say('Link copied — earplug.app/g/${gig.id}');
+                      app.say('Link copied: earplug.app/g/${gig.id}');
                     },
                     child: Text(
                       'SHARE ↗',
@@ -437,7 +437,7 @@ class _WhosGoing extends StatelessWidget {
     final socialLine = !app.authed
         ? 'Log in to see when bands you follow are on the bill.'
         : followedBandNames.isEmpty
-        ? 'None of the bands you follow are on this bill — yet.'
+        ? 'None of the bands you follow are on this bill yet.'
         : 'Bands you follow on this bill: '
               '${followedBandNames.join(', ')}.';
 
@@ -454,7 +454,7 @@ class _WhosGoing extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Attendance stays vague on purpose — no public list, ever.',
+            'Attendance stays vague on purpose. There is no public list.',
             style: epText(
               size: 10.5,
               letterSpacing: .3,
@@ -480,7 +480,7 @@ class _CtaBar extends StatelessWidget {
     final tixNote = external
         ? 'External ticketing'
         : gig.free
-        ? 'Free — RSVP for headcount'
+        ? 'Free. RSVP for headcount'
         : 'Pay at the door · RSVP holds nothing';
 
     final Widget button;
@@ -508,7 +508,7 @@ class _CtaBar extends StatelessWidget {
       );
     } else {
       button = EpButton(
-        "RSVP — I'M IN",
+        "RSVP: I'M IN",
         fontSize: 14,
         padding: const EdgeInsets.symmetric(vertical: 16),
         onTap: () => app.requestRsvp(gig.id),

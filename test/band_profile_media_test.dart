@@ -7,6 +7,28 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/harness.dart';
 
 void main() {
+  test('Instagram links normalize handles and scheme-less profile URLs', () {
+    expect(
+      bandLinkUri('@foghorn.diet', instagram: true).toString(),
+      'https://instagram.com/foghorn.diet',
+    );
+    expect(
+      bandLinkUri('instagram.com/foghorn.diet', instagram: true).toString(),
+      'https://instagram.com/foghorn.diet',
+    );
+    expect(
+      bandLinkUri('www.instagram.com/foghorn.diet', instagram: true).toString(),
+      'https://instagram.com/foghorn.diet',
+    );
+    expect(
+      bandLinkUri(
+        'http://www.instagram.com/foghorn.diet?hl=en',
+        instagram: true,
+      ).toString(),
+      'https://instagram.com/foghorn.diet?hl=en',
+    );
+  });
+
   testWidgets('profile renders the pinned video and clip grid', (tester) async {
     await _pumpProfile(tester);
     final pinned = DemoData.b1Media.singleWhere((media) => media.pinned);
@@ -68,6 +90,26 @@ void main() {
 
     expect(band.heroUrl, isNull);
     expect(find.text(band.initials), findsOne);
+  });
+
+  testWidgets('profile renders every configured band link', (tester) async {
+    final harness = await _pumpProfile(tester);
+    harness.app.setLinkIg('@foghorn.diet');
+    harness.app.setLinkBc('foghorn.bandcamp.com');
+    harness.app.setLinkYt('youtube.com/@foghorn');
+    await tester.pump();
+
+    await tester.scrollUntilVisible(
+      find.text('YOUTUBE ↗'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('INSTAGRAM ↗'), findsOne);
+    expect(find.text('BANDCAMP ↗'), findsOne);
+    expect(find.text('YOUTUBE ↗'), findsOne);
+
+    // Allow the debounced profile write and toast timer to settle.
+    await tester.pump(const Duration(seconds: 3));
   });
 }
 

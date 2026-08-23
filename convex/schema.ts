@@ -23,6 +23,20 @@ export const ageRequirementValidator = v.union(
   v.literal("21Plus"),
 );
 
+export const fanCityValidator = v.union(v.literal("sf"), v.literal("oak"));
+
+export const fanGenreChoiceValidator = v.union(
+  v.literal("pending"),
+  v.literal("selected"),
+  v.literal("open"),
+);
+
+export const fanOnboardingValidator = v.object({
+  preferredCity: v.optional(fanCityValidator),
+  genreChoice: fanGenreChoiceValidator,
+  collapsed: v.boolean(),
+});
+
 export default defineSchema({
   users: defineTable({
     clerkId: v.string(),
@@ -30,6 +44,9 @@ export default defineSchema({
     email: v.string(),
     genres: v.array(v.string()),
     attendedCount: v.number(),
+    // Present only for accounts first inserted after fan onboarding launched.
+    // Legacy rows adopted by Clerk deliberately remain unenrolled.
+    fanOnboarding: v.optional(fanOnboardingValidator),
     // Storage references with no home in the v1 UI, kept rather than swept.
     avatarUrl: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),

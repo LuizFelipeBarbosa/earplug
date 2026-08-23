@@ -44,7 +44,7 @@ class BandEditScreen extends StatelessWidget {
           variant: EpCardVariant.selected,
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
           child: Text(
-            "You're editing the real thing — what you see here is exactly what fans see.",
+            "You're editing the public profile. Fans see these changes too.",
             style: Theme.of(
               context,
             ).textTheme.epCaption.copyWith(color: Ep.contentPrimary),
@@ -75,8 +75,16 @@ class BandEditScreen extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        TextFormField(
+          key: ValueKey('linkYt-${app.bandId}'),
+          initialValue: app.linkYtFor(app.bandId),
+          onChanged: app.setLinkYt,
+          style: epText(size: 12),
+          decoration: epInputDecoration('youtube.com/@yourband'),
+        ),
         const SizedBox(height: 14),
-        const SectionLabel('BIO'),
+        const SectionLabel('ABOUT THE BAND'),
         const SizedBox(height: 6),
         TextFormField(
           key: ValueKey('bio-${app.bandId}'),
@@ -85,7 +93,7 @@ class BandEditScreen extends StatelessWidget {
           style: epText(size: 13, height: 1.5),
           minLines: 3,
           maxLines: 5,
-          decoration: epInputDecoration(''),
+          decoration: epInputDecoration('Add a short bio'),
         ),
         const SizedBox(height: 14),
         const SectionLabel('LINKS'),
@@ -117,14 +125,14 @@ class BandEditScreen extends StatelessWidget {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SectionLabel('VIDEOS'),
+            const SectionLabel('MUSIC CLIPS'),
             const SizedBox(height: 4),
             Wrap(
               spacing: 4,
               runSpacing: 4,
               children: [
                 TextAction(
-                  '+ UPLOAD CLIP',
+                  '+ POST A MUSIC CLIP',
                   onTap: app.openBandMedia,
                   padding: EdgeInsets.zero,
                 ),

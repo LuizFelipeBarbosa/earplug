@@ -244,7 +244,7 @@ void main() {
     },
   );
 
-  test('save requests require auth and roll back rejected writes', () async {
+  test('save requests require auth and preserve a rejected intent', () async {
     final auth = FakeAuthService();
     final repository = _GatedSaveRepository(auth: auth);
     final app = AppState(repository: repository, auth: auth);
@@ -257,7 +257,25 @@ void main() {
 
     await auth.signInDemo();
     await _flushAsyncWork();
-    app.commitAuth();
+    final commit = app.commitAuth();
+    expect(app.saved, isNot(contains('g1')));
+
+    repository.saveGate.completeError(StateError('save failed'));
+    await expectLater(commit, throwsStateError);
+    await _flushAsyncWork();
+    expect(app.saved, isNot(contains('g1')));
+    expect(app.pending?.kind, PendingKind.save);
+  });
+
+  test('authenticated save rolls back a rejected optimistic write', () async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _GatedSaveRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await _flushAsyncWork();
+
+    app.requestSave('g1');
     expect(app.saved, contains('g1'));
 
     repository.saveGate.completeError(StateError('save failed'));
@@ -448,6 +466,9 @@ class _GatedSaveRepository extends DemoRepository {
 
   @override
   Future<void> toggleSave(String gigId) => saveGate.future;
+
+  @override
+  Future<void> ensureSave(String gigId) => saveGate.future;
 }
 
 Future<void> _flushAsyncWork() async {
