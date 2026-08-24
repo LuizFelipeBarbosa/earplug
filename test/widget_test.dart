@@ -618,6 +618,9 @@ class _FailingRsvpRepository implements EarplugRepository {
   Stream<FeedSnapshot> feed() => const Stream.empty();
 
   @override
+  Stream<List<Gig>> upcomingGigsForBand(String bandId) => const Stream.empty();
+
+  @override
   Stream<Interactions> myInteractions() => const Stream.empty();
 
   @override
@@ -736,6 +739,9 @@ class _FailingRsvpRepository implements EarplugRepository {
 
   @override
   Future<void> ensureUser({String? name}) async {}
+
+  @override
+  Future<void> deleteCurrentUser() async {}
 
   @override
   Future<({Band band, String slug})> createBand({

@@ -5,6 +5,7 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/auth.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/media_upload_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -33,7 +34,7 @@ void main() {
 
   test('AppState preserves local state when account deletion fails', () async {
     final auth = FakeAuthService();
-    final repository = DemoRepository(auth: auth);
+    final repository = _DeletionOrderRepository(auth: auth);
     final app = AppState(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await auth.signInDemo();
@@ -44,14 +45,116 @@ void main() {
     expect(await app.deleteAccount(), isFalse);
     expect(app.authed, isTrue);
     expect(app.rsvps, contains('kept-rsvp'));
+    expect(repository.authDeleteCallsAtTombstone, [0]);
 
     auth.deleteAccountError = null;
     expect(await app.deleteAccount(), isTrue);
+    expect(repository.authDeleteCallsAtTombstone, [0, 1]);
     expect(app.authed, isFalse);
     expect(app.rsvps, isEmpty);
     expect(app.profile, isNull);
     expect(app.current.screen, Screen.home);
   });
+
+  test(
+    'AppState does not delete Clerk when the Convex tombstone fails',
+    () async {
+      final auth = FakeAuthService();
+      final repository = _FailingDeletionRepository(auth: auth);
+      final app = AppState(repository: repository, auth: auth);
+      addTearDown(app.dispose);
+      await auth.signInDemo();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(await app.deleteAccount(), isFalse);
+      expect(auth.deleteAccountCalls, 0);
+      expect(app.authed, isTrue);
+    },
+  );
+
+  test(
+    "an old avatar upload cannot release a new session's clear lock",
+    () async {
+      final auth = FakeAuthService();
+      final repository = _GatedAvatarRepository(auth: auth);
+      final uploadStarted = Completer<void>();
+      final uploadGate = Completer<String>();
+      final uploader = MediaUploadService(
+        repository: repository,
+        post: (_, _, _) {
+          uploadStarted.complete();
+          return uploadGate.future;
+        },
+      );
+      final app = AppState(
+        repository: repository,
+        auth: auth,
+        mediaUploadService: uploader,
+      );
+      addTearDown(app.dispose);
+      await auth.signInDemo();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      final oldUpload = app.updateFanAvatar(stubPhotoFixture());
+      await uploadStarted.future;
+      await app.signOut();
+      await auth.signInDemo();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      repository.clearGate = Completer<void>();
+      final newClear = app.clearFanAvatar();
+      expect(app.fanAvatarSaving, isTrue);
+      uploadGate.complete('old-session-storage');
+      expect(await oldUpload, isFalse);
+      expect(app.fanAvatarSaving, isTrue);
+
+      repository.clearGate!.complete();
+      expect(await newClear, isTrue);
+      expect(app.fanAvatarSaving, isFalse);
+    },
+  );
+
+  test(
+    "an old avatar clear cannot release a new session's upload lock",
+    () async {
+      final auth = FakeAuthService();
+      final repository = _GatedAvatarRepository(auth: auth)
+        ..clearGate = Completer<void>();
+      final uploadStarted = Completer<void>();
+      final uploadGate = Completer<String>();
+      final uploader = MediaUploadService(
+        repository: repository,
+        post: (_, _, _) {
+          uploadStarted.complete();
+          return uploadGate.future;
+        },
+      );
+      final app = AppState(
+        repository: repository,
+        auth: auth,
+        mediaUploadService: uploader,
+      );
+      addTearDown(app.dispose);
+      await auth.signInDemo();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      final oldClear = app.clearFanAvatar();
+      await app.signOut();
+      await auth.signInDemo();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      final newUpload = app.updateFanAvatar(stubPhotoFixture());
+      await uploadStarted.future;
+      expect(app.fanAvatarSaving, isTrue);
+      repository.clearGate!.complete();
+      expect(await oldClear, isFalse);
+      expect(app.fanAvatarSaving, isTrue);
+
+      uploadGate.complete('new-session-storage');
+      expect(await newUpload, isTrue);
+      expect(app.fanAvatarSaving, isFalse);
+    },
+  );
 
   test(
     'fan profile changes publish locally only after a successful save',
@@ -206,6 +309,22 @@ void main() {
       expect(app.followedBandShows, isEmpty);
     },
   );
+
+  test('followed-band shows include gigs outside the discovery feed', () async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _OutsideFeedFollowRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(app.allGigs.any((gig) => gig.id == 'outside-feed'), isFalse);
+    expect(
+      app.followedBandShows.map((gig) => gig.id),
+      contains('outside-feed'),
+    );
+    expect(app.gig('outside-feed')?.title, 'Beyond the Feed');
+  });
 
   testWidgets('backing out during confirmation keeps the pending RSVP', (
     tester,
@@ -377,6 +496,71 @@ void main() {
     expect(find.text('SHOW SAVED'), findsOne);
     await tester.pump(const Duration(seconds: 2));
   });
+}
+
+class _DeletionOrderRepository extends DemoRepository {
+  _DeletionOrderRepository({required this.auth}) : super(auth: auth);
+
+  final FakeAuthService auth;
+  final List<int> authDeleteCallsAtTombstone = [];
+
+  @override
+  Future<void> deleteCurrentUser() async {
+    authDeleteCallsAtTombstone.add(auth.deleteAccountCalls);
+  }
+}
+
+class _FailingDeletionRepository extends DemoRepository {
+  _FailingDeletionRepository({required super.auth});
+
+  @override
+  Future<void> deleteCurrentUser() =>
+      Future<void>.error(StateError('Convex tombstone failed'));
+}
+
+class _GatedAvatarRepository extends DemoRepository {
+  _GatedAvatarRepository({required super.auth});
+
+  Completer<void>? clearGate;
+
+  @override
+  Future<String> generateAvatarUploadUrl() async =>
+      'https://upload.example/avatar';
+
+  @override
+  Future<void> clearAvatar() async {
+    await clearGate?.future;
+    await super.clearAvatar();
+  }
+}
+
+class _OutsideFeedFollowRepository extends DemoRepository {
+  _OutsideFeedFollowRepository({required super.auth});
+
+  @override
+  Stream<List<Gig>> upcomingGigsForBand(String bandId) {
+    if (bandId != 'b2') return Stream.value(const []);
+    final startsAt = DateTime.now().add(const Duration(days: 365));
+    return Stream.value([
+      Gig(
+        id: 'outside-feed',
+        title: 'Beyond the Feed',
+        venueId: 'v1',
+        price: 0,
+        startsAt: startsAt,
+        dateShort: Gig.dateShortFor(startsAt.millisecondsSinceEpoch),
+        dateLine: Gig.dateLineFor(startsAt.millisecondsSinceEpoch, '8PM / 9PM'),
+        time: '8PM / 9PM',
+        when: Gig.whenFor(startsAt.millisecondsSinceEpoch),
+        flyKey: 'paper',
+        lineup: const ['b2'],
+        going: 0,
+        genres: const ['punk'],
+        desc: '',
+        tix: Ticketing.rsvp,
+      ),
+    ]);
+  }
 }
 
 class _GatedEnsureRepository extends DemoRepository {

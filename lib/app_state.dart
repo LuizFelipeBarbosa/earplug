@@ -172,6 +172,10 @@ class AppState extends ChangeNotifier {
   StreamSubscription<FeedSnapshot>? _feedSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
+  final Map<String, StreamSubscription<List<Gig>>>
+  _followedBandGigSubscriptions = {};
+  final Map<String, Object> _followedBandGigTokens = {};
+  final Map<String, List<Gig>> _followedBandGigs = {};
   int _membershipsGeneration = 0;
   int _sessionGeneration = 0;
   bool _disposed = false;
@@ -258,7 +262,8 @@ class AppState extends ChangeNotifier {
   List<FanHistoryItem> history = const [];
   UserProfile? profile;
   bool _profileTutorialReplay = false;
-  bool fanAvatarSaving = false;
+  Object? _fanAvatarSaveOwner;
+  bool get fanAvatarSaving => _fanAvatarSaveOwner != null;
   FanCity? _appliedHomePersonalization;
   final Set<String> _loadingFollowBands = {};
 
@@ -395,6 +400,7 @@ class AppState extends ChangeNotifier {
     unawaited(_feedSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
     unawaited(_bandsSubscription?.cancel());
+    _clearFollowedBandGigSubscriptions();
     super.dispose();
   }
 
@@ -618,10 +624,56 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addEntries(interactions.gigs.map((gig) => MapEntry(gig.id, gig)));
     attended = interactions.attendedCount;
+    _syncFollowedBandGigSubscriptions();
     for (final bandId in follows) {
       if (!_bands.containsKey(bandId)) unawaited(_loadFollowBand(bandId));
     }
     notifyListeners();
+  }
+
+  void _syncFollowedBandGigSubscriptions() {
+    if (!authed) {
+      _clearFollowedBandGigSubscriptions();
+      return;
+    }
+    final removedBandIds = _followedBandGigSubscriptions.keys
+        .where((bandId) => !follows.contains(bandId))
+        .toList();
+    for (final bandId in removedBandIds) {
+      _followedBandGigTokens.remove(bandId);
+      _followedBandGigs.remove(bandId);
+      unawaited(_followedBandGigSubscriptions.remove(bandId)?.cancel());
+    }
+
+    for (final bandId in follows) {
+      if (_followedBandGigSubscriptions.containsKey(bandId)) continue;
+      final token = Object();
+      _followedBandGigTokens[bandId] = token;
+      _followedBandGigSubscriptions[bandId] = repository
+          .upcomingGigsForBand(bandId)
+          .listen(
+            (gigs) {
+              if (_disposed ||
+                  !follows.contains(bandId) ||
+                  !identical(_followedBandGigTokens[bandId], token)) {
+                return;
+              }
+              _followedBandGigs[bandId] = List<Gig>.of(gigs);
+              notifyListeners();
+            },
+            onError: (Object error) =>
+                logError('upcomingGigsForBand $bandId', error),
+          );
+    }
+  }
+
+  void _clearFollowedBandGigSubscriptions() {
+    _followedBandGigTokens.clear();
+    _followedBandGigs.clear();
+    for (final subscription in _followedBandGigSubscriptions.values) {
+      unawaited(subscription.cancel());
+    }
+    _followedBandGigSubscriptions.clear();
   }
 
   Future<void> _loadFollowBand(String bandId) async {
@@ -796,6 +848,9 @@ class AppState extends ChangeNotifier {
 
   Future<bool> deleteAccount() async {
     try {
+      // Establish the Convex tombstone while this Clerk session can still
+      // authenticate. The eventual user.deleted webhook is only a retry path.
+      await repository.deleteCurrentUser();
       await auth.deleteAccount();
     } catch (error) {
       logError('deleteAccount', error);
@@ -829,9 +884,10 @@ class AppState extends ChangeNotifier {
     _fanGenreWrite = Future.value();
     _profileTutorialWrite = Future.value();
     _profileTutorialReplay = false;
-    fanAvatarSaving = false;
+    _fanAvatarSaveOwner = null;
     _appliedHomePersonalization = null;
     _loadingFollowBands.clear();
+    _clearFollowedBandGigSubscriptions();
     _interactionGigs.clear();
     _locationRequestGeneration++;
     city = 'sf';
@@ -891,6 +947,7 @@ class AppState extends ChangeNotifier {
       case PendingKind.follow:
         await repository.ensureFollow(p!.id!);
         follows.add(p.id!);
+        _syncFollowedBandGigSubscriptions();
         final name = band(p.id!)?.name;
         say(name == null ? 'Band followed.' : 'Following $name.');
         _postAuthScreen = null;
@@ -942,15 +999,18 @@ class AppState extends ChangeNotifier {
   bool _toggleOptimistically(
     Set<String> ids,
     String id,
-    Future<void> Function(String) persist,
-  ) {
+    Future<void> Function(String) persist, [
+    void Function()? onChanged,
+  ]) {
     final wasOn = ids.contains(id);
     wasOn ? ids.remove(id) : ids.add(id);
+    onChanged?.call();
     notifyListeners();
     unawaited(
       persist(id).catchError((Object error) {
         logError('toggle $id', error);
         wasOn ? ids.add(id) : ids.remove(id);
+        onChanged?.call();
         say(genericErrorMessage); // notifies, so the roll-back shows
       }),
     );
@@ -971,7 +1031,12 @@ class AppState extends ChangeNotifier {
   }
 
   void toggleFollow(String id) {
-    if (_toggleOptimistically(follows, id, repository.toggleFollow)) {
+    if (_toggleOptimistically(
+      follows,
+      id,
+      repository.toggleFollow,
+      _syncFollowedBandGigSubscriptions,
+    )) {
       final name = band(id)?.name;
       say(name == null ? 'Band followed.' : 'Following $name.');
     }
@@ -1075,7 +1140,8 @@ class AppState extends ChangeNotifier {
   Future<bool> updateFanAvatar(PickedMedia media) async {
     if (!authed || fanAvatarSaving) return false;
     final sessionGeneration = _sessionGeneration;
-    fanAvatarSaving = true;
+    final saveOwner = Object();
+    _fanAvatarSaveOwner = saveOwner;
     notifyListeners();
     try {
       final storageId = await mediaUploader.uploadAvatarRaw(media: media);
@@ -1089,15 +1155,18 @@ class AppState extends ChangeNotifier {
       if (_isCurrentSession(sessionGeneration)) say(genericErrorMessage);
       return false;
     } finally {
-      fanAvatarSaving = false;
-      notifyListeners();
+      if (identical(_fanAvatarSaveOwner, saveOwner)) {
+        _fanAvatarSaveOwner = null;
+        notifyListeners();
+      }
     }
   }
 
   Future<bool> clearFanAvatar() async {
     if (!authed || fanAvatarSaving) return false;
     final sessionGeneration = _sessionGeneration;
-    fanAvatarSaving = true;
+    final saveOwner = Object();
+    _fanAvatarSaveOwner = saveOwner;
     notifyListeners();
     try {
       await repository.clearAvatar();
@@ -1110,8 +1179,10 @@ class AppState extends ChangeNotifier {
       if (_isCurrentSession(sessionGeneration)) say(genericErrorMessage);
       return false;
     } finally {
-      fanAvatarSaving = false;
-      notifyListeners();
+      if (identical(_fanAvatarSaveOwner, saveOwner)) {
+        _fanAvatarSaveOwner = null;
+        notifyListeners();
+      }
     }
   }
 
@@ -1566,8 +1637,13 @@ class AppState extends ChangeNotifier {
       return const [];
     }
     final now = DateTime.now();
+    final gigsById = {
+      for (final gig in _allGigs) gig.id: gig,
+      for (final gigs in _followedBandGigs.values)
+        for (final gig in gigs) gig.id: gig,
+    };
     final shows = [
-      for (final gig in _allGigs)
+      for (final gig in gigsById.values)
         if (!gig.startsAt.isBefore(now) && gig.lineup.any(follows.contains))
           gig,
     ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
@@ -1577,6 +1653,11 @@ class AppState extends ChangeNotifier {
   Gig? gig(String id) {
     for (final g in allGigs) {
       if (g.id == id) return g;
+    }
+    for (final gigs in _followedBandGigs.values) {
+      for (final gig in gigs) {
+        if (gig.id == id) return gig;
+      }
     }
     return _interactionGigs[id] ?? _relationshipGigs[id];
   }

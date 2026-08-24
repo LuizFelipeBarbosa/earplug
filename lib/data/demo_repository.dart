@@ -89,6 +89,16 @@ class DemoRepository implements EarplugRepository {
   Stream<FeedSnapshot> feed() => _replay(_feedController, _currentFeed);
 
   @override
+  Stream<List<Gig>> upcomingGigsForBand(String bandId) {
+    return feed().map(
+      (snapshot) => [
+        for (final gig in snapshot.gigs)
+          if (gig.lineup.contains(bandId)) gig,
+      ]..sort((a, b) => a.startsAt.compareTo(b.startsAt)),
+    );
+  }
+
+  @override
   Stream<Interactions> myInteractions() =>
       _replay(_interactionsController, _currentInteractions);
 
@@ -576,6 +586,9 @@ class DemoRepository implements EarplugRepository {
   Future<void> ensureUser({String? name}) async {
     _userName = name ?? _userName;
   }
+
+  @override
+  Future<void> deleteCurrentUser() async {}
 
   static String _initialsFor(String name) => name
       .split(' ')

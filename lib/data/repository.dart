@@ -445,6 +445,7 @@ abstract class EarplugRepository {
   Future<UserProfile?> me();
 
   Stream<FeedSnapshot> feed();
+  Stream<List<Gig>> upcomingGigsForBand(String bandId);
   Stream<Interactions> myInteractions();
   Stream<List<BandMembership>> myBands();
   Future<List<BandMedia>> mediaFor(String bandId);
@@ -497,6 +498,7 @@ abstract class EarplugRepository {
     List<String>? genres,
   });
   Future<void> ensureUser({String? name});
+  Future<void> deleteCurrentUser();
 
   /// Returns the new band and its server-issued unique profile slug.
   Future<({Band band, String slug})> createBand({

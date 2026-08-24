@@ -1,5 +1,11 @@
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { Doc } from "./_generated/dataModel";
+import {
+  MutationCtx,
+  internalMutation,
+  mutation,
+  query,
+} from "./_generated/server";
 import { upsertUserFromClerk } from "./lib/clerkUser";
 import {
   MAX_PROFILE_BIO_LENGTH,
@@ -31,6 +37,17 @@ function validateProfileGenres(input: string[]): string[] {
     throw new Error("Genres cannot be duplicated");
   }
   return genres;
+}
+
+async function tombstoneUser(ctx: MutationCtx, user: Doc<"users">) {
+  // Keep the row and every reference to it. A hard delete would dangle user
+  // ids in five tables and can leave a band with no surviving admin. A
+  // cascade would also have to reproduce counter maintenance across
+  // unbounded joins and would destroy RSVP history on a replayable event.
+  // Blanking email keeps the tombstone out of non-empty by_email ranges so a
+  // later sign-up under a new Clerk id cannot adopt this dead identity.
+  if (user.deletedAt !== undefined && user.email === "") return;
+  await ctx.db.patch(user._id, { deletedAt: Date.now(), email: "" });
 }
 
 export const me = query({
@@ -154,6 +171,25 @@ export const ensureUser = mutation({
   },
 });
 
+/** Tombstones the current Convex user while its Clerk session is still valid.
+ * The client awaits this before deleting the Clerk account; the webhook is an
+ * idempotent retry path, not the operation that establishes deletion safety. */
+export const deleteMe = mutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not signed in");
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    if (!user) throw new Error("No user record — call users:ensureUser first");
+    await tombstoneUser(ctx, user);
+    return null;
+  },
+});
+
 export const syncFromClerk = internalMutation({
   args: {
     clerkId: v.string(),
@@ -188,14 +224,7 @@ export const markDeletedFromClerk = internalMutation({
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
       .unique();
     if (user === null) return { found: false };
-
-    // Keep the row and every reference to it. A hard delete would dangle user
-    // ids in five tables and can leave a band with no surviving admin. A
-    // cascade would also have to reproduce counter maintenance across
-    // unbounded joins and would destroy RSVP history on a replayable event.
-    // Blanking email keeps the tombstone out of non-empty by_email ranges so a
-    // later sign-up under a new Clerk id cannot adopt this dead identity.
-    await ctx.db.patch(user._id, { deletedAt: Date.now(), email: "" });
+    await tombstoneUser(ctx, user);
     return { found: true };
   },
 });

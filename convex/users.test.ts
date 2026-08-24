@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 describe("users:ensureUser", () => {
@@ -211,6 +211,62 @@ describe("users:ensureUser", () => {
 
     expect(result.userId).toBe(blankId);
     expect((await t.run(async (ctx) => ctx.db.get(blankId)))?.email).toBe("");
+  });
+});
+
+describe("users:deleteMe", () => {
+  test("tombstones before a recreated email can be adopted", async () => {
+    const t = convexTest(schema);
+    const oldIdentity = t.withIdentity({
+      subject: "user_old_account",
+      email: "same@example.com",
+      emailVerified: true,
+    });
+    const { userId: oldUserId } = await oldIdentity.mutation(
+      api.users.ensureUser,
+      {},
+    );
+
+    await oldIdentity.mutation(api.users.deleteMe, {});
+    await oldIdentity.mutation(api.users.deleteMe, {});
+
+    const newIdentity = t.withIdentity({
+      subject: "user_new_account",
+      email: "same@example.com",
+      emailVerified: true,
+    });
+    const { userId: newUserId } = await newIdentity.mutation(
+      api.users.ensureUser,
+      {},
+    );
+    expect(newUserId).not.toBe(oldUserId);
+
+    // A delayed Clerk webhook must still target the old id, never the newly
+    // created account with the same verified email.
+    await t.mutation(internal.users.markDeletedFromClerk, {
+      clerkId: "user_old_account",
+    });
+    const [oldUser, newUser] = await t.run(async (ctx) => [
+      await ctx.db.get(oldUserId),
+      await ctx.db.get(newUserId),
+    ]);
+    expect(oldUser).toMatchObject({
+      clerkId: "user_old_account",
+      email: "",
+    });
+    expect(oldUser?.deletedAt).toEqual(expect.any(Number));
+    expect(newUser).toMatchObject({
+      clerkId: "user_new_account",
+      email: "same@example.com",
+    });
+    expect(newUser?.deletedAt).toBeUndefined();
+  });
+
+  test("rejects unauthenticated deletion", async () => {
+    const t = convexTest(schema);
+    await expect(t.mutation(api.users.deleteMe, {})).rejects.toThrow(
+      "Not signed in",
+    );
   });
 });
 

@@ -23,6 +23,15 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Stream<List<Gig>> upcomingGigsForBand(String bandId) {
+    return _convexService.subscribe('gigs:forBand', {'bandId': bandId}, (
+      decoded,
+    ) {
+      return [for (final json in _mapList(decoded)) Gig.fromJson(json)];
+    });
+  }
+
+  @override
   Stream<Interactions> myInteractions() {
     return _convexService.subscribe(
       'interactions:myInteractions',
@@ -295,6 +304,11 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<void> ensureUser({String? name}) async {
     await _convexService.mutation('users:ensureUser', {'name': ?name});
+  }
+
+  @override
+  Future<void> deleteCurrentUser() async {
+    await _convexService.mutation('users:deleteMe');
   }
 
   @override

@@ -271,6 +271,31 @@ export async function pastGigsForBand(
   return gigs;
 }
 
+/** One band's upcoming gigs, oldest first, at most `limit` of them.
+ *
+ * The global discovery feed has its own cap. Reading the band's join rows
+ * keeps unrelated gigs from crowding its shows out of this result. */
+export async function upcomingGigsForBand(
+  ctx: QueryCtx,
+  bandId: Id<"bands">,
+  limit: number,
+): Promise<Doc<"gigs">[]> {
+  const joinRows = await ctx.db
+    .query("gigBands")
+    .withIndex("by_band_startsAt", (q) =>
+      q.eq("bandId", bandId).gte("startsAt", feedCutoff()),
+    )
+    .order("asc")
+    .take(limit);
+
+  const gigs: Doc<"gigs">[] = [];
+  for (const row of joinRows) {
+    const gig = await ctx.db.get(row.gigId);
+    if (gig) gigs.push(gig);
+  }
+  return gigs;
+}
+
 /** The only supported way to create a gig. `gigs.lineup` is an array, which
  * Convex cannot index, so a band's own history is reachable only through the
  * `gigBands` join rows written here. A gig inserted straight into `ctx.db`
@@ -528,6 +553,10 @@ export const MAX_FEED_GIGS = 200;
  * bounds one band's own past gigs — not, as it once did, a global scan window
  * that other bands' gigs could crowd a band's history out of. */
 export const MAX_PAST_GIGS = 200;
+
+/** Ceiling on `gigs:forBand`, applied to one band's indexed calendar rather
+ * than the shared discovery window. */
+export const MAX_UPCOMING_GIGS_PER_BAND = 200;
 
 /** Maximum band gigs included in one fan recap. Every one of them costs up to
  * MAX_RSVPS_PER_GIG row reads, so this is the number the ~16k document read
