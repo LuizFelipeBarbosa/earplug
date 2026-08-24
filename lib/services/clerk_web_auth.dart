@@ -342,6 +342,22 @@ final class ClerkWebAuth implements AuthService {
     _emitSignedInIfChanged();
   }
 
+  @override
+  Future<void> deleteAccount() async {
+    await initialize();
+    final user = _clerk.user;
+    if (user == null) {
+      throw const AuthException('Sign in before deleting your account.');
+    }
+    try {
+      await user.delete().toDart;
+      _resetCodeFlow();
+      _emitSignedInIfChanged();
+    } catch (error) {
+      throw AuthException(_messageFor(error));
+    }
+  }
+
   void _resetCodeFlow() {
     _codeFlow = null;
     _codeStrategy = null;
@@ -472,6 +488,7 @@ extension type _ClerkUser(JSObject _) implements JSObject {
   external String? get fullName;
   external String? get firstName;
   external String? get lastName;
+  external JSPromise<JSAny?> delete();
 }
 
 @JS()

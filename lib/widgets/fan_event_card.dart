@@ -10,7 +10,7 @@ import 'common.dart';
 /// The full event summary used throughout the fan experience.
 ///
 /// The card owns the standard event actions while callers can add one
-/// surface-specific action, such as the QR button in My Gigs.
+/// surface-specific action, such as the QR button in Profile.
 class FanEventCard extends StatelessWidget {
   const FanEventCard({
     super.key,

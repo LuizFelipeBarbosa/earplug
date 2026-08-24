@@ -13,12 +13,14 @@ import 'screens/band_dash.dart';
 import 'screens/band_edit.dart';
 import 'screens/band_media.dart';
 import 'screens/band_profile.dart';
+import 'screens/edit_profile.dart';
 import 'screens/explore.dart';
 import 'screens/gig_create.dart';
 import 'screens/gig_detail.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
 import 'screens/my_gigs.dart';
+import 'screens/settings.dart';
 import 'screens/venue_detail.dart';
 import 'services/auth_service.dart';
 import 'services/auth_service_factory.dart';
@@ -240,6 +242,8 @@ class RootShell extends StatelessWidget {
       Screen.venue => VenueDetailScreen(venueId: entry.param!),
       Screen.explore => const ExploreScreen(),
       Screen.myGigs => const MyGigsScreen(),
+      Screen.editProfile => const EditProfileScreen(),
+      Screen.settings => const SettingsScreen(),
       Screen.auth => const AuthScreen(),
       Screen.bandCreate => const BandCreateScreen(),
       Screen.bandDash => const BandDashScreen(),
@@ -259,39 +263,43 @@ class _Toast extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOut,
-      builder: (context, t, child) {
-        return Opacity(
-          opacity: t,
-          child: Transform.translate(
-            offset: Offset(0, 16 * (1 - t)),
-            child: child,
-          ),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: Ep.contentPrimary,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: .6),
-              blurRadius: 30,
-              offset: const Offset(0, 10),
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        builder: (context, t, child) {
+          return Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, 16 * (1 - t)),
+              child: child,
             ),
-          ],
-        ),
-        child: Text(
-          message,
-          textAlign: TextAlign.center,
-          style: epText(
-            size: 12.5,
-            weight: FontWeight.w800,
-            color: Ep.background,
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: Ep.contentPrimary,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: .6),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Text(
+            message,
+            textAlign: TextAlign.center,
+            style: epText(
+              size: 12.5,
+              weight: FontWeight.w800,
+              color: Ep.background,
+            ),
           ),
         ),
       ),

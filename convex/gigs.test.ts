@@ -101,9 +101,9 @@ describe("gigs:pastForBand", () => {
       { name: "No History", genres: ["noise"], bio: "", inviteHandles: [] },
     );
 
-    expect(await t.query(api.gigs.pastForBand, { bandId: emptyBandId })).toEqual(
-      { gigs: [], venues: [] },
-    );
+    expect(
+      await t.query(api.gigs.pastForBand, { bandId: emptyBandId }),
+    ).toEqual({ gigs: [], venues: [] });
     // The other band's single past gig is still reachable from its own profile.
     const { gigs } = await t.query(api.gigs.pastForBand, { bandId: otherId });
     expect(gigs.map((g) => g.title)).toEqual(["Someone Else's Past Show"]);
@@ -158,14 +158,20 @@ describe("gigs:publishGig auth", () => {
       t.mutation(api.gigs.publishGig, { bandId, venueId, ...gigArgs }),
     ).rejects.toThrow();
 
-    const asStranger = t.withIdentity({ subject: "user_stranger", email: "s@x.com" });
+    const asStranger = t.withIdentity({
+      subject: "user_stranger",
+      email: "s@x.com",
+    });
     await asStranger.mutation(api.users.ensureUser, {});
     await expect(
       asStranger.mutation(api.gigs.publishGig, { bandId, venueId, ...gigArgs }),
     ).rejects.toThrow("Not an admin");
 
     // Plain member (not admin) also rejected.
-    const asMember = t.withIdentity({ subject: "user_member", email: "m@x.com" });
+    const asMember = t.withIdentity({
+      subject: "user_member",
+      email: "m@x.com",
+    });
     const { userId } = await asMember.mutation(api.users.ensureUser, {});
     await t.run(async (ctx) => {
       await ctx.db.insert("bandMembers", { bandId, userId, role: "member" });
@@ -414,7 +420,9 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     const forBand = await t.query(api.gigs.forBand, { bandId: foghorn!._id });
     expect(Array.isArray(forBand)).toBe(true);
     expect(forBand.length).toBe(2); // g2 + g7
-    expect(forBand.every((gig) => gig.lineup.includes(foghorn!._id))).toBe(true);
+    expect(forBand.every((gig) => gig.lineup.includes(foghorn!._id))).toBe(
+      true,
+    );
   });
 
   test("reports the first gig omitted from the bounded feed", async () => {
@@ -462,9 +470,82 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
 
     expect(feed.gigs).toHaveLength(MAX_FEED_GIGS);
     expect(feed.gigs[0].startsAt).toBe(firstStartsAt);
-    expect(feed.nextStartsAt).toBe(
-      firstStartsAt + MAX_FEED_GIGS * 60_000,
+    expect(feed.nextStartsAt).toBe(firstStartsAt + MAX_FEED_GIGS * 60_000);
+  });
+
+  test("forBand finds a show beyond the bounded discovery feed", async () => {
+    const t = convexTest(schema);
+    const asAdmin = t.withIdentity({ subject: "user_admin", email: "a@x.com" });
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const { bandId: crowdedBandId } = await asAdmin.mutation(
+      api.bands.createBand,
+      {
+        name: "Crowded Calendar",
+        genres: ["punk"],
+        bio: "",
+        inviteHandles: [],
+      },
     );
+    const { bandId: followedBandId } = await asAdmin.mutation(
+      api.bands.createBand,
+      {
+        name: "Later Band",
+        genres: ["noise"],
+        bio: "",
+        inviteHandles: [],
+      },
+    );
+    const venueId = await t.run(async (ctx) =>
+      ctx.db.insert("venues", {
+        name: "Index Hall",
+        area: "Oakland",
+        addr: "2 Date St",
+        distSF: "8 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.2,
+      }),
+    );
+    const firstStartsAt = Date.now() + 86_400_000;
+    const base = {
+      venueId,
+      price: 0,
+      doorsTime: "7PM / 8PM",
+      flyKey: "paper",
+      genres: ["punk"],
+      desc: "",
+      ticketing: "rsvp" as const,
+      ageRequirement: "allAges" as const,
+      cap: "No cap",
+      goingCount: 0,
+    };
+    await t.run(async (ctx) => {
+      for (let index = 0; index < MAX_FEED_GIGS; index++) {
+        await insertGigWithBandIndex(ctx, {
+          ...base,
+          title: `Crowding Gig ${index}`,
+          startsAt: firstStartsAt + index * 60_000,
+          lineup: [crowdedBandId],
+        });
+      }
+      await insertGigWithBandIndex(ctx, {
+        ...base,
+        title: "Followed Show Beyond Feed",
+        startsAt: firstStartsAt + MAX_FEED_GIGS * 60_000,
+        lineup: [followedBandId],
+      });
+    });
+
+    const feed = await t.query(api.gigs.feed, {});
+    expect(feed.gigs.some((gig) => gig.lineup.includes(followedBandId))).toBe(
+      false,
+    );
+    const followedShows = await t.query(api.gigs.forBand, {
+      bandId: followedBandId,
+    });
+    expect(followedShows.map((gig) => gig.title)).toEqual([
+      "Followed Show Beyond Feed",
+    ]);
   });
 
   test("myBands returns band+role entries for the caller", async () => {

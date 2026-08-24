@@ -45,7 +45,7 @@ class MediaUploadService {
     try {
       onPhase?.call(phase);
       final storageId = await _uploadToStorage(
-        bandId: bandId,
+        generateUploadUrl: () => repository.generateMediaUploadUrl(bandId),
         media: media,
         onUploading: () {
           phase = MediaUploadPhase.uploading;
@@ -80,7 +80,31 @@ class MediaUploadService {
     try {
       onPhase?.call(phase);
       final storageId = await _uploadToStorage(
-        bandId: bandId,
+        generateUploadUrl: () => repository.generateMediaUploadUrl(bandId),
+        media: media,
+        onUploading: () {
+          phase = MediaUploadPhase.uploading;
+          onPhase?.call(phase);
+        },
+      );
+
+      phase = MediaUploadPhase.done;
+      onPhase?.call(phase);
+      return storageId;
+    } catch (error) {
+      throw _asUploadException(error, phase);
+    }
+  }
+
+  Future<String> uploadAvatarRaw({
+    required PickedMedia media,
+    void Function(MediaUploadPhase)? onPhase,
+  }) async {
+    var phase = MediaUploadPhase.preparing;
+    try {
+      onPhase?.call(phase);
+      final storageId = await _uploadToStorage(
+        generateUploadUrl: repository.generateAvatarUploadUrl,
         media: media,
         onUploading: () {
           phase = MediaUploadPhase.uploading;
@@ -97,13 +121,11 @@ class MediaUploadService {
   }
 
   Future<String> _uploadToStorage({
-    required String bandId,
+    required Future<String> Function() generateUploadUrl,
     required PickedMedia media,
     required void Function() onUploading,
   }) async {
-    final uploadUri = Uri.parse(
-      await repository.generateMediaUploadUrl(bandId),
-    );
+    final uploadUri = Uri.parse(await generateUploadUrl());
     if (uploadUri.scheme == 'demo') {
       return 'demo-storage-${++_demoStorageCounter}';
     }

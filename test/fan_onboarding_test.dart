@@ -33,6 +33,8 @@ void main() {
       repository: repository,
       home: const Scaffold(body: MyGigsScreen()),
     );
+    tester.view.physicalSize = const Size(402, 1600);
+    await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('fan-setup-expanded')), findsOne);
     await tester.tap(find.byKey(const Key('fan-city-oak')));
@@ -40,21 +42,11 @@ void main() {
     expect(first.app.city, 'oak');
     expect(repository.onboarding?.preferredCity, FanCity.oak);
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('fan-genres-open')),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
     await tester.tap(find.byKey(const Key('fan-genres-open')));
     await tester.pump();
     expect(repository.onboarding?.genreChoice, FanGenreChoice.open);
     expect(repository.genres, isEmpty);
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('fan-setup-not-now')),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
     await tester.tap(find.byKey(const Key('fan-setup-not-now')));
     await tester.pump();
     expect(first.app.fanOnboarding?.collapsed, isTrue);
@@ -68,6 +60,8 @@ void main() {
       home: const Scaffold(body: MyGigsScreen()),
     );
     expect(second.app.city, 'oak');
+    tester.view.physicalSize = const Size(402, 1500);
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('fan-setup-collapsed')), findsOne);
 
     await tester.tap(find.byKey(const Key('fan-setup-collapsed')));
@@ -108,6 +102,11 @@ void main() {
       home: const Scaffold(body: MyGigsScreen()),
     );
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('band-entry')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('START A BAND'), findsOne);
     await tester.tap(find.byKey(const Key('band-entry')));
     await tester.pump();
@@ -228,6 +227,11 @@ void main() {
       home: const Scaffold(body: MyGigsScreen()),
     );
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('band-entry')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('MANAGE BAND'), findsOne);
     await tester.tap(find.byKey(const Key('band-entry')));
     await tester.pump();
@@ -245,6 +249,11 @@ void main() {
       home: const Scaffold(body: MyGigsScreen()),
     );
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('band-entry')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('SWITCH BAND'), findsOne);
     await tester.tap(find.byKey(const Key('band-entry')));
     await tester.pumpAndSettle();

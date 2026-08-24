@@ -445,6 +445,7 @@ abstract class EarplugRepository {
   Future<UserProfile?> me();
 
   Stream<FeedSnapshot> feed();
+  Stream<List<Gig>> upcomingGigsForBand(String bandId);
   Stream<Interactions> myInteractions();
   Stream<List<BandMembership>> myBands();
   Future<List<BandMedia>> mediaFor(String bandId);
@@ -462,7 +463,7 @@ abstract class EarplugRepository {
   Future<void> moveBandMedia(String mediaId, String direction);
   Future<void> setBandPhoto({required String bandId, required String mediaId});
   Future<void> clearBandPhoto(String bandId);
-  Future<List<PastGig>> history();
+  Future<List<FanHistoryItem>> history();
   Future<BandHistory> bandHistory(String bandId);
   Future<BandRecap> bandRecap(String bandId);
   Future<List<Venue>> venues();
@@ -478,6 +479,18 @@ abstract class EarplugRepository {
   Future<void> ensureFollow(String bandId);
   Future<void> ensureSave(String gigId);
   Future<void> setGenres(List<String> genres);
+  Future<void> updateFanProfile({
+    required String name,
+    required String? bio,
+    required FanCity? homeLocation,
+    required List<String> genres,
+    required bool locationPersonalizationEnabled,
+    required bool followedBandUpdatesEnabled,
+  });
+  Future<String> generateAvatarUploadUrl();
+  Future<void> setAvatar(String storageId);
+  Future<void> clearAvatar();
+  Future<void> setProfileTutorialCompleted(bool completed);
   Future<void> updateFanOnboarding({
     FanCity? preferredCity,
     FanGenreChoice? genreChoice,
@@ -485,6 +498,7 @@ abstract class EarplugRepository {
     List<String>? genres,
   });
   Future<void> ensureUser({String? name});
+  Future<void> deleteCurrentUser();
 
   /// Returns the new band and its server-issued unique profile slug.
   Future<({Band band, String slug})> createBand({

@@ -521,7 +521,7 @@ describe("Clerk user deletion tombstones", () => {
     expect(await allUsers(t)).toHaveLength(0);
   });
 
-  test("ensureUser resurrects a tombstoned clerkId in place", async () => {
+  test("treats a tombstoned Clerk identity as permanently deleted", async () => {
     const t = convexTest(schema);
     const userId = await t.run(async (ctx) =>
       ctx.db.insert("users", {
@@ -533,16 +533,56 @@ describe("Clerk user deletion tombstones", () => {
         deletedAt: 1,
       }),
     );
-    const ensured = await t
-      .withIdentity({
-        subject: "user_resurrect",
-        email: "resurrect@example.com",
-      })
-      .mutation(api.users.ensureUser, {});
+    const asDeletedUser = t.withIdentity({
+      subject: "user_resurrect",
+      email: "resurrect@example.com",
+    });
+    await expect(
+      asDeletedUser.mutation(api.users.ensureUser, {}),
+    ).rejects.toThrow("Account deleted");
+    expect(await asDeletedUser.query(api.users.me, {})).toBeNull();
+    await expect(
+      asDeletedUser.mutation(api.users.setGenres, { genres: ["punk"] }),
+    ).rejects.toThrow("Account deleted");
     const row = await t.run(async (ctx) => ctx.db.get(userId));
-    expect(ensured.userId).toBe(userId);
-    expect(row?.deletedAt).toBeUndefined();
-    expect(row?.email).toBe("resurrect@example.com");
+    expect(row?.deletedAt).toBe(1);
+    expect(row?.email).toBe("");
+  });
+
+  test("ignores a late user.updated webhook for a tombstoned identity", async () => {
+    const t = convexTest(schema);
+    const userId = await t.run(async (ctx) =>
+      ctx.db.insert("users", {
+        clerkId: "user_late_update",
+        name: "Deleted Name",
+        email: "",
+        genres: [],
+        attendedCount: 0,
+        deletedAt: 10,
+        clerkUpdatedAt: 20,
+      }),
+    );
+
+    expect(
+      (
+        await postEvent(
+          t,
+          "user.updated",
+          userData("user_late_update", {
+            email: "restored@example.com",
+            firstName: "Restored",
+            updatedAt: 30,
+          }),
+        )
+      ).status,
+    ).toBe(200);
+
+    expect(await t.run(async (ctx) => ctx.db.get(userId))).toMatchObject({
+      deletedAt: 10,
+      email: "",
+      name: "Deleted Name",
+      clerkUpdatedAt: 20,
+    });
   });
 
   test("excludes a tombstoned row from verified-email adoption", async () => {

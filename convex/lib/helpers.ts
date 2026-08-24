@@ -82,10 +82,11 @@ export async function currentUser(
 ): Promise<Doc<"users"> | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
-  return await ctx.db
+  const user = await ctx.db
     .query("users")
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
     .unique();
+  return user?.deletedAt === undefined ? user : null;
 }
 
 /** Throwing: for mutations. */
@@ -97,6 +98,7 @@ export async function requireUser(ctx: MutationCtx): Promise<Doc<"users">> {
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
     .unique();
   if (!user) throw new Error("No user record — call users:ensureUser first");
+  if (user.deletedAt !== undefined) throw new Error("Account deleted");
   return user;
 }
 
@@ -269,6 +271,31 @@ export async function pastGigsForBand(
   return gigs;
 }
 
+/** One band's upcoming gigs, oldest first, at most `limit` of them.
+ *
+ * The global discovery feed has its own cap. Reading the band's join rows
+ * keeps unrelated gigs from crowding its shows out of this result. */
+export async function upcomingGigsForBand(
+  ctx: QueryCtx,
+  bandId: Id<"bands">,
+  limit: number,
+): Promise<Doc<"gigs">[]> {
+  const joinRows = await ctx.db
+    .query("gigBands")
+    .withIndex("by_band_startsAt", (q) =>
+      q.eq("bandId", bandId).gte("startsAt", feedCutoff()),
+    )
+    .order("asc")
+    .take(limit);
+
+  const gigs: Doc<"gigs">[] = [];
+  for (const row of joinRows) {
+    const gig = await ctx.db.get(row.gigId);
+    if (gig) gigs.push(gig);
+  }
+  return gigs;
+}
+
 /** The only supported way to create a gig. `gigs.lineup` is an array, which
  * Convex cannot index, so a band's own history is reachable only through the
  * `gigBands` join rows written here. A gig inserted straight into `ctx.db`
@@ -382,6 +409,12 @@ export const userPayloadValidator = v.object({
   genres: v.array(v.string()),
   attendedCount: v.number(),
   createdAt: v.number(),
+  avatarUrl: v.union(v.string(), v.null()),
+  bio: v.union(v.string(), v.null()),
+  homeLocation: v.union(fanCityValidator, v.null()),
+  locationPersonalizationEnabled: v.boolean(),
+  followedBandUpdatesEnabled: v.boolean(),
+  profileTutorialCompleted: v.boolean(),
   fanOnboarding: v.union(
     v.object({
       preferredCity: v.union(fanCityValidator, v.null()),
@@ -478,7 +511,10 @@ export function toMediaPayload(
   };
 }
 
-export function toUserPayload(user: Doc<"users">) {
+export async function toUserPayload(ctx: QueryCtx, user: Doc<"users">) {
+  const storedAvatarUrl = user.avatarStorageId
+    ? await ctx.storage.getUrl(user.avatarStorageId)
+    : null;
   return {
     _id: user._id,
     clerkId: user.clerkId,
@@ -487,6 +523,13 @@ export function toUserPayload(user: Doc<"users">) {
     genres: user.genres,
     attendedCount: user.attendedCount,
     createdAt: user._creationTime,
+    avatarUrl: storedAvatarUrl ?? user.avatarUrl ?? null,
+    bio: user.bio?.trim() ? user.bio : null,
+    homeLocation: user.homeLocation ?? null,
+    locationPersonalizationEnabled:
+      user.locationPersonalizationEnabled ?? false,
+    followedBandUpdatesEnabled: user.followedBandUpdatesEnabled ?? true,
+    profileTutorialCompleted: user.profileTutorialCompleted ?? false,
     fanOnboarding:
       user.fanOnboarding === undefined
         ? null
@@ -511,6 +554,10 @@ export const MAX_FEED_GIGS = 200;
  * that other bands' gigs could crowd a band's history out of. */
 export const MAX_PAST_GIGS = 200;
 
+/** Ceiling on `gigs:forBand`, applied to one band's indexed calendar rather
+ * than the shared discovery window. */
+export const MAX_UPCOMING_GIGS_PER_BAND = 200;
+
 /** Maximum band gigs included in one fan recap. Every one of them costs up to
  * MAX_RSVPS_PER_GIG row reads, so this is the number the ~16k document read
  * limit actually constrains: 40 × 300 = 12,000 worst case, leaving headroom
@@ -528,6 +575,13 @@ export const K_ANON_FANS = 5;
 /** The venue table is a small curated list, not user-generated, so one read
  * returns all of it. */
 export const MAX_VENUES = 500;
+
+// ─── Fan profile limits ────────────────────────────────────────────────────
+
+export const MAX_PROFILE_NAME_LENGTH = 100;
+export const MAX_PROFILE_BIO_LENGTH = 500;
+export const MAX_PROFILE_GENRES = 20;
+export const MAX_PROFILE_GENRE_LENGTH = 50;
 
 // ─── Band media limits ──────────────────────────────────────────────────────
 
@@ -577,8 +631,7 @@ export function assertUploadAcceptable(
   if (meta.size > MAX_MEDIA_BYTES) {
     throw new Error("That file is too big — 100 MB max.");
   }
-  const allowed =
-    kind === "video" ? VIDEO_CONTENT_TYPES : PHOTO_CONTENT_TYPES;
+  const allowed = kind === "video" ? VIDEO_CONTENT_TYPES : PHOTO_CONTENT_TYPES;
   if (meta.contentType !== undefined && !allowed.has(meta.contentType)) {
     throw new Error(`${meta.contentType} can't be posted as a ${kind}.`);
   }

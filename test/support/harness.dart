@@ -59,6 +59,7 @@ Future<AppHarness> pumpApp(
     repository: resolvedRepository,
     auth: resolvedAuth,
     locationService: locationService,
+    mediaUploadService: uploader,
   );
   addTearDown(app.dispose);
 

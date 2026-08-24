@@ -4,6 +4,7 @@ import { QueryCtx, mutation, query } from "./_generated/server";
 import {
   MAX_FEED_GIGS,
   MAX_PAST_GIGS,
+  MAX_UPCOMING_GIGS_PER_BAND,
   assertGigPublishable,
   bandPayloadValidator,
   feedCutoff,
@@ -15,6 +16,7 @@ import {
   toBandPayload,
   toGigPayload,
   toVenuePayload,
+  upcomingGigsForBand,
   venuePayloadValidator,
 } from "./lib/helpers";
 
@@ -89,12 +91,14 @@ export const forBand = query({
   args: { bandId: v.id("bands") },
   returns: v.array(gigPayloadValidator),
   handler: async (ctx, args) => {
-    const { gigs } = await upcomingGigs(ctx);
+    const gigs = await upcomingGigsForBand(
+      ctx,
+      args.bandId,
+      MAX_UPCOMING_GIGS_PER_BAND,
+    );
     const out = [];
     for (const gig of gigs) {
-      if (gig.lineup.includes(args.bandId)) {
-        out.push(await toGigPayload(ctx, gig));
-      }
+      out.push(await toGigPayload(ctx, gig));
     }
     return out;
   },
