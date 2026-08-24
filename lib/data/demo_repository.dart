@@ -47,8 +47,15 @@ class DemoRepository implements EarplugRepository {
     genreChoice: FanGenreChoice.pending,
     collapsed: false,
   );
+  final DateTime _userCreatedAt = DateTime.now();
 
   String? _userName;
+  String? _avatarUrl;
+  String? _bio;
+  FanCity? _homeLocation;
+  bool _locationPersonalizationEnabled = false;
+  bool _followedBandUpdatesEnabled = true;
+  bool _profileTutorialCompleted = false;
   int _attendedCount = 0;
   int _nextBandId = 1;
   int _nextGigId = 1;
@@ -59,11 +66,24 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> refreshAuth() async {}
 
-  /// The demo dataset has no user record — no email, and no honest "fan since"
-  /// date to show. Callers fall back to the auth service's display name, which
-  /// is what the demo has always shown.
   @override
-  Future<UserProfile?> me() async => null;
+  Future<UserProfile?> me() async {
+    if (!_auth.signedIn) return null;
+    return UserProfile(
+      name: _userName ?? _auth.displayName ?? 'Earplug Fan',
+      email: '',
+      genres: List<String>.unmodifiable(_userGenres),
+      attendedCount: _attendedCount,
+      createdAt: _userCreatedAt,
+      avatarUrl: _avatarUrl,
+      bio: _bio,
+      homeLocation: _homeLocation,
+      locationPersonalizationEnabled: _locationPersonalizationEnabled,
+      followedBandUpdatesEnabled: _followedBandUpdatesEnabled,
+      profileTutorialCompleted: _profileTutorialCompleted,
+      fanOnboarding: _fanOnboarding,
+    );
+  }
 
   @override
   Stream<FeedSnapshot> feed() => _replay(_feedController, _currentFeed);
@@ -227,8 +247,23 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
-  Future<List<PastGig>> history() async =>
-      _auth.signedIn ? DemoData.fanHistory : const [];
+  Future<List<FanHistoryItem>> history() async {
+    if (!_auth.signedIn) return const [];
+    final now = DateTime.now();
+    return [
+      for (final (index, show) in DemoData.fanHistory.indexed)
+        FanHistoryItem(
+          gigId: 'demo-history-$index',
+          title: show.title,
+          startsAt: now.subtract(Duration(days: 30 + index * 14)),
+          venueName: '',
+          bandNames: const [],
+          flyKey: 'paper',
+          flyerUrl: null,
+          status: FanHistoryStatus.rsvped,
+        ),
+    ];
+  }
 
   /// Empty by construction: every demo gig is upcoming, so the demo dataset has
   /// no history to show. Inventing past shows here would put fabricated dates on
@@ -479,6 +514,43 @@ class DemoRepository implements EarplugRepository {
     _userGenres
       ..clear()
       ..addAll(genres);
+  }
+
+  @override
+  Future<void> updateFanProfile({
+    required String name,
+    required String? bio,
+    required FanCity? homeLocation,
+    required List<String> genres,
+    required bool locationPersonalizationEnabled,
+    required bool followedBandUpdatesEnabled,
+  }) async {
+    _userName = name;
+    _bio = bio;
+    _homeLocation = homeLocation;
+    _userGenres
+      ..clear()
+      ..addAll(genres);
+    _locationPersonalizationEnabled = locationPersonalizationEnabled;
+    _followedBandUpdatesEnabled = followedBandUpdatesEnabled;
+  }
+
+  @override
+  Future<String> generateAvatarUploadUrl() async => 'demo://avatar-upload';
+
+  @override
+  Future<void> setAvatar(String storageId) async {
+    _avatarUrl = 'demo://avatar/$storageId';
+  }
+
+  @override
+  Future<void> clearAvatar() async {
+    _avatarUrl = null;
+  }
+
+  @override
+  Future<void> setProfileTutorialCompleted(bool completed) async {
+    _profileTutorialCompleted = completed;
   }
 
   @override

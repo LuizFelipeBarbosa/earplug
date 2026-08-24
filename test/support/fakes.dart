@@ -53,4 +53,8 @@ class HttpUploadDemoRepository extends DemoRepository {
   @override
   Future<String> generateMediaUploadUrl(String bandId) async =>
       'https://fake.upload/x';
+
+  @override
+  Future<String> generateAvatarUploadUrl() async =>
+      'https://fake.upload/avatar';
 }

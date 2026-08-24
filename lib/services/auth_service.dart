@@ -18,6 +18,7 @@ abstract class AuthService {
   Future<void> initialize();
   Future<void> signInDemo();
   Future<void> signOut();
+  Future<void> deleteAccount();
   Future<String?> fetchConvexToken();
   Future<void> startEmailSignIn(String email);
   Future<bool> verifyEmailCode(String code);
@@ -33,6 +34,8 @@ class FakeAuthService implements AuthService {
       StreamController<bool>.broadcast();
 
   bool _signedIn = false;
+  int deleteAccountCalls = 0;
+  Object? deleteAccountError;
 
   @override
   bool get signedIn => _signedIn;
@@ -54,6 +57,15 @@ class FakeAuthService implements AuthService {
 
   @override
   Future<void> signOut() async {
+    _signedIn = false;
+    _signedInController.add(false);
+  }
+
+  @override
+  Future<void> deleteAccount() async {
+    deleteAccountCalls++;
+    final error = deleteAccountError;
+    if (error != null) throw error;
     _signedIn = false;
     _signedInController.add(false);
   }

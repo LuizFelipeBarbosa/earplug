@@ -47,9 +47,14 @@ export default defineSchema({
     // Present only for accounts first inserted after fan onboarding launched.
     // Legacy rows adopted by Clerk deliberately remain unenrolled.
     fanOnboarding: v.optional(fanOnboardingValidator),
-    // Storage references with no home in the v1 UI, kept rather than swept.
+    // Fan avatar storage. Legacy URL rows remain readable until rewritten.
     avatarUrl: v.optional(v.string()),
     avatarStorageId: v.optional(v.id("_storage")),
+    bio: v.optional(v.string()),
+    homeLocation: v.optional(fanCityValidator),
+    locationPersonalizationEnabled: v.optional(v.boolean()),
+    followedBandUpdatesEnabled: v.optional(v.boolean()),
+    profileTutorialCompleted: v.optional(v.boolean()),
     // Clerk user.deleted tombstone; milliseconds since epoch.
     deletedAt: v.optional(v.number()),
     // Clerk's updated_at (ms epoch) from the last applied webhook guards

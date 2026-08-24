@@ -50,9 +50,15 @@ async function setup() {
 describe("interactions", () => {
   test("mutations throw when unauthenticated", async () => {
     const { t, gigId, bandId } = await setup();
-    await expect(t.mutation(api.interactions.toggleRsvp, { gigId })).rejects.toThrow();
-    await expect(t.mutation(api.interactions.toggleFollow, { bandId })).rejects.toThrow();
-    await expect(t.mutation(api.interactions.toggleSave, { gigId })).rejects.toThrow();
+    await expect(
+      t.mutation(api.interactions.toggleRsvp, { gigId }),
+    ).rejects.toThrow();
+    await expect(
+      t.mutation(api.interactions.toggleFollow, { bandId }),
+    ).rejects.toThrow();
+    await expect(
+      t.mutation(api.interactions.toggleSave, { gigId }),
+    ).rejects.toThrow();
   });
 
   test("myInteractions returns empty shape when unauthenticated", async () => {
@@ -191,6 +197,7 @@ describe("interactions", () => {
 
   test("history returns only past RSVPed gigs, newest first", async () => {
     const { t, asFan, venueId, bandId, gigId } = await setup();
+    const now = Date.now();
 
     const [oldGigId, olderGigId] = await t.run(async (ctx) => {
       const base = {
@@ -205,16 +212,21 @@ describe("interactions", () => {
         cap: "No cap",
         goingCount: 0,
       };
+      const flyerStorageId = await ctx.storage.store(
+        new Blob([new Uint8Array([1, 2, 3])]),
+      );
       return [
         await ctx.db.insert("gigs", {
           ...base,
           title: "Last Month",
-          startsAt: Date.now() - 30 * 24 * 3600_000,
+          startsAt: now - 30 * 24 * 3600_000,
         }),
         await ctx.db.insert("gigs", {
           ...base,
           title: "Two Months Back",
-          startsAt: Date.now() - 60 * 24 * 3600_000,
+          startsAt: now - 60 * 24 * 3600_000,
+          flyKey: "custom",
+          flyStorageId: flyerStorageId,
         }),
       ];
     });
@@ -224,10 +236,28 @@ describe("interactions", () => {
       await asFan.mutation(api.interactions.toggleRsvp, { gigId: id });
     }
 
-    expect(await t.query(api.interactions.history, {})).toEqual([]);
-    const history = await asFan.query(api.interactions.history, {});
-    expect(history.map((h) => h.title)).toEqual(["Last Month", "Two Months Back"]);
-    expect(history[0].venueName).toBe("Casa Quake");
+    expect(await t.query(api.interactions.history, { now })).toEqual([]);
+    const history = await asFan.query(api.interactions.history, { now });
+    expect(history.map((h) => h.title)).toEqual([
+      "Last Month",
+      "Two Months Back",
+    ]);
+    expect(history[0]).toEqual({
+      gigId: oldGigId,
+      title: "Last Month",
+      startsAt: expect.any(Number),
+      venueName: "Casa Quake",
+      bandNames: ["Mission Creep"],
+      flyKey: "paper",
+      flyerUrl: null,
+      status: "rsvped",
+    });
+    expect(history[1]).toMatchObject({
+      gigId: olderGigId,
+      flyKey: "custom",
+      flyerUrl: expect.any(String),
+      status: "rsvped",
+    });
 
     const interactions = await asFan.query(api.interactions.myInteractions, {});
     expect(interactions.rsvpGigIds).toEqual(
@@ -236,12 +266,97 @@ describe("interactions", () => {
     expect(interactions.gigs.map((gig) => gig._id)).toEqual([gigId]);
   });
 
+  test("history skips missing gigs and tolerates missing venue, band, and flyer references", async () => {
+    const { t, asFan } = await setup();
+    const now = Date.now();
+    const { historyGigId, deletedGigId, storageId, venueId, bandId } =
+      await t.run(async (ctx) => {
+        const venueId = await ctx.db.insert("venues", {
+          name: "Temporary Venue",
+          area: "Oakland",
+          addr: "123 Test St",
+          distSF: "8 mi",
+          distOak: "1 mi",
+          lat: 37.8,
+          lng: -122.2,
+        });
+        const bandId = await ctx.db.insert("bands", {
+          name: "Temporary Band",
+          slug: "temporary-band",
+          genres: ["punk"],
+          area: "Oakland",
+          colorHex: "#7B8FFF",
+          initials: "TB",
+          followerCount: 0,
+          bio: "",
+          pastShows: [],
+        });
+        const storageId = await ctx.storage.store(
+          new Blob([new Uint8Array([1, 2, 3])]),
+        );
+        const common = {
+          venueId,
+          price: 0,
+          doorsTime: "8PM / 9PM",
+          flyKey: "custom",
+          flyStorageId: storageId,
+          lineup: [bandId],
+          genres: ["punk"],
+          desc: "",
+          ticketing: "rsvp" as const,
+          cap: "No cap",
+          goingCount: 0,
+        };
+        return {
+          historyGigId: await ctx.db.insert("gigs", {
+            ...common,
+            title: "Dangling Details",
+            startsAt: now - 24 * 3600_000,
+          }),
+          deletedGigId: await ctx.db.insert("gigs", {
+            ...common,
+            title: "Deleted Gig",
+            startsAt: now - 2 * 24 * 3600_000,
+          }),
+          storageId,
+          venueId,
+          bandId,
+        };
+      });
+
+    await asFan.mutation(api.interactions.toggleRsvp, { gigId: historyGigId });
+    await asFan.mutation(api.interactions.toggleRsvp, { gigId: deletedGigId });
+    await t.run(async (ctx) => {
+      await ctx.db.delete(deletedGigId);
+      await ctx.db.delete(venueId);
+      await ctx.db.delete(bandId);
+      await ctx.storage.delete(storageId);
+    });
+
+    expect(await asFan.query(api.interactions.history, { now })).toEqual([
+      {
+        gigId: historyGigId,
+        title: "Dangling Details",
+        startsAt: expect.any(Number),
+        venueName: "",
+        bandNames: [],
+        flyKey: "custom",
+        flyerUrl: null,
+        status: "rsvped",
+      },
+    ]);
+  });
+
   test("toggleSave double-toggle", async () => {
     const { asFan, gigId } = await setup();
-    expect(await asFan.mutation(api.interactions.toggleSave, { gigId })).toEqual({ on: true });
+    expect(
+      await asFan.mutation(api.interactions.toggleSave, { gigId }),
+    ).toEqual({ on: true });
     let mine = await asFan.query(api.interactions.myInteractions, {});
     expect(mine.savedGigIds).toEqual([gigId]);
-    expect(await asFan.mutation(api.interactions.toggleSave, { gigId })).toEqual({ on: false });
+    expect(
+      await asFan.mutation(api.interactions.toggleSave, { gigId }),
+    ).toEqual({ on: false });
     mine = await asFan.query(api.interactions.myInteractions, {});
     expect(mine.savedGigIds).toEqual([]);
   });

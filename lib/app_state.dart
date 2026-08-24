@@ -15,6 +15,7 @@ import 'models.dart';
 import 'services/auth_service.dart';
 import 'services/location_service.dart';
 import 'services/media_picker.dart';
+import 'services/media_upload_service.dart';
 
 enum Screen {
   home,
@@ -28,6 +29,8 @@ enum Screen {
   bandDash,
   bandEdit,
   bandMedia,
+  editProfile,
+  settings,
   gigMgr,
   gigCreate,
   analytics,
@@ -116,16 +119,19 @@ class AppState extends ChangeNotifier {
     EarplugRepository? repository,
     AuthService? auth,
     LocationService? locationService,
+    MediaUploadService? mediaUploadService,
   }) : this._(
          auth ?? FakeAuthService(),
          repository,
          locationService ?? GeolocatorLocationService(),
+         mediaUploadService,
        );
 
   AppState._(
     AuthService resolvedAuth,
     EarplugRepository? providedRepository,
     this.locationService,
+    MediaUploadService? providedMediaUploader,
   ) : auth = resolvedAuth,
       repository = providedRepository ?? DemoRepository(auth: resolvedAuth),
       // Only a real backend has a connection to wait on; the demo data is
@@ -133,6 +139,8 @@ class AppState extends ChangeNotifier {
       _dataStatus = providedRepository is ConvexRepository
           ? DataStatus.connecting
           : DataStatus.ready {
+    mediaUploader =
+        providedMediaUploader ?? MediaUploadService(repository: repository);
     authed = auth.signedIn;
     if (authed) {
       authStep = 2;
@@ -158,12 +166,14 @@ class AppState extends ChangeNotifier {
   final EarplugRepository repository;
   final AuthService auth;
   final LocationService locationService;
+  late final MediaUploadService mediaUploader;
 
   StreamSubscription<bool>? _authSubscription;
   StreamSubscription<FeedSnapshot>? _feedSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
   int _membershipsGeneration = 0;
+  int _sessionGeneration = 0;
   bool _disposed = false;
 
   DataStatus _dataStatus;
@@ -238,14 +248,19 @@ class AppState extends ChangeNotifier {
   Future<bool>? _authReady;
   Future<void>? _authCommit;
   Future<void> _fanGenreWrite = Future.value();
+  Future<void> _profileTutorialWrite = Future.value();
 
   // ---- fan data
   Set<String> rsvps = {};
   Set<String> follows = {};
   Set<String> saved = {};
   int attended = 0;
-  List<PastGig> history = const [];
+  List<FanHistoryItem> history = const [];
   UserProfile? profile;
+  bool _profileTutorialReplay = false;
+  bool fanAvatarSaving = false;
+  FanCity? _appliedHomePersonalization;
+  final Set<String> _loadingFollowBands = {};
 
   FanOnboarding? get fanOnboarding => profile?.fanOnboarding;
 
@@ -258,6 +273,11 @@ class AppState extends ChangeNotifier {
   }
 
   bool get showFanOnboarding => fanOnboarding != null && !fanOnboardingComplete;
+
+  bool get profileTutorialVisible =>
+      authed &&
+      profile != null &&
+      (_profileTutorialReplay || !profile!.profileTutorialCompleted);
 
   /// Legacy-imported count and RSVP-derived history can disagree; show
   /// whichever credits the fan more.
@@ -385,17 +405,15 @@ class AppState extends ChangeNotifier {
   }
 
   void _handleAuthChange(bool signedIn) {
+    _sessionGeneration++;
     authed = signedIn;
-    _clearMemberships();
     if (signedIn) {
+      _clearMemberships();
       authStep = 2;
       _authReady = _ensureUser();
       unawaited(_authReady);
     } else {
-      _authReady = null;
-      _authCommit = null;
-      _authConfirmationKind = null;
-      profile = null;
+      _clearSessionSensitiveState();
       unawaited(
         repository.refreshAuth().catchError(
           (Object error) => logError('refreshAuth', error),
@@ -406,25 +424,33 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> _ensureUser() async {
+    final sessionGeneration = _sessionGeneration;
     try {
       // The websocket must carry the new identity before the mutation runs.
       await repository.refreshAuth();
+      if (!_isCurrentSession(sessionGeneration)) return false;
       await repository.ensureUser(name: auth.displayName);
+      if (!_isCurrentSession(sessionGeneration)) return false;
       _restartMemberships();
-      await _refreshProfile();
-      unawaited(_refreshHistory());
+      await _refreshProfile(sessionGeneration: sessionGeneration);
+      if (!_isCurrentSession(sessionGeneration)) return false;
+      unawaited(_refreshHistory(sessionGeneration: sessionGeneration));
       return true;
     } catch (error) {
       logError('ensureUser', error);
-      say(genericErrorMessage);
+      if (_isCurrentSession(sessionGeneration)) say(genericErrorMessage);
       return false;
     }
   }
 
-  Future<void> _refreshHistory() async {
+  bool _isCurrentSession(int generation) =>
+      !_disposed && authed && generation == _sessionGeneration;
+
+  Future<void> _refreshHistory({int? sessionGeneration}) async {
+    final requestedSession = sessionGeneration ?? _sessionGeneration;
     try {
       final loaded = await repository.history();
-      if (!authed) return;
+      if (!_isCurrentSession(requestedSession)) return;
       history = loaded;
       notifyListeners();
     } catch (error) {
@@ -432,21 +458,34 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> _refreshProfile() async {
+  Future<bool> _refreshProfile({int? sessionGeneration}) async {
+    final requestedSession = sessionGeneration ?? _sessionGeneration;
     try {
       final loadedProfile = await repository.me();
-      if (!authed) return;
+      if (!_isCurrentSession(requestedSession)) return false;
       profile = loadedProfile;
       userGenres
         ..clear()
         ..addAll(loadedProfile?.genres ?? const []);
-      final preferredCity = loadedProfile?.fanOnboarding?.preferredCity;
+      FanCity? preferredCity;
+      if (loadedProfile?.locationPersonalizationEnabled == true) {
+        preferredCity = loadedProfile?.homeLocation;
+      } else if (loadedProfile?.homeLocation == null) {
+        preferredCity = loadedProfile?.fanOnboarding?.preferredCity;
+      }
       if (preferredCity != null) {
         _applyDiscoveryCity(preferredCity.name);
+        if (loadedProfile?.locationPersonalizationEnabled == true) {
+          _appliedHomePersonalization = preferredCity;
+        }
+      } else if (_appliedHomePersonalization != null) {
+        _applyDiscoveryCity('sf');
       }
       notifyListeners();
+      return true;
     } catch (error) {
       logError('me', error);
+      return false;
     }
   }
 
@@ -579,7 +618,29 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addEntries(interactions.gigs.map((gig) => MapEntry(gig.id, gig)));
     attended = interactions.attendedCount;
+    for (final bandId in follows) {
+      if (!_bands.containsKey(bandId)) unawaited(_loadFollowBand(bandId));
+    }
     notifyListeners();
+  }
+
+  Future<void> _loadFollowBand(String bandId) async {
+    if (!_loadingFollowBands.add(bandId)) return;
+    try {
+      final loaded = await repository.band(bandId);
+      if (loaded == null || _disposed) return;
+      _bands[bandId] = loaded.copyWith(
+        upcoming: [
+          for (final gig in _allGigs)
+            if (gig.lineup.contains(bandId)) gig.id,
+        ],
+      );
+      notifyListeners();
+    } catch (error) {
+      logError('followBand $bandId', error);
+    } finally {
+      _loadingFollowBands.remove(bandId);
+    }
   }
 
   void _cacheMemberships(List<BandMembership> memberships) {
@@ -682,6 +743,25 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  void openEditProfile() {
+    if (authed && profile != null) {
+      go(Screen.editProfile);
+    } else if (authed) {
+      say('Your profile is still loading.');
+      unawaited(_refreshProfile());
+    } else {
+      needAuth(const PendingAuth(PendingKind.myGigs));
+    }
+  }
+
+  void openSettings() {
+    if (authed) {
+      go(Screen.settings);
+    } else {
+      needAuth(const PendingAuth(PendingKind.myGigs));
+    }
+  }
+
   void say(String msg) {
     toast = msg;
     _toastTimer?.cancel();
@@ -709,6 +789,29 @@ class AppState extends ChangeNotifier {
 
   Future<void> signOut() async {
     await auth.signOut();
+    _clearSessionSensitiveState();
+    resetTo(Screen.home);
+    say('Signed out.');
+  }
+
+  Future<bool> deleteAccount() async {
+    try {
+      await auth.deleteAccount();
+    } catch (error) {
+      logError('deleteAccount', error);
+      say(genericErrorMessage);
+      return false;
+    }
+
+    _clearSessionSensitiveState();
+    resetTo(Screen.home);
+    say('Account deleted.');
+    return true;
+  }
+
+  void _clearSessionSensitiveState() {
+    _sessionGeneration++;
+    authed = false;
     _clearMemberships();
     rsvps = {};
     follows = {};
@@ -716,7 +819,29 @@ class AppState extends ChangeNotifier {
     attended = 0;
     history = const [];
     profile = null;
-    authed = false;
+    userGenres.clear();
+    pending = null;
+    _authReady = null;
+    _authCommit = null;
+    _authConfirmationKind = null;
+    _postAuthScreen = null;
+    authStep = 1;
+    _fanGenreWrite = Future.value();
+    _profileTutorialWrite = Future.value();
+    _profileTutorialReplay = false;
+    fanAvatarSaving = false;
+    _appliedHomePersonalization = null;
+    _loadingFollowBands.clear();
+    _interactionGigs.clear();
+    _locationRequestGeneration++;
+    city = 'sf';
+    discoveryLocation = DiscoveryLocation.sf;
+    currentPosition = null;
+    locating = false;
+    locationFailure = null;
+    filters = const DiscoveryFilters();
+    query = '';
+    exploreResultType = ExploreResultType.all;
     // Per-band caches outlive the session otherwise, so signing in as someone
     // else in the same process would show the previous user's unsaved edits —
     // or, worse, write them to their band.
@@ -726,8 +851,8 @@ class AppState extends ChangeNotifier {
     _bandEditTimers.clear();
     _bandEdits.clear();
     _media?.clearForSignOut();
-    resetTo(Screen.home);
-    say('Signed out.');
+    _resetBandForm();
+    _resetGigForm();
   }
 
   /// Where [leaveAuth] lands, decided by [commitAuth]; null pops back to
@@ -761,7 +886,7 @@ class AppState extends ChangeNotifier {
       case PendingKind.rsvp:
         await repository.ensureRsvp(p!.id!);
         rsvps.add(p.id!);
-        say("You're on the list. QR is in My Gigs.");
+        say("You're on the list. QR is in Profile.");
         _postAuthScreen = null;
       case PendingKind.follow:
         await repository.ensureFollow(p!.id!);
@@ -834,7 +959,7 @@ class AppState extends ChangeNotifier {
 
   void toggleRsvp(String id) {
     final nowGoing = _toggleOptimistically(rsvps, id, repository.toggleRsvp);
-    say(nowGoing ? "You're on the list. QR is in My Gigs." : 'RSVP removed.');
+    say(nowGoing ? "You're on the list. QR is in Profile." : 'RSVP removed.');
   }
 
   void requestRsvp(String id) {
@@ -883,6 +1008,161 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<bool> saveFanProfile({
+    required String name,
+    required String? bio,
+    required FanCity? homeLocation,
+    required List<String> genres,
+    required bool locationPersonalizationEnabled,
+    required bool followedBandUpdatesEnabled,
+  }) async {
+    if (!authed) return false;
+    final sessionGeneration = _sessionGeneration;
+    final savedName = name.trim();
+    if (savedName.isEmpty) {
+      say('Add your name before saving.');
+      return false;
+    }
+    final savedBio = bio?.trim();
+    final normalizedBio = savedBio == null || savedBio.isEmpty
+        ? null
+        : savedBio;
+    final savedGenres = List<String>.unmodifiable(genres);
+
+    try {
+      await repository.updateFanProfile(
+        name: savedName,
+        bio: normalizedBio,
+        homeLocation: homeLocation,
+        genres: savedGenres,
+        locationPersonalizationEnabled: locationPersonalizationEnabled,
+        followedBandUpdatesEnabled: followedBandUpdatesEnabled,
+      );
+    } catch (error) {
+      logError('updateFanProfile', error);
+      if (_isCurrentSession(sessionGeneration)) say(genericErrorMessage);
+      return false;
+    }
+
+    if (!_isCurrentSession(sessionGeneration)) return false;
+    final currentProfile = profile;
+    if (currentProfile != null) {
+      profile = currentProfile.copyWith(
+        name: savedName,
+        bio: normalizedBio,
+        homeLocation: homeLocation,
+        genres: savedGenres,
+        locationPersonalizationEnabled: locationPersonalizationEnabled,
+        followedBandUpdatesEnabled: followedBandUpdatesEnabled,
+      );
+    } else {
+      await _refreshProfile(sessionGeneration: sessionGeneration);
+      if (!_isCurrentSession(sessionGeneration)) return false;
+    }
+    userGenres
+      ..clear()
+      ..addAll(savedGenres);
+    if (locationPersonalizationEnabled && homeLocation != null) {
+      _applyDiscoveryCity(homeLocation.name);
+      _appliedHomePersonalization = homeLocation;
+    } else if (_appliedHomePersonalization != null) {
+      _applyDiscoveryCity('sf');
+    }
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> updateFanAvatar(PickedMedia media) async {
+    if (!authed || fanAvatarSaving) return false;
+    final sessionGeneration = _sessionGeneration;
+    fanAvatarSaving = true;
+    notifyListeners();
+    try {
+      final storageId = await mediaUploader.uploadAvatarRaw(media: media);
+      if (!_isCurrentSession(sessionGeneration)) return false;
+      await repository.setAvatar(storageId);
+      if (!_isCurrentSession(sessionGeneration)) return false;
+      await _refreshProfile(sessionGeneration: sessionGeneration);
+      return _isCurrentSession(sessionGeneration);
+    } catch (error) {
+      logError('setAvatar', error);
+      if (_isCurrentSession(sessionGeneration)) say(genericErrorMessage);
+      return false;
+    } finally {
+      fanAvatarSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> clearFanAvatar() async {
+    if (!authed || fanAvatarSaving) return false;
+    final sessionGeneration = _sessionGeneration;
+    fanAvatarSaving = true;
+    notifyListeners();
+    try {
+      await repository.clearAvatar();
+      if (!_isCurrentSession(sessionGeneration)) return false;
+      profile = profile?.copyWith(avatarUrl: null);
+      notifyListeners();
+      return true;
+    } catch (error) {
+      logError('clearAvatar', error);
+      if (_isCurrentSession(sessionGeneration)) say(genericErrorMessage);
+      return false;
+    } finally {
+      fanAvatarSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> completeProfileTutorial() async {
+    if (!authed) return;
+    final sessionGeneration = _sessionGeneration;
+    try {
+      await _persistProfileTutorial(true, sessionGeneration);
+      if (!_isCurrentSession(sessionGeneration)) return;
+      profile = profile?.copyWith(profileTutorialCompleted: true);
+      _profileTutorialReplay = false;
+      notifyListeners();
+    } catch (error) {
+      logError('completeProfileTutorial', error);
+      if (_isCurrentSession(sessionGeneration)) say(genericErrorMessage);
+    }
+  }
+
+  void replayProfileTutorial() {
+    if (!authed) {
+      openMyGigsTab();
+      return;
+    }
+    _set(() {
+      _profileTutorialReplay = true;
+      _stack = const [ScreenEntry(Screen.myGigs)];
+    });
+    final sessionGeneration = _sessionGeneration;
+    unawaited(
+      _persistProfileTutorial(false, sessionGeneration)
+          .then((_) {
+            if (!_isCurrentSession(sessionGeneration)) return;
+            profile = profile?.copyWith(profileTutorialCompleted: false);
+            notifyListeners();
+          })
+          .catchError((Object error) {
+            logError('replayProfileTutorial', error);
+            if (_isCurrentSession(sessionGeneration)) say(genericErrorMessage);
+          }),
+    );
+  }
+
+  Future<void> _persistProfileTutorial(bool completed, int sessionGeneration) {
+    final write = _profileTutorialWrite.then((_) async {
+      if (!_isCurrentSession(sessionGeneration)) return;
+      await repository.setProfileTutorialCompleted(completed);
+    });
+    _profileTutorialWrite = write.catchError((Object _) {});
+    return write;
+  }
+
   // ========================= fan onboarding =========================
 
   void _setLocalFanOnboarding(
@@ -892,12 +1172,8 @@ class AppState extends ChangeNotifier {
     final current = profile;
     if (current == null) return;
     final nextGenres = genres ?? current.genres;
-    profile = UserProfile(
-      name: current.name,
-      email: current.email,
+    profile = current.copyWith(
       genres: List.unmodifiable(nextGenres),
-      attendedCount: current.attendedCount,
-      createdAt: current.createdAt,
       fanOnboarding: onboarding,
     );
     userGenres
@@ -1053,6 +1329,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _applyDiscoveryCity(String c) {
+    _appliedHomePersonalization = null;
     _locationRequestGeneration++;
     city = c;
     discoveryLocation = c == 'oak'
@@ -1065,6 +1342,7 @@ class AppState extends ChangeNotifier {
   }
 
   void useCurrentPosition(LatLng position) => _set(() {
+    _appliedHomePersonalization = null;
     _locationRequestGeneration++;
     currentPosition = position;
     discoveryLocation = DiscoveryLocation.current;
@@ -1086,6 +1364,7 @@ class AppState extends ChangeNotifier {
     locating = false;
     switch (result) {
       case LocationSuccess(:final location):
+        _appliedHomePersonalization = null;
         currentPosition = LatLng(location.latitude, location.longitude);
         discoveryLocation = DiscoveryLocation.current;
         locationFailure = null;
@@ -1281,6 +1560,19 @@ class AppState extends ChangeNotifier {
   // ========================= data access =========================
 
   List<Gig> get allGigs => _allGigs;
+
+  List<Gig> get followedBandShows {
+    if (profile?.followedBandUpdatesEnabled == false || follows.isEmpty) {
+      return const [];
+    }
+    final now = DateTime.now();
+    final shows = [
+      for (final gig in _allGigs)
+        if (!gig.startsAt.isBefore(now) && gig.lineup.any(follows.contains))
+          gig,
+    ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    return List<Gig>.unmodifiable(shows);
+  }
 
   Gig? gig(String id) {
     for (final g in allGigs) {

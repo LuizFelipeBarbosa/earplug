@@ -126,8 +126,8 @@ class FanTabBar extends StatelessWidget {
           onPressed: () => app.resetTo(Screen.explore),
         ),
         EpNavigationItem(
-          icon: Icons.confirmation_number_outlined,
-          label: 'MY GIGS',
+          icon: Icons.person_outline,
+          label: 'PROFILE',
           selected: scr == Screen.myGigs,
           onPressed: app.openMyGigsTab,
         ),

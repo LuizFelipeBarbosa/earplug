@@ -2,15 +2,211 @@ import 'dart:async';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/models.dart';
 import 'package:earplug/screens/auth.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
+  test(
+    'fake auth deletes only after a successful Clerk-style operation',
+    () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      auth.deleteAccountError = const AuthException('Clerk refused deletion.');
+
+      await expectLater(auth.deleteAccount(), throwsA(isA<AuthException>()));
+      expect(auth.signedIn, isTrue);
+      expect(auth.deleteAccountCalls, 1);
+
+      auth.deleteAccountError = null;
+      await auth.deleteAccount();
+      expect(auth.signedIn, isFalse);
+      expect(auth.deleteAccountCalls, 2);
+    },
+  );
+
+  test('AppState preserves local state when account deletion fails', () async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await auth.signInDemo();
+    await Future<void>.delayed(Duration.zero);
+    app.rsvps = {'kept-rsvp'};
+    auth.deleteAccountError = const AuthException('Temporary Clerk error.');
+
+    expect(await app.deleteAccount(), isFalse);
+    expect(app.authed, isTrue);
+    expect(app.rsvps, contains('kept-rsvp'));
+
+    auth.deleteAccountError = null;
+    expect(await app.deleteAccount(), isTrue);
+    expect(app.authed, isFalse);
+    expect(app.rsvps, isEmpty);
+    expect(app.profile, isNull);
+    expect(app.current.screen, Screen.home);
+  });
+
+  test(
+    'fan profile changes publish locally only after a successful save',
+    () async {
+      final auth = FakeAuthService();
+      final repository = _ProfileRepository(auth: auth);
+      final app = AppState(repository: repository, auth: auth);
+      addTearDown(app.dispose);
+      await auth.signInDemo();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(
+        await app.saveFanProfile(
+          name: '  Sam Reyes  ',
+          bio: '  Always by the speakers.  ',
+          homeLocation: FanCity.oak,
+          genres: const ['punk', 'noise'],
+          locationPersonalizationEnabled: true,
+          followedBandUpdatesEnabled: true,
+        ),
+        isTrue,
+      );
+      expect(app.profile?.name, 'Sam Reyes');
+      expect(app.profile?.bio, 'Always by the speakers.');
+      expect(app.profile?.homeLocation, FanCity.oak);
+      expect(app.city, 'oak');
+
+      expect(
+        await app.saveFanProfile(
+          name: 'Sam Reyes',
+          bio: 'Always by the speakers.',
+          homeLocation: FanCity.oak,
+          genres: const ['punk', 'noise'],
+          locationPersonalizationEnabled: false,
+          followedBandUpdatesEnabled: true,
+        ),
+        isTrue,
+      );
+      expect(app.profile?.locationPersonalizationEnabled, isFalse);
+      expect(app.city, 'sf');
+
+      repository.failProfileSave = true;
+      expect(
+        await app.saveFanProfile(
+          name: 'Unsaved Name',
+          bio: null,
+          homeLocation: null,
+          genres: const [],
+          locationPersonalizationEnabled: false,
+          followedBandUpdatesEnabled: false,
+        ),
+        isFalse,
+      );
+      expect(app.profile?.name, 'Sam Reyes');
+      expect(app.profile?.followedBandUpdatesEnabled, isTrue);
+    },
+  );
+
+  test('profile tutorial persists completion and can be replayed', () async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await auth.signInDemo();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    app.openMyGigsTab();
+    expect(app.profileTutorialVisible, isTrue);
+    await app.completeProfileTutorial();
+    expect(app.profileTutorialVisible, isFalse);
+    expect((await repository.me())?.profileTutorialCompleted, isTrue);
+
+    app.openSettings();
+    app.replayProfileTutorial();
+    expect(app.current.screen, Screen.myGigs);
+    expect(app.profileTutorialVisible, isTrue);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect((await repository.me())?.profileTutorialCompleted, isFalse);
+  });
+
+  test('profile responses from a signed-out session are ignored', () async {
+    final auth = FakeAuthService();
+    final repository = _GatedProfileRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+
+    await auth.signInDemo();
+    await Future<void>.delayed(Duration.zero);
+    expect(repository.meRequested, isTrue);
+
+    await auth.signOut();
+    repository.profileGate.complete(
+      UserProfile(
+        name: 'Previous Account',
+        email: 'previous@example.com',
+        genres: const ['punk'],
+        attendedCount: 2,
+        createdAt: DateTime(2025),
+        homeLocation: FanCity.oak,
+        locationPersonalizationEnabled: true,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(app.authed, isFalse);
+    expect(app.profile, isNull);
+    expect(app.userGenres, isEmpty);
+    expect(app.city, 'sf');
+  });
+
+  test(
+    'avatar operations and followed-band updates honor profile preferences',
+    () async {
+      final auth = FakeAuthService();
+      final repository = DemoRepository(auth: auth);
+      final app = AppState(repository: repository, auth: auth);
+      addTearDown(app.dispose);
+      await auth.signInDemo();
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(await app.updateFanAvatar(stubPhotoFixture()), isTrue);
+      expect(app.profile?.avatarUrl, isNotNull);
+      expect(await app.clearFanAvatar(), isTrue);
+      expect(app.profile?.avatarUrl, isNull);
+
+      app.follows = {'b2', 'b4'};
+      final followedShows = app.followedBandShows;
+      expect(followedShows, isNotEmpty);
+      expect(
+        followedShows.every((gig) => gig.lineup.any(app.follows.contains)),
+        isTrue,
+      );
+      expect(
+        followedShows.map((gig) => gig.startsAt).toList(),
+        orderedEquals(
+          followedShows.map((gig) => gig.startsAt).toList()..sort(),
+        ),
+      );
+
+      expect(
+        await app.saveFanProfile(
+          name: app.profile!.name,
+          bio: app.profile?.bio,
+          homeLocation: app.profile?.homeLocation,
+          genres: app.profile!.genres,
+          locationPersonalizationEnabled:
+              app.profile!.locationPersonalizationEnabled,
+          followedBandUpdatesEnabled: false,
+        ),
+        isTrue,
+      );
+      expect(app.followedBandShows, isEmpty);
+    },
+  );
+
   testWidgets('backing out during confirmation keeps the pending RSVP', (
     tester,
   ) async {
@@ -219,6 +415,45 @@ class _RetryEnsureRepository extends DemoRepository {
   Future<void> ensureSave(String gigId) async {
     saveCalls++;
     await super.ensureSave(gigId);
+  }
+}
+
+class _ProfileRepository extends DemoRepository {
+  _ProfileRepository({required super.auth});
+
+  bool failProfileSave = false;
+
+  @override
+  Future<void> updateFanProfile({
+    required String name,
+    required String? bio,
+    required FanCity? homeLocation,
+    required List<String> genres,
+    required bool locationPersonalizationEnabled,
+    required bool followedBandUpdatesEnabled,
+  }) async {
+    if (failProfileSave) throw StateError('profile save failed');
+    await super.updateFanProfile(
+      name: name,
+      bio: bio,
+      homeLocation: homeLocation,
+      genres: genres,
+      locationPersonalizationEnabled: locationPersonalizationEnabled,
+      followedBandUpdatesEnabled: followedBandUpdatesEnabled,
+    );
+  }
+}
+
+class _GatedProfileRepository extends DemoRepository {
+  _GatedProfileRepository({required super.auth});
+
+  final profileGate = Completer<UserProfile?>();
+  bool meRequested = false;
+
+  @override
+  Future<UserProfile?> me() {
+    meRequested = true;
+    return profileGate.future;
   }
 }
 

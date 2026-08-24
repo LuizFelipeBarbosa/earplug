@@ -31,7 +31,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('My Gigs remains usable at increased text scale', (tester) async {
+  testWidgets('Profile remains usable at increased text scale', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     await pumpApp(
@@ -41,7 +41,12 @@ void main() {
       home: _scaledScreen(const MyGigsScreen()),
     );
 
-    expect(find.text("UPCOMING: YOU'RE GOING"), findsOne);
+    await tester.scrollUntilVisible(
+      find.text('UPCOMING RSVPS'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('UPCOMING RSVPS'), findsOne);
     expect(tester.takeException(), isNull);
   });
 }

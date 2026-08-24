@@ -282,11 +282,18 @@ void main() {
       home: const Scaffold(body: MyGigsScreen()),
     );
 
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('fan-event-g4')),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byKey(const ValueKey('fan-event-g4')), findsOne);
     expect(find.text('21+'), findsOne);
     expect(find.text('GET TICKETS ↗'), findsOne);
     expect(find.text('SHOW QR'), findsOne);
 
+    await tester.ensureVisible(find.byKey(const ValueKey('show-qr-g4')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('show-qr-g4')));
     await tester.pumpAndSettle();
     expect(find.textContaining('Flash this at the door.'), findsOne);

@@ -67,6 +67,12 @@ class UserProfile {
   final List<String> genres;
   final int attendedCount;
   final DateTime createdAt;
+  final String? avatarUrl;
+  final String? bio;
+  final FanCity? homeLocation;
+  final bool locationPersonalizationEnabled;
+  final bool followedBandUpdatesEnabled;
+  final bool profileTutorialCompleted;
   final FanOnboarding? fanOnboarding;
 
   const UserProfile({
@@ -75,6 +81,12 @@ class UserProfile {
     required this.genres,
     required this.attendedCount,
     required this.createdAt,
+    this.avatarUrl,
+    this.bio,
+    this.homeLocation,
+    this.locationPersonalizationEnabled = false,
+    this.followedBandUpdatesEnabled = true,
+    this.profileTutorialCompleted = false,
     this.fanOnboarding,
   });
 
@@ -86,6 +98,23 @@ class UserProfile {
     createdAt: DateTime.fromMillisecondsSinceEpoch(
       (json['createdAt'] as num).toInt(),
     ),
+    avatarUrl: json['avatarUrl'] is String ? json['avatarUrl'] as String : null,
+    bio: json['bio'] is String ? json['bio'] as String : null,
+    homeLocation: switch (json['homeLocation']) {
+      'sf' => FanCity.sf,
+      'oak' => FanCity.oak,
+      _ => null,
+    },
+    locationPersonalizationEnabled:
+        json['locationPersonalizationEnabled'] is bool
+        ? json['locationPersonalizationEnabled'] as bool
+        : false,
+    followedBandUpdatesEnabled: json['followedBandUpdatesEnabled'] is bool
+        ? json['followedBandUpdatesEnabled'] as bool
+        : true,
+    profileTutorialCompleted: json['profileTutorialCompleted'] is bool
+        ? json['profileTutorialCompleted'] as bool
+        : false,
     fanOnboarding: switch (json['fanOnboarding']) {
       final Map<Object?, Object?> value => FanOnboarding.fromJson(
         Map<String, dynamic>.from(value),
@@ -93,6 +122,47 @@ class UserProfile {
       _ => null,
     },
   );
+
+  static const _unchanged = Object();
+
+  UserProfile copyWith({
+    String? name,
+    String? email,
+    List<String>? genres,
+    int? attendedCount,
+    DateTime? createdAt,
+    Object? avatarUrl = _unchanged,
+    Object? bio = _unchanged,
+    Object? homeLocation = _unchanged,
+    bool? locationPersonalizationEnabled,
+    bool? followedBandUpdatesEnabled,
+    bool? profileTutorialCompleted,
+    Object? fanOnboarding = _unchanged,
+  }) {
+    return UserProfile(
+      name: name ?? this.name,
+      email: email ?? this.email,
+      genres: genres ?? this.genres,
+      attendedCount: attendedCount ?? this.attendedCount,
+      createdAt: createdAt ?? this.createdAt,
+      avatarUrl: identical(avatarUrl, _unchanged)
+          ? this.avatarUrl
+          : avatarUrl as String?,
+      bio: identical(bio, _unchanged) ? this.bio : bio as String?,
+      homeLocation: identical(homeLocation, _unchanged)
+          ? this.homeLocation
+          : homeLocation as FanCity?,
+      locationPersonalizationEnabled:
+          locationPersonalizationEnabled ?? this.locationPersonalizationEnabled,
+      followedBandUpdatesEnabled:
+          followedBandUpdatesEnabled ?? this.followedBandUpdatesEnabled,
+      profileTutorialCompleted:
+          profileTutorialCompleted ?? this.profileTutorialCompleted,
+      fanOnboarding: identical(fanOnboarding, _unchanged)
+          ? this.fanOnboarding
+          : fanOnboarding as FanOnboarding?,
+    );
+  }
 }
 
 /// Print texture laid over a flyer's base color.
@@ -267,6 +337,51 @@ class PastGig {
   final String meta;
 
   const PastGig(this.title, this.meta);
+}
+
+enum FanHistoryStatus { rsvped }
+
+/// A past RSVP shown on the signed-in fan's private profile.
+///
+/// This deliberately says only that the fan RSVPed. Earplug has no check-in
+/// signal that would let the client claim verified attendance.
+class FanHistoryItem {
+  final String gigId;
+  final String title;
+  final DateTime startsAt;
+  final String venueName;
+  final List<String> bandNames;
+  final String flyKey;
+  final String? flyerUrl;
+  final FanHistoryStatus status;
+
+  const FanHistoryItem({
+    required this.gigId,
+    required this.title,
+    required this.startsAt,
+    required this.venueName,
+    required this.bandNames,
+    required this.flyKey,
+    required this.flyerUrl,
+    required this.status,
+  });
+
+  factory FanHistoryItem.fromJson(Map<String, dynamic> json) => FanHistoryItem(
+    gigId: json['gigId'] as String,
+    title: json['title'] as String,
+    startsAt: DateTime.fromMillisecondsSinceEpoch(
+      (json['startsAt'] as num).toInt(),
+    ),
+    venueName: json['venueName'] as String,
+    bandNames: List<String>.from(json['bandNames'] as List),
+    flyKey: json['flyKey'] as String,
+    flyerUrl: json['flyerUrl'] as String?,
+    status: FanHistoryStatus.values.byName(json['status'] as String),
+  );
+
+  /// Compatibility for the original compact history row while the richer
+  /// profile presentation can use the structured fields directly.
+  String get meta => Gig.dateShortFor(startsAt.millisecondsSinceEpoch);
 }
 
 class Band {

@@ -118,6 +118,17 @@ export async function upsertUserFromClerk(
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", facts.clerkId))
     .unique();
   if (byClerkId !== null) {
+    // Clerk ids are never reused. Once deletion tombstones this identity,
+    // delayed/retried user.updated events and still-live JWTs must not restore
+    // PII or authorize the row again.
+    if (byClerkId.deletedAt !== undefined) {
+      return {
+        userId: byClerkId._id,
+        outcome: "adopted_by_clerk_id",
+        emailConflict: false,
+      };
+    }
+
     let emailConflict = false;
     const shouldFillBlankEmail = byClerkId.email === "" && facts.email !== "";
     // Clerk's timestamp prevents an out-of-order Svix retry from restoring a
@@ -134,14 +145,10 @@ export async function upsertUserFromClerk(
 
     const patch: {
       name?: string;
-      deletedAt?: undefined;
       clerkUpdatedAt?: number;
     } = {};
     if (byClerkId.name === "" && facts.name !== undefined) {
       patch.name = facts.name;
-    }
-    if (byClerkId.deletedAt !== undefined) {
-      patch.deletedAt = undefined;
     }
     if (
       facts.updatedAt !== undefined &&

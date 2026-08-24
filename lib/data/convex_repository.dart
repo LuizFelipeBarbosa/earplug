@@ -119,17 +119,11 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<List<PastGig>> history() async {
-    final result = await _convexService.query('interactions:history');
-    return [
-      for (final json in _mapList(result))
-        PastGig(
-          (json['venueName'] as String).isEmpty
-              ? json['title'] as String
-              : '${json['title']} · ${json['venueName']}',
-          Gig.dateShortFor((json['startsAt'] as num).toInt()),
-        ),
-    ];
+  Future<List<FanHistoryItem>> history() async {
+    final result = await _convexService.query('interactions:history', {
+      'now': DateTime.now().millisecondsSinceEpoch,
+    });
+    return [for (final json in _mapList(result)) FanHistoryItem.fromJson(json)];
   }
 
   @override
@@ -235,6 +229,50 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<void> setGenres(List<String> genres) async {
     await _convexService.mutation('users:setGenres', {'genres': genres});
+  }
+
+  @override
+  Future<void> updateFanProfile({
+    required String name,
+    required String? bio,
+    required FanCity? homeLocation,
+    required List<String> genres,
+    required bool locationPersonalizationEnabled,
+    required bool followedBandUpdatesEnabled,
+  }) async {
+    await _convexService.mutation('users:updateProfile', {
+      'name': name,
+      'bio': bio,
+      'homeLocation': homeLocation?.name,
+      'genres': genres,
+      'locationPersonalizationEnabled': locationPersonalizationEnabled,
+      'followedBandUpdatesEnabled': followedBandUpdatesEnabled,
+    });
+  }
+
+  @override
+  Future<String> generateAvatarUploadUrl() async {
+    final result = await _convexService.mutation(
+      'users:generateAvatarUploadUrl',
+    );
+    return result as String;
+  }
+
+  @override
+  Future<void> setAvatar(String storageId) async {
+    await _convexService.mutation('users:setAvatar', {'storageId': storageId});
+  }
+
+  @override
+  Future<void> clearAvatar() async {
+    await _convexService.mutation('users:clearAvatar');
+  }
+
+  @override
+  Future<void> setProfileTutorialCompleted(bool completed) async {
+    await _convexService.mutation('users:setProfileTutorialCompleted', {
+      'completed': completed,
+    });
   }
 
   @override

@@ -380,6 +380,39 @@ class EpProfileAvatar extends StatelessWidget {
   }
 }
 
+/// The private fan-profile avatar treatment.
+///
+/// Keeping this separate from [BandAvatar] makes the fan fallback consistent
+/// anywhere the personal identity appears, while uploaded photos still use the
+/// same accessible network-image behavior as every other profile image.
+class EpFanAvatar extends StatelessWidget {
+  const EpFanAvatar({
+    super.key,
+    required this.name,
+    this.imageUrl,
+    this.size = 40,
+    this.radius = 9,
+    this.fontSize,
+  });
+
+  final String? name;
+  final String? imageUrl;
+  final double size;
+  final double radius;
+  final double? fontSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return EpProfileAvatar(
+      name: name,
+      imageUrl: imageUrl,
+      size: size,
+      radius: radius,
+      fontSize: fontSize,
+    );
+  }
+}
+
 /// Convenience adapter for existing band call sites.
 class BandAvatar extends StatelessWidget {
   final Band band;

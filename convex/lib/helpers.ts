@@ -82,10 +82,11 @@ export async function currentUser(
 ): Promise<Doc<"users"> | null> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
-  return await ctx.db
+  const user = await ctx.db
     .query("users")
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
     .unique();
+  return user?.deletedAt === undefined ? user : null;
 }
 
 /** Throwing: for mutations. */
@@ -97,6 +98,7 @@ export async function requireUser(ctx: MutationCtx): Promise<Doc<"users">> {
     .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
     .unique();
   if (!user) throw new Error("No user record — call users:ensureUser first");
+  if (user.deletedAt !== undefined) throw new Error("Account deleted");
   return user;
 }
 
@@ -382,6 +384,12 @@ export const userPayloadValidator = v.object({
   genres: v.array(v.string()),
   attendedCount: v.number(),
   createdAt: v.number(),
+  avatarUrl: v.union(v.string(), v.null()),
+  bio: v.union(v.string(), v.null()),
+  homeLocation: v.union(fanCityValidator, v.null()),
+  locationPersonalizationEnabled: v.boolean(),
+  followedBandUpdatesEnabled: v.boolean(),
+  profileTutorialCompleted: v.boolean(),
   fanOnboarding: v.union(
     v.object({
       preferredCity: v.union(fanCityValidator, v.null()),
@@ -478,7 +486,10 @@ export function toMediaPayload(
   };
 }
 
-export function toUserPayload(user: Doc<"users">) {
+export async function toUserPayload(ctx: QueryCtx, user: Doc<"users">) {
+  const storedAvatarUrl = user.avatarStorageId
+    ? await ctx.storage.getUrl(user.avatarStorageId)
+    : null;
   return {
     _id: user._id,
     clerkId: user.clerkId,
@@ -487,6 +498,13 @@ export function toUserPayload(user: Doc<"users">) {
     genres: user.genres,
     attendedCount: user.attendedCount,
     createdAt: user._creationTime,
+    avatarUrl: storedAvatarUrl ?? user.avatarUrl ?? null,
+    bio: user.bio?.trim() ? user.bio : null,
+    homeLocation: user.homeLocation ?? null,
+    locationPersonalizationEnabled:
+      user.locationPersonalizationEnabled ?? false,
+    followedBandUpdatesEnabled: user.followedBandUpdatesEnabled ?? true,
+    profileTutorialCompleted: user.profileTutorialCompleted ?? false,
     fanOnboarding:
       user.fanOnboarding === undefined
         ? null
@@ -528,6 +546,13 @@ export const K_ANON_FANS = 5;
 /** The venue table is a small curated list, not user-generated, so one read
  * returns all of it. */
 export const MAX_VENUES = 500;
+
+// ─── Fan profile limits ────────────────────────────────────────────────────
+
+export const MAX_PROFILE_NAME_LENGTH = 100;
+export const MAX_PROFILE_BIO_LENGTH = 500;
+export const MAX_PROFILE_GENRES = 20;
+export const MAX_PROFILE_GENRE_LENGTH = 50;
 
 // ─── Band media limits ──────────────────────────────────────────────────────
 
@@ -577,8 +602,7 @@ export function assertUploadAcceptable(
   if (meta.size > MAX_MEDIA_BYTES) {
     throw new Error("That file is too big — 100 MB max.");
   }
-  const allowed =
-    kind === "video" ? VIDEO_CONTENT_TYPES : PHOTO_CONTENT_TYPES;
+  const allowed = kind === "video" ? VIDEO_CONTENT_TYPES : PHOTO_CONTENT_TYPES;
   if (meta.contentType !== undefined && !allowed.has(meta.contentType)) {
     throw new Error(`${meta.contentType} can't be posted as a ${kind}.`);
   }

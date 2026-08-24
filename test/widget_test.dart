@@ -658,7 +658,7 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<void> clearBandPhoto(String bandId) async {}
 
   @override
-  Future<List<PastGig>> history() async => const [];
+  Future<List<FanHistoryItem>> history() async => const [];
 
   @override
   Future<BandHistory> bandHistory(String bandId) async => BandHistory.empty;
@@ -703,6 +703,28 @@ class _FailingRsvpRepository implements EarplugRepository {
 
   @override
   Future<void> setGenres(List<String> genres) async {}
+
+  @override
+  Future<void> updateFanProfile({
+    required String name,
+    required String? bio,
+    required FanCity? homeLocation,
+    required List<String> genres,
+    required bool locationPersonalizationEnabled,
+    required bool followedBandUpdatesEnabled,
+  }) async {}
+
+  @override
+  Future<String> generateAvatarUploadUrl() async => 'unused';
+
+  @override
+  Future<void> setAvatar(String storageId) async {}
+
+  @override
+  Future<void> clearAvatar() async {}
+
+  @override
+  Future<void> setProfileTutorialCompleted(bool completed) async {}
 
   @override
   Future<void> updateFanOnboarding({

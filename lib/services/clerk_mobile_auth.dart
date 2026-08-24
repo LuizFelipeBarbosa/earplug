@@ -269,6 +269,18 @@ final class ClerkMobileAuth implements AuthService {
     _emitSignedInIfChanged();
   }
 
+  @override
+  Future<void> deleteAccount() async {
+    await initialize();
+    try {
+      await _auth.deleteUser();
+      _pendingCodeFlow = null;
+      _emitSignedInIfChanged();
+    } catch (error) {
+      throw AuthException(_messageFor(error));
+    }
+  }
+
   void _handleAuthUpdate() {
     _emitSignedInIfChanged();
   }

@@ -65,34 +65,51 @@ export const myInteractions = query({
 });
 
 /** Gigs the user RSVPed to that have already happened, newest first; [] when
- * unauthenticated. Same Date.now() staleness caveat as gigs:feed — a gig only
- * crosses into history when something invalidates this query. */
+ * unauthenticated. The client supplies `now` so crossing the event boundary
+ * changes the query arguments instead of relying on unrelated invalidation. */
 export const history = query({
-  args: {},
+  args: { now: v.number() },
   returns: v.array(
     v.object({
+      gigId: v.id("gigs"),
       title: v.string(),
-      venueName: v.string(),
       startsAt: v.number(),
+      venueName: v.string(),
+      bandNames: v.array(v.string()),
+      flyKey: v.string(),
+      flyerUrl: v.union(v.string(), v.null()),
+      status: v.literal("rsvped"),
     }),
   ),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const user = await currentUser(ctx);
     if (user === null) return [];
     const rsvps = await ctx.db
       .query("gigRsvps")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .order("desc")
       .take(500);
-    const now = Date.now();
     const past = [];
     for (const rsvp of rsvps) {
       const gig = await ctx.db.get(rsvp.gigId);
-      if (!gig || gig.startsAt >= now) continue;
+      if (!gig || gig.startsAt >= args.now) continue;
       const venue = await ctx.db.get(gig.venueId);
+      const bandNames: string[] = [];
+      for (const bandId of gig.lineup) {
+        const band = await ctx.db.get(bandId);
+        if (band !== null) bandNames.push(band.name);
+      }
       past.push({
+        gigId: gig._id,
         title: gig.title,
-        venueName: venue?.name ?? "",
         startsAt: gig.startsAt,
+        venueName: venue?.name ?? "",
+        bandNames,
+        flyKey: gig.flyKey,
+        flyerUrl: gig.flyStorageId
+          ? await ctx.storage.getUrl(gig.flyStorageId)
+          : null,
+        status: "rsvped" as const,
       });
     }
     past.sort((a, b) => b.startsAt - a.startsAt);

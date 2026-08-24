@@ -148,7 +148,12 @@ void showSwitcherSheet(BuildContext context) {
           },
           leading: Row(
             children: [
-              EpProfileAvatar(name: profileName, size: 34, radius: 9),
+              EpFanAvatar(
+                name: profileName,
+                imageUrl: app.profile?.avatarUrl,
+                size: 34,
+                radius: 9,
+              ),
               const SizedBox(width: 11),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
