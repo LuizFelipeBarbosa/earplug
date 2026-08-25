@@ -223,6 +223,46 @@ void main() {
     expect(find.text('The previous invitation was revoked.'), findsOne);
     expect(find.text('CREATE NEW INVITATION LINK'), findsOne);
   });
+
+  testWidgets('member panel trusts server invitation expiry state', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _InviteStateRepository(
+      auth: auth,
+      invite: BandInvite(
+        bandId: 'b1',
+        token: 'server-active',
+        expiresAt: DateTime.utc(2000),
+        revoked: false,
+        expired: false,
+      ),
+    );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandEditScreen()),
+    );
+    harness.app.openBandEditor(section: 'members');
+    await tester.pumpAndSettle();
+
+    expect(find.text(repository.invite.url), findsOne);
+    expect(find.text('COPY INVITATION LINK'), findsOne);
+
+    repository.invite = BandInvite(
+      bandId: 'b1',
+      token: 'server-expired',
+      expiresAt: DateTime.utc(2100),
+      revoked: false,
+      expired: true,
+    );
+    await harness.app.refreshBandInvite('b1');
+    await tester.pumpAndSettle();
+
+    expect(find.text('The previous invitation expired.'), findsOne);
+    expect(find.text('CREATE NEW INVITATION LINK'), findsOne);
+  });
 }
 
 Future<void> _scrollTo(WidgetTester tester, String text) async {
@@ -265,4 +305,13 @@ class _DelayedDetailsRepository extends DemoRepository {
   @override
   Future<BandProfileDetails> bandProfileDetails(String bandId) =>
       details.future;
+}
+
+class _InviteStateRepository extends DemoRepository {
+  _InviteStateRepository({required super.auth, required this.invite});
+
+  BandInvite invite;
+
+  @override
+  Future<BandInvite?> bandInvite(String bandId) async => invite;
 }

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show DateTimeRange, TimeOfDay;
 import 'package:latlong2/latlong.dart';
 
+import 'band_identity.dart';
 import 'band_media_state.dart';
 import 'data/convex_repository.dart';
 import 'data/demo_repository.dart';
@@ -16,14 +17,6 @@ import 'services/auth_service.dart';
 import 'services/location_service.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
-
-String _bandInitials(String name) => name
-    .split(RegExp(r'\s+'))
-    .where((word) => word.isNotEmpty)
-    .map((word) => word[0])
-    .take(2)
-    .join()
-    .toUpperCase();
 
 enum Screen {
   home,
@@ -2103,7 +2096,7 @@ class AppState extends ChangeNotifier {
     if (existing != null) {
       _bands[update.bandId] = existing.copyWith(
         name: normalized.name,
-        initials: _bandInitials(normalized.name),
+        initials: bandInitialsFor(normalized.name),
         genres: normalized.genres,
         area: normalized.area,
         bio: normalized.bio,
@@ -2170,6 +2163,7 @@ class AppState extends ChangeNotifier {
         token: current.token,
         expiresAt: current.expiresAt,
         revoked: true,
+        expired: current.expired,
       );
     }
     notifyListeners();

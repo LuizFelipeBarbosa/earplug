@@ -20,6 +20,7 @@ const invitePayloadValidator = v.object({
   token: v.string(),
   expiresAt: v.number(),
   revoked: v.boolean(),
+  expired: v.boolean(),
 });
 
 const resolutionValidator = v.object({
@@ -35,6 +36,7 @@ function invitePayload(invite: Doc<"bandInvites">) {
     token: invite.token,
     expiresAt: invite.expiresAt,
     revoked: invite.revoked,
+    expired: invite.expired === true,
   };
 }
 
@@ -106,6 +108,7 @@ async function refreshInvite(
     token: replacement.token,
     expiresAt: replacement.expiresAt,
     revoked: replacement.revoked,
+    expired: replacement.expired,
   };
 }
 
@@ -249,7 +252,12 @@ export const accept = mutation({
             .withIndex("by_token", (q) => q.eq("token", args.token))
             .first()
         : null;
-    if (invite === null || invite.revoked || invite.expiresAt <= Date.now()) {
+    if (
+      invite === null ||
+      invite.revoked ||
+      invite.expired === true ||
+      invite.expiresAt <= Date.now()
+    ) {
       throw new Error("Invitation is no longer active");
     }
     const band = await ctx.db.get(invite.bandId);

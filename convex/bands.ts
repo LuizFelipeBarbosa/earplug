@@ -125,7 +125,10 @@ export const myBands = query({
     for (const membership of memberships) {
       const band = await ctx.db.get(membership.bandId);
       if (band) {
-        out.push({ band: await toBandPayload(ctx, band), role: membership.role });
+        out.push({
+          band: await toBandPayload(ctx, band),
+          role: membership.role,
+        });
       }
     }
     return out;
@@ -293,32 +296,70 @@ export const createBand = mutation({
 export const updateProfile = mutation({
   args: {
     bandId: v.id("bands"),
-    name: v.string(),
-    genres: v.array(v.string()),
-    area: v.string(),
-    bio: v.string(),
-    linkIg: v.string(),
-    linkBc: v.string(),
-    linkYt: v.string(),
-    credits: v.string(),
+    name: v.optional(v.string()),
+    genres: v.optional(v.array(v.string())),
+    area: v.optional(v.string()),
+    bio: v.optional(v.string()),
+    // Accepted but deliberately ignored while older clients age out. Real
+    // memberships are created only through bandInvites:accept.
+    inviteHandles: v.optional(v.array(v.string())),
+    linkIg: v.optional(v.string()),
+    linkBc: v.optional(v.string()),
+    linkYt: v.optional(v.string()),
+    credits: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireBandAdmin(ctx, args.bandId);
-    const profile = requiredProfileValues(args.name, args.genres, args.area);
+    const patch: {
+      name?: string;
+      initials?: string;
+      genres?: string[];
+      area?: string;
+      bio?: string;
+      linkIg?: string;
+      linkBc?: string;
+      linkYt?: string;
+      credits?: string;
+    } = {};
     // Slug and color deliberately remain stable across renames. Initials are
     // the visible label for the new name and therefore do follow it.
-    await ctx.db.patch(args.bandId, {
-      name: profile.name,
-      initials: initialsFor(profile.name),
-      genres: profile.genres,
-      area: profile.area,
-      bio: optionalText(args.bio),
-      linkIg: optionalText(args.linkIg),
-      linkBc: optionalText(args.linkBc),
-      linkYt: optionalText(args.linkYt),
-      credits: optionalText(args.credits),
-    });
+    if (args.name !== undefined) {
+      const name = args.name.trim();
+      if (name === "") {
+        throw new Error("Band name, sound, and home base are required");
+      }
+      patch.name = name;
+      patch.initials = initialsFor(name);
+    }
+    if (args.genres !== undefined) {
+      const genres = args.genres.map((genre) => genre.trim());
+      if (genres.length === 0) {
+        throw new Error("Band name, sound, and home base are required");
+      }
+      if (genres.length > 3) {
+        throw new Error("Choose no more than three genres");
+      }
+      if (genres.some((genre) => genre === "")) {
+        throw new Error("Genres cannot be blank");
+      }
+      patch.genres = genres;
+    }
+    if (args.area !== undefined) {
+      const area = args.area.trim();
+      if (area === "") {
+        throw new Error("Band name, sound, and home base are required");
+      }
+      patch.area = area;
+    }
+    if (args.bio !== undefined) patch.bio = optionalText(args.bio);
+    if (args.linkIg !== undefined) patch.linkIg = optionalText(args.linkIg);
+    if (args.linkBc !== undefined) patch.linkBc = optionalText(args.linkBc);
+    if (args.linkYt !== undefined) patch.linkYt = optionalText(args.linkYt);
+    if (args.credits !== undefined) patch.credits = optionalText(args.credits);
+    if (Object.keys(patch).length > 0) {
+      await ctx.db.patch(args.bandId, patch);
+    }
     return null;
   },
 });

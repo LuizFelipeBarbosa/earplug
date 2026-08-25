@@ -33,6 +33,7 @@ describe("band invitations", () => {
       before + 7 * 24 * 60 * 60 * 1000,
     );
     expect(first.revoked).toBe(false);
+    expect(first.expired).toBe(false);
     expect(await asAdmin.query(api.bandInvites.manage, { bandId })).toEqual(
       first,
     );
@@ -77,6 +78,10 @@ describe("band invitations", () => {
     await t.mutation(internal.bandInvites.expire, {
       bandId,
       token: replacement.token,
+    });
+    expect(await asAdmin.query(api.bandInvites.manage, { bandId })).toEqual({
+      ...replacement,
+      expired: true,
     });
     expect(
       await t.query(api.bandInvites.resolve, {

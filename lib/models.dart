@@ -583,12 +583,14 @@ class BandInvite {
   final String token;
   final DateTime expiresAt;
   final bool revoked;
+  final bool expired;
 
   const BandInvite({
     required this.bandId,
     required this.token,
     required this.expiresAt,
     required this.revoked,
+    required this.expired,
   });
 
   factory BandInvite.fromJson(Map<String, dynamic> json) => BandInvite(
@@ -598,6 +600,7 @@ class BandInvite {
       (json['expiresAt'] as num).toInt(),
     ),
     revoked: json['revoked'] == true,
+    expired: json['expired'] == true,
   );
 
   String get url => 'https://earplug.app/join/$token';

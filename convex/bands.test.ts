@@ -47,16 +47,19 @@ describe("bands: slugs and profile updates", () => {
 
   test("createBand persists the area and links the sheets collect", async () => {
     const { t, asAdmin } = await setup();
-    const { bandId, slug, band } = await asAdmin.mutation(api.bands.createBand, {
-      name: "Static Bloom",
-      genres: ["punk", "shoegaze"],
-      bio: "Two amps facing each other.",
-      inviteHandles: ["@mara.k"],
-      area: "Bernal Heights, SF",
-      linkIg: "@staticbloom",
-      linkBc: "staticbloom.bandcamp.com",
-      linkYt: "youtube.com/@staticbloom",
-    });
+    const { bandId, slug, band } = await asAdmin.mutation(
+      api.bands.createBand,
+      {
+        name: "Static Bloom",
+        genres: ["punk", "shoegaze"],
+        bio: "Two amps facing each other.",
+        inviteHandles: ["@mara.k"],
+        area: "Bernal Heights, SF",
+        linkIg: "@staticbloom",
+        linkBc: "staticbloom.bandcamp.com",
+        linkYt: "youtube.com/@staticbloom",
+      },
+    );
 
     const doc = await t.run(async (ctx) => ctx.db.get(bandId));
     expect(doc?.area).toBe("Bernal Heights, SF");
@@ -159,6 +162,51 @@ describe("bands: slugs and profile updates", () => {
 
     const resolved = await t.query(api.bands.bySlug, { slug });
     expect(resolved?.name).toBe("Static Gloom");
+  });
+
+  test("updateProfile remains compatible with partial and pre-credits clients", async () => {
+    const { t, asAdmin } = await setup();
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Static Bloom",
+      genres: ["punk"],
+      bio: "Old bio",
+      area: "Oakland",
+      credits: "Existing credits",
+    });
+
+    await asAdmin.mutation(api.bands.updateProfile, {
+      bandId,
+      bio: " Updated alone. ",
+    });
+    expect(await t.run(async (ctx) => ctx.db.get(bandId))).toMatchObject({
+      name: "Static Bloom",
+      genres: ["punk"],
+      area: "Oakland",
+      bio: "Updated alone.",
+      credits: "Existing credits",
+    });
+
+    await asAdmin.mutation(api.bands.updateProfile, {
+      bandId,
+      name: "SOBO",
+      genres: ["rock"],
+      area: "Berkeley",
+      bio: "Full legacy save",
+      inviteHandles: ["@legacy"],
+      linkIg: "@sobo",
+      linkBc: "",
+      linkYt: "",
+    });
+    const updated = await t.run(async (ctx) => ctx.db.get(bandId));
+    expect(updated).toMatchObject({
+      name: "SOBO",
+      initials: "SO",
+      genres: ["rock"],
+      area: "Berkeley",
+      bio: "Full legacy save",
+      credits: "Existing credits",
+    });
+    expect(updated?.inviteHandles).toBeUndefined();
   });
 
   test("updateProfile rejects non-admins", async () => {

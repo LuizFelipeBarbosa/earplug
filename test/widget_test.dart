@@ -286,6 +286,28 @@ void main() {
       expect(app.bioFor('b1'), 'We play');
     });
 
+    test('single-word band names cache the backend initials', () async {
+      final app = await _demoApp();
+      app.switchToBand('b1');
+      final band = app.myBand!;
+
+      await app.saveBandProfile(
+        BandProfileUpdate(
+          bandId: band.id,
+          name: 'SOBO',
+          genres: band.genres,
+          area: band.area,
+          bio: band.bio,
+          linkIg: band.linkIg ?? '',
+          linkBc: band.linkBc ?? '',
+          linkYt: band.linkYt ?? '',
+          credits: band.credits ?? '',
+        ),
+      );
+
+      expect(app.myBand!.initials, 'SO');
+    });
+
     test('a failed atomic profile save leaves server data visible', () async {
       final repository = _CountingProfileRepository(auth: FakeAuthService())
         ..fail = true;

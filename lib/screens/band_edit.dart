@@ -568,8 +568,7 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
     final invite = app.inviteFor(id);
     final loading = app.inviteLoadingFor(id);
     final members = app.profileDetailsFor(id)?.memberNames ?? const [];
-    final expired = invite != null && DateTime.now().isAfter(invite.expiresAt);
-    final active = invite != null && !invite.revoked && !expired;
+    final active = invite != null && !invite.revoked && !invite.expired;
 
     return _EditorSection(
       title: 'Band members',

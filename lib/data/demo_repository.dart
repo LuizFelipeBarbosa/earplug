@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show Color;
 
+import '../band_identity.dart';
 import '../demo_data.dart';
 import '../models.dart';
 import '../services/auth_service.dart';
@@ -611,14 +612,6 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> deleteCurrentUser() async {}
 
-  static String _initialsFor(String name) => name
-      .split(' ')
-      .where((word) => word.isNotEmpty)
-      .map((word) => word[0])
-      .take(2)
-      .join()
-      .toUpperCase();
-
   /// Mirrors the backend: "static-bloom", or "static-bloom-2" when taken.
   String _uniqueSlug(String name) {
     var base = _slugify(name);
@@ -659,7 +652,7 @@ class DemoRepository implements EarplugRepository {
       genres: genres.isEmpty ? const ['punk'] : List<String>.of(genres),
       area: area,
       color: const Color(0xFF8FE6C4),
-      initials: _initialsFor(bandName),
+      initials: bandInitialsFor(bandName),
       followers: 1,
       bio: bio,
       linkIg: linkIg,
@@ -683,7 +676,7 @@ class DemoRepository implements EarplugRepository {
     final trimmedName = update.name.trim();
     final updated = existing.copyWith(
       name: trimmedName,
-      initials: _initialsFor(trimmedName),
+      initials: bandInitialsFor(trimmedName),
       genres: List<String>.of(update.genres),
       area: update.area.trim(),
       bio: update.bio.trim(),
@@ -748,6 +741,7 @@ class DemoRepository implements EarplugRepository {
       token: 'demo-invite-${_nextInviteId++}',
       expiresAt: DateTime.now().add(const Duration(days: 7)),
       revoked: false,
+      expired: false,
     );
     _bandInvites[bandId] = invite;
     return invite;
@@ -758,6 +752,7 @@ class DemoRepository implements EarplugRepository {
     final current = _bandInvites[bandId];
     if (current != null &&
         !current.revoked &&
+        !current.expired &&
         current.expiresAt.isAfter(DateTime.now())) {
       return current;
     }
@@ -777,6 +772,7 @@ class DemoRepository implements EarplugRepository {
       token: invite.token,
       expiresAt: invite.expiresAt,
       revoked: true,
+      expired: invite.expired,
     );
   }
 
@@ -787,6 +783,7 @@ class DemoRepository implements EarplugRepository {
         .firstOrNull;
     if (invite == null ||
         invite.revoked ||
+        invite.expired ||
         !invite.expiresAt.isAfter(DateTime.now())) {
       return null;
     }
