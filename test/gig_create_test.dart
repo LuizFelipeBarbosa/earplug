@@ -17,13 +17,15 @@ void main() {
     (tester) async {
       final app = (await _pumpGigCreate(tester)).app;
 
-      // Header, live flyer and the four slot cards.
-      expect(find.text('NEW GIG'), findsOne);
+      // The editor exposes a conventional, labeled form and a visible draft
+      // action instead of hiding inputs in the poster artwork.
+      expect(find.text('GIG DRAFT'), findsOne);
       expect(find.text('DRAFT'), findsOne);
-      expect(find.text('YOUR GIG NAME'), findsOne);
-      expect(find.text('+ DATE & DOORS'), findsOne);
-      expect(find.text('WHEN · REQUIRED'), findsOne);
-      expect(find.text('VENUE · REQUIRED'), findsOne);
+      expect(find.text('SAVE DRAFT'), findsOne);
+      expect(find.text('GIG NAME'), findsOne);
+      expect(find.text('DATE'), findsOne);
+      expect(find.text('DOORS AND START TIME'), findsOne);
+      expect(find.text('VENUE'), findsOne);
       expect(find.text('Still needs a name + a date + a venue'), findsOne);
 
       // Typing in the standard name card updates the decorative poster.
@@ -33,12 +35,8 @@ void main() {
       expect(find.text('GIG NAME ✓'), findsOne);
       expect(find.text('Still needs a date + a venue'), findsOne);
 
-      await tester.tap(find.byKey(const ValueKey('press-riso')));
-      await tester.pump();
-      expect(app.gfFly, 'riso');
-
       // When sheet — pick a day from the rolling calendar.
-      await tester.tap(find.text('WHEN · REQUIRED'));
+      await tester.tap(find.text('Choose a date'));
       await tester.pumpAndSettle();
       expect(find.text('WHEN IS IT'), findsOne);
       expect(find.text('DOORS 8PM'), findsOne);
@@ -65,25 +63,23 @@ void main() {
       await tester.pumpAndSettle();
 
       // Venue sheet.
-      await tester.tap(find.text('VENUE · REQUIRED'));
+      await tester.tap(find.text('Choose a venue'));
       await tester.pumpAndSettle();
       expect(find.text('WHERE IS IT'), findsOne);
       await tester.tap(find.text('THE FOGHORN CLUB'));
       await tester.pumpAndSettle();
       expect(app.gfVenueId, 'v1');
-      expect(find.text('READY'), findsOne);
       expect(
         find.text('Ready. Fans nearby see it as soon as you publish.'),
         findsOne,
       );
 
       // Price sheet — a preset closes it, the custom field stays open.
-      final priceSlot = find.text('PRICE');
-      await tester.ensureVisible(priceSlot);
-      await tester.pumpAndSettle();
+      final priceSlot = find.text('COVER');
+      await _scrollTo(tester, priceSlot);
       await tester.tap(priceSlot);
       await tester.pumpAndSettle();
-      expect(find.text('COVER'), findsOne);
+      expect(find.text('COVER'), findsWidgets);
       await tester.enterText(
         find.widgetWithText(TextField, 'Other amount'),
         '7',
@@ -95,9 +91,8 @@ void main() {
       expect(app.gfPrice, '\$10');
 
       // Tickets sheet — cap chips, then swap to an external link.
-      final ticketSlot = find.text('TICKETS');
-      await tester.ensureVisible(ticketSlot);
-      await tester.pumpAndSettle();
+      final ticketSlot = find.text('ACCESS');
+      await _scrollTo(tester, ticketSlot);
       await tester.tap(ticketSlot);
       await tester.pumpAndSettle();
       await tester.tap(find.text('100'));
@@ -114,6 +109,13 @@ void main() {
       await tester.tap(find.text('DONE'));
       await tester.pumpAndSettle();
 
+      // Poster presets are a normal field later in the form.
+      final riso = find.byKey(const ValueKey('press-riso'));
+      await _scrollTo(tester, riso);
+      await tester.tap(riso);
+      await tester.pump();
+      expect(app.gfFly, 'riso');
+
       // Publish, then the live-flyer confirmation.
       await tester.tap(find.text('PUBLISH GIG'));
       await tester.pumpAndSettle();
@@ -126,7 +128,7 @@ void main() {
 
       await tester.tap(find.text('MAKE ANOTHER'));
       await tester.pumpAndSettle();
-      expect(find.text('YOUR GIG NAME'), findsOne);
+      expect(find.text('GIG NAME'), findsOne);
       expect(app.gfPrice, 'FREE');
     },
   );
@@ -137,7 +139,9 @@ void main() {
       final app = (await _pumpGigCreate(tester)).app;
       expect(find.text('Text overlay'), findsNothing);
 
-      await tester.tap(find.byKey(const ValueKey('press-custom')));
+      final custom = find.byKey(const ValueKey('press-custom'));
+      await _scrollTo(tester, custom);
+      await tester.tap(custom);
       await tester.pump();
       expect(app.gfCustomFlyer, isTrue);
       expect(find.text('CUSTOM FLYER PREVIEW'), findsOne);
@@ -152,8 +156,9 @@ void main() {
       await tester.tap(find.text('Text overlay'));
       await tester.pump();
       expect(app.gfShowOverlay, isFalse);
-      expect(find.text('+ DATE & DOORS'), findsNothing);
-      expect(find.text('WHEN · REQUIRED'), findsOne);
+      expect(app.gfDate, isNull);
+      await app.saveGigDraft();
+      await tester.pumpAndSettle();
     },
   );
 
@@ -163,7 +168,9 @@ void main() {
     final harness = await _pumpGigCreate(tester);
     harness.picker.nextPhoto = photoFixture(filename: 'flyer.png');
 
-    await tester.tap(find.byKey(const ValueKey('press-custom')));
+    final custom = find.byKey(const ValueKey('press-custom'));
+    await _scrollTo(tester, custom);
+    await tester.tap(custom);
     await tester.pump();
     await tester.tap(find.text('ADD FLYER ART'));
     await tester.pumpAndSettle();
@@ -172,6 +179,8 @@ void main() {
     expect(harness.app.gfFlyerStorageId, isNotNull);
     expect(find.byType(Image), findsOne);
     expect(find.text('CUSTOM FLYER PREVIEW'), findsNothing);
+    await harness.app.saveGigDraft();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('custom flyer upload gates publish and threads its storage id', (
@@ -185,7 +194,9 @@ void main() {
     app.setGfDate(DateTime.now().add(const Duration(days: 2)));
     app.setGfVenue('v1');
 
-    await tester.tap(find.byKey(const ValueKey('press-custom')));
+    final custom = find.byKey(const ValueKey('press-custom'));
+    await _scrollTo(tester, custom);
+    await tester.tap(custom);
     await tester.pump();
     await tester.tap(find.text('ADD FLYER ART'));
     await tester.pump();
@@ -222,9 +233,8 @@ void main() {
     final app = (await _pumpGigCreate(tester)).app;
     expect(app.gfAgeRequirement, AgeRequirement.allAges);
 
-    final ageSlot = find.text('AGE');
-    await tester.drag(find.byType(ListView), const Offset(0, -350));
-    await tester.pumpAndSettle();
+    final ageSlot = find.text('AUDIENCE');
+    await _scrollTo(tester, ageSlot);
     await tester.tap(ageSlot);
     await tester.pumpAndSettle();
 
@@ -235,7 +245,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(app.gfAgeRequirement, AgeRequirement.twentyOnePlus);
     expect(find.text('21+'), findsOne);
+    await app.saveGigDraft();
+    await tester.pumpAndSettle();
   });
+}
+
+Future<void> _scrollTo(WidgetTester tester, Finder finder) async {
+  await tester.scrollUntilVisible(
+    finder,
+    240,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
 }
 
 Future<AppHarness> _pumpGigCreate(
@@ -297,5 +318,12 @@ class _GatedFlyerRepository extends DemoRepository {
       externalUrl: externalUrl,
       cap: cap,
     );
+  }
+
+  @override
+  Future<String> publishGigDraft(String projectId) async {
+    publishCalls++;
+    publishedFlyStorageId = (await getGigProject(projectId)).flyStorageId;
+    return super.publishGigDraft(projectId);
   }
 }

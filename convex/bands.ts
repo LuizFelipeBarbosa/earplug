@@ -190,7 +190,7 @@ export const setupStatus = query({
   returns: setupStatusValidator,
   handler: async (ctx, args) => {
     const band = await requireBandAdminQuery(ctx, args.bandId);
-    const [video, gig, memberships] = await Promise.all([
+    const [video, gigRows, memberships] = await Promise.all([
       ctx.db
         .query("bandMedia")
         .withIndex("by_band_kind_order", (q) =>
@@ -200,12 +200,20 @@ export const setupStatus = query({
       ctx.db
         .query("gigBands")
         .withIndex("by_band_startsAt", (q) => q.eq("bandId", args.bandId))
-        .first(),
+        .take(20),
       ctx.db
         .query("bandMembers")
         .withIndex("by_band", (q) => q.eq("bandId", args.bandId))
         .take(2),
     ]);
+    let firstGigCreated = false;
+    for (const row of gigRows) {
+      const gig = await ctx.db.get(row.gigId);
+      if (gig && (gig.lifecycle ?? "published") === "published") {
+        firstGigCreated = true;
+        break;
+      }
+    }
     return {
       profileComplete:
         band.name.trim() !== "" &&
@@ -219,7 +227,7 @@ export const setupStatus = query({
         (band.linkBc?.trim() ?? "") !== "" ||
         (band.linkYt?.trim() ?? "") !== "",
       socialLinksAdded: (band.linkIg?.trim() ?? "") !== "",
-      firstGigCreated: gig !== null,
+      firstGigCreated,
       membersInvited: memberships.length > 1,
       publicProfilePreviewed: band.publicProfilePreviewedAt !== undefined,
     };

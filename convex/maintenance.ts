@@ -10,6 +10,7 @@
 import { Infer, v } from "convex/values";
 import { Doc, Id } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
+import { createProjectForGig } from "./gigs";
 import {
   assertGigPublishable,
   gigPublishFieldsValidator,
@@ -258,6 +259,8 @@ export const publishRealGig = internalMutation({
     }
 
     const gigId: Id<"gigs"> = await insertPublishedGig(ctx, fields, band);
+    const gig = await ctx.db.get(gigId);
+    if (gig) await createProjectForGig(ctx, gig, band._id);
     return {
       gigId,
       created: true,

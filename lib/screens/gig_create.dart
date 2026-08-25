@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +8,7 @@ import '../app_state.dart';
 import '../band_media_state.dart';
 import '../demo_data.dart';
 import '../models.dart';
+import '../services/flyer_text_extractor.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -25,6 +28,7 @@ Future<void> _pickGigFlyerArt(BuildContext context) async {
   }
   if (!context.mounted || picked == null) return;
 
+  final extractionFuture = _extractFlyerProposal(app, picked);
   app.setGfFlyerArt(picked);
   app.setGfFlyerUploading(true);
   final storageId = await media.uploadFlyerArt(app.bandId, picked);
@@ -32,6 +36,43 @@ Future<void> _pickGigFlyerArt(BuildContext context) async {
     app.setGfFlyerStorageId(storageId);
   }
   app.setGfFlyerUploading(false);
+
+  final proposal = await extractionFuture;
+  if (!context.mounted || proposal == null) return;
+  if (!proposal.hasSuggestions) {
+    app.say('Flyer added. Add any details the artwork did not make clear.');
+    return;
+  }
+  unawaited(
+    showEpSheet(
+      context,
+      (_) => _Sheet(
+        title: 'Review flyer details',
+        child: _FlyerReviewBody(proposal: proposal),
+      ),
+    ),
+  );
+}
+
+Future<FlyerEntryProposal?> _extractFlyerProposal(
+  AppState app,
+  PickedMedia picked,
+) async {
+  const extractor = FlyerTextExtractor();
+  if (!extractor.isSupported) return null;
+  try {
+    final extraction = await extractor.extract(picked.bytes);
+    if (extraction == null || extraction.lines.isEmpty) return null;
+    final bands = await app.repository.searchBands('');
+    return const FlyerEntryParser().parse(
+      extraction,
+      venues: app.venues,
+      bands: bands,
+    );
+  } on PlatformException catch (error) {
+    debugPrint('Flyer OCR failed: ${error.code}: ${error.message}');
+    return null;
+  }
 }
 
 /// Gig creation with an upright decorative poster preview and standard fields.
@@ -68,6 +109,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (app.gfPublished) return const _PublishedView();
+    if (app.gfPreviewing) return const _DraftPreview();
 
     return Stack(
       children: [
@@ -85,8 +127,34 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                     onTap: app.closeGigCreate,
                   ),
                   const SizedBox(width: 10),
-                  Expanded(child: Text('NEW GIG', style: epDisplay(size: 16))),
-                  ReadyPill(ready: app.canPublishGig),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          app.gfProject?.status == GigProjectStatus.published
+                              ? 'EDIT GIG'
+                              : 'GIG DRAFT',
+                          style: epDisplay(size: 16),
+                        ),
+                        Text(
+                          app.gfSaveState,
+                          style: epText(
+                            size: 9.5,
+                            weight: FontWeight.w800,
+                            letterSpacing: .8,
+                            color: app.gfSaveState == 'SAVE FAILED'
+                                ? Ep.warning
+                                : Ep.contentDisabled,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: app.saveGigDraft,
+                    child: const Text('SAVE DRAFT'),
+                  ),
                 ],
               ),
             ),
@@ -94,11 +162,29 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 18, 16, 150),
                 children: [
-                  const _FlyerStudio(),
-                  const SizedBox(height: 14),
+                  const _FormLabel('GIG NAME'),
+                  const SizedBox(height: 7),
                   _NameCard(controller: _cardName, focusNode: _cardFocus),
-                  const SizedBox(height: 9),
+                  const SizedBox(height: 18),
                   const _SlotGrid(),
+                  const SizedBox(height: 18),
+                  const _FormLabel('LINEUP'),
+                  const SizedBox(height: 7),
+                  const _LineupField(),
+                  const SizedBox(height: 18),
+                  const _CommerceFields(),
+                  const SizedBox(height: 18),
+                  const _FormLabel('POSTER'),
+                  const SizedBox(height: 7),
+                  const _FlyerStudio(),
+                  const SizedBox(height: 18),
+                  const _FormLabel('ADDITIONAL INFORMATION'),
+                  const SizedBox(height: 7),
+                  const _AdditionalInfoField(),
+                  const SizedBox(height: 18),
+                  const _FormLabel('PUBLISH SETTINGS'),
+                  const SizedBox(height: 7),
+                  const _PublishSettingsField(),
                 ],
               ),
             ),
@@ -549,78 +635,586 @@ class _SlotGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _FormLabel('DATE'),
+        const SizedBox(height: 7),
+        _SlotCard(
+          tag: app.gfDate == null ? 'REQUIRED' : 'DATE ✓',
+          tagColor: app.gfDate == null ? Ep.warning : Ep.accent,
+          value: app.gfDate == null
+              ? 'Choose a date'
+              : app.gfDateLabel.toUpperCase(),
+          sub: 'Calendar date for doors',
+          state: app.gfDate == null ? _SlotState.needed : _SlotState.done,
+          onTap: () => showWhenSheet(context),
+        ),
+        const SizedBox(height: 18),
+        const _FormLabel('DOORS AND START TIME'),
+        const SizedBox(height: 7),
+        _SlotCard(
+          tag: 'TIMES',
+          tagColor: Ep.contentSecondary,
+          value: 'Doors ${app.gfDoorsLabel} · Start ${app.gfStartLabel}',
+          sub: 'A start earlier than doors is treated as after midnight',
+          state: _SlotState.done,
+          onTap: () => showWhenSheet(context),
+        ),
+        const SizedBox(height: 18),
+        const _FormLabel('VENUE'),
+        const SizedBox(height: 7),
+        _SlotCard(
+          tag: venue == null ? 'REQUIRED' : 'VENUE ✓',
+          tagColor: venue == null ? Ep.warning : Ep.accent,
+          value: venue?.name ?? 'Choose a venue',
+          sub: venue?.area ?? 'Search EarPlug venues',
+          state: venue == null ? _SlotState.needed : _SlotState.done,
+          onTap: () => showVenueSheet(context),
+        ),
+      ],
+    );
+  }
+}
 
-    final slots = [
-      _SlotCard(
-        tag: app.gfDate == null ? 'WHEN · REQUIRED' : 'WHEN ✓',
-        tagColor: app.gfDate == null ? Ep.warning : Ep.accent,
-        value: app.gfDate == null
-            ? 'Pick a date'
-            : app.gfDateLabel.toUpperCase(),
-        sub: app.gfDate == null ? '' : 'Doors ${app.gfDoorsLabel}',
-        state: app.gfDate == null ? _SlotState.needed : _SlotState.done,
-        onTap: () => showWhenSheet(context),
-      ),
-      _SlotCard(
-        tag: venue == null ? 'VENUE · REQUIRED' : 'VENUE ✓',
-        tagColor: venue == null ? Ep.warning : Ep.accent,
-        value: venue?.name ?? 'Where is it',
-        sub: venue?.area ?? '',
-        state: venue == null ? _SlotState.needed : _SlotState.done,
-        onTap: () => showVenueSheet(context),
-      ),
-      _SlotCard(
-        tag: 'PRICE',
-        tagColor: Ep.contentSecondary,
-        value: app.gfPrice,
-        sub: app.gfPrice == 'FREE'
-            ? 'Free gigs pull bigger crowds'
-            : 'At the door',
-        state: _SlotState.optional,
-        onTap: () => showPriceSheet(context),
-      ),
-      _SlotCard(
-        tag: 'TICKETS',
-        tagColor: Ep.contentSecondary,
-        value: app.gfTix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
-        sub: switch (app.gfTix) {
-          Ticketing.rsvp when app.gfCap == 'No cap' =>
-            'No cap · QR at the door',
-          Ticketing.rsvp => 'Cap ${app.gfCap} · QR at the door',
-          Ticketing.external => app.gfExt.isEmpty ? 'Add your link' : app.gfExt,
-        },
-        state: _SlotState.optional,
-        onTap: () => showTicketsSheet(context),
-      ),
-      _SlotCard(
-        tag: 'AGE',
-        tagColor: Ep.contentSecondary,
-        value: app.gfAgeRequirement.label,
-        sub: 'Who can come through',
-        state: _SlotState.optional,
-        onTap: () => showAgeSheet(context),
-      ),
+class _CommerceFields extends StatelessWidget {
+  const _CommerceFields();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _FormLabel('PRICE'),
+        const SizedBox(height: 7),
+        _SlotCard(
+          tag: 'COVER',
+          tagColor: Ep.contentSecondary,
+          value: app.gfPrice,
+          sub: app.gfPrice == 'FREE' ? 'No cover' : 'At the door',
+          state: _SlotState.optional,
+          onTap: () => showPriceSheet(context),
+        ),
+        const SizedBox(height: 18),
+        const _FormLabel('TICKET OR RSVP DETAILS'),
+        const SizedBox(height: 7),
+        _SlotCard(
+          tag: 'ACCESS',
+          tagColor: Ep.contentSecondary,
+          value: app.gfTix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
+          sub: switch (app.gfTix) {
+            Ticketing.rsvp when app.gfCap == 'No cap' => 'No RSVP cap',
+            Ticketing.rsvp => 'RSVP cap ${app.gfCap}',
+            Ticketing.external =>
+              app.gfExt.isEmpty ? 'Add ticket URL' : app.gfExt,
+          },
+          state: _SlotState.optional,
+          onTap: () => showTicketsSheet(context),
+        ),
+      ],
+    );
+  }
+}
+
+class _FormLabel extends StatelessWidget {
+  final String label;
+
+  const _FormLabel(this.label);
+
+  @override
+  Widget build(BuildContext context) => Text(
+    label,
+    style: epText(
+      size: 10.5,
+      weight: FontWeight.w900,
+      letterSpacing: 1.25,
+      color: Ep.contentSecondary,
+    ),
+  );
+}
+
+class _LineupField extends StatelessWidget {
+  const _LineupField();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final performers = app.gfPerformers;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (performers.isEmpty)
+          const DashedBox(
+            child: Text(
+              'Add at least one performer.',
+              textAlign: TextAlign.center,
+            ),
+          )
+        else
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            buildDefaultDragHandles: false,
+            itemCount: performers.length,
+            onReorderItem: app.moveGigPerformer,
+            itemBuilder: (context, index) {
+              final performer = performers[index];
+              return Padding(
+                key: ValueKey(performer.id),
+                padding: const EdgeInsets.only(bottom: 8),
+                child: EpCard(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
+                  ),
+                  child: Row(
+                    children: [
+                      ReorderableDragStartListener(
+                        index: index,
+                        child: const Padding(
+                          padding: EdgeInsets.only(right: 10),
+                          child: Icon(Icons.drag_handle, size: 20),
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              performer.name,
+                              style: epText(size: 13, weight: FontWeight.w800),
+                            ),
+                            Text(
+                              switch (performer.kind) {
+                                GigPerformerKind.band => 'EARPLUG BAND',
+                                GigPerformerKind.invited => 'INVITE PENDING',
+                                GigPerformerKind.text => 'TEXT-ONLY PERFORMER',
+                              },
+                              style: epText(
+                                size: 9,
+                                weight: FontWeight.w800,
+                                letterSpacing: .7,
+                                color: Ep.contentDisabled,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (performer.inviteUrl != null)
+                        IconButton(
+                          tooltip: 'Copy invite link',
+                          onPressed: () {
+                            Clipboard.setData(
+                              ClipboardData(text: performer.inviteUrl!),
+                            );
+                            app.say('Invite link copied.');
+                          },
+                          icon: const Icon(Icons.link, size: 18),
+                        ),
+                      PopupMenuButton<GigPerformerRole>(
+                        tooltip: 'Billing role',
+                        initialValue: performer.role,
+                        onSelected: (role) =>
+                            app.setGigPerformerRole(performer.id, role),
+                        itemBuilder: (_) => [
+                          for (final role in GigPerformerRole.values)
+                            PopupMenuItem(
+                              value: role,
+                              child: Text(role.name.toUpperCase()),
+                            ),
+                        ],
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Ep.surfaceSelected,
+                            border: Border.all(color: Ep.accent),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 6,
+                            ),
+                            child: Text(
+                              performer.role.name.toUpperCase(),
+                              style: epText(
+                                size: 9.5,
+                                weight: FontWeight.w900,
+                                color: Ep.accent,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Remove performer',
+                        onPressed: () => app.removeGigPerformer(performer.id),
+                        icon: const Icon(Icons.close, size: 18),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        OutlinedButton.icon(
+          onPressed: () => showEpSheet(
+            context,
+            (_) => const _Sheet(
+              title: 'Add performer',
+              child: _AddPerformerBody(),
+            ),
+          ),
+          icon: const Icon(Icons.add),
+          label: const Text('ADD BAND OR PERFORMER'),
+        ),
+      ],
+    );
+  }
+}
+
+class _AddPerformerBody extends StatefulWidget {
+  const _AddPerformerBody();
+
+  @override
+  State<_AddPerformerBody> createState() => _AddPerformerBodyState();
+}
+
+class _AddPerformerBodyState extends State<_AddPerformerBody> {
+  final _name = TextEditingController();
+  final _search = TextEditingController();
+  late Future<List<Band>> _results;
+
+  @override
+  void initState() {
+    super.initState();
+    _results = context.read<AppState>().repository.searchBands('');
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _runSearch(String value) {
+    setState(() {
+      _results = context.read<AppState>().repository.searchBands(value.trim());
+    });
+  }
+
+  Future<void> _addNamed({required bool invite}) async {
+    if (_name.text.trim().isEmpty) return;
+    await context.read<AppState>().addNamedGigPerformer(
+      _name.text,
+      invite: invite,
+    );
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.read<AppState>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: _search,
+          onChanged: _runSearch,
+          decoration: sheetInput('Search EarPlug bands'),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 170,
+          child: FutureBuilder<List<Band>>(
+            future: _results,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return ListView(
+                children: [
+                  for (final band in snapshot.data!)
+                    ListTile(
+                      title: Text(band.name),
+                      subtitle: Text(band.area),
+                      trailing: const Icon(Icons.add),
+                      onTap: () async {
+                        await app.addExistingGigPerformer(band.id);
+                        if (context.mounted) Navigator.pop(context);
+                      },
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+        const Divider(),
+        TextField(
+          controller: _name,
+          decoration: sheetInput('Unlisted band or performer name'),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _addNamed(invite: false),
+                child: const Text('ADD TEXT ONLY'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: FilledButton(
+                onPressed: () => _addNamed(invite: true),
+                child: const Text('CREATE INVITE'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _AdditionalInfoField extends StatefulWidget {
+  const _AdditionalInfoField();
+
+  @override
+  State<_AdditionalInfoField> createState() => _AdditionalInfoFieldState();
+}
+
+class _AdditionalInfoFieldState extends State<_AdditionalInfoField> {
+  late final TextEditingController _controller;
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: context.read<AppState>().gfDesc);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final description = context.read<AppState>().gfDesc;
+    if (_focusNode.hasFocus || _controller.text == description) return;
+    _controller.value = TextEditingValue(
+      text: description,
+      selection: TextSelection.collapsed(offset: description.length),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: _controller,
+    focusNode: _focusNode,
+    minLines: 4,
+    maxLines: 7,
+    onChanged: context.read<AppState>().setGfDescription,
+    decoration: sheetInput(
+      'Accessibility, set times, parking, or anything fans should know',
+    ),
+  );
+}
+
+class _FlyerReviewBody extends StatefulWidget {
+  const _FlyerReviewBody({required this.proposal});
+
+  final FlyerEntryProposal proposal;
+
+  @override
+  State<_FlyerReviewBody> createState() => _FlyerReviewBodyState();
+}
+
+class _FlyerReviewBodyState extends State<_FlyerReviewBody> {
+  late bool _title = widget.proposal.title != null;
+  late bool _date = widget.proposal.date != null;
+  late bool _doors = widget.proposal.doors != null;
+  late bool _start = widget.proposal.start != null;
+  late bool _venue = widget.proposal.venueId != null;
+  late bool _price = widget.proposal.price != null;
+  late final Set<String> _bands = {
+    for (final band in widget.proposal.bands) band.id,
+  };
+  bool _applying = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final proposal = widget.proposal;
+    final choices = <Widget>[
+      if (proposal.title != null)
+        _ReviewChoice(
+          label: 'Gig name',
+          value: proposal.title!,
+          selected: _title,
+          onChanged: (value) => setState(() => _title = value),
+        ),
+      if (proposal.date != null)
+        _ReviewChoice(
+          label: 'Date',
+          value: dateLabel(proposal.date!),
+          selected: _date,
+          onChanged: (value) => setState(() => _date = value),
+        ),
+      if (proposal.doors != null)
+        _ReviewChoice(
+          label: 'Doors',
+          value: _proposalTime(proposal.doors!),
+          selected: _doors,
+          onChanged: (value) => setState(() => _doors = value),
+        ),
+      if (proposal.start != null)
+        _ReviewChoice(
+          label: 'Start',
+          value: _proposalTime(proposal.start!),
+          selected: _start,
+          onChanged: (value) => setState(() => _start = value),
+        ),
+      if (proposal.venueId != null)
+        _ReviewChoice(
+          label: 'Venue',
+          value: proposal.venueName!,
+          selected: _venue,
+          onChanged: (value) => setState(() => _venue = value),
+        ),
+      if (proposal.price != null)
+        _ReviewChoice(
+          label: 'Price',
+          value: proposal.price == 0 ? 'FREE' : '\$${proposal.price}',
+          selected: _price,
+          onChanged: (value) => setState(() => _price = value),
+        ),
+      for (final band in proposal.bands)
+        _ReviewChoice(
+          label: 'Performer',
+          value: band.name,
+          selected: _bands.contains(band.id),
+          onChanged: (value) => setState(() {
+            if (value) {
+              _bands.add(band.id);
+            } else {
+              _bands.remove(band.id);
+            }
+          }),
+        ),
     ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'Flyer text can be stylized or incomplete. Check each suggestion before adding it to the draft.',
+          style: epText(size: 11, color: Ep.contentSecondary, height: 1.4),
+        ),
+        const SizedBox(height: 10),
+        ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * .48,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              children: [
+                ...choices,
+                ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  title: const Text('VIEW EXTRACTED TEXT'),
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: SelectableText(
+                        proposal.rawText,
+                        style: epText(size: 10.5, color: Ep.contentSecondary),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton(
+          onPressed: _applying ? null : _apply,
+          child: Text(_applying ? 'ADDING…' : 'ADD SELECTED TO DRAFT'),
+        ),
+      ],
+    );
+  }
 
-    Widget row(_SlotCard left, _SlotCard right) => IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: left),
-          const SizedBox(width: 9),
-          Expanded(child: right),
+  Future<void> _apply() async {
+    setState(() => _applying = true);
+    final source = widget.proposal;
+    await context.read<AppState>().applyFlyerProposal(
+      FlyerEntryProposal(
+        rawText: source.rawText,
+        title: _title ? source.title : null,
+        date: _date ? source.date : null,
+        doors: _doors ? source.doors : null,
+        start: _start ? source.start : null,
+        venueId: _venue ? source.venueId : null,
+        venueName: _venue ? source.venueName : null,
+        price: _price ? source.price : null,
+        bands: [
+          for (final band in source.bands)
+            if (_bands.contains(band.id)) band,
         ],
       ),
     );
+    if (mounted) Navigator.pop(context);
+  }
 
-    return Column(
-      children: [
-        row(slots[0], slots[1]),
-        const SizedBox(height: 9),
-        row(slots[2], slots[3]),
-        const SizedBox(height: 9),
-        SizedBox(width: double.infinity, child: slots[4]),
-      ],
+  String _proposalTime(FlyerClockTime value) =>
+      timeLabel(TimeOfDay(hour: value.hour, minute: value.minute));
+}
+
+class _ReviewChoice extends StatelessWidget {
+  const _ReviewChoice({
+    required this.label,
+    required this.value,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String value;
+  final bool selected;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => CheckboxListTile(
+    contentPadding: EdgeInsets.zero,
+    dense: true,
+    value: selected,
+    onChanged: (value) => onChanged(value ?? false),
+    title: Text(value, style: epText(size: 12.5, weight: FontWeight.w800)),
+    subtitle: Text(label.toUpperCase(), style: epText(size: 9.5)),
+    controlAffinity: ListTileControlAffinity.leading,
+  );
+}
+
+class _PublishSettingsField extends StatelessWidget {
+  const _PublishSettingsField();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    return _SlotCard(
+      tag: 'AUDIENCE',
+      tagColor: Ep.contentSecondary,
+      value: app.gfAgeRequirement.label,
+      sub: 'Age requirement · visibility goes live only when you publish',
+      state: _SlotState.optional,
+      onTap: () => showAgeSheet(context),
     );
   }
 }
@@ -756,14 +1350,33 @@ class _PublishBar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 9),
-          EpButton(
-            'PUBLISH GIG',
-            fontSize: 14,
-            kind: app.canPublishGig
-                ? EpButtonKind.filled
-                : EpButtonKind.disabled,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            onTap: app.canPublishGig ? app.publishGig : null,
+          Row(
+            children: [
+              Expanded(
+                child: EpButton(
+                  'PREVIEW',
+                  fontSize: 12,
+                  kind: EpButtonKind.ghost,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  onTap: app.previewGigDraft,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: EpButton(
+                  app.gfProject?.status == GigProjectStatus.published
+                      ? 'PUBLISH UPDATES'
+                      : 'PUBLISH GIG',
+                  fontSize: 14,
+                  kind: app.canPublishGig
+                      ? EpButtonKind.filled
+                      : EpButtonKind.disabled,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  onTap: app.canPublishGig ? app.publishGig : null,
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -935,6 +1548,31 @@ class _WhenBody extends StatelessWidget {
                       if (picked != null) app.setGfDoors(picked);
                     },
                     child: Text(app.gfDoorsLabel),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'START',
+                    style: epText(
+                      size: 10.5,
+                      weight: FontWeight.w800,
+                      letterSpacing: 1.3,
+                      color: Ep.contentSecondary,
+                    ),
+                  ),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final picked = await showTimePicker(
+                        context: context,
+                        initialTime: app.gfStart,
+                      );
+                      if (picked != null) app.setGfStart(picked);
+                    },
+                    child: Text(app.gfStartLabel),
                   ),
                 ],
               ),
@@ -1400,6 +2038,116 @@ class _TicketsBodyState extends State<_TicketsBody> {
         const SizedBox(height: 14),
         const DoneButton(),
       ],
+    );
+  }
+}
+
+// ============================ fan preview ============================
+
+class _DraftPreview extends StatelessWidget {
+  const _DraftPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
+    return ColoredBox(
+      color: Ep.background,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 40),
+        children: [
+          Row(
+            children: [
+              CircleIconButton(
+                icon: Icons.chevron_left,
+                onTap: app.closeGigPreview,
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text('FAN PREVIEW', style: epDisplay(size: 16))),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Ep.surfaceSelected,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+                child: Text(
+                  'PRIVATE DRAFT',
+                  style: epText(
+                    size: 9,
+                    weight: FontWeight.w900,
+                    letterSpacing: .8,
+                    color: Ep.accent,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Center(child: _Poster(width: 250, height: 328)),
+          const SizedBox(height: 20),
+          Text(
+            app.gfName.trim().isEmpty
+                ? 'UNTITLED GIG'
+                : app.gfName.toUpperCase(),
+            style: epDisplay(size: 24),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            [
+              if (app.gfDate != null) app.gfDateLabel,
+              'Doors ${app.gfDoorsLabel}',
+              'Start ${app.gfStartLabel}',
+            ].join(' · '),
+            style: epText(size: 12, color: Ep.contentSecondary),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            venue == null ? 'VENUE NOT SET' : venue.name.toUpperCase(),
+            style: epText(size: 12, weight: FontWeight.w800),
+          ),
+          const SizedBox(height: 20),
+          const SectionLabel('LINEUP'),
+          const SizedBox(height: 8),
+          if (app.gfPerformers.isEmpty)
+            Text('No performers yet.', style: epText(color: Ep.contentDisabled))
+          else
+            for (final performer in app.gfPerformers)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: EpCard(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          performer.name.toUpperCase(),
+                          style: epText(size: 13, weight: FontWeight.w800),
+                        ),
+                      ),
+                      Text(
+                        performer.role.name.toUpperCase(),
+                        style: epText(
+                          size: 9,
+                          weight: FontWeight.w900,
+                          color: Ep.contentDisabled,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          if (app.gfDesc.trim().isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(
+              app.gfDesc.trim(),
+              style: epText(size: 13, color: Ep.contentSecondary, height: 1.5),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

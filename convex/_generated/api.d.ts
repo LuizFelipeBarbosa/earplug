@@ -20,6 +20,7 @@ import type * as lib_clerkUser from "../lib/clerkUser.js";
 import type * as lib_helpers from "../lib/helpers.js";
 import type * as maintenance from "../maintenance.js";
 import type * as media from "../media.js";
+import type * as migrations from "../migrations.js";
 import type * as seed from "../seed.js";
 import type * as users from "../users.js";
 import type * as venues from "../venues.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   "lib/helpers": typeof lib_helpers;
   maintenance: typeof maintenance;
   media: typeof media;
+  migrations: typeof migrations;
   seed: typeof seed;
   users: typeof users;
   venues: typeof venues;
@@ -74,4 +76,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  migrations: import("@convex-dev/migrations/_generated/component.js").ComponentApi<"migrations">;
+};

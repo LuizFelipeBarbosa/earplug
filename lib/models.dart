@@ -205,6 +205,128 @@ enum GigWhen { tonight, week, later }
 
 enum Ticketing { rsvp, external }
 
+enum GigLifecycle { published, cancelled, unpublished, deleted }
+
+enum GigProjectStatus { draft, published, cancelled, deleted }
+
+enum GigPerformerKind { band, invited, text }
+
+enum GigPerformerRole { headliner, support, opener }
+
+class GigPerformer {
+  final String id;
+  final GigPerformerKind kind;
+  final String name;
+  final GigPerformerRole role;
+  final String? bandId;
+  final String? inviteUrl;
+
+  const GigPerformer({
+    required this.id,
+    required this.kind,
+    required this.name,
+    required this.role,
+    this.bandId,
+    this.inviteUrl,
+  });
+
+  factory GigPerformer.fromJson(Map<String, dynamic> json) => GigPerformer(
+    id: json['_id'] as String,
+    kind: GigPerformerKind.values.byName(json['kind'] as String),
+    name: json['name'] as String,
+    role: GigPerformerRole.values.byName(json['role'] as String),
+    bandId: json['bandId'] as String?,
+    inviteUrl: json['inviteUrl'] as String?,
+  );
+}
+
+class GigProject {
+  final String id;
+  final String bandId;
+  final String? publicGigId;
+  final GigProjectStatus status;
+  final int revision;
+  final int? publishedRevision;
+  final String? title;
+  final DateTime? doorsAt;
+  final DateTime? startsAt;
+  final String? venueId;
+  final int price;
+  final String flyKey;
+  final String? flyStorageId;
+  final String? flyerUrl;
+  final bool overlay;
+  final String desc;
+  final Ticketing ticketing;
+  final AgeRequirement ageRequirement;
+  final String? externalUrl;
+  final String cap;
+  final DateTime updatedAt;
+  final List<GigPerformer> performers;
+
+  const GigProject({
+    required this.id,
+    required this.bandId,
+    required this.status,
+    required this.revision,
+    required this.price,
+    required this.flyKey,
+    required this.overlay,
+    required this.desc,
+    required this.ticketing,
+    required this.ageRequirement,
+    required this.cap,
+    required this.updatedAt,
+    required this.performers,
+    this.publicGigId,
+    this.publishedRevision,
+    this.title,
+    this.doorsAt,
+    this.startsAt,
+    this.venueId,
+    this.flyStorageId,
+    this.flyerUrl,
+    this.externalUrl,
+  });
+
+  factory GigProject.fromJson(Map<String, dynamic> json) => GigProject(
+    id: json['_id'] as String,
+    bandId: json['bandId'] as String,
+    publicGigId: json['publicGigId'] as String?,
+    status: GigProjectStatus.values.byName(json['status'] as String),
+    revision: (json['revision'] as num).toInt(),
+    publishedRevision: (json['publishedRevision'] as num?)?.toInt(),
+    title: json['title'] as String?,
+    doorsAt: _optionalDate(json['doorsAt']),
+    startsAt: _optionalDate(json['startsAt']),
+    venueId: json['venueId'] as String?,
+    price: (json['price'] as num).toInt(),
+    flyKey: json['flyKey'] as String,
+    flyStorageId: json['flyStorageId'] as String?,
+    flyerUrl: json['flyerUrl'] as String?,
+    overlay: json['overlay'] as bool,
+    desc: json['desc'] as String,
+    ticketing: Ticketing.values.byName(json['ticketing'] as String),
+    ageRequirement: AgeRequirement.fromJson(json['ageRequirement']),
+    externalUrl: json['externalUrl'] as String?,
+    cap: json['cap'] as String,
+    updatedAt: DateTime.fromMillisecondsSinceEpoch(
+      (json['updatedAt'] as num).toInt(),
+    ),
+    performers: [
+      for (final item in json['performers'] as List)
+        GigPerformer.fromJson(Map<String, dynamic>.from(item as Map)),
+    ],
+  );
+
+  bool get hasUnpublishedChanges =>
+      status == GigProjectStatus.published && publishedRevision != revision;
+}
+
+DateTime? _optionalDate(Object? milliseconds) => milliseconds == null
+    ? null
+    : DateTime.fromMillisecondsSinceEpoch((milliseconds as num).toInt());
+
 enum AgeRequirement {
   allAges('allAges', 'All ages'),
   eighteenPlus('18Plus', '18+'),
@@ -230,12 +352,14 @@ class Gig {
   final String venueId;
   final int price; // dollars; 0 == free
   final DateTime startsAt;
+  final DateTime? doorsAt;
   final String dateShort; // "TUE JUL 28"
   final String dateLine; // "TONIGHT · DOORS 8PM"
   final String time; // "8PM / 9PM"
   final GigWhen when;
   final String flyKey;
   final List<String> lineup; // band ids
+  final List<GigPerformer> performers;
   final int going;
   final List<String> genres;
   final String desc;
@@ -244,6 +368,7 @@ class Gig {
   final String? flyerUrl;
   final String cap;
   final AgeRequirement ageRequirement;
+  final GigLifecycle lifecycle;
 
   const Gig({
     required this.id,
@@ -251,12 +376,14 @@ class Gig {
     required this.venueId,
     required this.price,
     required this.startsAt,
+    this.doorsAt,
     required this.dateShort,
     required this.dateLine,
     required this.time,
     required this.when,
     required this.flyKey,
     required this.lineup,
+    this.performers = const [],
     required this.going,
     required this.genres,
     required this.desc,
@@ -265,6 +392,7 @@ class Gig {
     this.flyerUrl,
     this.cap = 'No cap',
     this.ageRequirement = AgeRequirement.allAges,
+    this.lifecycle = GigLifecycle.published,
   });
 
   factory Gig.fromJson(Map<String, dynamic> json) {
@@ -278,12 +406,27 @@ class Gig {
       venueId: json['venueId'] as String,
       price: (json['price'] as num).toInt(),
       startsAt: DateTime.fromMillisecondsSinceEpoch(startsAt),
+      doorsAt: DateTime.fromMillisecondsSinceEpoch(
+        ((json['doorsAt'] as num?) ?? startsAt).toInt(),
+      ),
       dateShort: dateShortFor(startsAt),
       dateLine: dateLineFor(startsAt, doorsTime, now: now),
       time: doorsTime,
       when: whenFor(startsAt, now: now),
       flyKey: json['flyKey'] as String,
       lineup: List<String>.from(json['lineup'] as List),
+      performers: [
+        for (final item in (json['performers'] as List?) ?? const [])
+          GigPerformer(
+            id: '',
+            kind: (item as Map)['bandId'] == null
+                ? GigPerformerKind.text
+                : GigPerformerKind.band,
+            name: item['name'] as String,
+            role: GigPerformerRole.values.byName(item['role'] as String),
+            bandId: item['bandId'] as String?,
+          ),
+      ],
       going: (json['goingCount'] as num).toInt(),
       genres: List<String>.from(json['genres'] as List),
       desc: json['desc'] as String,
@@ -292,6 +435,9 @@ class Gig {
       flyerUrl: json['flyerUrl'] as String?,
       cap: json['cap'] as String,
       ageRequirement: AgeRequirement.fromJson(json['ageRequirement']),
+      lifecycle: GigLifecycle.values.byName(
+        (json['lifecycle'] as String?) ?? 'published',
+      ),
     );
   }
 

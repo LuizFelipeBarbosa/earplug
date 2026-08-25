@@ -23,6 +23,32 @@ export const ageRequirementValidator = v.union(
   v.literal("21Plus"),
 );
 
+export const gigLifecycleValidator = v.union(
+  v.literal("published"),
+  v.literal("cancelled"),
+  v.literal("unpublished"),
+  v.literal("deleted"),
+);
+
+export const gigProjectStatusValidator = v.union(
+  v.literal("draft"),
+  v.literal("published"),
+  v.literal("cancelled"),
+  v.literal("deleted"),
+);
+
+export const gigPerformerRoleValidator = v.union(
+  v.literal("headliner"),
+  v.literal("support"),
+  v.literal("opener"),
+);
+
+export const gigPublicPerformerValidator = v.object({
+  name: v.string(),
+  role: gigPerformerRoleValidator,
+  bandId: v.optional(v.id("bands")),
+});
+
 export const fanCityValidator = v.union(v.literal("sf"), v.literal("oak"));
 
 export const fanGenreChoiceValidator = v.union(
@@ -127,10 +153,65 @@ export default defineSchema({
     // blob outright — it is never a bandMedia row, because `lineup` is an array
     // so "whose media is it" would be ambiguous.
     flyStorageId: v.optional(v.id("_storage")),
+    // Optional during the widen/backfill phase. Readers treat absence as the
+    // legacy published state until migrations:backfillGigProjects completes.
+    lifecycle: v.optional(gigLifecycleValidator),
+    doorsAt: v.optional(v.number()),
+    performers: v.optional(v.array(gigPublicPerformerValidator)),
   })
     .index("by_startsAt", ["startsAt"])
     .index("by_venueId_and_startsAt", ["venueId", "startsAt"])
     .index("by_title", ["title"]),
+
+  // Private editorial source for both incomplete drafts and published gigs.
+  // Public readers never consume this table directly; publish copies a
+  // validated snapshot into `gigs` in the same transaction.
+  gigProjects: defineTable({
+    bandId: v.id("bands"),
+    publicGigId: v.optional(v.id("gigs")),
+    status: gigProjectStatusValidator,
+    revision: v.number(),
+    publishedRevision: v.optional(v.number()),
+    title: v.optional(v.string()),
+    doorsAt: v.optional(v.number()),
+    startsAt: v.optional(v.number()),
+    venueId: v.optional(v.id("venues")),
+    price: v.number(),
+    flyKey: v.string(),
+    flyStorageId: v.optional(v.id("_storage")),
+    overlay: v.boolean(),
+    desc: v.string(),
+    ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+    ageRequirement: ageRequirementValidator,
+    externalUrl: v.optional(v.string()),
+    cap: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_band_and_status", ["bandId", "status"])
+    .index("by_public_gig", ["publicGigId"]),
+
+  // A gig has a deliberately bounded lineup (20 performers), but performer
+  // rows still live separately so invitations and reordering do not rewrite
+  // the entire project record on every edit.
+  gigProjectPerformers: defineTable({
+    projectId: v.id("gigProjects"),
+    order: v.number(),
+    kind: v.union(
+      v.literal("band"),
+      v.literal("invited"),
+      v.literal("text"),
+    ),
+    name: v.string(),
+    role: gigPerformerRoleValidator,
+    bandId: v.optional(v.id("bands")),
+    inviteToken: v.optional(v.string()),
+    inviteExpiresAt: v.optional(v.number()),
+    inviteRevoked: v.optional(v.boolean()),
+    claimedAt: v.optional(v.number()),
+  })
+    .index("by_project_and_order", ["projectId", "order"])
+    .index("by_invite_token", ["inviteToken"]),
 
   /** One row per (gig, band in its lineup). `gigs.lineup` is an array and
    * Convex cannot index array containment, so without this join table the only
@@ -194,7 +275,8 @@ export default defineSchema({
     gigId: v.id("gigs"),
   })
     .index("by_user_gig", ["userId", "gigId"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"])
+    .index("by_gig", ["gigId"]),
 
   // One ordered list per band holding both clips and photos, so ordering and
   // the pin are a single concept rather than two.

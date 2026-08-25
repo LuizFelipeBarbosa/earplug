@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.13)
+# EarPlug Convex function contract (FROZEN — v1.14)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -145,6 +145,20 @@ authenticated
 acceptance is idempotent and increments `followerCount` exactly once with the
 new member row.
 
+**v1.14 — gig projects and lifecycle.** `gigProjects` is now the private,
+revisioned editorial source for drafts and published listings;
+`gigProjectPerformers` holds its bounded, ordered lineup and secure one-use
+band invitations. Publishing copies a validated snapshot into the public
+`gigs` projection. Public reads include only `published` gigs, except the
+direct `gigs:getPublic` lookup, which also returns a `cancelled` listing so an
+old share link can explain the cancellation. Admins can save, preview, publish,
+edit, duplicate, unpublish, cancel, and delete. Deletes first tombstone the
+project and public row, then use a bounded scheduled purge for joins and the
+projection. Released clients may keep calling `gigs:publishGig`; that
+compatibility path dual-writes a project. Legacy rows remain readable during
+the widen/backfill phase and normalize to `published` until
+`migrations:backfillGigProjects` has run.
+
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
 (UTC). Auth = Clerk JWT (template `convex`) attached by the client; queries that
@@ -159,13 +173,17 @@ the exceptions and throw unless the caller has their required band role.
 ```jsonc
 // GigPayload
 { "_id": "...", "title": "...", "venueId": "...", "price": 0,
-  "startsAt": 1785300000000, "doorsTime": "8PM / 9PM",
+  "doorsAt": 1785296400000, "startsAt": 1785300000000,
+  "doorsTime": "8PM / 9PM", "lifecycle": "published|cancelled",
   // publish accepts the first six; feeds may also return the five legacy keys
   // custom implies a non-null flyerUrl once valid flyStorageId was supplied
   "flyKey": "xerox|riso|marquee|blueprint|sunburst|custom|paper|blue|black|yellow|bluetype",
   // resolved from flyStorageId; null when no custom flyer is stored/live
   "flyerUrl": null,
-  "lineup": ["<bandId>"], "genres": ["punk"], "desc": "...",
+  "lineup": ["<bandId>"],
+  "performers": [{ "name": "...", "role": "headliner|support|opener",
+                    "bandId": "<optional bandId>" }],
+  "genres": ["punk"], "desc": "...",
   "ticketing": "rsvp|external",
   "ageRequirement": "allAges|18Plus|21Plus",
   "externalUrl": null, "cap": "No cap",
@@ -292,6 +310,9 @@ the exceptions and throw unless the caller has their required band role.
 | ★ `gigs:feed`                   | `{}`                 | `{ gigs: GigPayload[], venues: VenuePayload[], bands: BandPayload[], nextStartsAt: number\|null }` — all gigs with `startsAt >= now - 6h`, ascending, plus every venue/band they reference. Public. Bounded to the 200 nearest upcoming gigs; `nextStartsAt` is the first omitted timestamp or `null`.                                                                                                                                                                                                                                                                                                              |
 | ★ `gigs:forBand`                | `{ bandId }`         | `GigPayload[]` — the band's next 200 upcoming/grace-window gigs, ascending. Reads `gigBands.by_band_startsAt`, so unrelated discovery gigs cannot crowd the band out of the result. The client subscribes once per followed band.                                                                                                                                                                                                                                                                                                                                                                                   |
 | `gigs:pastForBand`              | `{ bandId }`         | `{ gigs: GigPayload[], venues: VenuePayload[] }` — the band's 200 most recent past gigs, **descending**, plus the venues they reference. Public. Reads `gigBands.by_band_startsAt`, so other bands cannot crowd its history out of the window.                                                                                                                                                                                                                                                                                                                                                                      |
+| `gigs:getPublic`                | `{ gigId }`          | `GigPayload \| null` — returns published and cancelled public pages; unpublished, deleted, or unknown ids return null.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `gigs:manageForBand`            | `{ bandId }`         | `GigProjectPayload[]` — admin-only draft/published/cancelled projects, newest first; deleted projects are omitted.                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `gigs:getProject`               | `{ projectId }`      | `GigProjectPayload` — admin-only private source used for editing and fan preview.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `venues:list`                   | `{}`                 | `VenuePayload[]` — every venue, name-ascending, capped at 500. Public.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `venues:detail`                 | `{ venueId }`        | `null` or `{ venue: VenuePayload, gigs: GigPayload[], bands: BandPayload[], truncated: boolean }` — venue-isolated gigs with `startsAt >= now - 6h`, ascending and capped at 200, plus unique existing bands referenced by those gigs' lineups. `truncated` is true when a 201st venue gig exists. Public.                                                                                                                                                                                                                                                                                                          |
 | `bands:get`                     | `{ bandId }`         | `BandPayload` (full) or `null`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -300,7 +321,7 @@ the exceptions and throw unless the caller has their required band role.
 | `bands:bySlug`                  | `{ slug: string }`   | `BandPayload` (full) or `null` — resolves a shared profile link. Public. Duplicate slugs degrade to the older band rather than throwing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `bands:profileDetails`          | `{ bandId }`         | `BandProfileDetails` or `null` — public credits/links plus accepted, non-deleted member names. Memberships are capped at 100 and joined only here, not in feed/search payloads.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ★ `bands:myBands`               | `{}`                 | `[{ band: BandPayload, role: "admin"\|"member" }]`; `[]` unauth. Capped at 100 memberships.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `bands:setupStatus`             | `{ bandId }`         | `BandSetupStatus` — admin-only and throws otherwise. The seven flags are required profile values; configured profile image; video/Bandcamp/YouTube; Instagram; any `gigBands` row; a second accepted membership; and persisted preview timestamp.                                                                                                                                                                                                                                                                                                                                                                   |
+| `bands:setupStatus`             | `{ bandId }`         | `BandSetupStatus` — admin-only and throws otherwise. The seven flags are required profile values; configured profile image; video/Bandcamp/YouTube; Instagram; a published `gigBands` row; a second accepted membership; and persisted preview timestamp.                                                                                                                                                                                                                                                                                                                                                           |
 | `bandInvites:manage`            | `{ bandId }`         | `BandInvite` or `null` — admin-only status for the band's one reusable link, including expired/revoked state.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `bandInvites:resolve`           | `{ token, now? }`    | `BandInviteResolution` or `null` — public. Returns only confirmation-screen identity while the server-materialized expiry and revoked flags are clear. Deprecated `now?` is accepted for compatibility but ignored, so callers cannot extend validity with a false clock.                                                                                                                                                                                                                                                                                                                                           |
 | `media:forBand`                 | `{ bandId }`         | `MediaPayload[]` — public; one list across both kinds, ordered by `order` asc                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -340,6 +361,17 @@ the exceptions and throw unless the caller has their required band role.
 | `media:moveMedia`                       | `{ mediaId, direction: "up"\|"down" }`                                                                                                                                                                               | `null`                          | requireBandAdmin of the media's band; swaps `order` with the adjacent row in the band's single global list, which may be of the other kind; no-op at ends.                                                                                                                                                                                                                                                                                                                                                                       |
 | `bands:setBandPhoto`                    | `{ bandId, mediaId }`                                                                                                                                                                                                | `null`                          | requireBandAdmin(bandId); media must be a photo belonging to that band.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `bands:clearBandPhoto`                  | `{ bandId }`                                                                                                                                                                                                         | `null`                          | requireBandAdmin(bandId); clears `imageStorageId` without deleting the blob.                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+
+The gig-project mutation family is admin-only: `gigs:createDraft`,
+`gigs:saveDraft`, `gigs:addPerformer`, `gigs:updatePerformer`,
+`gigs:removePerformer`, `gigs:reorderPerformers`, `gigs:publishDraft`,
+`gigs:duplicate`, `gigs:unpublish`, `gigs:cancel`, and `gigs:deleteGig`.
+Draft saves use an exact `revision` and reject stale writes. Lineups are capped
+at 20. `band` performers reference an existing EarPlug band; `invited`
+performers receive a seven-day 256-bit link; `text` performers deliberately
+have no account. `gigs:resolvePerformerInvite` is the minimal public
+confirmation query and `gigs:claimPerformerInvite` requires an authenticated
+admin of the claiming band.
 
 ## HTTP endpoints
 
@@ -480,9 +512,9 @@ bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
   `(title, startsAt, venueId)` through the `by_title` index and takes real
   operator-supplied gig details. It is not a seeder and shares nothing with
   `seed:seedDemo`.
-- The one-shot legacy migrations are gone. `convex/migrations.ts` and
-  `convex/cleanup.ts` were deleted after their runs, per the established
-  one-shot lifecycle; both deployments now run the tight v1 schema, and prod
-  (`decisive-iguana-759`) holds the real user base. The mapping, the outcome
-  and the commits to recover the code from are in
+- The v1.14 widen phase mounts `@convex-dev/migrations` and keeps
+  `migrations:backfillGigProjects` idempotent while old gig rows exist. Run it
+  through the component runner after deploying the optional columns and new
+  tables; verify completion before a later change tightens those optional
+  fields. Historical one-shot mappings remain documented in
   [docs/history/legacy-mapping.md](history/legacy-mapping.md).

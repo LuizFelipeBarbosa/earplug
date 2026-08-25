@@ -130,7 +130,7 @@ class BandDashScreen extends StatelessWidget {
         const SizedBox(height: 14),
         _DashboardActions(
           openMedia: app.openBandMedia,
-          publishGig: app.startGigCreate,
+          publishGig: isAdmin ? app.startGigCreate : null,
           openAnalytics: () => app.resetTo(Screen.analytics),
         ),
         if (next != null) ...[
@@ -315,7 +315,7 @@ class _ActionButton extends StatelessWidget {
 
 class _DashboardActions extends StatelessWidget {
   final VoidCallback openMedia;
-  final VoidCallback publishGig;
+  final VoidCallback? publishGig;
   final VoidCallback openAnalytics;
 
   const _DashboardActions({
@@ -328,7 +328,8 @@ class _DashboardActions extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = [
       _ActionButton(label: '▶ ADD MEDIA', onTap: openMedia),
-      _ActionButton(label: '+ PUBLISH GIG', filled: true, onTap: publishGig),
+      if (publishGig != null)
+        _ActionButton(label: '+ PUBLISH GIG', filled: true, onTap: publishGig!),
       _ActionButton(label: '▦ ANALYTICS', onTap: openAnalytics),
     ];
 

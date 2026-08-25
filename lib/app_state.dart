@@ -14,6 +14,7 @@ import 'demo_data.dart';
 import 'errors.dart';
 import 'models.dart';
 import 'services/auth_service.dart';
+import 'services/flyer_text_extractor.dart';
 import 'services/location_service.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
@@ -381,18 +382,34 @@ class AppState extends ChangeNotifier {
   String gfName = '';
   DateTime? gfDate;
   TimeOfDay gfDoors = const TimeOfDay(hour: 20, minute: 0);
+  TimeOfDay gfStart = const TimeOfDay(hour: 21, minute: 0);
   String? gfVenueId;
   String gfPrice = 'FREE';
   Ticketing gfTix = Ticketing.rsvp;
   AgeRequirement gfAgeRequirement = AgeRequirement.allAges;
   String gfCap = 'No cap';
   String gfExt = '';
+  String gfDesc = '';
   String gfFly = 'xerox';
   bool gfOverlay = true;
   PickedMedia? gfFlyerArt;
   String? gfFlyerStorageId;
   bool gfFlyerUploading = false;
   bool gfPublished = false;
+  bool gfPreviewing = false;
+  GigProject? gfProject;
+  List<GigProject> managedGigProjects = const [];
+  bool managedGigsLoading = false;
+  String? managedGigsBandId;
+  Future<void>? _managedGigsRefreshFuture;
+  bool _managedGigsRefreshAgain = false;
+  String gfSaveState = 'DRAFT';
+  Timer? _gigAutosaveTimer;
+  bool _gigSaveAgain = false;
+  bool _gigDraftDirty = false;
+  int _gigEditGeneration = 0;
+  Future<GigProject>? _gigCreateFuture;
+  Future<void>? _gigSaveFuture;
 
   // ---- toast
   String toast = '';
@@ -403,6 +420,7 @@ class AppState extends ChangeNotifier {
     _disposed = true;
     _membershipsGeneration++;
     _toastTimer?.cancel();
+    _gigAutosaveTimer?.cancel();
     unawaited(_authSubscription?.cancel());
     unawaited(_feedSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
@@ -2486,41 +2504,133 @@ class AppState extends ChangeNotifier {
   void startGigCreate() {
     _resetGigForm();
     go(Screen.gigCreate);
+    _gigCreateFuture = _createGigDraft();
   }
 
-  void setGfName(String v) => _set(() => gfName = v);
+  Future<GigProject> _createGigDraft() async {
+    gfSaveState = 'CREATING…';
+    notifyListeners();
+    try {
+      final project = await repository.createGigDraft(bandId);
+      if (gfSaveState == 'UNSAVED') {
+        // A fast typist can edit while the first draft request is in flight.
+        // Attach the server identity without replacing those local changes.
+        gfProject = project;
+        notifyListeners();
+        _scheduleGigAutosave();
+      } else {
+        _applyGigProject(project);
+      }
+      return project;
+    } on Exception catch (error) {
+      logError('createGigDraft', error);
+      gfSaveState = 'SAVE FAILED';
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  Future<void> editGigProject(String projectId) async {
+    _resetGigForm();
+    go(Screen.gigCreate);
+    gfSaveState = 'LOADING…';
+    notifyListeners();
+    try {
+      final project = await repository.getGigProject(projectId);
+      _applyGigProject(project);
+    } on Exception catch (error) {
+      logError('getGigProject', error);
+      gfSaveState = 'LOAD FAILED';
+      say(genericErrorMessage);
+      notifyListeners();
+    }
+  }
+
+  void _applyGigProject(GigProject project) {
+    gfProject = project;
+    gfName = project.title ?? '';
+    final doorsAt = project.doorsAt;
+    final startsAt = project.startsAt;
+    gfDate = doorsAt == null
+        ? null
+        : DateTime(doorsAt.year, doorsAt.month, doorsAt.day);
+    if (doorsAt != null) gfDoors = TimeOfDay.fromDateTime(doorsAt);
+    if (startsAt != null) gfStart = TimeOfDay.fromDateTime(startsAt);
+    gfVenueId = project.venueId;
+    gfPrice = project.price == 0 ? 'FREE' : '\$${project.price}';
+    gfTix = project.ticketing;
+    gfAgeRequirement = project.ageRequirement;
+    gfCap = project.cap;
+    gfExt = project.externalUrl ?? '';
+    gfDesc = project.desc;
+    gfFly = project.flyKey;
+    gfOverlay = project.overlay;
+    gfFlyerStorageId = project.flyStorageId;
+    gfPublished = false;
+    gfPreviewing = false;
+    _gigDraftDirty = false;
+    gfSaveState = project.hasUnpublishedChanges
+        ? 'UNPUBLISHED CHANGES'
+        : project.status.name.toUpperCase();
+    notifyListeners();
+  }
+
+  void _changeGig(void Function() change) {
+    change();
+    _gigDraftDirty = true;
+    _gigEditGeneration++;
+    notifyListeners();
+    _scheduleGigAutosave();
+  }
+
+  void _scheduleGigAutosave() {
+    _gigAutosaveTimer?.cancel();
+    gfSaveState = 'UNSAVED';
+    _gigAutosaveTimer = Timer(
+      const Duration(milliseconds: 600),
+      () => unawaited(saveGigDraft()),
+    );
+  }
+
+  void setGfName(String v) => _changeGig(() => gfName = v);
 
   /// Tapping the selected day again clears it, as in the design.
   void setGfDate(DateTime? v) =>
-      _set(() => gfDate = v == null || v == gfDate ? null : v);
+      _changeGig(() => gfDate = v == null || v == gfDate ? null : v);
 
-  void setGfDoors(TimeOfDay v) => _set(() => gfDoors = v);
+  void setGfDoors(TimeOfDay v) => _changeGig(() => gfDoors = v);
 
-  void setGfVenue(String v) => _set(() => gfVenueId = v);
+  void setGfStart(TimeOfDay v) => _changeGig(() => gfStart = v);
 
-  void setGfPrice(String v) => _set(() => gfPrice = v);
+  void setGfVenue(String v) => _changeGig(() => gfVenueId = v);
 
-  void setGfTix(Ticketing t) => _set(() => gfTix = t);
+  void setGfPrice(String v) => _changeGig(() => gfPrice = v);
+
+  void setGfTix(Ticketing t) => _changeGig(() => gfTix = t);
 
   void setGfAgeRequirement(AgeRequirement value) =>
-      _set(() => gfAgeRequirement = value);
+      _changeGig(() => gfAgeRequirement = value);
 
-  void setGfCap(String v) => _set(() => gfCap = v);
+  void setGfCap(String v) => _changeGig(() => gfCap = v);
 
-  void setGfExt(String v) => _set(() => gfExt = v);
+  void setGfExt(String v) => _changeGig(() => gfExt = v);
 
-  void setGfFly(String key) => _set(() => gfFly = key);
+  void setGfDescription(String value) => _changeGig(() => gfDesc = value);
 
-  void setGfFlyerArt(PickedMedia? art) => _set(() {
+  void setGfFly(String key) => _changeGig(() => gfFly = key);
+
+  void setGfFlyerArt(PickedMedia? art) => _changeGig(() {
     gfFlyerArt = art;
     gfFlyerStorageId = null;
   });
 
   void setGfFlyerUploading(bool v) => _set(() => gfFlyerUploading = v);
 
-  void setGfFlyerStorageId(String? id) => _set(() => gfFlyerStorageId = id);
+  void setGfFlyerStorageId(String? id) {
+    _changeGig(() => gfFlyerStorageId = id);
+  }
 
-  void toggleGfOverlay() => _set(() => gfOverlay = !gfOverlay);
+  void toggleGfOverlay() => _changeGig(() => gfOverlay = !gfOverlay);
 
   /// Band-supplied art rather than one of the presses.
   bool get gfCustomFlyer => gfFly == 'custom';
@@ -2530,6 +2640,10 @@ class AppState extends ChangeNotifier {
 
   String get gfDoorsLabel => timeLabel(gfDoors);
 
+  String get gfStartLabel => timeLabel(gfStart);
+
+  List<GigPerformer> get gfPerformers => gfProject?.performers ?? const [];
+
   /// "Sat Aug 15", or empty until a day is picked.
   String get gfDateLabel => gfDate == null ? '' : dateLabel(gfDate!);
 
@@ -2537,6 +2651,7 @@ class AppState extends ChangeNotifier {
       gfName.trim().isNotEmpty &&
       gfDate != null &&
       gfVenueId != null &&
+      (gfProject == null || gfPerformers.isNotEmpty) &&
       (!gfCustomFlyer || gfFlyerStorageId != null);
 
   /// What the publish bar still asks for, in reading order.
@@ -2544,6 +2659,7 @@ class AppState extends ChangeNotifier {
     if (gfName.trim().isEmpty) 'a name',
     if (gfDate == null) 'a date',
     if (gfVenueId == null) 'a venue',
+    if (gfProject != null && gfPerformers.isEmpty) 'a performer',
     if (gfCustomFlyer && gfFlyerStorageId == null) 'your flyer art',
   ];
 
@@ -2552,40 +2668,169 @@ class AppState extends ChangeNotifier {
     return 'earplug.app/g/${slug.isEmpty ? 'your-gig' : slug}';
   }
 
+  DateTime? get _gfDoorsAt {
+    final date = gfDate;
+    if (date == null) return null;
+    return DateTime(
+      date.year,
+      date.month,
+      date.day,
+      gfDoors.hour,
+      gfDoors.minute,
+    );
+  }
+
+  DateTime? get _gfStartsAt {
+    final date = gfDate;
+    if (date == null) return null;
+    var startsAt = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      gfStart.hour,
+      gfStart.minute,
+    );
+    final doorsAt = _gfDoorsAt!;
+    if (startsAt.isBefore(doorsAt)) {
+      startsAt = startsAt.add(const Duration(days: 1));
+    }
+    return startsAt;
+  }
+
+  Future<GigProject?> _ensureGigDraft() async {
+    if (gfProject case final project?) return project;
+    try {
+      return await (_gigCreateFuture ??= _createGigDraft());
+    } on Exception {
+      return null;
+    }
+  }
+
+  Future<void> saveGigDraft() {
+    _gigAutosaveTimer?.cancel();
+    if (!_gigDraftDirty && gfProject != null && _gigSaveFuture == null) {
+      return Future.value();
+    }
+    _gigSaveAgain = true;
+    return _gigSaveFuture ??= _runGigSaveLoop().whenComplete(() {
+      _gigSaveFuture = null;
+    });
+  }
+
+  Future<void> _runGigSaveLoop() async {
+    do {
+      _gigSaveAgain = false;
+      final project = await _ensureGigDraft();
+      if (project == null) return;
+      gfSaveState = 'SAVING…';
+      notifyListeners();
+      final editGeneration = _gigEditGeneration;
+      try {
+        final revision = await repository.saveGigDraft(
+          projectId: project.id,
+          revision: gfProject?.revision ?? project.revision,
+          title: gfName.trim().isEmpty ? null : gfName.trim(),
+          doorsAt: _gfDoorsAt,
+          startsAt: _gfStartsAt,
+          venueId: gfVenueId,
+          price: gfPrice == 'FREE'
+              ? 0
+              : int.tryParse(gfPrice.substring(1)) ?? 0,
+          flyKey: gfFly,
+          flyStorageId: gfFlyerStorageId,
+          overlay: gfOverlay,
+          desc: gfDesc,
+          ticketing: gfTix,
+          ageRequirement: gfAgeRequirement,
+          externalUrl: gfExt.trim().isEmpty ? null : gfExt.trim(),
+          cap: gfCap,
+        );
+        final current = gfProject;
+        if (current != null) {
+          gfProject = GigProject(
+            id: current.id,
+            bandId: current.bandId,
+            publicGigId: current.publicGigId,
+            status: current.status,
+            revision: revision,
+            publishedRevision: current.publishedRevision,
+            title: gfName.trim().isEmpty ? null : gfName.trim(),
+            doorsAt: _gfDoorsAt,
+            startsAt: _gfStartsAt,
+            venueId: gfVenueId,
+            price: gfPrice == 'FREE'
+                ? 0
+                : int.tryParse(gfPrice.substring(1)) ?? 0,
+            flyKey: gfFly,
+            flyStorageId: gfFlyerStorageId,
+            flyerUrl: current.flyerUrl,
+            overlay: gfOverlay,
+            desc: gfDesc,
+            ticketing: gfTix,
+            ageRequirement: gfAgeRequirement,
+            externalUrl: gfExt.trim().isEmpty ? null : gfExt.trim(),
+            cap: gfCap,
+            updatedAt: DateTime.now(),
+            performers: current.performers,
+          );
+        }
+        if (editGeneration == _gigEditGeneration) {
+          _gigDraftDirty = false;
+          gfSaveState = 'SAVED';
+        } else {
+          _gigSaveAgain = true;
+        }
+      } on Exception catch (error) {
+        logError('saveGigDraft', error);
+        gfSaveState = 'SAVE FAILED';
+        _gigSaveAgain = false;
+      }
+      if (!_disposed) notifyListeners();
+    } while (_gigSaveAgain);
+  }
+
+  Future<void> applyFlyerProposal(FlyerEntryProposal proposal) async {
+    _changeGig(() {
+      if (proposal.title != null) gfName = proposal.title!;
+      if (proposal.date != null) gfDate = proposal.date;
+      if (proposal.doors case final doors?) {
+        gfDoors = TimeOfDay(hour: doors.hour, minute: doors.minute);
+      }
+      if (proposal.start case final start?) {
+        gfStart = TimeOfDay(hour: start.hour, minute: start.minute);
+      }
+      if (proposal.venueId != null) gfVenueId = proposal.venueId;
+      if (proposal.price != null) {
+        gfPrice = proposal.price == 0 ? 'FREE' : '\$${proposal.price}';
+      }
+    });
+    await saveGigDraft();
+    for (final band in proposal.bands) {
+      if (gfPerformers.any((performer) => performer.bandId == band.id)) {
+        continue;
+      }
+      await addExistingGigPerformer(band.id);
+    }
+  }
+
   Future<void> publishGig() async {
     if (gfFlyerUploading) {
       say('Still uploading your flyer. One sec.');
       return;
     }
 
-    final date = gfDate;
-    if (!canPublishGig || date == null) {
-      say('Add ${gigMissing.join(' + ')} first. Tap any card.');
+    if (!canPublishGig) {
+      say('Add ${gigMissing.join(' + ')} first.');
       return;
     }
 
+    await saveGigDraft();
+    final project = gfProject;
+    if (project == null || gfSaveState == 'SAVE FAILED') return;
     final venueId = gfVenueId!;
+    final String publicGigId;
     try {
-      await repository.publishGig(
-        bandId: bandId,
-        title: gfName.trim(),
-        venueId: venueId,
-        price: gfPrice == 'FREE' ? 0 : int.parse(gfPrice.substring(1)),
-        startsAt: DateTime(
-          date.year,
-          date.month,
-          date.day,
-          gfDoors.hour,
-          gfDoors.minute,
-        ).millisecondsSinceEpoch,
-        doorsTime: gfDoorsLabel,
-        flyKey: gfFly,
-        flyStorageId: gfFlyerStorageId,
-        ticketing: gfTix,
-        ageRequirement: gfAgeRequirement,
-        externalUrl: gfExt.isEmpty ? null : gfExt,
-        cap: gfCap,
-      );
+      publicGigId = await repository.publishGigDraft(project.id);
     } on Exception catch (error) {
       logError('publishGig', error);
       say(genericErrorMessage);
@@ -2595,6 +2840,32 @@ class AppState extends ChangeNotifier {
     // A publish beyond the bounded global feed may not change its payload, so
     // do not rely on the feed subscription alone to retire this venue cache.
     _invalidateVenueDetails({venueId});
+    final current = gfProject!;
+    gfProject = GigProject(
+      id: current.id,
+      bandId: current.bandId,
+      publicGigId: publicGigId,
+      status: GigProjectStatus.published,
+      revision: current.revision,
+      publishedRevision: current.revision,
+      title: current.title,
+      doorsAt: current.doorsAt,
+      startsAt: current.startsAt,
+      venueId: current.venueId,
+      price: current.price,
+      flyKey: current.flyKey,
+      flyStorageId: current.flyStorageId,
+      flyerUrl: current.flyerUrl,
+      overlay: current.overlay,
+      desc: current.desc,
+      ticketing: current.ticketing,
+      ageRequirement: current.ageRequirement,
+      externalUrl: current.externalUrl,
+      cap: current.cap,
+      updatedAt: DateTime.now(),
+      performers: current.performers,
+    );
+    gfSaveState = 'PUBLISHED';
     gfPublished = true;
     notifyListeners();
     unawaited(refreshBandSetupStatus(bandId));
@@ -2603,30 +2874,202 @@ class AppState extends ChangeNotifier {
   /// "Keep editing" — back to the form with everything still filled in.
   void editPublishedGig() => _set(() => gfPublished = false);
 
-  void makeAnotherGig() => _set(_resetGigForm);
+  void makeAnotherGig() => startGigCreate();
+
+  void previewGigDraft() => _set(() => gfPreviewing = true);
+
+  void closeGigPreview() => _set(() => gfPreviewing = false);
+
+  Future<void> addExistingGigPerformer(String performerBandId) async {
+    final project = await _ensureGigDraft();
+    if (project == null) return;
+    await saveGigDraft();
+    try {
+      _applyGigProject(
+        await repository.addGigPerformer(
+          projectId: project.id,
+          kind: GigPerformerKind.band,
+          role: GigPerformerRole.support,
+          bandId: performerBandId,
+        ),
+      );
+    } on Exception catch (error) {
+      logError('addGigPerformer', error);
+      say(genericErrorMessage);
+    }
+  }
+
+  Future<void> addNamedGigPerformer(String name, {required bool invite}) async {
+    final project = await _ensureGigDraft();
+    if (project == null || name.trim().isEmpty) return;
+    await saveGigDraft();
+    try {
+      final updated = await repository.addGigPerformer(
+        projectId: project.id,
+        kind: invite ? GigPerformerKind.invited : GigPerformerKind.text,
+        role: GigPerformerRole.support,
+        name: name.trim(),
+      );
+      _applyGigProject(updated);
+      if (invite) say('Invite link ready to share.');
+    } on Exception catch (error) {
+      logError('addGigPerformer', error);
+      say(genericErrorMessage);
+    }
+  }
+
+  Future<void> setGigPerformerRole(
+    String performerId,
+    GigPerformerRole role,
+  ) async {
+    try {
+      _applyGigProject(
+        await repository.updateGigPerformer(
+          performerId: performerId,
+          role: role,
+        ),
+      );
+    } on Exception catch (error) {
+      logError('updateGigPerformer', error);
+      say(genericErrorMessage);
+    }
+  }
+
+  Future<void> removeGigPerformer(String performerId) async {
+    try {
+      _applyGigProject(await repository.removeGigPerformer(performerId));
+    } on Exception catch (error) {
+      logError('removeGigPerformer', error);
+      say(genericErrorMessage);
+    }
+  }
+
+  Future<void> moveGigPerformer(int oldIndex, int newIndex) async {
+    final project = gfProject;
+    if (project == null) return;
+    final performers = List<GigPerformer>.of(project.performers);
+    performers.insert(newIndex, performers.removeAt(oldIndex));
+    try {
+      _applyGigProject(
+        await repository.reorderGigPerformers(
+          project.id,
+          performers.map((performer) => performer.id).toList(),
+        ),
+      );
+    } on Exception catch (error) {
+      logError('reorderGigPerformers', error);
+      say(genericErrorMessage);
+    }
+  }
+
+  Future<void> refreshManagedGigs() {
+    _managedGigsRefreshAgain = true;
+    return _managedGigsRefreshFuture ??= _runManagedGigsRefresh().whenComplete(
+      () => _managedGigsRefreshFuture = null,
+    );
+  }
+
+  Future<void> _runManagedGigsRefresh() async {
+    managedGigsLoading = true;
+    if (!_disposed) notifyListeners();
+    do {
+      _managedGigsRefreshAgain = false;
+      try {
+        managedGigProjects = await repository.manageGigs(bandId);
+        managedGigsBandId = bandId;
+      } on Exception catch (error) {
+        logError('manageGigs', error);
+      }
+    } while (_managedGigsRefreshAgain);
+    managedGigsLoading = false;
+    if (!_disposed) notifyListeners();
+  }
+
+  void ensureManagedGigs() {
+    if (managedGigsBandId != bandId && !managedGigsLoading) {
+      Future.microtask(refreshManagedGigs);
+    }
+  }
+
+  Future<void> duplicateGigProject(String projectId) async {
+    try {
+      final duplicate = await repository.duplicateGig(projectId);
+      await refreshManagedGigs();
+      await editGigProject(duplicate.id);
+    } on Exception catch (error) {
+      logError('duplicateGig', error);
+      say(genericErrorMessage);
+    }
+  }
+
+  Future<void> unpublishGigProject(String projectId) async {
+    await _runGigLifecycle(
+      'unpublishGig',
+      () => repository.unpublishGig(projectId),
+    );
+  }
+
+  Future<void> cancelGigProject(String projectId) async {
+    await _runGigLifecycle('cancelGig', () => repository.cancelGig(projectId));
+  }
+
+  Future<void> deleteGigProject(String projectId) async {
+    await _runGigLifecycle('deleteGig', () => repository.deleteGig(projectId));
+  }
+
+  Future<void> _runGigLifecycle(
+    String operation,
+    Future<void> Function() action,
+  ) async {
+    try {
+      await action();
+      await refreshManagedGigs();
+    } on Exception catch (error) {
+      logError(operation, error);
+      say(genericErrorMessage);
+    }
+  }
 
   /// The ✕ in the header: done here, back to the gig manager.
-  void closeGigCreate() => _set(() {
-    _resetGigForm();
-    _stack = const [ScreenEntry(Screen.gigMgr)];
-  });
+  void closeGigCreate() {
+    final saved = saveGigDraft();
+    _set(() {
+      // The explicit refresh below must run after the final save. Mark this
+      // band as loaded so the manager's first build does not start a racing
+      // pre-save refresh of its own.
+      managedGigsBandId = bandId;
+      _stack = const [ScreenEntry(Screen.gigMgr)];
+    });
+    unawaited(saved.then((_) => refreshManagedGigs()));
+  }
 
   void _resetGigForm() {
     gfName = '';
     gfDate = null;
     gfDoors = const TimeOfDay(hour: 20, minute: 0);
+    gfStart = const TimeOfDay(hour: 21, minute: 0);
     gfVenueId = null;
     gfPrice = 'FREE';
     gfTix = Ticketing.rsvp;
     gfAgeRequirement = AgeRequirement.allAges;
     gfCap = 'No cap';
     gfExt = '';
+    gfDesc = '';
     gfFly = 'xerox';
     gfOverlay = true;
     gfFlyerArt = null;
     gfFlyerStorageId = null;
     gfFlyerUploading = false;
     gfPublished = false;
+    gfPreviewing = false;
+    gfProject = null;
+    gfSaveState = 'DRAFT';
+    _gigAutosaveTimer?.cancel();
+    _gigCreateFuture = null;
+    _gigSaveFuture = null;
+    _gigSaveAgain = false;
+    _gigDraftDirty = false;
+    _gigEditGeneration = 0;
   }
 }
 

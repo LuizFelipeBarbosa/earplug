@@ -423,6 +423,160 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<List<GigProject>> manageGigs(String bandId) async {
+    final result = await _convexService.query('gigs:manageForBand', {
+      'bandId': bandId,
+    });
+    return [for (final json in _mapList(result)) GigProject.fromJson(json)];
+  }
+
+  @override
+  Future<GigProject> createGigDraft(String bandId) async => GigProject.fromJson(
+    _asMap(
+      await _convexService.mutation('gigs:createDraft', {'bandId': bandId}),
+    ),
+  );
+
+  @override
+  Future<GigProject> getGigProject(String projectId) async =>
+      GigProject.fromJson(
+        _asMap(
+          await _convexService.query('gigs:getProject', {
+            'projectId': projectId,
+          }),
+        ),
+      );
+
+  @override
+  Future<int> saveGigDraft({
+    required String projectId,
+    required int revision,
+    required String? title,
+    required DateTime? doorsAt,
+    required DateTime? startsAt,
+    required String? venueId,
+    required int price,
+    required String flyKey,
+    required String? flyStorageId,
+    required bool overlay,
+    required String desc,
+    required Ticketing ticketing,
+    required AgeRequirement ageRequirement,
+    required String? externalUrl,
+    required String cap,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('gigs:saveDraft', {
+        'projectId': projectId,
+        'revision': revision,
+        'title': title,
+        'doorsAt': doorsAt?.millisecondsSinceEpoch,
+        'startsAt': startsAt?.millisecondsSinceEpoch,
+        'venueId': venueId,
+        'price': price,
+        'flyKey': flyKey,
+        'flyStorageId': flyStorageId,
+        'overlay': overlay,
+        'desc': desc,
+        'ticketing': ticketing.name,
+        'ageRequirement': ageRequirement.wireValue,
+        'externalUrl': externalUrl,
+        'cap': cap,
+      }),
+    );
+    return (result['revision'] as num).toInt();
+  }
+
+  @override
+  Future<GigProject> addGigPerformer({
+    required String projectId,
+    required GigPerformerKind kind,
+    required GigPerformerRole role,
+    String? name,
+    String? bandId,
+  }) async => GigProject.fromJson(
+    _asMap(
+      await _convexService.mutation('gigs:addPerformer', {
+        'projectId': projectId,
+        'kind': kind.name,
+        'role': role.name,
+        'name': ?name,
+        'bandId': ?bandId,
+      }),
+    ),
+  );
+
+  @override
+  Future<GigProject> updateGigPerformer({
+    required String performerId,
+    String? name,
+    GigPerformerRole? role,
+  }) async => GigProject.fromJson(
+    _asMap(
+      await _convexService.mutation('gigs:updatePerformer', {
+        'performerId': performerId,
+        'name': ?name,
+        'role': ?role?.name,
+      }),
+    ),
+  );
+
+  @override
+  Future<GigProject> removeGigPerformer(String performerId) async =>
+      GigProject.fromJson(
+        _asMap(
+          await _convexService.mutation('gigs:removePerformer', {
+            'performerId': performerId,
+          }),
+        ),
+      );
+
+  @override
+  Future<GigProject> reorderGigPerformers(
+    String projectId,
+    List<String> performerIds,
+  ) async => GigProject.fromJson(
+    _asMap(
+      await _convexService.mutation('gigs:reorderPerformers', {
+        'projectId': projectId,
+        'performerIds': performerIds,
+      }),
+    ),
+  );
+
+  @override
+  Future<String> publishGigDraft(String projectId) async {
+    final result = _asMap(
+      await _convexService.mutation('gigs:publishDraft', {
+        'projectId': projectId,
+      }),
+    );
+    return result['gigId'] as String;
+  }
+
+  @override
+  Future<GigProject> duplicateGig(String projectId) async =>
+      GigProject.fromJson(
+        _asMap(
+          await _convexService.mutation('gigs:duplicate', {
+            'projectId': projectId,
+          }),
+        ),
+      );
+
+  @override
+  Future<void> unpublishGig(String projectId) =>
+      _convexService.mutation('gigs:unpublish', {'projectId': projectId});
+
+  @override
+  Future<void> cancelGig(String projectId) =>
+      _convexService.mutation('gigs:cancel', {'projectId': projectId});
+
+  @override
+  Future<void> deleteGig(String projectId) =>
+      _convexService.mutation('gigs:deleteGig', {'projectId': projectId});
+
+  @override
   Future<String> publishGig({
     required String bandId,
     required String title,

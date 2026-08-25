@@ -28,6 +28,21 @@ class GigDetailScreen extends StatelessWidget {
     final gig = app.gig(gigId);
     if (gig == null) return const SizedBox.shrink();
     final venue = app.venue(gig.venueId);
+    final performers = gig.performers.isNotEmpty
+        ? gig.performers
+        : [
+            for (var index = 0; index < gig.lineup.length; index++)
+              if (app.band(gig.lineup[index]) case final band?)
+                GigPerformer(
+                  id: '',
+                  kind: GigPerformerKind.band,
+                  name: band.name,
+                  role: index == 0
+                      ? GigPerformerRole.headliner
+                      : GigPerformerRole.support,
+                  bandId: band.id,
+                ),
+          ];
 
     return Stack(
       children: [
@@ -35,6 +50,26 @@ class GigDetailScreen extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: 120),
           children: [
             _Hero(gig: gig, app: app),
+            if (gig.lifecycle == GigLifecycle.cancelled)
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Ep.warning.withValues(alpha: .12),
+                  border: Border.all(color: Ep.warning),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'THIS GIG HAS BEEN CANCELLED',
+                  textAlign: TextAlign.center,
+                  style: epText(
+                    size: 12,
+                    weight: FontWeight.w900,
+                    letterSpacing: .8,
+                    color: Ep.warning,
+                  ),
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -53,8 +88,8 @@ class GigDetailScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                   const SectionLabel('LINEUP'),
                   const SizedBox(height: 8),
-                  for (final bandId in gig.lineup) ...[
-                    _LineupRow(bandId: bandId, app: app),
+                  for (final performer in performers) ...[
+                    _LineupRow(performer: performer, app: app),
                     const SizedBox(height: 8),
                   ],
                   const SizedBox(height: 8),
@@ -306,28 +341,30 @@ class _InfoCards extends StatelessWidget {
 }
 
 class _LineupRow extends StatelessWidget {
-  final String bandId;
+  final GigPerformer performer;
   final AppState app;
 
-  const _LineupRow({required this.bandId, required this.app});
+  const _LineupRow({required this.performer, required this.app});
 
   @override
   Widget build(BuildContext context) {
-    final band = app.band(bandId);
-    if (band == null) return const SizedBox.shrink();
+    final band = performer.bandId == null ? null : app.band(performer.bandId!);
     return EpCard(
       padding: const EdgeInsets.all(10),
-      onTap: () => app.openBand(bandId),
+      onTap: band == null ? null : () => app.openBand(band.id),
       child: Row(
         children: [
-          BandAvatar(band),
+          if (band != null)
+            BandAvatar(band)
+          else
+            const CircleAvatar(child: Icon(Icons.music_note, size: 18)),
           const SizedBox(width: 11),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  band.name.toUpperCase(),
+                  performer.name.toUpperCase(),
                   style: epText(
                     size: 13.5,
                     weight: FontWeight.w800,
@@ -335,13 +372,14 @@ class _LineupRow extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  band.genreLine,
+                  band?.genreLine ?? performer.role.name.toUpperCase(),
                   style: epText(size: 11.5, color: Ep.contentSecondary),
                 ),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, color: Ep.contentSecondary),
+          if (band != null)
+            const Icon(Icons.chevron_right, color: Ep.contentSecondary),
         ],
       ),
     );
@@ -475,6 +513,17 @@ class _CtaBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (gig.lifecycle == GigLifecycle.cancelled) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
+        color: Ep.background,
+        child: EpButton(
+          'GIG CANCELLED',
+          kind: EpButtonKind.disabled,
+          onTap: null,
+        ),
+      );
+    }
     final isRsvpd = app.rsvps.contains(gig.id);
     final external = gig.tix == Ticketing.external;
     final tixNote = external

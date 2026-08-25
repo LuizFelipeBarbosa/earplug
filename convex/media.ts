@@ -278,6 +278,7 @@ export const sweepOrphanBlobs = internalMutation({
       .query("gigs")
       .withIndex("by_startsAt")
       .take(2000);
+    const gigProjects = await ctx.db.query("gigProjects").take(2000);
     const users = await ctx.db
       .query("users")
       .withIndex("by_clerk_id")
@@ -287,6 +288,7 @@ export const sweepOrphanBlobs = internalMutation({
     if (mediaRows.length === 2000) cappedTables.push("bandMedia");
     if (heroBands.length === 2000) cappedTables.push("bands");
     if (gigs.length === 2000) cappedTables.push("gigs");
+    if (gigProjects.length === 2000) cappedTables.push("gigProjects");
     if (users.length === 2000) cappedTables.push("users");
     if (cappedTables.length > 0) {
       // A read that hits 2000 may have been silently truncated, omitting a live
@@ -314,6 +316,9 @@ export const sweepOrphanBlobs = internalMutation({
     }
     for (const gig of gigs) {
       if (gig.flyStorageId !== undefined) referenced.add(gig.flyStorageId);
+    }
+    for (const project of gigProjects) {
+      if (project.flyStorageId !== undefined) referenced.add(project.flyStorageId);
     }
     for (const user of users) {
       if (user.avatarStorageId !== undefined) {
