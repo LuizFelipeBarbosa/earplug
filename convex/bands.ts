@@ -282,9 +282,13 @@ export const discoveryReadiness = query({
     const clipReady = band.hasClip === true;
     const projects = await ctx.db
       .query("gigProjects")
-      .withIndex("by_band_and_status", (q) =>
-        q.eq("bandId", args.bandId).eq("status", "published"),
+      .withIndex("by_bandId_and_status_and_startsAt", (q) =>
+        q
+          .eq("bandId", args.bandId)
+          .eq("status", "published")
+          .gte("startsAt", args.now - FEED_GRACE_MS),
       )
+      .order("asc")
       .take(MAX_DISCOVERY_PROJECTS);
 
     const candidates: Array<{
@@ -293,11 +297,7 @@ export const discoveryReadiness = query({
       flags: DiscoveryListingFlags;
     }> = [];
     for (const project of projects) {
-      if (
-        project.startsAt === undefined ||
-        project.startsAt < args.now - FEED_GRACE_MS ||
-        project.publicGigId === undefined
-      ) {
+      if (project.startsAt === undefined || project.publicGigId === undefined) {
         continue;
       }
       const gig = await ctx.db.get(project.publicGigId);

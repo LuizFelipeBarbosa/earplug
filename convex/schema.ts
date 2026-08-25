@@ -198,6 +198,11 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_band_and_status", ["bandId", "status"])
+    .index("by_bandId_and_status_and_startsAt", [
+      "bandId",
+      "status",
+      "startsAt",
+    ])
     .index("by_public_gig", ["publicGigId"]),
 
   // A gig has a deliberately bounded lineup (20 performers), but performer

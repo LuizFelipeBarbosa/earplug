@@ -89,6 +89,40 @@ void main() {
     expect(find.text('SETUP CHECKLIST'), findsOne);
   });
 
+  testWidgets('discovery readiness requeries at boost window boundaries', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    var now = DateTime.utc(2026, 8, 25, 19);
+    final repository = _BoundaryReadinessRepository(auth: auth, now: now);
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandDashScreen()),
+      now: () => now,
+    );
+    final card = find.byKey(const Key('discovery-readiness-card'));
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.textContaining('ACTIVE NOW'), findsNothing);
+
+    now = now.add(const Duration(seconds: 3));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(find.textContaining('ACTIVE NOW'), findsOne);
+
+    now = now.add(const Duration(seconds: 2));
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    expect(find.textContaining('ACTIVE NOW'), findsNothing);
+    expect(repository.readinessCalls, greaterThanOrEqualTo(3));
+  });
+
   testWidgets('profile-complete badge disappears after the bio is cleared', (
     tester,
   ) async {
@@ -236,6 +270,55 @@ class _SetupRepository extends DemoRepository {
         membersInvited: false,
         publicProfilePreviewed: true,
       );
+}
+
+class _BoundaryReadinessRepository extends DemoRepository {
+  _BoundaryReadinessRepository({required super.auth, required DateTime now})
+    : opensAt = now.add(const Duration(seconds: 2)),
+      closesAt = now.add(const Duration(seconds: 4));
+
+  final DateTime opensAt;
+  final DateTime closesAt;
+  int readinessCalls = 0;
+
+  @override
+  Stream<FeedSnapshot> feed() =>
+      Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {}));
+
+  @override
+  Stream<List<BandMembership>> myBands() => Stream.value([
+    BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
+  ]);
+
+  @override
+  Future<BandDiscoveryReadiness> bandDiscoveryReadiness(
+    String bandId, {
+    DateTime? now,
+  }) async {
+    readinessCalls++;
+    final current = now ?? DateTime.now();
+    final show = BandDiscoveryShow(
+      gigId: 'boundary-gig',
+      projectId: 'boundary-project',
+      title: 'Boundary Show',
+      startsAt: closesAt.subtract(discoveryBoostGrace),
+    );
+    return BandDiscoveryReadiness(
+      profileComplete: true,
+      profileImageReady: true,
+      clipReady: true,
+      publishedShowReady: true,
+      venuePosterReady: true,
+      publishedRevisionCurrent: true,
+      relevantShow: show,
+      nextEligibleShow: show,
+      boostWindow: DiscoveryBoostWindow(
+        opensAt: opensAt,
+        closesAt: closesAt,
+        active: !current.isBefore(opensAt) && !current.isAfter(closesAt),
+      ),
+    );
+  }
 }
 
 class _MemberRepository extends DemoRepository {

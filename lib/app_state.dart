@@ -215,6 +215,7 @@ class AppState extends ChangeNotifier {
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
+    DateTime Function()? now,
   }) : this._(
          auth ?? FakeAuthService(),
          repository,
@@ -223,6 +224,7 @@ class AppState extends ChangeNotifier {
          initialJoinToken,
          initialPerformerInviteToken,
          initialGigId,
+         now ?? DateTime.now,
        );
 
   AppState._(
@@ -233,6 +235,7 @@ class AppState extends ChangeNotifier {
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
+    this._now,
   ) : auth = resolvedAuth,
       repository = providedRepository ?? DemoRepository(auth: resolvedAuth),
       // Only a real backend has a connection to wait on; the demo data is
@@ -280,6 +283,7 @@ class AppState extends ChangeNotifier {
   final EarplugRepository repository;
   final AuthService auth;
   final LocationService locationService;
+  final DateTime Function() _now;
   late final MediaUploadService mediaUploader;
 
   StreamSubscription<bool>? _authSubscription;
@@ -287,6 +291,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
   StreamSubscription<Gig?>? _publicGigSubscription;
+  Timer? _discoveryBoundaryTimer;
   final Map<String, StreamSubscription<List<Gig>>>
   _followedBandGigSubscriptions = {};
   final Map<String, Object> _followedBandGigTokens = {};
@@ -353,6 +358,7 @@ class AppState extends ChangeNotifier {
   final Set<String> _bandSetupLoading = {};
   final Map<String, BandDiscoveryReadiness> _bandDiscoveryReadiness = {};
   final Set<String> _bandDiscoveryLoading = {};
+  final Set<String> _bandDiscoveryBoundaryRefreshPending = {};
   final Map<String, BandInvite?> _bandInvites = {};
   final Set<String> _bandInviteLoading = {};
 
@@ -548,6 +554,7 @@ class AppState extends ChangeNotifier {
     _gigEditorGeneration++;
     _toastTimer?.cancel();
     _gigAutosaveTimer?.cancel();
+    _discoveryBoundaryTimer?.cancel();
     unawaited(_authSubscription?.cancel());
     unawaited(_feedSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
@@ -675,6 +682,7 @@ class AppState extends ChangeNotifier {
         _normalizeCustomDateRange();
         _dataStatus = DataStatus.ready;
         dataError = null;
+        _scheduleDiscoveryBoundaryRefresh();
         notifyListeners();
       },
       onError: (Object error) {
@@ -685,6 +693,71 @@ class AppState extends ChangeNotifier {
     );
     unawaited(_loadExploreBandPage());
     unawaited(_refreshVenueDirectory());
+  }
+
+  void _scheduleDiscoveryBoundaryRefresh() {
+    _discoveryBoundaryTimer?.cancel();
+    _discoveryBoundaryTimer = null;
+    if (_disposed) return;
+
+    final now = _now();
+    DateTime? nextBoundary;
+    void consider(DateTime boundary) {
+      if (!boundary.isAfter(now) ||
+          (nextBoundary != null && !boundary.isBefore(nextBoundary!))) {
+        return;
+      }
+      nextBoundary = boundary;
+    }
+
+    for (final gig in _allGigs) {
+      final creatorId = gig.createdByBand;
+      if (creatorId == null ||
+          gig.lifecycle != GigLifecycle.published ||
+          !gig.discoveryListingReady ||
+          _bands[creatorId]?.discoveryProfileReady != true) {
+        continue;
+      }
+      consider(gig.startsAt.subtract(discoveryBoostLead));
+      consider(
+        gig.startsAt
+            .add(discoveryBoostGrace)
+            .add(const Duration(milliseconds: 1)),
+      );
+    }
+    for (final entry in _bandDiscoveryReadiness.entries) {
+      if (!isAdminOf(entry.key)) continue;
+      final window = entry.value.boostWindow;
+      if (window == null) continue;
+      consider(window.opensAt);
+      consider(window.closesAt.add(const Duration(milliseconds: 1)));
+    }
+
+    final boundary = nextBoundary;
+    if (boundary == null) return;
+    _discoveryBoundaryTimer = Timer(
+      boundary.difference(now),
+      _handleDiscoveryBoundary,
+    );
+  }
+
+  void _handleDiscoveryBoundary() {
+    _discoveryBoundaryTimer = null;
+    if (_disposed) return;
+
+    final readinessIds = <String>{
+      ..._bandDiscoveryReadiness.keys,
+      if (current.screen == Screen.bandDash && bandId.isNotEmpty) bandId,
+    };
+    for (final id in readinessIds.where(isAdminOf)) {
+      if (_bandDiscoveryLoading.contains(id)) {
+        _bandDiscoveryBoundaryRefreshPending.add(id);
+      } else {
+        unawaited(refreshBandDiscoveryReadiness(id));
+      }
+    }
+    _scheduleDiscoveryBoundaryRefresh();
+    notifyListeners();
   }
 
   /// One-shot directory refresh, following the `_refreshExploreBands` pattern.
@@ -863,6 +936,7 @@ class AppState extends ChangeNotifier {
         upcoming: _bands[band.id]?.upcoming ?? const [],
       );
     }
+    _scheduleDiscoveryBoundaryRefresh();
     notifyListeners();
   }
 
@@ -1094,8 +1168,10 @@ class AppState extends ChangeNotifier {
     _bandSetupLoading.clear();
     _bandDiscoveryReadiness.clear();
     _bandDiscoveryLoading.clear();
+    _bandDiscoveryBoundaryRefreshPending.clear();
     _bandInvites.clear();
     _bandInviteLoading.clear();
+    _scheduleDiscoveryBoundaryRefresh();
     _media?.clearForSignOut();
     _resetBandForm();
     _resetGigForm();
@@ -2197,7 +2273,7 @@ class AppState extends ChangeNotifier {
       boostedGigIds: discoveryBoostedGigIds(
         gigs: allGigs,
         bands: _bands,
-        now: DateTime.now(),
+        now: _now(),
       ),
     );
   }
@@ -2205,7 +2281,7 @@ class AppState extends ChangeNotifier {
   bool isDiscoveryBoosted(Gig gig, {DateTime? now}) => discoveryBoostedGigIds(
     gigs: allGigs,
     bands: _bands,
-    now: now ?? DateTime.now(),
+    now: now ?? _now(),
   ).contains(gig.id);
 
   /// RSVP count shown to bands: base demo count plus this user's RSVP.
@@ -2309,12 +2385,21 @@ class AppState extends ChangeNotifier {
   Future<void> refreshBandDiscoveryReadiness(String id) async {
     if (!isAdminOf(id) || !_bandDiscoveryLoading.add(id)) return;
     try {
-      _bandDiscoveryReadiness[id] = await repository.bandDiscoveryReadiness(id);
+      _bandDiscoveryReadiness[id] = await repository.bandDiscoveryReadiness(
+        id,
+        now: _now(),
+      );
     } catch (error) {
       logError('bandDiscoveryReadiness', error);
     } finally {
       _bandDiscoveryLoading.remove(id);
-      if (!_disposed) notifyListeners();
+      final refreshAtBoundary =
+          _bandDiscoveryBoundaryRefreshPending.remove(id) && isAdminOf(id);
+      if (!_disposed) {
+        _scheduleDiscoveryBoundaryRefresh();
+        notifyListeners();
+        if (refreshAtBoundary) unawaited(refreshBandDiscoveryReadiness(id));
+      }
     }
   }
 

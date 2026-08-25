@@ -162,7 +162,10 @@ async function markProjectListingStale(
   project: Doc<"gigProjects">,
 ) {
   if (project.status === "published" && project.publicGigId) {
-    await ctx.db.patch(project.publicGigId, { discoveryListingReady: false });
+    const gig = await ctx.db.get(project.publicGigId);
+    if (gig) {
+      await ctx.db.patch(gig._id, { discoveryListingReady: false });
+    }
   }
 }
 

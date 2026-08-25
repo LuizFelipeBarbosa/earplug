@@ -72,6 +72,32 @@ void main() {
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
+  testWidgets('the feed refreshes when a discovery boost window opens', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    var now = DateTime.utc(2026, 8, 25, 19);
+    final repository = _BoundaryBoostRepository(auth: auth, now: now);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: HomeScreen()),
+      beforePump: (app) => app.setMapMode(false),
+      now: () => now,
+    );
+
+    expect(harness.app.isDiscoveryBoosted(repository.gig), isFalse);
+    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsNothing);
+
+    now = now.add(const Duration(seconds: 3));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+
+    expect(harness.app.isDiscoveryBoosted(repository.gig), isTrue);
+    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
+  });
+
   testWidgets('a guest can open an event from its map card', (tester) async {
     final harness = await pumpApp(
       tester,
@@ -256,6 +282,33 @@ class _BoostRepository extends DemoRepository {
       gigs: DemoData.gigs,
       venues: DemoData.venues,
       bands: {...DemoData.bands, 'b1': _readyBand},
+    ),
+  );
+
+  @override
+  Stream<List<BandMembership>> myBands() =>
+      Stream.value([BandMembership(band: _readyBand, role: 'admin')]);
+}
+
+class _BoundaryBoostRepository extends DemoRepository {
+  _BoundaryBoostRepository({required super.auth, required DateTime now})
+    : opensAt = now.add(const Duration(seconds: 2));
+
+  final DateTime opensAt;
+
+  Band get _readyBand =>
+      DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
+
+  late final Gig gig = DemoData.gigs[1].copyWith(
+    startsAt: opensAt.add(discoveryBoostLead),
+  );
+
+  @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: [gig],
+      venues: {'v1': DemoData.venues['v1']!},
+      bands: {'b1': _readyBand},
     ),
   );
 

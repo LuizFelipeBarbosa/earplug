@@ -197,6 +197,68 @@ describe("gig project lifecycle", () => {
     ).rejects.toThrow("Venue not found");
   });
 
+  test("an orphaned public gig remains editable and can be republished", async () => {
+    const { t, asAdmin, bandId, venueId } = await setupLifecycle();
+    const draft = await asAdmin.mutation(api.gigs.createDraft, { bandId });
+    const doorsAt = Date.now() + 2 * 86_400_000;
+    const startsAt = doorsAt + 60 * 60_000;
+    const saved = await asAdmin.mutation(api.gigs.saveDraft, {
+      projectId: draft._id,
+      revision: draft.revision,
+      title: "Repairable Show",
+      doorsAt,
+      startsAt,
+      venueId,
+      price: 0,
+      flyKey: "xerox",
+      flyStorageId: null,
+      overlay: true,
+      desc: "",
+      ticketing: "rsvp",
+      ageRequirement: "allAges",
+      externalUrl: null,
+      cap: "No cap",
+    });
+    const { gigId: missingGigId } = await asAdmin.mutation(
+      api.gigs.publishDraft,
+      { projectId: draft._id },
+    );
+    await t.run(async (ctx) => ctx.db.delete(missingGigId));
+
+    await asAdmin.mutation(api.gigs.saveDraft, {
+      projectId: draft._id,
+      revision: saved.revision,
+      title: "Repaired Show",
+      doorsAt,
+      startsAt,
+      venueId,
+      price: 0,
+      flyKey: "xerox",
+      flyStorageId: null,
+      overlay: true,
+      desc: "Saved after projection loss.",
+      ticketing: "rsvp",
+      ageRequirement: "allAges",
+      externalUrl: null,
+      cap: "No cap",
+    });
+    await asAdmin.mutation(api.gigs.addPerformer, {
+      projectId: draft._id,
+      kind: "text",
+      name: "Repair Opener",
+      role: "opener",
+    });
+    const { gigId: replacementGigId } = await asAdmin.mutation(
+      api.gigs.publishDraft,
+      { projectId: draft._id },
+    );
+
+    expect(replacementGigId).not.toBe(missingGigId);
+    expect(
+      (await t.query(api.gigs.getPublic, { gigId: replacementGigId }))?.title,
+    ).toBe("Repaired Show");
+  });
+
   test("invite expiry is materialized and a live claim stays published", async () => {
     const { t, asAdmin, bandId, venueId } = await setupLifecycle();
     const { bandId: guestBandId } = await asAdmin.mutation(

@@ -193,6 +193,51 @@ describe("discovery profile readiness", () => {
 });
 
 describe("discovery listing readiness", () => {
+  test("past projects cannot crowd an upcoming show out of readiness", async () => {
+    const fixture = await setup();
+    const now = Date.now();
+    await fixture.t.run(async (ctx) => {
+      for (let index = 0; index < 100; index++) {
+        await ctx.db.insert("gigProjects", {
+          bandId: fixture.bandId,
+          status: "published",
+          revision: 1,
+          publishedRevision: 1,
+          title: `Past Listing ${index}`,
+          doorsAt: now - 2 * DAY_MS,
+          startsAt: now - DAY_MS,
+          venueId: fixture.venueId,
+          price: 0,
+          flyKey: "xerox",
+          overlay: true,
+          desc: "",
+          ticketing: "rsvp",
+          ageRequirement: "allAges",
+          cap: "No cap",
+          createdAt: now - DAY_MS + index,
+          updatedAt: now - DAY_MS + index,
+        });
+      }
+    });
+    const project = await createPublishableProject(fixture, {
+      startsAt: now + 2 * DAY_MS,
+    });
+    const { gigId } = await fixture.asAdmin.mutation(api.gigs.publishDraft, {
+      projectId: project._id,
+    });
+
+    const readiness = await fixture.asAdmin.query(
+      api.bands.discoveryReadiness,
+      { bandId: fixture.bandId, now },
+    );
+
+    expect(readiness.relevantShow).toMatchObject({
+      gigId,
+      projectId: project._id,
+    });
+    expect(readiness.nextEligibleShow).toMatchObject({ gigId });
+  });
+
   test("publishes, becomes stale on edits, and restores only on republish", async () => {
     const fixture = await setup();
     await completeProfileMedia(fixture);
