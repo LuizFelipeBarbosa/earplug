@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show Color;
 
+import '../band_identity.dart';
 import '../demo_data.dart';
 import '../models.dart';
 import '../services/auth_service.dart';
@@ -42,6 +43,9 @@ class DemoRepository implements EarplugRepository {
   final Set<String> _savedGigIds = {};
   final Set<String> _userGenres = {};
   final Map<String, String> _heroByBand = {};
+  final Set<String> _previewedBands = {};
+  final Map<String, BandInvite> _bandInvites = {};
+  final Map<String, Set<String>> _acceptedMemberNames = {};
   FanOnboarding _fanOnboarding = const FanOnboarding(
     preferredCity: null,
     genreChoice: FanGenreChoice.pending,
@@ -60,6 +64,7 @@ class DemoRepository implements EarplugRepository {
   int _nextBandId = 1;
   int _nextGigId = 1;
   int _nextMediaId = 1;
+  int _nextInviteId = 1;
   bool _interactionsSeeded = false;
 
   /// Nothing to push: the demo data does not check identity.
@@ -452,6 +457,23 @@ class DemoRepository implements EarplugRepository {
   Future<Band?> band(String bandId) async => _bands[bandId];
 
   @override
+  Future<BandProfileDetails> bandProfileDetails(String bandId) async {
+    final band = _bands[bandId];
+    final names = <String>{
+      if (_memberships.any((membership) => membership.band.id == bandId))
+        _userName ?? _auth.displayName ?? 'Band admin',
+      ...?_acceptedMemberNames[bandId],
+    };
+    return BandProfileDetails(
+      credits: band?.credits,
+      linkIg: band?.linkIg,
+      linkBc: band?.linkBc,
+      linkYt: band?.linkYt,
+      memberNames: names.toList(growable: false),
+    );
+  }
+
+  @override
   Future<List<Band>> searchBands(String q) async {
     final normalized = q.toLowerCase();
     return _bands.values
@@ -590,14 +612,6 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> deleteCurrentUser() async {}
 
-  static String _initialsFor(String name) => name
-      .split(' ')
-      .where((word) => word.isNotEmpty)
-      .map((word) => word[0])
-      .take(2)
-      .join()
-      .toUpperCase();
-
   /// Mirrors the backend: "static-bloom", or "static-bloom-2" when taken.
   String _uniqueSlug(String name) {
     var base = _slugify(name);
@@ -623,11 +637,11 @@ class DemoRepository implements EarplugRepository {
     required String name,
     required List<String> genres,
     required String bio,
-    required List<String> inviteHandles,
-    String? area,
+    required String area,
     String? linkIg,
     String? linkBc,
     String? linkYt,
+    String? credits,
   }) async {
     final id = 'nb${_nextBandId++}';
     final bandName = name.trim();
@@ -636,14 +650,15 @@ class DemoRepository implements EarplugRepository {
       id: id,
       name: bandName,
       genres: genres.isEmpty ? const ['punk'] : List<String>.of(genres),
-      area: area ?? 'Mission, SF',
+      area: area,
       color: const Color(0xFF8FE6C4),
-      initials: _initialsFor(bandName),
-      followers: 1 + inviteHandles.length,
+      initials: bandInitialsFor(bandName),
+      followers: 1,
       bio: bio,
       linkIg: linkIg,
       linkBc: linkBc,
       linkYt: linkYt,
+      credits: credits,
     );
 
     _bands[id] = created;
@@ -654,40 +669,164 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
-  Future<void> updateBandProfile({
-    required String bandId,
-    String? name,
-    List<String>? genres,
-    String? area,
-    String? bio,
-    List<String>? inviteHandles,
-    String? linkIg,
-    String? linkBc,
-    String? linkYt,
-  }) async {
-    final existing = _bands[bandId];
+  Future<void> updateBandProfile(BandProfileUpdate update) async {
+    final existing = _bands[update.bandId];
     if (existing == null) return;
 
-    final trimmedName = name?.trim();
+    final trimmedName = update.name.trim();
     final updated = existing.copyWith(
       name: trimmedName,
-      initials: trimmedName == null ? null : _initialsFor(trimmedName),
-      genres: genres,
-      area: area,
-      bio: bio,
-      linkIg: linkIg,
-      linkBc: linkBc,
-      linkYt: linkYt,
+      initials: bandInitialsFor(trimmedName),
+      genres: List<String>.of(update.genres),
+      area: update.area.trim(),
+      bio: update.bio.trim(),
+      linkIg: update.linkIg.trim(),
+      linkBc: update.linkBc.trim(),
+      linkYt: update.linkYt.trim(),
+      credits: update.credits.trim(),
     );
-    _bands[bandId] = updated;
+    _bands[update.bandId] = updated;
     for (var i = 0; i < _memberships.length; i++) {
       final membership = _memberships[i];
-      if (membership.band.id == bandId) {
+      if (membership.band.id == update.bandId) {
         _memberships[i] = BandMembership(band: updated, role: membership.role);
       }
     }
     _feedController.add(_currentFeed());
     _bandsController.add(_currentMemberships());
+  }
+
+  @override
+  Future<BandSetupStatus> bandSetupStatus(String bandId) async {
+    final band = _bands[bandId];
+    final media = _mediaLists[bandId] ?? const <BandMedia>[];
+    final membershipCount = _memberships
+        .where((membership) => membership.band.id == bandId)
+        .length;
+    return BandSetupStatus(
+      profileComplete:
+          band != null &&
+          band.name.trim().isNotEmpty &&
+          band.genres.isNotEmpty &&
+          band.genres.length <= 3 &&
+          band.area.trim().isNotEmpty,
+      profileImageAdded: _heroByBand.containsKey(bandId),
+      musicAdded:
+          media.any((item) => item.kind == MediaKind.video) ||
+          (band?.linkBc?.trim().isNotEmpty ?? false) ||
+          (band?.linkYt?.trim().isNotEmpty ?? false),
+      socialLinksAdded: band?.linkIg?.trim().isNotEmpty ?? false,
+      firstGigCreated: [
+        ...DemoData.gigs,
+        ..._publishedGigs,
+      ].any((gig) => gig.lineup.contains(bandId)),
+      membersInvited:
+          membershipCount > 1 ||
+          (_acceptedMemberNames[bandId]?.isNotEmpty ?? false),
+      publicProfilePreviewed: _previewedBands.contains(bandId),
+    );
+  }
+
+  @override
+  Future<void> markBandPreviewed(String bandId) async {
+    _previewedBands.add(bandId);
+  }
+
+  @override
+  Future<BandInvite?> bandInvite(String bandId) async => _bandInvites[bandId];
+
+  BandInvite _newInvite(String bandId) {
+    final invite = BandInvite(
+      bandId: bandId,
+      token: 'demo-invite-${_nextInviteId++}',
+      expiresAt: DateTime.now().add(const Duration(days: 7)),
+      revoked: false,
+      expired: false,
+    );
+    _bandInvites[bandId] = invite;
+    return invite;
+  }
+
+  @override
+  Future<BandInvite> createBandInvite(String bandId) async {
+    final current = _bandInvites[bandId];
+    if (current != null &&
+        !current.revoked &&
+        !current.expired &&
+        current.expiresAt.isAfter(DateTime.now())) {
+      return current;
+    }
+    return _newInvite(bandId);
+  }
+
+  @override
+  Future<BandInvite> rotateBandInvite(String bandId) async =>
+      _newInvite(bandId);
+
+  @override
+  Future<void> revokeBandInvite(String bandId) async {
+    final invite = _bandInvites[bandId];
+    if (invite == null) return;
+    _bandInvites[bandId] = BandInvite(
+      bandId: invite.bandId,
+      token: invite.token,
+      expiresAt: invite.expiresAt,
+      revoked: true,
+      expired: invite.expired,
+    );
+  }
+
+  @override
+  Future<BandInviteResolution?> resolveBandInvite(String token) async {
+    final invite = _bandInvites.values
+        .where((candidate) => candidate.token == token)
+        .firstOrNull;
+    if (invite == null ||
+        invite.revoked ||
+        invite.expired ||
+        !invite.expiresAt.isAfter(DateTime.now())) {
+      return null;
+    }
+    final band = _bands[invite.bandId];
+    if (band == null) return null;
+    return BandInviteResolution(
+      bandId: band.id,
+      bandName: band.name,
+      initials: band.initials,
+      color: band.color,
+    );
+  }
+
+  @override
+  Future<BandInviteAcceptance> acceptBandInvite(String token) async {
+    if (!_auth.signedIn) throw StateError('Not signed in.');
+    final resolved = await resolveBandInvite(token);
+    if (resolved == null) throw StateError('Invitation is no longer active.');
+    final existingMembership = _memberships.any(
+      (membership) => membership.band.id == resolved.bandId,
+    );
+    if (existingMembership) {
+      return BandInviteAcceptance(
+        bandId: resolved.bandId,
+        membershipCreated: false,
+      );
+    }
+
+    final band = _bands[resolved.bandId];
+    if (band == null) throw StateError('Invitation is no longer active.');
+    final name = _userName ?? _auth.displayName ?? 'Band member';
+    _acceptedMemberNames
+        .putIfAbsent(resolved.bandId, () => <String>{})
+        .add(name);
+    final updatedBand = band.copyWith(followers: band.followers + 1);
+    _bands[band.id] = updatedBand;
+    _memberships.add(BandMembership(band: updatedBand, role: 'member'));
+    _feedController.add(_currentFeed());
+    _bandsController.add(_currentMemberships());
+    return BandInviteAcceptance(
+      bandId: resolved.bandId,
+      membershipCreated: true,
+    );
   }
 
   @override

@@ -831,6 +831,7 @@ class _ThroughStep extends StatelessWidget {
               PendingKind.save => 'SHOW SAVED',
               PendingKind.follow => 'BAND FOLLOWED',
               PendingKind.band => "LET'S START YOUR BAND",
+              PendingKind.join => 'READY TO JOIN',
               PendingKind.myGigs || null => 'ACCOUNT READY',
             }, style: epDisplay(size: 19)),
           ],

@@ -20,6 +20,7 @@ describe("media mutations", () => {
       name: "Media Band",
       genres: ["punk"],
       bio: "",
+      area: "Bay Area",
       inviteHandles: [],
     });
     return { t, asAdmin, bandId, userId };
@@ -186,6 +187,7 @@ describe("media mutations", () => {
       name: "Other Band",
       genres: ["noise"],
       bio: "",
+      area: "Bay Area",
       inviteHandles: [],
     });
 
@@ -560,6 +562,7 @@ describe("media mutations", () => {
         name: "Shared Blob Band",
         genres: ["noise"],
         bio: "",
+        area: "Bay Area",
         inviteHandles: [],
       },
     );
@@ -644,6 +647,7 @@ describe("media mutations", () => {
         name: "Photo Other Band",
         genres: ["rock"],
         bio: "",
+        area: "Bay Area",
         inviteHandles: [],
       },
     );
@@ -714,6 +718,7 @@ describe("media reads and validation", () => {
       name: "Media Read Band",
       genres: ["punk"],
       bio: "",
+      area: "Bay Area",
       inviteHandles: [],
     });
     return { t, asAdmin, bandId };

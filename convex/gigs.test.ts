@@ -14,12 +14,14 @@ describe("gigs:pastForBand", () => {
       name: "Ancient Quaffle",
       genres: ["folk"],
       bio: "",
+      area: "Bay Area",
       inviteHandles: [],
     });
     const { bandId: otherId } = await asAdmin.mutation(api.bands.createBand, {
       name: "Wet Denim",
       genres: ["punk"],
       bio: "",
+      area: "Bay Area",
       inviteHandles: [],
     });
     const venueId = await t.run(async (ctx) =>
@@ -98,7 +100,13 @@ describe("gigs:pastForBand", () => {
     await asStranger.mutation(api.users.ensureUser, {});
     const { bandId: emptyBandId } = await asStranger.mutation(
       api.bands.createBand,
-      { name: "No History", genres: ["noise"], bio: "", inviteHandles: [] },
+      {
+        name: "No History",
+        genres: ["noise"],
+        bio: "",
+        area: "Bay Area",
+        inviteHandles: [],
+      },
     );
 
     expect(
@@ -125,6 +133,7 @@ describe("gigs:publishGig auth", () => {
       name: "Foghorn Diet",
       genres: ["garage"],
       bio: "",
+      area: "Bay Area",
       inviteHandles: [],
     });
     const venueId = await t.run(async (ctx) =>
@@ -433,6 +442,7 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
       name: "Long Calendar",
       genres: ["punk"],
       bio: "",
+      area: "Bay Area",
       inviteHandles: [],
     });
     const venueId = await t.run(async (ctx) =>
@@ -483,6 +493,7 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
         name: "Crowded Calendar",
         genres: ["punk"],
         bio: "",
+        area: "Bay Area",
         inviteHandles: [],
       },
     );
@@ -492,6 +503,7 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
         name: "Later Band",
         genres: ["noise"],
         bio: "",
+        area: "Bay Area",
         inviteHandles: [],
       },
     );
@@ -556,6 +568,7 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
       name: "Static Bloom",
       genres: ["shoegaze", "punk"],
       bio: "Loud flowers.",
+      area: "Bay Area",
       inviteHandles: ["@friend1", "@friend2"],
     });
     const mine = await asAdmin.query(api.bands.myBands, {});

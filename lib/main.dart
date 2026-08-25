@@ -11,6 +11,7 @@ import 'screens/auth.dart';
 import 'screens/band_create.dart';
 import 'screens/band_dash.dart';
 import 'screens/band_edit.dart';
+import 'screens/band_join.dart';
 import 'screens/band_media.dart';
 import 'screens/band_profile.dart';
 import 'screens/edit_profile.dart';
@@ -32,8 +33,9 @@ import 'widgets/tab_bars.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final joinToken = joinTokenFromUri(Uri.base);
   if (Env.demo) {
-    runApp(const EarplugApp());
+    runApp(EarplugApp(initialJoinToken: joinToken));
     return;
   }
   final configError = Env.configurationError;
@@ -48,7 +50,26 @@ Future<void> main() async {
   await auth.initialize();
   convexService.setTokenFetcher(auth.fetchConvexToken);
   final repository = ConvexRepository(convexService);
-  runApp(EarplugApp(repository: repository, auth: auth));
+  runApp(
+    EarplugApp(repository: repository, auth: auth, initialJoinToken: joinToken),
+  );
+}
+
+String? joinTokenFromUri(Uri uri) {
+  String? fromSegments(List<String> segments) {
+    final joinIndex = segments.indexOf('join');
+    if (joinIndex == -1 || joinIndex + 1 >= segments.length) return null;
+    final token = segments[joinIndex + 1].trim();
+    return token.isEmpty ? null : token;
+  }
+
+  final pathToken = fromSegments(uri.pathSegments);
+  if (pathToken != null) return pathToken;
+  final fragment = uri.fragment;
+  if (fragment.isEmpty) return null;
+  return fromSegments(
+    Uri.parse(fragment.startsWith('/') ? fragment : '/$fragment').pathSegments,
+  );
 }
 
 /// Shown instead of the app when the build is misconfigured — no backend, no
@@ -94,10 +115,16 @@ class _ConfigErrorApp extends StatelessWidget {
 }
 
 class EarplugApp extends StatelessWidget {
-  const EarplugApp({super.key, this.repository, this.auth});
+  const EarplugApp({
+    super.key,
+    this.repository,
+    this.auth,
+    this.initialJoinToken,
+  });
 
   final EarplugRepository? repository;
   final AuthService? auth;
+  final String? initialJoinToken;
 
   @override
   Widget build(BuildContext context) {
@@ -105,8 +132,12 @@ class EarplugApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(
           create: (_) => repository == null && auth == null
-              ? AppState()
-              : AppState(repository: repository, auth: auth),
+              ? AppState(initialJoinToken: initialJoinToken)
+              : AppState(
+                  repository: repository,
+                  auth: auth,
+                  initialJoinToken: initialJoinToken,
+                ),
         ),
         ChangeNotifierProvider<BandMediaController>(
           create: (ctx) {
@@ -239,6 +270,8 @@ class RootShell extends StatelessWidget {
       Screen.home => const HomeScreen(),
       Screen.gig => GigDetailScreen(gigId: entry.param!),
       Screen.band => BandProfileScreen(bandId: entry.param!),
+      Screen.bandPreview => BandProfileScreen(bandId: entry.param!),
+      Screen.bandJoin => const BandJoinScreen(),
       Screen.venue => VenueDetailScreen(venueId: entry.param!),
       Screen.explore => const ExploreScreen(),
       Screen.myGigs => const MyGigsScreen(),

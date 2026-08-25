@@ -21,43 +21,7 @@ class BandDashScreen extends StatelessWidget {
     final next = mine.isEmpty ? null : mine.first;
     final media = context.watch<BandMediaController>();
     final clips = media.videosFor(band.id);
-    final hasProfileImage =
-        band.heroUrl?.isNotEmpty == true ||
-        media.photosFor(band.id).any((item) => item.isHero);
-    final tasks = [
-      _BandTask(
-        label: 'Add a profile image',
-        complete: hasProfileImage,
-        onTap: app.openBandMedia,
-      ),
-      _BandTask(
-        label: 'Write a short bio',
-        complete: app.bioFor(band.id).trim().isNotEmpty,
-        onTap: () => app.resetTo(Screen.bandEdit),
-      ),
-      _BandTask(
-        label: 'Add a band link',
-        complete:
-            app.linkIgFor(band.id).trim().isNotEmpty ||
-            app.linkBcFor(band.id).trim().isNotEmpty ||
-            app.linkYtFor(band.id).trim().isNotEmpty,
-        onTap: () => app.resetTo(Screen.bandEdit),
-      ),
-      _BandTask(
-        label: 'Post a music clip',
-        complete: clips.isNotEmpty,
-        onTap: app.openBandMedia,
-      ),
-      _BandTask(
-        label: 'Publish a gig',
-        complete:
-            mine.isNotEmpty ||
-            band.past.isNotEmpty ||
-            (app.bandHistory(band.id)?.gigs.isNotEmpty ?? false),
-        onTap: app.startGigCreate,
-      ),
-    ];
-    final remainingTasks = tasks.where((task) => !task.complete).toList();
+    final isAdmin = app.isAdminOf(band.id);
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -116,6 +80,26 @@ class BandDashScreen extends StatelessWidget {
         const SizedBox(height: 14),
         Row(
           children: [
+            if (isAdmin) ...[
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: app.openBandEditor,
+                  child: const Text('Edit profile'),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: OutlinedButton(
+                onPressed: app.previewPublicProfile,
+                child: const Text('Preview public profile'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
             EpStatCard(
               label: 'FOLLOWERS',
               value: band.followersLabel,
@@ -155,36 +139,113 @@ class BandDashScreen extends StatelessWidget {
           const SizedBox(height: 8),
           _NextUpCard(gig: next, app: app),
         ],
-        const SizedBox(height: 14),
+        if (isAdmin) ...[
+          const SizedBox(height: 14),
+          _SetupChecklist(app: app, bandId: band.id),
+        ],
+      ],
+    );
+  }
+}
+
+class _SetupChecklist extends StatelessWidget {
+  const _SetupChecklist({required this.app, required this.bandId});
+
+  final AppState app;
+  final String bandId;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = app.setupStatusFor(bandId);
+    final tasks = status == null
+        ? const <_BandTask>[]
+        : [
+            _BandTask(
+              id: 'profile',
+              label: 'Complete profile',
+              complete: status.profileComplete,
+              onTap: () => app.openBandEditor(section: 'required'),
+            ),
+            _BandTask(
+              id: 'image',
+              label: 'Add a profile image',
+              complete: status.profileImageAdded,
+              onTap: app.openBandMedia,
+            ),
+            _BandTask(
+              id: 'music',
+              label: 'Add music or a clip',
+              complete: status.musicAdded,
+              onTap: app.openBandMedia,
+            ),
+            _BandTask(
+              id: 'social',
+              label: 'Add social links',
+              complete: status.socialLinksAdded,
+              onTap: () => app.openBandEditor(section: 'links'),
+            ),
+            _BandTask(
+              id: 'gig',
+              label: 'Create first gig',
+              complete: status.firstGigCreated,
+              onTap: app.startGigCreate,
+            ),
+            _BandTask(
+              id: 'members',
+              label: 'Invite band members',
+              complete: status.membersInvited,
+              onTap: app.openInvitationPanel,
+            ),
+            _BandTask(
+              id: 'preview',
+              label: 'Preview public profile',
+              complete: status.publicProfilePreviewed,
+              onTap: app.previewPublicProfile,
+            ),
+          ];
+
+    return Column(
+      children: [
         Row(
           children: [
-            const Expanded(child: SectionLabel('BAND CHECKLIST')),
+            const Expanded(child: SectionLabel('SETUP CHECKLIST')),
             const SizedBox(width: 8),
-            Text(
-              '${tasks.length - remainingTasks.length} OF ${tasks.length} DONE',
-              style: Theme.of(context).textTheme.epCaption,
-            ),
+            if (status != null)
+              Text(
+                '${status.completedCount} of 7 complete',
+                style: Theme.of(context).textTheme.epCaption,
+              ),
           ],
         ),
         const SizedBox(height: 6),
-        if (remainingTasks.isEmpty)
-          const EpCard(
-            variant: EpCardVariant.selected,
-            child: Text('Your band profile is ready for the next show.'),
+        if (status == null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: app.setupStatusLoadingFor(bandId)
+                ? const Center(child: CircularProgressIndicator())
+                : Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      onPressed: () => app.refreshBandSetupStatus(bandId),
+                      child: const Text('Retry setup checklist'),
+                    ),
+                  ),
           )
         else
-          for (final task in remainingTasks) _BandTaskRow(task: task),
+          for (final task in tasks) _BandTaskRow(task: task),
       ],
     );
   }
 }
 
 class _BandTask {
+  final String id;
   final String label;
   final bool complete;
   final VoidCallback onTap;
 
   const _BandTask({
+    required this.id,
     required this.label,
     required this.complete,
     required this.onTap,
@@ -201,6 +262,7 @@ class _BandTaskRow extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
+        key: ValueKey('band-setup-${task.id}'),
         onTap: task.onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
@@ -209,10 +271,12 @@ class _BandTaskRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const Icon(
-                Icons.radio_button_unchecked,
+              Icon(
+                task.complete
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked,
                 size: 16,
-                color: Ep.accent,
+                color: task.complete ? Ep.success : Ep.accent,
               ),
               const SizedBox(width: 10),
               Expanded(

@@ -181,6 +181,14 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<BandProfileDetails> bandProfileDetails(String bandId) async {
+    final result = await _convexService.query('bands:profileDetails', {
+      'bandId': bandId,
+    });
+    return BandProfileDetails.fromJson(_asMap(result));
+  }
+
+  @override
   Future<List<Band>> searchBands(String q) async {
     final result = await _convexService.query('bands:search', {'q': q});
     return [for (final json in _mapList(result)) Band.fromJson(json)];
@@ -316,21 +324,21 @@ class ConvexRepository implements EarplugRepository {
     required String name,
     required List<String> genres,
     required String bio,
-    required List<String> inviteHandles,
-    String? area,
+    required String area,
     String? linkIg,
     String? linkBc,
     String? linkYt,
+    String? credits,
   }) async {
     final result = await _convexService.mutation('bands:createBand', {
       'name': name,
       'genres': genres,
       'bio': bio,
-      'inviteHandles': inviteHandles,
-      'area': ?area,
+      'area': area,
       'linkIg': ?linkIg,
       'linkBc': ?linkBc,
       'linkYt': ?linkYt,
+      'credits': ?credits,
     });
     final payload = _asMap(result);
     return (
@@ -340,28 +348,78 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<void> updateBandProfile({
-    required String bandId,
-    String? name,
-    List<String>? genres,
-    String? area,
-    String? bio,
-    List<String>? inviteHandles,
-    String? linkIg,
-    String? linkBc,
-    String? linkYt,
-  }) async {
+  Future<void> updateBandProfile(BandProfileUpdate update) async {
     await _convexService.mutation('bands:updateProfile', {
-      'bandId': bandId,
-      'name': ?name,
-      'genres': ?genres,
-      'area': ?area,
-      'bio': ?bio,
-      'inviteHandles': ?inviteHandles,
-      'linkIg': ?linkIg,
-      'linkBc': ?linkBc,
-      'linkYt': ?linkYt,
+      'bandId': update.bandId,
+      'name': update.name,
+      'genres': update.genres,
+      'area': update.area,
+      'bio': update.bio,
+      'linkIg': update.linkIg,
+      'linkBc': update.linkBc,
+      'linkYt': update.linkYt,
+      'credits': update.credits,
     });
+  }
+
+  @override
+  Future<BandSetupStatus> bandSetupStatus(String bandId) async {
+    final result = await _convexService.query('bands:setupStatus', {
+      'bandId': bandId,
+    });
+    return BandSetupStatus.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<void> markBandPreviewed(String bandId) async {
+    await _convexService.mutation('bands:markPreviewed', {'bandId': bandId});
+  }
+
+  @override
+  Future<BandInvite?> bandInvite(String bandId) async {
+    final result = await _convexService.query('bandInvites:manage', {
+      'bandId': bandId,
+    });
+    final json = _asMap(result);
+    return json.isEmpty ? null : BandInvite.fromJson(json);
+  }
+
+  @override
+  Future<BandInvite> createBandInvite(String bandId) async {
+    final result = await _convexService.mutation('bandInvites:create', {
+      'bandId': bandId,
+    });
+    return BandInvite.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<BandInvite> rotateBandInvite(String bandId) async {
+    final result = await _convexService.mutation('bandInvites:rotate', {
+      'bandId': bandId,
+    });
+    return BandInvite.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<void> revokeBandInvite(String bandId) async {
+    await _convexService.mutation('bandInvites:revoke', {'bandId': bandId});
+  }
+
+  @override
+  Future<BandInviteResolution?> resolveBandInvite(String token) async {
+    final result = await _convexService.query('bandInvites:resolve', {
+      'token': token,
+    });
+    final json = _asMap(result);
+    return json.isEmpty ? null : BandInviteResolution.fromJson(json);
+  }
+
+  @override
+  Future<BandInviteAcceptance> acceptBandInvite(String token) async {
+    final result = await _convexService.mutation('bandInvites:accept', {
+      'token': token,
+    });
+    return BandInviteAcceptance.fromJson(_asMap(result));
   }
 
   @override

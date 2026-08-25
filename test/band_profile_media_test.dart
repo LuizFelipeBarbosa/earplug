@@ -94,10 +94,21 @@ void main() {
 
   testWidgets('profile renders every configured band link', (tester) async {
     final harness = await _pumpProfile(tester);
-    harness.app.setLinkIg('@foghorn.diet');
-    harness.app.setLinkBc('foghorn.bandcamp.com');
-    harness.app.setLinkYt('youtube.com/@foghorn');
-    await tester.pump();
+    final band = harness.app.band('b1')!;
+    await harness.app.saveBandProfile(
+      BandProfileUpdate(
+        bandId: band.id,
+        name: band.name,
+        genres: band.genres,
+        area: band.area,
+        bio: band.bio,
+        linkIg: '@foghorn.diet',
+        linkBc: 'foghorn.bandcamp.com',
+        linkYt: 'youtube.com/@foghorn',
+        credits: band.credits ?? '',
+      ),
+    );
+    await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
       find.text('YOUTUBE ↗'),
@@ -107,9 +118,6 @@ void main() {
     expect(find.text('INSTAGRAM ↗'), findsOne);
     expect(find.text('BANDCAMP ↗'), findsOne);
     expect(find.text('YOUTUBE ↗'), findsOne);
-
-    // Allow the debounced profile write and toast timer to settle.
-    await tester.pump(const Duration(seconds: 3));
   });
 }
 

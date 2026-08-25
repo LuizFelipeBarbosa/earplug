@@ -10,10 +10,53 @@ import {
   currentUser,
   initialsFor,
   requireBandAdmin,
+  requireBandAdminQuery,
+  requireBandMemberMutation,
   requireUser,
   toBandPayload,
   uniqueSlug,
 } from "./lib/helpers";
+
+const profileDetailsValidator = v.object({
+  credits: v.union(v.string(), v.null()),
+  linkIg: v.union(v.string(), v.null()),
+  linkBc: v.union(v.string(), v.null()),
+  linkYt: v.union(v.string(), v.null()),
+  memberNames: v.array(v.string()),
+});
+
+const setupStatusValidator = v.object({
+  profileComplete: v.boolean(),
+  profileImageAdded: v.boolean(),
+  musicAdded: v.boolean(),
+  socialLinksAdded: v.boolean(),
+  firstGigCreated: v.boolean(),
+  membersInvited: v.boolean(),
+  publicProfilePreviewed: v.boolean(),
+});
+
+function requiredProfileValues(
+  nameInput: string,
+  genresInput: string[],
+  areaInput: string,
+) {
+  const name = nameInput.trim();
+  const genres = genresInput.map((genre) => genre.trim());
+  const area = areaInput.trim();
+  if (name === "" || area === "" || genres.length === 0) {
+    throw new Error("Band name, sound, and home base are required");
+  }
+  if (genres.length > 3) throw new Error("Choose no more than three genres");
+  if (genres.some((genre) => genre === "")) {
+    throw new Error("Genres cannot be blank");
+  }
+  return { name, genres, area };
+}
+
+function optionalText(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
 
 export const get = query({
   args: { bandId: v.id("bands") },
@@ -82,7 +125,10 @@ export const myBands = query({
     for (const membership of memberships) {
       const band = await ctx.db.get(membership.bandId);
       if (band) {
-        out.push({ band: await toBandPayload(ctx, band), role: membership.role });
+        out.push({
+          band: await toBandPayload(ctx, band),
+          role: membership.role,
+        });
       }
     }
     return out;
@@ -107,16 +153,106 @@ export const bySlug = query({
   },
 });
 
+/** Public-profile-only joins. Membership names stay out of feed/search band
+ * payloads so those broad subscriptions do not depend on every member row. */
+export const profileDetails = query({
+  args: { bandId: v.id("bands") },
+  returns: v.union(profileDetailsValidator, v.null()),
+  handler: async (ctx, args) => {
+    const band = await ctx.db.get(args.bandId);
+    if (!band) return null;
+
+    const memberships = await ctx.db
+      .query("bandMembers")
+      .withIndex("by_band", (q) => q.eq("bandId", args.bandId))
+      .take(100);
+    const memberNames: string[] = [];
+    for (const membership of memberships) {
+      const user = await ctx.db.get(membership.userId);
+      if (user && user.deletedAt === undefined && user.name.trim() !== "") {
+        memberNames.push(user.name);
+      }
+    }
+    return {
+      credits: band.credits ?? null,
+      linkIg: band.linkIg ?? null,
+      linkBc: band.linkBc ?? null,
+      linkYt: band.linkYt ?? null,
+      memberNames,
+    };
+  },
+});
+
+/** The seven admin-only setup tasks. This is advisory and never gates access
+ * to the dashboard or any other application feature. */
+export const setupStatus = query({
+  args: { bandId: v.id("bands") },
+  returns: setupStatusValidator,
+  handler: async (ctx, args) => {
+    const band = await requireBandAdminQuery(ctx, args.bandId);
+    const [video, gig, memberships] = await Promise.all([
+      ctx.db
+        .query("bandMedia")
+        .withIndex("by_band_kind_order", (q) =>
+          q.eq("bandId", args.bandId).eq("kind", "video"),
+        )
+        .first(),
+      ctx.db
+        .query("gigBands")
+        .withIndex("by_band_startsAt", (q) => q.eq("bandId", args.bandId))
+        .first(),
+      ctx.db
+        .query("bandMembers")
+        .withIndex("by_band", (q) => q.eq("bandId", args.bandId))
+        .take(2),
+    ]);
+    return {
+      profileComplete:
+        band.name.trim() !== "" &&
+        band.genres.length >= 1 &&
+        band.genres.length <= 3 &&
+        band.genres.every((genre) => genre.trim() !== "") &&
+        band.area.trim() !== "",
+      profileImageAdded: band.imageStorageId !== undefined,
+      musicAdded:
+        video !== null ||
+        (band.linkBc?.trim() ?? "") !== "" ||
+        (band.linkYt?.trim() ?? "") !== "",
+      socialLinksAdded: (band.linkIg?.trim() ?? "") !== "",
+      firstGigCreated: gig !== null,
+      membersInvited: memberships.length > 1,
+      publicProfilePreviewed: band.publicProfilePreviewedAt !== undefined,
+    };
+  },
+});
+
+export const markPreviewed = mutation({
+  args: { bandId: v.id("bands") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { band } = await requireBandMemberMutation(ctx, args.bandId);
+    if (band.publicProfilePreviewedAt === undefined) {
+      await ctx.db.patch(args.bandId, {
+        publicProfilePreviewedAt: Date.now(),
+      });
+    }
+    return null;
+  },
+});
+
 export const createBand = mutation({
   args: {
     name: v.string(),
     genres: v.array(v.string()),
     bio: v.string(),
-    inviteHandles: v.array(v.string()),
-    area: v.optional(v.string()),
+    // Accepted but deliberately ignored while older clients age out. Real
+    // memberships are created only through bandInvites:accept.
+    inviteHandles: v.optional(v.array(v.string())),
+    area: v.string(),
     linkIg: v.optional(v.string()),
     linkBc: v.optional(v.string()),
     linkYt: v.optional(v.string()),
+    credits: v.optional(v.string()),
   },
   returns: v.object({
     bandId: v.id("bands"),
@@ -125,24 +261,25 @@ export const createBand = mutation({
   }),
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    const slug = await uniqueSlug(ctx, args.name);
+    const profile = requiredProfileValues(args.name, args.genres, args.area);
+    const slug = await uniqueSlug(ctx, profile.name);
     const bandId = await ctx.db.insert("bands", {
-      name: args.name,
-      genres: args.genres,
-      bio: args.bio,
-      area: args.area ?? "Bay Area",
-      colorHex: bandColorFor(args.name),
-      initials: initialsFor(args.name),
+      name: profile.name,
+      genres: profile.genres,
+      bio: optionalText(args.bio),
+      area: profile.area,
+      colorHex: bandColorFor(profile.name),
+      initials: initialsFor(profile.name),
       // Invariant: followerCount == count(follows) + count(bandMembers). This
       // insert is followed by exactly one bandMembers row (the caller, admin)
-      // and no follows row. inviteHandles are stored strings — nothing converts
-      // them into bandMembers, so they must not be counted here.
+      // and no follows row. Legacy inviteHandles are ignored — only confirmed
+      // bandInvites:accept calls can create another membership.
       followerCount: 1,
       pastShows: [],
-      inviteHandles: args.inviteHandles,
-      linkIg: args.linkIg,
-      linkBc: args.linkBc,
-      linkYt: args.linkYt,
+      linkIg: optionalText(args.linkIg),
+      linkBc: optionalText(args.linkBc),
+      linkYt: optionalText(args.linkYt),
+      credits: optionalText(args.credits),
       slug,
     });
     await ctx.db.insert("bandMembers", {
@@ -163,10 +300,13 @@ export const updateProfile = mutation({
     genres: v.optional(v.array(v.string())),
     area: v.optional(v.string()),
     bio: v.optional(v.string()),
+    // Accepted but deliberately ignored while older clients age out. Real
+    // memberships are created only through bandInvites:accept.
     inviteHandles: v.optional(v.array(v.string())),
     linkIg: v.optional(v.string()),
     linkBc: v.optional(v.string()),
     linkYt: v.optional(v.string()),
+    credits: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -177,29 +317,46 @@ export const updateProfile = mutation({
       genres?: string[];
       area?: string;
       bio?: string;
-      inviteHandles?: string[];
       linkIg?: string;
       linkBc?: string;
       linkYt?: string;
+      credits?: string;
     } = {};
+    // Slug and color deliberately remain stable across renames. Initials are
+    // the visible label for the new name and therefore do follow it.
     if (args.name !== undefined) {
-      // Two name-derived fields deliberately do NOT follow a rename:
-      // `slug`, so shared links keep resolving, and `colorHex`, which is the
-      // band's visual identity everywhere it appears in the feed — recoloring
-      // a known band mid-flight is worse than a color that no longer matches
-      // its name hash. Initials are the label on that swatch, so they do.
-      patch.name = args.name;
-      patch.initials = initialsFor(args.name);
+      const name = args.name.trim();
+      if (name === "") {
+        throw new Error("Band name, sound, and home base are required");
+      }
+      patch.name = name;
+      patch.initials = initialsFor(name);
     }
-    if (args.genres !== undefined) patch.genres = args.genres;
-    if (args.area !== undefined) patch.area = args.area;
-    if (args.bio !== undefined) patch.bio = args.bio;
-    if (args.inviteHandles !== undefined) {
-      patch.inviteHandles = args.inviteHandles;
+    if (args.genres !== undefined) {
+      const genres = args.genres.map((genre) => genre.trim());
+      if (genres.length === 0) {
+        throw new Error("Band name, sound, and home base are required");
+      }
+      if (genres.length > 3) {
+        throw new Error("Choose no more than three genres");
+      }
+      if (genres.some((genre) => genre === "")) {
+        throw new Error("Genres cannot be blank");
+      }
+      patch.genres = genres;
     }
-    if (args.linkIg !== undefined) patch.linkIg = args.linkIg;
-    if (args.linkBc !== undefined) patch.linkBc = args.linkBc;
-    if (args.linkYt !== undefined) patch.linkYt = args.linkYt;
+    if (args.area !== undefined) {
+      const area = args.area.trim();
+      if (area === "") {
+        throw new Error("Band name, sound, and home base are required");
+      }
+      patch.area = area;
+    }
+    if (args.bio !== undefined) patch.bio = optionalText(args.bio);
+    if (args.linkIg !== undefined) patch.linkIg = optionalText(args.linkIg);
+    if (args.linkBc !== undefined) patch.linkBc = optionalText(args.linkBc);
+    if (args.linkYt !== undefined) patch.linkYt = optionalText(args.linkYt);
+    if (args.credits !== undefined) patch.credits = optionalText(args.credits);
     if (Object.keys(patch).length > 0) {
       await ctx.db.patch(args.bandId, patch);
     }

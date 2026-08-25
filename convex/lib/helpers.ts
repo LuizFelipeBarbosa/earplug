@@ -120,6 +120,50 @@ export async function requireBandAdmin(
   return user;
 }
 
+/** Query counterpart to requireBandAdmin. Private admin queries intentionally
+ * throw instead of returning an empty payload to an unauthorized caller. */
+export async function requireBandAdminQuery(
+  ctx: QueryCtx,
+  bandId: Id<"bands">,
+): Promise<Doc<"bands">> {
+  const user = await currentUser(ctx);
+  if (!user) {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not signed in");
+    throw new Error("No user record — call users:ensureUser first");
+  }
+  const band = await ctx.db.get(bandId);
+  if (!band) throw new Error("Band not found");
+  const membership = await ctx.db
+    .query("bandMembers")
+    .withIndex("by_band_user", (q) =>
+      q.eq("bandId", bandId).eq("userId", user._id),
+    )
+    .unique();
+  if (!membership || membership.role !== "admin") {
+    throw new Error("Not an admin of this band");
+  }
+  return band;
+}
+
+/** Mutation guard for operations available to either band role. */
+export async function requireBandMemberMutation(
+  ctx: MutationCtx,
+  bandId: Id<"bands">,
+): Promise<{ band: Doc<"bands">; user: Doc<"users"> }> {
+  const user = await requireUser(ctx);
+  const band = await ctx.db.get(bandId);
+  if (!band) throw new Error("Band not found");
+  const membership = await ctx.db
+    .query("bandMembers")
+    .withIndex("by_band_user", (q) =>
+      q.eq("bandId", bandId).eq("userId", user._id),
+    )
+    .unique();
+  if (!membership) throw new Error("Not a member of this band");
+  return { band, user };
+}
+
 /** Throws unless the caller is a member of the band. Returns the band so a
  * private query can authorize and hydrate band-owned data with one guard. */
 export async function requireBandMember(
@@ -159,6 +203,7 @@ export const bandPayloadValidator = v.object({
   linkIg: v.union(v.string(), v.null()),
   linkBc: v.union(v.string(), v.null()),
   linkYt: v.union(v.string(), v.null()),
+  credits: v.union(v.string(), v.null()),
   // The wire shape is the stored shape here; reuse it rather than restating it.
   pastShows: v.array(pastShowValidator),
 });
@@ -448,6 +493,7 @@ export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
     linkIg: band.linkIg ?? null,
     linkBc: band.linkBc ?? null,
     linkYt: band.linkYt ?? null,
+    credits: band.credits ?? null,
     pastShows: band.pastShows,
   };
 }

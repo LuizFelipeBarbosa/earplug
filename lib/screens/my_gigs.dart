@@ -257,11 +257,15 @@ class _ProfileTutorial extends StatefulWidget {
 class _ProfileTutorialState extends State<_ProfileTutorial> {
   var _step = 0;
 
-  static const _titles = ['MAKE IT YOURS', 'SAVE YOUR SCENE', 'YOUR BAND SIDE'];
+  static const _titles = [
+    'MAKE IT YOURS',
+    'SAVE YOUR SCENE',
+    'MANAGE YOUR BAND',
+  ];
   static const _messages = [
     'Edit your name, photo, home scene, favorite genres, and privacy choices.',
     'RSVP to shows, save ones for later, and follow bands you want to hear from.',
-    'Create a band from this profile, then switch between fan and band views anytime.',
+    'Create a band from this profile, then open its dashboard anytime.',
   ];
 
   @override
