@@ -17,10 +17,20 @@ import 'services/location_service.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
 
+String _bandInitials(String name) => name
+    .split(RegExp(r'\s+'))
+    .where((word) => word.isNotEmpty)
+    .map((word) => word[0])
+    .take(2)
+    .join()
+    .toUpperCase();
+
 enum Screen {
   home,
   gig,
   band,
+  bandPreview,
+  bandJoin,
   venue,
   explore,
   myGigs,
@@ -98,14 +108,11 @@ class DiscoveryFilters {
       (maxDistanceMiles == null ? 0 : 1);
 }
 
-enum PendingKind { rsvp, follow, save, myGigs, band }
+enum PendingKind { rsvp, follow, save, myGigs, band, join }
 
 enum DataStatus { connecting, ready, error }
 
 enum ExploreResultType { all, events, bands, venues }
-
-/// The band-profile fields the edit screen writes one keystroke at a time.
-enum _BandField { bio, linkIg, linkBc, linkYt }
 
 class PendingAuth {
   final PendingKind kind;
@@ -120,11 +127,13 @@ class AppState extends ChangeNotifier {
     AuthService? auth,
     LocationService? locationService,
     MediaUploadService? mediaUploadService,
+    String? initialJoinToken,
   }) : this._(
          auth ?? FakeAuthService(),
          repository,
          locationService ?? GeolocatorLocationService(),
          mediaUploadService,
+         initialJoinToken,
        );
 
   AppState._(
@@ -132,6 +141,7 @@ class AppState extends ChangeNotifier {
     EarplugRepository? providedRepository,
     this.locationService,
     MediaUploadService? providedMediaUploader,
+    String? initialJoinToken,
   ) : auth = resolvedAuth,
       repository = providedRepository ?? DemoRepository(auth: resolvedAuth),
       // Only a real backend has a connection to wait on; the demo data is
@@ -160,6 +170,11 @@ class AppState extends ChangeNotifier {
         ++_membershipsGeneration,
         requireAuthentication: false,
       );
+    }
+    final token = initialJoinToken?.trim();
+    if (token != null && token.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.bandJoin, token)];
+      unawaited(_resolveJoinInvite(token));
     }
   }
 
@@ -226,16 +241,19 @@ class AppState extends ChangeNotifier {
 
   BandMediaController? _media;
 
-  /// What the user typed into the band-edit fields, shown until the server has
-  /// it. Dropped if the write fails, so nothing on screen looks saved when it
-  /// isn't.
-  final Map<(String bandId, _BandField field), String> _bandEdits = {};
+  final Map<String, BandProfileDetails> _bandProfileDetails = {};
+  final Set<String> _bandProfileDetailsLoading = {};
+  final Map<String, BandSetupStatus> _bandSetupStatuses = {};
+  final Set<String> _bandSetupLoading = {};
+  final Map<String, BandInvite?> _bandInvites = {};
+  final Set<String> _bandInviteLoading = {};
 
-  /// One pending write per field. Typing restarts it, so a burst of keystrokes
-  /// costs one mutation instead of one each.
-  final Map<(String bandId, _BandField field), Timer> _bandEditTimers = {};
-
-  static const _bandEditDebounce = Duration(milliseconds: 400);
+  BandInviteResolution? joinInvite;
+  String? joinToken;
+  bool joinInviteLoading = false;
+  String? joinInviteError;
+  bool joinInviteAccepting = false;
+  bool joinInviteAccepted = false;
 
   // ---- navigation
   List<ScreenEntry> _stack = const [ScreenEntry(Screen.home)];
@@ -342,7 +360,7 @@ class AppState extends ChangeNotifier {
   final List<String> nbGenres = []; // insertion order shows on the tape, max 3
   String? nbArea;
   String nbBio = '';
-  final List<String> nbInvites = [];
+  String nbCredits = '';
   String nbIg = '';
   String nbBc = '';
   String nbYt = '';
@@ -392,10 +410,6 @@ class AppState extends ChangeNotifier {
     _disposed = true;
     _membershipsGeneration++;
     _toastTimer?.cancel();
-    for (final timer in _bandEditTimers.values) {
-      timer.cancel();
-    }
-    _bandEditTimers.clear();
     unawaited(_authSubscription?.cancel());
     unawaited(_feedSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
@@ -766,17 +780,49 @@ class AppState extends ChangeNotifier {
   void back() {
     if (_stack.length > 1) {
       _set(() => _stack = _stack.sublist(0, _stack.length - 1));
+      _refreshVisibleBandDashboard();
     }
   }
 
-  void resetTo(Screen s) => _set(() => _stack = [ScreenEntry(s)]);
+  void resetTo(Screen s) {
+    _set(() => _stack = [ScreenEntry(s)]);
+    _refreshVisibleBandDashboard();
+  }
+
+  void _refreshVisibleBandDashboard() {
+    if (current.screen == Screen.bandDash && bandId.isNotEmpty) {
+      unawaited(refreshBandSetupStatus(bandId));
+    }
+  }
 
   void openGig(String id) {
     if (current.screen == Screen.gig && current.param == id) return;
     go(Screen.gig, id);
   }
 
-  void openBand(String id) => go(Screen.band, id);
+  void openBand(String id) {
+    go(Screen.band, id);
+    unawaited(loadBandProfileDetails(id));
+  }
+
+  void previewPublicProfile() {
+    final id = bandId;
+    if (id.isEmpty) return;
+    go(Screen.bandPreview, id);
+    unawaited(loadBandProfileDetails(id));
+    unawaited(_markBandPreviewed(id));
+  }
+
+  void returnToBandDashboard() => resetTo(Screen.bandDash);
+
+  void openBandEditor({String? section}) {
+    if (!isAdminOf(bandId)) return;
+    go(Screen.bandEdit, section);
+    unawaited(loadBandProfileDetails(bandId, refresh: true));
+    if (section == 'members') unawaited(refreshBandInvite(bandId));
+  }
+
+  void openInvitationPanel() => openBandEditor(section: 'members');
 
   void openVenue(String id) {
     if (current.screen == Screen.venue && current.param == id) return;
@@ -898,14 +944,10 @@ class AppState extends ChangeNotifier {
     filters = const DiscoveryFilters();
     query = '';
     exploreResultType = ExploreResultType.all;
-    // Per-band caches outlive the session otherwise, so signing in as someone
-    // else in the same process would show the previous user's unsaved edits —
-    // or, worse, write them to their band.
-    for (final timer in _bandEditTimers.values) {
-      timer.cancel();
-    }
-    _bandEditTimers.clear();
-    _bandEdits.clear();
+    _bandSetupStatuses.clear();
+    _bandSetupLoading.clear();
+    _bandInvites.clear();
+    _bandInviteLoading.clear();
     _media?.clearForSignOut();
     _resetBandForm();
     _resetGigForm();
@@ -967,6 +1009,8 @@ class AppState extends ChangeNotifier {
       case PendingKind.band:
         _resetBandForm();
         _postAuthScreen = Screen.bandCreate;
+      case PendingKind.join:
+        _postAuthScreen = Screen.bandJoin;
       case null:
         _postAuthScreen = null;
     }
@@ -1940,20 +1984,13 @@ class AppState extends ChangeNotifier {
   /// RSVP count shown to bands: base demo count plus this user's RSVP.
   int rsvpCount(Gig g) => g.going + (rsvps.contains(g.id) ? 1 : 0);
 
-  /// The user's own unsaved edit if there is one, else what the server holds.
-  String _bandFieldFor(String id, _BandField field, String? stored) =>
-      _bandEdits[(id, field)] ?? stored ?? '';
+  String bioFor(String id) => band(id)?.bio ?? '';
 
-  String bioFor(String id) => _bandFieldFor(id, _BandField.bio, band(id)?.bio);
+  String linkIgFor(String id) => band(id)?.linkIg ?? '';
 
-  String linkIgFor(String id) =>
-      _bandFieldFor(id, _BandField.linkIg, band(id)?.linkIg);
+  String linkBcFor(String id) => band(id)?.linkBc ?? '';
 
-  String linkBcFor(String id) =>
-      _bandFieldFor(id, _BandField.linkBc, band(id)?.linkBc);
-
-  String linkYtFor(String id) =>
-      _bandFieldFor(id, _BandField.linkYt, band(id)?.linkYt);
+  String linkYtFor(String id) => band(id)?.linkYt ?? '';
 
   void retry() {
     _dataStatus = DataStatus.connecting;
@@ -1982,64 +2019,218 @@ class AppState extends ChangeNotifier {
   void switchToBand(String id) {
     bandId = id;
     resetTo(Screen.bandDash);
+    unawaited(refreshBandSetupStatus(id));
   }
 
   void toFanView() => resetTo(Screen.home);
 
-  void setBandBio(String v) => _editBandField(_BandField.bio, v);
-
-  void setLinkIg(String v) => _editBandField(_BandField.linkIg, v);
-
-  void setLinkBc(String v) => _editBandField(_BandField.linkBc, v);
-
-  void setLinkYt(String v) => _editBandField(_BandField.linkYt, v);
-
-  /// Shows what was typed at once, then persists once typing pauses. These are
-  /// wired to `onChanged`, so writing on every keystroke would be one mutation
-  /// per character.
-  void _editBandField(_BandField field, String value) {
-    final id = bandId;
-    if (id.isEmpty) return;
-
-    final key = (id, field);
-    _bandEdits[key] = value;
-    notifyListeners();
-
-    _bandEditTimers.remove(key)?.cancel();
-    _bandEditTimers[key] = Timer(_bandEditDebounce, () {
-      _bandEditTimers.remove(key);
-      unawaited(_persistBandField(id, field, value));
-    });
+  BandProfileDetails? profileDetailsFor(String id) {
+    final details = _bandProfileDetails[id];
+    if (details == null) unawaited(loadBandProfileDetails(id));
+    return details;
   }
 
-  Future<void> _persistBandField(
-    String id,
-    _BandField field,
-    String value,
-  ) async {
+  Future<void> loadBandProfileDetails(String id, {bool refresh = false}) async {
+    if ((!refresh && _bandProfileDetails.containsKey(id)) ||
+        !_bandProfileDetailsLoading.add(id)) {
+      return;
+    }
     try {
-      await switch (field) {
-        _BandField.bio => repository.updateBandProfile(bandId: id, bio: value),
-        _BandField.linkIg => repository.updateBandProfile(
-          bandId: id,
-          linkIg: value,
-        ),
-        _BandField.linkBc => repository.updateBandProfile(
-          bandId: id,
-          linkBc: value,
-        ),
-        _BandField.linkYt => repository.updateBandProfile(
-          bandId: id,
-          linkYt: value,
-        ),
-      };
+      _bandProfileDetails[id] = await repository.bandProfileDetails(id);
     } catch (error) {
-      logError('updateBandProfile', error);
-      // Keeping the override would leave text on screen that was never saved.
-      // Dropping it falls back to the server's value, so what is shown is what
-      // exists — unless the user has typed on since, which supersedes this.
-      if (_bandEdits[(id, field)] == value) _bandEdits.remove((id, field));
-      say(genericErrorMessage); // notifies, so the drop shows
+      logError('bandProfileDetails', error);
+    } finally {
+      _bandProfileDetailsLoading.remove(id);
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  BandSetupStatus? setupStatusFor(String id) {
+    final status = _bandSetupStatuses[id];
+    if (status == null && isAdminOf(id)) {
+      unawaited(refreshBandSetupStatus(id));
+    }
+    return status;
+  }
+
+  bool setupStatusLoadingFor(String id) => _bandSetupLoading.contains(id);
+
+  Future<void> refreshBandSetupStatus(String id) async {
+    if (!isAdminOf(id) || !_bandSetupLoading.add(id)) return;
+    try {
+      _bandSetupStatuses[id] = await repository.bandSetupStatus(id);
+    } catch (error) {
+      logError('bandSetupStatus', error);
+    } finally {
+      _bandSetupLoading.remove(id);
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  Future<void> _markBandPreviewed(String id) async {
+    try {
+      await repository.markBandPreviewed(id);
+      await refreshBandSetupStatus(id);
+    } catch (error) {
+      logError('markBandPreviewed', error);
+    }
+  }
+
+  Future<void> saveBandProfile(BandProfileUpdate update) async {
+    final name = update.name.trim();
+    final area = update.area.trim();
+    if (name.isEmpty || area.isEmpty || update.genres.isEmpty) {
+      throw ArgumentError('Band name, sound, and home base are required.');
+    }
+    if (update.genres.length > 3) {
+      throw ArgumentError('Choose no more than three genres.');
+    }
+
+    final normalized = BandProfileUpdate(
+      bandId: update.bandId,
+      name: name,
+      genres: List<String>.of(update.genres),
+      area: area,
+      bio: update.bio.trim(),
+      linkIg: update.linkIg.trim(),
+      linkBc: update.linkBc.trim(),
+      linkYt: update.linkYt.trim(),
+      credits: update.credits.trim(),
+    );
+    await repository.updateBandProfile(normalized);
+
+    final existing = _bands[update.bandId];
+    if (existing != null) {
+      _bands[update.bandId] = existing.copyWith(
+        name: normalized.name,
+        initials: _bandInitials(normalized.name),
+        genres: normalized.genres,
+        area: normalized.area,
+        bio: normalized.bio,
+        linkIg: normalized.linkIg,
+        linkBc: normalized.linkBc,
+        linkYt: normalized.linkYt,
+        credits: normalized.credits,
+      );
+    }
+    final currentDetails = _bandProfileDetails[update.bandId];
+    _bandProfileDetails[update.bandId] = BandProfileDetails(
+      credits: normalized.credits.isEmpty ? null : normalized.credits,
+      linkIg: normalized.linkIg.isEmpty ? null : normalized.linkIg,
+      linkBc: normalized.linkBc.isEmpty ? null : normalized.linkBc,
+      linkYt: normalized.linkYt.isEmpty ? null : normalized.linkYt,
+      memberNames: currentDetails?.memberNames ?? const [],
+    );
+    notifyListeners();
+    await refreshBandSetupStatus(update.bandId);
+  }
+
+  BandInvite? inviteFor(String id) {
+    if (!_bandInvites.containsKey(id) && isAdminOf(id)) {
+      unawaited(refreshBandInvite(id));
+    }
+    return _bandInvites[id];
+  }
+
+  bool inviteLoadingFor(String id) => _bandInviteLoading.contains(id);
+
+  Future<void> refreshBandInvite(String id) async {
+    if (!isAdminOf(id) || !_bandInviteLoading.add(id)) return;
+    try {
+      _bandInvites[id] = await repository.bandInvite(id);
+    } catch (error) {
+      logError('bandInvite', error);
+    } finally {
+      _bandInviteLoading.remove(id);
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  Future<BandInvite> createBandInvitation() async {
+    final invite = await repository.createBandInvite(bandId);
+    _bandInvites[bandId] = invite;
+    notifyListeners();
+    return invite;
+  }
+
+  Future<BandInvite> rotateBandInvitation() async {
+    final invite = await repository.rotateBandInvite(bandId);
+    _bandInvites[bandId] = invite;
+    notifyListeners();
+    return invite;
+  }
+
+  Future<void> revokeBandInvitation() async {
+    final id = bandId;
+    await repository.revokeBandInvite(id);
+    final current = _bandInvites[id];
+    if (current != null) {
+      _bandInvites[id] = BandInvite(
+        bandId: current.bandId,
+        token: current.token,
+        expiresAt: current.expiresAt,
+        revoked: true,
+      );
+    }
+    notifyListeners();
+  }
+
+  Future<void> openJoinInvite(String token) async {
+    _stack = [ScreenEntry(Screen.bandJoin, token)];
+    notifyListeners();
+    await _resolveJoinInvite(token);
+  }
+
+  Future<void> _resolveJoinInvite(String token) async {
+    joinToken = token;
+    joinInvite = null;
+    joinInviteError = null;
+    joinInviteAccepted = false;
+    joinInviteLoading = true;
+    notifyListeners();
+    try {
+      final resolved = await repository.resolveBandInvite(token);
+      if (resolved == null) {
+        joinInviteError = 'This invitation is invalid, expired, or revoked.';
+      } else {
+        joinInvite = resolved;
+      }
+    } catch (error) {
+      logError('resolveBandInvite', error);
+      joinInviteError = genericErrorMessage;
+    } finally {
+      joinInviteLoading = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  Future<void> confirmJoinInvite() async {
+    final token = joinToken;
+    if (token == null || joinInvite == null || joinInviteAccepting) return;
+    if (!authed) {
+      needAuth(PendingAuth(PendingKind.join, token));
+      return;
+    }
+    await _acceptJoinInvite(token);
+  }
+
+  Future<void> _acceptJoinInvite(String token) async {
+    joinInviteAccepting = true;
+    joinInviteError = null;
+    notifyListeners();
+    try {
+      final accepted = await repository.acceptBandInvite(token);
+      bandId = accepted.bandId;
+      joinInviteAccepted = true;
+      _restartMemberships();
+      unawaited(loadBandProfileDetails(accepted.bandId, refresh: true));
+    } catch (error) {
+      logError('acceptBandInvite', error);
+      joinInviteError = 'This invitation could not be accepted.';
+      rethrow;
+    } finally {
+      joinInviteAccepting = false;
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -2055,7 +2246,7 @@ class AppState extends ChangeNotifier {
     nbGenres.clear();
     nbArea = null;
     nbBio = '';
-    nbInvites.clear();
+    nbCredits = '';
     nbIg = '';
     nbBc = '';
     nbYt = '';
@@ -2071,6 +2262,8 @@ class AppState extends ChangeNotifier {
   void setNbName(String v) => _set(() => nbName = v);
 
   void setNbBio(String v) => _set(() => nbBio = v);
+
+  void setNbCredits(String v) => _set(() => nbCredits = v);
 
   void setNbArea(String v) {
     final area = v.trim();
@@ -2110,16 +2303,6 @@ class AppState extends ChangeNotifier {
     }
     _set(() => nbGenres.add(g));
   }
-
-  void addNbInvite(String raw) {
-    final n = raw.trim();
-    if (n.isEmpty) return;
-    final handle = n.startsWith('@') ? n : '@$n';
-    if (nbInvites.contains(handle)) return;
-    _set(() => nbInvites.add(handle));
-  }
-
-  void removeNbInvite(String handle) => _set(() => nbInvites.remove(handle));
 
   bool get canCreateBand =>
       nbName.trim().isNotEmpty && nbGenres.isNotEmpty && nbArea != null;
@@ -2205,27 +2388,29 @@ class AppState extends ChangeNotifier {
     try {
       if (_nbBandId case final existingId?) {
         // "Keep editing" after a successful create: save onto the same band.
-        await repository.updateBandProfile(
-          bandId: existingId,
-          name: name,
-          genres: List.of(nbGenres),
-          area: nbArea,
-          bio: nbBio.trim(),
-          inviteHandles: List.of(nbInvites),
-          linkIg: nbIg.trim(),
-          linkBc: nbBc.trim(),
-          linkYt: nbYt.trim(),
+        await saveBandProfile(
+          BandProfileUpdate(
+            bandId: existingId,
+            name: name,
+            genres: List.of(nbGenres),
+            area: nbArea!,
+            bio: nbBio,
+            linkIg: nbIg,
+            linkBc: nbBc,
+            linkYt: nbYt,
+            credits: nbCredits,
+          ),
         );
       } else {
         final created = await repository.createBand(
           name: name,
           genres: List.of(nbGenres),
           bio: nbBio.trim(),
-          inviteHandles: List.of(nbInvites),
-          area: nbArea,
+          area: nbArea!,
           linkIg: nbIg.trim().isEmpty ? null : nbIg.trim(),
           linkBc: nbBc.trim().isEmpty ? null : nbBc.trim(),
           linkYt: nbYt.trim().isEmpty ? null : nbYt.trim(),
+          credits: nbCredits.trim().isEmpty ? null : nbCredits.trim(),
         );
         final band = created.band;
         bandId = band.id;
@@ -2253,6 +2438,7 @@ class AppState extends ChangeNotifier {
     }
     nbCreated = true;
     notifyListeners();
+    unawaited(refreshBandSetupStatus(bandId));
     _refreshExploreBands();
   }
 
@@ -2276,6 +2462,7 @@ class AppState extends ChangeNotifier {
     await media.setHero(bandId, mediaId);
     nbPhotoUploading = false;
     notifyListeners();
+    unawaited(refreshBandSetupStatus(bandId));
   }
 
   Future<void> retryNbPhoto() async {
@@ -2416,6 +2603,7 @@ class AppState extends ChangeNotifier {
     _invalidateVenueDetails({venueId});
     gfPublished = true;
     notifyListeners();
+    unawaited(refreshBandSetupStatus(bandId));
   }
 
   /// "Keep editing" — back to the form with everything still filled in.

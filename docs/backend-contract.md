@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.12)
+# EarPlug Convex function contract (FROZEN — v1.13)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -15,10 +15,9 @@ venue and all 275 RSVPs unreadable by any query. Added `gigs:pastForBand` and
 **v1.3 — share links.** Every band carries a `slug`, derived from its name by
 `uniqueSlug` and deliberately frozen across renames so a shared link keeps
 resolving. `bands:createBand` returns it next to the id and `bands:bySlug`
-resolves it back to a band (`earplug.app/<slug>`, and the `join/<slug>` invite
-link built on it). `bands:updateProfile` covers the whole profile, not just bio
-and links. All of this reached the backend before v1.2 and was never recorded
-here.
+resolves it back to a band (`earplug.app/<slug>`). `bands:updateProfile` covers
+the whole profile, not just bio and links. All of this reached the backend
+before v1.2 and was never recorded here.
 
 **v1.4 — the follower-count invariant, stated.** `bands.followerCount` is
 `count(follows by band) + count(bandMembers by band)`. Of the three writers
@@ -127,13 +126,31 @@ subscribes to `gigs:forBand` for each followed band, and that query now reads
 a followed band's later show. Each band's own upcoming result remains bounded
 to 200 rows.
 
+**v1.13 — task-oriented band setup and secure memberships.** Band profiles now
+store and publish optional `credits` and the existing YouTube link. The public
+`bands:profileDetails` query adds accepted member names without putting that
+membership join into feed/search payloads. Admins receive a private seven-flag
+`bands:setupStatus`; either band role can persist the first managed public
+preview with `bands:markPreviewed`. `bands:updateProfile` is now one full,
+validated, atomic save of every editable field, while renames still preserve
+slug and color. Legacy `inviteHandles` remain readable in stored rows and are
+accepted as a no-op create argument for compatibility, but no supported path
+writes them. Real membership uses one unguessable 256-bit, reusable,
+seven-day `bandInvites` link per band. Admins can create, rotate, and revoke it;
+a token-guarded scheduled mutation materializes expiry so public resolution
+never trusts a caller's clock and reveals only band confirmation identity;
+authenticated
+acceptance is idempotent and increments `followerCount` exactly once with the
+new member row.
+
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
 (UTC). Auth = Clerk JWT (template `convex`) attached by the client; queries that
 depend on identity return empty/null when unauthenticated (they must NOT throw,
 the client subscribes before sign-in); the explicitly band-private
-`analytics:bandRecap` is the query exception and throws unless the caller is a
-member. **All mutations throw when unauthenticated**.
+`analytics:bandRecap`, `bands:setupStatus`, and `bandInvites:manage` queries are
+the exceptions and throw unless the caller has their required band role.
+**All mutations throw when unauthenticated**.
 
 ## Payload shapes
 
@@ -157,13 +174,33 @@ member. **All mutations throw when unauthenticated**.
   "distSF": "0.8 mi", "distOak": "6.3 mi", "lat": 37.75, "lng": -122.41 }
 
 // BandPayload — one shape everywhere; every key is always present
-// slug and linkYt are stored and writable but deliberately NOT on the wire in v1
 { "_id": "...", "name": "...", "genres": ["garage"], "area": "...",
   "colorHex": "#7B8FFF", "initials": "FD", "followerCount": 486, "bio": "...",
   // resolves via imageStorageId when set and live; null otherwise
   "heroUrl": null,
   "linkIg": "@foghorndiet", "linkBc": "foghorndiet.bandcamp.com",
+  "linkYt": "youtube.com/@foghorndiet", "credits": "Recorded by Mara",
   "pastShows": [{ "title": "...", "meta": "JUL 12" }] }
+
+// BandProfileDetails — public; only this profile-specific read joins members
+{ "credits": "Recorded by Mara", "linkIg": "@foghorndiet",
+  "linkBc": "foghorndiet.bandcamp.com",
+  "linkYt": "youtube.com/@foghorndiet",
+  "memberNames": ["Sam Reyes", "Mara Kim"] }
+
+// BandSetupStatus — admin-only, advisory, and never an access gate
+{ "profileComplete": true, "profileImageAdded": false,
+  "musicAdded": true, "socialLinksAdded": true,
+  "firstGigCreated": false, "membersInvited": false,
+  "publicProfilePreviewed": true }
+
+// BandInvite — admin management payload
+{ "bandId": "...", "token": "<64 lowercase hex characters>",
+  "expiresAt": 1785904800000, "revoked": false }
+
+// BandInviteResolution — public confirmation identity only
+{ "bandId": "...", "bandName": "Foghorn Diet", "initials": "FD",
+  "colorHex": "#7B8FFF" }
 
 // MediaPayload
 { "_id": "...", "bandId": "...", "kind": "video|photo",
@@ -259,7 +296,11 @@ member. **All mutations throw when unauthenticated**.
 | `bands:list`                    | `{ paginationOpts }` | Standard Convex pagination result with `page: BandPayload[]`, name-ascending through `bands.by_name`; pass `continueCursor` into the next request unchanged. Public.                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `bands:search`                  | `{ q: string }`      | `BandPayload[]` — name search-index match; `q: ""` → all bands (capped 50)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `bands:bySlug`                  | `{ slug: string }`   | `BandPayload` (full) or `null` — resolves a shared profile link. Public. Duplicate slugs degrade to the older band rather than throwing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `bands:profileDetails`          | `{ bandId }`         | `BandProfileDetails` or `null` — public credits/links plus accepted, non-deleted member names. Memberships are capped at 100 and joined only here, not in feed/search payloads.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | ★ `bands:myBands`               | `{}`                 | `[{ band: BandPayload, role: "admin"\|"member" }]`; `[]` unauth. Capped at 100 memberships.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `bands:setupStatus`             | `{ bandId }`         | `BandSetupStatus` — admin-only and throws otherwise. The seven flags are required profile values; configured profile image; video/Bandcamp/YouTube; Instagram; any `gigBands` row; a second accepted membership; and persisted preview timestamp.                                                                                                                                                                                                                                                                                                                                                                   |
+| `bandInvites:manage`            | `{ bandId }`         | `BandInvite` or `null` — admin-only status for the band's one reusable link, including expired/revoked state.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `bandInvites:resolve`           | `{ token, now? }`    | `BandInviteResolution` or `null` — public. Returns only confirmation-screen identity while the server-materialized expiry and revoked flags are clear. Deprecated `now?` is accepted for compatibility but ignored, so callers cannot extend validity with a false clock.                                                                                                                                                                                                                                                                                                                                         |
 | `media:forBand`                 | `{ bandId }`         | `MediaPayload[]` — public; one list across both kinds, ordered by `order` asc                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `users:me`                      | `{}`                 | `UserPayload \| null`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | ★ `interactions:myInteractions` | `{}`                 | `{ rsvpGigIds: string[], followBandIds: string[], savedGigIds: string[], gigs: GigPayload[], attendedCount: number }`; `gigs` deduplicates and hydrates upcoming/grace-window RSVP/saved rows beyond the feed window; empty/0 unauth                                                                                                                                                                                                                                                                                                                                                                                |
@@ -281,8 +322,13 @@ member. **All mutations throw when unauthenticated**.
 | `interactions:toggleRsvp`               | `{ gigId }`                                                                                                                                                                                                          | `{ on: boolean }`  | Insert/delete join row via by_user_gig index; `goingCount` ±1 same transaction.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `interactions:toggleFollow`             | `{ bandId }`                                                                                                                                                                                                         | `{ on: boolean }`  | `followerCount` ±1 same transaction.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `interactions:toggleSave`               | `{ gigId }`                                                                                                                                                                                                          | `{ on: boolean }`  |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `bands:createBand`                      | `{ name, genres: string[], bio, inviteHandles: string[], area?, linkIg?, linkBc?, linkYt? }`                                                                                                                         | `{ bandId, slug }` | Inserts band (colorHex/initials/slug computed server-side; `area` defaults to "Bay Area"; `followerCount = 1` — the single admin `bandMembers` row this insert is always followed by, per the v1.4 invariant; invites are stored/ignored for v1 and are deliberately not counted).                                                                                                                                                                                                                                               |
-| `bands:updateProfile`                   | `{ bandId, name?, genres?, area?, bio?, inviteHandles?, linkIg?, linkBc?, linkYt? }`                                                                                                                                 | `null`             | requireBandAdmin. Only the keys supplied are patched. A rename recomputes `initials` but deliberately NOT `slug` (shared links keep resolving) or `colorHex` (the band's visual identity in the feed).                                                                                                                                                                                                                                                                                                                           |
+| `bands:createBand`                      | `{ name, genres: string[], bio, area, linkIg?, linkBc?, linkYt?, credits?, inviteHandles? }`                                                                                                                        | `{ bandId, slug, band }` | Inserts a trimmed, validated band (nonblank name and home base, 1–3 nonblank genres; colorHex/initials/slug computed server-side; `followerCount = 1` for the admin membership). Deprecated `inviteHandles?` is accepted for old clients but ignored and never stored.                                                                                                                                                                                                                                                            |
+| `bands:updateProfile`                   | `{ bandId, name, genres, area, bio, linkIg, linkBc, linkYt, credits }`                                                                                                                                               | `null`             | requireBandAdmin. One atomic full save. Trims fields, rejects blank required values or more than three genres, and removes blank optional fields. A rename recomputes `initials` but deliberately NOT `slug` or `colorHex`.                                                                                                                                                                                                                                                                                                         |
+| `bands:markPreviewed`                   | `{ bandId }`                                                                                                                                                                                                         | `null`             | Requires either accepted band role. Persists the first preview timestamp idempotently.                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `bandInvites:create`                    | `{ bandId }`                                                                                                                                                                                                         | `BandInvite`       | requireBandAdmin. Creates the band's 256-bit random, seven-day reusable link, reuses it while active, and refreshes it after expiry or revocation.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `bandInvites:rotate`                    | `{ bandId }`                                                                                                                                                                                                         | `BandInvite`       | requireBandAdmin. Replaces the token, creator, and seven-day expiry on the band's single row and clears revoked state. The former token stops resolving immediately.                                                                                                                                                                                                                                                                                                                                                             |
+| `bandInvites:revoke`                    | `{ bandId }`                                                                                                                                                                                                         | `null`             | requireBandAdmin. Idempotently marks the current reusable link revoked.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `bandInvites:accept`                    | `{ token }`                                                                                                                                                                                                          | `{ bandId, membershipCreated }` | Authenticated explicit confirmation. Rejects expired/revoked/unknown links. Inserts a `member` membership and increments `followerCount` in the same transaction only when no membership already exists; repeat acceptance returns `membershipCreated: false`.                                                                                                                                                                                                                                                             |
 | `gigs:publishGig`                       | `{ bandId, title, startsAt, doorsTime, venueId, price: number, flyKey: "xerox"\|"riso"\|"marquee"\|"blueprint"\|"sunburst"\|"custom", ticketing, ageRequirement: "allAges"\|"18Plus"\|"21Plus", externalUrl?, cap }` | `{ gigId }`        | requireBandAdmin(bandId); age requirement is explicit on every new write; flyKey client-chosen from the six listed literals; `ticketing === "external"` requires a valid http(s) `externalUrl`; `externalUrl` is dropped for `ticketing === "rsvp"`; `startsAt`/`price` must be finite and non-negative and the venue must exist. `lineup` is `[bandId]`, `genres` are copied from the band, `desc` starts empty, `createdByBand = bandId`, goingCount 0.                                                                        |
 | ↳ v1.1 args/rules for `gigs:publishGig` | Adds `flyStorageId?` to the args above                                                                                                                                                                               | `{ gigId }`        | `flyKey === "custom"` requires a live `flyStorageId` or throws. A non-`"custom"` flyKey silently drops any supplied `flyStorageId`; nothing is stored.                                                                                                                                                                                                                                                                                                                                                                           |
 | `media:generateUploadUrl`               | `{ bandId }`                                                                                                                                                                                                         | upload URL string  | requireBandAdmin(bandId) and nothing else — the 50-row cap is NOT checked here, because this URL also uploads gig flyers. `media:addMedia` is the only place the cap is enforced.                                                                                                                                                                                                                                                                                                                                                |
@@ -323,6 +369,10 @@ member. **All mutations throw when unauthenticated**.
 - `interactions:history` reads the 500 most recently created RSVP rows, then hydrates the existing
   past gig, venue, lineup bands, and flyer storage referenced by each result.
 - `MAX_MEDIA_BYTES = 100 MiB`.
+- Band invitation tokens carry 256 bits of strong pseudo-randomness. Creation
+  and rotation schedule `bandInvites:expire` for seven days later; its band and
+  token guard prevents an old rotation's job from expiring a replacement.
+  Each band keeps one invitation row, so rotation does not grow history.
 - Fan profile name ≤ 100 chars, bio ≤ 500 chars, at most 20 favorite genres,
   each nonblank and ≤ 50 chars, with no duplicates after trimming.
 - Titles ≤ 200 chars, captions ≤ 500. `lengthSec` is video-only and ≤ 4 hours.
@@ -337,7 +387,8 @@ member. **All mutations throw when unauthenticated**.
 
 - `bands.followerCount == count(follows by bandId) + count(bandMembers by
 bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
-  its follow row) and `bands:createBand` (seeds 1 with its admin member row).
+  its follow row), `bands:createBand` (seeds 1 with its admin member row), and
+  `bandInvites:accept` (+1 with a newly inserted member row).
   `maintenance:recountBandFollowers` checks and can repair drift.
   `convex/seed.ts`, however, writes decorative follower counts (486, 1214, 743,
   312, 927, 158) without creating any `follows` or `bandMembers` rows, so every
@@ -379,6 +430,9 @@ bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
 
 ## Internal (not called by client)
 
+- `bandInvites:expire` internalMutation — scheduled at the current token's
+  server-issued expiry. It sets the materialized `expired` flag only when both
+  band id and token still match, so delayed jobs from rotated links are no-ops.
 - `maintenance:backfillGigBands` internalMutation — dry-run by default; creates
   the `gigBands` rows for gigs written before the join table existed (all 14
   production rows came out of the legacy `events` migration). Idempotent by

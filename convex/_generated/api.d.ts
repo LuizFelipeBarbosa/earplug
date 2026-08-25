@@ -9,6 +9,7 @@
  */
 
 import type * as analytics from "../analytics.js";
+import type * as bandInvites from "../bandInvites.js";
 import type * as bands from "../bands.js";
 import type * as clerkBackfill from "../clerkBackfill.js";
 import type * as crons from "../crons.js";
@@ -31,6 +32,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
+  bandInvites: typeof bandInvites;
   bands: typeof bands;
   clerkBackfill: typeof clerkBackfill;
   crons: typeof crons;

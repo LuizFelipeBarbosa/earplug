@@ -177,6 +177,7 @@ describe("maintenance:recountBandFollowers", () => {
       name: "Already Canonical",
       genres: ["punk"],
       bio: "",
+      area: "Bay Area",
       inviteHandles: ["@one", "@two"],
     });
     const asFan = t.withIdentity({

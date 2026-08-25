@@ -153,13 +153,13 @@ void main() {
 
       app.toggleNbGenre('punk');
       app.setNbArea('Berkeley');
-      app.addNbInvite('alex');
       await app.createBand();
       await pumpEventQueue();
       expect(app.nbCreated, isTrue);
       expect(app.bandId, 'nb1');
       expect(app.myBand!.initials, 'SB');
-      expect(app.myBand!.followers, 2);
+      // Only accepted memberships count; legacy handle-shaped drafts do not.
+      expect(app.myBand!.followers, 1);
       expect(app.myBand!.area, 'Berkeley');
       expect(app.nbShareSlug, 'static-bloom-two');
 
@@ -261,44 +261,57 @@ void main() {
       expect(app.toast, 'Something broke. Try again.');
     });
 
-    test(
-      'a burst of bio keystrokes persists once, not per character',
-      () async {
-        final repository = _CountingProfileRepository(auth: FakeAuthService());
-        final app = await _demoApp(repository: repository);
-        app.switchToBand('b1');
+    test('profile fields save together in one atomic update', () async {
+      final repository = _CountingProfileRepository(auth: FakeAuthService());
+      final app = await _demoApp(repository: repository);
+      app.switchToBand('b1');
+      final band = app.myBand!;
 
-        for (final draft in ['W', 'We', 'We p', 'We play']) {
-          app.setBandBio(draft);
-        }
-        // Shown immediately; nothing written yet.
-        expect(app.bioFor('b1'), 'We play');
-        expect(repository.profileCalls, 0);
+      await app.saveBandProfile(
+        BandProfileUpdate(
+          bandId: band.id,
+          name: band.name,
+          genres: band.genres,
+          area: band.area,
+          bio: 'We play',
+          linkIg: '@weplay',
+          linkBc: '',
+          linkYt: '',
+          credits: 'Recorded by Mara',
+        ),
+      );
 
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        expect(repository.profileCalls, 1);
-        expect(repository.lastBio, 'We play');
-      },
-    );
+      expect(repository.profileCalls, 1);
+      expect(repository.lastBio, 'We play');
+      expect(app.bioFor('b1'), 'We play');
+    });
 
-    test(
-      'a failed bio write drops the override instead of faking a save',
-      () async {
-        final repository = _CountingProfileRepository(auth: FakeAuthService())
-          ..fail = true;
-        final app = await _demoApp(repository: repository);
-        app.switchToBand('b1');
-        final serverBio = app.bioFor('b1');
+    test('a failed atomic profile save leaves server data visible', () async {
+      final repository = _CountingProfileRepository(auth: FakeAuthService())
+        ..fail = true;
+      final app = await _demoApp(repository: repository);
+      app.switchToBand('b1');
+      final band = app.myBand!;
+      final serverBio = band.bio;
 
-        app.setBandBio('never lands');
-        expect(app.bioFor('b1'), 'never lands');
-
-        await Future<void>.delayed(const Duration(milliseconds: 500));
-        await pumpEventQueue();
-        expect(app.bioFor('b1'), serverBio);
-        expect(app.toast, 'Something broke. Try again.');
-      },
-    );
+      await expectLater(
+        app.saveBandProfile(
+          BandProfileUpdate(
+            bandId: band.id,
+            name: band.name,
+            genres: band.genres,
+            area: band.area,
+            bio: 'never lands',
+            linkIg: '',
+            linkBc: '',
+            linkYt: '',
+            credits: '',
+          ),
+        ),
+        throwsException,
+      );
+      expect(app.bioFor('b1'), serverBio);
+    });
 
     test('starting a band resumes creation after authentication', () async {
       final app = await _demoApp();
@@ -533,8 +546,7 @@ class _FailedVenueRepository extends DemoRepository {
   Future<List<Venue>> venues() async => throw Exception('venues failed');
 }
 
-/// Counts profile writes so the debounce is observable, and can fail them on
-/// request. Everything else stays real demo behaviour.
+/// Counts atomic profile writes and can fail them on request.
 class _CountingProfileRepository extends DemoRepository {
   _CountingProfileRepository({required super.auth});
 
@@ -543,31 +555,11 @@ class _CountingProfileRepository extends DemoRepository {
   bool fail = false;
 
   @override
-  Future<void> updateBandProfile({
-    required String bandId,
-    String? name,
-    List<String>? genres,
-    String? area,
-    String? bio,
-    List<String>? inviteHandles,
-    String? linkIg,
-    String? linkBc,
-    String? linkYt,
-  }) async {
+  Future<void> updateBandProfile(BandProfileUpdate update) async {
     profileCalls++;
     if (fail) throw Exception('updateBandProfile failed');
-    lastBio = bio ?? lastBio;
-    return super.updateBandProfile(
-      bandId: bandId,
-      name: name,
-      genres: genres,
-      area: area,
-      bio: bio,
-      inviteHandles: inviteHandles,
-      linkIg: linkIg,
-      linkBc: linkBc,
-      linkYt: linkYt,
-    );
+    lastBio = update.bio;
+    return super.updateBandProfile(update);
   }
 }
 
@@ -591,11 +583,11 @@ class _GatedCreateRepository extends _FailingRsvpRepository {
     required String name,
     required List<String> genres,
     required String bio,
-    required List<String> inviteHandles,
-    String? area,
+    required String area,
     String? linkIg,
     String? linkBc,
     String? linkYt,
+    String? credits,
   }) async {
     createCalls++;
     if (fail) throw Exception('createBand failed');
@@ -748,28 +740,58 @@ class _FailingRsvpRepository implements EarplugRepository {
     required String name,
     required List<String> genres,
     required String bio,
-    required List<String> inviteHandles,
-    String? area,
+    required String area,
     String? linkIg,
     String? linkBc,
     String? linkYt,
+    String? credits,
   }) async => (
     band: _bandFixture(id: 'unused', name: name, genres: genres, area: area),
     slug: 'unused',
   );
 
   @override
-  Future<void> updateBandProfile({
-    required String bandId,
-    String? name,
-    List<String>? genres,
-    String? area,
-    String? bio,
-    List<String>? inviteHandles,
-    String? linkIg,
-    String? linkBc,
-    String? linkYt,
-  }) async {}
+  Future<void> updateBandProfile(BandProfileUpdate update) async {}
+
+  @override
+  Future<BandProfileDetails> bandProfileDetails(String bandId) async =>
+      BandProfileDetails.empty;
+
+  @override
+  Future<BandSetupStatus> bandSetupStatus(String bandId) async =>
+      const BandSetupStatus(
+        profileComplete: false,
+        profileImageAdded: false,
+        musicAdded: false,
+        socialLinksAdded: false,
+        firstGigCreated: false,
+        membersInvited: false,
+        publicProfilePreviewed: false,
+      );
+
+  @override
+  Future<void> markBandPreviewed(String bandId) async {}
+
+  @override
+  Future<BandInvite?> bandInvite(String bandId) async => null;
+
+  @override
+  Future<BandInvite> createBandInvite(String bandId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<BandInvite> rotateBandInvite(String bandId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> revokeBandInvite(String bandId) async {}
+
+  @override
+  Future<BandInviteResolution?> resolveBandInvite(String token) async => null;
+
+  @override
+  Future<BandInviteAcceptance> acceptBandInvite(String token) =>
+      throw UnimplementedError();
 
   @override
   Future<String> publishGig({

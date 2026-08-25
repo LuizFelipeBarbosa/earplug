@@ -35,29 +35,18 @@ class BandProfileScreen extends StatelessWidget {
         if (app.gig(id) case final Gig g) g,
     ];
     final following = app.follows.contains(bandId);
+    final isManagedPreview =
+        app.current.screen == Screen.bandPreview &&
+        app.current.param == bandId &&
+        app.myBands.contains(bandId);
+    final details = app.profileDetailsFor(bandId);
 
     return Column(
       children: [
-        Container(
-          padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Ep.border)),
-          ),
-          child: Row(
-            children: [
-              CircleIconButton(onTap: app.back),
-              const SizedBox(width: 10),
-              Text(
-                'BAND',
-                style: epText(
-                  size: 12,
-                  weight: FontWeight.w800,
-                  letterSpacing: 1.4,
-                  color: Ep.contentSecondary,
-                ),
-              ),
-            ],
-          ),
+        _ProfileHeader(
+          app: app,
+          isManagedPreview: isManagedPreview,
+          isAdmin: app.isAdminOf(bandId),
         ),
         Expanded(
           child: ListView(
@@ -203,10 +192,105 @@ class BandProfileScreen extends StatelessWidget {
                   style: epText(size: 11.5, color: Ep.contentDisabled),
                 ),
               _PastShows(band: band, app: app),
+              if (details?.credits?.trim().isNotEmpty == true) ...[
+                const SizedBox(height: 16),
+                const SectionLabel('CREDITS'),
+                const SizedBox(height: 6),
+                Text(
+                  details!.credits!.trim(),
+                  style: epText(
+                    size: 12,
+                    color: Ep.contentSecondary,
+                    height: 1.45,
+                  ),
+                ),
+              ],
+              if (details?.memberNames.isNotEmpty == true) ...[
+                const SizedBox(height: 16),
+                const SectionLabel('BAND MEMBERS'),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    for (final name in details!.memberNames)
+                      Chip(label: Text(name)),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({
+    required this.app,
+    required this.isManagedPreview,
+    required this.isAdmin,
+  });
+
+  final AppState app;
+  final bool isManagedPreview;
+  final bool isAdmin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Ep.border)),
+      ),
+      child: isManagedPreview
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'PUBLIC PROFILE PREVIEW',
+                        style: epText(
+                          size: 12,
+                          weight: FontWeight.w800,
+                          letterSpacing: 1.4,
+                          color: Ep.contentSecondary,
+                        ),
+                      ),
+                    ),
+                    if (isAdmin)
+                      TextButton(
+                        onPressed: app.openBandEditor,
+                        child: const Text('Edit profile'),
+                      ),
+                  ],
+                ),
+                OutlinedButton.icon(
+                  onPressed: app.returnToBandDashboard,
+                  icon: const Icon(Icons.arrow_back, size: 17),
+                  label: const Text('Return to band dashboard'),
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                CircleIconButton(onTap: app.back),
+                const SizedBox(width: 10),
+                Text(
+                  'BAND',
+                  style: epText(
+                    size: 12,
+                    weight: FontWeight.w800,
+                    letterSpacing: 1.4,
+                    color: Ep.contentSecondary,
+                  ),
+                ),
+              ],
+            ),
     );
   }
 }

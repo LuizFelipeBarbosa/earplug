@@ -396,6 +396,7 @@ class Band {
   final String? linkIg;
   final String? linkBc;
   final String? linkYt;
+  final String? credits;
   final String? heroUrl;
   final List<String> upcoming; // gig ids
   final List<PastGig> past;
@@ -412,6 +413,7 @@ class Band {
     this.linkIg,
     this.linkBc,
     this.linkYt,
+    this.credits,
     this.heroUrl,
     this.upcoming = const [],
     this.past = const [],
@@ -432,6 +434,7 @@ class Band {
       linkIg: json['linkIg'] as String?,
       linkBc: json['linkBc'] as String?,
       linkYt: json['linkYt'] as String?,
+      credits: json['credits'] as String?,
       heroUrl: json['heroUrl'] as String?,
       upcoming: const [],
       past: [
@@ -449,10 +452,12 @@ class Band {
     List<String>? genres,
     String? area,
     String? initials,
+    int? followers,
     String? bio,
     String? linkIg,
     String? linkBc,
     String? linkYt,
+    String? credits,
     String? heroUrl,
     List<String>? upcoming,
   }) => Band(
@@ -462,15 +467,179 @@ class Band {
     area: area ?? this.area,
     color: color,
     initials: initials ?? this.initials,
-    followers: followers,
+    followers: followers ?? this.followers,
     bio: bio ?? this.bio,
     linkIg: linkIg ?? this.linkIg,
     linkBc: linkBc ?? this.linkBc,
     linkYt: linkYt ?? this.linkYt,
+    credits: credits ?? this.credits,
     heroUrl: heroUrl ?? this.heroUrl,
     upcoming: upcoming ?? this.upcoming,
     past: past,
   );
+}
+
+/// Profile-only data that intentionally stays out of feed and search payloads.
+class BandProfileDetails {
+  final String? credits;
+  final String? linkIg;
+  final String? linkBc;
+  final String? linkYt;
+  final List<String> memberNames;
+
+  const BandProfileDetails({
+    this.credits,
+    this.linkIg,
+    this.linkBc,
+    this.linkYt,
+    required this.memberNames,
+  });
+
+  factory BandProfileDetails.fromJson(Map<String, dynamic> json) =>
+      BandProfileDetails(
+        credits: json['credits'] as String?,
+        linkIg: json['linkIg'] as String?,
+        linkBc: json['linkBc'] as String?,
+        linkYt: json['linkYt'] as String?,
+        memberNames: List<String>.from(
+          json['memberNames'] as List? ?? const [],
+        ),
+      );
+
+  static const empty = BandProfileDetails(memberNames: []);
+}
+
+/// The seven task-oriented steps shown only to a band's administrators.
+class BandSetupStatus {
+  final bool profileComplete;
+  final bool profileImageAdded;
+  final bool musicAdded;
+  final bool socialLinksAdded;
+  final bool firstGigCreated;
+  final bool membersInvited;
+  final bool publicProfilePreviewed;
+
+  const BandSetupStatus({
+    required this.profileComplete,
+    required this.profileImageAdded,
+    required this.musicAdded,
+    required this.socialLinksAdded,
+    required this.firstGigCreated,
+    required this.membersInvited,
+    required this.publicProfilePreviewed,
+  });
+
+  factory BandSetupStatus.fromJson(Map<String, dynamic> json) =>
+      BandSetupStatus(
+        profileComplete: json['profileComplete'] == true,
+        profileImageAdded: json['profileImageAdded'] == true,
+        musicAdded: json['musicAdded'] == true,
+        socialLinksAdded: json['socialLinksAdded'] == true,
+        firstGigCreated: json['firstGigCreated'] == true,
+        membersInvited: json['membersInvited'] == true,
+        publicProfilePreviewed: json['publicProfilePreviewed'] == true,
+      );
+
+  List<bool> get steps => [
+    profileComplete,
+    profileImageAdded,
+    musicAdded,
+    socialLinksAdded,
+    firstGigCreated,
+    membersInvited,
+    publicProfilePreviewed,
+  ];
+
+  int get completedCount => steps.where((step) => step).length;
+}
+
+/// Every editable band-profile field, submitted in one backend transaction.
+class BandProfileUpdate {
+  final String bandId;
+  final String name;
+  final List<String> genres;
+  final String area;
+  final String bio;
+  final String linkIg;
+  final String linkBc;
+  final String linkYt;
+  final String credits;
+
+  const BandProfileUpdate({
+    required this.bandId,
+    required this.name,
+    required this.genres,
+    required this.area,
+    required this.bio,
+    required this.linkIg,
+    required this.linkBc,
+    required this.linkYt,
+    required this.credits,
+  });
+}
+
+class BandInvite {
+  final String bandId;
+  final String token;
+  final DateTime expiresAt;
+  final bool revoked;
+
+  const BandInvite({
+    required this.bandId,
+    required this.token,
+    required this.expiresAt,
+    required this.revoked,
+  });
+
+  factory BandInvite.fromJson(Map<String, dynamic> json) => BandInvite(
+    bandId: json['bandId'] as String,
+    token: json['token'] as String,
+    expiresAt: DateTime.fromMillisecondsSinceEpoch(
+      (json['expiresAt'] as num).toInt(),
+    ),
+    revoked: json['revoked'] == true,
+  );
+
+  String get url => 'https://earplug.app/join/$token';
+}
+
+/// The deliberately small public payload used before a recipient confirms.
+class BandInviteResolution {
+  final String bandId;
+  final String bandName;
+  final String initials;
+  final Color color;
+
+  const BandInviteResolution({
+    required this.bandId,
+    required this.bandName,
+    required this.initials,
+    required this.color,
+  });
+
+  factory BandInviteResolution.fromJson(Map<String, dynamic> json) =>
+      BandInviteResolution(
+        bandId: json['bandId'] as String,
+        bandName: json['bandName'] as String,
+        initials: json['initials'] as String,
+        color: _colorFromHex(json['colorHex'] as String),
+      );
+}
+
+class BandInviteAcceptance {
+  final String bandId;
+  final bool membershipCreated;
+
+  const BandInviteAcceptance({
+    required this.bandId,
+    required this.membershipCreated,
+  });
+
+  factory BandInviteAcceptance.fromJson(Map<String, dynamic> json) =>
+      BandInviteAcceptance(
+        bandId: json['bandId'] as String,
+        membershipCreated: json['membershipCreated'] == true,
+      );
 }
 
 enum MediaKind { video, photo }

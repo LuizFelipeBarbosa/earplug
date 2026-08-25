@@ -162,6 +162,7 @@ describe("interactions", () => {
       name: "Invariant Youth",
       genres: ["punk"],
       bio: "",
+      area: "Bay Area",
       inviteHandles: ["@a", "@b"],
     });
     const readCounts = () =>

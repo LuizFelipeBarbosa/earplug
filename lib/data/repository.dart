@@ -469,6 +469,7 @@ abstract class EarplugRepository {
   Future<List<Venue>> venues();
   Future<VenueDetail?> venueDetail(String venueId);
   Future<Band?> band(String bandId);
+  Future<BandProfileDetails> bandProfileDetails(String bandId);
   Future<List<Band>> searchBands(String q);
   Future<BandPage> listBands({String? cursor, int numItems = 50});
 
@@ -505,23 +506,21 @@ abstract class EarplugRepository {
     required String name,
     required List<String> genres,
     required String bio,
-    required List<String> inviteHandles,
-    String? area,
+    required String area,
     String? linkIg,
     String? linkBc,
     String? linkYt,
+    String? credits,
   });
-  Future<void> updateBandProfile({
-    required String bandId,
-    String? name,
-    List<String>? genres,
-    String? area,
-    String? bio,
-    List<String>? inviteHandles,
-    String? linkIg,
-    String? linkBc,
-    String? linkYt,
-  });
+  Future<void> updateBandProfile(BandProfileUpdate update);
+  Future<BandSetupStatus> bandSetupStatus(String bandId);
+  Future<void> markBandPreviewed(String bandId);
+  Future<BandInvite?> bandInvite(String bandId);
+  Future<BandInvite> createBandInvite(String bandId);
+  Future<BandInvite> rotateBandInvite(String bandId);
+  Future<void> revokeBandInvite(String bandId);
+  Future<BandInviteResolution?> resolveBandInvite(String token);
+  Future<BandInviteAcceptance> acceptBandInvite(String token);
   Future<String> publishGig({
     required String bandId,
     required String title,

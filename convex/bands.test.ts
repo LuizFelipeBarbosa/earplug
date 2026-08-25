@@ -7,12 +7,21 @@ import schema from "./schema";
 describe("bands: slugs and profile updates", () => {
   async function setup() {
     const t = convexTest(schema);
-    const asAdmin = t.withIdentity({ subject: "user_admin", email: "a@x.com" });
+    const asAdmin = t.withIdentity({
+      subject: "user_admin",
+      email: "a@x.com",
+      name: "Admin Artist",
+    });
     await asAdmin.mutation(api.users.ensureUser, {});
     return { t, asAdmin };
   }
 
-  const bandArgs = { genres: ["punk"], bio: "", inviteHandles: [] };
+  const bandArgs = {
+    genres: ["punk"],
+    bio: "",
+    area: "Bay Area",
+    inviteHandles: [],
+  };
 
   test("createBand issues unique slugs and bySlug resolves them", async () => {
     const { t, asAdmin } = await setup();
@@ -59,13 +68,16 @@ describe("bands: slugs and profile updates", () => {
       "youtube.com/@staticbloom",
     );
     expect(doc?.bio).toBe("Two amps facing each other.");
-    expect(doc?.inviteHandles).toEqual(["@mara.k"]);
-    // Invite handles are stored strings, not members, so only the admin counts.
+    expect(doc?.credits).toBeUndefined();
+    // Legacy clients may still send this field, but fake handles are no longer
+    // written or presented as memberships.
+    expect(doc?.inviteHandles).toBeUndefined();
+    // Fake handles are ignored, so only the admin membership counts.
     expect(doc?.followerCount).toBe(1);
     expect(doc?.slug).toBe(slug);
   });
 
-  test("createBand counts only the admin row, not invite handles", async () => {
+  test("createBand ignores legacy invite handles and counts only the admin", async () => {
     const { t, asAdmin } = await setup();
     const user = await asAdmin.query(api.users.me, {});
     const inviteHandles = ["@a", "@b", "@c"];
@@ -73,6 +85,7 @@ describe("bands: slugs and profile updates", () => {
       name: "Invite Arithmetic",
       genres: ["math rock"],
       bio: "",
+      area: "Bay Area",
       inviteHandles,
     });
 
@@ -92,17 +105,21 @@ describe("bands: slugs and profile updates", () => {
     expect(memberships).toHaveLength(1);
     expect(memberships[0]).toMatchObject({ role: "admin", userId: user!._id });
     expect(follows).toHaveLength(0);
-    expect(band?.inviteHandles).toEqual(inviteHandles);
+    expect(band?.inviteHandles).toBeUndefined();
   });
 
-  test("createBand without an area falls back to the Bay Area default", async () => {
+  test("createBand requires a nonblank home base", async () => {
     const { t, asAdmin } = await setup();
-    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
-      name: "Static Bloom",
-      ...bandArgs,
-    });
-    const doc = await t.run(async (ctx) => ctx.db.get(bandId));
-    expect(doc?.area).toBe("Bay Area");
+    await expect(
+      asAdmin.mutation(api.bands.createBand, {
+        ...bandArgs,
+        name: "Static Bloom",
+        area: "  ",
+      }),
+    ).rejects.toThrow("home base");
+    expect(await t.run(async (ctx) => ctx.db.query("bands").take(1))).toEqual(
+      [],
+    );
   });
 
   test("updateProfile edits the same band and keeps its slug", async () => {
@@ -114,11 +131,14 @@ describe("bands: slugs and profile updates", () => {
 
     await asAdmin.mutation(api.bands.updateProfile, {
       bandId,
-      name: "Static Gloom",
+      name: " Static Gloom ",
       genres: ["punk", "shoegaze"],
       area: "Berkeley",
-      inviteHandles: ["@mara.k"],
+      bio: " New record soon. ",
       linkIg: "@staticgloom",
+      linkBc: "staticgloom.bandcamp.com",
+      linkYt: "youtube.com/@staticgloom",
+      credits: " Produced by Mara. ",
     });
 
     const doc = await t.run(async (ctx) => ctx.db.get(bandId));
@@ -126,8 +146,11 @@ describe("bands: slugs and profile updates", () => {
     expect(doc?.initials).toBe("SG");
     expect(doc?.genres).toEqual(["punk", "shoegaze"]);
     expect(doc?.area).toBe("Berkeley");
-    expect(doc?.inviteHandles).toEqual(["@mara.k"]);
+    expect(doc?.bio).toBe("New record soon.");
     expect(doc?.linkIg).toBe("@staticgloom");
+    expect(doc?.linkBc).toBe("staticgloom.bandcamp.com");
+    expect(doc?.linkYt).toBe("youtube.com/@staticgloom");
+    expect(doc?.credits).toBe("Produced by Mara.");
     // Shared links must survive a rename.
     expect(doc?.slug).toBe(slug);
     // So must the band's color: it is the identity people recognize in the
@@ -154,8 +177,79 @@ describe("bands: slugs and profile updates", () => {
       asStranger.mutation(api.bands.updateProfile, {
         bandId,
         name: "Hijacked",
+        genres: ["punk"],
+        area: "Oakland",
+        bio: "",
+        linkIg: "",
+        linkBc: "",
+        linkYt: "",
+        credits: "",
       }),
     ).rejects.toThrow();
+  });
+
+  test("updateProfile validates before its single atomic patch", async () => {
+    const { t, asAdmin } = await setup();
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Before",
+      genres: ["punk"],
+      area: "Oakland",
+      bio: "Old bio",
+    });
+
+    await expect(
+      asAdmin.mutation(api.bands.updateProfile, {
+        bandId,
+        name: "After",
+        genres: ["one", "two", "three", "four"],
+        area: "Berkeley",
+        bio: "New bio",
+        linkIg: "@after",
+        linkBc: "after.bandcamp.com",
+        linkYt: "youtube.com/@after",
+        credits: "New credits",
+      }),
+    ).rejects.toThrow("no more than three");
+
+    expect(await t.run(async (ctx) => ctx.db.get(bandId))).toMatchObject({
+      name: "Before",
+      genres: ["punk"],
+      area: "Oakland",
+      bio: "Old bio",
+    });
+  });
+
+  test("updateProfile clears blank optional fields", async () => {
+    const { t, asAdmin } = await setup();
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Static Bloom",
+      genres: ["punk"],
+      bio: "Old bio",
+      area: "Bay Area",
+      linkIg: "@old",
+      credits: "Old credits",
+    });
+    await asAdmin.mutation(api.bands.updateProfile, {
+      bandId,
+      name: "Static Bloom",
+      genres: ["punk"],
+      area: "Bay Area",
+      bio: " ",
+      linkIg: " ",
+      linkBc: "",
+      linkYt: "",
+      credits: " ",
+    });
+
+    const doc = await t.run(async (ctx) => ctx.db.get(bandId));
+    expect(doc?.bio).toBeUndefined();
+    expect(doc?.linkIg).toBeUndefined();
+    expect(doc?.credits).toBeUndefined();
+    expect(await t.query(api.bands.get, { bandId })).toMatchObject({
+      bio: "",
+      linkIg: null,
+      credits: null,
+    });
   });
 
   test("get resolves heroUrl from the selected live photo", async () => {
@@ -190,6 +284,134 @@ describe("bands: slugs and profile updates", () => {
     expect(
       await t.run(async (ctx) => (await ctx.db.get(bandId))?.imageStorageId),
     ).toBe(storageId);
+  });
+});
+
+describe("bands: public profile details and setup status", () => {
+  async function setup() {
+    const t = convexTest(schema);
+    const asAdmin = t.withIdentity({
+      subject: "setup_admin",
+      email: "admin@setup.test",
+      name: "Ada Admin",
+    });
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const created = await asAdmin.mutation(api.bands.createBand, {
+      name: "Setup Band",
+      genres: ["punk"],
+      area: "Oakland",
+      bio: "",
+      credits: "Recorded by Ren",
+      linkBc: "setup.bandcamp.com",
+      linkYt: "youtube.com/@setup",
+      linkIg: "@setup",
+    });
+    return { t, asAdmin, bandId: created.bandId };
+  }
+
+  test("profileDetails exposes links, credits, and accepted live member names", async () => {
+    const { t, bandId } = await setup();
+    const asMember = t.withIdentity({
+      subject: "setup_member",
+      email: "member@setup.test",
+      name: "Mika Member",
+    });
+    await asMember.mutation(api.users.ensureUser, {});
+    const member = await asMember.query(api.users.me, {});
+    await t.run(async (ctx) => {
+      await ctx.db.insert("bandMembers", {
+        bandId,
+        userId: member!._id,
+        role: "member",
+      });
+    });
+
+    expect(await t.query(api.bands.profileDetails, { bandId })).toEqual({
+      credits: "Recorded by Ren",
+      linkIg: "@setup",
+      linkBc: "setup.bandcamp.com",
+      linkYt: "youtube.com/@setup",
+      memberNames: ["Ada Admin", "Mika Member"],
+    });
+  });
+
+  test("setupStatus derives all seven flags and preview is member-accessible", async () => {
+    const { t, asAdmin, bandId } = await setup();
+    expect(await asAdmin.query(api.bands.setupStatus, { bandId })).toEqual({
+      profileComplete: true,
+      profileImageAdded: false,
+      musicAdded: true,
+      socialLinksAdded: true,
+      firstGigCreated: false,
+      membersInvited: false,
+      publicProfilePreviewed: false,
+    });
+
+    const asMember = t.withIdentity({
+      subject: "setup_member",
+      email: "member@setup.test",
+      name: "Mika Member",
+    });
+    await asMember.mutation(api.users.ensureUser, {});
+    const member = await asMember.query(api.users.me, {});
+    await t.run(async (ctx) => {
+      const imageStorageId = await ctx.storage.store(new Blob(["image"]));
+      await ctx.db.patch(bandId, { imageStorageId });
+      const gigId = await ctx.db.insert("gigs", {
+        title: "First gig",
+        venueId: await ctx.db.insert("venues", {
+          name: "Room",
+          area: "Oakland",
+          addr: "1 Main",
+          distSF: "10 mi",
+          distOak: "1 mi",
+          lat: 0,
+          lng: 0,
+        }),
+        price: 0,
+        startsAt: 1,
+        doorsTime: "8PM",
+        flyKey: "paper",
+        lineup: [bandId],
+        genres: ["punk"],
+        desc: "",
+        ticketing: "rsvp",
+        cap: "No cap",
+        goingCount: 0,
+      });
+      await ctx.db.insert("gigBands", { gigId, bandId, startsAt: 1 });
+      await ctx.db.insert("bandMembers", {
+        bandId,
+        userId: member!._id,
+        role: "member",
+      });
+    });
+    await asMember.mutation(api.bands.markPreviewed, { bandId });
+
+    expect(await asAdmin.query(api.bands.setupStatus, { bandId })).toEqual({
+      profileComplete: true,
+      profileImageAdded: true,
+      musicAdded: true,
+      socialLinksAdded: true,
+      firstGigCreated: true,
+      membersInvited: true,
+      publicProfilePreviewed: true,
+    });
+  });
+
+  test("setupStatus rejects non-admins and markPreviewed rejects strangers", async () => {
+    const { t, bandId } = await setup();
+    const asStranger = t.withIdentity({
+      subject: "setup_stranger",
+      email: "stranger@setup.test",
+    });
+    await asStranger.mutation(api.users.ensureUser, {});
+    await expect(
+      asStranger.query(api.bands.setupStatus, { bandId }),
+    ).rejects.toThrow("Not an admin");
+    await expect(
+      asStranger.mutation(api.bands.markPreviewed, { bandId }),
+    ).rejects.toThrow("Not a member");
   });
 });
 

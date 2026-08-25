@@ -78,12 +78,16 @@ export default defineSchema({
     slug: v.string(),
     linkIg: v.optional(v.string()),
     linkBc: v.optional(v.string()),
-    // From createBand's links sheet (stored, not surfaced in v1).
+    // From createBand's links sheet; now exposed on public profiles.
     linkYt: v.optional(v.string()),
+    credits: v.optional(v.string()),
+    // First managed public-profile preview. Its presence completes the setup
+    // task; later previews deliberately do not churn this otherwise stable row.
+    publicProfilePreviewedAt: v.optional(v.number()),
     // Storage / link content with no home in the v1 UI, kept rather than swept.
     imageStorageId: v.optional(v.id("_storage")),
     legacySocialLinks: v.optional(legacySocialLinksValidator),
-    // Invite handles from createBand (stored, unused in v1).
+    // Legacy fake invite handles remain readable but no live path writes them.
     inviteHandles: v.optional(v.array(v.string())),
   })
     .index("by_name", ["name"])
@@ -153,6 +157,21 @@ export default defineSchema({
     .index("by_band_user", ["bandId", "userId"])
     .index("by_band", ["bandId"])
     .index("by_user", ["userId"]),
+
+  // One reusable, seven-day link is managed per band. Rotation replaces its
+  // token in place so already-shared links stop resolving without growing
+  // unbounded invitation history.
+  bandInvites: defineTable({
+    bandId: v.id("bands"),
+    token: v.string(),
+    createdBy: v.id("users"),
+    expiresAt: v.number(),
+    revoked: v.boolean(),
+    // Optional while rows created before server-authoritative expiry remain.
+    expired: v.optional(v.boolean()),
+  })
+    .index("by_token", ["token"])
+    .index("by_band", ["bandId"]),
 
   follows: defineTable({
     userId: v.id("users"),
