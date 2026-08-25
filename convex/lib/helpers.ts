@@ -243,11 +243,22 @@ export const gigPublishFieldsValidator = v.object({
 });
 export type GigPublishFields = Infer<typeof gigPublishFieldsValidator>;
 
+type GigPublishValidationFields = {
+  bandId: Id<"bands">;
+  startsAt: number;
+  venueId: Id<"venues">;
+  price: number;
+  flyKey: string;
+  flyStorageId?: Id<"_storage">;
+  ticketing: "rsvp" | "external";
+  externalUrl?: string;
+};
+
 /** Every non-auth check publishGig performs, in its original order. Throws on
  * the first failure; returns the resolved rows. Performs no writes. */
 export async function assertGigPublishable(
   ctx: MutationCtx,
-  args: GigPublishFields,
+  args: GigPublishValidationFields,
 ): Promise<{ band: Doc<"bands">; venue: Doc<"venues"> }> {
   if (!Number.isFinite(args.startsAt) || args.startsAt < 0) {
     throw new Error("Invalid startsAt");

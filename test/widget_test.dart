@@ -634,6 +634,9 @@ class _FailingRsvpRepository implements EarplugRepository {
   Stream<FeedSnapshot> feed() => const Stream.empty();
 
   @override
+  Stream<Gig?> publicGig(String gigId) => const Stream.empty();
+
+  @override
   Stream<List<Gig>> upcomingGigsForBand(String bandId) => const Stream.empty();
 
   @override
@@ -816,6 +819,17 @@ class _FailingRsvpRepository implements EarplugRepository {
   @override
   Future<BandInviteAcceptance> acceptBandInvite(String token) =>
       throw UnimplementedError();
+
+  @override
+  Future<PerformerInviteResolution?> resolvePerformerInvite(
+    String token,
+  ) async => null;
+
+  @override
+  Future<String> claimPerformerInvite({
+    required String token,
+    required String bandId,
+  }) => throw UnimplementedError();
 
   @override
   Future<List<GigProject>> manageGigs(String bandId) async => const [];

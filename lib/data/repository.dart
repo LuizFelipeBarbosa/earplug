@@ -445,6 +445,7 @@ abstract class EarplugRepository {
   Future<UserProfile?> me();
 
   Stream<FeedSnapshot> feed();
+  Stream<Gig?> publicGig(String gigId);
   Stream<List<Gig>> upcomingGigsForBand(String bandId);
   Stream<Interactions> myInteractions();
   Stream<List<BandMembership>> myBands();
@@ -521,6 +522,11 @@ abstract class EarplugRepository {
   Future<void> revokeBandInvite(String bandId);
   Future<BandInviteResolution?> resolveBandInvite(String token);
   Future<BandInviteAcceptance> acceptBandInvite(String token);
+  Future<PerformerInviteResolution?> resolvePerformerInvite(String token);
+  Future<String> claimPerformerInvite({
+    required String token,
+    required String bandId,
+  });
   Future<List<GigProject>> manageGigs(String bandId);
   Future<GigProject> createGigDraft(String bandId);
   Future<GigProject> getGigProject(String projectId);

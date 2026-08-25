@@ -206,6 +206,21 @@ describe("gigs:publishGig auth", () => {
     expect(gig!.createdByBand).toBe(bandId);
   });
 
+  test("preserves an explicitly supplied doors time", async () => {
+    const { t, asAdmin, bandId, venueId } = await setupBand();
+    const doorsAt = gigArgs.startsAt - 45 * 60_000;
+    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+      bandId,
+      venueId,
+      ...gigArgs,
+      doorsAt,
+    });
+
+    expect((await t.run(async (ctx) => ctx.db.get(gigId)))?.doorsAt).toBe(
+      doorsAt,
+    );
+  });
+
   test("requires one of the three supported age requirements", async () => {
     const { asAdmin, bandId, venueId } = await setupBand();
     const { ageRequirement: _ageRequirement, ...withoutAge } = gigArgs;
@@ -481,6 +496,67 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(feed.gigs).toHaveLength(MAX_FEED_GIGS);
     expect(feed.gigs[0].startsAt).toBe(firstStartsAt);
     expect(feed.nextStartsAt).toBe(firstStartsAt + MAX_FEED_GIGS * 60_000);
+  });
+
+  test("cancelled rows cannot crowd later published gigs out of the feed", async () => {
+    const t = convexTest(schema);
+    const { bandId, venueId } = await t.run(async (ctx) => {
+      const bandId = await ctx.db.insert("bands", {
+        name: "Lifecycle Index",
+        slug: "lifecycle-index",
+        genres: ["punk"],
+        area: "Bay Area",
+        colorHex: "#7B8FFF",
+        initials: "LI",
+        followerCount: 0,
+        bio: "",
+        pastShows: [],
+      });
+      const venueId = await ctx.db.insert("venues", {
+        name: "Indexed Hall",
+        area: "Oakland",
+        addr: "1 Fast Query Way",
+        distSF: "7 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.27,
+      });
+      return { bandId, venueId };
+    });
+    const firstStartsAt = Date.now() + 86_400_000;
+    const common = {
+      venueId,
+      price: 0,
+      doorsTime: "7PM / 8PM",
+      flyKey: "paper",
+      lineup: [bandId],
+      genres: ["punk"],
+      desc: "",
+      ticketing: "rsvp" as const,
+      ageRequirement: "allAges" as const,
+      cap: "No cap",
+      goingCount: 0,
+    };
+    await t.run(async (ctx) => {
+      for (let index = 0; index <= MAX_FEED_GIGS * 4; index++) {
+        await ctx.db.insert("gigs", {
+          ...common,
+          title: `Cancelled ${index}`,
+          startsAt: firstStartsAt + index * 60_000,
+          lifecycle: "cancelled",
+        });
+      }
+      await ctx.db.insert("gigs", {
+        ...common,
+        title: "Still Visible",
+        startsAt: firstStartsAt + (MAX_FEED_GIGS * 4 + 1) * 60_000,
+        lifecycle: "published",
+      });
+    });
+
+    expect(
+      (await t.query(api.gigs.feed, {})).gigs.map((gig) => gig.title),
+    ).toEqual(["Still Visible"]);
   });
 
   test("forBand finds a show beyond the bounded discovery feed", async () => {

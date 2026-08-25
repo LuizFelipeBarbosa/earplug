@@ -97,6 +97,14 @@ class DemoRepository implements EarplugRepository {
   Stream<FeedSnapshot> feed() => _replay(_feedController, _currentFeed);
 
   @override
+  Stream<Gig?> publicGig(String gigId) => Stream.value(
+    [
+      ...DemoData.gigs,
+      ..._publishedGigs,
+    ].where((gig) => gig.id == gigId).firstOrNull,
+  );
+
+  @override
   Stream<List<Gig>> upcomingGigsForBand(String bandId) {
     return feed().map(
       (snapshot) => [
@@ -830,6 +838,61 @@ class DemoRepository implements EarplugRepository {
       bandId: resolved.bandId,
       membershipCreated: true,
     );
+  }
+
+  @override
+  Future<PerformerInviteResolution?> resolvePerformerInvite(
+    String token,
+  ) async {
+    for (final project in _gigProjects.values) {
+      for (final performer in project.performers) {
+        if (performer.kind == GigPerformerKind.invited &&
+            performer.inviteUrl?.endsWith('/$token') == true) {
+          return PerformerInviteResolution(
+            performerName: performer.name,
+            gigTitle: project.title ?? 'Untitled gig',
+          );
+        }
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<String> claimPerformerInvite({
+    required String token,
+    required String bandId,
+  }) async {
+    if (!_auth.signedIn) throw StateError('Not signed in.');
+    final band = _bands[bandId];
+    if (band == null) throw StateError('Band not found.');
+    for (final project in _gigProjects.values) {
+      final invited = project.performers.where(
+        (performer) =>
+            performer.kind == GigPerformerKind.invited &&
+            performer.inviteUrl?.endsWith('/$token') == true,
+      );
+      if (invited.isEmpty) continue;
+      final performerId = invited.first.id;
+      _replaceGigProject(
+        project,
+        performers: [
+          for (final performer in project.performers)
+            if (performer.id == performerId)
+              GigPerformer(
+                id: performer.id,
+                kind: GigPerformerKind.band,
+                name: band.name,
+                role: performer.role,
+                bandId: band.id,
+              )
+            else
+              performer,
+        ],
+      );
+      return project.id;
+    }
+    throw StateError('Invitation is no longer active.');
   }
 
   @override

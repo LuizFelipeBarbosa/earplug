@@ -210,10 +210,7 @@ async function publicLineup(ctx: MutationCtx, projectId: Id<"gigProjects">) {
   };
 }
 
-async function publishProject(
-  ctx: MutationCtx,
-  project: Doc<"gigProjects">,
-) {
+async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
   if (!project.title?.trim()) throw new Error("Gig name is required");
   if (project.doorsAt === undefined || project.startsAt === undefined) {
     throw new Error("Doors and start time are required");
@@ -222,14 +219,16 @@ async function publishProject(
   if (project.startsAt < project.doorsAt) {
     throw new Error("Start time must be after doors");
   }
-  if (project.ticketing === "external" && !project.externalUrl) {
-    throw new Error("External ticket URL is required");
-  }
-  if (project.flyKey === "custom") {
-    if (!project.flyStorageId) throw new Error("Custom flyer art is required");
-    const upload = await ctx.db.system.get("_storage", project.flyStorageId);
-    if (!upload) throw new Error("Flyer upload not found");
-  }
+  await assertGigPublishable(ctx, {
+    bandId: project.bandId,
+    startsAt: project.startsAt,
+    venueId: project.venueId,
+    price: project.price,
+    flyKey: project.flyKey,
+    flyStorageId: project.flyStorageId,
+    ticketing: project.ticketing,
+    externalUrl: project.externalUrl,
+  });
 
   const lineup = await publicLineup(ctx, project._id);
   const doorsTime = `${formattedTime(project.doorsAt)} / ${formattedTime(project.startsAt)}`;
@@ -345,12 +344,25 @@ export async function createProjectForGig(
 type UpcomingGigs = { gigs: Doc<"gigs">[]; nextStartsAt: number | null };
 
 async function upcomingGigs(ctx: QueryCtx): Promise<UpcomingGigs> {
-  const rows = await ctx.db
+  const published = await ctx.db
     .query("gigs")
-    .withIndex("by_startsAt", (q) => q.gte("startsAt", feedCutoff()))
+    .withIndex("by_lifecycle_and_startsAt", (q) =>
+      q.eq("lifecycle", "published").gte("startsAt", feedCutoff()),
+    )
     .order("asc")
-    .take(MAX_FEED_GIGS * 4 + 1);
-  const visible = rows.filter((gig) => lifecycle(gig) === "published");
+    .take(MAX_FEED_GIGS + 1);
+  // Legacy rows have no lifecycle value and are treated as published until the
+  // lifecycle migration has finished everywhere.
+  const legacy = await ctx.db
+    .query("gigs")
+    .withIndex("by_lifecycle_and_startsAt", (q) =>
+      q.eq("lifecycle", undefined).gte("startsAt", feedCutoff()),
+    )
+    .order("asc")
+    .take(MAX_FEED_GIGS + 1);
+  const visible = [...published, ...legacy].sort(
+    (left, right) => left.startsAt - right.startsAt,
+  );
   return {
     gigs: visible.slice(0, MAX_FEED_GIGS),
     nextStartsAt: visible[MAX_FEED_GIGS]?.startsAt ?? null,
@@ -406,7 +418,8 @@ export const getPublic = query({
   returns: v.union(gigPayloadValidator, v.null()),
   handler: async (ctx, args) => {
     const gig = await ctx.db.get(args.gigId);
-    if (!gig || !["published", "cancelled"].includes(lifecycle(gig))) return null;
+    if (!gig || !["published", "cancelled"].includes(lifecycle(gig)))
+      return null;
     return await toGigPayload(ctx, gig);
   },
 });
@@ -422,7 +435,8 @@ export const forBand = query({
     );
     const out = [];
     for (const gig of rows) {
-      if (lifecycle(gig) === "published") out.push(await toGigPayload(ctx, gig));
+      if (lifecycle(gig) === "published")
+        out.push(await toGigPayload(ctx, gig));
       if (out.length === MAX_UPCOMING_GIGS_PER_BAND) break;
     }
     return out;
@@ -461,10 +475,14 @@ export const publishGig = mutation({
     if (gig) {
       await ctx.db.patch(gigId, {
         lifecycle: "published",
-        doorsAt: gig.startsAt,
+        doorsAt: gig.doorsAt ?? gig.startsAt,
         performers: [{ name: band.name, role: "headliner", bandId: band._id }],
       });
-      await createProjectForGig(ctx, { ...gig, lifecycle: "published" }, band._id);
+      await createProjectForGig(
+        ctx,
+        { ...gig, lifecycle: "published" },
+        band._id,
+      );
     }
     return { gigId };
   },
@@ -482,7 +500,8 @@ export const manageForBand = query({
       .take(100);
     const out = [];
     for (const project of projects) {
-      if (project.status !== "deleted") out.push(await toProjectPayload(ctx, project));
+      if (project.status !== "deleted")
+        out.push(await toProjectPayload(ctx, project));
     }
     return out;
   },
@@ -492,7 +511,10 @@ export const getProject = query({
   args: { projectId: v.id("gigProjects") },
   returns: projectPayloadValidator,
   handler: async (ctx, args) =>
-    await toProjectPayload(ctx, await requireProjectAdminQuery(ctx, args.projectId)),
+    await toProjectPayload(
+      ctx,
+      await requireProjectAdminQuery(ctx, args.projectId),
+    ),
 });
 
 export const createDraft = mutation({
@@ -552,8 +574,10 @@ export const saveDraft = mutation({
   returns: v.object({ revision: v.number() }),
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
-    if (project.revision !== args.revision) throw new Error("Draft changed elsewhere");
-    if (!Number.isFinite(args.price) || args.price < 0) throw new Error("Invalid price");
+    if (project.revision !== args.revision)
+      throw new Error("Draft changed elsewhere");
+    if (!Number.isFinite(args.price) || args.price < 0)
+      throw new Error("Invalid price");
     const revision = project.revision + 1;
     await ctx.db.patch(project._id, {
       revision,
@@ -605,7 +629,9 @@ export const addPerformer = mutation({
     }
     const inviteToken =
       args.kind === "invited" ? await uniqueInviteToken(ctx) : undefined;
-    const inviteExpiresAt = inviteToken ? Date.now() + INVITE_LIFETIME_MS : undefined;
+    const inviteExpiresAt = inviteToken
+      ? Date.now() + INVITE_LIFETIME_MS
+      : undefined;
     await ctx.db.insert("gigProjectPerformers", {
       projectId: project._id,
       order: performers.length,
@@ -643,7 +669,8 @@ export const updatePerformer = mutation({
     const performer = await ctx.db.get(args.performerId);
     if (!performer) throw new Error("Performer not found");
     const project = await requireProjectAdmin(ctx, performer.projectId);
-    const patch: { name?: string; role?: "headliner" | "support" | "opener" } = {};
+    const patch: { name?: string; role?: "headliner" | "support" | "opener" } =
+      {};
     if (args.name !== undefined && performer.kind !== "band") {
       const name = args.name.trim();
       if (!name) throw new Error("Performer name is required");
@@ -651,7 +678,10 @@ export const updatePerformer = mutation({
     }
     if (args.role !== undefined) patch.role = args.role;
     if (Object.keys(patch).length > 0) await ctx.db.patch(performer._id, patch);
-    await ctx.db.patch(project._id, { revision: project.revision + 1, updatedAt: Date.now() });
+    await ctx.db.patch(project._id, {
+      revision: project.revision + 1,
+      updatedAt: Date.now(),
+    });
     const updated = await ctx.db.get(project._id);
     if (!updated) throw new Error("Draft not found");
     return await toProjectPayload(ctx, updated);
@@ -668,9 +698,13 @@ export const removePerformer = mutation({
     await ctx.db.delete(performer._id);
     const remaining = await projectPerformers(ctx, project._id);
     for (let index = 0; index < remaining.length; index++) {
-      if (remaining[index].order !== index) await ctx.db.patch(remaining[index]._id, { order: index });
+      if (remaining[index].order !== index)
+        await ctx.db.patch(remaining[index]._id, { order: index });
     }
-    await ctx.db.patch(project._id, { revision: project.revision + 1, updatedAt: Date.now() });
+    await ctx.db.patch(project._id, {
+      revision: project.revision + 1,
+      updatedAt: Date.now(),
+    });
     const updated = await ctx.db.get(project._id);
     if (!updated) throw new Error("Draft not found");
     return await toProjectPayload(ctx, updated);
@@ -678,22 +712,34 @@ export const removePerformer = mutation({
 });
 
 export const reorderPerformers = mutation({
-  args: { projectId: v.id("gigProjects"), performerIds: v.array(v.id("gigProjectPerformers")) },
+  args: {
+    projectId: v.id("gigProjects"),
+    performerIds: v.array(v.id("gigProjectPerformers")),
+  },
   returns: projectPayloadValidator,
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
     const current = await projectPerformers(ctx, project._id);
-    if (args.performerIds.length !== current.length || args.performerIds.length > MAX_PERFORMERS) {
+    if (
+      args.performerIds.length !== current.length ||
+      args.performerIds.length > MAX_PERFORMERS
+    ) {
       throw new Error("Lineup changed; reload and try again");
     }
     const currentIds = new Set(current.map((performer) => performer._id));
-    if (new Set(args.performerIds).size !== current.length || args.performerIds.some((id) => !currentIds.has(id))) {
+    if (
+      new Set(args.performerIds).size !== current.length ||
+      args.performerIds.some((id) => !currentIds.has(id))
+    ) {
       throw new Error("Invalid lineup order");
     }
     for (let index = 0; index < args.performerIds.length; index++) {
       await ctx.db.patch(args.performerIds[index], { order: index });
     }
-    await ctx.db.patch(project._id, { revision: project.revision + 1, updatedAt: Date.now() });
+    await ctx.db.patch(project._id, {
+      revision: project.revision + 1,
+      updatedAt: Date.now(),
+    });
     const updated = await ctx.db.get(project._id);
     if (!updated) throw new Error("Draft not found");
     return await toProjectPayload(ctx, updated);
@@ -756,7 +802,8 @@ export const unpublish = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
-    if (project.publicGigId) await ctx.db.patch(project.publicGigId, { lifecycle: "unpublished" });
+    if (project.publicGigId)
+      await ctx.db.patch(project.publicGigId, { lifecycle: "unpublished" });
     await ctx.db.patch(project._id, { status: "draft", updatedAt: Date.now() });
     return null;
   },
@@ -767,9 +814,13 @@ export const cancel = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
-    if (!project.publicGigId) throw new Error("Publish the gig before cancelling it");
+    if (!project.publicGigId)
+      throw new Error("Publish the gig before cancelling it");
     await ctx.db.patch(project.publicGigId, { lifecycle: "cancelled" });
-    await ctx.db.patch(project._id, { status: "cancelled", updatedAt: Date.now() });
+    await ctx.db.patch(project._id, {
+      status: "cancelled",
+      updatedAt: Date.now(),
+    });
     return null;
   },
 });
@@ -779,12 +830,19 @@ export const deleteGig = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
-    if (project.publicGigId) await ctx.db.patch(project.publicGigId, { lifecycle: "deleted" });
+    if (project.publicGigId)
+      await ctx.db.patch(project.publicGigId, { lifecycle: "deleted" });
     for (const performer of await projectPerformers(ctx, project._id)) {
-      if (performer.inviteToken) await ctx.db.patch(performer._id, { inviteRevoked: true });
+      if (performer.inviteToken)
+        await ctx.db.patch(performer._id, { inviteRevoked: true });
     }
-    await ctx.db.patch(project._id, { status: "deleted", updatedAt: Date.now() });
-    await ctx.scheduler.runAfter(0, internal.gigs.purgeDeletedGig, { projectId: project._id });
+    await ctx.db.patch(project._id, {
+      status: "deleted",
+      updatedAt: Date.now(),
+    });
+    await ctx.scheduler.runAfter(0, internal.gigs.purgeDeletedGig, {
+      projectId: project._id,
+    });
     return null;
   },
 });
@@ -797,7 +855,10 @@ export const expireInvite = internalMutation({
       .query("gigProjectPerformers")
       .withIndex("by_invite_token", (q) => q.eq("inviteToken", args.token))
       .first();
-    if (performer?.inviteToken === args.token && performer.inviteRevoked !== true) {
+    if (
+      performer?.inviteToken === args.token &&
+      performer.inviteRevoked !== true
+    ) {
       await ctx.db.patch(performer._id, { inviteRevoked: true });
     }
     return null;
@@ -806,7 +867,10 @@ export const expireInvite = internalMutation({
 
 export const resolvePerformerInvite = query({
   args: { token: v.string() },
-  returns: v.union(v.object({ performerName: v.string(), gigTitle: v.string() }), v.null()),
+  returns: v.union(
+    v.object({ performerName: v.string(), gigTitle: v.string() }),
+    v.null(),
+  ),
   handler: async (ctx, args) => {
     if (args.token.length > 200) return null;
     const performer = await ctx.db
@@ -816,15 +880,16 @@ export const resolvePerformerInvite = query({
     if (
       !performer ||
       performer.inviteRevoked === true ||
-      performer.kind !== "invited" ||
-      !performer.inviteExpiresAt ||
-      performer.inviteExpiresAt <= Date.now()
+      performer.kind !== "invited"
     ) {
       return null;
     }
     const project = await ctx.db.get(performer.projectId);
     if (!project || project.status === "deleted") return null;
-    return { performerName: performer.name, gigTitle: project.title ?? "Untitled gig" };
+    return {
+      performerName: performer.name,
+      gigTitle: project.title ?? "Untitled gig",
+    };
   },
 });
 
@@ -835,16 +900,34 @@ export const claimPerformerInvite = mutation({
     await requireBandAdmin(ctx, args.bandId);
     const band = await ctx.db.get(args.bandId);
     if (!band) throw new Error("Band not found");
-    const performer = args.token.length <= 200
-      ? await ctx.db.query("gigProjectPerformers").withIndex("by_invite_token", (q) => q.eq("inviteToken", args.token)).first()
-      : null;
-    if (!performer || performer.kind !== "invited" || performer.inviteRevoked === true || !performer.inviteExpiresAt || performer.inviteExpiresAt <= Date.now()) {
+    const performer =
+      args.token.length <= 200
+        ? await ctx.db
+            .query("gigProjectPerformers")
+            .withIndex("by_invite_token", (q) =>
+              q.eq("inviteToken", args.token),
+            )
+            .first()
+        : null;
+    if (
+      !performer ||
+      performer.kind !== "invited" ||
+      performer.inviteRevoked === true ||
+      !performer.inviteExpiresAt ||
+      performer.inviteExpiresAt <= Date.now()
+    ) {
       throw new Error("Invitation is invalid or expired");
     }
     const project = await ctx.db.get(performer.projectId);
-    if (!project || project.status === "deleted") throw new Error("Gig is unavailable");
+    if (!project || project.status === "deleted")
+      throw new Error("Gig is unavailable");
     const performers = await projectPerformers(ctx, project._id);
-    if (performers.some((candidate) => candidate._id !== performer._id && candidate.bandId === band._id)) {
+    if (
+      performers.some(
+        (candidate) =>
+          candidate._id !== performer._id && candidate.bandId === band._id,
+      )
+    ) {
       throw new Error("Band is already in the lineup");
     }
     await ctx.db.patch(performer._id, {
@@ -854,14 +937,31 @@ export const claimPerformerInvite = mutation({
       inviteRevoked: true,
       claimedAt: Date.now(),
     });
-    await ctx.db.patch(project._id, { revision: project.revision + 1, updatedAt: Date.now() });
+    const revision = project.revision + 1;
+    let publishedRevision = project.publishedRevision;
     if (project.status === "published" || project.status === "cancelled") {
       const lineup = await publicLineup(ctx, project._id);
       if (project.publicGigId) {
-        await ctx.db.patch(project.publicGigId, { lineup: lineup.lineup, performers: lineup.performers, genres: lineup.genres });
-        if (project.startsAt) await replaceGigBandIndex(ctx, project.publicGigId, lineup.lineup, project.startsAt);
+        await ctx.db.patch(project.publicGigId, {
+          lineup: lineup.lineup,
+          performers: lineup.performers,
+          genres: lineup.genres,
+        });
+        if (project.startsAt)
+          await replaceGigBandIndex(
+            ctx,
+            project.publicGigId,
+            lineup.lineup,
+            project.startsAt,
+          );
+        publishedRevision = revision;
       }
     }
+    await ctx.db.patch(project._id, {
+      revision,
+      publishedRevision,
+      updatedAt: Date.now(),
+    });
     return { projectId: project._id };
   },
 });
@@ -876,14 +976,25 @@ export const purgeDeletedGig = internalMutation({
     for (const performer of performers) await ctx.db.delete(performer._id);
     const gigId = project.publicGigId;
     if (gigId) {
-      const joins = await ctx.db.query("gigBands").withIndex("by_gig", (q) => q.eq("gigId", gigId)).take(100);
+      const joins = await ctx.db
+        .query("gigBands")
+        .withIndex("by_gig", (q) => q.eq("gigId", gigId))
+        .take(100);
       for (const row of joins) await ctx.db.delete(row._id);
-      const rsvps = await ctx.db.query("gigRsvps").withIndex("by_gig", (q) => q.eq("gigId", gigId)).take(100);
+      const rsvps = await ctx.db
+        .query("gigRsvps")
+        .withIndex("by_gig", (q) => q.eq("gigId", gigId))
+        .take(100);
       for (const row of rsvps) await ctx.db.delete(row._id);
-      const saves = await ctx.db.query("gigSaves").withIndex("by_gig", (q) => q.eq("gigId", gigId)).take(100);
+      const saves = await ctx.db
+        .query("gigSaves")
+        .withIndex("by_gig", (q) => q.eq("gigId", gigId))
+        .take(100);
       for (const row of saves) await ctx.db.delete(row._id);
       if (rsvps.length === 100 || saves.length === 100) {
-        await ctx.scheduler.runAfter(0, internal.gigs.purgeDeletedGig, { projectId: project._id });
+        await ctx.scheduler.runAfter(0, internal.gigs.purgeDeletedGig, {
+          projectId: project._id,
+        });
         return null;
       }
       await ctx.db.delete(gigId);
@@ -895,8 +1006,11 @@ export const purgeDeletedGig = internalMutation({
 
 function randomToken() {
   const bytes = new Uint8Array(32);
-  for (let index = 0; index < bytes.length; index++) bytes[index] = Math.floor(Math.random() * 256);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  for (let index = 0; index < bytes.length; index++)
+    bytes[index] = Math.floor(Math.random() * 256);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 async function uniqueInviteToken(ctx: MutationCtx) {

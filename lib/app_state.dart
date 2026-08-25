@@ -25,6 +25,7 @@ enum Screen {
   band,
   bandPreview,
   bandJoin,
+  gigInvite,
   venue,
   explore,
   myGigs,
@@ -102,7 +103,7 @@ class DiscoveryFilters {
       (maxDistanceMiles == null ? 0 : 1);
 }
 
-enum PendingKind { rsvp, follow, save, myGigs, band, join }
+enum PendingKind { rsvp, follow, save, myGigs, band, join, gigInvite }
 
 enum DataStatus { connecting, ready, error }
 
@@ -122,12 +123,16 @@ class AppState extends ChangeNotifier {
     LocationService? locationService,
     MediaUploadService? mediaUploadService,
     String? initialJoinToken,
+    String? initialPerformerInviteToken,
+    String? initialGigId,
   }) : this._(
          auth ?? FakeAuthService(),
          repository,
          locationService ?? GeolocatorLocationService(),
          mediaUploadService,
          initialJoinToken,
+         initialPerformerInviteToken,
+         initialGigId,
        );
 
   AppState._(
@@ -136,6 +141,8 @@ class AppState extends ChangeNotifier {
     this.locationService,
     MediaUploadService? providedMediaUploader,
     String? initialJoinToken,
+    String? initialPerformerInviteToken,
+    String? initialGigId,
   ) : auth = resolvedAuth,
       repository = providedRepository ?? DemoRepository(auth: resolvedAuth),
       // Only a real backend has a connection to wait on; the demo data is
@@ -165,10 +172,18 @@ class AppState extends ChangeNotifier {
         requireAuthentication: false,
       );
     }
-    final token = initialJoinToken?.trim();
-    if (token != null && token.isNotEmpty) {
-      _stack = [ScreenEntry(Screen.bandJoin, token)];
-      unawaited(_resolveJoinInvite(token));
+    final performerToken = initialPerformerInviteToken?.trim();
+    final joinToken = initialJoinToken?.trim();
+    final gigId = initialGigId?.trim();
+    if (performerToken != null && performerToken.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.gigInvite, performerToken)];
+      unawaited(_resolvePerformerInvite(performerToken));
+    } else if (joinToken != null && joinToken.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.bandJoin, joinToken)];
+      unawaited(_resolveJoinInvite(joinToken));
+    } else if (gigId != null && gigId.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.gig, gigId)];
+      unawaited(_loadPublicGig(gigId));
     }
   }
 
@@ -181,6 +196,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<FeedSnapshot>? _feedSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
+  StreamSubscription<Gig?>? _publicGigSubscription;
   final Map<String, StreamSubscription<List<Gig>>>
   _followedBandGigSubscriptions = {};
   final Map<String, Object> _followedBandGigTokens = {};
@@ -232,6 +248,12 @@ class AppState extends ChangeNotifier {
   final Map<String, String> _venueDetailErrors = {};
   final Map<String, Gig> _relationshipGigs = {};
   final Map<String, Gig> _interactionGigs = {};
+  final Map<String, Gig> _publicGigs = {};
+  final Map<String, String> _publicGigErrors = {};
+  final Set<String> _missingPublicGigs = {};
+  String? _subscribedPublicGigId;
+  bool _publicGigLoading = false;
+  int _publicGigGeneration = 0;
 
   BandMediaController? _media;
 
@@ -248,6 +270,15 @@ class AppState extends ChangeNotifier {
   String? joinInviteError;
   bool joinInviteAccepting = false;
   bool joinInviteAccepted = false;
+
+  PerformerInviteResolution? performerInvite;
+  String? performerInviteToken;
+  bool performerInviteLoading = false;
+  String? performerInviteError;
+  bool performerInviteClaiming = false;
+  bool performerInviteClaimed = false;
+  String? performerInviteBandId;
+  int _performerInviteGeneration = 0;
 
   // ---- navigation
   List<ScreenEntry> _stack = const [ScreenEntry(Screen.home)];
@@ -394,6 +425,7 @@ class AppState extends ChangeNotifier {
   bool gfOverlay = true;
   PickedMedia? gfFlyerArt;
   String? gfFlyerStorageId;
+  String? gfFlyerUrl;
   bool gfFlyerUploading = false;
   bool gfPublished = false;
   bool gfPreviewing = false;
@@ -408,8 +440,10 @@ class AppState extends ChangeNotifier {
   bool _gigSaveAgain = false;
   bool _gigDraftDirty = false;
   int _gigEditGeneration = 0;
+  int _gigEditorGeneration = 0;
   Future<GigProject>? _gigCreateFuture;
   Future<void>? _gigSaveFuture;
+  Future<void>? _gigLineupMutationFuture;
 
   // ---- toast
   String toast = '';
@@ -419,12 +453,14 @@ class AppState extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _membershipsGeneration++;
+    _gigEditorGeneration++;
     _toastTimer?.cancel();
     _gigAutosaveTimer?.cancel();
     unawaited(_authSubscription?.cancel());
     unawaited(_feedSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
     unawaited(_bandsSubscription?.cancel());
+    unawaited(_publicGigSubscription?.cancel());
     _clearFollowedBandGigSubscriptions();
     super.dispose();
   }
@@ -809,6 +845,7 @@ class AppState extends ChangeNotifier {
   void openGig(String id) {
     if (current.screen == Screen.gig && current.param == id) return;
     go(Screen.gig, id);
+    unawaited(_loadPublicGig(id));
   }
 
   void openBand(String id) {
@@ -1022,6 +1059,8 @@ class AppState extends ChangeNotifier {
         _postAuthScreen = Screen.bandCreate;
       case PendingKind.join:
         _postAuthScreen = Screen.bandJoin;
+      case PendingKind.gigInvite:
+        _postAuthScreen = Screen.gigInvite;
       case null:
         _postAuthScreen = null;
     }
@@ -1706,6 +1745,9 @@ class AppState extends ChangeNotifier {
   }
 
   Gig? gig(String id) {
+    final direct = _publicGigs[id];
+    if (direct != null) return direct;
+    if (_missingPublicGigs.contains(id)) return null;
     for (final g in allGigs) {
       if (g.id == id) return g;
     }
@@ -1714,7 +1756,72 @@ class AppState extends ChangeNotifier {
         if (gig.id == id) return gig;
       }
     }
-    return _interactionGigs[id] ?? _relationshipGigs[id];
+    final cached = _interactionGigs[id] ?? _relationshipGigs[id];
+    if (cached == null &&
+        !_missingPublicGigs.contains(id) &&
+        !_publicGigErrors.containsKey(id) &&
+        (_subscribedPublicGigId != id || !_publicGigLoading)) {
+      unawaited(_loadPublicGig(id));
+    }
+    return cached;
+  }
+
+  bool publicGigLoading(String id) =>
+      _subscribedPublicGigId == id && _publicGigLoading;
+
+  bool publicGigMissing(String id) => _missingPublicGigs.contains(id);
+
+  String? publicGigError(String id) => _publicGigErrors[id];
+
+  void retryPublicGig(String id) {
+    _publicGigErrors.remove(id);
+    _missingPublicGigs.remove(id);
+    unawaited(_loadPublicGig(id, refresh: true));
+  }
+
+  Future<void> _loadPublicGig(String id, {bool refresh = false}) async {
+    if (!refresh &&
+        _subscribedPublicGigId == id &&
+        _publicGigSubscription != null) {
+      return;
+    }
+    final generation = ++_publicGigGeneration;
+    await _publicGigSubscription?.cancel();
+    if (_disposed || generation != _publicGigGeneration) return;
+    _subscribedPublicGigId = id;
+    _publicGigLoading = true;
+    _publicGigErrors.remove(id);
+    _missingPublicGigs.remove(id);
+    notifyListeners();
+    _publicGigSubscription = repository
+        .publicGig(id)
+        .listen(
+          (gig) {
+            if (_disposed || generation != _publicGigGeneration) return;
+            _publicGigLoading = false;
+            _publicGigErrors.remove(id);
+            if (gig == null) {
+              _publicGigs.remove(id);
+              _missingPublicGigs.add(id);
+            } else {
+              _missingPublicGigs.remove(id);
+              _publicGigs[id] = gig;
+              for (final bandId in gig.lineup) {
+                if (!_bands.containsKey(bandId)) {
+                  unawaited(_loadFollowBand(bandId));
+                }
+              }
+            }
+            notifyListeners();
+          },
+          onError: (Object error) {
+            if (_disposed || generation != _publicGigGeneration) return;
+            logError('publicGig $id', error);
+            _publicGigLoading = false;
+            _publicGigErrors[id] = '$error';
+            notifyListeners();
+          },
+        );
   }
 
   Band? band(String id) => _bands[id];
@@ -2246,6 +2353,95 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  List<String> get performerInviteAdminBandIds => [
+    for (final id in myBands)
+      if (isAdminOf(id)) id,
+  ];
+
+  void selectPerformerInviteBand(String id) {
+    if (isAdminOf(id)) _set(() => performerInviteBandId = id);
+  }
+
+  Future<void> openPerformerInvite(String token) async {
+    _stack = [ScreenEntry(Screen.gigInvite, token)];
+    notifyListeners();
+    await _resolvePerformerInvite(token);
+  }
+
+  Future<void> _resolvePerformerInvite(String token) async {
+    final generation = ++_performerInviteGeneration;
+    performerInviteToken = token;
+    performerInvite = null;
+    performerInviteError = null;
+    performerInviteClaimed = false;
+    performerInviteBandId = null;
+    performerInviteLoading = true;
+    notifyListeners();
+    try {
+      final resolved = await repository.resolvePerformerInvite(token);
+      if (_disposed || generation != _performerInviteGeneration) return;
+      if (resolved == null) {
+        performerInviteError =
+            'This invitation is invalid, expired, or revoked.';
+      } else {
+        performerInvite = resolved;
+      }
+    } catch (error) {
+      logError('resolvePerformerInvite', error);
+      if (_disposed || generation != _performerInviteGeneration) return;
+      performerInviteError = genericErrorMessage;
+    } finally {
+      if (!_disposed && generation == _performerInviteGeneration) {
+        performerInviteLoading = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> confirmPerformerInvite(String claimingBandId) async {
+    final token = performerInviteToken;
+    if (token == null || performerInvite == null || performerInviteClaiming) {
+      return;
+    }
+    if (!authed) {
+      needAuth(PendingAuth(PendingKind.gigInvite, token));
+      return;
+    }
+    if (!isAdminOf(claimingBandId)) {
+      performerInviteError = 'Choose a band you administer.';
+      notifyListeners();
+      return;
+    }
+
+    performerInviteClaiming = true;
+    performerInviteError = null;
+    notifyListeners();
+    try {
+      await repository.claimPerformerInvite(
+        token: token,
+        bandId: claimingBandId,
+      );
+      performerInviteBandId = claimingBandId;
+      performerInviteClaimed = true;
+      managedGigsBandId = null;
+    } catch (error) {
+      logError('claimPerformerInvite', error);
+      performerInviteError = 'This invitation could not be claimed.';
+      rethrow;
+    } finally {
+      performerInviteClaiming = false;
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  void openClaimedGigManager() {
+    final claimingBandId = performerInviteBandId;
+    if (claimingBandId == null) return;
+    bandId = claimingBandId;
+    resetTo(Screen.gigMgr);
+    unawaited(refreshManagedGigs());
+  }
+
   // ========================= band create =========================
 
   void startBandCreate() {
@@ -2504,14 +2700,25 @@ class AppState extends ChangeNotifier {
   void startGigCreate() {
     _resetGigForm();
     go(Screen.gigCreate);
-    _gigCreateFuture = _createGigDraft();
+    final editorGeneration = _gigEditorGeneration;
+    _gigCreateFuture = _createGigDraft(editorGeneration, bandId);
   }
 
-  Future<GigProject> _createGigDraft() async {
+  bool _isCurrentGigEditor(int editorGeneration) =>
+      !_disposed && editorGeneration == _gigEditorGeneration;
+
+  Future<GigProject> _createGigDraft(
+    int editorGeneration,
+    String requestedBandId,
+  ) async {
+    if (!_isCurrentGigEditor(editorGeneration)) {
+      throw StateError('Gig editor is no longer active');
+    }
     gfSaveState = 'CREATING…';
     notifyListeners();
     try {
-      final project = await repository.createGigDraft(bandId);
+      final project = await repository.createGigDraft(requestedBandId);
+      if (!_isCurrentGigEditor(editorGeneration)) return project;
       if (gfSaveState == 'UNSAVED') {
         // A fast typist can edit while the first draft request is in flight.
         // Attach the server identity without replacing those local changes.
@@ -2524,8 +2731,10 @@ class AppState extends ChangeNotifier {
       return project;
     } on Exception catch (error) {
       logError('createGigDraft', error);
-      gfSaveState = 'SAVE FAILED';
-      notifyListeners();
+      if (_isCurrentGigEditor(editorGeneration)) {
+        gfSaveState = 'SAVE FAILED';
+        notifyListeners();
+      }
       rethrow;
     }
   }
@@ -2533,13 +2742,16 @@ class AppState extends ChangeNotifier {
   Future<void> editGigProject(String projectId) async {
     _resetGigForm();
     go(Screen.gigCreate);
+    final editorGeneration = _gigEditorGeneration;
     gfSaveState = 'LOADING…';
     notifyListeners();
     try {
       final project = await repository.getGigProject(projectId);
+      if (!_isCurrentGigEditor(editorGeneration)) return;
       _applyGigProject(project);
     } on Exception catch (error) {
       logError('getGigProject', error);
+      if (!_isCurrentGigEditor(editorGeneration)) return;
       gfSaveState = 'LOAD FAILED';
       say(genericErrorMessage);
       notifyListeners();
@@ -2565,7 +2777,9 @@ class AppState extends ChangeNotifier {
     gfDesc = project.desc;
     gfFly = project.flyKey;
     gfOverlay = project.overlay;
+    gfFlyerArt = null;
     gfFlyerStorageId = project.flyStorageId;
+    gfFlyerUrl = project.flyerUrl;
     gfPublished = false;
     gfPreviewing = false;
     _gigDraftDirty = false;
@@ -2622,6 +2836,7 @@ class AppState extends ChangeNotifier {
   void setGfFlyerArt(PickedMedia? art) => _changeGig(() {
     gfFlyerArt = art;
     gfFlyerStorageId = null;
+    gfFlyerUrl = null;
   });
 
   void setGfFlyerUploading(bool v) => _set(() => gfFlyerUploading = v);
@@ -2699,29 +2914,83 @@ class AppState extends ChangeNotifier {
 
   Future<GigProject?> _ensureGigDraft() async {
     if (gfProject case final project?) return project;
+    final editorGeneration = _gigEditorGeneration;
     try {
-      return await (_gigCreateFuture ??= _createGigDraft());
+      final project = await (_gigCreateFuture ??= _createGigDraft(
+        editorGeneration,
+        bandId,
+      ));
+      if (!_isCurrentGigEditor(editorGeneration) ||
+          gfProject?.id != project.id) {
+        return null;
+      }
+      return gfProject;
     } on Exception {
       return null;
     }
   }
 
   Future<void> saveGigDraft() {
+    final lineupMutation = _gigLineupMutationFuture;
+    if (lineupMutation != null) {
+      return lineupMutation.then((_) => _startGigSave());
+    }
+    return _startGigSave();
+  }
+
+  Future<void> _startGigSave() {
     _gigAutosaveTimer?.cancel();
     if (!_gigDraftDirty && gfProject != null && _gigSaveFuture == null) {
       return Future.value();
     }
     _gigSaveAgain = true;
-    return _gigSaveFuture ??= _runGigSaveLoop().whenComplete(() {
-      _gigSaveFuture = null;
+    final existing = _gigSaveFuture;
+    if (existing != null) return existing;
+    final editorGeneration = _gigEditorGeneration;
+    late final Future<void> save;
+    save = _runGigSaveLoop(editorGeneration).whenComplete(() {
+      if (identical(_gigSaveFuture, save)) _gigSaveFuture = null;
     });
+    _gigSaveFuture = save;
+    return save;
   }
 
-  Future<void> _runGigSaveLoop() async {
-    do {
+  GigProject _gigProjectFromCurrentForm(
+    GigProject project, {
+    int? revision,
+    List<GigPerformer>? performers,
+  }) {
+    return GigProject(
+      id: project.id,
+      bandId: project.bandId,
+      publicGigId: project.publicGigId,
+      status: project.status,
+      revision: revision ?? project.revision,
+      publishedRevision: project.publishedRevision,
+      title: gfName.trim().isEmpty ? null : gfName.trim(),
+      doorsAt: _gfDoorsAt,
+      startsAt: _gfStartsAt,
+      venueId: gfVenueId,
+      price: gfPrice == 'FREE' ? 0 : int.tryParse(gfPrice.substring(1)) ?? 0,
+      flyKey: gfFly,
+      flyStorageId: gfFlyerStorageId,
+      flyerUrl: gfFlyerUrl,
+      overlay: gfOverlay,
+      desc: gfDesc,
+      ticketing: gfTix,
+      ageRequirement: gfAgeRequirement,
+      externalUrl: gfExt.trim().isEmpty ? null : gfExt.trim(),
+      cap: gfCap,
+      updatedAt: DateTime.now(),
+      performers: performers ?? project.performers,
+    );
+  }
+
+  Future<void> _runGigSaveLoop(int editorGeneration) async {
+    while (_isCurrentGigEditor(editorGeneration) && _gigSaveAgain) {
       _gigSaveAgain = false;
       final project = await _ensureGigDraft();
-      if (project == null) return;
+      if (project == null || !_isCurrentGigEditor(editorGeneration)) return;
       gfSaveState = 'SAVING…';
       notifyListeners();
       final editGeneration = _gigEditGeneration;
@@ -2745,34 +3014,10 @@ class AppState extends ChangeNotifier {
           externalUrl: gfExt.trim().isEmpty ? null : gfExt.trim(),
           cap: gfCap,
         );
+        if (!_isCurrentGigEditor(editorGeneration)) return;
         final current = gfProject;
-        if (current != null) {
-          gfProject = GigProject(
-            id: current.id,
-            bandId: current.bandId,
-            publicGigId: current.publicGigId,
-            status: current.status,
-            revision: revision,
-            publishedRevision: current.publishedRevision,
-            title: gfName.trim().isEmpty ? null : gfName.trim(),
-            doorsAt: _gfDoorsAt,
-            startsAt: _gfStartsAt,
-            venueId: gfVenueId,
-            price: gfPrice == 'FREE'
-                ? 0
-                : int.tryParse(gfPrice.substring(1)) ?? 0,
-            flyKey: gfFly,
-            flyStorageId: gfFlyerStorageId,
-            flyerUrl: current.flyerUrl,
-            overlay: gfOverlay,
-            desc: gfDesc,
-            ticketing: gfTix,
-            ageRequirement: gfAgeRequirement,
-            externalUrl: gfExt.trim().isEmpty ? null : gfExt.trim(),
-            cap: gfCap,
-            updatedAt: DateTime.now(),
-            performers: current.performers,
-          );
+        if (current != null && current.id == project.id) {
+          gfProject = _gigProjectFromCurrentForm(current, revision: revision);
         }
         if (editGeneration == _gigEditGeneration) {
           _gigDraftDirty = false;
@@ -2782,11 +3027,12 @@ class AppState extends ChangeNotifier {
         }
       } on Exception catch (error) {
         logError('saveGigDraft', error);
+        if (!_isCurrentGigEditor(editorGeneration)) return;
         gfSaveState = 'SAVE FAILED';
         _gigSaveAgain = false;
       }
       if (!_disposed) notifyListeners();
-    } while (_gigSaveAgain);
+    }
   }
 
   Future<void> applyFlyerProposal(FlyerEntryProposal proposal) async {
@@ -2827,6 +3073,7 @@ class AppState extends ChangeNotifier {
     await saveGigDraft();
     final project = gfProject;
     if (project == null || gfSaveState == 'SAVE FAILED') return;
+    final editorGeneration = _gigEditorGeneration;
     final venueId = gfVenueId!;
     final String publicGigId;
     try {
@@ -2834,6 +3081,9 @@ class AppState extends ChangeNotifier {
     } on Exception catch (error) {
       logError('publishGig', error);
       say(genericErrorMessage);
+      return;
+    }
+    if (!_isCurrentGigEditor(editorGeneration) || gfProject?.id != project.id) {
       return;
     }
 
@@ -2881,85 +3131,110 @@ class AppState extends ChangeNotifier {
   void closeGigPreview() => _set(() => gfPreviewing = false);
 
   Future<void> addExistingGigPerformer(String performerBandId) async {
-    final project = await _ensureGigDraft();
-    if (project == null) return;
-    await saveGigDraft();
-    try {
-      _applyGigProject(
-        await repository.addGigPerformer(
-          projectId: project.id,
-          kind: GigPerformerKind.band,
-          role: GigPerformerRole.support,
-          bandId: performerBandId,
-        ),
-      );
-    } on Exception catch (error) {
-      logError('addGigPerformer', error);
-      say(genericErrorMessage);
-    }
+    await _queueGigLineupMutation(
+      'addGigPerformer',
+      (project) => repository.addGigPerformer(
+        projectId: project.id,
+        kind: GigPerformerKind.band,
+        role: GigPerformerRole.support,
+        bandId: performerBandId,
+      ),
+    );
   }
 
   Future<void> addNamedGigPerformer(String name, {required bool invite}) async {
-    final project = await _ensureGigDraft();
-    if (project == null || name.trim().isEmpty) return;
-    await saveGigDraft();
-    try {
-      final updated = await repository.addGigPerformer(
+    final performerName = name.trim();
+    if (performerName.isEmpty) return;
+    await _queueGigLineupMutation(
+      'addGigPerformer',
+      (project) => repository.addGigPerformer(
         projectId: project.id,
         kind: invite ? GigPerformerKind.invited : GigPerformerKind.text,
         role: GigPerformerRole.support,
-        name: name.trim(),
-      );
-      _applyGigProject(updated);
-      if (invite) say('Invite link ready to share.');
-    } on Exception catch (error) {
-      logError('addGigPerformer', error);
-      say(genericErrorMessage);
-    }
+        name: performerName,
+      ),
+      onSuccess: invite ? (_) => say('Invite link ready to share.') : null,
+    );
   }
 
   Future<void> setGigPerformerRole(
     String performerId,
     GigPerformerRole role,
   ) async {
-    try {
-      _applyGigProject(
-        await repository.updateGigPerformer(
-          performerId: performerId,
-          role: role,
-        ),
-      );
-    } on Exception catch (error) {
-      logError('updateGigPerformer', error);
-      say(genericErrorMessage);
-    }
+    await _queueGigLineupMutation(
+      'updateGigPerformer',
+      (_) =>
+          repository.updateGigPerformer(performerId: performerId, role: role),
+    );
   }
 
   Future<void> removeGigPerformer(String performerId) async {
-    try {
-      _applyGigProject(await repository.removeGigPerformer(performerId));
-    } on Exception catch (error) {
-      logError('removeGigPerformer', error);
-      say(genericErrorMessage);
-    }
+    await _queueGigLineupMutation(
+      'removeGigPerformer',
+      (_) => repository.removeGigPerformer(performerId),
+    );
   }
 
   Future<void> moveGigPerformer(int oldIndex, int newIndex) async {
-    final project = gfProject;
-    if (project == null) return;
-    final performers = List<GigPerformer>.of(project.performers);
-    performers.insert(newIndex, performers.removeAt(oldIndex));
-    try {
-      _applyGigProject(
-        await repository.reorderGigPerformers(
-          project.id,
-          performers.map((performer) => performer.id).toList(),
-        ),
+    await _queueGigLineupMutation('reorderGigPerformers', (project) {
+      final performers = List<GigPerformer>.of(project.performers);
+      performers.insert(newIndex, performers.removeAt(oldIndex));
+      return repository.reorderGigPerformers(
+        project.id,
+        performers.map((performer) => performer.id).toList(),
       );
-    } on Exception catch (error) {
-      logError('reorderGigPerformers', error);
-      say(genericErrorMessage);
-    }
+    });
+  }
+
+  Future<void> _queueGigLineupMutation(
+    String operation,
+    Future<GigProject> Function(GigProject project) mutation, {
+    void Function(GigProject project)? onSuccess,
+  }) {
+    final editorGeneration = _gigEditorGeneration;
+    final previous = _gigLineupMutationFuture;
+    late final Future<void> queued;
+    queued = (previous ?? Future.value())
+        .then((_) async {
+          if (!_isCurrentGigEditor(editorGeneration)) return;
+          await _startGigSave();
+          if (!_isCurrentGigEditor(editorGeneration) ||
+              gfSaveState == 'SAVE FAILED') {
+            return;
+          }
+          final project = gfProject;
+          if (project == null) return;
+          try {
+            final updated = await mutation(project);
+            if (!_isCurrentGigEditor(editorGeneration) ||
+                gfProject?.id != project.id) {
+              return;
+            }
+            gfProject = _gigProjectFromCurrentForm(
+              updated,
+              performers: updated.performers,
+            );
+            if (!_gigDraftDirty) {
+              gfSaveState = updated.hasUnpublishedChanges
+                  ? 'UNPUBLISHED CHANGES'
+                  : 'SAVED';
+            }
+            onSuccess?.call(updated);
+            notifyListeners();
+          } on Exception catch (error) {
+            logError(operation, error);
+            if (_isCurrentGigEditor(editorGeneration)) {
+              say(genericErrorMessage);
+            }
+          }
+        })
+        .whenComplete(() {
+          if (identical(_gigLineupMutationFuture, queued)) {
+            _gigLineupMutationFuture = null;
+          }
+        });
+    _gigLineupMutationFuture = queued;
+    return queued;
   }
 
   Future<void> refreshManagedGigs() {
@@ -2974,11 +3249,18 @@ class AppState extends ChangeNotifier {
     if (!_disposed) notifyListeners();
     do {
       _managedGigsRefreshAgain = false;
+      final requestedBandId = bandId;
       try {
-        managedGigProjects = await repository.manageGigs(bandId);
-        managedGigsBandId = bandId;
+        final projects = await repository.manageGigs(requestedBandId);
+        if (requestedBandId != bandId) {
+          _managedGigsRefreshAgain = true;
+          continue;
+        }
+        managedGigProjects = projects;
+        managedGigsBandId = requestedBandId;
       } on Exception catch (error) {
         logError('manageGigs', error);
+        if (requestedBandId != bandId) _managedGigsRefreshAgain = true;
       }
     } while (_managedGigsRefreshAgain);
     managedGigsLoading = false;
@@ -3044,6 +3326,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _resetGigForm() {
+    _gigEditorGeneration++;
     gfName = '';
     gfDate = null;
     gfDoors = const TimeOfDay(hour: 20, minute: 0);
@@ -3059,6 +3342,7 @@ class AppState extends ChangeNotifier {
     gfOverlay = true;
     gfFlyerArt = null;
     gfFlyerStorageId = null;
+    gfFlyerUrl = null;
     gfFlyerUploading = false;
     gfPublished = false;
     gfPreviewing = false;
@@ -3067,6 +3351,7 @@ class AppState extends ChangeNotifier {
     _gigAutosaveTimer?.cancel();
     _gigCreateFuture = null;
     _gigSaveFuture = null;
+    _gigLineupMutationFuture = null;
     _gigSaveAgain = false;
     _gigDraftDirty = false;
     _gigEditGeneration = 0;

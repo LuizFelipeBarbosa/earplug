@@ -160,6 +160,7 @@ export default defineSchema({
     performers: v.optional(v.array(gigPublicPerformerValidator)),
   })
     .index("by_startsAt", ["startsAt"])
+    .index("by_lifecycle_and_startsAt", ["lifecycle", "startsAt"])
     .index("by_venueId_and_startsAt", ["venueId", "startsAt"])
     .index("by_title", ["title"]),
 
@@ -197,11 +198,7 @@ export default defineSchema({
   gigProjectPerformers: defineTable({
     projectId: v.id("gigProjects"),
     order: v.number(),
-    kind: v.union(
-      v.literal("band"),
-      v.literal("invited"),
-      v.literal("text"),
-    ),
+    kind: v.union(v.literal("band"), v.literal("invited"), v.literal("text")),
     name: v.string(),
     role: gigPerformerRoleValidator,
     bandId: v.optional(v.id("bands")),

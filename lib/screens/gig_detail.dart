@@ -26,7 +26,36 @@ class GigDetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final gig = app.gig(gigId);
-    if (gig == null) return const SizedBox.shrink();
+    if (gig == null) {
+      if (app.publicGigError(gigId) case final error?) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  error,
+                  textAlign: TextAlign.center,
+                  style: epText(color: Ep.contentSecondary),
+                ),
+                const SizedBox(height: 16),
+                EpButton('TRY AGAIN', onTap: () => app.retryPublicGig(gigId)),
+              ],
+            ),
+          ),
+        );
+      }
+      if (app.publicGigMissing(gigId)) {
+        return Center(
+          child: Text(
+            'THIS GIG IS NO LONGER AVAILABLE',
+            style: epText(color: Ep.contentSecondary),
+          ),
+        );
+      }
+      return const Center(child: CircularProgressIndicator());
+    }
     final venue = app.venue(gig.venueId);
     final performers = gig.performers.isNotEmpty
         ? gig.performers
@@ -49,7 +78,7 @@ class GigDetailScreen extends StatelessWidget {
         ListView(
           padding: const EdgeInsets.only(bottom: 120),
           children: [
-            _Hero(gig: gig, app: app),
+            _Hero(gig: gig, app: app, performers: performers),
             if (gig.lifecycle == GigLifecycle.cancelled)
               Container(
                 margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -119,15 +148,16 @@ class GigDetailScreen extends StatelessWidget {
 class _Hero extends StatelessWidget {
   final Gig gig;
   final AppState app;
+  final List<GigPerformer> performers;
 
-  const _Hero({required this.gig, required this.app});
+  const _Hero({required this.gig, required this.app, required this.performers});
 
   @override
   Widget build(BuildContext context) {
     final fly = app.flyer(gig.flyKey);
     final venue = app.venue(gig.venueId);
-    final lineupLine = gig.lineup
-        .map((id) => app.band(id)?.name ?? 'TBA')
+    final lineupLine = performers
+        .map((performer) => performer.name)
         .join(' · ')
         .toUpperCase();
     final topPad = headerTopPad(context);

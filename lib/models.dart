@@ -791,6 +791,23 @@ class BandInviteAcceptance {
       );
 }
 
+/// The small public payload shown before a band claims a lineup invitation.
+class PerformerInviteResolution {
+  final String performerName;
+  final String gigTitle;
+
+  const PerformerInviteResolution({
+    required this.performerName,
+    required this.gigTitle,
+  });
+
+  factory PerformerInviteResolution.fromJson(Map<String, dynamic> json) =>
+      PerformerInviteResolution(
+        performerName: json['performerName'] as String,
+        gigTitle: json['gigTitle'] as String,
+      );
+}
+
 enum MediaKind { video, photo }
 
 class BandMedia {

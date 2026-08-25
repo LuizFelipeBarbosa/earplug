@@ -221,10 +221,12 @@ class _FlyerStudio extends StatelessWidget {
                 onPressed: () => _pickGigFlyerArt(context),
                 icon: const Icon(Icons.add_photo_alternate_outlined),
                 label: Text(
-                  app.gfFlyerArt == null ? 'ADD FLYER ART' : 'CHANGE ART',
+                  app.gfFlyerArt == null && app.gfFlyerUrl == null
+                      ? 'ADD FLYER ART'
+                      : 'CHANGE ART',
                 ),
               ),
-              if (app.gfFlyerArt != null)
+              if (app.gfFlyerArt != null || app.gfFlyerUrl != null)
                 TextButton.icon(
                   key: const ValueKey('clear-flyer-art'),
                   onPressed: () => app.setGfFlyerArt(null),
@@ -327,44 +329,22 @@ class _CustomArtSlot extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final art = app.gfFlyerArt;
+    final persistedUrl = app.gfFlyerUrl;
     final slot = ColoredBox(
       color: base,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (art == null)
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: DashedBox(
-                padding: const EdgeInsets.all(12),
-                color: Ep.border,
-                radius: 4,
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.add_photo_alternate_outlined,
-                        size: 22,
-                        color: Ep.contentDisabled,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'CUSTOM FLYER PREVIEW',
-                        style: epText(
-                          size: 10.5,
-                          weight: FontWeight.w900,
-                          letterSpacing: .8,
-                          color: Ep.contentDisabled,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+          if (art != null)
+            Image.memory(art.bytes, fit: BoxFit.cover)
+          else if (persistedUrl != null)
+            Image.network(
+              persistedUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _ArtPlaceholder(base: base),
             )
           else
-            Image.memory(art.bytes, fit: BoxFit.cover),
+            _ArtPlaceholder(base: base),
           if (app.gfFlyerUploading)
             const Align(
               alignment: Alignment.bottomCenter,
@@ -374,6 +354,49 @@ class _CustomArtSlot extends StatelessWidget {
       ),
     );
     return slot;
+  }
+}
+
+class _ArtPlaceholder extends StatelessWidget {
+  const _ArtPlaceholder({required this.base});
+
+  final Color base;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: base,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: DashedBox(
+          padding: const EdgeInsets.all(12),
+          color: Ep.border,
+          radius: 4,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.add_photo_alternate_outlined,
+                  size: 22,
+                  color: Ep.contentDisabled,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'CUSTOM FLYER PREVIEW',
+                  style: epText(
+                    size: 10.5,
+                    weight: FontWeight.w900,
+                    letterSpacing: .8,
+                    color: Ep.contentDisabled,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -23,6 +23,13 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Stream<Gig?> publicGig(String gigId) =>
+      _convexService.subscribe('gigs:getPublic', {'gigId': gigId}, (decoded) {
+        final json = _asMap(decoded);
+        return json.isEmpty ? null : Gig.fromJson(json);
+      });
+
+  @override
   Stream<List<Gig>> upcomingGigsForBand(String bandId) {
     return _convexService.subscribe('gigs:forBand', {'bandId': bandId}, (
       decoded,
@@ -420,6 +427,29 @@ class ConvexRepository implements EarplugRepository {
       'token': token,
     });
     return BandInviteAcceptance.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<PerformerInviteResolution?> resolvePerformerInvite(
+    String token,
+  ) async {
+    final result = await _convexService.query('gigs:resolvePerformerInvite', {
+      'token': token,
+    });
+    final json = _asMap(result);
+    return json.isEmpty ? null : PerformerInviteResolution.fromJson(json);
+  }
+
+  @override
+  Future<String> claimPerformerInvite({
+    required String token,
+    required String bandId,
+  }) async {
+    final result = await _convexService.mutation('gigs:claimPerformerInvite', {
+      'token': token,
+      'bandId': bandId,
+    });
+    return _asMap(result)['projectId'] as String;
   }
 
   @override
