@@ -91,15 +91,17 @@ void main() {
       final published = app.allGigs.last;
       expect(published.title, 'Test Show');
       expect(published.lineup, ['b1']);
-      expect(published.time, '9:30PM');
+      expect(published.time, '9:30PM / 9PM');
       expect(published.flyKey, 'riso');
       // The form stays put and shows the published flyer.
       expect(app.gfPublished, isTrue);
+      expect(app.gfProject?.status, GigProjectStatus.published);
       expect(app.current.screen, Screen.gigCreate);
 
       app.closeGigCreate();
       expect(app.current.screen, Screen.gigMgr);
-      expect(app.gfName, '');
+      expect(app.gfName, 'Test Show');
+      await pumpEventQueue();
     });
 
     test('gig form reports what is still missing', () async {
@@ -115,7 +117,7 @@ void main() {
       // Publishing while incomplete only nudges — nothing is written.
       await app.publishGig();
       expect(app.gfPublished, isFalse);
-      expect(app.toast, 'Add a date first. Tap any card.');
+      expect(app.toast, 'Add a date first.');
 
       // Tapping the selected day again clears it.
       final date = DateTime(2026, 8, 15);
@@ -632,6 +634,9 @@ class _FailingRsvpRepository implements EarplugRepository {
   Stream<FeedSnapshot> feed() => const Stream.empty();
 
   @override
+  Stream<Gig?> publicGig(String gigId) => const Stream.empty();
+
+  @override
   Stream<List<Gig>> upcomingGigsForBand(String bandId) => const Stream.empty();
 
   @override
@@ -814,6 +819,90 @@ class _FailingRsvpRepository implements EarplugRepository {
   @override
   Future<BandInviteAcceptance> acceptBandInvite(String token) =>
       throw UnimplementedError();
+
+  @override
+  Future<PerformerInviteResolution?> resolvePerformerInvite(
+    String token,
+  ) async => null;
+
+  @override
+  Future<String> claimPerformerInvite({
+    required String token,
+    required String bandId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<List<GigProject>> manageGigs(String bandId) async => const [];
+
+  @override
+  Future<GigProject> createGigDraft(String bandId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<GigProject> getGigProject(String projectId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<int> saveGigDraft({
+    required String projectId,
+    required int revision,
+    required String? title,
+    required DateTime? doorsAt,
+    required DateTime? startsAt,
+    required String? venueId,
+    required int price,
+    required String flyKey,
+    required String? flyStorageId,
+    required bool overlay,
+    required String desc,
+    required Ticketing ticketing,
+    required AgeRequirement ageRequirement,
+    required String? externalUrl,
+    required String cap,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<GigProject> addGigPerformer({
+    required String projectId,
+    required GigPerformerKind kind,
+    required GigPerformerRole role,
+    String? name,
+    String? bandId,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<GigProject> updateGigPerformer({
+    required String performerId,
+    String? name,
+    GigPerformerRole? role,
+  }) => throw UnimplementedError();
+
+  @override
+  Future<GigProject> removeGigPerformer(String performerId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<GigProject> reorderGigPerformers(
+    String projectId,
+    List<String> performerIds,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<String> publishGigDraft(String projectId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<GigProject> duplicateGig(String projectId) =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> unpublishGig(String projectId) async {}
+
+  @override
+  Future<void> cancelGig(String projectId) async {}
+
+  @override
+  Future<void> deleteGig(String projectId) async {}
 
   @override
   Future<String> publishGig({

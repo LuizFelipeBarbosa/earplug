@@ -178,12 +178,13 @@ class BandTabBar extends StatelessWidget {
           selected: scr == Screen.bandEdit,
           onPressed: () => app.resetTo(Screen.bandEdit),
         ),
-        EpNavigationItem(
-          icon: Icons.table_rows_outlined,
-          label: 'GIGS',
-          selected: scr == Screen.gigMgr,
-          onPressed: () => app.resetTo(Screen.gigMgr),
-        ),
+        if (app.isAdminOf(app.bandId))
+          EpNavigationItem(
+            icon: Icons.table_rows_outlined,
+            label: 'GIGS',
+            selected: scr == Screen.gigMgr,
+            onPressed: () => app.resetTo(Screen.gigMgr),
+          ),
         EpNavigationItem(
           icon: Icons.insert_chart_outlined_rounded,
           label: 'INSIGHTS',

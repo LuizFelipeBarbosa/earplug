@@ -38,6 +38,7 @@ class DemoRepository implements EarplugRepository {
   late final List<BandMembership> _memberships;
   late final Map<String, List<BandMedia>> _mediaLists;
   final List<Gig> _publishedGigs = [];
+  final Map<String, GigProject> _gigProjects = {};
   final Set<String> _rsvpGigIds = {};
   final Set<String> _followBandIds = {};
   final Set<String> _savedGigIds = {};
@@ -63,6 +64,8 @@ class DemoRepository implements EarplugRepository {
   int _attendedCount = 0;
   int _nextBandId = 1;
   int _nextGigId = 1;
+  int _nextGigProjectId = 1;
+  int _nextGigPerformerId = 1;
   int _nextMediaId = 1;
   int _nextInviteId = 1;
   bool _interactionsSeeded = false;
@@ -92,6 +95,14 @@ class DemoRepository implements EarplugRepository {
 
   @override
   Stream<FeedSnapshot> feed() => _replay(_feedController, _currentFeed);
+
+  @override
+  Stream<Gig?> publicGig(String gigId) => Stream.value(
+    [
+      ...DemoData.gigs,
+      ..._publishedGigs,
+    ].where((gig) => gig.id == gigId).firstOrNull,
+  );
 
   @override
   Stream<List<Gig>> upcomingGigsForBand(String bandId) {
@@ -830,6 +841,358 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<PerformerInviteResolution?> resolvePerformerInvite(
+    String token,
+  ) async {
+    for (final project in _gigProjects.values) {
+      for (final performer in project.performers) {
+        if (performer.kind == GigPerformerKind.invited &&
+            performer.inviteUrl?.endsWith('/$token') == true) {
+          return PerformerInviteResolution(
+            performerName: performer.name,
+            gigTitle: project.title ?? 'Untitled gig',
+          );
+        }
+      }
+    }
+    return null;
+  }
+
+  @override
+  Future<String> claimPerformerInvite({
+    required String token,
+    required String bandId,
+  }) async {
+    if (!_auth.signedIn) throw StateError('Not signed in.');
+    final band = _bands[bandId];
+    if (band == null) throw StateError('Band not found.');
+    for (final project in _gigProjects.values) {
+      final invited = project.performers.where(
+        (performer) =>
+            performer.kind == GigPerformerKind.invited &&
+            performer.inviteUrl?.endsWith('/$token') == true,
+      );
+      if (invited.isEmpty) continue;
+      final performerId = invited.first.id;
+      _replaceGigProject(
+        project,
+        performers: [
+          for (final performer in project.performers)
+            if (performer.id == performerId)
+              GigPerformer(
+                id: performer.id,
+                kind: GigPerformerKind.band,
+                name: band.name,
+                role: performer.role,
+                bandId: band.id,
+              )
+            else
+              performer,
+        ],
+      );
+      return project.id;
+    }
+    throw StateError('Invitation is no longer active.');
+  }
+
+  @override
+  Future<List<GigProject>> manageGigs(String bandId) async => [
+    for (final project in _gigProjects.values)
+      if (project.bandId == bandId &&
+          project.status != GigProjectStatus.deleted)
+        project,
+  ]..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+  @override
+  Future<GigProject> createGigDraft(String bandId) async {
+    final now = DateTime.now();
+    final project = GigProject(
+      id: 'gdp${_nextGigProjectId++}',
+      bandId: bandId,
+      status: GigProjectStatus.draft,
+      revision: 1,
+      price: 0,
+      flyKey: 'xerox',
+      overlay: true,
+      desc: '',
+      ticketing: Ticketing.rsvp,
+      ageRequirement: AgeRequirement.allAges,
+      cap: 'No cap',
+      updatedAt: now,
+      performers: [
+        GigPerformer(
+          id: 'gpf${_nextGigPerformerId++}',
+          kind: GigPerformerKind.band,
+          name: _bands[bandId]?.name ?? 'Your band',
+          role: GigPerformerRole.headliner,
+          bandId: bandId,
+        ),
+      ],
+    );
+    _gigProjects[project.id] = project;
+    return project;
+  }
+
+  @override
+  Future<GigProject> getGigProject(String projectId) async =>
+      _requireGigProject(projectId);
+
+  @override
+  Future<int> saveGigDraft({
+    required String projectId,
+    required int revision,
+    required String? title,
+    required DateTime? doorsAt,
+    required DateTime? startsAt,
+    required String? venueId,
+    required int price,
+    required String flyKey,
+    required String? flyStorageId,
+    required bool overlay,
+    required String desc,
+    required Ticketing ticketing,
+    required AgeRequirement ageRequirement,
+    required String? externalUrl,
+    required String cap,
+  }) async {
+    final project = _requireGigProject(projectId);
+    if (project.revision != revision) {
+      throw Exception('Draft changed elsewhere');
+    }
+    final updated = GigProject(
+      id: project.id,
+      bandId: project.bandId,
+      publicGigId: project.publicGigId,
+      status: project.status,
+      revision: revision + 1,
+      publishedRevision: project.publishedRevision,
+      title: title?.trim().isEmpty == true ? null : title?.trim(),
+      doorsAt: doorsAt,
+      startsAt: startsAt,
+      venueId: venueId,
+      price: price,
+      flyKey: flyKey,
+      flyStorageId: flyStorageId,
+      flyerUrl: flyStorageId == null ? null : 'demo://flyer/$flyStorageId',
+      overlay: overlay,
+      desc: desc,
+      ticketing: ticketing,
+      ageRequirement: ageRequirement,
+      externalUrl: externalUrl,
+      cap: cap,
+      updatedAt: DateTime.now(),
+      performers: project.performers,
+    );
+    _gigProjects[projectId] = updated;
+    return updated.revision;
+  }
+
+  @override
+  Future<GigProject> addGigPerformer({
+    required String projectId,
+    required GigPerformerKind kind,
+    required GigPerformerRole role,
+    String? name,
+    String? bandId,
+  }) async {
+    final project = _requireGigProject(projectId);
+    final band = bandId == null ? null : _bands[bandId];
+    final performer = GigPerformer(
+      id: 'gpf${_nextGigPerformerId++}',
+      kind: kind,
+      name: band?.name ?? name?.trim() ?? '',
+      role: role,
+      bandId: bandId,
+      inviteUrl: kind == GigPerformerKind.invited
+          ? 'https://earplug.app/gig-invite/demo-${_nextInviteId++}'
+          : null,
+    );
+    return _replaceGigProject(
+      project,
+      performers: [...project.performers, performer],
+    );
+  }
+
+  @override
+  Future<GigProject> updateGigPerformer({
+    required String performerId,
+    String? name,
+    GigPerformerRole? role,
+  }) async {
+    final project = _projectForPerformer(performerId);
+    return _replaceGigProject(
+      project,
+      performers: [
+        for (final performer in project.performers)
+          if (performer.id == performerId)
+            GigPerformer(
+              id: performer.id,
+              kind: performer.kind,
+              name: name?.trim() ?? performer.name,
+              role: role ?? performer.role,
+              bandId: performer.bandId,
+              inviteUrl: performer.inviteUrl,
+            )
+          else
+            performer,
+      ],
+    );
+  }
+
+  @override
+  Future<GigProject> removeGigPerformer(String performerId) async {
+    final project = _projectForPerformer(performerId);
+    return _replaceGigProject(
+      project,
+      performers: project.performers
+          .where((performer) => performer.id != performerId)
+          .toList(),
+    );
+  }
+
+  @override
+  Future<GigProject> reorderGigPerformers(
+    String projectId,
+    List<String> performerIds,
+  ) async {
+    final project = _requireGigProject(projectId);
+    final byId = {
+      for (final performer in project.performers) performer.id: performer,
+    };
+    return _replaceGigProject(
+      project,
+      performers: [for (final id in performerIds) byId[id]!],
+    );
+  }
+
+  @override
+  Future<String> publishGigDraft(String projectId) async {
+    final project = _requireGigProject(projectId);
+    final startsAt = project.startsAt;
+    final doorsAt = project.doorsAt;
+    if (project.title == null ||
+        startsAt == null ||
+        doorsAt == null ||
+        project.venueId == null ||
+        project.performers.isEmpty) {
+      throw Exception('Gig is incomplete');
+    }
+    final gigId = project.publicGigId ?? 'gx${_nextGigId++}';
+    final time = '${_demoTimeLabel(doorsAt)} / ${_demoTimeLabel(startsAt)}';
+    final gig = Gig(
+      id: gigId,
+      title: project.title!,
+      venueId: project.venueId!,
+      price: project.price,
+      startsAt: startsAt,
+      doorsAt: doorsAt,
+      dateShort: Gig.dateShortFor(startsAt.millisecondsSinceEpoch),
+      dateLine: Gig.dateLineFor(startsAt.millisecondsSinceEpoch, time),
+      time: time,
+      when: Gig.whenFor(startsAt.millisecondsSinceEpoch),
+      flyKey: project.flyKey,
+      lineup: [
+        for (final performer in project.performers)
+          if (performer.bandId != null) performer.bandId!,
+      ],
+      performers: project.performers,
+      going:
+          _publishedGigs
+              .where((gig) => gig.id == gigId)
+              .map((gig) => gig.going)
+              .firstOrNull ??
+          0,
+      genres: const ['punk'],
+      desc: project.desc,
+      tix: project.ticketing,
+      externalUrl: project.externalUrl,
+      flyerUrl: project.flyerUrl,
+      cap: project.cap,
+      ageRequirement: project.ageRequirement,
+    );
+    _publishedGigs.removeWhere((gig) => gig.id == gigId);
+    _publishedGigs.add(gig);
+    _gigProjects[project.id] = _copyGigProject(
+      project,
+      status: GigProjectStatus.published,
+      publicGigId: gigId,
+      publishedRevision: project.revision,
+    );
+    _feedController.add(_currentFeed());
+    return gigId;
+  }
+
+  @override
+  Future<GigProject> duplicateGig(String projectId) async {
+    final source = _requireGigProject(projectId);
+    final duplicate = GigProject(
+      id: 'gdp${_nextGigProjectId++}',
+      bandId: source.bandId,
+      status: GigProjectStatus.draft,
+      revision: 1,
+      title: source.title == null ? null : 'Copy of ${source.title}',
+      doorsAt: source.doorsAt,
+      startsAt: source.startsAt,
+      venueId: source.venueId,
+      price: source.price,
+      flyKey: source.flyKey,
+      flyStorageId: source.flyStorageId,
+      flyerUrl: source.flyerUrl,
+      overlay: source.overlay,
+      desc: source.desc,
+      ticketing: source.ticketing,
+      ageRequirement: source.ageRequirement,
+      externalUrl: source.externalUrl,
+      cap: source.cap,
+      updatedAt: DateTime.now(),
+      performers: [
+        for (final performer in source.performers)
+          GigPerformer(
+            id: 'gpf${_nextGigPerformerId++}',
+            kind: performer.kind == GigPerformerKind.invited
+                ? GigPerformerKind.text
+                : performer.kind,
+            name: performer.name,
+            role: performer.role,
+            bandId: performer.bandId,
+          ),
+      ],
+    );
+    _gigProjects[duplicate.id] = duplicate;
+    return duplicate;
+  }
+
+  @override
+  Future<void> unpublishGig(String projectId) async {
+    final project = _requireGigProject(projectId);
+    _gigProjects[projectId] = _copyGigProject(
+      project,
+      status: GigProjectStatus.draft,
+    );
+    _publishedGigs.removeWhere((gig) => gig.id == project.publicGigId);
+    _feedController.add(_currentFeed());
+  }
+
+  @override
+  Future<void> cancelGig(String projectId) async {
+    final project = _requireGigProject(projectId);
+    _gigProjects[projectId] = _copyGigProject(
+      project,
+      status: GigProjectStatus.cancelled,
+    );
+    _publishedGigs.removeWhere((gig) => gig.id == project.publicGigId);
+    _feedController.add(_currentFeed());
+  }
+
+  @override
+  Future<void> deleteGig(String projectId) async {
+    final project = _requireGigProject(projectId);
+    _publishedGigs.removeWhere((gig) => gig.id == project.publicGigId);
+    _gigProjects.remove(projectId);
+    _feedController.add(_currentFeed());
+  }
+
+  @override
   Future<String> publishGig({
     required String bandId,
     required String title,
@@ -874,6 +1237,66 @@ class DemoRepository implements EarplugRepository {
     _feedController.add(_currentFeed());
     return id;
   }
+
+  GigProject _requireGigProject(String projectId) {
+    final project = _gigProjects[projectId];
+    if (project == null) throw Exception('Gig draft not found');
+    return project;
+  }
+
+  GigProject _projectForPerformer(String performerId) {
+    for (final project in _gigProjects.values) {
+      if (project.performers.any((performer) => performer.id == performerId)) {
+        return project;
+      }
+    }
+    throw Exception('Performer not found');
+  }
+
+  GigProject _replaceGigProject(
+    GigProject project, {
+    required List<GigPerformer> performers,
+  }) {
+    final updated = _copyGigProject(
+      project,
+      revision: project.revision + 1,
+      performers: performers,
+    );
+    _gigProjects[project.id] = updated;
+    return updated;
+  }
+
+  GigProject _copyGigProject(
+    GigProject project, {
+    GigProjectStatus? status,
+    int? revision,
+    int? publishedRevision,
+    String? publicGigId,
+    List<GigPerformer>? performers,
+  }) => GigProject(
+    id: project.id,
+    bandId: project.bandId,
+    publicGigId: publicGigId ?? project.publicGigId,
+    status: status ?? project.status,
+    revision: revision ?? project.revision,
+    publishedRevision: publishedRevision ?? project.publishedRevision,
+    title: project.title,
+    doorsAt: project.doorsAt,
+    startsAt: project.startsAt,
+    venueId: project.venueId,
+    price: project.price,
+    flyKey: project.flyKey,
+    flyStorageId: project.flyStorageId,
+    flyerUrl: project.flyerUrl,
+    overlay: project.overlay,
+    desc: project.desc,
+    ticketing: project.ticketing,
+    ageRequirement: project.ageRequirement,
+    externalUrl: project.externalUrl,
+    cap: project.cap,
+    updatedAt: DateTime.now(),
+    performers: performers ?? project.performers,
+  );
 
   FeedSnapshot _currentFeed() => FeedSnapshot(
     gigs: List<Gig>.unmodifiable([...DemoData.gigs, ..._publishedGigs]),
@@ -941,4 +1364,12 @@ class DemoRepository implements EarplugRepository {
     }
     return null;
   }
+}
+
+String _demoTimeLabel(DateTime time) {
+  final hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
+  final minutes = time.minute == 0
+      ? ''
+      : ':${time.minute.toString().padLeft(2, '0')}';
+  return '$hour$minutes${time.hour < 12 ? 'AM' : 'PM'}';
 }

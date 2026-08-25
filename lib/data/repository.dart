@@ -445,6 +445,7 @@ abstract class EarplugRepository {
   Future<UserProfile?> me();
 
   Stream<FeedSnapshot> feed();
+  Stream<Gig?> publicGig(String gigId);
   Stream<List<Gig>> upcomingGigsForBand(String bandId);
   Stream<Interactions> myInteractions();
   Stream<List<BandMembership>> myBands();
@@ -521,6 +522,53 @@ abstract class EarplugRepository {
   Future<void> revokeBandInvite(String bandId);
   Future<BandInviteResolution?> resolveBandInvite(String token);
   Future<BandInviteAcceptance> acceptBandInvite(String token);
+  Future<PerformerInviteResolution?> resolvePerformerInvite(String token);
+  Future<String> claimPerformerInvite({
+    required String token,
+    required String bandId,
+  });
+  Future<List<GigProject>> manageGigs(String bandId);
+  Future<GigProject> createGigDraft(String bandId);
+  Future<GigProject> getGigProject(String projectId);
+  Future<int> saveGigDraft({
+    required String projectId,
+    required int revision,
+    required String? title,
+    required DateTime? doorsAt,
+    required DateTime? startsAt,
+    required String? venueId,
+    required int price,
+    required String flyKey,
+    required String? flyStorageId,
+    required bool overlay,
+    required String desc,
+    required Ticketing ticketing,
+    required AgeRequirement ageRequirement,
+    required String? externalUrl,
+    required String cap,
+  });
+  Future<GigProject> addGigPerformer({
+    required String projectId,
+    required GigPerformerKind kind,
+    required GigPerformerRole role,
+    String? name,
+    String? bandId,
+  });
+  Future<GigProject> updateGigPerformer({
+    required String performerId,
+    String? name,
+    GigPerformerRole? role,
+  });
+  Future<GigProject> removeGigPerformer(String performerId);
+  Future<GigProject> reorderGigPerformers(
+    String projectId,
+    List<String> performerIds,
+  );
+  Future<String> publishGigDraft(String projectId);
+  Future<GigProject> duplicateGig(String projectId);
+  Future<void> unpublishGig(String projectId);
+  Future<void> cancelGig(String projectId);
+  Future<void> deleteGig(String projectId);
   Future<String> publishGig({
     required String bandId,
     required String title,

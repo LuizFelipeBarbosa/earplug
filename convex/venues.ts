@@ -59,8 +59,11 @@ export const detail = query({
         q.eq("venueId", args.venueId).gte("startsAt", feedCutoff()),
       )
       .order("asc")
-      .take(MAX_VENUE_GIGS + 1);
-    const venueGigs = rows.slice(0, MAX_VENUE_GIGS);
+      .take(MAX_VENUE_GIGS * 4 + 1);
+    const visible = rows.filter(
+      (gig) => (gig.lifecycle ?? "published") === "published",
+    );
+    const venueGigs = visible.slice(0, MAX_VENUE_GIGS);
 
     const bandIds = new Set<Id<"bands">>();
     const gigs = [];
@@ -79,7 +82,7 @@ export const detail = query({
       venue: toVenuePayload(venue),
       gigs,
       bands,
-      truncated: rows.length > MAX_VENUE_GIGS,
+      truncated: visible.length > MAX_VENUE_GIGS,
     };
   },
 });

@@ -122,7 +122,7 @@ void main() {
     expect(find.text('Preview public profile'), findsOne);
     expect(find.text('Edit profile'), findsNothing);
     expect(find.text('SETUP CHECKLIST'), findsNothing);
-    expect(find.text('+ PUBLISH GIG'), findsOne);
+    expect(find.text('+ PUBLISH GIG'), findsNothing);
     expect(repository.setupStatusCalls, 0);
   });
 

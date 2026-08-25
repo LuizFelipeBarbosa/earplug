@@ -19,7 +19,9 @@ android {
         applicationId = "com.earplug.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // ML Kit supports 23, while the current Flutter image picker already
+        // requires 24; use the stricter dependency floor.
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -42,4 +44,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Bundles the Latin OCR model so flyer extraction stays on-device and is
+    // available on first use without a model download.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
 }

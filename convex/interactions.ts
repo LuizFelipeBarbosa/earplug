@@ -50,7 +50,12 @@ export const myInteractions = query({
     const gigs = [];
     for (const gigId of gigIds) {
       const gig = await ctx.db.get(gigId);
-      if (gig && gig.startsAt >= cutoff) {
+      if (
+        gig &&
+        gig.startsAt >= cutoff &&
+        (gig.lifecycle ?? "published") !== "unpublished" &&
+        (gig.lifecycle ?? "published") !== "deleted"
+      ) {
         gigs.push(await toGigPayload(ctx, gig));
       }
     }
@@ -140,6 +145,9 @@ export const toggleRsvp = mutation({
       return { on: false };
     }
     if (!shouldBeOn) return { on: false };
+    if ((gig.lifecycle ?? "published") !== "published") {
+      throw new Error("This gig is not accepting RSVPs");
+    }
     await ctx.db.insert("gigRsvps", { userId: user._id, gigId: args.gigId });
     await ctx.db.patch(args.gigId, { goingCount: gig.goingCount + 1 });
     return { on: true };
@@ -195,6 +203,9 @@ export const toggleSave = mutation({
       return { on: false };
     }
     if (!shouldBeOn) return { on: false };
+    if ((gig.lifecycle ?? "published") !== "published") {
+      throw new Error("This gig is not available to save");
+    }
     await ctx.db.insert("gigSaves", { userId: user._id, gigId: args.gigId });
     return { on: true };
   },

@@ -6,6 +6,8 @@ import {
   ageRequirementValidator,
   fanCityValidator,
   fanGenreChoiceValidator,
+  gigLifecycleValidator,
+  gigPublicPerformerValidator,
   pastShowValidator,
 } from "../schema";
 
@@ -228,6 +230,7 @@ export const gigPublishFieldsValidator = v.object({
   bandId: v.id("bands"),
   title: v.string(),
   startsAt: v.number(),
+  doorsAt: v.optional(v.number()),
   doorsTime: v.string(),
   venueId: v.id("venues"),
   price: v.number(),
@@ -240,11 +243,22 @@ export const gigPublishFieldsValidator = v.object({
 });
 export type GigPublishFields = Infer<typeof gigPublishFieldsValidator>;
 
+type GigPublishValidationFields = {
+  bandId: Id<"bands">;
+  startsAt: number;
+  venueId: Id<"venues">;
+  price: number;
+  flyKey: string;
+  flyStorageId?: Id<"_storage">;
+  ticketing: "rsvp" | "external";
+  externalUrl?: string;
+};
+
 /** Every non-auth check publishGig performs, in its original order. Throws on
  * the first failure; returns the resolved rows. Performs no writes. */
 export async function assertGigPublishable(
   ctx: MutationCtx,
-  args: GigPublishFields,
+  args: GigPublishValidationFields,
 ): Promise<{ band: Doc<"bands">; venue: Doc<"venues"> }> {
   if (!Number.isFinite(args.startsAt) || args.startsAt < 0) {
     throw new Error("Invalid startsAt");
@@ -306,12 +320,13 @@ export async function pastGigsForBand(
       q.eq("bandId", bandId).lt("startsAt", feedCutoff()),
     )
     .order("desc")
-    .take(limit);
+    .take(limit * 4);
 
   const gigs: Doc<"gigs">[] = [];
   for (const row of joinRows) {
     const gig = await ctx.db.get(row.gigId);
-    if (gig) gigs.push(gig);
+    if (gig && (gig.lifecycle ?? "published") === "published") gigs.push(gig);
+    if (gigs.length === limit) break;
   }
   return gigs;
 }
@@ -331,12 +346,13 @@ export async function upcomingGigsForBand(
       q.eq("bandId", bandId).gte("startsAt", feedCutoff()),
     )
     .order("asc")
-    .take(limit);
+    .take(limit * 4);
 
   const gigs: Doc<"gigs">[] = [];
   for (const row of joinRows) {
     const gig = await ctx.db.get(row.gigId);
-    if (gig) gigs.push(gig);
+    if (gig && (gig.lifecycle ?? "published") === "published") gigs.push(gig);
+    if (gigs.length === limit) break;
   }
   return gigs;
 }
@@ -371,9 +387,13 @@ export async function insertPublishedGig(
     venueId: args.venueId,
     price: args.price,
     startsAt: args.startsAt,
+    doorsAt: args.doorsAt ?? args.startsAt,
     doorsTime: args.doorsTime,
     flyKey: args.flyKey,
     lineup: [args.bandId],
+    performers: [
+      { name: band.name, role: "headliner" as const, bandId: band._id },
+    ],
     genres: band.genres,
     desc: "",
     ticketing: args.ticketing,
@@ -387,6 +407,7 @@ export async function insertPublishedGig(
     cap: args.cap,
     goingCount: 0,
     createdByBand: args.bandId,
+    lifecycle: "published",
   });
   return gigId;
 }
@@ -397,10 +418,12 @@ export const gigPayloadValidator = v.object({
   venueId: v.id("venues"),
   price: v.number(),
   startsAt: v.number(),
+  doorsAt: v.number(),
   doorsTime: v.string(),
   flyKey: v.string(),
   flyerUrl: v.union(v.string(), v.null()),
   lineup: v.array(v.id("bands")),
+  performers: v.array(gigPublicPerformerValidator),
   genres: v.array(v.string()),
   desc: v.string(),
   ticketing: v.union(v.literal("rsvp"), v.literal("external")),
@@ -409,6 +432,7 @@ export const gigPayloadValidator = v.object({
   cap: v.string(),
   goingCount: v.number(),
   createdByBand: v.union(v.id("bands"), v.null()),
+  lifecycle: gigLifecycleValidator,
 });
 
 export const venuePayloadValidator = v.object({
@@ -499,18 +523,35 @@ export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
 }
 
 export async function toGigPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
+  const performers = [];
+  if (gig.performers) {
+    performers.push(...gig.performers);
+  } else {
+    for (let index = 0; index < gig.lineup.length; index++) {
+      const band = await ctx.db.get(gig.lineup[index]);
+      if (band) {
+        performers.push({
+          name: band.name,
+          role: index === 0 ? ("headliner" as const) : ("support" as const),
+          bandId: band._id,
+        });
+      }
+    }
+  }
   return {
     _id: gig._id,
     title: gig.title,
     venueId: gig.venueId,
     price: gig.price,
     startsAt: gig.startsAt,
+    doorsAt: gig.doorsAt ?? gig.startsAt,
     doorsTime: gig.doorsTime,
     flyKey: gig.flyKey,
     flyerUrl: gig.flyStorageId
       ? await ctx.storage.getUrl(gig.flyStorageId)
       : null,
     lineup: gig.lineup,
+    performers,
     genres: gig.genres,
     desc: gig.desc,
     ticketing: gig.ticketing,
@@ -519,6 +560,7 @@ export async function toGigPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
     cap: gig.cap,
     goingCount: gig.goingCount,
     createdByBand: gig.createdByBand ?? null,
+    lifecycle: gig.lifecycle ?? "published",
   };
 }
 

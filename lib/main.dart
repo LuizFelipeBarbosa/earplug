@@ -18,6 +18,7 @@ import 'screens/edit_profile.dart';
 import 'screens/explore.dart';
 import 'screens/gig_create.dart';
 import 'screens/gig_detail.dart';
+import 'screens/gig_invite.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
 import 'screens/my_gigs.dart';
@@ -34,8 +35,16 @@ import 'widgets/tab_bars.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final joinToken = joinTokenFromUri(Uri.base);
+  final performerInviteToken = performerInviteTokenFromUri(Uri.base);
+  final gigId = gigIdFromUri(Uri.base);
   if (Env.demo) {
-    runApp(EarplugApp(initialJoinToken: joinToken));
+    runApp(
+      EarplugApp(
+        initialJoinToken: joinToken,
+        initialPerformerInviteToken: performerInviteToken,
+        initialGigId: gigId,
+      ),
+    );
     return;
   }
   final configError = Env.configurationError;
@@ -51,26 +60,39 @@ Future<void> main() async {
   convexService.setTokenFetcher(auth.fetchConvexToken);
   final repository = ConvexRepository(convexService);
   runApp(
-    EarplugApp(repository: repository, auth: auth, initialJoinToken: joinToken),
+    EarplugApp(
+      repository: repository,
+      auth: auth,
+      initialJoinToken: joinToken,
+      initialPerformerInviteToken: performerInviteToken,
+      initialGigId: gigId,
+    ),
   );
 }
 
-String? joinTokenFromUri(Uri uri) {
+String? _routeValueFromUri(Uri uri, String route) {
   String? fromSegments(List<String> segments) {
-    final joinIndex = segments.indexOf('join');
-    if (joinIndex == -1 || joinIndex + 1 >= segments.length) return null;
-    final token = segments[joinIndex + 1].trim();
-    return token.isEmpty ? null : token;
+    final routeIndex = segments.indexOf(route);
+    if (routeIndex == -1 || routeIndex + 1 >= segments.length) return null;
+    final value = segments[routeIndex + 1].trim();
+    return value.isEmpty ? null : value;
   }
 
-  final pathToken = fromSegments(uri.pathSegments);
-  if (pathToken != null) return pathToken;
+  final pathValue = fromSegments(uri.pathSegments);
+  if (pathValue != null) return pathValue;
   final fragment = uri.fragment;
   if (fragment.isEmpty) return null;
   return fromSegments(
     Uri.parse(fragment.startsWith('/') ? fragment : '/$fragment').pathSegments,
   );
 }
+
+String? joinTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'join');
+
+String? performerInviteTokenFromUri(Uri uri) =>
+    _routeValueFromUri(uri, 'gig-invite');
+
+String? gigIdFromUri(Uri uri) => _routeValueFromUri(uri, 'g');
 
 /// Shown instead of the app when the build is misconfigured — no backend, no
 /// Clerk key, or a Clerk key paired with the wrong deployment. Loud on purpose:
@@ -120,11 +142,15 @@ class EarplugApp extends StatelessWidget {
     this.repository,
     this.auth,
     this.initialJoinToken,
+    this.initialPerformerInviteToken,
+    this.initialGigId,
   });
 
   final EarplugRepository? repository;
   final AuthService? auth;
   final String? initialJoinToken;
+  final String? initialPerformerInviteToken;
+  final String? initialGigId;
 
   @override
   Widget build(BuildContext context) {
@@ -132,11 +158,17 @@ class EarplugApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(
           create: (_) => repository == null && auth == null
-              ? AppState(initialJoinToken: initialJoinToken)
+              ? AppState(
+                  initialJoinToken: initialJoinToken,
+                  initialPerformerInviteToken: initialPerformerInviteToken,
+                  initialGigId: initialGigId,
+                )
               : AppState(
                   repository: repository,
                   auth: auth,
                   initialJoinToken: initialJoinToken,
+                  initialPerformerInviteToken: initialPerformerInviteToken,
+                  initialGigId: initialGigId,
                 ),
         ),
         ChangeNotifierProvider<BandMediaController>(
@@ -272,6 +304,7 @@ class RootShell extends StatelessWidget {
       Screen.band => BandProfileScreen(bandId: entry.param!),
       Screen.bandPreview => BandProfileScreen(bandId: entry.param!),
       Screen.bandJoin => const BandJoinScreen(),
+      Screen.gigInvite => const GigInviteScreen(),
       Screen.venue => VenueDetailScreen(venueId: entry.param!),
       Screen.explore => const ExploreScreen(),
       Screen.myGigs => const MyGigsScreen(),
