@@ -137,6 +137,7 @@ export const seedDemo = internalMutation({
         bio: band.bio,
         pastShows: band.pastShows,
         slug: await uniqueSlug(ctx, band.name),
+        hasClip: false,
       });
     }
 

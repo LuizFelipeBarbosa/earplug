@@ -206,6 +206,8 @@ export const bandPayloadValidator = v.object({
   linkBc: v.union(v.string(), v.null()),
   linkYt: v.union(v.string(), v.null()),
   credits: v.union(v.string(), v.null()),
+  profileComplete: v.boolean(),
+  discoveryProfileReady: v.boolean(),
   // The wire shape is the stored shape here; reuse it rather than restating it.
   pastShows: v.array(pastShowValidator),
 });
@@ -368,7 +370,10 @@ export async function insertGigWithBandIndex(
     ageRequirement: AgeRequirement;
   },
 ): Promise<Id<"gigs">> {
-  const gigId = await ctx.db.insert("gigs", gig);
+  const gigId = await ctx.db.insert("gigs", {
+    ...gig,
+    discoveryListingReady: gig.discoveryListingReady ?? false,
+  });
   for (const bandId of new Set(gig.lineup)) {
     await ctx.db.insert("gigBands", { gigId, bandId, startsAt: gig.startsAt });
   }
@@ -408,6 +413,7 @@ export async function insertPublishedGig(
     goingCount: 0,
     createdByBand: args.bandId,
     lifecycle: "published",
+    discoveryListingReady: true,
   });
   return gigId;
 }
@@ -433,6 +439,7 @@ export const gigPayloadValidator = v.object({
   goingCount: v.number(),
   createdByBand: v.union(v.id("bands"), v.null()),
   lifecycle: gigLifecycleValidator,
+  discoveryListingReady: v.boolean(),
 });
 
 export const venuePayloadValidator = v.object({
@@ -502,6 +509,8 @@ export const userPayloadValidator = v.object({
  * hero change re-fires the feed for every subscribed client. First thing to
  * revisit if the feed gets hot. */
 export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
+  const profileComplete = isBandProfileComplete(band);
+  const profileImageReady = await hasValidProfileImage(ctx, band);
   return {
     _id: band._id,
     name: band.name,
@@ -518,6 +527,9 @@ export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
     linkBc: band.linkBc ?? null,
     linkYt: band.linkYt ?? null,
     credits: band.credits ?? null,
+    profileComplete,
+    discoveryProfileReady:
+      profileComplete && profileImageReady && band.hasClip === true,
     pastShows: band.pastShows,
   };
 }
@@ -561,6 +573,7 @@ export async function toGigPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
     goingCount: gig.goingCount,
     createdByBand: gig.createdByBand ?? null,
     lifecycle: gig.lifecycle ?? "published",
+    discoveryListingReady: gig.discoveryListingReady === true,
   };
 }
 
@@ -699,6 +712,37 @@ export const MAX_MEDIA_TITLE = 200;
 export const MAX_MEDIA_CAPTION = 500;
 /** Four hours — long enough for a full set, short enough to catch garbage. */
 export const MAX_MEDIA_LENGTH_SEC = 4 * 60 * 60;
+
+export function isBandProfileComplete(band: Doc<"bands">): boolean {
+  return (
+    band.name.trim() !== "" &&
+    band.genres.length >= 1 &&
+    band.genres.length <= 3 &&
+    band.genres.every((genre) => genre.trim() !== "") &&
+    band.area.trim() !== "" &&
+    (band.bio?.trim() ?? "") !== ""
+  );
+}
+
+/** True only for an assigned, live image upload accepted by the same storage
+ * rules as band photos. Legacy or deleted references fail closed. */
+export async function hasValidProfileImage(
+  ctx: QueryCtx | MutationCtx,
+  band: Doc<"bands">,
+): Promise<boolean> {
+  if (band.imageStorageId === undefined) return false;
+  const upload = await ctx.db.system.get("_storage", band.imageStorageId);
+  if (!upload) return false;
+  try {
+    assertUploadAcceptable(
+      { size: upload.size, contentType: upload.contentType },
+      "photo",
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Throws unless the uploaded blob is acceptable for `kind`.

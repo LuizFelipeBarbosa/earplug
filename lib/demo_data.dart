@@ -202,6 +202,8 @@ abstract final class DemoData {
       desc:
           "Foghorn Diet plays 'Riptide' front to back, then whatever falls out.",
       tix: Ticketing.rsvp,
+      createdByBand: 'b1',
+      discoveryListingReady: true,
     ),
     Gig(
       id: 'g3',
@@ -307,6 +309,7 @@ abstract final class DemoData {
       bio:
           'Reverb-soaked garage punk from a Mission garage that actually floods. '
           'Two guitars, no pedalboard budget, all heart.',
+      profileComplete: true,
       upcoming: ['g2', 'g7'],
       past: [
         PastGig('Riptide warmup — Casa Quake', 'JUL 12'),
@@ -325,6 +328,7 @@ abstract final class DemoData {
       followers: 1214,
       bio:
           'Wiry post-punk for people who alphabetize their records and then fight about it.',
+      profileComplete: true,
       upcoming: ['g2', 'g4', 'g7'],
       past: [
         PastGig('Court Is In Session tour', 'JUL'),
@@ -340,6 +344,7 @@ abstract final class DemoData {
       initials: 'MC',
       followers: 743,
       bio: 'Fast, short, gone. Sets under 20 minutes, guaranteed.',
+      profileComplete: true,
       upcoming: ['g1', 'g4', 'g5'],
       past: [
         PastGig('Basement series #4', 'JUL 5'),
@@ -356,6 +361,7 @@ abstract final class DemoData {
       followers: 312,
       bio:
           'Two amps facing each other, one long argument. You will feel it in your teeth.',
+      profileComplete: true,
       upcoming: ['g1', 'g3', 'g7'],
       past: [PastGig('Noise Night Vol. 10', 'MAY 30')],
     ),
@@ -369,6 +375,7 @@ abstract final class DemoData {
       followers: 927,
       bio:
           'Party thrash with a raccoon on the kick drum. The raccoon is drawn on. Probably.',
+      profileComplete: true,
       upcoming: ['g5', 'g6', 'g7'],
       past: [
         PastGig('Riot Fest (the small one)', 'JUL 4'),
@@ -385,6 +392,7 @@ abstract final class DemoData {
       followers: 158,
       bio:
           'Loud flowers. Berkeley basements and borrowed fuzz pedals since 2025.',
+      profileComplete: true,
       upcoming: ['g1', 'g3', 'g5'],
       past: [PastGig('First show ever — house party', 'JUN 28')],
     ),

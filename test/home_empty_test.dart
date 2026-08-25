@@ -23,7 +23,7 @@ void main() {
     expect(app.allGigs, isEmpty);
     expect(find.text(_noGigs), findsOne);
     expect(find.text(_noMatches), findsNothing);
-    expect(find.text('0 GIGS NEAR YOU · NEAREST FIRST'), findsOne);
+    expect(find.text('0 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
   });
 
   testWidgets('a filter that excludes everything blames the filter', (

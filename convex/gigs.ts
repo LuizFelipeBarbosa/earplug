@@ -32,6 +32,7 @@ import {
   gigPerformerRoleValidator,
   gigProjectStatusValidator,
 } from "./schema";
+import { performerLineupReady, venuePosterReady } from "./lib/discovery";
 
 const MAX_PERFORMERS = 20;
 const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
@@ -156,6 +157,18 @@ async function requireProjectAdminQuery(
   return project;
 }
 
+async function markProjectListingStale(
+  ctx: MutationCtx,
+  project: Doc<"gigProjects">,
+) {
+  if (project.status === "published" && project.publicGigId) {
+    const gig = await ctx.db.get(project.publicGigId);
+    if (gig) {
+      await ctx.db.patch(gig._id, { discoveryListingReady: false });
+    }
+  }
+}
+
 function formattedTime(timestamp: number) {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Los_Angeles",
@@ -231,6 +244,10 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
   });
 
   const lineup = await publicLineup(ctx, project._id);
+  const performers = await projectPerformers(ctx, project._id);
+  const discoveryListingReady =
+    performerLineupReady(project.bandId, performers) &&
+    (await venuePosterReady(ctx, project));
   const doorsTime = `${formattedTime(project.doorsAt)} / ${formattedTime(project.startsAt)}`;
   const publicFields = {
     title: project.title.trim(),
@@ -255,6 +272,7 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
     cap: project.cap,
     createdByBand: project.bandId,
     lifecycle: "published" as const,
+    discoveryListingReady,
   };
 
   let publicGigId = project.publicGigId;
@@ -596,6 +614,7 @@ export const saveDraft = mutation({
       cap: args.cap,
       updatedAt: Date.now(),
     });
+    await markProjectListingStale(ctx, project);
     return { revision };
   },
 });
@@ -652,6 +671,7 @@ export const addPerformer = mutation({
       revision: project.revision + 1,
       updatedAt: Date.now(),
     });
+    await markProjectListingStale(ctx, project);
     const updated = await ctx.db.get(project._id);
     if (!updated) throw new Error("Draft not found");
     return await toProjectPayload(ctx, updated);
@@ -682,6 +702,7 @@ export const updatePerformer = mutation({
       revision: project.revision + 1,
       updatedAt: Date.now(),
     });
+    await markProjectListingStale(ctx, project);
     const updated = await ctx.db.get(project._id);
     if (!updated) throw new Error("Draft not found");
     return await toProjectPayload(ctx, updated);
@@ -705,6 +726,7 @@ export const removePerformer = mutation({
       revision: project.revision + 1,
       updatedAt: Date.now(),
     });
+    await markProjectListingStale(ctx, project);
     const updated = await ctx.db.get(project._id);
     if (!updated) throw new Error("Draft not found");
     return await toProjectPayload(ctx, updated);
@@ -740,6 +762,7 @@ export const reorderPerformers = mutation({
       revision: project.revision + 1,
       updatedAt: Date.now(),
     });
+    await markProjectListingStale(ctx, project);
     const updated = await ctx.db.get(project._id);
     if (!updated) throw new Error("Draft not found");
     return await toProjectPayload(ctx, updated);
@@ -803,7 +826,10 @@ export const unpublish = mutation({
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
     if (project.publicGigId)
-      await ctx.db.patch(project.publicGigId, { lifecycle: "unpublished" });
+      await ctx.db.patch(project.publicGigId, {
+        lifecycle: "unpublished",
+        discoveryListingReady: false,
+      });
     await ctx.db.patch(project._id, { status: "draft", updatedAt: Date.now() });
     return null;
   },
@@ -816,7 +842,10 @@ export const cancel = mutation({
     const project = await requireProjectAdmin(ctx, args.projectId);
     if (!project.publicGigId)
       throw new Error("Publish the gig before cancelling it");
-    await ctx.db.patch(project.publicGigId, { lifecycle: "cancelled" });
+    await ctx.db.patch(project.publicGigId, {
+      lifecycle: "cancelled",
+      discoveryListingReady: false,
+    });
     await ctx.db.patch(project._id, {
       status: "cancelled",
       updatedAt: Date.now(),
@@ -831,7 +860,10 @@ export const deleteGig = mutation({
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
     if (project.publicGigId)
-      await ctx.db.patch(project.publicGigId, { lifecycle: "deleted" });
+      await ctx.db.patch(project.publicGigId, {
+        lifecycle: "deleted",
+        discoveryListingReady: false,
+      });
     for (const performer of await projectPerformers(ctx, project._id)) {
       if (performer.inviteToken)
         await ctx.db.patch(performer._id, { inviteRevoked: true });
@@ -938,7 +970,6 @@ export const claimPerformerInvite = mutation({
       claimedAt: Date.now(),
     });
     const revision = project.revision + 1;
-    let publishedRevision = project.publishedRevision;
     if (project.status === "published" || project.status === "cancelled") {
       const lineup = await publicLineup(ctx, project._id);
       if (project.publicGigId) {
@@ -946,6 +977,7 @@ export const claimPerformerInvite = mutation({
           lineup: lineup.lineup,
           performers: lineup.performers,
           genres: lineup.genres,
+          discoveryListingReady: false,
         });
         if (project.startsAt)
           await replaceGigBandIndex(
@@ -954,12 +986,10 @@ export const claimPerformerInvite = mutation({
             lineup.lineup,
             project.startsAt,
           );
-        publishedRevision = revision;
       }
     }
     await ctx.db.patch(project._id, {
       revision,
-      publishedRevision,
       updatedAt: Date.now(),
     });
     return { projectId: project._id };

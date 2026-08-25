@@ -45,6 +45,7 @@ Future<AppHarness> pumpApp(
   EarplugRepository? repository,
   MediaUploadService? uploader,
   LocationService? locationService,
+  DateTime Function()? now,
   FutureOr<void> Function(AppState app)? beforePump,
   Duration? pumpFor,
 }) async {
@@ -60,8 +61,8 @@ Future<AppHarness> pumpApp(
     auth: resolvedAuth,
     locationService: locationService,
     mediaUploadService: uploader,
+    now: now,
   );
-  addTearDown(app.dispose);
 
   final picker = FakeMediaPicker();
   final media = BandMediaController(
@@ -71,15 +72,15 @@ Future<AppHarness> pumpApp(
     say: app.say,
   );
   app.attachMediaController(media);
-  addTearDown(media.dispose);
 
   await beforePump?.call(app);
 
   await tester.pumpWidget(
     MultiProvider(
+      key: UniqueKey(),
       providers: [
-        ChangeNotifierProvider<AppState>.value(value: app),
-        ChangeNotifierProvider<BandMediaController>.value(value: media),
+        ChangeNotifierProvider<AppState>(create: (_) => app),
+        ChangeNotifierProvider<BandMediaController>(create: (_) => media),
       ],
       child: MaterialApp(theme: buildEpTheme(), home: home),
     ),

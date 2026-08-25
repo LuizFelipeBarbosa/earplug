@@ -136,6 +136,37 @@ void main() {
     expect(find.text('Return to band dashboard'), findsNothing);
     expect(find.text('Edit profile'), findsNothing);
   });
+
+  testWidgets('public profile badge follows derived profile completion', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _ProfileRepository(
+        auth: auth,
+        profileBand: DemoData.bands['b1']!,
+        details: BandProfileDetails.empty,
+      ),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+    expect(find.byKey(const Key('profile-complete-badge')), findsOne);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    final incompleteAuth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: incompleteAuth,
+      repository: _ProfileRepository(
+        auth: incompleteAuth,
+        profileBand: DemoData.bands['b1']!.copyWith(profileComplete: false),
+        details: BandProfileDetails.empty,
+      ),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+    expect(find.byKey(const Key('profile-complete-badge')), findsNothing);
+  });
 }
 
 class _ProfileRepository extends DemoRepository {

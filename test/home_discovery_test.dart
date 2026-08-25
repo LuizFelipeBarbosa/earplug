@@ -30,7 +30,7 @@ void main() {
 
     expect(harness.app.mapMode, isFalse);
     expect(find.byType(GigMapView), findsNothing);
-    expect(find.text('7 GIGS NEAR YOU · NEAREST FIRST'), findsOne);
+    expect(find.text('7 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
 
     harness.app.resetTo(Screen.explore);
     harness.app.resetTo(Screen.home);
@@ -54,6 +54,48 @@ void main() {
       expect(find.byKey(Key('gig-marker-$id')), findsOne);
     }
     expect(find.byKey(const Key('gig-marker-g3')), findsNothing);
+  });
+
+  testWidgets('active complete listings carry the transparent boost label', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _BoostRepository(auth: auth),
+      home: const Scaffold(body: HomeScreen()),
+    );
+
+    await tester.tap(find.text('LIST'));
+    await tester.pumpAndSettle();
+    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
+  });
+
+  testWidgets('the feed refreshes when a discovery boost window opens', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    var now = DateTime.utc(2026, 8, 25, 19);
+    final repository = _BoundaryBoostRepository(auth: auth, now: now);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: HomeScreen()),
+      beforePump: (app) => app.setMapMode(false),
+      now: () => now,
+    );
+
+    expect(harness.app.isDiscoveryBoosted(repository.gig), isFalse);
+    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsNothing);
+
+    now = now.add(const Duration(seconds: 3));
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+
+    expect(harness.app.isDiscoveryBoosted(repository.gig), isTrue);
+    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
   testWidgets('a guest can open an event from its map card', (tester) async {
@@ -226,6 +268,53 @@ class _MissingVenueRepository extends DemoRepository {
 
   @override
   Future<List<Venue>> venues() async => const [];
+}
+
+class _BoostRepository extends DemoRepository {
+  _BoostRepository({required super.auth});
+
+  Band get _readyBand =>
+      DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
+
+  @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: DemoData.gigs,
+      venues: DemoData.venues,
+      bands: {...DemoData.bands, 'b1': _readyBand},
+    ),
+  );
+
+  @override
+  Stream<List<BandMembership>> myBands() =>
+      Stream.value([BandMembership(band: _readyBand, role: 'admin')]);
+}
+
+class _BoundaryBoostRepository extends DemoRepository {
+  _BoundaryBoostRepository({required super.auth, required DateTime now})
+    : opensAt = now.add(const Duration(seconds: 2));
+
+  final DateTime opensAt;
+
+  Band get _readyBand =>
+      DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
+
+  late final Gig gig = DemoData.gigs[1].copyWith(
+    startsAt: opensAt.add(discoveryBoostLead),
+  );
+
+  @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: [gig],
+      venues: {'v1': DemoData.venues['v1']!},
+      bands: {'b1': _readyBand},
+    ),
+  );
+
+  @override
+  Stream<List<BandMembership>> myBands() =>
+      Stream.value([BandMembership(band: _readyBand, role: 'admin')]);
 }
 
 final _missingVenueGig = Gig(

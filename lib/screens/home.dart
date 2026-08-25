@@ -176,7 +176,7 @@ class _FeedList extends StatelessWidget {
       children: [
         if (feed.isNotEmpty) ...[
           Text(
-            '${feed.length} GIGS NEAR YOU · NEAREST FIRST',
+            '${feed.length} GIGS NEAR YOU · LOCAL ORDER',
             style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1.2,
               color: Ep.contentSecondary,
@@ -212,7 +212,7 @@ class _DiscoveryEmptyState extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '0 GIGS NEAR YOU · NEAREST FIRST',
+            '0 GIGS NEAR YOU · LOCAL ORDER',
             style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1,
               color: Ep.contentSecondary,

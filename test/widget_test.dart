@@ -797,6 +797,19 @@ class _FailingRsvpRepository implements EarplugRepository {
       );
 
   @override
+  Future<BandDiscoveryReadiness> bandDiscoveryReadiness(
+    String bandId, {
+    DateTime? now,
+  }) async => const BandDiscoveryReadiness(
+    profileComplete: false,
+    profileImageReady: false,
+    clipReady: false,
+    publishedShowReady: false,
+    venuePosterReady: false,
+    publishedRevisionCurrent: false,
+  );
+
+  @override
   Future<void> markBandPreviewed(String bandId) async {}
 
   @override

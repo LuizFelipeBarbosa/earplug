@@ -110,6 +110,10 @@ export default defineSchema({
     // First managed public-profile preview. Its presence completes the setup
     // task; later previews deliberately do not churn this otherwise stable row.
     publicProfilePreviewedAt: v.optional(v.number()),
+    // Widen-phase discovery projection. Every live media write maintains this
+    // transactionally; an absent legacy value is deliberately read as false
+    // until migrations:backfillBandHasClip has visited the row.
+    hasClip: v.optional(v.boolean()),
     // Storage / link content with no home in the v1 UI, kept rather than swept.
     imageStorageId: v.optional(v.id("_storage")),
     legacySocialLinks: v.optional(legacySocialLinksValidator),
@@ -158,6 +162,10 @@ export default defineSchema({
     lifecycle: v.optional(gigLifecycleValidator),
     doorsAt: v.optional(v.number()),
     performers: v.optional(v.array(gigPublicPerformerValidator)),
+    // Widen-phase publish projection. Saved project/lineup edits clear it and
+    // publishing recalculates it. Missing legacy values are never eligible for
+    // a discovery boost.
+    discoveryListingReady: v.optional(v.boolean()),
   })
     .index("by_startsAt", ["startsAt"])
     .index("by_lifecycle_and_startsAt", ["lifecycle", "startsAt"])
@@ -190,6 +198,11 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_band_and_status", ["bandId", "status"])
+    .index("by_bandId_and_status_and_startsAt", [
+      "bandId",
+      "status",
+      "startsAt",
+    ])
     .index("by_public_gig", ["publicGigId"]),
 
   // A gig has a deliberately bounded lineup (20 performers), but performer

@@ -81,6 +81,19 @@ class FanEventCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (app.isDiscoveryBoosted(gig)) ...[
+                  Text(
+                    'DISCOVERY BOOST · COMPLETE LISTING',
+                    key: ValueKey('discovery-boost-${gig.id}'),
+                    style: Theme.of(context).textTheme.epCaption.copyWith(
+                      color: Ep.accent,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: .45,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                ],
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
