@@ -413,6 +413,32 @@ class EpFanAvatar extends StatelessWidget {
   }
 }
 
+class ProfileCompleteBadge extends StatelessWidget {
+  const ProfileCompleteBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('profile-complete-badge'),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: Ep.success.withValues(alpha: .12),
+        border: Border.all(color: Ep.success.withValues(alpha: .55)),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        'PROFILE COMPLETE',
+        style: Theme.of(context).textTheme.epCaption.copyWith(
+          color: Ep.success,
+          fontSize: 9,
+          fontWeight: FontWeight.w900,
+          letterSpacing: .7,
+        ),
+      ),
+    );
+  }
+}
+
 /// Convenience adapter for existing band call sites.
 class BandAvatar extends StatelessWidget {
   final Band band;

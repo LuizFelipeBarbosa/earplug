@@ -181,6 +181,9 @@ class DemoRepository implements EarplugRepository {
         isHero: false,
       ),
     );
+    _refreshBandReadiness(bandId);
+    _feedController.add(_currentFeed());
+    _bandsController.add(_currentMemberships());
     return id;
   }
 
@@ -203,6 +206,9 @@ class DemoRepository implements EarplugRepository {
     if (_heroByBand[removed.bandId] == mediaId) {
       _heroByBand.remove(removed.bandId);
     }
+    _refreshBandReadiness(removed.bandId);
+    _feedController.add(_currentFeed());
+    _bandsController.add(_currentMemberships());
   }
 
   @override
@@ -265,11 +271,17 @@ class DemoRepository implements EarplugRepository {
       throw StateError('Band photo must be a photo owned by the same band.');
     }
     _heroByBand[bandId] = mediaId;
+    _refreshBandReadiness(bandId);
+    _feedController.add(_currentFeed());
+    _bandsController.add(_currentMemberships());
   }
 
   @override
   Future<void> clearBandPhoto(String bandId) async {
     _heroByBand.remove(bandId);
+    _refreshBandReadiness(bandId);
+    _feedController.add(_currentFeed());
+    _bandsController.add(_currentMemberships());
   }
 
   @override
@@ -670,6 +682,12 @@ class DemoRepository implements EarplugRepository {
       linkBc: linkBc,
       linkYt: linkYt,
       credits: credits,
+      profileComplete:
+          bandName.isNotEmpty &&
+          genres.isNotEmpty &&
+          genres.length <= 3 &&
+          area.trim().isNotEmpty &&
+          bio.trim().isNotEmpty,
     );
 
     _bands[id] = created;
@@ -697,12 +715,7 @@ class DemoRepository implements EarplugRepository {
       credits: update.credits.trim(),
     );
     _bands[update.bandId] = updated;
-    for (var i = 0; i < _memberships.length; i++) {
-      final membership = _memberships[i];
-      if (membership.band.id == update.bandId) {
-        _memberships[i] = BandMembership(band: updated, role: membership.role);
-      }
-    }
+    _refreshBandReadiness(update.bandId);
     _feedController.add(_currentFeed());
     _bandsController.add(_currentMemberships());
   }
@@ -720,7 +733,8 @@ class DemoRepository implements EarplugRepository {
           band.name.trim().isNotEmpty &&
           band.genres.isNotEmpty &&
           band.genres.length <= 3 &&
-          band.area.trim().isNotEmpty,
+          band.area.trim().isNotEmpty &&
+          band.bio.trim().isNotEmpty,
       profileImageAdded: _heroByBand.containsKey(bandId),
       musicAdded:
           media.any((item) => item.kind == MediaKind.video) ||
@@ -735,6 +749,118 @@ class DemoRepository implements EarplugRepository {
           membershipCount > 1 ||
           (_acceptedMemberNames[bandId]?.isNotEmpty ?? false),
       publicProfilePreviewed: _previewedBands.contains(bandId),
+    );
+  }
+
+  @override
+  Future<BandDiscoveryReadiness> bandDiscoveryReadiness(
+    String bandId, {
+    DateTime? now,
+  }) async {
+    final current = now ?? DateTime.now();
+    final band = _bands[bandId];
+    final media = _mediaLists[bandId] ?? const <BandMedia>[];
+    final gigs =
+        [...DemoData.gigs, ..._publishedGigs]
+            .where(
+              (gig) =>
+                  gig.createdByBand == bandId &&
+                  !gig.startsAt.isBefore(
+                    current.subtract(const Duration(hours: 6)),
+                  ),
+            )
+            .toList()
+          ..sort((left, right) => left.startsAt.compareTo(right.startsAt));
+    GigProject? projectFor(Gig gig) => _gigProjects.values
+        .where((project) => project.publicGigId == gig.id)
+        .firstOrNull;
+    bool publishedShowReady(Gig gig, GigProject? project) {
+      final publicListingReady =
+          gig.lifecycle == GigLifecycle.published &&
+          gig.createdByBand == bandId &&
+          gig.lineup.contains(bandId);
+      if (!publicListingReady) return false;
+      if (project == null) return gig.discoveryListingReady;
+      return project.status == GigProjectStatus.published &&
+          project.performers.any(
+            (performer) => performer.bandId == project.bandId,
+          ) &&
+          project.performers.every(
+            (performer) => performer.kind != GigPerformerKind.invited,
+          );
+    }
+
+    bool venuePosterReady(Gig gig, GigProject? project) {
+      if (!DemoData.venues.containsKey(gig.venueId)) return false;
+      if (gig.flyKey != 'custom') return true;
+      return project == null
+          ? gig.discoveryListingReady
+          : project.overlay && project.flyStorageId != null;
+    }
+
+    bool publishedRevisionCurrent(Gig gig, GigProject? project) =>
+        project == null
+        ? gig.discoveryListingReady
+        : project.status == GigProjectStatus.published &&
+              project.publishedRevision == project.revision;
+
+    final candidates = [
+      for (final gig in gigs) (gig: gig, project: projectFor(gig)),
+    ];
+    final eligible = candidates
+        .where(
+          (candidate) =>
+              candidate.gig.discoveryListingReady &&
+              publishedShowReady(candidate.gig, candidate.project) &&
+              venuePosterReady(candidate.gig, candidate.project) &&
+              publishedRevisionCurrent(candidate.gig, candidate.project),
+        )
+        .firstOrNull;
+    final relevant = eligible ?? candidates.firstOrNull;
+    BandDiscoveryShow? showFor(Gig? gig) {
+      if (gig == null) return null;
+      final project = projectFor(gig);
+      return BandDiscoveryShow(
+        gigId: gig.id,
+        projectId: project?.id ?? 'demo-${gig.id}',
+        title: gig.title,
+        startsAt: gig.startsAt,
+      );
+    }
+
+    final eligibleShow = showFor(eligible?.gig);
+    final opensAt = eligibleShow?.startsAt.subtract(const Duration(days: 7));
+    final closesAt = eligibleShow?.startsAt.add(const Duration(hours: 6));
+    final profileComplete = band?.profileComplete ?? false;
+    final profileImageReady = _heroByBand.containsKey(bandId);
+    final clipReady = media.any((item) => item.kind == MediaKind.video);
+    return BandDiscoveryReadiness(
+      profileComplete: profileComplete,
+      profileImageReady: profileImageReady,
+      clipReady: clipReady,
+      publishedShowReady: relevant != null
+          ? publishedShowReady(relevant.gig, relevant.project)
+          : false,
+      venuePosterReady: relevant != null
+          ? venuePosterReady(relevant.gig, relevant.project)
+          : false,
+      publishedRevisionCurrent: relevant != null
+          ? publishedRevisionCurrent(relevant.gig, relevant.project)
+          : false,
+      relevantShow: showFor(relevant?.gig),
+      nextEligibleShow: eligibleShow,
+      boostWindow: opensAt == null || closesAt == null
+          ? null
+          : DiscoveryBoostWindow(
+              opensAt: opensAt,
+              closesAt: closesAt,
+              active:
+                  profileComplete &&
+                  profileImageReady &&
+                  clipReady &&
+                  !current.isBefore(opensAt) &&
+                  !current.isAfter(closesAt),
+            ),
     );
   }
 
@@ -984,6 +1110,7 @@ class DemoRepository implements EarplugRepository {
       performers: project.performers,
     );
     _gigProjects[projectId] = updated;
+    _markDemoProjectListingStale(project);
     return updated.revision;
   }
 
@@ -1109,6 +1236,17 @@ class DemoRepository implements EarplugRepository {
       flyerUrl: project.flyerUrl,
       cap: project.cap,
       ageRequirement: project.ageRequirement,
+      createdByBand: project.bandId,
+      discoveryListingReady:
+          project.performers.any(
+            (performer) => performer.bandId == project.bandId,
+          ) &&
+          project.performers.every(
+            (performer) => performer.kind != GigPerformerKind.invited,
+          ) &&
+          DemoData.venues.containsKey(project.venueId) &&
+          (project.flyKey != 'custom' ||
+              (project.overlay && project.flyStorageId != null)),
     );
     _publishedGigs.removeWhere((gig) => gig.id == gigId);
     _publishedGigs.add(gig);
@@ -1232,6 +1370,10 @@ class DemoRepository implements EarplugRepository {
         ageRequirement: ageRequirement,
         externalUrl: externalUrl,
         cap: cap,
+        createdByBand: bandId,
+        discoveryListingReady:
+            DemoData.venues.containsKey(venueId) &&
+            (flyKey != 'custom' || flyStorageId != null),
       ),
     );
     _feedController.add(_currentFeed());
@@ -1263,7 +1405,23 @@ class DemoRepository implements EarplugRepository {
       performers: performers,
     );
     _gigProjects[project.id] = updated;
+    _markDemoProjectListingStale(project);
     return updated;
+  }
+
+  void _markDemoProjectListingStale(GigProject project) {
+    if (project.status != GigProjectStatus.published ||
+        project.publicGigId == null) {
+      return;
+    }
+    final index = _publishedGigs.indexWhere(
+      (gig) => gig.id == project.publicGigId,
+    );
+    if (index == -1) return;
+    _publishedGigs[index] = _publishedGigs[index].copyWith(
+      discoveryListingReady: false,
+    );
+    _feedController.add(_currentFeed());
   }
 
   GigProject _copyGigProject(
@@ -1304,6 +1462,37 @@ class DemoRepository implements EarplugRepository {
     bands: Map<String, Band>.unmodifiable(_bands),
     nextStartsAt: null,
   );
+
+  void _refreshBandReadiness(String bandId) {
+    final band = _bands[bandId];
+    if (band == null) return;
+    final profileComplete =
+        band.name.trim().isNotEmpty &&
+        band.genres.isNotEmpty &&
+        band.genres.length <= 3 &&
+        band.genres.every((genre) => genre.trim().isNotEmpty) &&
+        band.area.trim().isNotEmpty &&
+        band.bio.trim().isNotEmpty;
+    final updated = band.copyWith(
+      profileComplete: profileComplete,
+      discoveryProfileReady:
+          profileComplete &&
+          _heroByBand.containsKey(bandId) &&
+          (_mediaLists[bandId] ?? const <BandMedia>[]).any(
+            (item) => item.kind == MediaKind.video,
+          ),
+    );
+    _bands[bandId] = updated;
+    for (var index = 0; index < _memberships.length; index++) {
+      final membership = _memberships[index];
+      if (membership.band.id == bandId) {
+        _memberships[index] = BandMembership(
+          band: updated,
+          role: membership.role,
+        );
+      }
+    }
+  }
 
   Interactions _currentInteractions() {
     if (!_auth.signedIn) return Interactions.empty;

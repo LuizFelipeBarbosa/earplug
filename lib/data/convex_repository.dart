@@ -378,6 +378,18 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<BandDiscoveryReadiness> bandDiscoveryReadiness(
+    String bandId, {
+    DateTime? now,
+  }) async {
+    final result = await _convexService.query('bands:discoveryReadiness', {
+      'bandId': bandId,
+      'now': (now ?? DateTime.now()).millisecondsSinceEpoch,
+    });
+    return BandDiscoveryReadiness.fromJson(_asMap(result));
+  }
+
+  @override
   Future<void> markBandPreviewed(String bandId) async {
     await _convexService.mutation('bands:markPreviewed', {'bandId': bandId});
   }

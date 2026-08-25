@@ -348,7 +348,7 @@ describe("bands: public profile details and setup status", () => {
       name: "Setup Band",
       genres: ["punk"],
       area: "Oakland",
-      bio: "",
+      bio: "A complete setup profile.",
       credits: "Recorded by Ren",
       linkBc: "setup.bandcamp.com",
       linkYt: "youtube.com/@setup",

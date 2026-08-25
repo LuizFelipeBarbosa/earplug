@@ -276,7 +276,10 @@ describe("gig project lifecycle", () => {
     const project = await asAdmin.query(api.gigs.getProject, {
       projectId: draft._id,
     });
-    expect(project.publishedRevision).toBe(project.revision);
+    expect(project.publishedRevision).not.toBe(project.revision);
+    expect(
+      (await t.query(api.gigs.getPublic, { gigId }))?.discoveryListingReady,
+    ).toBe(false);
     expect((await t.query(api.gigs.getPublic, { gigId }))?.lineup).toContain(
       guestBandId,
     );

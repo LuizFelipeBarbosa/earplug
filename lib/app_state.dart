@@ -109,6 +109,96 @@ enum DataStatus { connecting, ready, error }
 
 enum ExploreResultType { all, events, bands, venues }
 
+const discoveryBoostLead = Duration(days: 7);
+const discoveryBoostGrace = Duration(hours: 6);
+const discoveryDistanceBucketMiles = 5.0;
+
+Set<String> discoveryBoostedGigIds({
+  required Iterable<Gig> gigs,
+  required Map<String, Band> bands,
+  required DateTime now,
+}) {
+  final earliestByBand = <String, Gig>{};
+  for (final gig in gigs) {
+    final creatorId = gig.createdByBand;
+    if (creatorId == null ||
+        gig.lifecycle != GigLifecycle.published ||
+        !gig.discoveryListingReady ||
+        bands[creatorId]?.discoveryProfileReady != true ||
+        now.isBefore(gig.startsAt.subtract(discoveryBoostLead)) ||
+        now.isAfter(gig.startsAt.add(discoveryBoostGrace))) {
+      continue;
+    }
+    final current = earliestByBand[creatorId];
+    if (current == null || gig.startsAt.isBefore(current.startsAt)) {
+      earliestByBand[creatorId] = gig;
+    }
+  }
+  return {for (final gig in earliestByBand.values) gig.id};
+}
+
+List<Gig> orderDiscoveryGigs({
+  required Iterable<Gig> gigs,
+  required double Function(Gig gig) distanceMiles,
+  required Set<String> boostedGigIds,
+}) {
+  final ordered = gigs.toList();
+  final originalIndex = {
+    for (final (index, gig) in ordered.indexed) gig.id: index,
+  };
+  ordered.sort((left, right) {
+    final distance = distanceMiles(left).compareTo(distanceMiles(right));
+    if (distance != 0) return distance;
+    final start = left.startsAt.compareTo(right.startsAt);
+    if (start != 0) return start;
+    return originalIndex[left.id]!.compareTo(originalIndex[right.id]!);
+  });
+
+  final positionsByPeerGroup = <String, List<int>>{};
+  for (var index = 0; index < ordered.length; index++) {
+    final gig = ordered[index];
+    final bucket = (distanceMiles(gig) / discoveryDistanceBucketMiles).floor();
+    final key = '${_losAngelesDayKey(gig.startsAt)}:$bucket';
+    positionsByPeerGroup.putIfAbsent(key, () => []).add(index);
+  }
+  for (final positions in positionsByPeerGroup.values) {
+    if (positions.length < 2) continue;
+    final peers = [for (final position in positions) ordered[position]];
+    peers.sort((left, right) {
+      final boost = (boostedGigIds.contains(right.id) ? 1 : 0).compareTo(
+        boostedGigIds.contains(left.id) ? 1 : 0,
+      );
+      if (boost != 0) return boost;
+      final distance = distanceMiles(left).compareTo(distanceMiles(right));
+      if (distance != 0) return distance;
+      final start = left.startsAt.compareTo(right.startsAt);
+      if (start != 0) return start;
+      return originalIndex[left.id]!.compareTo(originalIndex[right.id]!);
+    });
+    for (var index = 0; index < positions.length; index++) {
+      ordered[positions[index]] = peers[index];
+    }
+  }
+  return ordered;
+}
+
+String _losAngelesDayKey(DateTime value) {
+  final utc = value.toUtc();
+  final year = utc.year;
+  final marchFirst = DateTime.utc(year, 3, 1);
+  final firstMarchSunday = 1 + ((7 - marchFirst.weekday) % 7);
+  final daylightStarts = DateTime.utc(year, 3, firstMarchSunday + 7, 10);
+  final novemberFirst = DateTime.utc(year, 11, 1);
+  final firstNovemberSunday = 1 + ((7 - novemberFirst.weekday) % 7);
+  final daylightEnds = DateTime.utc(year, 11, firstNovemberSunday, 9);
+  final offsetHours =
+      !utc.isBefore(daylightStarts) && utc.isBefore(daylightEnds) ? -7 : -8;
+  final local = utc.add(Duration(hours: offsetHours));
+  return '${local.year.toString().padLeft(4, '0')}-'
+      '${local.month.toString().padLeft(2, '0')}-'
+      '${local.day.toString().padLeft(2, '0')}';
+}
+
 class PendingAuth {
   final PendingKind kind;
   final String? id;
@@ -261,6 +351,8 @@ class AppState extends ChangeNotifier {
   final Set<String> _bandProfileDetailsLoading = {};
   final Map<String, BandSetupStatus> _bandSetupStatuses = {};
   final Set<String> _bandSetupLoading = {};
+  final Map<String, BandDiscoveryReadiness> _bandDiscoveryReadiness = {};
+  final Set<String> _bandDiscoveryLoading = {};
   final Map<String, BandInvite?> _bandInvites = {};
   final Set<String> _bandInviteLoading = {};
 
@@ -839,6 +931,7 @@ class AppState extends ChangeNotifier {
   void _refreshVisibleBandDashboard() {
     if (current.screen == Screen.bandDash && bandId.isNotEmpty) {
       unawaited(refreshBandSetupStatus(bandId));
+      unawaited(refreshBandDiscoveryReadiness(bandId));
     }
   }
 
@@ -879,6 +972,11 @@ class AppState extends ChangeNotifier {
   }
 
   void openBandMedia() => go(Screen.bandMedia, bandId);
+
+  void openGigManager() {
+    resetTo(Screen.gigMgr);
+    unawaited(refreshManagedGigs());
+  }
 
   void openMyGigsTab() {
     if (authed) {
@@ -994,6 +1092,8 @@ class AppState extends ChangeNotifier {
     exploreResultType = ExploreResultType.all;
     _bandSetupStatuses.clear();
     _bandSetupLoading.clear();
+    _bandDiscoveryReadiness.clear();
+    _bandDiscoveryLoading.clear();
     _bandInvites.clear();
     _bandInviteLoading.clear();
     _media?.clearForSignOut();
@@ -2090,14 +2190,23 @@ class AppState extends ChangeNotifier {
       return true;
     }).toList();
 
-    filtered.sort((a, b) {
-      final proximity = _distanceMilesFromDiscoveryCenter(
-        venue(a.venueId),
-      ).compareTo(_distanceMilesFromDiscoveryCenter(venue(b.venueId)));
-      return proximity != 0 ? proximity : a.startsAt.compareTo(b.startsAt);
-    });
-    return filtered;
+    return orderDiscoveryGigs(
+      gigs: filtered,
+      distanceMiles: (gig) =>
+          _distanceMilesFromDiscoveryCenter(venue(gig.venueId)),
+      boostedGigIds: discoveryBoostedGigIds(
+        gigs: allGigs,
+        bands: _bands,
+        now: DateTime.now(),
+      ),
+    );
   }
+
+  bool isDiscoveryBoosted(Gig gig, {DateTime? now}) => discoveryBoostedGigIds(
+    gigs: allGigs,
+    bands: _bands,
+    now: now ?? DateTime.now(),
+  ).contains(gig.id);
 
   /// RSVP count shown to bands: base demo count plus this user's RSVP.
   int rsvpCount(Gig g) => g.going + (rsvps.contains(g.id) ? 1 : 0);
@@ -2138,6 +2247,7 @@ class AppState extends ChangeNotifier {
     bandId = id;
     resetTo(Screen.bandDash);
     unawaited(refreshBandSetupStatus(id));
+    unawaited(refreshBandDiscoveryReadiness(id));
   }
 
   void toFanView() => resetTo(Screen.home);
@@ -2185,10 +2295,34 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  BandDiscoveryReadiness? discoveryReadinessFor(String id) {
+    final readiness = _bandDiscoveryReadiness[id];
+    if (readiness == null && isAdminOf(id)) {
+      unawaited(refreshBandDiscoveryReadiness(id));
+    }
+    return readiness;
+  }
+
+  bool discoveryReadinessLoadingFor(String id) =>
+      _bandDiscoveryLoading.contains(id);
+
+  Future<void> refreshBandDiscoveryReadiness(String id) async {
+    if (!isAdminOf(id) || !_bandDiscoveryLoading.add(id)) return;
+    try {
+      _bandDiscoveryReadiness[id] = await repository.bandDiscoveryReadiness(id);
+    } catch (error) {
+      logError('bandDiscoveryReadiness', error);
+    } finally {
+      _bandDiscoveryLoading.remove(id);
+      if (!_disposed) notifyListeners();
+    }
+  }
+
   Future<void> _markBandPreviewed(String id) async {
     try {
       await repository.markBandPreviewed(id);
       await refreshBandSetupStatus(id);
+      await refreshBandDiscoveryReadiness(id);
     } catch (error) {
       logError('markBandPreviewed', error);
     }
@@ -2219,6 +2353,13 @@ class AppState extends ChangeNotifier {
 
     final existing = _bands[update.bandId];
     if (existing != null) {
+      final profileComplete =
+          normalized.name.isNotEmpty &&
+          normalized.genres.isNotEmpty &&
+          normalized.genres.length <= 3 &&
+          normalized.genres.every((genre) => genre.trim().isNotEmpty) &&
+          normalized.area.isNotEmpty &&
+          normalized.bio.isNotEmpty;
       _bands[update.bandId] = existing.copyWith(
         name: normalized.name,
         initials: bandInitialsFor(normalized.name),
@@ -2229,6 +2370,10 @@ class AppState extends ChangeNotifier {
         linkBc: normalized.linkBc,
         linkYt: normalized.linkYt,
         credits: normalized.credits,
+        profileComplete: profileComplete,
+        discoveryProfileReady: profileComplete
+            ? existing.discoveryProfileReady
+            : false,
       );
     }
     final currentDetails = _bandProfileDetails[update.bandId];
@@ -2241,6 +2386,7 @@ class AppState extends ChangeNotifier {
     );
     notifyListeners();
     await refreshBandSetupStatus(update.bandId);
+    await refreshBandDiscoveryReadiness(update.bandId);
   }
 
   BandInvite? inviteFor(String id) {
@@ -2647,6 +2793,7 @@ class AppState extends ChangeNotifier {
     nbCreated = true;
     notifyListeners();
     unawaited(refreshBandSetupStatus(bandId));
+    unawaited(refreshBandDiscoveryReadiness(bandId));
     _refreshExploreBands();
   }
 
@@ -2671,6 +2818,7 @@ class AppState extends ChangeNotifier {
     nbPhotoUploading = false;
     notifyListeners();
     unawaited(refreshBandSetupStatus(bandId));
+    unawaited(refreshBandDiscoveryReadiness(bandId));
   }
 
   Future<void> retryNbPhoto() async {
@@ -3119,6 +3267,7 @@ class AppState extends ChangeNotifier {
     gfPublished = true;
     notifyListeners();
     unawaited(refreshBandSetupStatus(bandId));
+    unawaited(refreshBandDiscoveryReadiness(bandId));
   }
 
   /// "Keep editing" — back to the form with everything still filled in.

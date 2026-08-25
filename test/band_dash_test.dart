@@ -67,6 +67,56 @@ void main() {
     expect(harness.app.current.param, 'b1');
   });
 
+  testWidgets('discovery readiness is separate from the setup checklist', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: BandDashScreen()));
+
+    final card = find.byKey(const Key('discovery-readiness-card'));
+    await tester.scrollUntilVisible(
+      card,
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(card, findsOne);
+    expect(find.text('5 of 6 complete'), findsOne);
+    expect(find.text('Assign a valid profile image'), findsOne);
+    expect(find.text('Upload a video clip'), findsOne);
+    expect(
+      find.textContaining('NEXT ELIGIBLE · RIPTIDE RELEASE SHOW'),
+      findsOne,
+    );
+    expect(find.text('SETUP CHECKLIST'), findsOne);
+  });
+
+  testWidgets('profile-complete badge disappears after the bio is cleared', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: BandDashScreen()),
+    );
+    expect(find.byKey(const Key('profile-complete-badge')), findsOne);
+    final band = harness.app.myBand!;
+
+    await harness.app.saveBandProfile(
+      BandProfileUpdate(
+        bandId: band.id,
+        name: band.name,
+        genres: band.genres,
+        area: band.area,
+        bio: '',
+        linkIg: band.linkIg ?? '',
+        linkBc: band.linkBc ?? '',
+        linkYt: band.linkYt ?? '',
+        credits: band.credits ?? '',
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('profile-complete-badge')), findsNothing);
+  });
+
   testWidgets('all seven setup actions route to the intended task', (
     tester,
   ) async {

@@ -369,6 +369,8 @@ class Gig {
   final String cap;
   final AgeRequirement ageRequirement;
   final GigLifecycle lifecycle;
+  final String? createdByBand;
+  final bool discoveryListingReady;
 
   const Gig({
     required this.id,
@@ -393,6 +395,8 @@ class Gig {
     this.cap = 'No cap',
     this.ageRequirement = AgeRequirement.allAges,
     this.lifecycle = GigLifecycle.published,
+    this.createdByBand,
+    this.discoveryListingReady = false,
   });
 
   factory Gig.fromJson(Map<String, dynamic> json) {
@@ -438,6 +442,8 @@ class Gig {
       lifecycle: GigLifecycle.values.byName(
         (json['lifecycle'] as String?) ?? 'published',
       ),
+      createdByBand: json['createdByBand'] as String?,
+      discoveryListingReady: json['discoveryListingReady'] == true,
     );
   }
 
@@ -476,6 +482,57 @@ class Gig {
 
   bool get free => price == 0;
   String get priceLabel => free ? 'FREE' : '\$$price';
+
+  Gig copyWith({
+    String? title,
+    String? venueId,
+    int? price,
+    DateTime? startsAt,
+    DateTime? doorsAt,
+    String? dateShort,
+    String? dateLine,
+    String? time,
+    GigWhen? when,
+    String? flyKey,
+    List<String>? lineup,
+    List<GigPerformer>? performers,
+    int? going,
+    List<String>? genres,
+    String? desc,
+    Ticketing? tix,
+    String? externalUrl,
+    String? flyerUrl,
+    String? cap,
+    AgeRequirement? ageRequirement,
+    GigLifecycle? lifecycle,
+    String? createdByBand,
+    bool? discoveryListingReady,
+  }) => Gig(
+    id: id,
+    title: title ?? this.title,
+    venueId: venueId ?? this.venueId,
+    price: price ?? this.price,
+    startsAt: startsAt ?? this.startsAt,
+    doorsAt: doorsAt ?? this.doorsAt,
+    dateShort: dateShort ?? this.dateShort,
+    dateLine: dateLine ?? this.dateLine,
+    time: time ?? this.time,
+    when: when ?? this.when,
+    flyKey: flyKey ?? this.flyKey,
+    lineup: lineup ?? this.lineup,
+    performers: performers ?? this.performers,
+    going: going ?? this.going,
+    genres: genres ?? this.genres,
+    desc: desc ?? this.desc,
+    tix: tix ?? this.tix,
+    externalUrl: externalUrl ?? this.externalUrl,
+    flyerUrl: flyerUrl ?? this.flyerUrl,
+    cap: cap ?? this.cap,
+    ageRequirement: ageRequirement ?? this.ageRequirement,
+    lifecycle: lifecycle ?? this.lifecycle,
+    createdByBand: createdByBand ?? this.createdByBand,
+    discoveryListingReady: discoveryListingReady ?? this.discoveryListingReady,
+  );
 }
 
 class PastGig {
@@ -546,6 +603,8 @@ class Band {
   final String? heroUrl;
   final List<String> upcoming; // gig ids
   final List<PastGig> past;
+  final bool profileComplete;
+  final bool discoveryProfileReady;
 
   const Band({
     required this.id,
@@ -563,6 +622,8 @@ class Band {
     this.heroUrl,
     this.upcoming = const [],
     this.past = const [],
+    this.profileComplete = false,
+    this.discoveryProfileReady = false,
   });
 
   factory Band.fromJson(Map<String, dynamic> json) {
@@ -582,6 +643,8 @@ class Band {
       linkYt: json['linkYt'] as String?,
       credits: json['credits'] as String?,
       heroUrl: json['heroUrl'] as String?,
+      profileComplete: json['profileComplete'] == true,
+      discoveryProfileReady: json['discoveryProfileReady'] == true,
       upcoming: const [],
       past: [
         for (final show in pastShows)
@@ -606,6 +669,8 @@ class Band {
     String? credits,
     String? heroUrl,
     List<String>? upcoming,
+    bool? profileComplete,
+    bool? discoveryProfileReady,
   }) => Band(
     id: id,
     name: name ?? this.name,
@@ -622,6 +687,8 @@ class Band {
     heroUrl: heroUrl ?? this.heroUrl,
     upcoming: upcoming ?? this.upcoming,
     past: past,
+    profileComplete: profileComplete ?? this.profileComplete,
+    discoveryProfileReady: discoveryProfileReady ?? this.discoveryProfileReady,
   );
 }
 
@@ -694,6 +761,117 @@ class BandSetupStatus {
     firstGigCreated,
     membersInvited,
     publicProfilePreviewed,
+  ];
+
+  int get completedCount => steps.where((step) => step).length;
+}
+
+class BandDiscoveryShow {
+  final String gigId;
+  final String projectId;
+  final String title;
+  final DateTime startsAt;
+
+  const BandDiscoveryShow({
+    required this.gigId,
+    required this.projectId,
+    required this.title,
+    required this.startsAt,
+  });
+
+  factory BandDiscoveryShow.fromJson(Map<String, dynamic> json) =>
+      BandDiscoveryShow(
+        gigId: json['gigId'] as String,
+        projectId: json['projectId'] as String,
+        title: json['title'] as String,
+        startsAt: DateTime.fromMillisecondsSinceEpoch(
+          (json['startsAt'] as num).toInt(),
+        ),
+      );
+}
+
+class DiscoveryBoostWindow {
+  final DateTime opensAt;
+  final DateTime closesAt;
+  final bool active;
+
+  const DiscoveryBoostWindow({
+    required this.opensAt,
+    required this.closesAt,
+    required this.active,
+  });
+
+  factory DiscoveryBoostWindow.fromJson(Map<String, dynamic> json) =>
+      DiscoveryBoostWindow(
+        opensAt: DateTime.fromMillisecondsSinceEpoch(
+          (json['opensAt'] as num).toInt(),
+        ),
+        closesAt: DateTime.fromMillisecondsSinceEpoch(
+          (json['closesAt'] as num).toInt(),
+        ),
+        active: json['active'] == true,
+      );
+}
+
+/// The six independent criteria behind organic discovery activation.
+class BandDiscoveryReadiness {
+  final bool profileComplete;
+  final bool profileImageReady;
+  final bool clipReady;
+  final bool publishedShowReady;
+  final bool venuePosterReady;
+  final bool publishedRevisionCurrent;
+  final BandDiscoveryShow? relevantShow;
+  final BandDiscoveryShow? nextEligibleShow;
+  final DiscoveryBoostWindow? boostWindow;
+
+  const BandDiscoveryReadiness({
+    required this.profileComplete,
+    required this.profileImageReady,
+    required this.clipReady,
+    required this.publishedShowReady,
+    required this.venuePosterReady,
+    required this.publishedRevisionCurrent,
+    this.relevantShow,
+    this.nextEligibleShow,
+    this.boostWindow,
+  });
+
+  factory BandDiscoveryReadiness.fromJson(Map<String, dynamic> json) =>
+      BandDiscoveryReadiness(
+        profileComplete: json['profileComplete'] == true,
+        profileImageReady: json['profileImageReady'] == true,
+        clipReady: json['clipReady'] == true,
+        publishedShowReady: json['publishedShowReady'] == true,
+        venuePosterReady: json['venuePosterReady'] == true,
+        publishedRevisionCurrent: json['publishedRevisionCurrent'] == true,
+        relevantShow: switch (json['relevantShow']) {
+          final Map<Object?, Object?> value => BandDiscoveryShow.fromJson(
+            Map<String, dynamic>.from(value),
+          ),
+          _ => null,
+        },
+        nextEligibleShow: switch (json['nextEligibleShow']) {
+          final Map<Object?, Object?> value => BandDiscoveryShow.fromJson(
+            Map<String, dynamic>.from(value),
+          ),
+          _ => null,
+        },
+        boostWindow: switch (json['boostWindow']) {
+          final Map<Object?, Object?> value => DiscoveryBoostWindow.fromJson(
+            Map<String, dynamic>.from(value),
+          ),
+          _ => null,
+        },
+      );
+
+  List<bool> get steps => [
+    profileComplete,
+    profileImageReady,
+    clipReady,
+    publishedShowReady,
+    venuePosterReady,
+    publishedRevisionCurrent,
   ];
 
   int get completedCount => steps.where((step) => step).length;

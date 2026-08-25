@@ -64,6 +64,13 @@ class BandProfileScreen extends StatelessWidget {
                           band.name.toUpperCase(),
                           style: epDisplay(size: 22, height: 1),
                         ),
+                        if (band.profileComplete) ...[
+                          const SizedBox(height: 7),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: ProfileCompleteBadge(),
+                          ),
+                        ],
                         const SizedBox(height: 7),
                         Wrap(
                           spacing: 5,

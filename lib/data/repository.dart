@@ -515,6 +515,10 @@ abstract class EarplugRepository {
   });
   Future<void> updateBandProfile(BandProfileUpdate update);
   Future<BandSetupStatus> bandSetupStatus(String bandId);
+  Future<BandDiscoveryReadiness> bandDiscoveryReadiness(
+    String bandId, {
+    DateTime? now,
+  });
   Future<void> markBandPreviewed(String bandId);
   Future<BandInvite?> bandInvite(String bandId);
   Future<BandInvite> createBandInvite(String bandId);

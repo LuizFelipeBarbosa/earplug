@@ -63,6 +63,13 @@ class BandDashScreen extends StatelessWidget {
                               color: Ep.accent,
                             ),
                           ),
+                          if (band.profileComplete) ...[
+                            const SizedBox(height: 5),
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: ProfileCompleteBadge(),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -142,8 +149,186 @@ class BandDashScreen extends StatelessWidget {
         if (isAdmin) ...[
           const SizedBox(height: 14),
           _SetupChecklist(app: app, bandId: band.id),
+          const SizedBox(height: 14),
+          _DiscoveryReadinessCard(app: app, bandId: band.id),
         ],
       ],
+    );
+  }
+}
+
+class _DiscoveryReadinessCard extends StatelessWidget {
+  const _DiscoveryReadinessCard({required this.app, required this.bandId});
+
+  final AppState app;
+  final String bandId;
+
+  @override
+  Widget build(BuildContext context) {
+    final readiness = app.discoveryReadinessFor(bandId);
+    if (readiness == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SectionLabel('DISCOVERY READINESS', blue: true),
+          const SizedBox(height: 8),
+          if (app.discoveryReadinessLoadingFor(bandId))
+            const Center(child: CircularProgressIndicator())
+          else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                onPressed: () => app.refreshBandDiscoveryReadiness(bandId),
+                child: const Text('Retry discovery readiness'),
+              ),
+            ),
+        ],
+      );
+    }
+
+    final showAction = readiness.relevantShow == null
+        ? app.startGigCreate
+        : app.openGigManager;
+    final tasks = [
+      _DiscoveryTask(
+        id: 'profile',
+        label: 'Complete profile',
+        action: 'EDIT PROFILE',
+        complete: readiness.profileComplete,
+        onTap: () => app.openBandEditor(section: 'required'),
+      ),
+      _DiscoveryTask(
+        id: 'image',
+        label: 'Assign a valid profile image',
+        action: 'ADD PHOTO',
+        complete: readiness.profileImageReady,
+        onTap: app.openBandMedia,
+      ),
+      _DiscoveryTask(
+        id: 'clip',
+        label: 'Upload a video clip',
+        action: 'ADD CLIP',
+        complete: readiness.clipReady,
+        onTap: app.openBandMedia,
+      ),
+      _DiscoveryTask(
+        id: 'show',
+        label: 'Publish a resolved lineup',
+        action: readiness.relevantShow == null ? 'CREATE SHOW' : 'MANAGE SHOW',
+        complete: readiness.publishedShowReady,
+        onTap: showAction,
+      ),
+      _DiscoveryTask(
+        id: 'listing',
+        label: 'Use a venue and readable poster',
+        action: readiness.relevantShow == null ? 'CREATE SHOW' : 'EDIT LISTING',
+        complete: readiness.venuePosterReady,
+        onTap: showAction,
+      ),
+      _DiscoveryTask(
+        id: 'revision',
+        label: 'Publish the latest revision',
+        action: readiness.relevantShow == null ? 'CREATE SHOW' : 'REPUBLISH',
+        complete: readiness.publishedRevisionCurrent,
+        onTap: showAction,
+      ),
+    ];
+    final show = readiness.nextEligibleShow;
+    final window = readiness.boostWindow;
+
+    return EpCard(
+      key: const Key('discovery-readiness-card'),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: SectionLabel('DISCOVERY READINESS', blue: true),
+              ),
+              Text(
+                '${readiness.completedCount} of 6 complete',
+                style: Theme.of(context).textTheme.epCaption,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Complete listings can move ahead within nearby same-day results.',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+          const SizedBox(height: 6),
+          for (final task in tasks) _DiscoveryTaskRow(task: task),
+          if (show != null && window != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'NEXT ELIGIBLE · ${show.title.toUpperCase()}',
+              style: Theme.of(context).textTheme.epLabel,
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'BOOST WINDOW · ${Gig.dateShortFor(window.opensAt.millisecondsSinceEpoch)} '
+              '– ${Gig.dateShortFor(window.closesAt.millisecondsSinceEpoch)}'
+              '${window.active ? ' · ACTIVE NOW' : ''}',
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                color: window.active ? Ep.success : Ep.contentSecondary,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DiscoveryTask {
+  const _DiscoveryTask({
+    required this.id,
+    required this.label,
+    required this.action,
+    required this.complete,
+    required this.onTap,
+  });
+
+  final String id;
+  final String label;
+  final String action;
+  final bool complete;
+  final VoidCallback onTap;
+}
+
+class _DiscoveryTaskRow extends StatelessWidget {
+  const _DiscoveryTaskRow({required this.task});
+
+  final _DiscoveryTask task;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: ValueKey('band-discovery-${task.id}'),
+      onTap: task.onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          children: [
+            Icon(
+              task.complete ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 16,
+              color: task.complete ? Ep.success : Ep.accent,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                task.label,
+                style: Theme.of(context).textTheme.epBody,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(task.action, style: Theme.of(context).textTheme.epCaption),
+          ],
+        ),
+      ),
     );
   }
 }

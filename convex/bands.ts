@@ -3,12 +3,16 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { v } from "convex/values";
+import { Doc } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import {
   bandColorFor,
   bandPayloadValidator,
   currentUser,
+  FEED_GRACE_MS,
+  hasValidProfileImage,
   initialsFor,
+  isBandProfileComplete,
   requireBandAdmin,
   requireBandAdminQuery,
   requireBandMemberMutation,
@@ -16,6 +20,14 @@ import {
   toBandPayload,
   uniqueSlug,
 } from "./lib/helpers";
+import {
+  DiscoveryListingFlags,
+  discoveryListingFlags,
+  isDiscoveryListingReady,
+} from "./lib/discovery";
+
+const DISCOVERY_LEAD_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_DISCOVERY_PROJECTS = 100;
 
 const profileDetailsValidator = v.object({
   credits: v.union(v.string(), v.null()),
@@ -33,6 +45,32 @@ const setupStatusValidator = v.object({
   firstGigCreated: v.boolean(),
   membersInvited: v.boolean(),
   publicProfilePreviewed: v.boolean(),
+});
+
+const discoveryShowValidator = v.object({
+  gigId: v.id("gigs"),
+  projectId: v.id("gigProjects"),
+  title: v.string(),
+  startsAt: v.number(),
+});
+
+const discoveryReadinessValidator = v.object({
+  profileComplete: v.boolean(),
+  profileImageReady: v.boolean(),
+  clipReady: v.boolean(),
+  publishedShowReady: v.boolean(),
+  venuePosterReady: v.boolean(),
+  publishedRevisionCurrent: v.boolean(),
+  relevantShow: v.union(discoveryShowValidator, v.null()),
+  nextEligibleShow: v.union(discoveryShowValidator, v.null()),
+  boostWindow: v.union(
+    v.object({
+      opensAt: v.number(),
+      closesAt: v.number(),
+      active: v.boolean(),
+    }),
+    v.null(),
+  ),
 });
 
 function requiredProfileValues(
@@ -215,12 +253,7 @@ export const setupStatus = query({
       }
     }
     return {
-      profileComplete:
-        band.name.trim() !== "" &&
-        band.genres.length >= 1 &&
-        band.genres.length <= 3 &&
-        band.genres.every((genre) => genre.trim() !== "") &&
-        band.area.trim() !== "",
+      profileComplete: isBandProfileComplete(band),
       profileImageAdded: band.imageStorageId !== undefined,
       musicAdded:
         video !== null ||
@@ -230,6 +263,103 @@ export const setupStatus = query({
       firstGigCreated,
       membersInvited: memberships.length > 1,
       publicProfilePreviewed: band.publicProfilePreviewedAt !== undefined,
+    };
+  },
+});
+
+/** Admin-only detail behind the dashboard's separate discovery card. `now`
+ * controls window presentation only; authorization is always derived from the
+ * authenticated membership. */
+export const discoveryReadiness = query({
+  args: { bandId: v.id("bands"), now: v.number() },
+  returns: discoveryReadinessValidator,
+  handler: async (ctx, args) => {
+    const band = await requireBandAdminQuery(ctx, args.bandId);
+    if (!Number.isFinite(args.now)) throw new Error("Invalid now");
+
+    const profileComplete = isBandProfileComplete(band);
+    const profileImageReady = await hasValidProfileImage(ctx, band);
+    const clipReady = band.hasClip === true;
+    const projects = await ctx.db
+      .query("gigProjects")
+      .withIndex("by_band_and_status", (q) =>
+        q.eq("bandId", args.bandId).eq("status", "published"),
+      )
+      .take(MAX_DISCOVERY_PROJECTS);
+
+    const candidates: Array<{
+      project: Doc<"gigProjects">;
+      gig: Doc<"gigs"> | null;
+      flags: DiscoveryListingFlags;
+    }> = [];
+    for (const project of projects) {
+      if (
+        project.startsAt === undefined ||
+        project.startsAt < args.now - FEED_GRACE_MS ||
+        project.publicGigId === undefined
+      ) {
+        continue;
+      }
+      const gig = await ctx.db.get(project.publicGigId);
+      const performers = await ctx.db
+        .query("gigProjectPerformers")
+        .withIndex("by_project_and_order", (q) =>
+          q.eq("projectId", project._id),
+        )
+        .take(21);
+      const flags = await discoveryListingFlags(ctx, project, gig, performers);
+      candidates.push({ project, gig, flags });
+    }
+    candidates.sort(
+      (left, right) => left.project.startsAt! - right.project.startsAt!,
+    );
+
+    const eligible =
+      candidates.find(
+        (candidate) =>
+          candidate.gig?.discoveryListingReady === true &&
+          isDiscoveryListingReady(candidate.flags),
+      ) ?? null;
+    const relevant = eligible ?? candidates[0] ?? null;
+    const showPayload = (candidate: (typeof candidates)[number] | null) => {
+      if (!candidate?.gig || candidate.project.startsAt === undefined) {
+        return null;
+      }
+      return {
+        gigId: candidate.gig._id,
+        projectId: candidate.project._id,
+        title: candidate.project.title?.trim() || candidate.gig.title,
+        startsAt: candidate.project.startsAt,
+      };
+    };
+    const eligibleShow = showPayload(eligible);
+    const opensAt = eligibleShow
+      ? eligibleShow.startsAt - DISCOVERY_LEAD_MS
+      : null;
+    const closesAt = eligibleShow
+      ? eligibleShow.startsAt + FEED_GRACE_MS
+      : null;
+    const allProfileReady = profileComplete && profileImageReady && clipReady;
+
+    return {
+      profileComplete,
+      profileImageReady,
+      clipReady,
+      publishedShowReady: relevant?.flags.publishedShowReady ?? false,
+      venuePosterReady: relevant?.flags.venuePosterReady ?? false,
+      publishedRevisionCurrent:
+        relevant?.flags.publishedRevisionCurrent ?? false,
+      relevantShow: showPayload(relevant),
+      nextEligibleShow: eligibleShow,
+      boostWindow:
+        opensAt === null || closesAt === null
+          ? null
+          : {
+              opensAt,
+              closesAt,
+              active:
+                allProfileReady && args.now >= opensAt && args.now <= closesAt,
+            },
     };
   },
 });
@@ -289,6 +419,7 @@ export const createBand = mutation({
       linkYt: optionalText(args.linkYt),
       credits: optionalText(args.credits),
       slug,
+      hasClip: false,
     });
     await ctx.db.insert("bandMembers", {
       bandId,

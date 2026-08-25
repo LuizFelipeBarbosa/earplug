@@ -129,6 +129,9 @@ export const addMedia = mutation({
         : {}),
       uploadedBy: user._id,
     });
+    if (args.kind === "video") {
+      await ctx.db.patch(args.bandId, { hasClip: true });
+    }
     return { mediaId };
   },
 });
@@ -155,6 +158,11 @@ export const deleteMedia = mutation({
       if (remaining[order].order !== order) {
         await ctx.db.patch(remaining[order]._id, { order });
       }
+    }
+    if (media.kind === "video") {
+      await ctx.db.patch(media.bandId, {
+        hasClip: remaining.some((item) => item.kind === "video"),
+      });
     }
     if (media.kind === "video" && media.pinned) {
       const firstRemainingVideo = await ctx.db
