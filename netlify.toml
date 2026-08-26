@@ -9,17 +9,29 @@
     fi
     export PATH="$HOME/flutter/bin:$PATH"
     flutter --version
+    if [ "${EARPLUG_ENV:-dev}" = "prod" ]; then
+      if [ -z "${CONVEX_DEPLOY_KEY:-}" ]; then
+        echo "CONVEX_DEPLOY_KEY is required for production releases"
+        exit 1
+      fi
+      npx convex deploy --typecheck enable
+      npm run check:release-contract -- prod
+    fi
     flutter build web --release \
       --dart-define-from-file="config/${EARPLUG_ENV:-dev}.json"
   """
 
 [build.environment]
-  # Which config/*.json the build reads, and the ONLY environment variable the
-  # build still consumes — the Convex URL and Clerk key travel together inside
-  # that file because they are chosen together, never independently
+  # Which config/*.json the web client reads — the Convex URL and Clerk key
+  # travel together inside that file because they are chosen together, never
+  # independently
   # (docs/environments.md). Set to "prod" in the Netlify UI to publish against
   # production; unset builds development.
   EARPLUG_ENV = "dev"
+
+  # Production-context builds also require a production Convex deploy key in
+  # the Netlify UI. The build deploys and verifies the backend before Netlify
+  # publishes a client that depends on its function contract.
 
   # Every key here is public by design, so finding its value in the repo or the
   # built main.dart.js is expected: browsers connect straight to CONVEX_URL,

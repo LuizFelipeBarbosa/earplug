@@ -72,6 +72,7 @@ class UserProfile {
   final FanCity? homeLocation;
   final bool locationPersonalizationEnabled;
   final bool followedBandUpdatesEnabled;
+  final bool profileTutorialAvailable;
   final bool profileTutorialCompleted;
   final FanOnboarding? fanOnboarding;
 
@@ -86,6 +87,7 @@ class UserProfile {
     this.homeLocation,
     this.locationPersonalizationEnabled = false,
     this.followedBandUpdatesEnabled = true,
+    this.profileTutorialAvailable = true,
     this.profileTutorialCompleted = false,
     this.fanOnboarding,
   });
@@ -112,6 +114,10 @@ class UserProfile {
     followedBandUpdatesEnabled: json['followedBandUpdatesEnabled'] is bool
         ? json['followedBandUpdatesEnabled'] as bool
         : true,
+    // Presence is a compatibility capability. Backends released before the
+    // tutorial mutation omit this key; showing its controls against those
+    // deployments guarantees a function-not-found error on completion.
+    profileTutorialAvailable: json['profileTutorialCompleted'] is bool,
     profileTutorialCompleted: json['profileTutorialCompleted'] is bool
         ? json['profileTutorialCompleted'] as bool
         : false,
@@ -136,6 +142,7 @@ class UserProfile {
     Object? homeLocation = _unchanged,
     bool? locationPersonalizationEnabled,
     bool? followedBandUpdatesEnabled,
+    bool? profileTutorialAvailable,
     bool? profileTutorialCompleted,
     Object? fanOnboarding = _unchanged,
   }) {
@@ -156,6 +163,8 @@ class UserProfile {
           locationPersonalizationEnabled ?? this.locationPersonalizationEnabled,
       followedBandUpdatesEnabled:
           followedBandUpdatesEnabled ?? this.followedBandUpdatesEnabled,
+      profileTutorialAvailable:
+          profileTutorialAvailable ?? this.profileTutorialAvailable,
       profileTutorialCompleted:
           profileTutorialCompleted ?? this.profileTutorialCompleted,
       fanOnboarding: identical(fanOnboarding, _unchanged)

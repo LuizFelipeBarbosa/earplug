@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.15)
+# EarPlug Convex function contract (FROZEN — v1.16)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -171,6 +171,14 @@ and seven-day/pre-show through six-hour/post-show window. The canonical
 eligibility, ranking cap, label, anti-flood rule, and “progressive activation”
 definition live in [discovery-policy.md](discovery-policy.md).
 
+**v1.16 — profile setup compatibility.** Added the previously undocumented
+`users:updateFanOnboarding` mutation to the frozen client contract. The client
+now treats the presence of `profileTutorialCompleted` as a capability marker:
+legacy deployments that omit the field do not render tutorial controls that
+would call an unavailable mutation. Release builds also verify both profile
+setup mutations against the exact configured Convex deployment before the
+client is published.
+
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
 (UTC). Auth = Clerk JWT (template `convex`) attached by the client; queries that
@@ -267,6 +275,8 @@ and throw unless the caller has their required band role.
   "homeLocation": null,
   "locationPersonalizationEnabled": false,
   "followedBandUpdatesEnabled": true,
+  // Presence is also the client's capability marker for tutorial mutations.
+  // A legacy payload that omits it must not render tutorial controls.
   "profileTutorialCompleted": false,
   // users.deletedAt is an internal tombstone and is deliberately not exposed
   // the row's _creationTime, surfaced under a stable name
@@ -369,6 +379,7 @@ and throw unless the caller has their required band role.
 | `users:setAvatar`                       | `{ storageId }`                                                                                                                                                                                                      | `null`                          | Requires a live `_storage` row accepted by the shared photo size/type rules. Sets `avatarStorageId` and clears legacy `avatarUrl`; replaced blobs are left to the existing orphan sweep.                                                                                                                                                                                                                                                                                                                                         |
 | `users:clearAvatar`                     | `{}`                                                                                                                                                                                                                 | `null`                          | Clears both avatar references without deleting a blob; orphan cleanup remains centralized.                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `users:setProfileTutorialCompleted`     | `{ completed: boolean }`                                                                                                                                                                                             | `null`                          | `true` persists completion/dismissal; `false` enables Settings-driven replay.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `users:updateFanOnboarding`             | `{ preferredCity?: "sf"\|"oak", genreChoice?: "pending"\|"selected"\|"open", collapsed?: boolean, genres?: string[] }`                                                                                     | `null`                          | Requires a newly enrolled fan and at least one supplied field. Validates every supplied value and saves genre choice plus genres atomically.                                                                                                                                                                                                                                                                                                                                                                                      |
 | `interactions:toggleRsvp`               | `{ gigId }`                                                                                                                                                                                                          | `{ on: boolean }`               | Insert/delete join row via by_user_gig index; `goingCount` ±1 same transaction.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `interactions:toggleFollow`             | `{ bandId }`                                                                                                                                                                                                         | `{ on: boolean }`               | `followerCount` ±1 same transaction.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `interactions:toggleSave`               | `{ gigId }`                                                                                                                                                                                                          | `{ on: boolean }`               |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |

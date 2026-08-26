@@ -423,7 +423,11 @@ class AppState extends ChangeNotifier {
   bool get profileTutorialVisible =>
       authed &&
       profile != null &&
+      profile!.profileTutorialAvailable &&
       (_profileTutorialReplay || !profile!.profileTutorialCompleted);
+
+  bool get profileTutorialAvailable =>
+      authed && profile?.profileTutorialAvailable == true;
 
   /// Legacy-imported count and RSVP-derived history can disagree; show
   /// whichever credits the fan more.
@@ -1457,7 +1461,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> completeProfileTutorial() async {
-    if (!authed) return;
+    if (!profileTutorialAvailable) return;
     final sessionGeneration = _sessionGeneration;
     try {
       await _persistProfileTutorial(true, sessionGeneration);
@@ -1467,7 +1471,9 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     } catch (error) {
       logError('completeProfileTutorial', error);
-      if (_isCurrentSession(sessionGeneration)) say(genericErrorMessage);
+      if (_isCurrentSession(sessionGeneration)) {
+        say(profileSetupSaveErrorMessage);
+      }
     }
   }
 
@@ -1476,6 +1482,7 @@ class AppState extends ChangeNotifier {
       openMyGigsTab();
       return;
     }
+    if (!profileTutorialAvailable) return;
     _set(() {
       _profileTutorialReplay = true;
       _stack = const [ScreenEntry(Screen.myGigs)];
@@ -1490,7 +1497,9 @@ class AppState extends ChangeNotifier {
           })
           .catchError((Object error) {
             logError('replayProfileTutorial', error);
-            if (_isCurrentSession(sessionGeneration)) say(genericErrorMessage);
+            if (_isCurrentSession(sessionGeneration)) {
+              say(profileSetupSaveErrorMessage);
+            }
           }),
     );
   }
@@ -1571,7 +1580,7 @@ class AppState extends ChangeNotifier {
             ),
           );
         }
-        say(genericErrorMessage);
+        say(fanSetupSaveErrorMessage);
       }),
     );
   }
@@ -1620,7 +1629,7 @@ class AppState extends ChangeNotifier {
             genres: previousGenres,
           );
         }
-        say(genericErrorMessage);
+        say(fanSetupSaveErrorMessage);
       }
     });
     unawaited(_fanGenreWrite);
@@ -1651,7 +1660,7 @@ class AppState extends ChangeNotifier {
             ),
           );
         }
-        say(genericErrorMessage);
+        say(fanSetupSaveErrorMessage);
       }),
     );
   }

@@ -213,6 +213,7 @@ void main() {
     expect(harness.app.currentPosition, position);
     expect(harness.app.fMaxDistanceMiles, 5);
     expect(harness.app.fanOnboarding?.preferredCity, FanCity.sf);
+    expect(harness.app.toast, "Couldn't save your setup choices. Try again.");
 
     await tester.pump(const Duration(seconds: 3));
   });

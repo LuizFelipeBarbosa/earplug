@@ -37,6 +37,11 @@ void main() {
         findsOne,
       );
 
+      final heroContent = tester.widget<Stack>(
+        find.byKey(const ValueKey('gig-detail-hero-content')),
+      );
+      expect(heroContent.clipBehavior, Clip.none);
+
       repository.emit(_textOnlyGig(lifecycle: GigLifecycle.cancelled));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
