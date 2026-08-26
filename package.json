@@ -3,8 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "check:release-contract": "node tool/check_convex_contract.mjs",
     "dev": "convex dev",
-    "deploy": "convex deploy"
+    "deploy": "convex deploy",
+    "test": "vitest run --exclude 'tool/**' && node --test tool/*.test.mjs"
   },
   "dependencies": {
     "@clerk/backend": "^3.15.0",

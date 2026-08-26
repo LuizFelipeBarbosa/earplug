@@ -58,9 +58,26 @@ flutter build ipa       --release  --dart-define-from-file=config/prod.json
 flutter build appbundle --release  --dart-define-from-file=config/prod.json
 ```
 
-Netlify uses the same mechanism — its build command reads
-`config/${EARPLUG_ENV}.json`, and `EARPLUG_ENV` is the only environment
-variable the web build still consumes.
+Deploy and verify the production backend before building a client that calls
+it:
+
+```sh
+npx convex deploy --typecheck enable
+npm run check:release-contract -- prod
+flutter build web --release --dart-define-from-file=config/prod.json
+```
+
+The contract check reads the exact deployment named by `config/prod.json` and
+fails if a client-required Convex function is missing or has the wrong type.
+This prevents publishing a new client against an older backend, which otherwise
+surfaces as a generic mutation error only after a user clicks the affected UI.
+
+Netlify uses the same config-file mechanism. Production-context builds require
+`CONVEX_DEPLOY_KEY`; they deploy Convex, verify the production contract, and
+then build Flutter. Development builds do not deploy and can be checked against
+the shared development deployment manually with
+`npm run check:release-contract -- dev`. `EARPLUG_ENV` remains the only Netlify
+environment variable consumed by the web client itself.
 
 ## Sign-in parity between web and mobile
 
@@ -122,7 +139,8 @@ need no credentials.
 
 ## What is not configured anywhere
 
-- No CI. There is no workflow building, signing or shipping any platform;
-  every build is run by hand.
+- Native release automation is not configured; iOS and Android builds, signing,
+  and shipping are still run by hand. Netlify is the only automated release
+  path and covers the web client plus its production Convex deployment.
 - `ios/Flutter/Generated.xcconfig` is a local `flutter run` artifact and is not
   tracked. It is not a config source — treat anything in it as scratch.

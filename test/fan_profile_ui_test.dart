@@ -199,6 +199,31 @@ void main() {
     expect(replayHarness.app.profileTutorialVisible, isTrue);
   });
 
+  testWidgets('legacy backend payload hides unsupported tutorial controls', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _LegacyProfileRepository(auth: auth);
+    final profileHarness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+
+    expect(profileHarness.app.profileTutorialAvailable, isFalse);
+    expect(find.byKey(const Key('profile-tutorial')), findsNothing);
+
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: SettingsScreen()),
+    );
+    expect(find.byKey(const Key('replay-profile-tutorial')), findsNothing);
+  });
+
   testWidgets('settings separates destructive controls and protects deletion', (
     tester,
   ) async {
@@ -297,6 +322,19 @@ class _FailingProfileRepository extends DemoRepository {
   }) async {
     throw StateError('profile update failed');
   }
+}
+
+class _LegacyProfileRepository extends DemoRepository {
+  _LegacyProfileRepository({required super.auth});
+
+  @override
+  Future<UserProfile?> me() async => UserProfile.fromJson({
+    'name': 'Legacy Fan',
+    'email': 'legacy@example.com',
+    'genres': <String>[],
+    'attendedCount': 0,
+    'createdAt': 1234,
+  });
 }
 
 class _FailingFollowRepository extends DemoRepository {

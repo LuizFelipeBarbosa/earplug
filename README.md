@@ -65,10 +65,13 @@ any of it.
 
 ```sh
 flutter test        # Dart: widget and controller tests in test/
-npx vitest run      # Convex: convex-test suites in convex/*.test.ts
+npm test            # Convex suites + release-contract unit tests
 ```
 
-There is no CI. Every build, test run and deploy is triggered by hand.
+Production Netlify builds deploy Convex and verify the client-required function
+contract before compiling Flutter. Native releases and local test runs remain
+manual; see [`docs/environments.md`](docs/environments.md#building) for the
+release sequence and required credentials.
 
 ## Docs
 

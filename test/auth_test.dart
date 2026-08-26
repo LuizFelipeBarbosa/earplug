@@ -235,6 +235,21 @@ void main() {
     expect((await repository.me())?.profileTutorialCompleted, isFalse);
   });
 
+  test('profile tutorial failure stays visible with a useful error', () async {
+    final auth = FakeAuthService();
+    final repository = _FailingTutorialRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await auth.signInDemo();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(app.profileTutorialVisible, isTrue);
+    await app.completeProfileTutorial();
+
+    expect(app.profileTutorialVisible, isTrue);
+    expect(app.toast, "Couldn't save your profile setup. Try again.");
+  });
+
   test('profile responses from a signed-out session are ignored', () async {
     final auth = FakeAuthService();
     final repository = _GatedProfileRepository(auth: auth);
@@ -516,6 +531,14 @@ class _FailingDeletionRepository extends DemoRepository {
   @override
   Future<void> deleteCurrentUser() =>
       Future<void>.error(StateError('Convex tombstone failed'));
+}
+
+class _FailingTutorialRepository extends DemoRepository {
+  _FailingTutorialRepository({required super.auth});
+
+  @override
+  Future<void> setProfileTutorialCompleted(bool completed) =>
+      Future<void>.error(StateError('tutorial mutation unavailable'));
 }
 
 class _GatedAvatarRepository extends DemoRepository {
