@@ -171,6 +171,8 @@ class _Hero extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.fromLTRB(22, topPad + 8, 22, 20),
         child: Stack(
+          key: const ValueKey('gig-detail-hero-content'),
+          clipBehavior: Clip.none,
           children: [
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
