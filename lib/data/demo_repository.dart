@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show Color;
 
+import '../app_links.dart';
 import '../band_identity.dart';
 import '../demo_data.dart';
 import '../models.dart';
@@ -1131,7 +1132,7 @@ class DemoRepository implements EarplugRepository {
       role: role,
       bandId: bandId,
       inviteUrl: kind == GigPerformerKind.invited
-          ? 'https://earplug.app/gig-invite/demo-${_nextInviteId++}'
+          ? publicWebUrl('gig-invite/demo-${_nextInviteId++}')
           : null,
     );
     return _replaceGigProject(

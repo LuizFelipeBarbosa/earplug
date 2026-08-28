@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'app_links.dart';
 import 'date_names.dart';
 
 class Venue {
@@ -936,7 +937,7 @@ class BandInvite {
     expired: json['expired'] == true,
   );
 
-  String get url => 'https://earplug.app/join/$token';
+  String get url => publicWebUrl('join/$token');
 }
 
 /// The deliberately small public payload used before a recipient confirms.

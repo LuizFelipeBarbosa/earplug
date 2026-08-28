@@ -34,6 +34,8 @@ import {
 } from "./schema";
 import { performerLineupReady, venuePosterReady } from "./lib/discovery";
 
+const PUBLIC_WEB_ORIGIN = "https://earplug.dev";
+
 const MAX_PERFORMERS = 20;
 const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -129,7 +131,7 @@ async function toProjectPayload(
         performer.kind === "invited" &&
         performer.inviteToken &&
         performer.inviteRevoked !== true
-          ? `https://earplug.app/gig-invite/${performer.inviteToken}`
+          ? `${PUBLIC_WEB_ORIGIN}/gig-invite/${performer.inviteToken}`
           : null,
     })),
   };

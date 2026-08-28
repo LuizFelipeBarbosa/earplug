@@ -25,8 +25,8 @@
   # Which config/*.json the web client reads — the Convex URL and Clerk key
   # travel together inside that file because they are chosen together, never
   # independently
-  # (docs/environments.md). Set to "prod" in the Netlify UI to publish against
-  # production; unset builds development.
+  # (docs/environments.md). Preview and branch builds use development by
+  # default; the production deploy context below overrides this value.
   EARPLUG_ENV = "dev"
 
   # Production-context builds also require a production Convex deploy key in
@@ -42,6 +42,15 @@
   # which would stop scanning the entire published artifact and hide a real
   # leak (notably CLERK_SECRET_KEY, which the Clerk extension also injects).
   SECRETS_SCAN_OMIT_KEYS = "CONVEX_URL,CLERK_PUBLISHABLE_KEY,CONVEX_DEPLOYMENT,CLERK_JWT_ISSUER_DOMAIN"
+
+[context.production.environment]
+  EARPLUG_ENV = "prod"
+
+[context.deploy-preview.environment]
+  EARPLUG_ENV = "dev"
+
+[context.branch-deploy.environment]
+  EARPLUG_ENV = "dev"
 
 # Flutter web uses path-based URLs, so a hard refresh on any route must still
 # serve index.html instead of 404ing.

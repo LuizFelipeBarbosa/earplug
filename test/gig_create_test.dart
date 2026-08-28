@@ -18,15 +18,17 @@ void main() {
     (tester) async {
       final app = (await _pumpGigCreate(tester)).app;
 
-      // The editor exposes a conventional, labeled form and a visible draft
-      // action instead of hiding inputs in the poster artwork.
+      // The editor keeps structural labels while each field/card identifies
+      // itself without a second heading immediately above it.
       expect(find.text('GIG DRAFT'), findsOne);
       expect(find.text('DRAFT'), findsOne);
       expect(find.text('SAVE DRAFT'), findsOne);
-      expect(find.text('GIG NAME'), findsOne);
-      expect(find.text('DATE'), findsOne);
-      expect(find.text('DOORS AND START TIME'), findsOne);
-      expect(find.text('VENUE'), findsOne);
+      expect(find.text('GIG NAME'), findsNothing);
+      expect(find.text('DATE'), findsNothing);
+      expect(find.text('DOORS AND START TIME'), findsNothing);
+      expect(find.text('VENUE'), findsNothing);
+      expect(find.text('LINEUP'), findsOne);
+      expect(find.text('POSTER'), findsOne);
       expect(find.text('Still needs a name + a date + a venue'), findsOne);
 
       // Typing in the standard name card updates the decorative poster.
@@ -123,13 +125,13 @@ void main() {
       expect(app.gfPublished, isTrue);
       expect(find.text('PUBLISHED'), findsOne);
       expect(find.text("IT'S LIVE."), findsOne);
-      expect(find.text('earplug.app/g/riptide-release'), findsOne);
+      expect(find.text('earplug.dev/g/riptide-release'), findsOne);
       expect(app.allGigs.last.title, 'Riptide Release');
       expect(app.allGigs.last.flyKey, 'riso');
 
       await tester.tap(find.text('MAKE ANOTHER'));
       await tester.pumpAndSettle();
-      expect(find.text('GIG NAME'), findsOne);
+      expect(find.text('GIG NAME · REQUIRED'), findsOne);
       expect(app.gfPrice, 'FREE');
     },
   );

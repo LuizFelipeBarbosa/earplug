@@ -6,7 +6,9 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
 import 'package:convex_flutter/src/impl/convex_client_interface.dart';
-import 'package:convex_flutter/src/rust/lib.dart' show WebSocketConnectionState, SubscriptionHandle, AuthHandle;
+import 'package:convex_flutter/src/impl/protocol_value.dart';
+import 'package:convex_flutter/src/rust/lib.dart'
+    show WebSocketConnectionState, SubscriptionHandle, AuthHandle;
 import 'package:convex_flutter/src/connection_status.dart';
 import 'package:convex_flutter/src/convex_config.dart';
 import 'package:convex_flutter/src/app_lifecycle_event.dart';
@@ -118,7 +120,9 @@ class WebConvexClient implements IConvexClient {
       onLifecycleChange: (event) {
         client._lifecycleController.add(event);
         // Do NOT trigger reconnection on web - let WebSocket manage itself
-        debugPrint('=== [WebConvexClient] Lifecycle event: ${event.name} (no action on web) ===');
+        debugPrint(
+          '=== [WebConvexClient] Lifecycle event: ${event.name} (no action on web) ===',
+        );
       },
     );
 
@@ -194,7 +198,9 @@ class WebConvexClient implements IConvexClient {
       final reason = event.reason;
       final wasClean = event.wasClean;
       debugPrint('=== [WebConvexClient] WebSocket closed ===');
-      debugPrint('=== [WebConvexClient] Close code: $code, reason: "$reason", wasClean: $wasClean ===');
+      debugPrint(
+        '=== [WebConvexClient] Close code: $code, reason: "$reason", wasClean: $wasClean ===',
+      );
       _updateConnectionState(WebSocketConnectionState.connecting);
 
       // Attempt reconnection if not disposed
@@ -233,7 +239,9 @@ class WebConvexClient implements IConvexClient {
       final type = message['type'] as String?;
       final id = message['id'] as String?;
 
-      debugPrint('=== [WebConvexClient] Received message type: $type, id: $id ===');
+      debugPrint(
+        '=== [WebConvexClient] Received message type: $type, id: $id ===',
+      );
 
       switch (type) {
         case 'Transition':
@@ -276,6 +284,7 @@ class WebConvexClient implements IConvexClient {
     if (modifications == null) return;
 
     for (final mod in modifications) {
+      if (mod is! Map<String, dynamic>) continue;
       final queryId = mod['queryId']?.toString();
       if (queryId == null) continue;
 
@@ -290,9 +299,8 @@ class WebConvexClient implements IConvexClient {
         continue;
       }
 
-      final value = mod['value'];
-      if (value != null) {
-        final valueJson = jsonEncode(value);
+      final valueJson = encodeProtocolValue(mod, 'value');
+      if (valueJson != null) {
         subscription.onUpdate(valueJson);
       }
     }
@@ -306,9 +314,8 @@ class WebConvexClient implements IConvexClient {
     final completer = _pendingRequests.remove(requestId);
     if (completer == null) return;
 
-    final result = message['result'];
-    if (result != null) {
-      final resultJson = jsonEncode(result);
+    final resultJson = encodeProtocolValue(message, 'result');
+    if (resultJson != null) {
       completer.complete(resultJson);
     } else {
       completer.completeError(Exception('No result in mutation response'));
@@ -323,9 +330,8 @@ class WebConvexClient implements IConvexClient {
     final completer = _pendingRequests.remove(requestId);
     if (completer == null) return;
 
-    final result = message['result'];
-    if (result != null) {
-      final resultJson = jsonEncode(result);
+    final resultJson = encodeProtocolValue(message, 'result');
+    if (resultJson != null) {
       completer.complete(resultJson);
     } else {
       completer.completeError(Exception('No result in action response'));
@@ -355,8 +361,8 @@ class WebConvexClient implements IConvexClient {
     try {
       _sendMessage({
         'type': 'Event',
-        'eventType': 'Pong',  // Required field
-        'event': null,  // Required field (can be null)
+        'eventType': 'Pong', // Required field
+        'event': null, // Required field (can be null)
       });
       debugPrint('=== [WebConvexClient] Sent Pong ===');
     } catch (e) {
@@ -375,8 +381,8 @@ class WebConvexClient implements IConvexClient {
         'sessionId': _sessionId,
         'maxObservedTimestamp': null,
         'connectionCount': _reconnectAttempts + 1,
-        'lastCloseReason': null,  // Required field
-        'clientTs': DateTime.now().millisecondsSinceEpoch,  // Required field
+        'lastCloseReason': null, // Required field
+        'clientTs': DateTime.now().millisecondsSinceEpoch, // Required field
       });
       debugPrint('=== [WebConvexClient] Sent Connect handshake ===');
     } catch (e) {
@@ -392,11 +398,15 @@ class WebConvexClient implements IConvexClient {
 
     // Generate random values for each segment
     final segment1 = random.nextInt(0x100000000); // 32 bits = 8 hex chars
-    final segment2 = random.nextInt(0x10000);      // 16 bits = 4 hex chars
-    final segment3 = random.nextInt(0x10000);      // 16 bits = 4 hex chars (we'll set version)
-    final segment4 = random.nextInt(0x10000);      // 16 bits = 4 hex chars (we'll set variant)
+    final segment2 = random.nextInt(0x10000); // 16 bits = 4 hex chars
+    final segment3 = random.nextInt(
+      0x10000,
+    ); // 16 bits = 4 hex chars (we'll set version)
+    final segment4 = random.nextInt(
+      0x10000,
+    ); // 16 bits = 4 hex chars (we'll set variant)
     final segment5a = random.nextInt(0x100000000); // 32 bits = 8 hex chars
-    final segment5b = random.nextInt(0x10000);     // 16 bits = 4 hex chars
+    final segment5b = random.nextInt(0x10000); // 16 bits = 4 hex chars
 
     // Set version 4 (bits 12-15 of segment3 = 0100)
     final version4 = (segment3 & 0x0FFF) | 0x4000;
@@ -405,19 +415,22 @@ class WebConvexClient implements IConvexClient {
     final variant = (segment4 & 0x3FFF) | 0x8000;
 
     // Combine segment5 parts into 12 hex digits
-    final segment5 = '${segment5a.toRadixString(16).padLeft(8, '0')}${segment5b.toRadixString(16).padLeft(4, '0')}';
+    final segment5 =
+        '${segment5a.toRadixString(16).padLeft(8, '0')}${segment5b.toRadixString(16).padLeft(4, '0')}';
 
     return '${segment1.toRadixString(16).padLeft(8, '0')}-'
-           '${segment2.toRadixString(16).padLeft(4, '0')}-'
-           '${version4.toRadixString(16).padLeft(4, '0')}-'
-           '${variant.toRadixString(16).padLeft(4, '0')}-'
-           '$segment5';
+        '${segment2.toRadixString(16).padLeft(4, '0')}-'
+        '${version4.toRadixString(16).padLeft(4, '0')}-'
+        '${variant.toRadixString(16).padLeft(4, '0')}-'
+        '$segment5';
   }
 
   /// Updates connection state and emits to stream.
   void _updateConnectionState(WebSocketConnectionState newState) {
     if (_currentConnectionState != newState) {
-      debugPrint('=== [WebConvexClient] State transition: ${_currentConnectionState.name} → ${newState.name} ===');
+      debugPrint(
+        '=== [WebConvexClient] State transition: ${_currentConnectionState.name} → ${newState.name} ===',
+      );
       _currentConnectionState = newState;
       _connectionStateController.add(newState);
     }
@@ -438,10 +451,14 @@ class WebConvexClient implements IConvexClient {
     final delay = _baseReconnectDelay * (1 << _reconnectAttempts.clamp(0, 5));
     _reconnectAttempts++;
 
-    debugPrint('=== [WebConvexClient] Scheduling reconnect attempt $_reconnectAttempts in ${delay.inSeconds}s ===');
+    debugPrint(
+      '=== [WebConvexClient] Scheduling reconnect attempt $_reconnectAttempts in ${delay.inSeconds}s ===',
+    );
 
     _reconnectTimer = Timer(delay, () {
-      debugPrint('=== [WebConvexClient] Executing reconnect attempt $_reconnectAttempts ===');
+      debugPrint(
+        '=== [WebConvexClient] Executing reconnect attempt $_reconnectAttempts ===',
+      );
       _connect();
     });
   }
@@ -462,7 +479,9 @@ class WebConvexClient implements IConvexClient {
     debugPrint('=== [WebConvexClient] SENDING: $messageJson ===');
     ws.send(messageJson.toJS);
 
-    debugPrint('=== [WebConvexClient] Sent message: ${message['type']} (id: ${message['id']}) ===');
+    debugPrint(
+      '=== [WebConvexClient] Sent message: ${message['type']} (id: ${message['id']}) ===',
+    );
   }
 
   /// Sends an Authenticate message (Convex sync protocol).
@@ -474,10 +493,15 @@ class WebConvexClient implements IConvexClient {
       _sendMessage({
         'type': 'Authenticate',
         'baseVersion': _identityVersion++,
-        if (token != null) ...{'tokenType': 'User', 'value': token}
-        else 'tokenType': 'None',
+        if (token != null) ...{
+          'tokenType': 'User',
+          'value': token,
+        } else
+          'tokenType': 'None',
       });
-      debugPrint('=== [WebConvexClient] Authenticate sent (${token != null ? 'User' : 'None'}) ===');
+      debugPrint(
+        '=== [WebConvexClient] Authenticate sent (${token != null ? 'User' : 'None'}) ===',
+      );
     } catch (e) {
       debugPrint('ERROR: [WebConvexClient] Failed to send auth: $e');
     }
@@ -506,7 +530,9 @@ class WebConvexClient implements IConvexClient {
         'newVersion': _querySetVersion,
         'modifications': modifications,
       });
-      debugPrint('=== [WebConvexClient] Replayed ${modifications.length} subscriptions ===');
+      debugPrint(
+        '=== [WebConvexClient] Replayed ${modifications.length} subscriptions ===',
+      );
     } catch (e) {
       debugPrint('ERROR: [WebConvexClient] Failed to replay subscriptions: $e');
     }
@@ -532,7 +558,8 @@ class WebConvexClient implements IConvexClient {
     if (_tokenFetcher == null) return;
     final expiry = _jwtExpiry(token);
     if (expiry == null) return;
-    final delay = expiry.difference(DateTime.now()) - const Duration(seconds: 60);
+    final delay =
+        expiry.difference(DateTime.now()) - const Duration(seconds: 60);
     _authRefreshTimer = Timer(
       delay.isNegative ? const Duration(seconds: 10) : delay,
       _refreshAuthToken,
@@ -599,8 +626,8 @@ class WebConvexClient implements IConvexClient {
             'type': 'Add',
             'queryId': queryId,
             'udfPath': name,
-            'args': [args],  // Args must be array
-          }
+            'args': [args], // Args must be array
+          },
         ],
       });
 
@@ -631,8 +658,8 @@ class WebConvexClient implements IConvexClient {
       _sendMessage({
         'type': 'Mutation',
         'requestId': requestId,
-        'udfPath': name,  // Use udfPath instead of name
-        'args': [args],   // Args must be array, not object
+        'udfPath': name, // Use udfPath instead of name
+        'args': [args], // Args must be array, not object
       });
 
       return await completer.future.timeout(
@@ -662,8 +689,8 @@ class WebConvexClient implements IConvexClient {
       _sendMessage({
         'type': 'Action',
         'requestId': requestId,
-        'udfPath': name,  // Use udfPath instead of name
-        'args': [args],   // Args must be array, not object
+        'udfPath': name, // Use udfPath instead of name
+        'args': [args], // Args must be array, not object
       });
 
       return await completer.future.timeout(
@@ -713,13 +740,15 @@ class WebConvexClient implements IConvexClient {
           {
             'type': 'Add',
             'queryId': queryId,
-            'udfPath': name,  // Use udfPath instead of name
-            'args': [args],   // Args must be array, not object
-          }
+            'udfPath': name, // Use udfPath instead of name
+            'args': [args], // Args must be array, not object
+          },
         ],
       });
 
-      debugPrint('=== [WebConvexClient] Subscription created: queryId=$queryId ===');
+      debugPrint(
+        '=== [WebConvexClient] Subscription created: queryId=$queryId ===',
+      );
 
       // Return handle for cancellation
       return _WebSubscriptionHandle(
@@ -753,10 +782,7 @@ class WebConvexClient implements IConvexClient {
         'baseVersion': baseVersion,
         'newVersion': newVersion,
         'modifications': [
-          {
-            'type': 'Remove',
-            'queryId': queryId,
-          }
+          {'type': 'Remove', 'queryId': queryId},
         ],
       });
     } catch (e) {
@@ -830,7 +856,8 @@ class WebConvexClient implements IConvexClient {
       _connectionStateController.stream;
 
   @override
-  WebSocketConnectionState get currentConnectionState => _currentConnectionState;
+  WebSocketConnectionState get currentConnectionState =>
+      _currentConnectionState;
 
   @override
   bool get isConnected =>
@@ -973,10 +1000,7 @@ class _WebAuthHandle implements AuthHandle {
   final Future<void> Function() onDispose;
   bool _isDisposed = false;
 
-  _WebAuthHandle({
-    required this.isAuth,
-    required this.onDispose,
-  });
+  _WebAuthHandle({required this.isAuth, required this.onDispose});
 
   @override
   bool isAuthenticated() => isAuth && !_isDisposed;

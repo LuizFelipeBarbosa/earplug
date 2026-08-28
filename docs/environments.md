@@ -72,7 +72,9 @@ fails if a client-required Convex function is missing or has the wrong type.
 This prevents publishing a new client against an older backend, which otherwise
 surfaces as a generic mutation error only after a user clicks the affected UI.
 
-Netlify uses the same config-file mechanism. Production-context builds require
+Netlify uses the same config-file mechanism. `netlify.toml` selects production
+configuration for production-context builds and development configuration for
+deploy previews and branch deploys. Production builds require
 `CONVEX_DEPLOY_KEY`; they deploy Convex, verify the production contract, and
 then build Flutter. Development builds do not deploy and can be checked against
 the shared development deployment manually with

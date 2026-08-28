@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../app_links.dart';
 import '../app_state.dart';
 import '../band_media_state.dart';
 import '../genres.dart';
@@ -862,7 +863,7 @@ class _NameLine extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   filled
-                      ? 'earplug.app/${app.nbShareSlug}'
+                      ? publicWebDisplayUrl(app.nbShareSlug)
                       : 'Your profile URL comes from this',
                   style: epText(size: 10, color: Ep.contentDisabled),
                 ),
@@ -1505,7 +1506,7 @@ class _CreatedView extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     // nbShareSlug is server-issued by now: unique, and stable across renames.
-    final profileUrl = 'earplug.app/${app.nbShareSlug}';
+    final profileUrl = publicWebDisplayUrl(app.nbShareSlug);
 
     return ColoredBox(
       color: Ep.background,
@@ -1617,7 +1618,7 @@ class _CreatedView extends StatelessWidget {
                     'SHARE PROFILE',
                     onTap: () {
                       Clipboard.setData(
-                        ClipboardData(text: 'https://$profileUrl'),
+                        ClipboardData(text: publicWebUrl(app.nbShareSlug)),
                       );
                       app.say('Link copied: $profileUrl');
                     },

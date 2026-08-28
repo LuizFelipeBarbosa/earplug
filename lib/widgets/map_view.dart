@@ -46,8 +46,9 @@ Widget _attribution(BuildContext context) {
 class _Pin extends StatelessWidget {
   final bool free;
   final int count;
+  final bool emphasized;
 
-  const _Pin({required this.free, this.count = 1});
+  const _Pin({required this.free, this.count = 1, this.emphasized = false});
 
   @override
   Widget build(BuildContext context) {
@@ -57,8 +58,12 @@ class _Pin extends StatelessWidget {
         color: grouped ? Colors.black : (free ? Ep.brand : Colors.black),
         shape: BoxShape.circle,
         border: Border.all(
-          color: grouped || !free ? Ep.brand : Colors.white,
-          width: 2.5,
+          color: emphasized
+              ? Ep.accent
+              : grouped || !free
+              ? Ep.brand
+              : Colors.white,
+          width: emphasized ? 3.5 : 2.5,
         ),
         boxShadow: [
           BoxShadow(
@@ -78,6 +83,79 @@ class _Pin extends StatelessWidget {
               ),
             )
           : null,
+    );
+  }
+}
+
+class _MapPinButton extends StatefulWidget {
+  const _MapPinButton({
+    super.key,
+    required this.alignment,
+    required this.dimension,
+    required this.free,
+    required this.count,
+    required this.onTap,
+  });
+
+  final Alignment alignment;
+  final double dimension;
+  final bool free;
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  State<_MapPinButton> createState() => _MapPinButtonState();
+}
+
+class _MapPinButtonState extends State<_MapPinButton> {
+  bool _hovered = false;
+  bool _focused = false;
+  bool _pressed = false;
+
+  void _setHovered(bool value) {
+    if (_hovered == value) return;
+    setState(() => _hovered = value);
+  }
+
+  void _setFocused(bool value) {
+    if (_focused == value) return;
+    setState(() => _focused = value);
+  }
+
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final emphasized = _hovered || _focused || _pressed;
+    return Material(
+      color: Colors.transparent,
+      child: InkResponse(
+        onTap: widget.onTap,
+        onHover: _setHovered,
+        onFocusChange: _setFocused,
+        onHighlightChanged: _setPressed,
+        mouseCursor: SystemMouseCursors.click,
+        hoverColor: Colors.transparent,
+        focusColor: Colors.transparent,
+        highlightColor: Colors.transparent,
+        splashColor: Colors.transparent,
+        child: Align(
+          alignment: widget.alignment,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 100),
+            width: widget.dimension,
+            height: widget.dimension,
+            child: _Pin(
+              free: widget.free,
+              count: widget.count,
+              emphasized: emphasized,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -269,27 +347,17 @@ class _GigMapViewState extends State<GigMapView> {
                     alignment: markersAbovePoint.contains(group.venue.id)
                         ? Alignment.topCenter
                         : Alignment.bottomCenter,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkResponse(
-                        onTap: () =>
-                            setState(() => selected = group.gigs.first),
-                        radius: 24,
-                        child: Align(
-                          alignment: markersAbovePoint.contains(group.venue.id)
-                              ? Alignment.bottomCenter
-                              : Alignment.topCenter,
-                          child: SizedBox.square(
-                            dimension: group.gigs.length == 1 ? 18 : 26,
-                            child: _Pin(
-                              free: group.gigs.length == 1
-                                  ? group.gigs.single.free
-                                  : false,
-                              count: group.gigs.length,
-                            ),
-                          ),
-                        ),
-                      ),
+                    child: _MapPinButton(
+                      key: ValueKey('map-marker-button-${group.venue.id}'),
+                      alignment: markersAbovePoint.contains(group.venue.id)
+                          ? Alignment.bottomCenter
+                          : Alignment.topCenter,
+                      dimension: group.gigs.length == 1 ? 18 : 26,
+                      free: group.gigs.length == 1
+                          ? group.gigs.single.free
+                          : false,
+                      count: group.gigs.length,
+                      onTap: () => setState(() => selected = group.gigs.first),
                     ),
                   ),
               ],

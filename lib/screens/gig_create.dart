@@ -162,8 +162,6 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 18, 16, 150),
                 children: [
-                  const _FormLabel('GIG NAME'),
-                  const SizedBox(height: 7),
                   _NameCard(controller: _cardName, focusNode: _cardFocus),
                   const SizedBox(height: 18),
                   const _SlotGrid(),
@@ -661,8 +659,6 @@ class _SlotGrid extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _FormLabel('DATE'),
-        const SizedBox(height: 7),
         _SlotCard(
           tag: app.gfDate == null ? 'REQUIRED' : 'DATE ✓',
           tagColor: app.gfDate == null ? Ep.warning : Ep.accent,
@@ -674,8 +670,6 @@ class _SlotGrid extends StatelessWidget {
           onTap: () => showWhenSheet(context),
         ),
         const SizedBox(height: 18),
-        const _FormLabel('DOORS AND START TIME'),
-        const SizedBox(height: 7),
         _SlotCard(
           tag: 'TIMES',
           tagColor: Ep.contentSecondary,
@@ -685,8 +679,6 @@ class _SlotGrid extends StatelessWidget {
           onTap: () => showWhenSheet(context),
         ),
         const SizedBox(height: 18),
-        const _FormLabel('VENUE'),
-        const SizedBox(height: 7),
         _SlotCard(
           tag: venue == null ? 'REQUIRED' : 'VENUE ✓',
           tagColor: venue == null ? Ep.warning : Ep.accent,
@@ -709,8 +701,6 @@ class _CommerceFields extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _FormLabel('PRICE'),
-        const SizedBox(height: 7),
         _SlotCard(
           tag: 'COVER',
           tagColor: Ep.contentSecondary,
@@ -720,8 +710,6 @@ class _CommerceFields extends StatelessWidget {
           onTap: () => showPriceSheet(context),
         ),
         const SizedBox(height: 18),
-        const _FormLabel('TICKET OR RSVP DETAILS'),
-        const SizedBox(height: 7),
         _SlotCard(
           tag: 'ACCESS',
           tagColor: Ep.contentSecondary,

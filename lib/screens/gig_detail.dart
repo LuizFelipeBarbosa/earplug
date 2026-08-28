@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../app_links.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
@@ -246,9 +247,11 @@ class _Hero extends StatelessWidget {
                     tooltip: 'Share event',
                     onTap: () {
                       Clipboard.setData(
-                        ClipboardData(text: 'https://earplug.app/g/${gig.id}'),
+                        ClipboardData(text: publicWebUrl('g/${gig.id}')),
                       );
-                      app.say('Link copied: earplug.app/g/${gig.id}');
+                      app.say(
+                        'Link copied: ${publicWebDisplayUrl('g/${gig.id}')}',
+                      );
                     },
                     child: Text(
                       'SHARE ↗',

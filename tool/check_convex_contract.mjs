@@ -6,6 +6,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const requiredClientFunctions = Object.freeze({
   "users.js:setProfileTutorialCompleted": "Mutation",
   "users.js:updateFanOnboarding": "Mutation",
+  "bandInvites.js:manage": "Query",
+  "bandInvites.js:resolve": "Query",
+  "bandInvites.js:create": "Mutation",
+  "bandInvites.js:rotate": "Mutation",
+  "bandInvites.js:revoke": "Mutation",
+  "bandInvites.js:accept": "Mutation",
+  "gigs.js:resolvePerformerInvite": "Query",
+  "gigs.js:claimPerformerInvite": "Mutation",
 });
 
 export function deploymentNameFromUrl(value) {

@@ -13,24 +13,33 @@ void main() {
   testWidgets('editor groups every profile field and uses plain terminology', (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     await pumpApp(tester, home: const Scaffold(body: BandEditScreen()));
 
     expect(find.text('EDIT PROFILE'), findsOne);
     expect(find.text('Required details'), findsOne);
-    expect(find.text('Band name'), findsWidgets);
+    // The remaining match is the field hint, not a duplicate heading.
+    expect(find.text('Band name'), findsOne);
+    expect(find.bySemanticsLabel('Band name'), findsOne);
     expect(find.text('Sound / genres'), findsOne);
-    expect(find.text('Home base'), findsOne);
+    expect(find.text('Home base'), findsNothing);
+    expect(find.bySemanticsLabel('Home base'), findsOne);
     expect(find.text('PREVIEW PUBLIC PROFILE'), findsOne);
     await _scrollTo(tester, 'Optional details');
-    expect(find.text('Short bio'), findsOne);
+    expect(find.text('Short bio'), findsNothing);
+    expect(find.bySemanticsLabel('Short bio'), findsOne);
     expect(find.text('Links'), findsOne);
-    expect(find.text('Credits'), findsOne);
-    expect(find.text('Music and clips'), findsOne);
+    expect(find.text('Credits'), findsNothing);
+    expect(find.bySemanticsLabel('Credits'), findsOne);
+    expect(find.text('Music and clips'), findsNothing);
     await _scrollTo(tester, 'Band members');
     expect(find.text('Band members'), findsOne);
+    expect(find.text('Accepted members'), findsOne);
+    expect(find.text('Invitation link'), findsNothing);
     expect(find.text('Sleeve notes'), findsNothing);
     expect(find.text('Home taping'), findsNothing);
     expect(find.text('PREVIEW AS FAN'), findsNothing);
+    semantics.dispose();
   });
 
   testWidgets('profile changes remain local until one explicit atomic save', (

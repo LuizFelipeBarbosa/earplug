@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show DateTimeRange, TimeOfDay;
 import 'package:latlong2/latlong.dart';
 
+import 'app_links.dart';
 import 'band_identity.dart';
 import 'band_media_state.dart';
 import 'data/convex_repository.dart';
@@ -3122,7 +3123,7 @@ class AppState extends ChangeNotifier {
 
   String get gigUrl {
     final slug = _slugify(gfName.trim().isEmpty ? 'your-gig' : gfName.trim());
-    return 'earplug.app/g/${slug.isEmpty ? 'your-gig' : slug}';
+    return publicWebDisplayUrl('g/${slug.isEmpty ? 'your-gig' : slug}');
   }
 
   DateTime? get _gfDoorsAt {

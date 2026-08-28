@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:convex_flutter/convex_flutter.dart';
 
+import 'connection_budget.dart';
+
 class ConvexService {
   ConvexClient? _client;
 
@@ -14,15 +16,21 @@ class ConvexService {
   /// Returns the decoded top-level JSON value as-is, including `null`.
   Future<dynamic> query(String name, [Map<String, dynamic>? args]) async {
     final client = _requireClient();
-    await _waitUntilConnected(client);
-    return _decode(await client.query(name, args ?? {}));
+    final result = await _runConnected(
+      client,
+      () => client.query(name, args ?? {}),
+    );
+    return _decode(result);
   }
 
   /// Returns the decoded top-level JSON value as-is, including `null`.
   Future<dynamic> mutation(String name, [Map<String, dynamic>? args]) async {
     final client = _requireClient();
-    await _waitUntilConnected(client);
-    return _decode(await client.mutation(name: name, args: args ?? {}));
+    final result = await _runConnected(
+      client,
+      () => client.mutation(name: name, args: args ?? {}),
+    );
+    return _decode(result);
   }
 
   /// Passes each decoded payload directly to [parse].
@@ -41,28 +49,28 @@ class ConvexService {
 
     Future<void> startSubscription(int generation) async {
       try {
-        await _waitUntilConnected(client);
-        if (generation != currentGeneration) return;
+        final subscription = await _runConnected(
+          client,
+          () => client.subscribe(
+            name: name,
+            args: args,
+            onUpdate: (value) {
+              if (generation != currentGeneration) return;
 
-        final subscription = await client.subscribe(
-          name: name,
-          args: args,
-          onUpdate: (value) {
-            if (generation != currentGeneration) return;
+              try {
+                final decoded = jsonDecode(value);
+                controller.add(parse(decoded));
+              } catch (error, stackTrace) {
+                controller.addError(error, stackTrace);
+              }
+            },
+            onError: (message, value) {
+              if (generation != currentGeneration) return;
 
-            try {
-              final decoded = jsonDecode(value);
-              controller.add(parse(decoded));
-            } catch (error, stackTrace) {
-              controller.addError(error, stackTrace);
-            }
-          },
-          onError: (message, value) {
-            if (generation != currentGeneration) return;
-
-            final detail = value == null ? message : '$message: $value';
-            controller.addError(Exception(detail));
-          },
+              final detail = value == null ? message : '$message: $value';
+              controller.addError(Exception(detail));
+            },
+          ),
         );
 
         if (generation == currentGeneration) {
@@ -120,10 +128,15 @@ class ConvexService {
     return client;
   }
 
-  Future<void> _waitUntilConnected(ConvexClient client) async {
-    if (client.isConnected) return;
-    await client.connectionState.firstWhere(
-      (state) => state == WebSocketConnectionState.connected,
+  Future<T> _runConnected<T>(
+    ConvexClient client,
+    Future<T> Function() operation,
+  ) {
+    return runWithConnectionBudget(
+      connected: client.isConnected,
+      connectionStates: client.connectionState,
+      timeout: client.config.operationTimeout,
+      operation: operation,
     );
   }
 

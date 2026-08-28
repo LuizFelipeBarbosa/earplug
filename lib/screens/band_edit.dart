@@ -258,8 +258,9 @@ class _BandEditScreenState extends State<BandEditScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _EditorField(
+                Semantics(
                   label: 'Band name',
+                  textField: true,
                   child: TextField(
                     key: const ValueKey('edit-band-name'),
                     controller: _name,
@@ -308,8 +309,9 @@ class _BandEditScreenState extends State<BandEditScreen> {
                   style: epText(size: 10.5, color: Ep.contentDisabled),
                 ),
                 const SizedBox(height: 14),
-                _EditorField(
+                Semantics(
                   label: 'Home base',
+                  textField: true,
                   child: TextField(
                     key: const ValueKey('edit-home-base'),
                     controller: _area,
@@ -334,23 +336,18 @@ class _BandEditScreenState extends State<BandEditScreen> {
                   BandAvatar(band, size: 58, radius: 12, fontSize: 20),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const _FieldLabel('Profile image'),
-                        TextAction(
-                          'CHANGE PROFILE IMAGE',
-                          onTap: app.openBandMedia,
-                          padding: EdgeInsets.zero,
-                        ),
-                      ],
+                    child: TextAction(
+                      'CHANGE PROFILE IMAGE',
+                      onTap: app.openBandMedia,
+                      padding: EdgeInsets.zero,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 14),
-              _EditorField(
+              Semantics(
                 label: 'Short bio',
+                textField: true,
                 child: TextField(
                   key: const ValueKey('edit-short-bio'),
                   controller: _bio,
@@ -405,8 +402,9 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              _EditorField(
+              Semantics(
                 label: 'Credits',
+                textField: true,
                 child: TextField(
                   key: const ValueKey('edit-credits'),
                   controller: _credits,
@@ -423,8 +421,6 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              const _FieldLabel('Music and clips'),
-              const SizedBox(height: 5),
               OutlinedButton.icon(
                 onPressed: app.openBandMedia,
                 icon: const Icon(Icons.play_circle_outline),
@@ -490,21 +486,6 @@ class _EditorSection extends StatelessWidget {
           child,
         ],
       ),
-    );
-  }
-}
-
-class _EditorField extends StatelessWidget {
-  const _EditorField({required this.label, required this.child});
-
-  final String label;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [_FieldLabel(label), const SizedBox(height: 7), child],
     );
   }
 }
@@ -601,8 +582,6 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                 ),
               ),
           const SizedBox(height: 10),
-          const _FieldLabel('Invitation link'),
-          const SizedBox(height: 7),
           if (loading && invite == null)
             const Center(child: CircularProgressIndicator())
           else if (!active) ...[

@@ -40,7 +40,7 @@ void main() {
     await tester.pump();
     expect(app.nbName, 'Static Bloom');
     expect(find.text('BAND NAME ✓'), findsOne);
-    expect(find.text('earplug.app/static-bloom'), findsOne);
+    expect(find.text('earplug.dev/static-bloom'), findsOne);
     expect(find.text('17%'), findsOne);
 
     await tester.tap(find.byKey(const ValueKey('label-riso')));
@@ -158,7 +158,7 @@ void main() {
     expect(find.text("You're on the map."), findsOne);
     // The demo feed already has a Static Bloom, so the server-issued slug
     // dedupes.
-    expect(find.text('earplug.app/static-bloom-2'), findsOne);
+    expect(find.text('earplug.dev/static-bloom-2'), findsOne);
     expect(app.myBand!.name, 'Static Bloom');
     expect(app.myBand!.area, 'Mission, SF');
 

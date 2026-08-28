@@ -14,6 +14,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('profile fields avoid duplicate headings but keep semantics', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await pumpApp(tester, home: const Scaffold(body: EditProfileScreen()));
+
+    expect(find.text('NAME'), findsNothing);
+    expect(find.text('BIO · OPTIONAL'), findsNothing);
+    expect(find.bySemanticsLabel('Name'), findsOne);
+    expect(find.bySemanticsLabel('Bio, optional'), findsOne);
+    expect(find.text('HOME LOCATION'), findsOne);
+    expect(find.text('FAVORITE GENRES'), findsOne);
+    semantics.dispose();
+  });
+
   testWidgets('profile leads with private identity and branded fan fallback', (
     tester,
   ) async {

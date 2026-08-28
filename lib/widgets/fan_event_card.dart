@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../app_links.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
@@ -187,9 +188,9 @@ String _doorsTime(String value) {
 }
 
 void _share(AppState app, Gig gig) {
-  final url = 'https://earplug.app/g/${gig.id}';
+  final url = publicWebUrl('g/${gig.id}');
   Clipboard.setData(ClipboardData(text: url));
-  app.say('Link copied: earplug.app/g/${gig.id}');
+  app.say('Link copied: ${publicWebDisplayUrl('g/${gig.id}')}');
 }
 
 Future<void> _openTickets(AppState app, Gig gig) async {

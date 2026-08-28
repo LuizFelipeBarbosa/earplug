@@ -1,3 +1,5 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
@@ -6,6 +8,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/home.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
+import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -54,6 +57,44 @@ void main() {
       expect(find.byKey(Key('gig-marker-$id')), findsOne);
     }
     expect(find.byKey(const Key('gig-marker-g3')), findsNothing);
+  });
+
+  testWidgets('map marker hover stays on the pin inside its 48px target', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: HomeScreen()));
+
+    final button = find.byKey(const ValueKey('map-marker-button-v1'));
+    expect(tester.getSize(button), const Size.square(48));
+
+    final ink = tester.widget<InkResponse>(
+      find.descendant(of: button, matching: find.byType(InkResponse)),
+    );
+    expect(ink.hoverColor, Colors.transparent);
+    expect(ink.focusColor, Colors.transparent);
+    expect(ink.highlightColor, Colors.transparent);
+
+    final pin = find.descendant(
+      of: button,
+      matching: find.byType(AnimatedContainer),
+    );
+    expect(tester.getSize(pin), const Size.square(26));
+
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer(location: tester.getCenter(button));
+    await tester.pump();
+
+    final decorations = tester
+        .widgetList<Container>(
+          find.descendant(of: pin, matching: find.byType(Container)),
+        )
+        .map((container) => container.decoration)
+        .whereType<BoxDecoration>();
+    final pinDecoration = decorations.firstWhere(
+      (decoration) => decoration.shape == BoxShape.circle,
+    );
+    expect(pinDecoration.border, Border.all(color: Ep.accent, width: 3.5));
   });
 
   testWidgets('active complete listings carry the transparent boost label', (
