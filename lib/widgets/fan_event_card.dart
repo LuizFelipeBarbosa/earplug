@@ -118,13 +118,21 @@ class FanEventCard extends StatelessWidget {
                   ).textTheme.epLabel.copyWith(color: Ep.accent),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  '${venue.name}${showDistance ? ' · ${app.distanceOf(venue)}' : ''}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.epCaption.copyWith(color: Ep.contentSecondary),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${venue.name}${showDistance ? ' · ${app.distanceOf(venue)}' : ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.epCaption.copyWith(
+                          color: Ep.contentSecondary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    _AgeBadge(gig.ageRequirement.label),
+                  ],
                 ),
                 if (lineup.isNotEmpty) ...[
                   const SizedBox(height: 2),
@@ -135,41 +143,33 @@ class FanEventCard extends StatelessWidget {
                     style: Theme.of(context).textTheme.epCaption,
                   ),
                 ],
-                const SizedBox(height: 7),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 5),
+                Wrap(
+                  key: ValueKey('event-actions-${gig.id}'),
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 2,
+                  runSpacing: 2,
                   children: [
-                    _AgeBadge(gig.ageRequirement.label),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Wrap(
-                        alignment: WrapAlignment.end,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        spacing: 5,
-                        runSpacing: 5,
-                        children: [
-                          _IconAction(
-                            key: ValueKey('save-${gig.id}'),
-                            tooltip: app.saved.contains(gig.id)
-                                ? 'Remove saved event'
-                                : 'Save event',
-                            icon: app.saved.contains(gig.id)
-                                ? Icons.bookmark
-                                : Icons.bookmark_border,
-                            active: app.saved.contains(gig.id),
-                            onTap: () => app.requestSave(gig.id),
-                          ),
-                          _IconAction(
-                            key: ValueKey('share-${gig.id}'),
-                            tooltip: 'Share event',
-                            icon: Icons.ios_share,
-                            onTap: () => _share(app, gig),
-                          ),
-                          _TicketAction(gig: gig, app: app),
-                          ?trailingAction,
-                        ],
-                      ),
+                    _IconAction(
+                      key: ValueKey('save-${gig.id}'),
+                      tooltip: app.saved.contains(gig.id)
+                          ? 'Remove saved event'
+                          : 'Save event',
+                      icon: app.saved.contains(gig.id)
+                          ? Icons.bookmark
+                          : Icons.bookmark_border,
+                      active: app.saved.contains(gig.id),
+                      onTap: () => app.requestSave(gig.id),
                     ),
+                    _IconAction(
+                      key: ValueKey('share-${gig.id}'),
+                      tooltip: 'Share event',
+                      icon: Icons.ios_share,
+                      onTap: () => _share(app, gig),
+                    ),
+                    _TicketAction(gig: gig, app: app),
+                    ?trailingAction,
                   ],
                 ),
               ],
@@ -271,14 +271,14 @@ class _TicketAction extends StatelessWidget {
   Widget build(BuildContext context) {
     final external = gig.tix == Ticketing.external;
     final going = app.rsvps.contains(gig.id);
-    final label = external ? 'GET TICKETS ↗' : (going ? 'GOING ✓' : 'RSVP');
+    final label = external ? 'TICKETS ↗' : (going ? 'GOING ✓' : 'RSVP');
     final onPressed = external
         ? () => _openTickets(app, gig)
         : () => going ? app.toggleRsvp(gig.id) : app.requestRsvp(gig.id);
     final style = ButtonStyle(
       minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
       padding: const WidgetStatePropertyAll(
-        EdgeInsets.symmetric(horizontal: 10),
+        EdgeInsets.symmetric(horizontal: 8),
       ),
       textStyle: WidgetStatePropertyAll(
         Theme.of(context).textTheme.epLabel.copyWith(

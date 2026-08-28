@@ -403,6 +403,7 @@ class _BrowseRows extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gigs = app.allGigs;
+    final previewBandIds = app.exploreBandIds.take(4).toList();
     final tonight = [
       ...gigs.where((g) => g.when == GigWhen.tonight),
       ...gigs.where((g) => g.when == GigWhen.week).take(3),
@@ -485,12 +486,12 @@ class _BrowseRows extends StatelessWidget {
                 126 +
                 40 *
                     (MediaQuery.textScalerOf(context).scale(1).clamp(1, 2) - 1),
-            child: ListView(
+            child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              children: [
-                for (final id in app.exploreBandIds.take(4))
-                  _BandTile(bandId: id, app: app),
-              ],
+              itemCount: previewBandIds.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 10),
+              itemBuilder: (context, index) =>
+                  _BandTile(bandId: previewBandIds[index], app: app),
             ),
           ),
         const SizedBox(height: 18),
@@ -808,6 +809,7 @@ class _BandTile extends StatelessWidget {
     final band = app.band(bandId);
     if (band == null) return const SizedBox.shrink();
     return SizedBox(
+      key: ValueKey('explore-band-card-$bandId'),
       width: width,
       child: EpCard(
         variant: EpCardVariant.raised,

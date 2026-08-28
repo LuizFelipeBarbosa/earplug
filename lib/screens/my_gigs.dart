@@ -660,21 +660,15 @@ class _QrAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return FilledButton(
+    return IconButton(
       key: ValueKey('show-qr-${gig.id}'),
+      tooltip: 'Show QR code',
       onPressed: () => showQrDialog(context, gig, venue),
       style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(horizontal: 9),
-        ),
-        textStyle: WidgetStatePropertyAll(
-          Theme.of(
-            context,
-          ).textTheme.epLabel.copyWith(fontSize: 9, letterSpacing: .4),
-        ),
+        fixedSize: const WidgetStatePropertyAll(Size.square(48)),
+        foregroundColor: const WidgetStatePropertyAll(Ep.accent),
       ),
-      child: const Text('SHOW QR'),
+      icon: const Icon(Icons.qr_code_2, size: 20),
     );
   }
 }

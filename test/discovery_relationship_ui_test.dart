@@ -289,8 +289,18 @@ void main() {
     );
     expect(find.byKey(const ValueKey('fan-event-g4')), findsOne);
     expect(find.text('21+'), findsOne);
-    expect(find.text('GET TICKETS ↗'), findsOne);
-    expect(find.text('SHOW QR'), findsOne);
+    expect(find.text('TICKETS ↗'), findsOne);
+    expect(find.byTooltip('Show QR code'), findsOne);
+
+    final save = find.byKey(const ValueKey('save-g4'));
+    final share = find.byKey(const ValueKey('share-g4'));
+    final tickets = find.byKey(const ValueKey('ticket-action-g4'));
+    final qr = find.byKey(const ValueKey('show-qr-g4'));
+    final actionY = tester.getCenter(save).dy;
+    expect(tester.getCenter(share).dy, actionY);
+    expect(tester.getCenter(tickets).dy, actionY);
+    expect(tester.getCenter(qr).dy, actionY);
+    expect(tester.getSize(qr), const Size.square(48));
 
     await tester.ensureVisible(find.byKey(const ValueKey('show-qr-g4')));
     await tester.pumpAndSettle();

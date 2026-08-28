@@ -120,7 +120,10 @@ void main() {
   testWidgets('band and venue previews expand and collapse in place', (
     tester,
   ) async {
-    await pumpApp(tester, home: const Scaffold(body: ExploreScreen()));
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+    );
 
     final bandsToggle = find.byKey(const Key('explore-toggle-bands'));
     await tester.scrollUntilVisible(
@@ -132,6 +135,18 @@ void main() {
         tester.view.physicalSize.width / tester.view.devicePixelRatio - 16;
     expect(tester.getTopRight(bandsToggle).dx, closeTo(sectionRight, .01));
     expect(find.text(DemoData.bands['b6']!.name.toUpperCase()), findsNothing);
+
+    final previewBandIds = harness.app.exploreBandIds.take(2).toList();
+    final firstBand = find.byKey(
+      ValueKey('explore-band-card-${previewBandIds.first}'),
+    );
+    final secondBand = find.byKey(
+      ValueKey('explore-band-card-${previewBandIds.last}'),
+    );
+    expect(
+      tester.getTopLeft(secondBand).dx - tester.getTopRight(firstBand).dx,
+      10,
+    );
 
     await tester.tap(bandsToggle);
     await tester.pumpAndSettle();
