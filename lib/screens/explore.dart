@@ -563,18 +563,16 @@ class _SectionHeading extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: SectionLabel(label)),
-        Flexible(
-          child: TextButton(
-            key: actionKey,
-            onPressed: onAction,
-            child: Text(
-              actionLabel,
-              maxLines: 2,
-              textAlign: TextAlign.end,
-              style: Theme.of(
-                context,
-              ).textTheme.epLabel.copyWith(fontSize: 10, letterSpacing: .7),
-            ),
+        TextButton(
+          key: actionKey,
+          onPressed: onAction,
+          child: Text(
+            actionLabel,
+            maxLines: 2,
+            textAlign: TextAlign.end,
+            style: Theme.of(
+              context,
+            ).textTheme.epLabel.copyWith(fontSize: 10, letterSpacing: .7),
           ),
         ),
       ],

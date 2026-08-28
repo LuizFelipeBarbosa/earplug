@@ -128,6 +128,9 @@ void main() {
       250,
       scrollable: find.byType(Scrollable).first,
     );
+    final sectionRight =
+        tester.view.physicalSize.width / tester.view.devicePixelRatio - 16;
+    expect(tester.getTopRight(bandsToggle).dx, closeTo(sectionRight, .01));
     expect(find.text(DemoData.bands['b6']!.name.toUpperCase()), findsNothing);
 
     await tester.tap(bandsToggle);
@@ -149,6 +152,7 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
+    expect(tester.getTopRight(venuesToggle).dx, closeTo(sectionRight, .01));
     expect(find.text(DemoData.venues['v6']!.name.toUpperCase()), findsNothing);
 
     await tester.tap(venuesToggle);
