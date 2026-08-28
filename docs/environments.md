@@ -74,10 +74,12 @@ surfaces as a generic mutation error only after a user clicks the affected UI.
 
 Netlify uses the same config-file mechanism. `netlify.toml` selects production
 configuration for production-context builds and development configuration for
-deploy previews and branch deploys. Production builds require
-`CONVEX_DEPLOY_KEY`; they deploy Convex, verify the production contract, and
-then build Flutter. Development builds do not deploy and can be checked against
-the shared development deployment manually with
+deploy previews and branch deploys. When Netlify has a production
+`CONVEX_DEPLOY_KEY`, production builds deploy Convex and verify the production
+contract before building Flutter. Without that key, deploy and verify the
+backend separately before triggering the production build; Netlify then uses
+the already-deployed backend. Development builds do not deploy and can be
+checked against the shared development deployment manually with
 `npm run check:release-contract -- dev`. `EARPLUG_ENV` remains the only Netlify
 environment variable consumed by the web client itself.
 
