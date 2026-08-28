@@ -50,18 +50,21 @@ final class ClerkMobileAuth implements AuthService {
   @override
   Stream<bool> get signedInChanges => _signedInController.stream;
 
-  // Both gate on configuration where the web implementation just returns true,
-  // and that asymmetry is deliberate rather than drift. Web signs in through
-  // Clerk's hosted redirect, which needs no per-app credentials; these use the
-  // native Apple and Google SDKs, which do. Offering a button that cannot
-  // complete is worse than not offering it, so an unconfigured build hides them.
-  // Set the values in config/*.json and ios/Config/Google.xcconfig — see
-  // docs/environments.md.
+  @override
+  bool get supportsEmailSignIn => Env.emailSignInEnabled;
+
+  @override
+  bool get supportsPhoneSignIn => Env.phoneSignInEnabled;
+
+  // OAuth methods combine product policy with native credential availability.
+  // Web needs no native credentials, but mobile does. An enabled method remains
+  // hidden here until the platform is capable of completing the flow.
   @override
   bool get supportsAppleSignIn => Platform.isIOS && Env.appleSignInEnabled;
 
   @override
-  bool get supportsGoogleSignIn => Env.googleServerClientId.isNotEmpty;
+  bool get supportsGoogleSignIn =>
+      Env.googleSignInEnabled && Env.googleServerClientId.isNotEmpty;
 
   @override
   Future<void> initialize() {

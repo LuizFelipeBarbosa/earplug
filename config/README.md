@@ -26,6 +26,11 @@ bundle. Committing them is what makes a build reproducible.
 Nothing secret belongs in this directory. `CLERK_SECRET_KEY` lives in the
 Convex deployment environment and is read by no client code.
 
+The four `*_SIGN_IN_ENABLED` values are product policy, not credentials. Both
+environments currently enable Email and Google while disabling Phone and
+Apple. Platform auth services additionally hide enabled OAuth methods when the
+platform credentials needed to complete them are absent.
+
 ## The pairing rule
 
 A Convex deployment and a Clerk instance are chosen together, never

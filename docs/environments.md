@@ -83,21 +83,26 @@ checked against the shared development deployment manually with
 `npm run check:release-contract -- dev`. `EARPLUG_ENV` remains the only Netlify
 environment variable consumed by the web client itself.
 
-## Sign-in parity between web and mobile
+## Sign-in capabilities
 
-| Method | Web | Mobile | Needs credentials |
+Both environment files deliberately expose the same product surface: Email
+Code and Google are enabled; Phone and Apple are disabled. The four explicit
+flags are `EMAIL_SIGN_IN_ENABLED`, `PHONE_SIGN_IN_ENABLED`,
+`GOOGLE_SIGN_IN_ENABLED`, and `APPLE_SIGN_IN_ENABLED`.
+
+| Method | Environment policy | Web | Mobile |
 |---|---|---|---|
-| Email code | ✅ | ✅ | no |
-| Phone code | ✅ | ✅ | no |
-| Google | ✅ | gated | **yes** |
-| Apple | ✅ | gated | **yes** |
+| Email code | enabled | shown | shown |
+| Phone code | disabled | hidden | hidden |
+| Google | enabled | shown | hidden until native credentials exist |
+| Apple | disabled | hidden | hidden |
 
-Web reaches Google and Apple through Clerk's hosted redirect, which needs no
-per-app credentials — hence `supportsGoogleSignIn => true`. Mobile uses the
-native SDKs (`sign_in_with_apple`, `google_sign_in`), which require real client
-IDs, so it hides a provider until that provider is configured. The flows
-themselves are fully implemented in `lib/services/clerk_mobile_auth.dart`;
-only configuration is outstanding.
+The service combines environment policy with platform availability. Web OAuth
+uses Clerk's hosted redirect and needs no native client ID. Mobile uses the
+native Apple and Google SDKs, so an enabled OAuth method remains hidden until
+its required platform credentials are configured. The flows are implemented
+in `lib/services/clerk_mobile_auth.dart`; native credentials remain a separate
+release task.
 
 ### Checklist — Google
 
@@ -118,8 +123,8 @@ only configuration is outstanding.
    `CFBundleURLSchemes`; harmless for development, but fill them in before an
    App Store submission rather than shipping an empty scheme.
 3. **`config/dev.json` and `config/prod.json`** — set
-   `GOOGLE_SERVER_CLIENT_ID` to the *web application* client ID. This is what
-   flips `supportsGoogleSignIn` on.
+   `GOOGLE_SERVER_CLIENT_ID` to the *web application* client ID. Google must
+   also remain allowed by `GOOGLE_SIGN_IN_ENABLED`; mobile requires both.
 4. **Clerk dashboard → SSO connections** — enable Google for both instances,
    and use the same web client ID and its secret so Clerk can verify the ID
    token the app sends.
@@ -135,11 +140,11 @@ only configuration is outstanding.
 3. **Clerk dashboard → SSO connections** — enable Apple, supply the Services
    ID, Team ID, Key ID and the `.p8` private key.
 4. **`config/*.json`** — set `APPLE_SIGN_IN_ENABLED` to `true`. The button
-   stays hidden on Android regardless: the implementation gates on
+   stays hidden on Android regardless: the implementation also gates on
    `Platform.isIOS`.
 
-Until these land, mobile offers email and phone codes, which work today and
-need no credentials.
+Until these credentials land, mobile offers Email Code only. Web offers Email
+Code and Google in both environments.
 
 ## What is not configured anywhere
 
