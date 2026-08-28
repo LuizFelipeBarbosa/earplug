@@ -1,6 +1,9 @@
 {
   "CONVEX_URL": "https://brilliant-cardinal-773.convex.cloud",
   "CLERK_PUBLISHABLE_KEY": "pk_test_cHJlbWl1bS1zaGVlcC0yNC5jbGVyay5hY2NvdW50cy5kZXYk",
+  "EMAIL_SIGN_IN_ENABLED": true,
+  "PHONE_SIGN_IN_ENABLED": false,
+  "GOOGLE_SIGN_IN_ENABLED": true,
   "GOOGLE_SERVER_CLIENT_ID": "",
   "APPLE_SIGN_IN_ENABLED": false,
   "EARPLUG_DEMO": false

@@ -257,6 +257,30 @@ class _DoorStepState extends State<_DoorStep> {
 
   List<Widget> _buildProviders() {
     final locked = _loading || widget.app.authStep == 2;
+    final supportsEmail = widget.app.auth.supportsEmailSignIn;
+    final supportsPhone = widget.app.auth.supportsPhoneSignIn;
+
+    final Widget? codeMethods;
+    if (supportsEmail && supportsPhone) {
+      codeMethods = Row(
+        children: [
+          Expanded(
+            child: _MethodTile('EMAIL', onTap: locked ? null : _showEmail),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: _MethodTile('PHONE', onTap: locked ? null : _showPhone),
+          ),
+        ],
+      );
+    } else if (supportsEmail) {
+      codeMethods = _MethodTile('EMAIL', onTap: locked ? null : _showEmail);
+    } else if (supportsPhone) {
+      codeMethods = _MethodTile('PHONE', onTap: locked ? null : _showPhone);
+    } else {
+      codeMethods = null;
+    }
+
     return [
       if (widget.app.auth.supportsAppleSignIn) ...[
         EpButton(
@@ -276,17 +300,7 @@ class _DoorStepState extends State<_DoorStep> {
         ),
         const SizedBox(height: 9),
       ],
-      Row(
-        children: [
-          Expanded(
-            child: _MethodTile('EMAIL', onTap: locked ? null : _showEmail),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: _MethodTile('PHONE', onTap: locked ? null : _showPhone),
-          ),
-        ],
-      ),
+      ?codeMethods,
       if (_error != null) ...[const SizedBox(height: 9), _InlineError(_error!)],
       const SizedBox(height: 9),
       TextAction('← KEEP BROWSING', onTap: locked ? null : widget.app.back),

@@ -24,14 +24,35 @@ abstract class AuthService {
   Future<bool> verifyEmailCode(String code);
   Future<void> startPhoneSignIn(String phoneNumber);
   Future<bool> verifyPhoneCode(String code);
+  bool get supportsEmailSignIn;
+  bool get supportsPhoneSignIn;
   bool get supportsAppleSignIn;
   bool get supportsGoogleSignIn;
   Future<void> signInWithOAuth(OAuthProvider provider);
 }
 
 class FakeAuthService implements AuthService {
+  FakeAuthService({
+    this.supportsEmailSignIn = true,
+    this.supportsPhoneSignIn = true,
+    this.supportsAppleSignIn = true,
+    this.supportsGoogleSignIn = true,
+  });
+
   final StreamController<bool> _signedInController =
       StreamController<bool>.broadcast();
+
+  @override
+  final bool supportsEmailSignIn;
+
+  @override
+  final bool supportsPhoneSignIn;
+
+  @override
+  final bool supportsAppleSignIn;
+
+  @override
+  final bool supportsGoogleSignIn;
 
   bool _signedIn = false;
   int deleteAccountCalls = 0;
@@ -92,12 +113,6 @@ class FakeAuthService implements AuthService {
     await signInDemo();
     return true;
   }
-
-  @override
-  bool get supportsAppleSignIn => true;
-
-  @override
-  bool get supportsGoogleSignIn => true;
 
   @override
   Future<void> signInWithOAuth(OAuthProvider provider) => signInDemo();

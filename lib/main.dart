@@ -197,6 +197,11 @@ class EarplugApp extends StatelessWidget {
             message: label,
             location: BannerLocation.topEnd,
             color: Ep.contentPrimary,
+            textStyle: epText(
+              size: 10,
+              weight: FontWeight.w800,
+              color: Ep.background,
+            ),
             child: app,
           );
         },

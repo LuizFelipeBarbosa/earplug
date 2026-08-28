@@ -57,11 +57,17 @@ final class ClerkWebAuth implements AuthService {
   Stream<bool> get signedInChanges => _signedInController.stream;
 
   @override
-  bool get supportsAppleSignIn => true;
+  bool get supportsEmailSignIn => Env.emailSignInEnabled;
+
+  @override
+  bool get supportsPhoneSignIn => Env.phoneSignInEnabled;
+
+  @override
+  bool get supportsAppleSignIn => Env.appleSignInEnabled;
 
   @override
   // Unlike mobile, Clerk's hosted web OAuth redirect needs no native client ID.
-  bool get supportsGoogleSignIn => true;
+  bool get supportsGoogleSignIn => Env.googleSignInEnabled;
 
   @override
   Future<void> initialize() {

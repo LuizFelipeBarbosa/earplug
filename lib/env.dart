@@ -18,7 +18,16 @@ abstract final class Env {
   static const String googleServerClientId = String.fromEnvironment(
     'GOOGLE_SERVER_CLIENT_ID',
   );
-  static const appleSignInEnabled = bool.fromEnvironment(
+  static const bool emailSignInEnabled = bool.fromEnvironment(
+    'EMAIL_SIGN_IN_ENABLED',
+  );
+  static const bool phoneSignInEnabled = bool.fromEnvironment(
+    'PHONE_SIGN_IN_ENABLED',
+  );
+  static const bool googleSignInEnabled = bool.fromEnvironment(
+    'GOOGLE_SIGN_IN_ENABLED',
+  );
+  static const bool appleSignInEnabled = bool.fromEnvironment(
     'APPLE_SIGN_IN_ENABLED',
   );
 

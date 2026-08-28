@@ -433,6 +433,31 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the configured door offers only email and Google', (
+    tester,
+  ) async {
+    final auth = FakeAuthService(
+      supportsEmailSignIn: true,
+      supportsPhoneSignIn: false,
+      supportsGoogleSignIn: true,
+      supportsAppleSignIn: false,
+    );
+
+    await pumpApp(
+      tester,
+      auth: auth,
+      beforePump: (app) => app.requestSave('g1'),
+      home: const Scaffold(body: AuthScreen()),
+      pumpFor: const Duration(milliseconds: 100),
+    );
+
+    expect(find.text('EMAIL'), findsOne);
+    expect(find.text('PHONE'), findsNothing);
+    expect(find.text('G · Continue with Google'), findsOne);
+    expect(find.text(' Continue with Apple'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('pending action waits for user setup before replaying', (
     tester,
   ) async {
