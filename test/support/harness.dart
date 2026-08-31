@@ -56,11 +56,17 @@ Future<AppHarness> pumpApp(
 
   final resolvedAuth = auth ?? FakeAuthService();
   final resolvedRepository = repository ?? DemoRepository(auth: resolvedAuth);
+  final resolvedUploader =
+      uploader ??
+      MediaUploadService(
+        repository: resolvedRepository,
+        thumbnailGenerator: FakeVideoThumbnailGenerator(),
+      );
   final app = AppState(
     repository: resolvedRepository,
     auth: resolvedAuth,
     locationService: locationService,
-    mediaUploadService: uploader,
+    mediaUploadService: resolvedUploader,
     now: now,
   );
 
@@ -68,7 +74,7 @@ Future<AppHarness> pumpApp(
   final media = BandMediaController(
     repository: resolvedRepository,
     picker: picker,
-    uploader: uploader,
+    uploader: resolvedUploader,
     say: app.say,
   );
   app.attachMediaController(media);

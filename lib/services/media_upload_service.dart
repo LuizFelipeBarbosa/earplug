@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import '../data/repository.dart';
 import '../models.dart';
 import 'media_picker.dart';
+import 'video_thumbnail_generator.dart';
 
 enum MediaUploadPhase { preparing, uploading, saving, done, failed }
 
@@ -28,11 +29,17 @@ class MediaUploadException implements Exception {
 }
 
 class MediaUploadService {
-  MediaUploadService({required this.repository, HttpPoster? post})
-    : _post = post ?? _postWithHttp;
+  MediaUploadService({
+    required this.repository,
+    HttpPoster? post,
+    VideoThumbnailGenerator? thumbnailGenerator,
+  }) : _post = post ?? _postWithHttp,
+       _thumbnailGenerator =
+           thumbnailGenerator ?? createVideoThumbnailGenerator();
 
   final EarplugRepository repository;
   final HttpPoster _post;
+  final VideoThumbnailGenerator _thumbnailGenerator;
   int _demoStorageCounter = 0;
 
   Future<String> upload({
@@ -40,10 +47,22 @@ class MediaUploadService {
     required MediaKind kind,
     required PickedMedia media,
     void Function(MediaUploadPhase)? onPhase,
+    void Function(Uint8List bytes)? onThumbnailReady,
   }) async {
     var phase = MediaUploadPhase.preparing;
     try {
       onPhase?.call(phase);
+      PickedMedia? thumbnail;
+      if (kind == MediaKind.video) {
+        final bytes = await _thumbnailGenerator.generate(media);
+        thumbnail = PickedMedia(
+          bytes: bytes,
+          filename: '${media.titleFromFilename.toLowerCase()}.thumbnail.jpg',
+          contentType: 'image/jpeg',
+          sizeBytes: bytes.lengthInBytes,
+        );
+        onThumbnailReady?.call(bytes);
+      }
       final storageId = await _uploadToStorage(
         generateUploadUrl: () => repository.generateMediaUploadUrl(bandId),
         media: media,
@@ -52,6 +71,17 @@ class MediaUploadService {
           onPhase?.call(phase);
         },
       );
+      final thumbnailStorageId = thumbnail == null
+          ? null
+          : await _uploadToStorage(
+              generateUploadUrl: () =>
+                  repository.generateMediaUploadUrl(bandId),
+              media: thumbnail,
+              onUploading: () {
+                phase = MediaUploadPhase.uploading;
+                onPhase?.call(phase);
+              },
+            );
 
       phase = MediaUploadPhase.saving;
       onPhase?.call(phase);
@@ -59,6 +89,7 @@ class MediaUploadService {
         bandId: bandId,
         kind: kind,
         storageId: storageId,
+        thumbnailStorageId: thumbnailStorageId,
         title: media.titleFromFilename,
         lengthSec: null,
       );
@@ -140,7 +171,9 @@ class MediaUploadService {
   ) {
     if (error is MediaUploadException && error.phase == phase) return error;
 
-    final message = error is MediaUploadException
+    final message = error is VideoThumbnailGenerationException
+        ? error.message
+        : error is MediaUploadException
         ? error.message
         : switch (phase) {
             MediaUploadPhase.preparing =>

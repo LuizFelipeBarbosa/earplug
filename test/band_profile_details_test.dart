@@ -44,7 +44,7 @@ void main() {
     expect(find.text('CREDITS'), findsOne);
     expect(find.text('Recorded by Jo Rivera at Room Tone.'), findsOne);
     await tester.scrollUntilVisible(
-      find.text('BAND MEMBERS'),
+      find.text('Avery Stone'),
       250,
       scrollable: find.byType(Scrollable).first,
     );

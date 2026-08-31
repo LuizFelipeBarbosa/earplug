@@ -85,6 +85,7 @@ class ConvexRepository implements EarplugRepository {
     required String bandId,
     required MediaKind kind,
     required String storageId,
+    String? thumbnailStorageId,
     required String title,
     String? caption,
     int? lengthSec,
@@ -93,6 +94,7 @@ class ConvexRepository implements EarplugRepository {
       'bandId': bandId,
       'kind': kind.name,
       'storageId': storageId,
+      'thumbnailStorageId': ?thumbnailStorageId,
       'title': title,
       'caption': ?caption,
       'lengthSec': ?lengthSec,
@@ -411,8 +413,19 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<void> archiveBand(String bandId) async {
-    await _convexService.mutation('bands:archive', {'bandId': bandId});
+  Future<BandArchiveResult> archiveBand(String bandId) async {
+    final result = await _convexService.mutation('bands:archive', {
+      'bandId': bandId,
+    });
+    return BandArchiveResult.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<BandArchiveStatus> bandArchiveStatus(String bandId) async {
+    final result = await _convexService.query('bands:archiveStatus', {
+      'bandId': bandId,
+    });
+    return BandArchiveStatus.fromJson(_asMap(result));
   }
 
   @override

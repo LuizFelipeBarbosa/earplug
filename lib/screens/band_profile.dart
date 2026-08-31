@@ -13,6 +13,7 @@ import '../widgets/common.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/photo_viewer.dart';
 import '../widgets/video_player_sheet.dart';
+import '../widgets/video_thumbnail.dart';
 
 class BandProfileScreen extends StatelessWidget {
   final String bandId;
@@ -522,7 +523,12 @@ class _PinnedVideo extends StatelessWidget {
           height: 190,
           child: Stack(
             children: [
-              Positioned.fill(child: ClipTexture(bandColor: band.color)),
+              Positioned.fill(
+                child: BandVideoThumbnail(
+                  media: pinned,
+                  fallback: ClipTexture(bandColor: band.color),
+                ),
+              ),
               Positioned(
                 left: 0,
                 right: 0,
@@ -615,7 +621,10 @@ class _ClipTile extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            ClipTexture(bandColor: band.color),
+            BandVideoThumbnail(
+              media: clip,
+              fallback: ClipTexture(bandColor: band.color),
+            ),
             Center(child: PlayTriangle(size: 13, color: Ep.contentPrimary)),
             Positioned(
               left: 8,

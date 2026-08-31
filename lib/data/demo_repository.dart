@@ -54,6 +54,7 @@ class DemoRepository implements EarplugRepository {
   final Set<String> _previewedBands = {};
   final Map<String, BandInvite> _bandInvites = {};
   final Map<String, Set<String>> _acceptedMemberNames = {};
+  final Map<String, DateTime> _archivedBands = {};
   FanOnboarding _fanOnboarding = const FanOnboarding(
     preferredCity: null,
     genreChoice: FanGenreChoice.pending,
@@ -144,6 +145,7 @@ class DemoRepository implements EarplugRepository {
           bandId: item.bandId,
           kind: item.kind,
           url: item.url,
+          thumbnailUrl: item.thumbnailUrl,
           title: item.title,
           caption: item.caption,
           sizeBytes: item.sizeBytes,
@@ -164,6 +166,7 @@ class DemoRepository implements EarplugRepository {
     required String bandId,
     required MediaKind kind,
     required String storageId,
+    String? thumbnailStorageId,
     required String title,
     String? caption,
     int? lengthSec,
@@ -179,6 +182,9 @@ class DemoRepository implements EarplugRepository {
         bandId: bandId,
         kind: kind,
         url: null,
+        thumbnailUrl: thumbnailStorageId == null
+            ? null
+            : 'demo://thumbnail/$thumbnailStorageId',
         title: title,
         caption: caption,
         sizeBytes: null,
@@ -813,7 +819,15 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
-  Future<void> archiveBand(String bandId) async {
+  Future<BandArchiveResult> archiveBand(String bandId) async {
+    final priorArchive = _archivedBands[bandId];
+    if (priorArchive != null) {
+      return BandArchiveResult(
+        bandId: bandId,
+        archivedAt: priorArchive,
+        alreadyArchived: true,
+      );
+    }
     final membership = _memberships
         .where(
           (candidate) =>
@@ -822,6 +836,7 @@ class DemoRepository implements EarplugRepository {
         .firstOrNull;
     if (membership == null) throw StateError('Band admin access required.');
     final now = DateTime.now();
+    _archivedBands[bandId] = now;
     for (final project in _gigProjects.values.toList()) {
       if (project.bandId == bandId &&
           project.startsAt?.isAfter(now) == true &&
@@ -841,6 +856,20 @@ class DemoRepository implements EarplugRepository {
     _bands.remove(bandId);
     _feedController.add(_currentFeed());
     _bandsController.add(_currentMemberships());
+    return BandArchiveResult(
+      bandId: bandId,
+      archivedAt: now,
+      alreadyArchived: false,
+    );
+  }
+
+  @override
+  Future<BandArchiveStatus> bandArchiveStatus(String bandId) async {
+    final archivedAt = _archivedBands[bandId];
+    if (archivedAt == null && !_bands.containsKey(bandId)) {
+      throw StateError('Band not found.');
+    }
+    return BandArchiveStatus(bandId: bandId, archivedAt: archivedAt);
   }
 
   @override

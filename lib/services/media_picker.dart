@@ -8,12 +8,14 @@ class PickedMedia {
     required this.filename,
     required this.contentType,
     required this.sizeBytes,
+    this.sourcePath,
   });
 
   final Uint8List bytes;
   final String filename;
   final String contentType;
   final int sizeBytes;
+  final String? sourcePath;
 
   String get titleFromFilename {
     final extension = filename.lastIndexOf('.');
@@ -115,6 +117,7 @@ class MediaPicker {
       filename: file.name,
       contentType: file.mimeType ?? _contentTypeFromFilename(file.name),
       sizeBytes: bytes.lengthInBytes,
+      sourcePath: file.path,
     );
   }
 

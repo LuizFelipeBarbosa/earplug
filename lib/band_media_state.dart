@@ -227,6 +227,8 @@ class BandMediaController extends ChangeNotifier {
         kind: upload.kind,
         media: payload,
         onPhase: (phase) => _setUploadPhase(upload.bandId, upload.id, phase),
+        onThumbnailReady: (bytes) =>
+            _setUploadPreview(upload.bandId, upload.id, bytes),
       );
       if (!_removeUpload(upload.bandId, upload.id)) return null;
       notifyListeners();
@@ -264,6 +266,25 @@ class BandMediaController extends ChangeNotifier {
       error: error,
       payload: phase == MediaUploadPhase.done ? null : current.payload,
       preview: current.preview,
+    );
+    notifyListeners();
+  }
+
+  void _setUploadPreview(String bandId, String uploadId, Uint8List preview) {
+    final uploads = _uploads[bandId];
+    final index = uploads?.indexWhere((upload) => upload.id == uploadId) ?? -1;
+    if (uploads == null || index == -1) return;
+    final current = uploads[index];
+    uploads[index] = MediaUpload(
+      id: current.id,
+      bandId: current.bandId,
+      kind: current.kind,
+      filename: current.filename,
+      sizeBytes: current.sizeBytes,
+      phase: current.phase,
+      error: current.error,
+      payload: current.payload,
+      preview: preview,
     );
     notifyListeners();
   }

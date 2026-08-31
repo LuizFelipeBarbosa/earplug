@@ -341,8 +341,14 @@ describe("bands:archive", () => {
     vi.setSystemTime(new Date("2026-08-28T12:00:00Z"));
     try {
       const t = convexTest(schema);
-      const asAdmin = t.withIdentity({ subject: "archive_admin", email: "archive@x.com" });
-      await asAdmin.mutation(api.users.ensureUser, {});
+      const asAdmin = t.withIdentity({
+        subject: "archive_admin",
+        email: "archive@x.com",
+      });
+      const { userId: adminId } = await asAdmin.mutation(
+        api.users.ensureUser,
+        {},
+      );
       const archived = await asAdmin.mutation(api.bands.createBand, {
         name: "Archive Me",
         genres: ["punk"],
@@ -389,62 +395,97 @@ describe("bands:archive", () => {
         role: "support",
         name: "Invited Band",
       });
-      const performerToken = performerProject.performers.find(
-        (performer) => performer.kind === "invited",
-      )!.inviteUrl!.split("/").pop()!;
+      const performerToken = performerProject.performers
+        .find((performer) => performer.kind === "invited")!
+        .inviteUrl!.split("/")
+        .pop()!;
       const bandInvite = await asAdmin.mutation(api.bandInvites.create, {
         bandId: archived.bandId,
       });
-      const { legacyFutureGigId, pastGigId, sharedGigId } = await t.run(async (ctx) => {
-        const common = {
-          venueId,
-          price: 0,
-          doorsTime: "8PM / 9PM",
-          flyKey: "paper",
-          genres: ["punk"],
-          desc: "",
-          ticketing: "rsvp" as const,
-          ageRequirement: "allAges" as const,
-          cap: "No cap",
-          goingCount: 0,
-          lifecycle: "published" as const,
-        };
-        const pastGigId = await ctx.db.insert("gigs", {
-          ...common,
-          title: "Past Owned",
-          slug: "past-owned",
-          startsAt: Date.now() - 86_400_000,
-          doorsAt: Date.now() - 86_400_000,
-          lineup: [archived.bandId],
-          createdByBand: archived.bandId,
-        });
-        const legacyFutureGigId = await ctx.db.insert("gigs", {
-          ...common,
-          title: "Legacy Future Owned",
-          slug: "legacy-future-owned",
-          startsAt: Date.now() + 2 * 86_400_000,
-          doorsAt: Date.now() + 2 * 86_400_000,
-          lineup: [archived.bandId],
-          createdByBand: archived.bandId,
-        });
-        await ctx.db.insert("gigBands", {
-          gigId: legacyFutureGigId,
+      const legacyInviteIds = await t.run(async (ctx) => [
+        await ctx.db.insert("bandInvites", {
           bandId: archived.bandId,
-          startsAt: Date.now() + 2 * 86_400_000,
-        });
-        const sharedGigId = await ctx.db.insert("gigs", {
-          ...common,
-          title: "Shared Future",
-          slug: "shared-future",
-          startsAt: Date.now() + 2 * 86_400_000,
-          doorsAt: Date.now() + 2 * 86_400_000,
-          lineup: [archived.bandId, other.bandId],
-          createdByBand: other.bandId,
-        });
-        return { legacyFutureGigId, pastGigId, sharedGigId };
-      });
+          token: "legacy-archive-invite-1",
+          createdBy: adminId,
+          expiresAt: Date.now() + 86_400_000,
+          revoked: false,
+          expired: false,
+        }),
+        await ctx.db.insert("bandInvites", {
+          bandId: archived.bandId,
+          token: "legacy-archive-invite-2",
+          createdBy: adminId,
+          expiresAt: Date.now() + 86_400_000,
+          revoked: false,
+          expired: false,
+        }),
+      ]);
+      const { legacyFutureGigId, pastGigId, sharedGigId } = await t.run(
+        async (ctx) => {
+          const common = {
+            venueId,
+            price: 0,
+            doorsTime: "8PM / 9PM",
+            flyKey: "paper",
+            genres: ["punk"],
+            desc: "",
+            ticketing: "rsvp" as const,
+            ageRequirement: "allAges" as const,
+            cap: "No cap",
+            goingCount: 0,
+            lifecycle: "published" as const,
+          };
+          const pastGigId = await ctx.db.insert("gigs", {
+            ...common,
+            title: "Past Owned",
+            slug: "past-owned",
+            startsAt: Date.now() - 86_400_000,
+            doorsAt: Date.now() - 86_400_000,
+            lineup: [archived.bandId],
+            createdByBand: archived.bandId,
+          });
+          const legacyFutureGigId = await ctx.db.insert("gigs", {
+            ...common,
+            title: "Legacy Future Owned",
+            slug: "legacy-future-owned",
+            startsAt: Date.now() + 2 * 86_400_000,
+            doorsAt: Date.now() + 2 * 86_400_000,
+            lineup: [archived.bandId],
+            createdByBand: archived.bandId,
+          });
+          await ctx.db.insert("gigBands", {
+            gigId: legacyFutureGigId,
+            bandId: archived.bandId,
+            startsAt: Date.now() + 2 * 86_400_000,
+          });
+          const sharedGigId = await ctx.db.insert("gigs", {
+            ...common,
+            title: "Shared Future",
+            slug: "shared-future",
+            startsAt: Date.now() + 2 * 86_400_000,
+            doorsAt: Date.now() + 2 * 86_400_000,
+            lineup: [archived.bandId, other.bandId],
+            createdByBand: other.bandId,
+          });
+          return { legacyFutureGigId, pastGigId, sharedGigId };
+        },
+      );
 
-      await asAdmin.mutation(api.bands.archive, { bandId: archived.bandId });
+      const firstArchive = await asAdmin.mutation(api.bands.archive, {
+        bandId: archived.bandId,
+      });
+      expect(firstArchive).toMatchObject({
+        bandId: archived.bandId,
+        alreadyArchived: false,
+      });
+      expect(
+        await asAdmin.query(api.bands.archiveStatus, {
+          bandId: archived.bandId,
+        }),
+      ).toEqual({
+        bandId: archived.bandId,
+        archivedAt: firstArchive.archivedAt,
+      });
       await t.finishAllScheduledFunctions(() => vi.runAllTimers());
 
       const state = await t.run(async (ctx) => ({
@@ -456,8 +497,13 @@ describe("bands:archive", () => {
         shared: await ctx.db.get(sharedGigId),
         performer: await ctx.db
           .query("gigProjectPerformers")
-          .withIndex("by_invite_token", (q) => q.eq("inviteToken", performerToken))
+          .withIndex("by_invite_token", (q) =>
+            q.eq("inviteToken", performerToken),
+          )
           .first(),
+        legacyInvites: await Promise.all(
+          legacyInviteIds.map((inviteId) => ctx.db.get(inviteId)),
+        ),
       }));
       expect(state.band?.archivedAt).toBeDefined();
       expect(state.future?.lifecycle).toBe("cancelled");
@@ -466,10 +512,19 @@ describe("bands:archive", () => {
       expect(state.past?.lifecycle).toBe("published");
       expect(state.shared?.lifecycle).toBe("published");
       expect(state.performer?.inviteRevoked).toBe(true);
-      expect(await t.query(api.bands.bySlug, { slug: archived.slug })).toBeNull();
-      expect(await t.query(api.gigs.resolvePublic, { ref: future.slug })).toBeNull();
-      expect(await t.query(api.gigs.resolvePublic, { ref: "past-owned" })).toBeNull();
-      expect((await t.query(api.gigs.resolvePublic, { ref: "shared-future" }))?._id).toBe(sharedGigId);
+      expect(state.legacyInvites.every((invite) => invite?.revoked)).toBe(true);
+      expect(
+        await t.query(api.bands.bySlug, { slug: archived.slug }),
+      ).toBeNull();
+      expect(
+        await t.query(api.gigs.resolvePublic, { ref: future.slug }),
+      ).toBeNull();
+      expect(
+        await t.query(api.gigs.resolvePublic, { ref: "past-owned" }),
+      ).toBeNull();
+      expect(
+        (await t.query(api.gigs.resolvePublic, { ref: "shared-future" }))?._id,
+      ).toBe(sharedGigId);
       expect(
         await t.query(api.bandInvites.resolve, {
           token: bandInvite.token,
@@ -477,11 +532,37 @@ describe("bands:archive", () => {
         }),
       ).toBeNull();
       expect(
-        await t.query(api.gigs.resolvePerformerInvite, { token: performerToken }),
+        await t.query(api.gigs.resolvePerformerInvite, {
+          token: performerToken,
+        }),
       ).toBeNull();
-      expect((await asAdmin.query(api.bands.myBands, {})).map((row) => row.band._id)).not.toContain(archived.bandId);
+      expect(
+        (await asAdmin.query(api.bands.myBands, {})).map((row) => row.band._id),
+      ).not.toContain(archived.bandId);
 
-      await asAdmin.mutation(api.bands.archive, { bandId: archived.bandId });
+      const lateLegacyInviteId = await t.run((ctx) =>
+        ctx.db.insert("bandInvites", {
+          bandId: archived.bandId,
+          token: "late-legacy-token",
+          expiresAt: Date.now() + 86_400_000,
+          createdBy: adminId,
+          revoked: false,
+          expired: false,
+        }),
+      );
+      expect(
+        await asAdmin.mutation(api.bands.archive, {
+          bandId: archived.bandId,
+        }),
+      ).toEqual({
+        bandId: archived.bandId,
+        archivedAt: firstArchive.archivedAt,
+        alreadyArchived: true,
+      });
+      await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+      expect(
+        (await t.run((ctx) => ctx.db.get(lateLegacyInviteId)))?.revoked,
+      ).toBe(true);
     } finally {
       vi.useRealTimers();
     }

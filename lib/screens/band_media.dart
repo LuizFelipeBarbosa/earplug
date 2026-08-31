@@ -11,6 +11,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/video_thumbnail.dart';
 
 const _adminGateMessage = 'Only band admins can post media.';
 
@@ -487,42 +488,44 @@ class _MediaRow extends StatelessWidget {
                   width: 52,
                   height: 48,
                   child: item.isVideo
-                      ? ColoredBox(
-                          color: Ep.surfaceRaised,
-                          child: Stack(
-                            children: [
-                              Center(
-                                child: PlayTriangle(
-                                  size: 9,
-                                  color: Ep.contentPrimary,
-                                ),
+                      ? Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            BandVideoThumbnail(
+                              media: item,
+                              fallback: const ColoredBox(
+                                color: Ep.surfaceRaised,
                               ),
-                              if (item.lenLabel.isNotEmpty)
-                                Positioned(
-                                  right: 3,
-                                  bottom: 3,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 3,
-                                      vertical: 1,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(
-                                        alpha: .68,
-                                      ),
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                    child: Text(
-                                      item.lenLabel,
-                                      style: epText(
-                                        size: 7.5,
-                                        weight: FontWeight.w900,
-                                      ),
+                            ),
+                            Center(
+                              child: PlayTriangle(
+                                size: 9,
+                                color: Ep.contentPrimary,
+                              ),
+                            ),
+                            if (item.lenLabel.isNotEmpty)
+                              Positioned(
+                                right: 3,
+                                bottom: 3,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 3,
+                                    vertical: 1,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: .68),
+                                    borderRadius: BorderRadius.circular(3),
+                                  ),
+                                  child: Text(
+                                    item.lenLabel,
+                                    style: epText(
+                                      size: 7.5,
+                                      weight: FontWeight.w900,
                                     ),
                                   ),
                                 ),
-                            ],
-                          ),
+                              ),
+                          ],
                         )
                       : _PhotoSurface(item: item),
                 ),

@@ -71,7 +71,11 @@ void main() {
 
       final harness = _makeController(
         repository: repository,
-        uploader: MediaUploadService(repository: repository, post: poster),
+        uploader: MediaUploadService(
+          repository: repository,
+          post: poster,
+          thumbnailGenerator: FakeVideoThumbnailGenerator(),
+        ),
       );
       const bandId = 'retry-band';
       final fixture = videoFixture();
@@ -88,7 +92,7 @@ void main() {
       shouldFail = false;
       await harness.controller.retryUpload(failed.id);
 
-      expect(postCalls, 2);
+      expect(postCalls, 3);
       expect(harness.controller.uploadsFor(bandId), isEmpty);
       expect(harness.controller.videosFor(bandId).map((media) => media.title), [
         'RIPTIDE LIVE',
@@ -195,6 +199,7 @@ void main() {
         repository: repository,
         uploader: MediaUploadService(
           repository: repository,
+          thumbnailGenerator: FakeVideoThumbnailGenerator(),
           post: (url, bytes, contentType) async {
             throw Exception('leave this upload failed');
           },
@@ -240,10 +245,16 @@ _makeController({EarplugRepository? repository, MediaUploadService? uploader}) {
       repository ?? DemoRepository(auth: FakeAuthService());
   final picker = FakeMediaPicker();
   final said = <String>[];
+  final resolvedUploader =
+      uploader ??
+      MediaUploadService(
+        repository: resolvedRepository,
+        thumbnailGenerator: FakeVideoThumbnailGenerator(),
+      );
   final controller = BandMediaController(
     repository: resolvedRepository,
     picker: picker,
-    uploader: uploader,
+    uploader: resolvedUploader,
     say: said.add,
   );
   addTearDown(controller.dispose);

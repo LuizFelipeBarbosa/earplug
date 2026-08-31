@@ -101,6 +101,7 @@ void main() {
       repository: repository,
       uploader: MediaUploadService(
         repository: repository,
+        thumbnailGenerator: FakeVideoThumbnailGenerator(),
         post: (url, bytes, contentType) async {
           throw Exception('simulated upload failure');
         },
@@ -244,6 +245,7 @@ class _GatedSaveDemoRepository extends DemoRepository {
     required String bandId,
     required MediaKind kind,
     required String storageId,
+    String? thumbnailStorageId,
     required String title,
     String? caption,
     int? lengthSec,
@@ -253,6 +255,7 @@ class _GatedSaveDemoRepository extends DemoRepository {
       bandId: bandId,
       kind: kind,
       storageId: storageId,
+      thumbnailStorageId: thumbnailStorageId,
       title: title,
       caption: caption,
       lengthSec: lengthSec,
