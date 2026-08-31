@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -322,9 +323,24 @@ class _BandLinks extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final links = [
-      (label: 'INSTAGRAM', value: app.linkIgFor(bandId), instagram: true),
-      (label: 'BANDCAMP', value: app.linkBcFor(bandId), instagram: false),
-      (label: 'YOUTUBE', value: app.linkYtFor(bandId), instagram: false),
+      (
+        name: 'Instagram',
+        icon: FontAwesomeIcons.instagram,
+        value: app.linkIgFor(bandId),
+        instagram: true,
+      ),
+      (
+        name: 'Bandcamp',
+        icon: FontAwesomeIcons.bandcamp,
+        value: app.linkBcFor(bandId),
+        instagram: false,
+      ),
+      (
+        name: 'YouTube',
+        icon: FontAwesomeIcons.youtube,
+        value: app.linkYtFor(bandId),
+        instagram: false,
+      ),
     ].where((link) => link.value.trim().isNotEmpty).toList();
     if (links.isEmpty) return const SizedBox.shrink();
 
@@ -335,12 +351,57 @@ class _BandLinks extends StatelessWidget {
         runSpacing: 7,
         children: [
           for (final link in links)
-            OutlinedButton(
+            _BandSocialButton(
+              key: ValueKey('band-social-${link.name.toLowerCase()}'),
+              name: link.name,
+              icon: link.icon,
               onPressed: () =>
                   _openBandLink(context, link.value, instagram: link.instagram),
-              child: Text('${link.label} ↗'),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _BandSocialButton extends StatelessWidget {
+  const _BandSocialButton({
+    super.key,
+    required this.name,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String name;
+  final FaIconData icon;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tooltip = 'Open $name';
+    return Semantics(
+      button: true,
+      label: tooltip,
+      onTap: onPressed,
+      child: ExcludeSemantics(
+        child: IconButton(
+          tooltip: tooltip,
+          onPressed: onPressed,
+          style: ButtonStyle(
+            fixedSize: const WidgetStatePropertyAll(Size.square(48)),
+            padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+            foregroundColor: const WidgetStatePropertyAll(Ep.contentPrimary),
+            side: WidgetStateProperty.resolveWith((states) {
+              final focused = states.contains(WidgetState.focused);
+              return BorderSide(
+                color: focused ? Ep.accent : Ep.border,
+                width: focused ? 2 : 1,
+              );
+            }),
+            shape: const WidgetStatePropertyAll(CircleBorder()),
+          ),
+          icon: FaIcon(icon, size: 22),
+        ),
       ),
     );
   }

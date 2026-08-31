@@ -3,6 +3,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'support/harness.dart';
 
@@ -93,6 +94,7 @@ void main() {
   });
 
   testWidgets('profile renders every configured band link', (tester) async {
+    final semantics = tester.ensureSemantics();
     final harness = await _pumpProfile(tester);
     final band = harness.app.band('b1')!;
     await harness.app.saveBandProfile(
@@ -111,13 +113,84 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.text('YOUTUBE ↗'),
+      find.byKey(const ValueKey('band-social-youtube')),
       180,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('INSTAGRAM ↗'), findsOne);
-    expect(find.text('BANDCAMP ↗'), findsOne);
-    expect(find.text('YOUTUBE ↗'), findsOne);
+    final links = [
+      (
+        key: const ValueKey('band-social-instagram'),
+        label: 'Open Instagram',
+        icon: FontAwesomeIcons.instagram,
+      ),
+      (
+        key: const ValueKey('band-social-bandcamp'),
+        label: 'Open Bandcamp',
+        icon: FontAwesomeIcons.bandcamp,
+      ),
+      (
+        key: const ValueKey('band-social-youtube'),
+        label: 'Open YouTube',
+        icon: FontAwesomeIcons.youtube,
+      ),
+    ];
+    for (final link in links) {
+      final button = find.byKey(link.key);
+      expect(button, findsOneWidget);
+      expect(tester.getSize(button), const Size.square(48));
+      expect(find.byTooltip(link.label), findsOneWidget);
+      expect(find.bySemanticsLabel(link.label), findsOneWidget);
+      expect(find.byIcon(link.icon.data), findsOneWidget);
+    }
+    expect(find.text('INSTAGRAM ↗'), findsNothing);
+    expect(find.text('BANDCAMP ↗'), findsNothing);
+    expect(find.text('YOUTUBE ↗'), findsNothing);
+    semantics.dispose();
+  });
+
+  testWidgets('social icons wrap at narrow width and increased text scale', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.4;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    final harness = await _pumpProfile(tester);
+    tester.view.physicalSize = const Size(170, 1000);
+    tester.view.devicePixelRatio = 1;
+    await tester.pump();
+    final band = harness.app.band('b1')!;
+    await harness.app.saveBandProfile(
+      BandProfileUpdate(
+        bandId: band.id,
+        name: band.name,
+        genres: band.genres,
+        area: band.area,
+        bio: band.bio,
+        linkIg: '@foghorn.diet',
+        linkBc: 'foghorn.bandcamp.com',
+        linkYt: 'youtube.com/@foghorn',
+        credits: band.credits ?? '',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final instagram = find.byKey(const ValueKey('band-social-instagram'));
+    final bandcamp = find.byKey(const ValueKey('band-social-bandcamp'));
+    final youtube = find.byKey(const ValueKey('band-social-youtube'));
+    await tester.scrollUntilVisible(
+      youtube,
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(tester.getSize(instagram), const Size.square(48));
+    expect(tester.getSize(bandcamp), const Size.square(48));
+    expect(tester.getSize(youtube), const Size.square(48));
+    expect(tester.getTopLeft(instagram).dy, tester.getTopLeft(bandcamp).dy);
+    expect(
+      tester.getTopLeft(youtube).dy,
+      greaterThan(tester.getTopLeft(instagram).dy),
+    );
   });
 }
 
