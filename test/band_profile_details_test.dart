@@ -33,9 +33,9 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
-    expect(find.text('INSTAGRAM ↗'), findsOne);
-    expect(find.text('BANDCAMP ↗'), findsOne);
-    expect(find.text('YOUTUBE ↗'), findsOne);
+    expect(find.byKey(const ValueKey('band-social-instagram')), findsOneWidget);
+    expect(find.byKey(const ValueKey('band-social-bandcamp')), findsOneWidget);
+    expect(find.byKey(const ValueKey('band-social-youtube')), findsOneWidget);
     await tester.scrollUntilVisible(
       find.text('CREDITS'),
       250,
@@ -68,11 +68,35 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
-    expect(find.text('INSTAGRAM ↗'), findsNothing);
-    expect(find.text('BANDCAMP ↗'), findsNothing);
-    expect(find.text('YOUTUBE ↗'), findsNothing);
+    expect(find.byKey(const ValueKey('band-social-instagram')), findsNothing);
+    expect(find.byKey(const ValueKey('band-social-bandcamp')), findsNothing);
+    expect(find.byKey(const ValueKey('band-social-youtube')), findsNothing);
     expect(find.text('CREDITS'), findsNothing);
     expect(find.text('BAND MEMBERS'), findsNothing);
+  });
+
+  testWidgets('public profile renders only configured social icons', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _ProfileRepository(
+        auth: auth,
+        profileBand: DemoData.bands['b1']!.copyWith(
+          linkIg: '@foghorn.diet',
+          linkBc: '',
+          linkYt: '',
+        ),
+        details: BandProfileDetails.empty,
+      ),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+
+    expect(find.byKey(const ValueKey('band-social-instagram')), findsOneWidget);
+    expect(find.byKey(const ValueKey('band-social-bandcamp')), findsNothing);
+    expect(find.byKey(const ValueKey('band-social-youtube')), findsNothing);
   });
 
   testWidgets('admin preview has edit and return management controls', (
