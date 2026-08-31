@@ -197,18 +197,9 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              Semantics(
-                button: true,
-                label: 'Play or pause video',
-                onTap: _togglePlayback,
-                child: GestureDetector(
-                  key: const Key('video-playback-toggle'),
-                  behavior: HitTestBehavior.opaque,
-                  onTap: _controller == null ? null : _togglePlayback,
-                  child: _videoSurface(),
-                ),
-              ),
+              _videoSurface(),
               if (_controller != null) ...[
+                _playbackTapTarget(),
                 _playerOverlays(),
                 _persistentProgress(),
               ],
@@ -216,6 +207,20 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _playbackTapTarget() {
+    return Semantics(
+      button: true,
+      label: 'Play or pause video',
+      onTap: _togglePlayback,
+      child: GestureDetector(
+        key: const Key('video-playback-toggle'),
+        behavior: HitTestBehavior.opaque,
+        onTap: _togglePlayback,
+        child: const SizedBox.expand(),
       ),
     );
   }
