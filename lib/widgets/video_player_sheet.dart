@@ -21,10 +21,13 @@ Size coverVideoSize({required Size viewport, required Size video}) {
 }
 
 @visibleForTesting
-double playerProgressWidth(double viewportWidth) => math.min(
-  math.max(0, viewportWidth - 32),
-  math.min(220, math.max(120, viewportWidth * .4)),
-);
+double videoProgressFraction({
+  required Duration position,
+  required Duration duration,
+}) {
+  if (duration <= Duration.zero) return 0;
+  return (position.inMilliseconds / duration.inMilliseconds).clamp(0, 1);
+}
 
 Future<void> showBandVideo(
   BuildContext context, {
@@ -84,7 +87,7 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
         _scheduleControlsHide();
       } catch (_) {
         // Some browsers still reject audible autoplay after a navigation. The
-        // visible Play control is the recovery path, so the clip remains usable.
+        // tap-to-play video surface is the recovery path.
       }
     } catch (_) {
       controller?.removeListener(_handlePlaybackState);
@@ -148,17 +151,6 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
     _showControls();
   }
 
-  void _toggleControls() {
-    final controller = _controller;
-    if (controller == null) return;
-    if (_controlsVisible && controller.value.isPlaying) {
-      _hideTimer?.cancel();
-      setState(() => _controlsVisible = false);
-    } else {
-      _showControls();
-    }
-  }
-
   void _showControls() {
     _hideTimer?.cancel();
     if (!_controlsVisible && mounted) setState(() => _controlsVisible = true);
@@ -202,17 +194,26 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
         body: Focus(
           autofocus: true,
           onKeyEvent: _handleKey,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _toggleControls,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                _videoSurface(),
-                if (_controller != null) _playerOverlays(),
-                if (_controller == null) _nonPlayingOverlay(),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Semantics(
+                button: true,
+                label: 'Play or pause video',
+                onTap: _togglePlayback,
+                child: GestureDetector(
+                  key: const Key('video-playback-toggle'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _controller == null ? null : _togglePlayback,
+                  child: _videoSurface(),
+                ),
+              ),
+              if (_controller != null) ...[
+                _playerOverlays(),
+                _persistentProgress(),
               ],
-            ),
+              if (_controller == null) _nonPlayingOverlay(),
+            ],
           ),
         ),
       ),
@@ -243,28 +244,17 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
   }
 
   Widget _playerOverlays() {
-    final controller = _controller!;
-    return ValueListenableBuilder<VideoPlayerValue>(
-      valueListenable: controller,
-      builder: (context, value, _) {
-        final ended = _hasEnded(value);
-        return AnimatedOpacity(
-          key: const Key('video-controls-overlay'),
-          opacity: _controlsVisible ? 1 : 0,
-          duration: const Duration(milliseconds: 180),
-          child: IgnorePointer(
-            ignoring: !_controlsVisible,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                _topOverlay(),
-                _centerControls(value, ended),
-                _bottomMetadata(),
-              ],
-            ),
-          ),
-        );
-      },
+    return AnimatedOpacity(
+      key: const Key('video-controls-overlay'),
+      opacity: _controlsVisible ? 1 : 0,
+      duration: const Duration(milliseconds: 180),
+      child: IgnorePointer(
+        ignoring: !_controlsVisible,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [_topOverlay(), _bottomMetadata()],
+        ),
+      ),
     );
   }
 
@@ -313,64 +303,58 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
     );
   }
 
-  Widget _centerControls(VideoPlayerValue value, bool ended) {
+  Widget _persistentProgress() {
     final controller = _controller!;
-    final durationMs = value.duration.inMilliseconds;
-    final position = durationMs == 0
-        ? 0.0
-        : value.position.inMilliseconds.clamp(0, durationMs).toDouble();
-    final label = ended
-        ? 'Replay'
-        : value.isPlaying
-        ? 'Pause'
-        : 'Play';
-    final icon = ended
-        ? Icons.replay
-        : value.isPlaying
-        ? Icons.pause
-        : Icons.play_arrow;
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final durationMs = value.duration.inMilliseconds;
+        final maxProgress = math.max(1.0, durationMs.toDouble());
+        final position = value.position.inMilliseconds
+            .clamp(0, durationMs)
+            .toDouble();
+        final safeBottom = MediaQuery.paddingOf(context).bottom;
+        final fraction = videoProgressFraction(
+          position: value.position,
+          duration: value.duration,
+        );
 
-    return Center(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final maxProgress = math.max(1.0, durationMs.toDouble());
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Semantics(
-                button: true,
-                label: label,
-                child: IconButton.filled(
-                  key: const Key('center-play-pause'),
-                  tooltip: label,
-                  onPressed: _togglePlayback,
-                  iconSize: 34,
-                  padding: const EdgeInsets.all(15),
-                  style: IconButton.styleFrom(
-                    minimumSize: const Size.square(64),
-                    backgroundColor: Colors.black.withValues(alpha: .62),
-                    foregroundColor: Colors.white,
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: SizedBox(
+            key: const Key('video-progress-touch-target'),
+            width: double.infinity,
+            height: 44 + safeBottom,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Positioned(
+                  key: const Key('video-progress-line'),
+                  left: 0,
+                  right: 0,
+                  bottom: safeBottom,
+                  height: 2,
+                  child: ColoredBox(
+                    color: Colors.white38,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: fraction,
+                        heightFactor: 1,
+                        child: const ColoredBox(color: Ep.brand),
+                      ),
+                    ),
                   ),
-                  icon: Icon(icon),
                 ),
-              ),
-              const SizedBox(height: 2),
-              SizedBox(
-                key: const Key('video-progress-touch-target'),
-                width: playerProgressWidth(constraints.maxWidth),
-                height: 44,
-                child: SliderTheme(
+                SliderTheme(
                   data: SliderTheme.of(context).copyWith(
-                    trackHeight: 2,
-                    activeTrackColor: Ep.brand,
-                    inactiveTrackColor: Colors.white38,
-                    thumbColor: Colors.white,
-                    thumbShape: const RoundSliderThumbShape(
-                      enabledThumbRadius: 5,
-                    ),
-                    overlayShape: const RoundSliderOverlayShape(
-                      overlayRadius: 16,
-                    ),
+                    trackHeight: 0,
+                    activeTrackColor: Colors.transparent,
+                    inactiveTrackColor: Colors.transparent,
+                    disabledActiveTrackColor: Colors.transparent,
+                    disabledInactiveTrackColor: Colors.transparent,
+                    thumbShape: SliderComponentShape.noThumb,
+                    overlayShape: SliderComponentShape.noOverlay,
                   ),
                   child: Semantics(
                     label: 'Video progress',
@@ -380,35 +364,42 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
                       min: 0,
                       max: maxProgress,
                       value: position.clamp(0.0, maxProgress),
-                      onChangeStart: (_) {
-                        _hideTimer?.cancel();
-                        _wasPlayingBeforeSeek = value.isPlaying;
-                        if (_wasPlayingBeforeSeek) controller.pause();
-                      },
-                      onChanged: (milliseconds) {
-                        controller.seekTo(
-                          Duration(milliseconds: milliseconds.round()),
-                        );
-                      },
-                      onChangeEnd: (milliseconds) async {
-                        await controller.seekTo(
-                          Duration(milliseconds: milliseconds.round()),
-                        );
-                        if (_wasPlayingBeforeSeek) {
-                          await controller.play();
-                          _scheduleControlsHide();
-                        } else {
-                          _showControls();
-                        }
-                      },
+                      onChangeStart: durationMs == 0
+                          ? null
+                          : (_) {
+                              _hideTimer?.cancel();
+                              _wasPlayingBeforeSeek =
+                                  controller.value.isPlaying;
+                              if (_wasPlayingBeforeSeek) controller.pause();
+                            },
+                      onChanged: durationMs == 0
+                          ? null
+                          : (milliseconds) {
+                              controller.seekTo(
+                                Duration(milliseconds: milliseconds.round()),
+                              );
+                            },
+                      onChangeEnd: durationMs == 0
+                          ? null
+                          : (milliseconds) async {
+                              await controller.seekTo(
+                                Duration(milliseconds: milliseconds.round()),
+                              );
+                              if (_wasPlayingBeforeSeek) {
+                                await controller.play();
+                                _scheduleControlsHide();
+                              } else {
+                                _showControls();
+                              }
+                            },
                     ),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
-      ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

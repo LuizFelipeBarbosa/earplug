@@ -16,9 +16,31 @@ void main() {
     }
   });
 
-  test('progress control is 40 percent with 120 to 220 pixel bounds', () {
-    expect(playerProgressWidth(200), 120);
-    expect(playerProgressWidth(400), 160);
-    expect(playerProgressWidth(800), 220);
+  test('progress fraction is bounded to the video duration', () {
+    expect(
+      videoProgressFraction(
+        position: const Duration(seconds: 15),
+        duration: const Duration(seconds: 30),
+      ),
+      .5,
+    );
+    expect(
+      videoProgressFraction(
+        position: const Duration(seconds: 40),
+        duration: const Duration(seconds: 30),
+      ),
+      1,
+    );
+    expect(
+      videoProgressFraction(
+        position: const Duration(seconds: -5),
+        duration: const Duration(seconds: 30),
+      ),
+      0,
+    );
+    expect(
+      videoProgressFraction(position: Duration.zero, duration: Duration.zero),
+      0,
+    );
   });
 }
