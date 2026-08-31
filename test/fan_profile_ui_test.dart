@@ -1,6 +1,7 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/edit_profile.dart';
 import 'package:earplug/screens/my_gigs.dart';
@@ -97,6 +98,56 @@ void main() {
       );
       expect(find.text('FIND A SHOW'), findsNWidgets(3));
       expect(find.text('EXPLORE BANDS'), findsNWidgets(2));
+    },
+  );
+
+  testWidgets(
+    'revisiting Explore and Profile never promotes a past RSVP to upcoming',
+    (tester) async {
+      final now = DateTime(2026, 8, 31, 16);
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = _MixedDateRsvpRepository(auth: auth, now: now);
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        now: () => now,
+        home: const RootShell(),
+      );
+
+      tester.view.physicalSize = const Size(402, 1400);
+      for (var visit = 0; visit < 4; visit++) {
+        await tester.tap(find.text('EXPLORE'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('PROFILE'));
+        await tester.pumpAndSettle();
+      }
+
+      expect(harness.app.upcomingRsvpGigs.map((gig) => gig.id), [
+        repository.futureGig.id,
+      ]);
+      expect(
+        find.byKey(ValueKey('fan-event-${repository.futureGig.id}')),
+        findsOne,
+      );
+      expect(
+        find.byKey(ValueKey('fan-event-${repository.pastGig.id}')),
+        findsNothing,
+      );
+      expect(repository.pastGigPublicReads, 0);
+
+      // A past gig can still be cached legitimately after opening a history
+      // link. Its presence in the cache must not change its classification.
+      expect(harness.app.gig(repository.pastGig.id), isNull);
+      await tester.pumpAndSettle();
+      harness.app.resetTo(Screen.myGigs);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(ValueKey('fan-event-${repository.pastGig.id}')),
+        findsNothing,
+      );
+      expect(repository.pastGigPublicReads, 1);
     },
   );
 
@@ -338,6 +389,66 @@ class _FailingProfileRepository extends DemoRepository {
     throw StateError('profile update failed');
   }
 }
+
+class _MixedDateRsvpRepository extends DemoRepository {
+  _MixedDateRsvpRepository({required super.auth, required DateTime now})
+    : pastGig = _rsvpGig(
+        id: 'past-rsvp',
+        title: 'Past RSVP',
+        startsAt: now.subtract(const Duration(days: 30)),
+      ),
+      futureGig = _rsvpGig(
+        id: 'future-rsvp',
+        title: 'Future RSVP',
+        startsAt: now.add(const Duration(days: 30)),
+      );
+
+  final Gig pastGig;
+  final Gig futureGig;
+  int pastGigPublicReads = 0;
+
+  @override
+  Stream<Interactions> myInteractions() => Stream.value(
+    Interactions(
+      rsvpGigIds: {pastGig.id, futureGig.id},
+      followBandIds: const {},
+      savedGigIds: const {},
+      gigs: [futureGig],
+      attendedCount: 1,
+    ),
+  );
+
+  @override
+  Stream<Gig?> publicGig(String ref) {
+    if (ref == pastGig.id) {
+      pastGigPublicReads++;
+      return Stream.value(pastGig);
+    }
+    return super.publicGig(ref);
+  }
+}
+
+Gig _rsvpGig({
+  required String id,
+  required String title,
+  required DateTime startsAt,
+}) => Gig(
+  id: id,
+  title: title,
+  venueId: 'v1',
+  price: 0,
+  startsAt: startsAt,
+  dateShort: Gig.dateShortFor(startsAt.millisecondsSinceEpoch),
+  dateLine: Gig.dateLineFor(startsAt.millisecondsSinceEpoch, '7PM / 8PM'),
+  time: '7PM / 8PM',
+  when: Gig.whenFor(startsAt.millisecondsSinceEpoch),
+  flyKey: 'paper',
+  lineup: const [],
+  going: 1,
+  genres: const ['indie'],
+  desc: '',
+  tix: Ticketing.rsvp,
+);
 
 class _LegacyProfileRepository extends DemoRepository {
   _LegacyProfileRepository({required super.auth});

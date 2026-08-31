@@ -1977,6 +1977,16 @@ class AppState extends ChangeNotifier {
 
   List<Gig> get allGigs => _allGigs;
 
+  List<Gig> get upcomingRsvpGigs {
+    final now = _now();
+    final gigs = [
+      for (final id in rsvps)
+        if (_cachedGig(id) case final Gig gig when !gig.startsAt.isBefore(now))
+          gig,
+    ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    return List<Gig>.unmodifiable(gigs);
+  }
+
   List<Gig> get followedBandShows {
     if (profile?.followedBandUpdatesEnabled == false || follows.isEmpty) {
       return const [];
@@ -1995,10 +2005,9 @@ class AppState extends ChangeNotifier {
     return List<Gig>.unmodifiable(shows);
   }
 
-  Gig? gig(String id) {
+  Gig? _cachedGig(String id) {
     final direct = _publicGigs[id];
     if (direct != null) return direct;
-    if (_missingPublicGigs.contains(id)) return null;
     for (final g in allGigs) {
       if (g.id == id || g.slug == id) return g;
     }
@@ -2007,14 +2016,20 @@ class AppState extends ChangeNotifier {
         if (gig.id == id) return gig;
       }
     }
-    final cached = _interactionGigs[id] ?? _relationshipGigs[id];
-    if (cached == null &&
-        !_missingPublicGigs.contains(id) &&
-        !_publicGigErrors.containsKey(id) &&
+    return _interactionGigs[id] ?? _relationshipGigs[id];
+  }
+
+  Gig? gig(String id) {
+    final direct = _publicGigs[id];
+    if (direct != null) return direct;
+    if (_missingPublicGigs.contains(id)) return null;
+    final cached = _cachedGig(id);
+    if (cached != null) return cached;
+    if (!_publicGigErrors.containsKey(id) &&
         (_subscribedPublicGigId != id || !_publicGigLoading)) {
       unawaited(_loadPublicGig(id));
     }
-    return cached;
+    return null;
   }
 
   bool publicGigLoading(String id) =>
