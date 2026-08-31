@@ -23,10 +23,7 @@ class MyGigsScreen extends StatelessWidget {
         ? 'YOUR PROFILE'
         : profileName.toUpperCase();
     final fanSince = profile == null ? null : monthLabel(profile.createdAt);
-    final upcoming = [
-      for (final id in app.rsvps)
-        if (app.gig(id) case final Gig g) g,
-    ];
+    final upcoming = app.upcomingRsvpGigs;
     final savedGigs = [
       for (final id in app.saved)
         if (app.gig(id) case final Gig g) g,
