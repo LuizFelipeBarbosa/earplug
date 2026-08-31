@@ -656,6 +656,7 @@ class _FailingRsvpRepository implements EarplugRepository {
     required String bandId,
     required MediaKind kind,
     required String storageId,
+    String? thumbnailStorageId,
     required String title,
     String? caption,
     int? lengthSec,
@@ -779,7 +780,16 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<void> deleteCurrentUser() async {}
 
   @override
-  Future<void> archiveBand(String bandId) async {}
+  Future<BandArchiveResult> archiveBand(String bandId) async =>
+      BandArchiveResult(
+        bandId: bandId,
+        archivedAt: DateTime.now(),
+        alreadyArchived: false,
+      );
+
+  @override
+  Future<BandArchiveStatus> bandArchiveStatus(String bandId) async =>
+      BandArchiveStatus(bandId: bandId, archivedAt: DateTime.now());
 
   @override
   Future<({Band band, String slug})> createBand({

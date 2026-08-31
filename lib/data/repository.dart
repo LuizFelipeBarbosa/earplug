@@ -455,6 +455,7 @@ abstract class EarplugRepository {
     required String bandId,
     required MediaKind kind,
     required String storageId,
+    String? thumbnailStorageId,
     required String title,
     String? caption,
     int? lengthSec,
@@ -524,7 +525,8 @@ abstract class EarplugRepository {
     String? credits,
   });
   Future<void> updateBandProfile(BandProfileUpdate update);
-  Future<void> archiveBand(String bandId);
+  Future<BandArchiveResult> archiveBand(String bandId);
+  Future<BandArchiveStatus> bandArchiveStatus(String bandId);
   Future<BandSetupStatus> bandSetupStatus(String bandId);
   Future<BandDiscoveryReadiness> bandDiscoveryReadiness(
     String bandId, {

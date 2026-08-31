@@ -57,6 +57,12 @@ void main() {
         80,
         scrollable: find.byType(Scrollable).last,
       );
+      final calendar = find.byType(Scrollable).last;
+      final cellCenter = tester.getCenter(tomorrowCell);
+      if (cellCenter.dy > 580) {
+        await tester.drag(calendar, Offset(0, 520 - cellCenter.dy));
+        await tester.pumpAndSettle();
+      }
       await tester.tap(tomorrowCell);
       await tester.pump();
       expect(app.gfDate, tomorrow);

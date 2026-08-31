@@ -20,8 +20,21 @@ export const requiredClientFunctions = Object.freeze({
   "venues.js:create": "Mutation",
   "bands.js:bySlug": "Query",
   "bands.js:archive": "Mutation",
+  "bands.js:archiveStatus": "Query",
+  "media.js:addMedia": "Mutation",
+  "media.js:forBand": "Query",
   "interactions.js:ticketForGig": "Mutation",
 });
+
+export const requiredClientFields = Object.freeze([
+  ["media.js:addMedia", "args", "thumbnailStorageId", true],
+  ["media.js:forBand", "arrayReturn", "thumbnailUrl", false],
+  ["bands.js:archive", "return", "bandId", false],
+  ["bands.js:archive", "return", "archivedAt", false],
+  ["bands.js:archive", "return", "alreadyArchived", false],
+  ["bands.js:archiveStatus", "return", "bandId", false],
+  ["bands.js:archiveStatus", "return", "archivedAt", false],
+]);
 
 export function deploymentNameFromUrl(value) {
   const url = new URL(value);
@@ -47,19 +60,42 @@ export function contractProblems(expectedUrl, specification) {
   }
 
   const functions = new Map(
-    (specification.functions ?? []).map((entry) => [
-      entry.identifier,
-      entry.functionType,
-    ]),
+    (specification.functions ?? []).map((entry) => [entry.identifier, entry]),
   );
   for (const [identifier, expectedType] of Object.entries(
     requiredClientFunctions,
   )) {
-    const actualType = functions.get(identifier);
-    if (actualType === undefined) {
+    const entry = functions.get(identifier);
+    if (entry === undefined) {
       problems.push(`missing ${identifier}`);
-    } else if (actualType !== expectedType) {
-      problems.push(`${identifier} is ${actualType}, expected ${expectedType}`);
+    } else if (entry.functionType !== expectedType) {
+      problems.push(
+        `${identifier} is ${entry.functionType}, expected ${expectedType}`,
+      );
+    }
+  }
+  for (const [
+    identifier,
+    surface,
+    fieldName,
+    expectedOptional,
+  ] of requiredClientFields) {
+    const entry = functions.get(identifier);
+    if (entry === undefined) continue;
+    const fields =
+      surface === "args"
+        ? entry.args?.value
+        : surface === "arrayReturn"
+          ? entry.returns?.value?.value
+          : entry.returns?.value;
+    const field = fields?.[fieldName];
+    if (field === undefined) {
+      problems.push(`${identifier} is missing ${surface}.${fieldName}`);
+    } else if (field.optional !== expectedOptional) {
+      problems.push(
+        `${identifier} ${surface}.${fieldName} optional=${field.optional}, ` +
+          `expected ${expectedOptional}`,
+      );
     }
   }
   return problems;

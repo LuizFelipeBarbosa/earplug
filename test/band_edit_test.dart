@@ -336,6 +336,38 @@ void main() {
       expect(harness.app.myBands, isNot(contains('b1')));
     },
   );
+
+  testWidgets('archive timeout succeeds when status proves it committed', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _CommittedTimeoutArchiveRepository(auth: auth),
+      home: const Scaffold(body: BandEditScreen()),
+    );
+
+    await expectLater(harness.app.archiveCurrentBand(), completes);
+    expect(harness.app.myBands, isNot(contains('b1')));
+    expect(harness.app.current.screen, Screen.myGigs);
+  });
+
+  testWidgets('unverified archive keeps the band available for retry', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _UnverifiedArchiveRepository(auth: auth),
+      home: const Scaffold(body: BandEditScreen()),
+    );
+
+    await expectLater(harness.app.archiveCurrentBand(), throwsStateError);
+    expect(harness.app.myBands, contains('b1'));
+    expect(harness.app.bandId, 'b1');
+  });
 }
 
 Future<void> _scrollTo(WidgetTester tester, String text) async {
@@ -420,4 +452,26 @@ class _InviteAuditRepository extends DemoRepository {
     inviteRevocations++;
     return super.revokeBandInvite(bandId);
   }
+}
+
+class _CommittedTimeoutArchiveRepository extends DemoRepository {
+  _CommittedTimeoutArchiveRepository({required super.auth});
+
+  @override
+  Future<BandArchiveResult> archiveBand(String bandId) async {
+    await super.archiveBand(bandId);
+    throw TimeoutException('response lost after commit');
+  }
+}
+
+class _UnverifiedArchiveRepository extends DemoRepository {
+  _UnverifiedArchiveRepository({required super.auth});
+
+  @override
+  Future<BandArchiveResult> archiveBand(String bandId) async =>
+      throw StateError('archive did not commit');
+
+  @override
+  Future<BandArchiveStatus> bandArchiveStatus(String bandId) async =>
+      BandArchiveStatus(bandId: bandId, archivedAt: null);
 }

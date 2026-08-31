@@ -326,6 +326,10 @@ export default defineSchema({
     bandId: v.id("bands"),
     kind: v.union(v.literal("video"), v.literal("photo")),
     storageId: v.id("_storage"),
+    // Generated poster for video rows. Optional during the additive rollout
+    // and for legacy clips, which the client can preview from their first
+    // decoded frame until they are replaced.
+    thumbnailStorageId: v.optional(v.id("_storage")),
     contentType: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
     title: v.string(),

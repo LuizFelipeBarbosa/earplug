@@ -4,7 +4,9 @@ import { api, internal } from "./_generated/api";
 import {
   MAX_MEDIA_BYTES,
   MAX_MEDIA_PER_BAND,
+  MAX_VIDEO_THUMBNAIL_BYTES,
   assertUploadAcceptable,
+  assertVideoThumbnailAcceptable,
 } from "./lib/helpers";
 import schema from "./schema";
 
@@ -72,6 +74,92 @@ describe("media mutations", () => {
     expect(docs.photo1).toMatchObject({ order: 2, pinned: false });
     expect(docs.photo2).toMatchObject({ order: 3, pinned: false });
     expect(docs.photo1?.views).toBeUndefined();
+  });
+
+  test("stores and resolves a generated video thumbnail", async () => {
+    const { t, asAdmin, bandId } = await setupBand();
+    const [videoStorageId, thumbnailStorageId] = await t.run(async (ctx) => [
+      await ctx.storage.store(
+        new Blob([new Uint8Array([1])], { type: "video/mp4" }),
+      ),
+      await ctx.storage.store(
+        new Blob([new Uint8Array([2])], { type: "image/jpeg" }),
+      ),
+    ]);
+
+    const { mediaId } = await asAdmin.mutation(api.media.addMedia, {
+      bandId,
+      kind: "video",
+      storageId: videoStorageId,
+      thumbnailStorageId,
+      title: "Poster clip",
+    });
+
+    expect(
+      await t.run(
+        async (ctx) => (await ctx.db.get(mediaId))?.thumbnailStorageId,
+      ),
+    ).toBe(thumbnailStorageId);
+    expect(await t.query(api.media.forBand, { bandId })).toMatchObject([
+      {
+        _id: mediaId,
+        url: expect.any(String),
+        thumbnailUrl: expect.any(String),
+      },
+    ]);
+  });
+
+  test("validates thumbnail ownership, identity, size, and content type", async () => {
+    const { t, asAdmin, bandId } = await setupBand();
+    const [videoStorageId, thumbnailStorageId, oversizedId] = await t.run(
+      async (ctx) => [
+        await ctx.storage.store(
+          new Blob([new Uint8Array([1])], { type: "video/mp4" }),
+        ),
+        await ctx.storage.store(
+          new Blob([new Uint8Array([2])], { type: "image/jpeg" }),
+        ),
+        await ctx.storage.store(
+          new Blob([new Uint8Array(MAX_VIDEO_THUMBNAIL_BYTES + 1)], {
+            type: "image/jpeg",
+          }),
+        ),
+      ],
+    );
+
+    await expect(
+      asAdmin.mutation(api.media.addMedia, {
+        bandId,
+        kind: "photo",
+        storageId: videoStorageId,
+        thumbnailStorageId,
+        title: "Photo with poster",
+      }),
+    ).rejects.toThrow("Only video media");
+    await expect(
+      asAdmin.mutation(api.media.addMedia, {
+        bandId,
+        kind: "video",
+        storageId: videoStorageId,
+        thumbnailStorageId: videoStorageId,
+        title: "Same blob",
+      }),
+    ).rejects.toThrow("separate image upload");
+    await expect(
+      asAdmin.mutation(api.media.addMedia, {
+        bandId,
+        kind: "video",
+        storageId: videoStorageId,
+        thumbnailStorageId: oversizedId,
+        title: "Oversized poster",
+      }),
+    ).rejects.toThrow("2 MB max");
+    expect(() =>
+      assertVideoThumbnailAcceptable({
+        size: 1,
+        contentType: "image/png",
+      }),
+    ).toThrow("JPEG");
   });
 
   test("addMedia preserves insertion order across photos and videos", async () => {
@@ -237,9 +325,9 @@ describe("media mutations", () => {
       asMember.mutation(api.media.generateUploadUrl, { bandId }),
     ).rejects.toThrow("Not an admin");
 
-    await expect(
-      t.mutation(api.media.pinMedia, { mediaId }),
-    ).rejects.toThrow("Not signed in");
+    await expect(t.mutation(api.media.pinMedia, { mediaId })).rejects.toThrow(
+      "Not signed in",
+    );
     await expect(
       t.mutation(api.media.moveMedia, { mediaId, direction: "up" }),
     ).rejects.toThrow("Not signed in");
@@ -803,22 +891,15 @@ describe("media reads and validation", () => {
       ids.video,
       ids.lastPhoto,
     ]);
-    expect(media.map((row) => row.kind)).toEqual([
-      "photo",
-      "video",
-      "photo",
-    ]);
+    expect(media.map((row) => row.kind)).toEqual(["photo", "video", "photo"]);
     expect(media.map((row) => row.isHero)).toEqual([true, false, false]);
     expect(media[1].url).toEqual(expect.any(String));
+    expect(media[1].thumbnailUrl).toBeNull();
 
     await t.run(async (ctx) => ctx.storage.delete(videoStorageId));
     const afterDelete = await t.query(api.media.forBand, { bandId });
     expect(afterDelete[1].url).toBeNull();
-    expect(afterDelete.map((row) => row.isHero)).toEqual([
-      true,
-      false,
-      false,
-    ]);
+    expect(afterDelete.map((row) => row.isHero)).toEqual([true, false, false]);
   });
 });
 
@@ -828,6 +909,7 @@ describe("media:sweepOrphanBlobs", () => {
     const [
       orphanId,
       mediaStorageId,
+      thumbnailStorageId,
       heroStorageId,
       avatarStorageId,
       flyerStorageId,
@@ -837,6 +919,7 @@ describe("media:sweepOrphanBlobs", () => {
       await ctx.storage.store(new Blob([new Uint8Array([2])])),
       await ctx.storage.store(new Blob([new Uint8Array([3])])),
       await ctx.storage.store(new Blob([new Uint8Array([4])])),
+      await ctx.storage.store(new Blob([new Uint8Array([5])])),
     ]);
 
     await t.run(async (ctx) => {
@@ -853,8 +936,9 @@ describe("media:sweepOrphanBlobs", () => {
       });
       await ctx.db.insert("bandMedia", {
         bandId,
-        kind: "photo",
+        kind: "video",
         storageId: mediaStorageId,
+        thumbnailStorageId,
         title: "Referenced media",
         order: 0,
         pinned: false,
@@ -898,22 +982,24 @@ describe("media:sweepOrphanBlobs", () => {
       dryRun: false,
     });
     expect(result).toMatchObject({
-      scanned: 5,
+      scanned: 6,
       deleted: 1,
       wouldDelete: 0,
-      skipped: 4,
+      skipped: 5,
       aborted: false,
       done: true,
     });
     const blobs = await t.run(async (ctx) => ({
       orphan: await ctx.db.system.get("_storage", orphanId),
       media: await ctx.db.system.get("_storage", mediaStorageId),
+      thumbnail: await ctx.db.system.get("_storage", thumbnailStorageId),
       hero: await ctx.db.system.get("_storage", heroStorageId),
       avatar: await ctx.db.system.get("_storage", avatarStorageId),
       flyer: await ctx.db.system.get("_storage", flyerStorageId),
     }));
     expect(blobs.orphan).toBeNull();
     expect(blobs.media).not.toBeNull();
+    expect(blobs.thumbnail).not.toBeNull();
     expect(blobs.hero).not.toBeNull();
     expect(blobs.avatar).not.toBeNull();
     expect(blobs.flyer).not.toBeNull();

@@ -4,8 +4,33 @@ import test from "node:test";
 import {
   contractProblems,
   deploymentNameFromUrl,
+  requiredClientFields,
   requiredClientFunctions,
 } from "./check_convex_contract.mjs";
+
+function completeFunction(identifier, functionType) {
+  const entry = { identifier, functionType };
+  for (const [
+    requiredIdentifier,
+    surface,
+    fieldName,
+    optional,
+  ] of requiredClientFields) {
+    if (requiredIdentifier !== identifier) continue;
+    const field = { fieldType: { type: "string" }, optional };
+    if (surface === "args") {
+      entry.args ??= { type: "object", value: {} };
+      entry.args.value[fieldName] = field;
+    } else if (surface === "arrayReturn") {
+      entry.returns ??= { type: "array", value: { type: "object", value: {} } };
+      entry.returns.value.value[fieldName] = field;
+    } else {
+      entry.returns ??= { type: "object", value: {} };
+      entry.returns.value[fieldName] = field;
+    }
+  }
+  return entry;
+}
 
 test("extracts a Convex deployment name from its configured URL", () => {
   assert.equal(
@@ -21,7 +46,7 @@ test("extracts a Convex deployment name from its configured URL", () => {
 test("accepts a deployment with every required client invitation function", () => {
   const url = "https://brilliant-cardinal-773.convex.cloud";
   const functions = Object.entries(requiredClientFunctions).map(
-    ([identifier, functionType]) => ({ identifier, functionType }),
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
   );
 
   assert.deepEqual(contractProblems(url, { url, functions }), []);
@@ -59,6 +84,24 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing venues.js:create",
     "missing bands.js:bySlug",
     "missing bands.js:archive",
+    "missing bands.js:archiveStatus",
+    "missing media.js:addMedia",
+    "missing media.js:forBand",
     "missing interactions.js:ticketForGig",
+  ]);
+});
+
+test("reports missing client fields on otherwise present functions", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const media = functions.find(
+    (entry) => entry.identifier === "media.js:forBand",
+  );
+  delete media.returns.value.value.thumbnailUrl;
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "media.js:forBand is missing arrayReturn.thumbnailUrl",
   ]);
 });

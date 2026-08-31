@@ -13,6 +13,7 @@ import {
   MAX_MEDIA_PER_BAND,
   MAX_MEDIA_TITLE,
   assertUploadAcceptable,
+  assertVideoThumbnailAcceptable,
   mediaKindValidator,
   mediaPayloadValidator,
   requireBandAdmin,
@@ -54,6 +55,7 @@ export const addMedia = mutation({
     bandId: v.id("bands"),
     kind: mediaKindValidator,
     storageId: v.id("_storage"),
+    thumbnailStorageId: v.optional(v.id("_storage")),
     title: v.string(),
     caption: v.optional(v.string()),
     lengthSec: v.optional(v.number()),
@@ -83,6 +85,23 @@ export const addMedia = mutation({
       { size: meta.size, contentType: meta.contentType },
       args.kind,
     );
+    if (args.kind === "photo" && args.thumbnailStorageId !== undefined) {
+      throw new Error("Only video media can have a thumbnail");
+    }
+    if (args.thumbnailStorageId === args.storageId) {
+      throw new Error("A video thumbnail must be a separate image upload");
+    }
+    if (args.thumbnailStorageId !== undefined) {
+      const thumbnail = await ctx.db.system.get(
+        "_storage",
+        args.thumbnailStorageId,
+      );
+      if (thumbnail === null) throw new Error("Thumbnail upload not found");
+      assertVideoThumbnailAcceptable({
+        size: thumbnail.size,
+        contentType: thumbnail.contentType,
+      });
+    }
     // There is deliberately no storage.delete on rejection: it would be part
     // of the throwing transaction and silently roll back, so the orphan sweep
     // must reclaim the blob instead.
@@ -91,10 +110,7 @@ export const addMedia = mutation({
         `Media titles can be at most ${MAX_MEDIA_TITLE} characters.`,
       );
     }
-    if (
-      args.caption !== undefined &&
-      args.caption.length > MAX_MEDIA_CAPTION
-    ) {
+    if (args.caption !== undefined && args.caption.length > MAX_MEDIA_CAPTION) {
       throw new Error(
         `Media captions can be at most ${MAX_MEDIA_CAPTION} characters.`,
       );
@@ -108,21 +124,23 @@ export const addMedia = mutation({
         args.lengthSec < 0 ||
         args.lengthSec > MAX_MEDIA_LENGTH_SEC)
     ) {
-      throw new Error(`Invalid lengthSec — ${MAX_MEDIA_LENGTH_SEC} seconds max.`);
+      throw new Error(
+        `Invalid lengthSec — ${MAX_MEDIA_LENGTH_SEC} seconds max.`,
+      );
     }
 
     const mediaId = await ctx.db.insert("bandMedia", {
       bandId: args.bandId,
       kind: args.kind,
       storageId: args.storageId,
+      thumbnailStorageId: args.thumbnailStorageId,
       contentType: meta.contentType,
       sizeBytes: meta.size,
       title: args.title,
       caption: args.caption,
       order: order + 1,
       pinned:
-        args.kind === "video" &&
-        !media.some((item) => item.kind === "video"),
+        args.kind === "video" && !media.some((item) => item.kind === "video"),
       ...(args.kind === "video" ? { views: 0 } : {}),
       ...(args.kind === "video" && args.lengthSec !== undefined
         ? { lengthSec: args.lengthSec }
@@ -242,7 +260,12 @@ export const forBand = query({
     const payloads = [];
     for (const media of mediaList) {
       const url = await ctx.storage.getUrl(media.storageId);
-      payloads.push(toMediaPayload(media, url, band?.imageStorageId));
+      const thumbnailUrl = media.thumbnailStorageId
+        ? await ctx.storage.getUrl(media.thumbnailStorageId)
+        : null;
+      payloads.push(
+        toMediaPayload(media, url, thumbnailUrl, band?.imageStorageId),
+      );
     }
     return payloads;
   },
@@ -282,10 +305,7 @@ export const sweepOrphanBlobs = internalMutation({
       .query("bands")
       .withIndex("by_name")
       .take(2000);
-    const gigs = await ctx.db
-      .query("gigs")
-      .withIndex("by_startsAt")
-      .take(2000);
+    const gigs = await ctx.db.query("gigs").withIndex("by_startsAt").take(2000);
     const gigProjects = await ctx.db.query("gigProjects").take(2000);
     const users = await ctx.db
       .query("users")
@@ -316,7 +336,10 @@ export const sweepOrphanBlobs = internalMutation({
     }
 
     const referenced = new Set<Id<"_storage">>();
-    for (const media of mediaRows) referenced.add(media.storageId);
+    for (const media of mediaRows) {
+      referenced.add(media.storageId);
+      if (media.thumbnailStorageId) referenced.add(media.thumbnailStorageId);
+    }
     for (const band of heroBands) {
       if (band.imageStorageId !== undefined) {
         referenced.add(band.imageStorageId);
@@ -326,7 +349,8 @@ export const sweepOrphanBlobs = internalMutation({
       if (gig.flyStorageId !== undefined) referenced.add(gig.flyStorageId);
     }
     for (const project of gigProjects) {
-      if (project.flyStorageId !== undefined) referenced.add(project.flyStorageId);
+      if (project.flyStorageId !== undefined)
+        referenced.add(project.flyStorageId);
     }
     for (const user of users) {
       if (user.avatarStorageId !== undefined) {

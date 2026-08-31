@@ -54,12 +54,7 @@ export function slugify(name: string): string {
   return slug === "" ? "band" : slug;
 }
 
-const RESERVED_PUBLIC_SLUGS = new Set([
-  "g",
-  "join",
-  "gig-invite",
-  "check-in",
-]);
+const RESERVED_PUBLIC_SLUGS = new Set(["g", "join", "gig-invite", "check-in"]);
 
 export function isReservedPublicSlug(slug: string): boolean {
   return RESERVED_PUBLIC_SLUGS.has(slug);
@@ -293,10 +288,7 @@ export async function assertGigPublishable(
   if (!Number.isFinite(args.price) || args.price < 0) {
     throw new Error("Invalid price");
   }
-  if (
-    args.ticketing === "external" &&
-    !isValidHttpsUrl(args.externalUrl)
-  ) {
+  if (args.ticketing === "external" && !isValidHttpsUrl(args.externalUrl)) {
     throw new Error("External ticketing requires a valid HTTPS URL");
   }
   if (args.flyKey === "custom") {
@@ -491,6 +483,7 @@ export const mediaPayloadValidator = v.object({
   // Resolved per read; null when the blob is gone, so clients render the
   // placeholder tile rather than a dead image.
   url: v.union(v.string(), v.null()),
+  thumbnailUrl: v.union(v.string(), v.null()),
   title: v.string(),
   caption: v.union(v.string(), v.null()),
   contentType: v.union(v.string(), v.null()),
@@ -621,6 +614,7 @@ export function toVenuePayload(venue: Doc<"venues">) {
 export function toMediaPayload(
   media: Doc<"bandMedia">,
   url: string | null,
+  thumbnailUrl: string | null,
   heroStorageId: Id<"_storage"> | undefined,
 ) {
   return {
@@ -628,6 +622,7 @@ export function toMediaPayload(
     bandId: media.bandId,
     kind: media.kind,
     url,
+    thumbnailUrl,
     title: media.title,
     caption: media.caption ?? null,
     contentType: media.contentType ?? null,
@@ -719,6 +714,7 @@ export const MAX_PROFILE_GENRE_LENGTH = 50;
 export const MAX_MEDIA_PER_BAND = 50;
 
 export const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
+export const MAX_VIDEO_THUMBNAIL_BYTES = 2 * 1024 * 1024;
 
 export const PHOTO_CONTENT_TYPES = new Set([
   "image/jpeg",
@@ -794,5 +790,17 @@ export function assertUploadAcceptable(
   const allowed = kind === "video" ? VIDEO_CONTENT_TYPES : PHOTO_CONTENT_TYPES;
   if (meta.contentType !== undefined && !allowed.has(meta.contentType)) {
     throw new Error(`${meta.contentType} can't be posted as a ${kind}.`);
+  }
+}
+
+export function assertVideoThumbnailAcceptable(meta: {
+  size: number;
+  contentType?: string;
+}): void {
+  if (meta.size > MAX_VIDEO_THUMBNAIL_BYTES) {
+    throw new Error("That video thumbnail is too big — 2 MB max.");
+  }
+  if (meta.contentType !== undefined && meta.contentType !== "image/jpeg") {
+    throw new Error("Video thumbnails must be JPEG images.");
   }
 }

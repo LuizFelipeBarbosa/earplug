@@ -1078,11 +1078,52 @@ class PerformerInviteResolution {
 
 enum MediaKind { video, photo }
 
+class BandArchiveResult {
+  const BandArchiveResult({
+    required this.bandId,
+    required this.archivedAt,
+    required this.alreadyArchived,
+  });
+
+  final String bandId;
+  final DateTime archivedAt;
+  final bool alreadyArchived;
+
+  factory BandArchiveResult.fromJson(Map<String, dynamic> json) =>
+      BandArchiveResult(
+        bandId: json['bandId'] as String,
+        archivedAt: DateTime.fromMillisecondsSinceEpoch(
+          (json['archivedAt'] as num).toInt(),
+        ),
+        alreadyArchived: json['alreadyArchived'] == true,
+      );
+}
+
+class BandArchiveStatus {
+  const BandArchiveStatus({required this.bandId, required this.archivedAt});
+
+  final String bandId;
+  final DateTime? archivedAt;
+
+  bool get archived => archivedAt != null;
+
+  factory BandArchiveStatus.fromJson(Map<String, dynamic> json) =>
+      BandArchiveStatus(
+        bandId: json['bandId'] as String,
+        archivedAt: json['archivedAt'] == null
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(
+                (json['archivedAt'] as num).toInt(),
+              ),
+      );
+}
+
 class BandMedia {
   final String id;
   final String bandId;
   final MediaKind kind;
   final String? url;
+  final String? thumbnailUrl;
   final String title;
   final String? caption;
   final int? sizeBytes;
@@ -1097,6 +1138,7 @@ class BandMedia {
     required this.bandId,
     required this.kind,
     required this.url,
+    this.thumbnailUrl,
     required this.title,
     required this.caption,
     required this.sizeBytes,
@@ -1112,6 +1154,7 @@ class BandMedia {
     bandId: json['bandId'] as String,
     kind: MediaKind.values.byName(json['kind'] as String),
     url: json['url'] as String?,
+    thumbnailUrl: json['thumbnailUrl'] as String?,
     title: json['title'] as String,
     caption: json['caption'] as String?,
     sizeBytes: (json['sizeBytes'] as num?)?.toInt(),
@@ -1138,6 +1181,7 @@ class BandMedia {
     bandId: bandId,
     kind: kind,
     url: url,
+    thumbnailUrl: thumbnailUrl,
     title: title ?? this.title,
     caption: caption,
     sizeBytes: sizeBytes,

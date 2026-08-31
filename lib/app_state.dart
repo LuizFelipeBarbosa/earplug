@@ -2640,7 +2640,31 @@ class AppState extends ChangeNotifier {
     if (id.isEmpty || !isAdminOf(id)) {
       throw StateError('Band admin access required.');
     }
-    await repository.archiveBand(id);
+
+    Object? archiveError;
+    StackTrace? archiveStackTrace;
+    try {
+      await repository.archiveBand(id);
+    } catch (error, stackTrace) {
+      archiveError = error;
+      archiveStackTrace = stackTrace;
+    }
+
+    try {
+      final status = await repository.bandArchiveStatus(id);
+      if (!status.archived) {
+        if (archiveError != null) {
+          Error.throwWithStackTrace(archiveError, archiveStackTrace!);
+        }
+        throw StateError('Band archive could not be verified.');
+      }
+    } catch (statusError, statusStackTrace) {
+      if (archiveError != null) {
+        Error.throwWithStackTrace(archiveError, archiveStackTrace!);
+      }
+      Error.throwWithStackTrace(statusError, statusStackTrace);
+    }
+
     myBands = myBands.where((candidate) => candidate != id).toList();
     _bandRoles.remove(id);
     _bandInvites.remove(id);
