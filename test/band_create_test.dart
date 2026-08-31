@@ -35,6 +35,10 @@ void main() {
     expect(find.text('0%'), findsOne);
     expect(find.text('Still needs a name + a genre + a home base'), findsOne);
 
+    final nameField = tester.widget<TextField>(find.byType(TextField).first);
+    expect(nameField.decoration?.enabledBorder, InputBorder.none);
+    expect(nameField.decoration?.focusedBorder, InputBorder.none);
+
     // The standard name field updates the decorative cassette preview.
     await tester.enterText(find.byType(TextField).first, 'Static Bloom');
     await tester.pump();

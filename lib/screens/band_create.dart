@@ -851,8 +851,8 @@ class _NameLine extends StatelessWidget {
                   focusNode: focusNode,
                   onChanged: app.setNbName,
                   style: epText(size: 14.5, weight: FontWeight.w800),
-                  decoration: InputDecoration.collapsed(
-                    hintText: 'e.g. Static Bloom',
+                  decoration: epCollapsedInputDecoration(
+                    'e.g. Static Bloom',
                     hintStyle: epText(
                       size: 14.5,
                       weight: FontWeight.w800,

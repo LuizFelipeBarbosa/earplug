@@ -611,6 +611,19 @@ InputDecoration epInputDecoration(String hint) => InputDecoration(
   ),
 );
 
+InputDecoration epCollapsedInputDecoration(
+  String hint, {
+  TextStyle? hintStyle,
+}) => InputDecoration.collapsed(hintText: hint, hintStyle: hintStyle).copyWith(
+  // InputDecorationTheme supplies state-specific outline borders even when
+  // InputDecoration.collapsed sets its fallback border to none.
+  enabledBorder: InputBorder.none,
+  focusedBorder: InputBorder.none,
+  disabledBorder: InputBorder.none,
+  errorBorder: InputBorder.none,
+  focusedErrorBorder: InputBorder.none,
+);
+
 /// Compact dashboard metric with a label, headline value, and caption.
 class EpStatCard extends StatelessWidget {
   final String label;

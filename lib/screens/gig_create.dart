@@ -638,8 +638,8 @@ class _NameCard extends StatelessWidget {
             focusNode: focusNode,
             onChanged: app.setGfName,
             style: epText(size: 15, weight: FontWeight.w800),
-            decoration: InputDecoration.collapsed(
-              hintText: 'Riptide Release Show',
+            decoration: epCollapsedInputDecoration(
+              'Riptide Release Show',
               hintStyle: epText(
                 size: 15,
                 weight: FontWeight.w800,
@@ -2033,8 +2033,8 @@ class _PriceBodyState extends State<_PriceBody> {
                     app.setGfPrice(amount == 0 ? 'FREE' : '\$$amount');
                   },
                   style: epText(size: 16, weight: FontWeight.w800),
-                  decoration: InputDecoration.collapsed(
-                    hintText: 'Other amount',
+                  decoration: epCollapsedInputDecoration(
+                    'Other amount',
                     hintStyle: epText(
                       size: 16,
                       weight: FontWeight.w800,
@@ -2166,8 +2166,8 @@ class _TicketsBodyState extends State<_TicketsBody> {
                             app.setGfCap(spots <= 0 ? 'No cap' : '$spots');
                           },
                           style: epText(size: 14, weight: FontWeight.w800),
-                          decoration: InputDecoration.collapsed(
-                            hintText: 'Other cap',
+                          decoration: epCollapsedInputDecoration(
+                            'Other cap',
                             hintStyle: epText(
                               size: 14,
                               weight: FontWeight.w800,
