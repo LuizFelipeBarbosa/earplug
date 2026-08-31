@@ -67,7 +67,7 @@ class MyGigsScreen extends StatelessWidget {
                     style: Theme.of(context).textTheme.epSectionHeading,
                   ),
                   Text(
-                    '${app.history.length} RSVP records'
+                    '${app.history.length} past RSVP records'
                     '${fanSince == null ? '' : ' · fan since $fanSince'}',
                     style: Theme.of(context).textTheme.epCaption,
                   ),
@@ -118,7 +118,9 @@ class MyGigsScreen extends StatelessWidget {
           FanEventCard(
             gig: g,
             app: app,
-            trailingAction: _QrAction(gig: g, venue: app.venue(g.venueId)),
+            trailingAction: g.tix == Ticketing.rsvp
+                ? _QrAction(gig: g, venue: app.venue(g.venueId))
+                : null,
           ),
           const SizedBox(height: 8),
         ],

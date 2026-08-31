@@ -1,5 +1,5 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { bandColorFor } from "./lib/helpers";
 import schema from "./schema";
@@ -332,6 +332,159 @@ describe("bands: slugs and profile updates", () => {
     expect(
       await t.run(async (ctx) => (await ctx.db.get(bandId))?.imageStorageId),
     ).toBe(storageId);
+  });
+});
+
+describe("bands:archive", () => {
+  test("archives safely, cancels future owned gigs, and preserves historical and shared rows", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T12:00:00Z"));
+    try {
+      const t = convexTest(schema);
+      const asAdmin = t.withIdentity({ subject: "archive_admin", email: "archive@x.com" });
+      await asAdmin.mutation(api.users.ensureUser, {});
+      const archived = await asAdmin.mutation(api.bands.createBand, {
+        name: "Archive Me",
+        genres: ["punk"],
+        bio: "",
+        area: "Oakland",
+        inviteHandles: [],
+      });
+      const other = await asAdmin.mutation(api.bands.createBand, {
+        name: "Keep Me",
+        genres: ["punk"],
+        bio: "",
+        area: "Oakland",
+        inviteHandles: [],
+      });
+      const venueId = await t.run((ctx) =>
+        ctx.db.insert("venues", {
+          name: "Archive Room",
+          area: "Oakland",
+          addr: "1 Archive Way",
+          distSF: "8 mi",
+          distOak: "1 mi",
+          lat: 37.8,
+          lng: -122.27,
+        }),
+      );
+      const future = await asAdmin.mutation(api.gigs.publishGig, {
+        bandId: archived.bandId,
+        title: "Future Owned",
+        startsAt: Date.now() + 86_400_000,
+        doorsTime: "8PM / 9PM",
+        venueId,
+        price: 0,
+        flyKey: "xerox",
+        ticketing: "rsvp",
+        ageRequirement: "allAges",
+        cap: "No cap",
+      });
+      const project = (
+        await asAdmin.query(api.gigs.manageForBand, { bandId: archived.bandId })
+      ).find((candidate) => candidate.publicGigId === future.gigId)!;
+      const performerProject = await asAdmin.mutation(api.gigs.addPerformer, {
+        projectId: project._id,
+        kind: "invited",
+        role: "support",
+        name: "Invited Band",
+      });
+      const performerToken = performerProject.performers.find(
+        (performer) => performer.kind === "invited",
+      )!.inviteUrl!.split("/").pop()!;
+      const bandInvite = await asAdmin.mutation(api.bandInvites.create, {
+        bandId: archived.bandId,
+      });
+      const { legacyFutureGigId, pastGigId, sharedGigId } = await t.run(async (ctx) => {
+        const common = {
+          venueId,
+          price: 0,
+          doorsTime: "8PM / 9PM",
+          flyKey: "paper",
+          genres: ["punk"],
+          desc: "",
+          ticketing: "rsvp" as const,
+          ageRequirement: "allAges" as const,
+          cap: "No cap",
+          goingCount: 0,
+          lifecycle: "published" as const,
+        };
+        const pastGigId = await ctx.db.insert("gigs", {
+          ...common,
+          title: "Past Owned",
+          slug: "past-owned",
+          startsAt: Date.now() - 86_400_000,
+          doorsAt: Date.now() - 86_400_000,
+          lineup: [archived.bandId],
+          createdByBand: archived.bandId,
+        });
+        const legacyFutureGigId = await ctx.db.insert("gigs", {
+          ...common,
+          title: "Legacy Future Owned",
+          slug: "legacy-future-owned",
+          startsAt: Date.now() + 2 * 86_400_000,
+          doorsAt: Date.now() + 2 * 86_400_000,
+          lineup: [archived.bandId],
+          createdByBand: archived.bandId,
+        });
+        await ctx.db.insert("gigBands", {
+          gigId: legacyFutureGigId,
+          bandId: archived.bandId,
+          startsAt: Date.now() + 2 * 86_400_000,
+        });
+        const sharedGigId = await ctx.db.insert("gigs", {
+          ...common,
+          title: "Shared Future",
+          slug: "shared-future",
+          startsAt: Date.now() + 2 * 86_400_000,
+          doorsAt: Date.now() + 2 * 86_400_000,
+          lineup: [archived.bandId, other.bandId],
+          createdByBand: other.bandId,
+        });
+        return { legacyFutureGigId, pastGigId, sharedGigId };
+      });
+
+      await asAdmin.mutation(api.bands.archive, { bandId: archived.bandId });
+      await t.finishAllScheduledFunctions(() => vi.runAllTimers());
+
+      const state = await t.run(async (ctx) => ({
+        band: await ctx.db.get(archived.bandId),
+        future: await ctx.db.get(future.gigId),
+        project: await ctx.db.get(project._id),
+        legacyFuture: await ctx.db.get(legacyFutureGigId),
+        past: await ctx.db.get(pastGigId),
+        shared: await ctx.db.get(sharedGigId),
+        performer: await ctx.db
+          .query("gigProjectPerformers")
+          .withIndex("by_invite_token", (q) => q.eq("inviteToken", performerToken))
+          .first(),
+      }));
+      expect(state.band?.archivedAt).toBeDefined();
+      expect(state.future?.lifecycle).toBe("cancelled");
+      expect(state.project?.status).toBe("cancelled");
+      expect(state.legacyFuture?.lifecycle).toBe("cancelled");
+      expect(state.past?.lifecycle).toBe("published");
+      expect(state.shared?.lifecycle).toBe("published");
+      expect(state.performer?.inviteRevoked).toBe(true);
+      expect(await t.query(api.bands.bySlug, { slug: archived.slug })).toBeNull();
+      expect(await t.query(api.gigs.resolvePublic, { ref: future.slug })).toBeNull();
+      expect(await t.query(api.gigs.resolvePublic, { ref: "past-owned" })).toBeNull();
+      expect((await t.query(api.gigs.resolvePublic, { ref: "shared-future" }))?._id).toBe(sharedGigId);
+      expect(
+        await t.query(api.bandInvites.resolve, {
+          token: bandInvite.token,
+          now: Date.now(),
+        }),
+      ).toBeNull();
+      expect(
+        await t.query(api.gigs.resolvePerformerInvite, { token: performerToken }),
+      ).toBeNull();
+      expect((await asAdmin.query(api.bands.myBands, {})).map((row) => row.band._id)).not.toContain(archived.bandId);
+
+      await asAdmin.mutation(api.bands.archive, { bandId: archived.bandId });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

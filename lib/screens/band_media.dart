@@ -594,7 +594,12 @@ class _PinButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return pinned
-        ? FilledButton(onPressed: onTap, child: const Text('PINNED ★'))
+        ? Semantics(
+            button: true,
+            enabled: false,
+            hint: 'This is the featured clip. Pin another clip to replace it.',
+            child: const FilledButton(onPressed: null, child: Text('PINNED ★')),
+          )
         : OutlinedButton(onPressed: onTap, child: const Text('PIN'));
   }
 }

@@ -119,6 +119,10 @@ export default defineSchema({
     legacySocialLinks: v.optional(legacySocialLinksValidator),
     // Legacy fake invite handles remain readable but no live path writes them.
     inviteHandles: v.optional(v.array(v.string())),
+    // User-facing deletion is a reversible archive. Historical gig and
+    // membership references intentionally continue to point at this row.
+    archivedAt: v.optional(v.number()),
+    archivedBy: v.optional(v.id("users")),
   })
     .index("by_name", ["name"])
     .index("by_slug", ["slug"])
@@ -128,14 +132,26 @@ export default defineSchema({
     name: v.string(),
     area: v.string(),
     addr: v.string(),
+    // Optional during the venue-creation rollout. Live writes maintain both
+    // keys and migrations backfill the curated legacy directory.
+    normalizedName: v.optional(v.string()),
+    normalizedAddr: v.optional(v.string()),
+    createdBy: v.optional(v.id("users")),
+    createdByBand: v.optional(v.id("bands")),
     distSF: v.string(),
     distOak: v.string(),
     lat: v.number(),
     lng: v.number(),
-  }).index("by_name", ["name"]),
+  })
+    .index("by_name", ["name"])
+    .index("by_normalizedName", ["normalizedName"])
+    .index("by_normalizedAddr", ["normalizedAddr"]),
 
   gigs: defineTable({
     title: v.string(),
+    // Optional during widen/backfill. Public payloads fall back to the id
+    // until every legacy listing has a stable canonical slug.
+    slug: v.optional(v.string()),
     venueId: v.id("venues"),
     price: v.number(),
     startsAt: v.number(),
@@ -170,6 +186,7 @@ export default defineSchema({
     .index("by_startsAt", ["startsAt"])
     .index("by_lifecycle_and_startsAt", ["lifecycle", "startsAt"])
     .index("by_venueId_and_startsAt", ["venueId", "startsAt"])
+    .index("by_slug", ["slug"])
     .index("by_title", ["title"]),
 
   // Private editorial source for both incomplete drafts and published gigs.
@@ -178,6 +195,7 @@ export default defineSchema({
   gigProjects: defineTable({
     bandId: v.id("bands"),
     publicGigId: v.optional(v.id("gigs")),
+    publicSlug: v.optional(v.string()),
     status: gigProjectStatusValidator,
     revision: v.number(),
     publishedRevision: v.optional(v.number()),
@@ -275,10 +293,15 @@ export default defineSchema({
   gigRsvps: defineTable({
     userId: v.id("users"),
     gigId: v.id("gigs"),
+    // Existing rows receive a token lazily when the fan first opens a ticket.
+    ticketToken: v.optional(v.string()),
+    checkedInAt: v.optional(v.number()),
+    checkedInBy: v.optional(v.id("users")),
   })
     .index("by_user_gig", ["userId", "gigId"])
     .index("by_user", ["userId"])
-    .index("by_gig", ["gigId"]),
+    .index("by_gig", ["gigId"])
+    .index("by_ticketToken", ["ticketToken"]),
 
   gigSaves: defineTable({
     userId: v.id("users"),

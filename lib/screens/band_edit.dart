@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../genres.dart';
 import '../models.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
@@ -453,6 +453,8 @@ class _BandEditScreenState extends State<BandEditScreen> {
           padding: const EdgeInsets.symmetric(vertical: 15),
           onTap: _saving ? null : _save,
         ),
+        const SizedBox(height: 24),
+        _ArchiveBandAction(band: band),
       ],
     );
   }
@@ -519,6 +521,17 @@ class _BandMembersSection extends StatefulWidget {
 class _BandMembersSectionState extends State<_BandMembersSection> {
   bool _working = false;
   String? _error;
+  String? _loadedBandId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final app = context.read<AppState>();
+    final id = app.bandId;
+    if (id.isEmpty || _loadedBandId == id) return;
+    _loadedBandId = id;
+    Future.microtask(() => app.refreshBandInvite(id));
+  }
 
   Future<void> _run(Future<void> Function() action) async {
     if (_working) return;
@@ -632,10 +645,11 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
             FilledButton.icon(
               onPressed: _working
                   ? null
-                  : () {
-                      Clipboard.setData(ClipboardData(text: invite.url));
-                      app.say('Invitation link copied.');
-                    },
+                  : () => copyForUser(
+                      context,
+                      invite.url,
+                      successMessage: 'Invitation link copied.',
+                    ),
               icon: const Icon(Icons.copy, size: 17),
               label: const Text('COPY INVITATION LINK'),
             ),
@@ -679,5 +693,102 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
         ],
       ),
     );
+  }
+}
+
+class _ArchiveBandAction extends StatelessWidget {
+  const _ArchiveBandAction({required this.band});
+
+  final Band band;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      key: const Key('archive-band'),
+      onPressed: () => _confirmArchive(context),
+      style: OutlinedButton.styleFrom(foregroundColor: Ep.destructive),
+      icon: const Icon(Icons.archive_outlined),
+      label: const Text('ARCHIVE BAND'),
+    );
+  }
+
+  Future<void> _confirmArchive(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _ArchiveBandDialog(band: band),
+    );
+  }
+}
+
+class _ArchiveBandDialog extends StatefulWidget {
+  const _ArchiveBandDialog({required this.band});
+
+  final Band band;
+
+  @override
+  State<_ArchiveBandDialog> createState() => _ArchiveBandDialogState();
+}
+
+class _ArchiveBandDialogState extends State<_ArchiveBandDialog> {
+  final _controller = TextEditingController();
+  bool _working = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final matches = _controller.text.trim() == widget.band.name;
+    return AlertDialog(
+      title: const Text('ARCHIVE BAND?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'This removes the band from public pages and management, revokes invitations, and cancels future gigs it owns. Historical and shared records are preserved.',
+          ),
+          const SizedBox(height: 14),
+          Text('Type ${widget.band.name} to confirm.'),
+          const SizedBox(height: 8),
+          TextField(
+            key: const Key('archive-band-confirmation'),
+            controller: _controller,
+            enabled: !_working,
+            onChanged: (_) => setState(() {}),
+            decoration: epInputDecoration(widget.band.name),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _working ? null : () => Navigator.pop(context),
+          child: const Text('KEEP BAND'),
+        ),
+        FilledButton(
+          onPressed: !matches || _working ? null : _archive,
+          child: Text(_working ? 'ARCHIVING…' : 'ARCHIVE BAND'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _archive() async {
+    setState(() => _working = true);
+    try {
+      await context.read<AppState>().archiveCurrentBand();
+      if (mounted) Navigator.pop(context);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _working = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Band could not be archived. Please retry.'),
+        ),
+      );
+    }
   }
 }

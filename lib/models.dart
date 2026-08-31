@@ -37,6 +37,64 @@ class Venue {
   );
 }
 
+class VenueCreationResult {
+  const VenueCreationResult({required this.venue, required this.created});
+
+  final Venue venue;
+  final bool created;
+}
+
+class RsvpTicket {
+  const RsvpTicket({required this.payload, this.checkedInAt});
+
+  final String payload;
+  final DateTime? checkedInAt;
+
+  factory RsvpTicket.fromJson(Map<String, dynamic> json) => RsvpTicket(
+    payload: json['payload'] as String,
+    checkedInAt: _optionalDate(json['checkedInAt']),
+  );
+}
+
+class DoorRoster {
+  const DoorRoster({
+    required this.total,
+    required this.checkedIn,
+    required this.truncated,
+  });
+
+  final int total;
+  final int checkedIn;
+  final bool truncated;
+
+  factory DoorRoster.fromJson(Map<String, dynamic> json) => DoorRoster(
+    total: (json['total'] as num).toInt(),
+    checkedIn: (json['checkedIn'] as num).toInt(),
+    truncated: json['truncated'] as bool,
+  );
+}
+
+enum DoorCheckInStatus { invalid, wrongGig, checkedIn, alreadyCheckedIn }
+
+class DoorCheckInResult {
+  const DoorCheckInResult({
+    required this.status,
+    this.fanName,
+    this.checkedInAt,
+  });
+
+  final DoorCheckInStatus status;
+  final String? fanName;
+  final DateTime? checkedInAt;
+
+  factory DoorCheckInResult.fromJson(Map<String, dynamic> json) =>
+      DoorCheckInResult(
+        status: DoorCheckInStatus.values.byName(json['status'] as String),
+        fanName: json['fanName'] as String?,
+        checkedInAt: _optionalDate(json['checkedInAt']),
+      );
+}
+
 enum FanCity { sf, oak }
 
 enum FanGenreChoice { pending, selected, open }
@@ -254,6 +312,7 @@ class GigProject {
   final String id;
   final String bandId;
   final String? publicGigId;
+  final String? publicSlug;
   final GigProjectStatus status;
   final int revision;
   final int? publishedRevision;
@@ -289,6 +348,7 @@ class GigProject {
     required this.updatedAt,
     required this.performers,
     this.publicGigId,
+    this.publicSlug,
     this.publishedRevision,
     this.title,
     this.doorsAt,
@@ -303,6 +363,7 @@ class GigProject {
     id: json['_id'] as String,
     bandId: json['bandId'] as String,
     publicGigId: json['publicGigId'] as String?,
+    publicSlug: json['publicSlug'] as String?,
     status: GigProjectStatus.values.byName(json['status'] as String),
     revision: (json['revision'] as num).toInt(),
     publishedRevision: (json['publishedRevision'] as num?)?.toInt(),
@@ -358,6 +419,7 @@ enum AgeRequirement {
 
 class Gig {
   final String id;
+  final String slug;
   final String title;
   final String venueId;
   final int price; // dollars; 0 == free
@@ -384,6 +446,7 @@ class Gig {
 
   const Gig({
     required this.id,
+    this.slug = '',
     required this.title,
     required this.venueId,
     required this.price,
@@ -409,6 +472,11 @@ class Gig {
     this.discoveryListingReady = false,
   });
 
+  /// The stable public slug when one is available, otherwise the legacy ID.
+  /// Keeping the fallback here prevents older/demo records from producing an
+  /// empty `/g/` link during the slug rollout.
+  String get publicRef => slug.isEmpty ? id : slug;
+
   factory Gig.fromJson(Map<String, dynamic> json) {
     final startsAt = (json['startsAt'] as num).toInt();
     final doorsTime = json['doorsTime'] as String;
@@ -416,6 +484,7 @@ class Gig {
 
     return Gig(
       id: json['_id'] as String,
+      slug: (json['slug'] as String?) ?? json['_id'] as String,
       title: json['title'] as String,
       venueId: json['venueId'] as String,
       price: (json['price'] as num).toInt(),
@@ -494,6 +563,7 @@ class Gig {
   String get priceLabel => free ? 'FREE' : '\$$price';
 
   Gig copyWith({
+    String? slug,
     String? title,
     String? venueId,
     int? price,
@@ -519,6 +589,7 @@ class Gig {
     bool? discoveryListingReady,
   }) => Gig(
     id: id,
+    slug: slug ?? this.slug,
     title: title ?? this.title,
     venueId: venueId ?? this.venueId,
     price: price ?? this.price,
@@ -599,6 +670,7 @@ class FanHistoryItem {
 
 class Band {
   final String id;
+  final String slug;
   final String name;
   final List<String> genres;
   final String area;
@@ -618,6 +690,7 @@ class Band {
 
   const Band({
     required this.id,
+    this.slug = '',
     required this.name,
     required this.genres,
     required this.area,
@@ -636,11 +709,16 @@ class Band {
     this.discoveryProfileReady = false,
   });
 
+  /// The public slug when available, with the internal ID as a rollout-safe
+  /// fallback for legacy records.
+  String get publicRef => slug.isEmpty ? id : slug;
+
   factory Band.fromJson(Map<String, dynamic> json) {
     final pastShows = json['pastShows'] as List? ?? const [];
 
     return Band(
       id: json['_id'] as String,
+      slug: (json['slug'] as String?) ?? '',
       name: json['name'] as String,
       genres: List<String>.from(json['genres'] as List),
       area: json['area'] as String,
@@ -667,6 +745,7 @@ class Band {
   String get followersLabel => _compactCount(followers);
 
   Band copyWith({
+    String? slug,
     String? name,
     List<String>? genres,
     String? area,
@@ -683,6 +762,7 @@ class Band {
     bool? discoveryProfileReady,
   }) => Band(
     id: id,
+    slug: slug ?? this.slug,
     name: name ?? this.name,
     genres: genres ?? this.genres,
     area: area ?? this.area,

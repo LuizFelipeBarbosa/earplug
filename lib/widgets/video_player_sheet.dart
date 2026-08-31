@@ -1,9 +1,22 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models.dart';
 import '../theme.dart';
 import 'common.dart';
+
+@visibleForTesting
+Size constrainedVideoSize({
+  required Size available,
+  required double aspectRatio,
+}) {
+  final safeAspectRatio = aspectRatio > 0 ? aspectRatio : 16 / 9;
+  final maxVideoHeight = math.max(120.0, available.height - 150);
+  final width = math.min(available.width, maxVideoHeight * safeAspectRatio);
+  return Size(width, width / safeAspectRatio);
+}
 
 Future<void> showBandVideo(
   BuildContext context, {
@@ -143,77 +156,95 @@ class _VideoPlayerModalState extends State<_VideoPlayerModal> {
       );
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        AspectRatio(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final videoSize = constrainedVideoSize(
+          available: Size(constraints.maxWidth, constraints.maxHeight),
           aspectRatio: controller.value.aspectRatio,
-          child: VideoPlayer(controller),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: ValueListenableBuilder<VideoPlayerValue>(
-            valueListenable: controller,
-            builder: (context, value, _) {
-              final duration = value.duration.inMilliseconds;
-              final progress = duration == 0
-                  ? 0.0
-                  : (value.position.inMilliseconds / duration).clamp(0.0, 1.0);
-              return Row(
-                children: [
-                  IconButton(
-                    onPressed: _togglePlayback,
-                    tooltip: value.isPlaying ? 'Pause' : 'Play',
-                    icon: value.isPlaying
-                        ? const Icon(Icons.pause)
-                        : const Icon(Icons.play_arrow),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: SizedBox(
-                      height: 3,
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          return Stack(
-                            children: [
-                              Positioned.fill(
-                                child: ColoredBox(color: Ep.surfaceDisabled),
-                              ),
-                              Align(
-                                alignment: Alignment.centerLeft,
-                                child: Container(
-                                  width: constraints.maxWidth * progress,
-                                  height: 3,
-                                  color: Ep.brand,
-                                ),
-                              ),
-                            ],
+        );
+        return SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: SizedBox(
+                  width: videoSize.width,
+                  height: videoSize.height,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: ValueListenableBuilder<VideoPlayerValue>(
+                  valueListenable: controller,
+                  builder: (context, value, _) {
+                    final duration = value.duration.inMilliseconds;
+                    final progress = duration == 0
+                        ? 0.0
+                        : (value.position.inMilliseconds / duration).clamp(
+                            0.0,
+                            1.0,
                           );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
+                    return Row(
+                      children: [
+                        IconButton(
+                          onPressed: _togglePlayback,
+                          tooltip: value.isPlaying ? 'Pause' : 'Play',
+                          icon: value.isPlaying
+                              ? const Icon(Icons.pause)
+                              : const Icon(Icons.play_arrow),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: SizedBox(
+                            height: 3,
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                return Stack(
+                                  children: [
+                                    Positioned.fill(
+                                      child: ColoredBox(
+                                        color: Ep.surfaceDisabled,
+                                      ),
+                                    ),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Container(
+                                        width: constraints.maxWidth * progress,
+                                        height: 3,
+                                        color: Ep.brand,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Text(
+                  widget.media.title,
+                  style: epText(size: 13, weight: FontWeight.w800),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 5, 16, 16),
+                child: Text(
+                  '${widget.media.viewsLabel} · ${widget.media.lenLabel}',
+                  style: epText(size: 11, color: Ep.contentSecondary),
+                ),
+              ),
+            ],
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-          child: Text(
-            widget.media.title,
-            style: epText(size: 13, weight: FontWeight.w800),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 5, 16, 16),
-          child: Text(
-            '${widget.media.viewsLabel} · ${widget.media.lenLabel}',
-            style: epText(size: 11, color: Ep.contentSecondary),
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 }

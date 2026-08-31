@@ -190,6 +190,16 @@ class _DoorStepState extends State<_DoorStep> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    _codeController.addListener(_codeChanged);
+  }
+
+  void _codeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
     _emailController.dispose();
     _phoneController.dispose();
@@ -366,6 +376,9 @@ class _DoorStepState extends State<_DoorStep> {
     required Future<void> Function() verify,
     required Future<void> Function() resend,
   }) {
+    final codeComplete = RegExp(
+      r'^\d{6}$',
+    ).hasMatch(_codeController.text.trim());
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -389,8 +402,10 @@ class _DoorStepState extends State<_DoorStep> {
         const SizedBox(height: 10),
         EpButton(
           _loading ? 'VERIFYING…' : 'VERIFY',
-          kind: _loading ? EpButtonKind.disabled : EpButtonKind.filled,
-          onTap: _loading ? null : verify,
+          kind: _loading || !codeComplete
+              ? EpButtonKind.disabled
+              : EpButtonKind.filled,
+          onTap: _loading || !codeComplete ? null : verify,
         ),
         if (_error != null) ...[
           const SizedBox(height: 9),
@@ -511,12 +526,17 @@ class _DoorStepState extends State<_DoorStep> {
   }
 
   Future<void> _verifyCode(Future<bool> Function(String code) verify) async {
+    final code = _codeController.text.trim();
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) {
+      setState(() => _error = 'Enter the 6-digit code.');
+      return;
+    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final verified = await verify(_codeController.text.trim());
+      final verified = await verify(code);
       if (!verified && mounted) {
         setState(() => _error = 'That code is wrong or expired.');
       }

@@ -8,6 +8,7 @@ import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
@@ -252,6 +253,113 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  test('18+ to all ages survives save, reopen, and publish', () async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await Future<void>.delayed(Duration.zero);
+    app.startGigCreate();
+    app.setGfName('Age Transition');
+    app.setGfDate(DateTime.now().add(const Duration(days: 2)));
+    app.setGfVenue('v1');
+    app.setGfAgeRequirement(AgeRequirement.eighteenPlus);
+    await app.saveGigDraft();
+    app.setGfAgeRequirement(AgeRequirement.allAges);
+    await app.saveGigDraft();
+    final projectId = app.gfProject!.id;
+
+    await app.editGigProject(projectId);
+    expect(app.gfAgeRequirement, AgeRequirement.allAges);
+    await app.publishGig();
+    expect(app.allGigs.last.ageRequirement, AgeRequirement.allAges);
+  });
+
+  test('external tickets require an absolute HTTPS URL', () async {
+    final auth = FakeAuthService();
+    final app = AppState(
+      repository: DemoRepository(auth: auth),
+      auth: auth,
+    );
+    addTearDown(app.dispose);
+    await Future<void>.delayed(Duration.zero);
+    app.startGigCreate();
+    app.setGfName('External Tickets');
+    app.setGfDate(DateTime.now().add(const Duration(days: 2)));
+    app.setGfVenue('v1');
+    app.setGfTix(Ticketing.external);
+
+    for (final invalid in [
+      '',
+      'dice.fm/show',
+      'http://dice.fm/show',
+      'https:///show',
+    ]) {
+      app.setGfExt(invalid);
+      expect(app.validExternalTicketUrl, isFalse);
+      expect(app.canPublishGig, isFalse);
+    }
+    app.setGfExt('https://dice.fm/show');
+    expect(app.validExternalTicketUrl, isTrue);
+    expect(app.canPublishGig, isTrue);
+  });
+
+  test(
+    'new venues are created, deduplicated, refreshed, and selected',
+    () async {
+      final auth = FakeAuthService();
+      final app = AppState(
+        repository: DemoRepository(auth: auth),
+        auth: auth,
+      );
+      addTearDown(app.dispose);
+      await Future<void>.delayed(Duration.zero);
+      app.startGigCreate();
+      final first = await app.createVenue(
+        name: 'New Test Room',
+        area: 'Oakland',
+        address: '123 Test Street',
+        point: const LatLng(37.8, -122.27),
+      );
+      expect(first.created, isTrue);
+      expect(app.gfVenueId, first.venue.id);
+      expect(app.venues.map((venue) => venue.id), contains(first.venue.id));
+
+      final duplicate = await app.createVenue(
+        name: ' new   test room ',
+        area: ' OAKLAND ',
+        address: '123   TEST STREET',
+        point: const LatLng(37.81, -122.28),
+      );
+      expect(duplicate.created, isFalse);
+      expect(duplicate.venue.id, first.venue.id);
+      expect(app.gfVenueId, first.venue.id);
+    },
+  );
+
+  test(
+    'preview labels distinguish private, live, and unpublished changes',
+    () async {
+      final auth = FakeAuthService();
+      final app = AppState(
+        repository: DemoRepository(auth: auth),
+        auth: auth,
+      );
+      addTearDown(app.dispose);
+      await Future<void>.delayed(Duration.zero);
+      app.startGigCreate();
+      expect(app.gigPreviewLabel, 'PRIVATE DRAFT');
+      app.setGfName('Preview Labels');
+      app.setGfDate(DateTime.now().add(const Duration(days: 2)));
+      app.setGfVenue('v1');
+      await app.publishGig();
+      expect(app.gigPreviewLabel, 'LIVE');
+      app.editPublishedGig();
+      app.setGfDescription('Changed after publication');
+      expect(app.gigPreviewLabel, 'UNPUBLISHED CHANGES');
+    },
+  );
+
   testWidgets('lineup mutations save pending form edits before applying', (
     tester,
   ) async {
@@ -308,16 +416,22 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     app.startGigCreate();
+    app.setGfName('First editor');
+    final firstSave = app.saveGigDraft();
+    await Future<void>.delayed(Duration.zero);
     app.startGigCreate();
+    app.setGfName('Second editor');
+    final secondSave = app.saveGigDraft();
+    await Future<void>.delayed(Duration.zero);
     expect(repository.createCalls, 2);
 
     repository.gates[1].complete();
-    await Future<void>.delayed(Duration.zero);
+    await secondSave;
     final currentProjectId = app.gfProject?.id;
     expect(currentProjectId, repository.createdByCall[1]?.id);
 
     repository.gates[0].complete();
-    await Future<void>.delayed(Duration.zero);
+    await firstSave;
     expect(app.gfProject?.id, currentProjectId);
   });
 
@@ -334,19 +448,36 @@ void main() {
     final oldSave = app.saveGigDraft();
     await Future<void>.delayed(Duration.zero);
     expect(repository.saveCalls, 1);
+    final oldProjectId = app.gfProject?.id;
 
     app.startGigCreate();
     await Future<void>.delayed(Duration.zero);
-    final newProjectId = app.gfProject?.id;
+    expect(app.gfProject, isNull);
     repository.saveGate.complete();
     await oldSave;
 
-    expect(app.gfProject?.id, newProjectId);
+    expect(app.gfProject, isNull);
     expect(app.gfName, isEmpty);
     app.setGfName('New editor');
     await app.saveGigDraft();
-    expect(app.gfProject?.id, newProjectId);
+    expect(app.gfProject?.id, isNot(oldProjectId));
     expect(repository.saveCalls, 2);
+  });
+
+  test('opening and closing a pristine editor creates no draft', () async {
+    final auth = FakeAuthService();
+    final repository = _CountingDraftRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await Future<void>.delayed(Duration.zero);
+
+    app.startGigCreate();
+    expect(repository.createCalls, 0);
+    app.closeGigCreate();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(repository.createCalls, 0);
+    expect(await repository.manageGigs('b1'), isEmpty);
   });
 
   test('managed gig refreshes stay bound to the requested band', () async {
@@ -467,6 +598,18 @@ class _GatedDraftRepository extends DemoRepository {
     final project = await super.createGigDraft(bandId);
     createdByCall[call] = project;
     return project;
+  }
+}
+
+class _CountingDraftRepository extends DemoRepository {
+  _CountingDraftRepository({required super.auth});
+
+  int createCalls = 0;
+
+  @override
+  Future<GigProject> createGigDraft(String bandId) {
+    createCalls++;
+    return super.createGigDraft(bandId);
   }
 }
 

@@ -150,6 +150,34 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the featured clip cannot be unpinned to zero', (tester) async {
+    await _pumpBandMedia(tester);
+    final pinnedLabel = find.text('PINNED ★');
+    await tester.scrollUntilVisible(
+      pinnedLabel,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    final button = tester.widget<FilledButton>(
+      find.ancestor(of: pinnedLabel, matching: find.byType(FilledButton)),
+    );
+    expect(button.onPressed, isNull);
+
+    final semantics = tester.widget<Semantics>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            widget.properties.hint ==
+                'This is the featured clip. Pin another clip to replace it.',
+      ),
+    );
+    expect(
+      semantics.properties.hint,
+      'This is the featured clip. Pin another clip to replace it.',
+    );
+  });
+
   testWidgets('delete requires confirmation and removes the selected row', (
     tester,
   ) async {

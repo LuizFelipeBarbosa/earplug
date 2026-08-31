@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_links.dart';
@@ -9,6 +8,7 @@ import '../app_state.dart';
 import '../band_media_state.dart';
 import '../genres.dart';
 import '../services/media_picker.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
@@ -1616,12 +1616,11 @@ class _CreatedView extends StatelessWidget {
                   ),
                   _QuietAction(
                     'SHARE PROFILE',
-                    onTap: () {
-                      Clipboard.setData(
-                        ClipboardData(text: publicWebUrl(app.nbShareSlug)),
-                      );
-                      app.say('Link copied: $profileUrl');
-                    },
+                    onTap: () => copyForUser(
+                      context,
+                      publicWebUrl(app.nbShareSlug),
+                      successMessage: 'Link copied: $profileUrl',
+                    ),
                     color: Ep.contentSecondary,
                   ),
                   _QuietAction(

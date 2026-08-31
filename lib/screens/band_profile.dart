@@ -2,12 +2,12 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../band_media_state.dart';
 import '../data/repository.dart';
 import '../models.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/fan_event_card.dart';
@@ -23,7 +23,17 @@ class BandProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final band = app.band(bandId);
-    if (band == null) return const SizedBox.shrink();
+    if (band == null) {
+      if (app.publicBandMissing(bandId)) {
+        return Center(
+          child: Text(
+            'BAND NOT FOUND',
+            style: epText(color: Ep.contentSecondary),
+          ),
+        );
+      }
+      return const Center(child: CircularProgressIndicator());
+    }
 
     final media = context.watch<BandMediaController>();
     final vids = media.videosFor(bandId);
@@ -326,7 +336,7 @@ class _BandLinks extends StatelessWidget {
           for (final link in links)
             OutlinedButton(
               onPressed: () =>
-                  _openBandLink(app, link.value, instagram: link.instagram),
+                  _openBandLink(context, link.value, instagram: link.instagram),
               child: Text('${link.label} ↗'),
             ),
         ],
@@ -336,13 +346,12 @@ class _BandLinks extends StatelessWidget {
 }
 
 Future<void> _openBandLink(
-  AppState app,
+  BuildContext context,
   String raw, {
   required bool instagram,
 }) async {
   final uri = bandLinkUri(raw, instagram: instagram);
-  final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-  if (!opened) app.say("Couldn't open that link.");
+  await openExternalForUser(context, uri.toString());
 }
 
 @visibleForTesting

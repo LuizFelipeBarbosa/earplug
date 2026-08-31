@@ -143,7 +143,7 @@ describe("gig project lifecycle", () => {
     });
     await expect(
       asAdmin.mutation(api.gigs.publishDraft, { projectId: draft._id }),
-    ).rejects.toThrow("External ticketing requires a valid http(s) URL");
+    ).rejects.toThrow("External ticketing requires a valid HTTPS URL");
 
     const deletedFlyerId = await t.run(async (ctx) => {
       const storageId = await ctx.storage.store(

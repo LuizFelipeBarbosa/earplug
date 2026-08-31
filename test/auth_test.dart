@@ -458,6 +458,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('email verification enables only for exactly six digits', (
+    tester,
+  ) async {
+    final auth = _CountingCodeAuth();
+    await pumpApp(
+      tester,
+      auth: auth,
+      beforePump: (app) => app.requestSave('g1'),
+      home: const Scaffold(body: AuthScreen()),
+      pumpFor: const Duration(milliseconds: 100),
+    );
+
+    await tester.tap(find.text('EMAIL'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField).first, 'fan@example.com');
+    await tester.tap(find.text('SEND CODE'));
+    await tester.pumpAndSettle();
+
+    final codeField = find.widgetWithText(TextField, '6-digit code');
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'VERIFY'))
+          .onPressed,
+      isNull,
+    );
+    await tester.enterText(codeField, '12345');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump();
+    expect(find.text('Enter the 6-digit code.'), findsOne);
+    expect(auth.verifyCalls, 0);
+
+    await tester.enterText(codeField, '424242');
+    await tester.pump();
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'VERIFY'))
+          .onPressed,
+      isNotNull,
+    );
+    await tester.tap(find.text('VERIFY'));
+    await tester.pump();
+    expect(auth.verifyCalls, 1);
+  });
+
   testWidgets('pending action waits for user setup before replaying', (
     tester,
   ) async {
@@ -673,6 +717,24 @@ class _ProfileRepository extends DemoRepository {
       locationPersonalizationEnabled: locationPersonalizationEnabled,
       followedBandUpdatesEnabled: followedBandUpdatesEnabled,
     );
+  }
+}
+
+class _CountingCodeAuth extends FakeAuthService {
+  _CountingCodeAuth()
+    : super(
+        supportsEmailSignIn: true,
+        supportsPhoneSignIn: false,
+        supportsGoogleSignIn: false,
+        supportsAppleSignIn: false,
+      );
+
+  int verifyCalls = 0;
+
+  @override
+  Future<bool> verifyEmailCode(String code) {
+    verifyCalls++;
+    return super.verifyEmailCode(code);
   }
 }
 

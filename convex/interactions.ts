@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { MutationCtx, mutation, query } from "./_generated/server";
 import {
   currentUser,
   feedCutoff,
@@ -8,6 +8,28 @@ import {
   requireUser,
   toGigPayload,
 } from "./lib/helpers";
+
+const TICKET_PREFIX = "earplug:ticket:v1:";
+
+function randomToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}
+
+async function uniqueTicketToken(ctx: MutationCtx) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const token = randomToken();
+    const existing = await ctx.db
+      .query("gigRsvps")
+      .withIndex("by_ticketToken", (q) => q.eq("ticketToken", token))
+      .first();
+    if (!existing) return token;
+  }
+  throw new Error("Could not create a ticket");
+}
 
 /** Per-user interaction state; empty/0 when unauthenticated (never throws). */
 export const myInteractions = query({
@@ -148,7 +170,11 @@ export const toggleRsvp = mutation({
     if ((gig.lifecycle ?? "published") !== "published") {
       throw new Error("This gig is not accepting RSVPs");
     }
-    await ctx.db.insert("gigRsvps", { userId: user._id, gigId: args.gigId });
+    await ctx.db.insert("gigRsvps", {
+      userId: user._id,
+      gigId: args.gigId,
+      ticketToken: await uniqueTicketToken(ctx),
+    });
     await ctx.db.patch(args.gigId, { goingCount: gig.goingCount + 1 });
     return { on: true };
   },
@@ -160,7 +186,7 @@ export const toggleFollow = mutation({
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
     const band = await ctx.db.get(args.bandId);
-    if (!band) throw new Error("Band not found");
+    if (!band || band.archivedAt !== undefined) throw new Error("Band not found");
     const existing = await ctx.db
       .query("follows")
       .withIndex("by_user_band", (q) =>
@@ -180,6 +206,32 @@ export const toggleFollow = mutation({
     await ctx.db.insert("follows", { userId: user._id, bandId: args.bandId });
     await ctx.db.patch(args.bandId, { followerCount: band.followerCount + 1 });
     return { on: true };
+  },
+});
+
+export const ticketForGig = mutation({
+  args: { gigId: v.id("gigs") },
+  returns: v.object({
+    payload: v.string(),
+    checkedInAt: v.union(v.number(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const rsvp = await ctx.db
+      .query("gigRsvps")
+      .withIndex("by_user_gig", (q) =>
+        q.eq("userId", user._id).eq("gigId", args.gigId),
+      )
+      .unique();
+    if (!rsvp) throw new Error("RSVP before opening your ticket");
+    const ticketToken = rsvp.ticketToken ?? (await uniqueTicketToken(ctx));
+    if (rsvp.ticketToken === undefined) {
+      await ctx.db.patch(rsvp._id, { ticketToken });
+    }
+    return {
+      payload: `${TICKET_PREFIX}${ticketToken}`,
+      checkedInAt: rsvp.checkedInAt ?? null,
+    };
   },
 });
 

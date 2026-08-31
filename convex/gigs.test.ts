@@ -39,7 +39,7 @@ describe("gigs:pastForBand", () => {
       venueId,
       price: 5,
       doorsTime: "7PM / 8PM",
-      flyKey: "paper",
+      flyKey: "xerox" as const,
       genres: ["folk"],
       desc: "",
       ticketing: "rsvp" as const,
@@ -321,9 +321,9 @@ describe("gigs:publishGig auth", () => {
     expect(gigs.find((gig) => gig._id === gigId)?.flyerUrl).toBeNull();
   });
 
-  test("external ticketing requires an http(s) URL", async () => {
+  test("external ticketing requires an HTTPS URL", async () => {
     const { asAdmin, bandId, venueId } = await setupBand();
-    const error = "External ticketing requires a valid http(s) URL";
+    const error = "External ticketing requires a valid HTTPS URL";
 
     await expect(
       asAdmin.mutation(api.gigs.publishGig, {
@@ -354,6 +354,80 @@ describe("gigs:publishGig auth", () => {
     });
     const gig = await t.run(async (ctx) => ctx.db.get(gigId));
     expect(gig!.externalUrl).toBeUndefined();
+  });
+});
+
+describe("public gig slugs", () => {
+  test("publishes unique stable slugs and resolves slugs, legacy ids, and misses", async () => {
+    const t = convexTest(schema);
+    const asAdmin = t.withIdentity({ subject: "slug_admin", email: "slug@x.com" });
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Slug Band",
+      genres: ["punk"],
+      bio: "",
+      area: "Bay Area",
+      inviteHandles: [],
+    });
+    const venueId = await t.run((ctx) =>
+      ctx.db.insert("venues", {
+        name: "Slug Room",
+        area: "Oakland",
+        addr: "1 Slug Way",
+        distSF: "8 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.27,
+      }),
+    );
+    const fields = {
+      bandId,
+      title: "Same Night",
+      startsAt: Date.now() + 86_400_000,
+      doorsTime: "8PM / 9PM",
+      venueId,
+      price: 0,
+      flyKey: "xerox" as const,
+      ticketing: "rsvp" as const,
+      ageRequirement: "allAges" as const,
+      cap: "No cap",
+    };
+    const first = await asAdmin.mutation(api.gigs.publishGig, fields);
+    const second = await asAdmin.mutation(api.gigs.publishGig, {
+      ...fields,
+      startsAt: fields.startsAt + 86_400_000,
+    });
+    expect(first.slug).toBe("same-night");
+    expect(second.slug).toBe("same-night-2");
+    expect((await t.query(api.gigs.resolvePublic, { ref: first.slug }))?._id).toBe(first.gigId);
+    expect((await t.query(api.gigs.resolvePublic, { ref: first.gigId }))?._id).toBe(first.gigId);
+    expect(await t.query(api.gigs.resolvePublic, { ref: "not an id !!!" })).toBeNull();
+
+    const projects = await asAdmin.query(api.gigs.manageForBand, { bandId });
+    const project = projects.find((candidate) => candidate.publicGigId === first.gigId)!;
+    await asAdmin.mutation(api.gigs.unpublish, { projectId: project._id });
+    const draft = await asAdmin.query(api.gigs.getProject, { projectId: project._id });
+    await asAdmin.mutation(api.gigs.saveDraft, {
+      projectId: draft._id,
+      revision: draft.revision,
+      title: "Renamed Night",
+      doorsAt: draft.doorsAt,
+      startsAt: draft.startsAt,
+      venueId: draft.venueId,
+      price: draft.price,
+      flyKey: draft.flyKey,
+      flyStorageId: null,
+      overlay: draft.overlay,
+      desc: draft.desc,
+      ticketing: draft.ticketing,
+      ageRequirement: draft.ageRequirement,
+      externalUrl: draft.externalUrl ?? null,
+      cap: draft.cap,
+    });
+    const republished = await asAdmin.mutation(api.gigs.publishDraft, {
+      projectId: project._id,
+    });
+    expect(republished.slug).toBe(first.slug);
   });
 });
 

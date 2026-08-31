@@ -14,6 +14,13 @@ export const requiredClientFunctions = Object.freeze({
   "bandInvites.js:accept": "Mutation",
   "gigs.js:resolvePerformerInvite": "Query",
   "gigs.js:claimPerformerInvite": "Mutation",
+  "gigs.js:resolvePublic": "Query",
+  "gigs.js:doorRoster": "Query",
+  "gigs.js:checkInTicket": "Mutation",
+  "venues.js:create": "Mutation",
+  "bands.js:bySlug": "Query",
+  "bands.js:archive": "Mutation",
+  "interactions.js:ticketForGig": "Mutation",
 });
 
 export function deploymentNameFromUrl(value) {

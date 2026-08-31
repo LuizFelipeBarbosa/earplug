@@ -692,10 +692,23 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<List<Venue>> venues() async => const [];
 
   @override
+  Future<VenueCreationResult> createVenue({
+    required String bandId,
+    required String name,
+    required String area,
+    required String address,
+    required double latitude,
+    required double longitude,
+  }) => throw UnimplementedError();
+
+  @override
   Future<VenueDetail?> venueDetail(String venueId) async => null;
 
   @override
   Future<Band?> band(String bandId) async => null;
+
+  @override
+  Future<Band?> bandBySlug(String slug) async => null;
 
   @override
   Future<List<Band>> searchBands(String q) async => const [];
@@ -713,6 +726,9 @@ class _FailingRsvpRepository implements EarplugRepository {
 
   @override
   Future<void> toggleSave(String gigId) async {}
+
+  @override
+  Future<RsvpTicket> ticketForGig(String gigId) => throw UnimplementedError();
 
   @override
   Future<void> ensureRsvp(String gigId) async {}
@@ -761,6 +777,9 @@ class _FailingRsvpRepository implements EarplugRepository {
 
   @override
   Future<void> deleteCurrentUser() async {}
+
+  @override
+  Future<void> archiveBand(String bandId) async {}
 
   @override
   Future<({Band band, String slug})> createBand({
@@ -916,6 +935,15 @@ class _FailingRsvpRepository implements EarplugRepository {
 
   @override
   Future<void> deleteGig(String projectId) async {}
+
+  @override
+  Future<DoorRoster> doorRoster(String projectId) => throw UnimplementedError();
+
+  @override
+  Future<DoorCheckInResult> checkInTicket({
+    required String projectId,
+    required String payload,
+  }) => throw UnimplementedError();
 
   @override
   Future<String> publishGig({

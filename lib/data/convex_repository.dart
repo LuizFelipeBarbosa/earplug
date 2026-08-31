@@ -23,8 +23,8 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Stream<Gig?> publicGig(String gigId) =>
-      _convexService.subscribe('gigs:getPublic', {'gigId': gigId}, (decoded) {
+  Stream<Gig?> publicGig(String ref) =>
+      _convexService.subscribe('gigs:resolvePublic', {'ref': ref}, (decoded) {
         final json = _asMap(decoded);
         return json.isEmpty ? null : Gig.fromJson(json);
       });
@@ -173,6 +173,31 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<VenueCreationResult> createVenue({
+    required String bandId,
+    required String name,
+    required String area,
+    required String address,
+    required double latitude,
+    required double longitude,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('venues:create', {
+        'bandId': bandId,
+        'name': name,
+        'area': area,
+        'addr': address,
+        'lat': latitude,
+        'lng': longitude,
+      }),
+    );
+    return VenueCreationResult(
+      venue: Venue.fromJson(Map<String, dynamic>.from(result['venue'] as Map)),
+      created: result['created'] as bool,
+    );
+  }
+
+  @override
   Future<VenueDetail?> venueDetail(String venueId) async {
     final result = await _convexService.query('venues:detail', {
       'venueId': venueId,
@@ -183,6 +208,13 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<Band?> band(String bandId) async {
     final result = await _convexService.query('bands:get', {'bandId': bandId});
+    final json = _asMap(result);
+    return json.isEmpty ? null : Band.fromJson(json);
+  }
+
+  @override
+  Future<Band?> bandBySlug(String slug) async {
+    final result = await _convexService.query('bands:bySlug', {'slug': slug});
     final json = _asMap(result);
     return json.isEmpty ? null : Band.fromJson(json);
   }
@@ -225,6 +257,15 @@ class ConvexRepository implements EarplugRepository {
   Future<void> toggleSave(String gigId) async {
     await _convexService.mutation('interactions:toggleSave', {'gigId': gigId});
   }
+
+  @override
+  Future<RsvpTicket> ticketForGig(String gigId) async => RsvpTicket.fromJson(
+    _asMap(
+      await _convexService.mutation('interactions:ticketForGig', {
+        'gigId': gigId,
+      }),
+    ),
+  );
 
   @override
   Future<void> ensureRsvp(String gigId) async {
@@ -367,6 +408,11 @@ class ConvexRepository implements EarplugRepository {
       'linkYt': update.linkYt,
       'credits': update.credits,
     });
+  }
+
+  @override
+  Future<void> archiveBand(String bandId) async {
+    await _convexService.mutation('bands:archive', {'bandId': bandId});
   }
 
   @override
@@ -617,6 +663,26 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<void> deleteGig(String projectId) =>
       _convexService.mutation('gigs:deleteGig', {'projectId': projectId});
+
+  @override
+  Future<DoorRoster> doorRoster(String projectId) async => DoorRoster.fromJson(
+    _asMap(
+      await _convexService.query('gigs:doorRoster', {'projectId': projectId}),
+    ),
+  );
+
+  @override
+  Future<DoorCheckInResult> checkInTicket({
+    required String projectId,
+    required String payload,
+  }) async => DoorCheckInResult.fromJson(
+    _asMap(
+      await _convexService.mutation('gigs:checkInTicket', {
+        'projectId': projectId,
+        'payload': payload,
+      }),
+    ),
+  );
 
   @override
   Future<String> publishGig({

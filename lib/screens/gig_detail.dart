@@ -1,22 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../app_links.dart';
 import '../app_state.dart';
 import '../models.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/map_view.dart';
-
-Future<void> _openExternal(AppState app, String url) async {
-  final ok = await launchUrl(
-    Uri.parse(url),
-    mode: LaunchMode.externalApplication,
-  );
-  if (!ok) app.say("Couldn't open that link.");
-}
 
 class GigDetailScreen extends StatelessWidget {
   final String gigId;
@@ -28,7 +19,7 @@ class GigDetailScreen extends StatelessWidget {
     final app = context.watch<AppState>();
     final gig = app.gig(gigId);
     if (gig == null) {
-      if (app.publicGigError(gigId) case final error?) {
+      if (app.publicGigError(gigId) != null) {
         return Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -36,7 +27,7 @@ class GigDetailScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  error,
+                  "THIS GIG ISN'T AVAILABLE RIGHT NOW",
                   textAlign: TextAlign.center,
                   style: epText(color: Ep.contentSecondary),
                 ),
@@ -245,14 +236,12 @@ class _Hero extends StatelessWidget {
                   _HeroAction(
                     key: ValueKey('gig-detail-share-${gig.id}'),
                     tooltip: 'Share event',
-                    onTap: () {
-                      Clipboard.setData(
-                        ClipboardData(text: publicWebUrl('g/${gig.id}')),
-                      );
-                      app.say(
-                        'Link copied: ${publicWebDisplayUrl('g/${gig.id}')}',
-                      );
-                    },
+                    onTap: () => copyForUser(
+                      context,
+                      publicWebUrl('g/${gig.publicRef}'),
+                      successMessage:
+                          'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
+                    ),
                     child: Text(
                       'SHARE ↗',
                       style: epText(
@@ -477,8 +466,8 @@ class _VenueCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 OutlinedButton(
-                  onPressed: () => _openExternal(
-                    app,
+                  onPressed: () => openExternalForUser(
+                    context,
                     'https://www.google.com/maps/search/?api=1&query='
                     '${venue.point.latitude},${venue.point.longitude}',
                   ),
@@ -579,7 +568,7 @@ class _CtaBar extends StatelessWidget {
           if (url == null) {
             app.say('No ticket link listed for this gig.');
           } else {
-            _openExternal(app, url);
+            openExternalForUser(context, url);
           }
         },
       );

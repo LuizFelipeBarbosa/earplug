@@ -113,6 +113,67 @@ describe("venues:list", () => {
   });
 });
 
+describe("venues:create", () => {
+  async function setupAdmin() {
+    const t = convexTest(schema);
+    const asAdmin = t.withIdentity({ subject: "venue_admin", email: "venue@x.com" });
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Venue Makers",
+      genres: ["punk"],
+      bio: "",
+      area: "Oakland",
+      inviteHandles: [],
+    });
+    return { t, asAdmin, bandId };
+  }
+
+  const newVenue = {
+    name: "  The New Room ",
+    area: " Downtown Oakland ",
+    addr: " 123 Test Street ",
+    lat: 37.8044,
+    lng: -122.2712,
+  };
+
+  test("requires a band admin and a valid map coordinate", async () => {
+    const { t, asAdmin, bandId } = await setupAdmin();
+    const asStranger = t.withIdentity({ subject: "venue_stranger", email: "s@x.com" });
+    await asStranger.mutation(api.users.ensureUser, {});
+    await expect(
+      asStranger.mutation(api.venues.create, { bandId, ...newVenue }),
+    ).rejects.toThrow("Not an admin");
+    await expect(
+      asAdmin.mutation(api.venues.create, { ...newVenue, bandId, lat: 91 }),
+    ).rejects.toThrow("valid map location");
+  });
+
+  test("creates immediately and returns normalized duplicates instead of adding rows", async () => {
+    const { t, asAdmin, bandId } = await setupAdmin();
+    const first = await asAdmin.mutation(api.venues.create, {
+      bandId,
+      ...newVenue,
+    });
+    expect(first.created).toBe(true);
+    expect(first.venue).toMatchObject({
+      name: "The New Room",
+      area: "Downtown Oakland",
+      addr: "123 Test Street",
+    });
+
+    const duplicate = await asAdmin.mutation(api.venues.create, {
+      bandId,
+      ...newVenue,
+      name: "the   new room",
+      area: "downtown oakland",
+      addr: "123   TEST STREET",
+    });
+    expect(duplicate).toMatchObject({ created: false });
+    expect(duplicate.venue._id).toBe(first.venue._id);
+    expect(await t.query(api.venues.list, {})).toHaveLength(1);
+  });
+});
+
 describe("venues:detail", () => {
   test("isolates the venue, orders gigs, and deduplicates lineup bands", async () => {
     const t = convexTest(schema);

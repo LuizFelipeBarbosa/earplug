@@ -37,12 +37,14 @@ Future<void> main() async {
   final joinToken = joinTokenFromUri(Uri.base);
   final performerInviteToken = performerInviteTokenFromUri(Uri.base);
   final gigId = gigIdFromUri(Uri.base);
+  final bandSlug = bandSlugFromUri(Uri.base);
   if (Env.demo) {
     runApp(
       EarplugApp(
         initialJoinToken: joinToken,
         initialPerformerInviteToken: performerInviteToken,
         initialGigId: gigId,
+        initialBandSlug: bandSlug,
       ),
     );
     return;
@@ -66,6 +68,7 @@ Future<void> main() async {
       initialJoinToken: joinToken,
       initialPerformerInviteToken: performerInviteToken,
       initialGigId: gigId,
+      initialBandSlug: bandSlug,
     ),
   );
 }
@@ -93,6 +96,19 @@ String? performerInviteTokenFromUri(Uri uri) =>
     _routeValueFromUri(uri, 'gig-invite');
 
 String? gigIdFromUri(Uri uri) => _routeValueFromUri(uri, 'g');
+
+String? bandSlugFromUri(Uri uri) {
+  final segments = uri.pathSegments
+      .where((segment) => segment.isNotEmpty)
+      .toList();
+  if (segments.length != 1) return null;
+  final slug = segments.single.trim().toLowerCase();
+  if (slug.isEmpty ||
+      const {'g', 'join', 'gig-invite', 'check-in'}.contains(slug)) {
+    return null;
+  }
+  return slug;
+}
 
 /// Shown instead of the app when the build is misconfigured — no backend, no
 /// Clerk key, or a Clerk key paired with the wrong deployment. Loud on purpose:
@@ -144,6 +160,7 @@ class EarplugApp extends StatelessWidget {
     this.initialJoinToken,
     this.initialPerformerInviteToken,
     this.initialGigId,
+    this.initialBandSlug,
   });
 
   final EarplugRepository? repository;
@@ -151,6 +168,7 @@ class EarplugApp extends StatelessWidget {
   final String? initialJoinToken;
   final String? initialPerformerInviteToken;
   final String? initialGigId;
+  final String? initialBandSlug;
 
   @override
   Widget build(BuildContext context) {
@@ -162,6 +180,7 @@ class EarplugApp extends StatelessWidget {
                   initialJoinToken: initialJoinToken,
                   initialPerformerInviteToken: initialPerformerInviteToken,
                   initialGigId: initialGigId,
+                  initialBandSlug: initialBandSlug,
                 )
               : AppState(
                   repository: repository,
@@ -169,6 +188,7 @@ class EarplugApp extends StatelessWidget {
                   initialJoinToken: initialJoinToken,
                   initialPerformerInviteToken: initialPerformerInviteToken,
                   initialGigId: initialGigId,
+                  initialBandSlug: initialBandSlug,
                 ),
         ),
         ChangeNotifierProvider<BandMediaController>(

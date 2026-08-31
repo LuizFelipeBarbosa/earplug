@@ -1,0 +1,66 @@
+import 'package:earplug/app_state.dart';
+import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/main.dart' show bandSlugFromUri, gigIdFromUri;
+import 'package:earplug/services/auth_service.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('route parsing distinguishes gigs, bands, and reserved roots', () {
+    expect(
+      gigIdFromUri(Uri.parse('https://earplug.dev/g/same-night')),
+      'same-night',
+    );
+    expect(
+      bandSlugFromUri(Uri.parse('https://earplug.dev/static-bloom')),
+      'static-bloom',
+    );
+    expect(
+      bandSlugFromUri(Uri.parse('https://earplug.dev/g/same-night')),
+      isNull,
+    );
+    expect(
+      bandSlugFromUri(Uri.parse('https://earplug.dev/join/token')),
+      isNull,
+    );
+    expect(bandSlugFromUri(Uri.parse('https://earplug.dev/check-in')), isNull);
+  });
+
+  test(
+    'a root band slug resolves to its profile and unknown slugs stay missing',
+    () async {
+      final auth = FakeAuthService();
+      final repository = DemoRepository(auth: auth);
+      final resolved = AppState(
+        repository: repository,
+        auth: auth,
+        initialBandSlug: 'foghorn-diet',
+      );
+      addTearDown(resolved.dispose);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(resolved.current.screen, Screen.band);
+      expect(resolved.current.param, 'b1');
+
+      final missing = AppState(
+        repository: repository,
+        auth: auth,
+        initialBandSlug: 'no-such-band',
+      );
+      addTearDown(missing.dispose);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(missing.publicBandMissing('no-such-band'), isTrue);
+    },
+  );
+
+  test('unknown gig references become a friendly missing state', () async {
+    final auth = FakeAuthService();
+    final app = AppState(
+      repository: DemoRepository(auth: auth),
+      auth: auth,
+      initialGigId: 'malformed-reference',
+    );
+    addTearDown(app.dispose);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(app.publicGigMissing('malformed-reference'), isTrue);
+    expect(app.publicGigError('malformed-reference'), isNull);
+  });
+}

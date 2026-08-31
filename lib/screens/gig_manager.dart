@@ -5,6 +5,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import 'door_mode.dart';
 
 class GigManagerScreen extends StatelessWidget {
   const GigManagerScreen({super.key});
@@ -141,7 +142,15 @@ class _ProjectSection extends StatelessWidget {
   );
 }
 
-enum _ProjectAction { edit, preview, duplicate, unpublish, cancel, delete }
+enum _ProjectAction {
+  edit,
+  preview,
+  duplicate,
+  doorMode,
+  unpublish,
+  cancel,
+  delete,
+}
 
 class _ProjectRow extends StatelessWidget {
   final GigProject project;
@@ -219,6 +228,12 @@ class _ProjectRow extends StatelessWidget {
                 value: _ProjectAction.duplicate,
                 child: Text('Duplicate'),
               ),
+              if (project.status == GigProjectStatus.published &&
+                  project.ticketing == Ticketing.rsvp)
+                const PopupMenuItem(
+                  value: _ProjectAction.doorMode,
+                  child: Text('Door Mode'),
+                ),
               if (project.status == GigProjectStatus.published)
                 const PopupMenuItem(
                   value: _ProjectAction.unpublish,
@@ -254,6 +269,8 @@ class _ProjectRow extends StatelessWidget {
         app.previewGigDraft();
       case _ProjectAction.duplicate:
         await app.duplicateGigProject(project.id);
+      case _ProjectAction.doorMode:
+        await showDoorMode(context, project.id);
       case _ProjectAction.unpublish:
         if (await _confirm(
           context,

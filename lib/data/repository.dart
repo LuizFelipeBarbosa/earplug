@@ -445,7 +445,7 @@ abstract class EarplugRepository {
   Future<UserProfile?> me();
 
   Stream<FeedSnapshot> feed();
-  Stream<Gig?> publicGig(String gigId);
+  Stream<Gig?> publicGig(String ref);
   Stream<List<Gig>> upcomingGigsForBand(String bandId);
   Stream<Interactions> myInteractions();
   Stream<List<BandMembership>> myBands();
@@ -468,8 +468,17 @@ abstract class EarplugRepository {
   Future<BandHistory> bandHistory(String bandId);
   Future<BandRecap> bandRecap(String bandId);
   Future<List<Venue>> venues();
+  Future<VenueCreationResult> createVenue({
+    required String bandId,
+    required String name,
+    required String area,
+    required String address,
+    required double latitude,
+    required double longitude,
+  });
   Future<VenueDetail?> venueDetail(String venueId);
   Future<Band?> band(String bandId);
+  Future<Band?> bandBySlug(String slug);
   Future<BandProfileDetails> bandProfileDetails(String bandId);
   Future<List<Band>> searchBands(String q);
   Future<BandPage> listBands({String? cursor, int numItems = 50});
@@ -477,6 +486,7 @@ abstract class EarplugRepository {
   Future<void> toggleRsvp(String gigId);
   Future<void> toggleFollow(String bandId);
   Future<void> toggleSave(String gigId);
+  Future<RsvpTicket> ticketForGig(String gigId);
   Future<void> ensureRsvp(String gigId);
   Future<void> ensureFollow(String bandId);
   Future<void> ensureSave(String gigId);
@@ -514,6 +524,7 @@ abstract class EarplugRepository {
     String? credits,
   });
   Future<void> updateBandProfile(BandProfileUpdate update);
+  Future<void> archiveBand(String bandId);
   Future<BandSetupStatus> bandSetupStatus(String bandId);
   Future<BandDiscoveryReadiness> bandDiscoveryReadiness(
     String bandId, {
@@ -573,6 +584,11 @@ abstract class EarplugRepository {
   Future<void> unpublishGig(String projectId);
   Future<void> cancelGig(String projectId);
   Future<void> deleteGig(String projectId);
+  Future<DoorRoster> doorRoster(String projectId);
+  Future<DoorCheckInResult> checkInTicket({
+    required String projectId,
+    required String payload,
+  });
   Future<String> publishGig({
     required String bandId,
     required String title,

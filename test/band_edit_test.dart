@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_edit.dart';
@@ -94,6 +95,37 @@ void main() {
     expect(updated.linkYt, 'youtube.com/@newrhythm');
     expect(updated.credits, 'Recorded by Mara K.');
     expect(find.text('Changes saved.'), findsOne);
+  });
+
+  testWidgets('profile saves never create, rotate, or revoke invitations', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _InviteAuditRepository(auth: auth);
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandEditScreen()),
+    );
+
+    await _scrollTo(tester, 'SAVE CHANGES');
+    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 2400));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('edit-band-name')),
+      'Profile Only Change',
+    );
+    await _scrollTo(tester, 'SAVE CHANGES');
+    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.pumpAndSettle();
+
+    expect(repository.profileUpdates, 2);
+    expect(repository.inviteCreates, 0);
+    expect(repository.inviteRotations, 0);
+    expect(repository.inviteRevocations, 0);
   });
 
   testWidgets('late private details hydrate without overwriting other edits', (
@@ -272,6 +304,38 @@ void main() {
     expect(find.text('The previous invitation expired.'), findsOne);
     expect(find.text('CREATE NEW INVITATION LINK'), findsOne);
   });
+
+  testWidgets(
+    'archive requires the exact band name and returns to fan profile',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: BandEditScreen()),
+      );
+      await _scrollTo(tester, 'ARCHIVE BAND');
+      await tester.tap(find.byKey(const Key('archive-band')));
+      await tester.pumpAndSettle();
+
+      final confirm = find.byKey(const Key('archive-band-confirmation'));
+      await tester.enterText(confirm, 'Wrong name');
+      await tester.pump();
+      expect(
+        tester
+            .widget<FilledButton>(
+              find.widgetWithText(FilledButton, 'ARCHIVE BAND'),
+            )
+            .onPressed,
+        isNull,
+      );
+      await tester.enterText(confirm, 'Foghorn Diet');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'ARCHIVE BAND'));
+      await tester.pumpAndSettle();
+
+      expect(harness.app.current.screen, Screen.myGigs);
+      expect(harness.app.myBands, isNot(contains('b1')));
+    },
+  );
 }
 
 Future<void> _scrollTo(WidgetTester tester, String text) async {
@@ -323,4 +387,37 @@ class _InviteStateRepository extends DemoRepository {
 
   @override
   Future<BandInvite?> bandInvite(String bandId) async => invite;
+}
+
+class _InviteAuditRepository extends DemoRepository {
+  _InviteAuditRepository({required super.auth});
+
+  int profileUpdates = 0;
+  int inviteCreates = 0;
+  int inviteRotations = 0;
+  int inviteRevocations = 0;
+
+  @override
+  Future<void> updateBandProfile(BandProfileUpdate update) async {
+    profileUpdates++;
+    await super.updateBandProfile(update);
+  }
+
+  @override
+  Future<BandInvite> createBandInvite(String bandId) {
+    inviteCreates++;
+    return super.createBandInvite(bandId);
+  }
+
+  @override
+  Future<BandInvite> rotateBandInvite(String bandId) {
+    inviteRotations++;
+    return super.rotateBandInvite(bandId);
+  }
+
+  @override
+  Future<void> revokeBandInvite(String bandId) {
+    inviteRevocations++;
+    return super.revokeBandInvite(bandId);
+  }
 }

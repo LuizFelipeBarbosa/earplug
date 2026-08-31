@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:earplug/services/location_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
@@ -128,6 +130,24 @@ void main() {
       expect(result.message, contains('No browser location'));
     });
 
+    test(
+      'deadlines the entire sequence, including the service check',
+      () async {
+        final platform = _FakeGeolocatorPlatform()
+          ..servicesEnabledGate = Completer<bool>();
+        final result = await GeolocatorLocationService(
+          platform: platform,
+          requestDeadline: const Duration(milliseconds: 10),
+        ).requestCurrentLocation();
+
+        expect(
+          (result as LocationFailure).reason,
+          LocationFailureReason.unavailable,
+        );
+        expect(result.message, contains('timed out'));
+      },
+    );
+
     test('settings actions safely report unsupported platforms', () async {
       final platform = _FakeGeolocatorPlatform()
         ..settingsError = UnsupportedError('Settings are unavailable');
@@ -151,9 +171,11 @@ class _FakeGeolocatorPlatform extends GeolocatorPlatform {
   int permissionRequestCount = 0;
   Object? positionError;
   Object? settingsError;
+  Completer<bool>? servicesEnabledGate;
 
   @override
-  Future<bool> isLocationServiceEnabled() async => servicesEnabled;
+  Future<bool> isLocationServiceEnabled() async =>
+      servicesEnabledGate?.future ?? servicesEnabled;
 
   @override
   Future<LocationPermission> checkPermission() async => checkedPermission;

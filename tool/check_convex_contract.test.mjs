@@ -53,5 +53,12 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing bandInvites.js:accept",
     "missing gigs.js:resolvePerformerInvite",
     "missing gigs.js:claimPerformerInvite",
+    "missing gigs.js:resolvePublic",
+    "missing gigs.js:doorRoster",
+    "missing gigs.js:checkInTicket",
+    "missing venues.js:create",
+    "missing bands.js:bySlug",
+    "missing bands.js:archive",
+    "missing interactions.js:ticketForGig",
   ]);
 });

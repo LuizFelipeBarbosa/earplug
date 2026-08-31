@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../app_links.dart';
 import '../app_state.dart';
 import '../models.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import 'common.dart';
 
@@ -167,7 +166,7 @@ class FanEventCard extends StatelessWidget {
                       key: ValueKey('share-${gig.id}'),
                       tooltip: 'Share event',
                       icon: Icons.ios_share,
-                      onTap: () => _share(app, gig),
+                      onTap: () => _share(context, gig),
                     ),
                     _TicketAction(gig: gig, app: app),
                     ?trailingAction,
@@ -187,23 +186,19 @@ String _doorsTime(String value) {
   return separator == -1 ? value : value.substring(0, separator);
 }
 
-void _share(AppState app, Gig gig) {
-  final url = publicWebUrl('g/${gig.id}');
-  Clipboard.setData(ClipboardData(text: url));
-  app.say('Link copied: ${publicWebDisplayUrl('g/${gig.id}')}');
-}
+Future<void> _share(BuildContext context, Gig gig) => copyForUser(
+  context,
+  publicWebUrl('g/${gig.publicRef}'),
+  successMessage: 'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
+);
 
-Future<void> _openTickets(AppState app, Gig gig) async {
+Future<void> _openTickets(BuildContext context, AppState app, Gig gig) async {
   final url = gig.externalUrl;
   if (url == null || url.isEmpty) {
     app.say('No ticket link listed for this gig.');
     return;
   }
-  final opened = await launchUrl(
-    Uri.parse(url),
-    mode: LaunchMode.externalApplication,
-  );
-  if (!opened) app.say("Couldn't open that link.");
+  await openExternalForUser(context, url);
 }
 
 class _AgeBadge extends StatelessWidget {
@@ -274,7 +269,7 @@ class _TicketAction extends StatelessWidget {
     final going = app.rsvps.contains(gig.id);
     final label = external ? 'TICKETS ↗' : (going ? 'GOING ✓' : 'RSVP');
     final onPressed = external
-        ? () => _openTickets(app, gig)
+        ? () => _openTickets(context, app, gig)
         : () => going ? app.toggleRsvp(gig.id) : app.requestRsvp(gig.id);
     final style = ButtonStyle(
       minimumSize: const WidgetStatePropertyAll(Size(48, 48)),

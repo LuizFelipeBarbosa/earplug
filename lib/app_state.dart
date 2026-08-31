@@ -15,6 +15,7 @@ import 'demo_data.dart';
 import 'errors.dart';
 import 'models.dart';
 import 'services/auth_service.dart';
+import 'services/browser_history.dart';
 import 'services/flyer_text_extractor.dart';
 import 'services/location_service.dart';
 import 'services/media_picker.dart';
@@ -216,6 +217,7 @@ class AppState extends ChangeNotifier {
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
+    String? initialBandSlug,
     DateTime Function()? now,
   }) : this._(
          auth ?? FakeAuthService(),
@@ -225,6 +227,7 @@ class AppState extends ChangeNotifier {
          initialJoinToken,
          initialPerformerInviteToken,
          initialGigId,
+         initialBandSlug,
          now ?? DateTime.now,
        );
 
@@ -236,6 +239,7 @@ class AppState extends ChangeNotifier {
     String? initialJoinToken,
     String? initialPerformerInviteToken,
     String? initialGigId,
+    String? initialBandSlug,
     this._now,
   ) : auth = resolvedAuth,
       repository = providedRepository ?? DemoRepository(auth: resolvedAuth),
@@ -246,6 +250,7 @@ class AppState extends ChangeNotifier {
           : DataStatus.ready {
     mediaUploader =
         providedMediaUploader ?? MediaUploadService(repository: repository);
+    _stopBrowserHistory = listenForBrowserBack(_popAppStack);
     authed = auth.signedIn;
     if (authed) {
       authStep = 2;
@@ -269,6 +274,7 @@ class AppState extends ChangeNotifier {
     final performerToken = initialPerformerInviteToken?.trim();
     final joinToken = initialJoinToken?.trim();
     final gigId = initialGigId?.trim();
+    final bandSlug = initialBandSlug?.trim();
     if (performerToken != null && performerToken.isNotEmpty) {
       _stack = [ScreenEntry(Screen.gigInvite, performerToken)];
       unawaited(_resolvePerformerInvite(performerToken));
@@ -278,6 +284,9 @@ class AppState extends ChangeNotifier {
     } else if (gigId != null && gigId.isNotEmpty) {
       _stack = [ScreenEntry(Screen.gig, gigId)];
       unawaited(_loadPublicGig(gigId));
+    } else if (bandSlug != null && bandSlug.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.band, bandSlug)];
+      unawaited(_loadPublicBand(bandSlug));
     }
   }
 
@@ -292,6 +301,7 @@ class AppState extends ChangeNotifier {
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
   StreamSubscription<Gig?>? _publicGigSubscription;
+  VoidCallback? _stopBrowserHistory;
   Timer? _discoveryBoundaryTimer;
   final Map<String, StreamSubscription<List<Gig>>>
   _followedBandGigSubscriptions = {};
@@ -350,6 +360,8 @@ class AppState extends ChangeNotifier {
   String? _subscribedPublicGigId;
   bool _publicGigLoading = false;
   int _publicGigGeneration = 0;
+  final Set<String> _missingPublicBands = {};
+  final Set<String> _loadingPublicBands = {};
 
   BandMediaController? _media;
 
@@ -560,6 +572,8 @@ class AppState extends ChangeNotifier {
     _toastTimer?.cancel();
     _gigAutosaveTimer?.cancel();
     _discoveryBoundaryTimer?.cancel();
+    _stopBrowserHistory?.call();
+    _stopBrowserHistory = null;
     unawaited(_authSubscription?.cancel());
     unawaited(_feedSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
@@ -791,6 +805,26 @@ class AppState extends ChangeNotifier {
     unawaited(_refreshVenueDirectory());
   }
 
+  Future<VenueCreationResult> createVenue({
+    required String name,
+    required String area,
+    required String address,
+    required LatLng point,
+  }) async {
+    final result = await repository.createVenue(
+      bandId: bandId,
+      name: name,
+      area: area,
+      address: address,
+      latitude: point.latitude,
+      longitude: point.longitude,
+    );
+    _venueDirectory = {..._venueDirectory, result.venue.id: result.venue};
+    setGfVenue(result.venue.id);
+    notifyListeners();
+    return result;
+  }
+
   Future<void> _loadExploreBandPage() async {
     if (exploreBandsLoading || _exploreBandsDone) return;
     exploreBandsLoading = true;
@@ -992,20 +1026,34 @@ class AppState extends ChangeNotifier {
 
   // ========================= navigation =========================
 
-  void go(Screen s, [String? param]) =>
-      _set(() => _stack = [..._stack, ScreenEntry(s, param)]);
+  void go(Screen s, [String? param]) {
+    _set(() => _stack = [..._stack, ScreenEntry(s, param)]);
+    pushBrowserPath(_browserPathFor(s, param));
+  }
 
   void back() {
-    if (_stack.length > 1) {
-      _set(() => _stack = _stack.sublist(0, _stack.length - 1));
-      _refreshVisibleBandDashboard();
-    }
+    if (_stack.length <= 1) return;
+    if (requestBrowserBack()) return;
+    _popAppStack();
+  }
+
+  void _popAppStack() {
+    if (_disposed || _stack.length <= 1) return;
+    _set(() => _stack = _stack.sublist(0, _stack.length - 1));
+    _refreshVisibleBandDashboard();
   }
 
   void resetTo(Screen s) {
     _set(() => _stack = [ScreenEntry(s)]);
+    replaceBrowserPath(_browserPathFor(s, null));
     _refreshVisibleBandDashboard();
   }
+
+  String _browserPathFor(Screen screen, String? param) => switch (screen) {
+    Screen.gig => '/g/${gig(param ?? '')?.publicRef ?? param ?? ''}',
+    Screen.band => '/${_bands[param]?.publicRef ?? param ?? ''}',
+    _ => '/',
+  };
 
   void _refreshVisibleBandDashboard() {
     if (current.screen == Screen.bandDash && bandId.isNotEmpty) {
@@ -1708,23 +1756,40 @@ class AppState extends ChangeNotifier {
     locationFailure = null;
     notifyListeners();
 
-    final result = await locationService.requestCurrentLocation();
-    if (_disposed || requestGeneration != _locationRequestGeneration) {
-      return false;
-    }
-    locating = false;
-    switch (result) {
-      case LocationSuccess(:final location):
-        _appliedHomePersonalization = null;
-        currentPosition = LatLng(location.latitude, location.longitude);
-        discoveryLocation = DiscoveryLocation.current;
-        locationFailure = null;
-        say('Showing gigs near your current location.');
-        return true;
-      case final LocationFailure failure:
-        locationFailure = failure;
-        notifyListeners();
+    try {
+      final result = await locationService.requestCurrentLocation().timeout(
+        const Duration(seconds: 22),
+      );
+      if (_disposed || requestGeneration != _locationRequestGeneration) {
         return false;
+      }
+      switch (result) {
+        case LocationSuccess(:final location):
+          _appliedHomePersonalization = null;
+          currentPosition = LatLng(location.latitude, location.longitude);
+          discoveryLocation = DiscoveryLocation.current;
+          locationFailure = null;
+          say('Showing gigs near your current location.');
+          return true;
+        case final LocationFailure failure:
+          locationFailure = failure;
+          notifyListeners();
+          return false;
+      }
+    } on TimeoutException {
+      if (!_disposed && requestGeneration == _locationRequestGeneration) {
+        locationFailure = const LocationFailure(
+          LocationFailureReason.unavailable,
+          message: 'Location request timed out. Retry or choose a city.',
+        );
+        notifyListeners();
+      }
+      return false;
+    } finally {
+      if (!_disposed && requestGeneration == _locationRequestGeneration) {
+        locating = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -1935,7 +2000,7 @@ class AppState extends ChangeNotifier {
     if (direct != null) return direct;
     if (_missingPublicGigs.contains(id)) return null;
     for (final g in allGigs) {
-      if (g.id == id) return g;
+      if (g.id == id || g.slug == id) return g;
     }
     for (final gigs in _followedBandGigs.values) {
       for (final gig in gigs) {
@@ -1992,6 +2057,13 @@ class AppState extends ChangeNotifier {
             } else {
               _missingPublicGigs.remove(id);
               _publicGigs[id] = gig;
+              _publicGigs[gig.id] = gig;
+              _publicGigs[gig.publicRef] = gig;
+              if (current.screen == Screen.gig &&
+                  current.param == id &&
+                  id != gig.publicRef) {
+                replaceBrowserPath('/g/${gig.publicRef}');
+              }
               for (final bandId in gig.lineup) {
                 if (!_bands.containsKey(bandId)) {
                   unawaited(_loadFollowBand(bandId));
@@ -2004,13 +2076,46 @@ class AppState extends ChangeNotifier {
             if (_disposed || generation != _publicGigGeneration) return;
             logError('publicGig $id', error);
             _publicGigLoading = false;
-            _publicGigErrors[id] = '$error';
+            _publicGigErrors[id] = genericErrorMessage;
             notifyListeners();
           },
         );
   }
 
   Band? band(String id) => _bands[id];
+
+  bool publicBandLoading(String ref) => _loadingPublicBands.contains(ref);
+
+  bool publicBandMissing(String ref) => _missingPublicBands.contains(ref);
+
+  Future<void> _loadPublicBand(String slug) async {
+    if (!_loadingPublicBands.add(slug)) return;
+    _missingPublicBands.remove(slug);
+    notifyListeners();
+    try {
+      final loaded = await repository.bandBySlug(slug);
+      if (_disposed) return;
+      if (loaded == null) {
+        _missingPublicBands.add(slug);
+        return;
+      }
+      _bands[loaded.id] = loaded;
+      if (current.screen == Screen.band && current.param == slug) {
+        _stack = [
+          ..._stack.take(_stack.length - 1),
+          ScreenEntry(Screen.band, loaded.id),
+        ];
+        replaceBrowserPath('/${loaded.slug}');
+      }
+      unawaited(loadBandProfileDetails(loaded.id));
+    } catch (error) {
+      logError('bandBySlug $slug', error);
+      if (!_disposed) _missingPublicBands.add(slug);
+    } finally {
+      _loadingPublicBands.remove(slug);
+      if (!_disposed) notifyListeners();
+    }
+  }
 
   VenueDetail? venueDetail(String id) {
     final cached = _venueDetails[id];
@@ -2484,12 +2589,7 @@ class AppState extends ChangeNotifier {
     await refreshBandDiscoveryReadiness(update.bandId);
   }
 
-  BandInvite? inviteFor(String id) {
-    if (!_bandInvites.containsKey(id) && isAdminOf(id)) {
-      unawaited(refreshBandInvite(id));
-    }
-    return _bandInvites[id];
-  }
+  BandInvite? inviteFor(String id) => _bandInvites[id];
 
   bool inviteLoadingFor(String id) => _bandInviteLoading.contains(id);
 
@@ -2533,6 +2633,24 @@ class AppState extends ChangeNotifier {
       );
     }
     notifyListeners();
+  }
+
+  Future<void> archiveCurrentBand() async {
+    final id = bandId;
+    if (id.isEmpty || !isAdminOf(id)) {
+      throw StateError('Band admin access required.');
+    }
+    await repository.archiveBand(id);
+    myBands = myBands.where((candidate) => candidate != id).toList();
+    _bandRoles.remove(id);
+    _bandInvites.remove(id);
+    _bands.remove(id);
+    bandId = myBands.firstOrNull ?? '';
+    managedGigsBandId = null;
+    _stack = const [ScreenEntry(Screen.myGigs)];
+    replaceBrowserPath('/');
+    notifyListeners();
+    say('Band archived. Future owned gigs were cancelled.');
   }
 
   Future<void> openJoinInvite(String token) async {
@@ -2943,8 +3061,6 @@ class AppState extends ChangeNotifier {
   void startGigCreate() {
     _resetGigForm();
     go(Screen.gigCreate);
-    final editorGeneration = _gigEditorGeneration;
-    _gigCreateFuture = _createGigDraft(editorGeneration, bandId);
   }
 
   bool _isCurrentGigEditor(int editorGeneration) =>
@@ -2957,17 +3073,24 @@ class AppState extends ChangeNotifier {
     if (!_isCurrentGigEditor(editorGeneration)) {
       throw StateError('Gig editor is no longer active');
     }
+    final hadLocalEdits = _gigDraftDirty;
     gfSaveState = 'CREATING…';
     notifyListeners();
     try {
       final project = await repository.createGigDraft(requestedBandId);
-      if (!_isCurrentGigEditor(editorGeneration)) return project;
-      if (gfSaveState == 'UNSAVED') {
+      if (!_isCurrentGigEditor(editorGeneration)) {
+        try {
+          await repository.deleteGig(project.id);
+        } catch (error) {
+          logError('discardAbandonedGigDraft', error);
+        }
+        return project;
+      }
+      if (hadLocalEdits) {
         // A fast typist can edit while the first draft request is in flight.
         // Attach the server identity without replacing those local changes.
         gfProject = project;
         notifyListeners();
-        _scheduleGigAutosave();
       } else {
         _applyGigProject(project);
       }
@@ -3100,7 +3223,19 @@ class AppState extends ChangeNotifier {
 
   String get gfStartLabel => timeLabel(gfStart);
 
-  List<GigPerformer> get gfPerformers => gfProject?.performers ?? const [];
+  static const _pendingOwnerPerformerId = 'pending-owner';
+
+  List<GigPerformer> get gfPerformers =>
+      gfProject?.performers ??
+      [
+        GigPerformer(
+          id: _pendingOwnerPerformerId,
+          kind: GigPerformerKind.band,
+          name: myBand?.name ?? 'Your band',
+          role: GigPerformerRole.headliner,
+          bandId: bandId,
+        ),
+      ];
 
   /// "Sat Aug 15", or empty until a day is picked.
   String get gfDateLabel => gfDate == null ? '' : dateLabel(gfDate!);
@@ -3110,7 +3245,13 @@ class AppState extends ChangeNotifier {
       gfDate != null &&
       gfVenueId != null &&
       (gfProject == null || gfPerformers.isNotEmpty) &&
-      (!gfCustomFlyer || gfFlyerStorageId != null);
+      (!gfCustomFlyer || gfFlyerStorageId != null) &&
+      (gfTix != Ticketing.external || validExternalTicketUrl);
+
+  bool get validExternalTicketUrl {
+    final uri = Uri.tryParse(gfExt.trim());
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+  }
 
   /// What the publish bar still asks for, in reading order.
   List<String> get gigMissing => [
@@ -3119,11 +3260,30 @@ class AppState extends ChangeNotifier {
     if (gfVenueId == null) 'a venue',
     if (gfProject != null && gfPerformers.isEmpty) 'a performer',
     if (gfCustomFlyer && gfFlyerStorageId == null) 'your flyer art',
+    if (gfTix == Ticketing.external && !validExternalTicketUrl)
+      'a valid HTTPS ticket link',
   ];
 
   String get gigUrl {
-    final slug = _slugify(gfName.trim().isEmpty ? 'your-gig' : gfName.trim());
+    final canonical = gfProject?.publicSlug;
+    final slug =
+        canonical ??
+        _slugify(gfName.trim().isEmpty ? 'your-gig' : gfName.trim());
     return publicWebDisplayUrl('g/${slug.isEmpty ? 'your-gig' : slug}');
+  }
+
+  String get gigPreviewLabel {
+    final project = gfProject;
+    if (project == null) return 'PRIVATE DRAFT';
+    return switch (project.status) {
+      GigProjectStatus.cancelled => 'CANCELLED',
+      GigProjectStatus.published
+          when project.hasUnpublishedChanges || _gigDraftDirty =>
+        'UNPUBLISHED CHANGES',
+      GigProjectStatus.published => 'LIVE',
+      GigProjectStatus.draft when project.publicGigId != null => 'UNPUBLISHED',
+      _ => 'PRIVATE DRAFT',
+    };
   }
 
   DateTime? get _gfDoorsAt {
@@ -3207,6 +3367,7 @@ class AppState extends ChangeNotifier {
       id: project.id,
       bandId: project.bandId,
       publicGigId: project.publicGigId,
+      publicSlug: project.publicSlug,
       status: project.status,
       revision: revision ?? project.revision,
       publishedRevision: project.publishedRevision,
@@ -3319,8 +3480,10 @@ class AppState extends ChangeNotifier {
     final editorGeneration = _gigEditorGeneration;
     final venueId = gfVenueId!;
     final String publicGigId;
+    GigProject? publishedProject;
     try {
       publicGigId = await repository.publishGigDraft(project.id);
+      publishedProject = await repository.getGigProject(project.id);
     } on Exception catch (error) {
       logError('publishGig', error);
       say(genericErrorMessage);
@@ -3338,6 +3501,7 @@ class AppState extends ChangeNotifier {
       id: current.id,
       bandId: current.bandId,
       publicGigId: publicGigId,
+      publicSlug: publishedProject.publicSlug ?? current.publicSlug,
       status: GigProjectStatus.published,
       revision: current.revision,
       publishedRevision: current.revision,
@@ -3407,8 +3571,12 @@ class AppState extends ChangeNotifier {
   ) async {
     await _queueGigLineupMutation(
       'updateGigPerformer',
-      (_) =>
-          repository.updateGigPerformer(performerId: performerId, role: role),
+      (project) => repository.updateGigPerformer(
+        performerId: performerId == _pendingOwnerPerformerId
+            ? project.performers.first.id
+            : performerId,
+        role: role,
+      ),
     );
   }
 
@@ -3558,6 +3726,15 @@ class AppState extends ChangeNotifier {
 
   /// The ✕ in the header: done here, back to the gig manager.
   void closeGigCreate() {
+    final pristine = gfProject == null && !_gigDraftDirty;
+    if (pristine) {
+      _set(() {
+        managedGigsBandId = bandId;
+        _stack = const [ScreenEntry(Screen.gigMgr)];
+      });
+      unawaited(refreshManagedGigs());
+      return;
+    }
     final saved = saveGigDraft();
     _set(() {
       // The explicit refresh below must run after the final save. Mark this

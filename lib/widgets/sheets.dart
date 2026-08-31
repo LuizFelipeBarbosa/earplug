@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../app_state.dart';
 import '../models.dart';
@@ -217,63 +218,25 @@ void showSwitcherSheet(BuildContext context) {
 
 // ============================ QR ticket ============================
 
-/// Deterministic fake QR pattern, ported from the design spec.
-List<List<bool>> qrCellsFor(String seedStr) {
-  var seed = 7;
-  for (final ch in seedStr.codeUnits) {
-    seed = (seed * 31 + ch) % 9973;
-  }
-  double rnd() {
-    seed = (seed * 1103515245 + 12345) % 2147483647;
-    return seed / 2147483647;
-  }
-
-  const n = 17;
-  bool finderCell(int r, int c, int r0, int c0) {
-    final y = r - r0, x = c - c0;
-    final ring = (y - 3).abs() > (x - 3).abs() ? (y - 3).abs() : (x - 3).abs();
-    return ring != 2;
-  }
-
-  return List.generate(n, (r) {
-    return List.generate(n, (c) {
-      if (r < 7 && c < 7) return finderCell(r, c, 0, 0);
-      if (r < 7 && c >= n - 7) return finderCell(r, c, 0, n - 7);
-      if (r >= n - 7 && c < 7) return finderCell(r, c, n - 7, 0);
-      return rnd() > 0.52;
-    });
-  });
-}
-
-class _QrPainter extends CustomPainter {
-  final List<List<bool>> cells;
-
-  const _QrPainter(this.cells);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final n = cells.length;
-    final cell = size.width / n;
-    final paint = Paint()..color = Ep.background;
-    for (var r = 0; r < n; r++) {
-      for (var c = 0; c < n; c++) {
-        if (cells[r][c]) {
-          canvas.drawRect(
-            Rect.fromLTWH(c * cell, r * cell, cell + .5, cell + .5),
-            paint,
-          );
-        }
-      }
+Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
+  if (gig.tix != Ticketing.rsvp) return;
+  late final RsvpTicket ticket;
+  try {
+    ticket = await context.read<AppState>().repository.ticketForGig(gig.id);
+  } catch (_) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Your RSVP ticket is unavailable. Refresh and try again.',
+          ),
+        ),
+      );
     }
+    return;
   }
-
-  @override
-  bool shouldRepaint(_QrPainter old) => old.cells != cells;
-}
-
-void showQrDialog(BuildContext context, Gig gig, Venue venue) {
-  final userKey = context.read<AppState>().profile?.email ?? 'guest';
-  showDialog<void>(
+  if (!context.mounted) return;
+  await showDialog<void>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: .72),
     builder: (ctx) {
@@ -295,14 +258,22 @@ void showQrDialog(BuildContext context, Gig gig, Venue venue) {
               Container(
                 padding: const EdgeInsets.all(10),
                 color: Colors.white,
-                child: CustomPaint(
-                  size: const Size(119, 119),
-                  painter: _QrPainter(qrCellsFor('${gig.id}$userKey')),
+                child: QrImageView(
+                  data: ticket.payload,
+                  version: QrVersions.auto,
+                  size: 180,
+                  backgroundColor: Colors.white,
+                  eyeStyle: const QrEyeStyle(color: Ep.background),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    color: Ep.background,
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
               Text(
-                '${gig.dateShort} · ${venue.name}\nFlash this at the door.',
+                ticket.checkedInAt == null
+                    ? '${gig.dateShort} · ${venue.name}\nFlash this at the door.'
+                    : '${gig.dateShort} · ${venue.name}\nCHECKED IN ✓',
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,

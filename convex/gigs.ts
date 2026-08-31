@@ -21,6 +21,7 @@ import {
   pastGigsForBand,
   requireBandAdmin,
   requireBandAdminQuery,
+  slugify,
   toBandPayload,
   toGigPayload,
   toVenuePayload,
@@ -38,6 +39,7 @@ const PUBLIC_WEB_ORIGIN = "https://earplug.dev";
 
 const MAX_PERFORMERS = 20;
 const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const TICKET_PREFIX = "earplug:ticket:v1:";
 
 const performerPayloadValidator = v.object({
   _id: v.id("gigProjectPerformers"),
@@ -52,6 +54,7 @@ const projectPayloadValidator = v.object({
   _id: v.id("gigProjects"),
   bandId: v.id("bands"),
   publicGigId: v.union(v.id("gigs"), v.null()),
+  publicSlug: v.union(v.string(), v.null()),
   status: gigProjectStatusValidator,
   revision: v.number(),
   publishedRevision: v.union(v.number(), v.null()),
@@ -101,6 +104,7 @@ async function toProjectPayload(
     _id: project._id,
     bandId: project.bandId,
     publicGigId: project.publicGigId ?? null,
+    publicSlug: project.publicSlug ?? null,
     status: project.status,
     revision: project.revision,
     publishedRevision: project.publishedRevision ?? null,
@@ -225,6 +229,19 @@ async function publicLineup(ctx: MutationCtx, projectId: Id<"gigProjects">) {
   };
 }
 
+export async function uniqueGigSlug(ctx: MutationCtx, title: string) {
+  const generated = slugify(title);
+  const base = generated === "band" ? "gig" : generated;
+  for (let suffix = 1; ; suffix++) {
+    const candidate = suffix === 1 ? base : `${base}-${suffix}`;
+    const existing = await ctx.db
+      .query("gigs")
+      .withIndex("by_slug", (q) => q.eq("slug", candidate))
+      .first();
+    if (!existing) return candidate;
+  }
+}
+
 async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
   if (!project.title?.trim()) throw new Error("Gig name is required");
   if (project.doorsAt === undefined || project.startsAt === undefined) {
@@ -251,8 +268,14 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
     performerLineupReady(project.bandId, performers) &&
     (await venuePosterReady(ctx, project));
   const doorsTime = `${formattedTime(project.doorsAt)} / ${formattedTime(project.startsAt)}`;
+  let publicGigId = project.publicGigId;
+  const existingGig = publicGigId ? await ctx.db.get(publicGigId) : null;
+  if (publicGigId && !existingGig) publicGigId = undefined;
+  const publicSlug =
+    project.publicSlug ?? existingGig?.slug ?? (await uniqueGigSlug(ctx, project.title));
   const publicFields = {
     title: project.title.trim(),
+    slug: publicSlug,
     venueId: project.venueId,
     price: project.price,
     startsAt: project.startsAt,
@@ -277,19 +300,14 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
     discoveryListingReady,
   };
 
-  let publicGigId = project.publicGigId;
   if (publicGigId) {
-    const gig = await ctx.db.get(publicGigId);
-    if (!gig) publicGigId = undefined;
-    else {
-      await ctx.db.patch(publicGigId, publicFields);
-      await replaceGigBandIndex(
-        ctx,
-        publicGigId,
-        lineup.lineup,
-        project.startsAt,
-      );
-    }
+    await ctx.db.patch(publicGigId, publicFields);
+    await replaceGigBandIndex(
+      ctx,
+      publicGigId,
+      lineup.lineup,
+      project.startsAt,
+    );
   }
   if (!publicGigId) {
     publicGigId = await ctx.db.insert("gigs", {
@@ -305,6 +323,7 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
   }
   await ctx.db.patch(project._id, {
     publicGigId,
+    publicSlug,
     status: "published",
     publishedRevision: project.revision,
     updatedAt: Date.now(),
@@ -326,6 +345,7 @@ export async function createProjectForGig(
   const projectId = await ctx.db.insert("gigProjects", {
     bandId,
     publicGigId: gig._id,
+    publicSlug: gig.slug,
     status: lifecycle(gig) === "cancelled" ? "cancelled" : "published",
     revision: 1,
     publishedRevision: 1,
@@ -398,6 +418,12 @@ async function hydrateVenues(ctx: QueryCtx, venueIds: Set<Id<"venues">>) {
   return venues;
 }
 
+async function ownedByActiveBand(ctx: QueryCtx, gig: Doc<"gigs">) {
+  if (!gig.createdByBand) return true;
+  const owner = await ctx.db.get(gig.createdByBand);
+  return owner !== null && owner.archivedAt === undefined;
+}
+
 export const feed = query({
   args: {},
   returns: v.object({
@@ -410,7 +436,10 @@ export const feed = query({
     const { gigs, nextStartsAt } = await upcomingGigs(ctx);
     const venueIds = new Set<Id<"venues">>();
     const bandIds = new Set<Id<"bands">>();
+    const publicGigs = [];
     for (const gig of gigs) {
+      if (!(await ownedByActiveBand(ctx, gig))) continue;
+      publicGigs.push(gig);
       venueIds.add(gig.venueId);
       for (const bandId of gig.lineup) bandIds.add(bandId);
       if (gig.createdByBand) bandIds.add(gig.createdByBand);
@@ -418,10 +447,13 @@ export const feed = query({
     const bands = [];
     for (const bandId of bandIds) {
       const band = await ctx.db.get(bandId);
-      if (band) bands.push(await toBandPayload(ctx, band));
+      if (band && band.archivedAt === undefined) {
+        bands.push(await toBandPayload(ctx, band));
+      }
     }
     const gigPayloads = [];
-    for (const gig of gigs) gigPayloads.push(await toGigPayload(ctx, gig));
+    for (const gig of publicGigs)
+      gigPayloads.push(await toGigPayload(ctx, gig));
     return {
       gigs: gigPayloads,
       venues: await hydrateVenues(ctx, venueIds),
@@ -440,6 +472,31 @@ export const getPublic = query({
     const gig = await ctx.db.get(args.gigId);
     if (!gig || !["published", "cancelled"].includes(lifecycle(gig)))
       return null;
+    if (!(await ownedByActiveBand(ctx, gig))) return null;
+    return await toGigPayload(ctx, gig);
+  },
+});
+
+/** Canonical public-page resolver. String validation keeps malformed slugs and
+ * ids out of Convex's argument validator and turns them into a normal miss. */
+export const resolvePublic = query({
+  args: { ref: v.string() },
+  returns: v.union(gigPayloadValidator, v.null()),
+  handler: async (ctx, args) => {
+    const ref = args.ref.trim();
+    if (ref === "" || ref.length > 200) return null;
+    let gig = await ctx.db
+      .query("gigs")
+      .withIndex("by_slug", (q) => q.eq("slug", ref))
+      .first();
+    if (!gig) {
+      const normalized = ctx.db.normalizeId("gigs", ref);
+      gig = normalized ? await ctx.db.get(normalized) : null;
+    }
+    if (!gig || !["published", "cancelled"].includes(lifecycle(gig))) {
+      return null;
+    }
+    if (!(await ownedByActiveBand(ctx, gig))) return null;
     return await toGigPayload(ctx, gig);
   },
 });
@@ -448,6 +505,8 @@ export const forBand = query({
   args: { bandId: v.id("bands") },
   returns: v.array(gigPayloadValidator),
   handler: async (ctx, args) => {
+    const band = await ctx.db.get(args.bandId);
+    if (!band || band.archivedAt !== undefined) return [];
     const rows = await upcomingGigsForBand(
       ctx,
       args.bandId,
@@ -470,6 +529,10 @@ export const pastForBand = query({
     venues: v.array(venuePayloadValidator),
   }),
   handler: async (ctx, args) => {
+    const band = await ctx.db.get(args.bandId);
+    if (!band || band.archivedAt !== undefined) {
+      return { gigs: [], venues: [] };
+    }
     const rows = await pastGigsForBand(ctx, args.bandId, MAX_PAST_GIGS * 2);
     const gigs = [];
     const venueIds = new Set<Id<"venues">>();
@@ -486,25 +549,28 @@ export const pastForBand = query({
 /** Compatibility endpoint for released clients. New clients use projects. */
 export const publishGig = mutation({
   args: gigPublishFieldsValidator.fields,
-  returns: v.object({ gigId: v.id("gigs") }),
+  returns: v.object({ gigId: v.id("gigs"), slug: v.string() }),
   handler: async (ctx, args) => {
     await requireBandAdmin(ctx, args.bandId);
     const { band } = await assertGigPublishable(ctx, args);
     const gigId = await insertPublishedGig(ctx, args, band);
     const gig = await ctx.db.get(gigId);
     if (gig) {
+      const slug = await uniqueGigSlug(ctx, args.title);
       await ctx.db.patch(gigId, {
+        slug,
         lifecycle: "published",
         doorsAt: gig.doorsAt ?? gig.startsAt,
         performers: [{ name: band.name, role: "headliner", bandId: band._id }],
       });
       await createProjectForGig(
         ctx,
-        { ...gig, lifecycle: "published" },
+        { ...gig, slug, lifecycle: "published" },
         band._id,
       );
+      return { gigId, slug };
     }
-    return { gigId };
+    throw new Error("Published gig not found");
   },
 });
 
@@ -773,10 +839,92 @@ export const reorderPerformers = mutation({
 
 export const publishDraft = mutation({
   args: { projectId: v.id("gigProjects") },
-  returns: v.object({ gigId: v.id("gigs") }),
+  returns: v.object({ gigId: v.id("gigs"), slug: v.string() }),
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
-    return { gigId: await publishProject(ctx, project) };
+    const gigId = await publishProject(ctx, project);
+    const gig = await ctx.db.get(gigId);
+    return { gigId, slug: gig?.slug ?? gigId };
+  },
+});
+
+const doorResultValidator = v.union(
+  v.object({ status: v.literal("invalid") }),
+  v.object({ status: v.literal("wrongGig") }),
+  v.object({
+    status: v.literal("checkedIn"),
+    fanName: v.string(),
+    checkedInAt: v.number(),
+  }),
+  v.object({
+    status: v.literal("alreadyCheckedIn"),
+    fanName: v.string(),
+    checkedInAt: v.number(),
+  }),
+);
+
+export const doorRoster = query({
+  args: { projectId: v.id("gigProjects") },
+  returns: v.object({
+    total: v.number(),
+    checkedIn: v.number(),
+    truncated: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const project = await requireProjectAdminQuery(ctx, args.projectId);
+    if (!project.publicGigId || project.ticketing !== "rsvp") {
+      return { total: 0, checkedIn: 0, truncated: false };
+    }
+    const rows = await ctx.db
+      .query("gigRsvps")
+      .withIndex("by_gig", (q) => q.eq("gigId", project.publicGigId!))
+      .take(501);
+    const visible = rows.slice(0, 500);
+    return {
+      total: visible.length,
+      checkedIn: visible.filter((row) => row.checkedInAt !== undefined).length,
+      truncated: rows.length > 500,
+    };
+  },
+});
+
+export const checkInTicket = mutation({
+  args: { projectId: v.id("gigProjects"), payload: v.string() },
+  returns: doorResultValidator,
+  handler: async (ctx, args) => {
+    const project = await requireProjectAdmin(ctx, args.projectId);
+    if (!project.publicGigId || project.ticketing !== "rsvp") {
+      return { status: "wrongGig" as const };
+    }
+    const payload = args.payload.trim();
+    if (!payload.startsWith(TICKET_PREFIX)) {
+      return { status: "invalid" as const };
+    }
+    const token = payload.slice(TICKET_PREFIX.length);
+    if (!/^[a-f0-9]{64}$/.test(token)) {
+      return { status: "invalid" as const };
+    }
+    const rsvp = await ctx.db
+      .query("gigRsvps")
+      .withIndex("by_ticketToken", (q) => q.eq("ticketToken", token))
+      .first();
+    if (!rsvp) return { status: "invalid" as const };
+    if (rsvp.gigId !== project.publicGigId) {
+      return { status: "wrongGig" as const };
+    }
+    const fan = await ctx.db.get(rsvp.userId);
+    const fanName = fan?.name.trim() || "Guest";
+    if (rsvp.checkedInAt !== undefined) {
+      return {
+        status: "alreadyCheckedIn" as const,
+        fanName,
+        checkedInAt: rsvp.checkedInAt,
+      };
+    }
+    const admin = await requireBandAdmin(ctx, project.bandId);
+    const checkedInAt = Date.now();
+    await ctx.db.patch(rsvp._id, { checkedInAt, checkedInBy: admin._id });
+    return { status: "checkedIn" as const, fanName, checkedInAt };
   },
 });
 
@@ -920,6 +1068,8 @@ export const resolvePerformerInvite = query({
     }
     const project = await ctx.db.get(performer.projectId);
     if (!project || project.status === "deleted") return null;
+    const ownerBand = await ctx.db.get(project.bandId);
+    if (!ownerBand || ownerBand.archivedAt !== undefined) return null;
     return {
       performerName: performer.name,
       gigTitle: project.title ?? "Untitled gig",
@@ -955,6 +1105,10 @@ export const claimPerformerInvite = mutation({
     const project = await ctx.db.get(performer.projectId);
     if (!project || project.status === "deleted")
       throw new Error("Gig is unavailable");
+    const ownerBand = await ctx.db.get(project.bandId);
+    if (!ownerBand || ownerBand.archivedAt !== undefined) {
+      throw new Error("Gig is unavailable");
+    }
     const performers = await projectPerformers(ctx, project._id);
     if (
       performers.some(

@@ -9,6 +9,7 @@ import 'package:earplug/screens/venue_detail.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -192,6 +193,16 @@ void main() {
   });
 
   testWidgets('fan card exposes metadata and auth-gates save', (tester) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (_) async => null,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
     final gig = DemoData.gigs.first;
     final harness = await pumpApp(
       tester,
@@ -216,7 +227,7 @@ void main() {
 
     await tester.tap(find.byKey(ValueKey('share-${gig.id}')));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(harness.app.toast, contains('Link copied'));
+    expect(find.textContaining('Link copied'), findsOne);
 
     await tester.tap(find.byKey(ValueKey('save-${gig.id}')));
     await tester.pump();
@@ -269,7 +280,7 @@ void main() {
     expect(harness.app.pending?.id, 'g4');
   });
 
-  testWidgets('external upcoming cards retain an independent QR action', (
+  testWidgets('external upcoming cards do not offer EarPlug QR tickets', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -290,23 +301,15 @@ void main() {
     expect(find.byKey(const ValueKey('fan-event-g4')), findsOne);
     expect(find.text('21+'), findsOne);
     expect(find.text('TICKETS ↗'), findsOne);
-    expect(find.byTooltip('Show QR code'), findsOne);
+    expect(find.byTooltip('Show QR code'), findsNothing);
 
     final save = find.byKey(const ValueKey('save-g4'));
     final share = find.byKey(const ValueKey('share-g4'));
     final tickets = find.byKey(const ValueKey('ticket-action-g4'));
-    final qr = find.byKey(const ValueKey('show-qr-g4'));
     final actionY = tester.getCenter(save).dy;
     expect(tester.getCenter(share).dy, actionY);
     expect(tester.getCenter(tickets).dy, actionY);
-    expect(tester.getCenter(qr).dy, actionY);
-    expect(tester.getSize(qr), const Size.square(48));
-
-    await tester.ensureVisible(find.byKey(const ValueKey('show-qr-g4')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('show-qr-g4')));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Flash this at the door.'), findsOne);
+    expect(find.byKey(const ValueKey('show-qr-g4')), findsNothing);
   });
 }
 

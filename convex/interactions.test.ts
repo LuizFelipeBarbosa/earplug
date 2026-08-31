@@ -81,7 +81,7 @@ describe("interactions", () => {
         venueId,
         price: 0,
         doorsTime: "8PM / 9PM",
-        flyKey: "paper",
+        flyKey: "xerox",
         lineup: [bandId],
         genres: ["hardcore"],
         desc: "",
@@ -388,5 +388,91 @@ describe("interactions", () => {
     expect(mine.rsvpGigIds).toEqual([gigId]);
     expect(mine.followBandIds).toEqual([bandId]);
     expect(mine.savedGigIds).toEqual([gigId]);
+  });
+});
+
+describe("RSVP tickets and Door Mode", () => {
+  test("keeps tickets private, rejects wrong gigs, checks in idempotently, and revokes on RSVP removal", async () => {
+    const t = convexTest(schema);
+    const asAdmin = t.withIdentity({ subject: "door_admin", email: "door@x.com", name: "Door Admin" });
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Door Band",
+      genres: ["punk"],
+      bio: "",
+      area: "Oakland",
+      inviteHandles: [],
+    });
+    const venueId = await t.run((ctx) =>
+      ctx.db.insert("venues", {
+        name: "Door Room",
+        area: "Oakland",
+        addr: "1 Door Street",
+        distSF: "8 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.27,
+      }),
+    );
+    const publish = (title: string, offset: number) =>
+      asAdmin.mutation(api.gigs.publishGig, {
+        bandId,
+        title,
+        startsAt: Date.now() + offset,
+        doorsTime: "8PM / 9PM",
+        venueId,
+        price: 0,
+        flyKey: "xerox",
+        ticketing: "rsvp",
+        ageRequirement: "allAges",
+        cap: "No cap",
+      });
+    const first = await publish("Door One", 86_400_000);
+    const second = await publish("Door Two", 2 * 86_400_000);
+    const projects = await asAdmin.query(api.gigs.manageForBand, { bandId });
+    const firstProject = projects.find((project) => project.publicGigId === first.gigId)!;
+    const secondProject = projects.find((project) => project.publicGigId === second.gigId)!;
+
+    const asFan = t.withIdentity({ subject: "door_fan", email: "fan@x.com", name: "Ticket Fan" });
+    const asOtherFan = t.withIdentity({ subject: "other_fan", email: "other@x.com" });
+    await asFan.mutation(api.users.ensureUser, {});
+    await asOtherFan.mutation(api.users.ensureUser, {});
+    await asFan.mutation(api.interactions.toggleRsvp, { gigId: first.gigId, on: true });
+    const ticket = await asFan.mutation(api.interactions.ticketForGig, { gigId: first.gigId });
+    expect(ticket.payload).toMatch(/^earplug:ticket:v1:[a-f0-9]{64}$/);
+    await expect(
+      asOtherFan.mutation(api.interactions.ticketForGig, { gigId: first.gigId }),
+    ).rejects.toThrow("RSVP before");
+
+    expect(await asAdmin.query(api.gigs.doorRoster, { projectId: firstProject._id })).toEqual({
+      total: 1,
+      checkedIn: 0,
+      truncated: false,
+    });
+    expect(
+      await asAdmin.mutation(api.gigs.checkInTicket, {
+        projectId: secondProject._id,
+        payload: ticket.payload,
+      }),
+    ).toEqual({ status: "wrongGig" });
+    const checkedIn = await asAdmin.mutation(api.gigs.checkInTicket, {
+      projectId: firstProject._id,
+      payload: ticket.payload,
+    });
+    expect(checkedIn).toMatchObject({ status: "checkedIn", fanName: "Ticket Fan" });
+    const repeated = await asAdmin.mutation(api.gigs.checkInTicket, {
+      projectId: firstProject._id,
+      payload: ticket.payload,
+    });
+    expect(repeated).toMatchObject({ status: "alreadyCheckedIn", fanName: "Ticket Fan" });
+    expect((await asAdmin.query(api.gigs.doorRoster, { projectId: firstProject._id })).checkedIn).toBe(1);
+
+    await asFan.mutation(api.interactions.toggleRsvp, { gigId: first.gigId, on: false });
+    expect(
+      await asAdmin.mutation(api.gigs.checkInTicket, {
+        projectId: firstProject._id,
+        payload: ticket.payload,
+      }),
+    ).toEqual({ status: "invalid" });
   });
 });

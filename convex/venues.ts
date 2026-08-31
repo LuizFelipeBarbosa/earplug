@@ -1,11 +1,12 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import {
   bandPayloadValidator,
   feedCutoff,
   gigPayloadValidator,
   MAX_VENUES,
+  requireBandAdmin,
   toBandPayload,
   toGigPayload,
   toVenuePayload,
@@ -13,6 +14,114 @@ import {
 } from "./lib/helpers";
 
 const MAX_VENUE_GIGS = 200;
+const MAX_VENUE_NAME = 120;
+const MAX_VENUE_AREA = 120;
+const MAX_VENUE_ADDRESS = 240;
+const SF_CENTER = { lat: 37.7599, lng: -122.4148 };
+const OAK_CENTER = { lat: 37.8378, lng: -122.2628 };
+
+export function normalizeVenueText(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function milesBetween(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+) {
+  const radians = (degrees: number) => (degrees * Math.PI) / 180;
+  const earthMiles = 3958.7613;
+  const dLat = radians(to.lat - from.lat);
+  const dLng = radians(to.lng - from.lng);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(radians(from.lat)) *
+      Math.cos(radians(to.lat)) *
+      Math.sin(dLng / 2) ** 2;
+  return earthMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+export const create = mutation({
+  args: {
+    bandId: v.id("bands"),
+    name: v.string(),
+    area: v.string(),
+    addr: v.string(),
+    lat: v.number(),
+    lng: v.number(),
+  },
+  returns: v.object({ venue: venuePayloadValidator, created: v.boolean() }),
+  handler: async (ctx, args) => {
+    const user = await requireBandAdmin(ctx, args.bandId);
+    const name = args.name.trim();
+    const area = args.area.trim();
+    const addr = args.addr.trim();
+    if (!name || !area || !addr) throw new Error("Venue details are required");
+    if (name.length > MAX_VENUE_NAME) throw new Error("Venue name is too long");
+    if (area.length > MAX_VENUE_AREA) throw new Error("Venue area is too long");
+    if (addr.length > MAX_VENUE_ADDRESS) throw new Error("Venue address is too long");
+    if (
+      !Number.isFinite(args.lat) ||
+      !Number.isFinite(args.lng) ||
+      args.lat < -90 ||
+      args.lat > 90 ||
+      args.lng < -180 ||
+      args.lng > 180
+    ) {
+      throw new Error("Choose a valid map location");
+    }
+
+    const normalizedName = normalizeVenueText(name);
+    const normalizedAddr = normalizeVenueText(addr);
+    let existing = await ctx.db
+      .query("venues")
+      .withIndex("by_normalizedAddr", (q) =>
+        q.eq("normalizedAddr", normalizedAddr),
+      )
+      .first();
+    if (!existing) {
+      const sameName = await ctx.db
+        .query("venues")
+        .withIndex("by_normalizedName", (q) =>
+          q.eq("normalizedName", normalizedName),
+        )
+        .take(20);
+      existing =
+        sameName.find(
+          (venue) => normalizeVenueText(venue.area) === normalizeVenueText(area),
+        ) ?? null;
+    }
+    if (!existing) {
+      // Compatibility while the curated legacy directory is being backfilled.
+      const legacy = await ctx.db.query("venues").take(MAX_VENUES);
+      existing =
+        legacy.find(
+          (venue) =>
+            normalizeVenueText(venue.addr) === normalizedAddr ||
+            (normalizeVenueText(venue.name) === normalizedName &&
+              normalizeVenueText(venue.area) === normalizeVenueText(area)),
+        ) ?? null;
+    }
+    if (existing) return { venue: toVenuePayload(existing), created: false };
+
+    const point = { lat: args.lat, lng: args.lng };
+    const venueId = await ctx.db.insert("venues", {
+      name,
+      area,
+      addr,
+      normalizedName,
+      normalizedAddr,
+      createdBy: user._id,
+      createdByBand: args.bandId,
+      distSF: `${milesBetween(SF_CENTER, point).toFixed(1)} mi`,
+      distOak: `${milesBetween(OAK_CENTER, point).toFixed(1)} mi`,
+      lat: args.lat,
+      lng: args.lng,
+    });
+    const venue = await ctx.db.get(venueId);
+    if (!venue) throw new Error("Created venue not found");
+    return { venue: toVenuePayload(venue), created: true };
+  },
+});
 
 /** Every venue, name-ordered.
  *
@@ -60,9 +169,15 @@ export const detail = query({
       )
       .order("asc")
       .take(MAX_VENUE_GIGS * 4 + 1);
-    const visible = rows.filter(
-      (gig) => (gig.lifecycle ?? "published") === "published",
-    );
+    const visible = [];
+    for (const gig of rows) {
+      if ((gig.lifecycle ?? "published") !== "published") continue;
+      if (gig.createdByBand) {
+        const owner = await ctx.db.get(gig.createdByBand);
+        if (!owner || owner.archivedAt !== undefined) continue;
+      }
+      visible.push(gig);
+    }
     const venueGigs = visible.slice(0, MAX_VENUE_GIGS);
 
     const bandIds = new Set<Id<"bands">>();
@@ -75,7 +190,9 @@ export const detail = query({
     const bands = [];
     for (const bandId of bandIds) {
       const band = await ctx.db.get(bandId);
-      if (band) bands.push(await toBandPayload(ctx, band));
+      if (band && band.archivedAt === undefined) {
+        bands.push(await toBandPayload(ctx, band));
+      }
     }
 
     return {

@@ -54,6 +54,17 @@ export function slugify(name: string): string {
   return slug === "" ? "band" : slug;
 }
 
+const RESERVED_PUBLIC_SLUGS = new Set([
+  "g",
+  "join",
+  "gig-invite",
+  "check-in",
+]);
+
+export function isReservedPublicSlug(slug: string): boolean {
+  return RESERVED_PUBLIC_SLUGS.has(slug);
+}
+
 /** "static-bloom", or "static-bloom-2" (-3, …) when the name is taken.
  *
  * Reads with `.first()`, not `.unique()`: nothing in the schema enforces slug
@@ -67,6 +78,7 @@ export async function uniqueSlug(
   const base = slugify(name);
   for (let n = 1; ; n++) {
     const candidate = n === 1 ? base : `${base}-${n}`;
+    if (isReservedPublicSlug(candidate)) continue;
     const taken = await ctx.db
       .query("bands")
       .withIndex("by_slug", (q) => q.eq("slug", candidate))
@@ -110,6 +122,8 @@ export async function requireBandAdmin(
   bandId: Id<"bands">,
 ): Promise<Doc<"users">> {
   const user = await requireUser(ctx);
+  const band = await ctx.db.get(bandId);
+  if (!band || band.archivedAt !== undefined) throw new Error("Band not found");
   const membership = await ctx.db
     .query("bandMembers")
     .withIndex("by_band_user", (q) =>
@@ -135,7 +149,7 @@ export async function requireBandAdminQuery(
     throw new Error("No user record — call users:ensureUser first");
   }
   const band = await ctx.db.get(bandId);
-  if (!band) throw new Error("Band not found");
+  if (!band || band.archivedAt !== undefined) throw new Error("Band not found");
   const membership = await ctx.db
     .query("bandMembers")
     .withIndex("by_band_user", (q) =>
@@ -155,7 +169,7 @@ export async function requireBandMemberMutation(
 ): Promise<{ band: Doc<"bands">; user: Doc<"users"> }> {
   const user = await requireUser(ctx);
   const band = await ctx.db.get(bandId);
-  if (!band) throw new Error("Band not found");
+  if (!band || band.archivedAt !== undefined) throw new Error("Band not found");
   const membership = await ctx.db
     .query("bandMembers")
     .withIndex("by_band_user", (q) =>
@@ -179,7 +193,7 @@ export async function requireBandMember(
     throw new Error("No user record — call users:ensureUser first");
   }
   const band = await ctx.db.get(bandId);
-  if (!band) throw new Error("Band not found");
+  if (!band || band.archivedAt !== undefined) throw new Error("Band not found");
   const membership = await ctx.db
     .query("bandMembers")
     .withIndex("by_band_user", (q) =>
@@ -194,6 +208,7 @@ export async function requireBandMember(
 
 export const bandPayloadValidator = v.object({
   _id: v.id("bands"),
+  slug: v.string(),
   name: v.string(),
   genres: v.array(v.string()),
   area: v.string(),
@@ -245,6 +260,16 @@ export const gigPublishFieldsValidator = v.object({
 });
 export type GigPublishFields = Infer<typeof gigPublishFieldsValidator>;
 
+export function isValidHttpsUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "https:" && parsed.host !== "";
+  } catch {
+    return false;
+  }
+}
+
 type GigPublishValidationFields = {
   bandId: Id<"bands">;
   startsAt: number;
@@ -270,9 +295,9 @@ export async function assertGigPublishable(
   }
   if (
     args.ticketing === "external" &&
-    (!args.externalUrl || !/^https?:\/\//.test(args.externalUrl))
+    !isValidHttpsUrl(args.externalUrl)
   ) {
-    throw new Error("External ticketing requires a valid http(s) URL");
+    throw new Error("External ticketing requires a valid HTTPS URL");
   }
   if (args.flyKey === "custom") {
     if (args.flyStorageId === undefined) {
@@ -420,6 +445,7 @@ export async function insertPublishedGig(
 
 export const gigPayloadValidator = v.object({
   _id: v.id("gigs"),
+  slug: v.string(),
   title: v.string(),
   venueId: v.id("venues"),
   price: v.number(),
@@ -513,6 +539,7 @@ export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
   const profileImageReady = await hasValidProfileImage(ctx, band);
   return {
     _id: band._id,
+    slug: band.slug,
     name: band.name,
     genres: band.genres,
     area: band.area,
@@ -552,6 +579,7 @@ export async function toGigPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
   }
   return {
     _id: gig._id,
+    slug: gig.slug ?? gig._id,
     title: gig.title,
     venueId: gig.venueId,
     price: gig.price,

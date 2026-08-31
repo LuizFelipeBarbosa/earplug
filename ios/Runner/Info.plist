@@ -41,7 +41,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Earplug needs camera access to record band photos and videos.</string>
+	<string>Earplug uses the camera to add band media and scan fan tickets in Door Mode.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Earplug uses your location while the app is open to show nearby live music.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

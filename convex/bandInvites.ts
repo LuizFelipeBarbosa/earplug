@@ -226,7 +226,7 @@ export const resolve = query({
       return null;
     }
     const band = await ctx.db.get(invite.bandId);
-    return band === null
+    return band === null || band.archivedAt !== undefined
       ? null
       : {
           bandId: band._id,
@@ -261,7 +261,9 @@ export const accept = mutation({
       throw new Error("Invitation is no longer active");
     }
     const band = await ctx.db.get(invite.bandId);
-    if (!band) throw new Error("Invitation is no longer active");
+    if (!band || band.archivedAt !== undefined) {
+      throw new Error("Invitation is no longer active");
+    }
 
     const membership = await ctx.db
       .query("bandMembers")

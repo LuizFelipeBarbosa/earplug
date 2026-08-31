@@ -3,8 +3,14 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { v } from "convex/values";
-import { Doc } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
+import {
+  internalMutation,
+  MutationCtx,
+  mutation,
+  query,
+} from "./_generated/server";
 import {
   bandColorFor,
   bandPayloadValidator,
@@ -28,6 +34,7 @@ import {
 
 const DISCOVERY_LEAD_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_DISCOVERY_PROJECTS = 100;
+const ARCHIVE_BATCH_SIZE = 25;
 
 const profileDetailsValidator = v.object({
   credits: v.union(v.string(), v.null()),
@@ -101,7 +108,9 @@ export const get = query({
   returns: v.union(bandPayloadValidator, v.null()),
   handler: async (ctx, args) => {
     const band = await ctx.db.get(args.bandId);
-    return band === null ? null : await toBandPayload(ctx, band);
+    return band === null || band.archivedAt !== undefined
+      ? null
+      : await toBandPayload(ctx, band);
   },
 });
 
@@ -117,7 +126,7 @@ export const list = query({
       .paginate(args.paginationOpts);
     const page = [];
     for (const band of result.page) {
-      page.push(await toBandPayload(ctx, band));
+      if (band.archivedAt === undefined) page.push(await toBandPayload(ctx, band));
     }
     return { ...result, page };
   },
@@ -137,7 +146,7 @@ export const search = query({
             .take(50);
     const out = [];
     for (const band of bands) {
-      out.push(await toBandPayload(ctx, band));
+      if (band.archivedAt === undefined) out.push(await toBandPayload(ctx, band));
     }
     return out;
   },
@@ -162,7 +171,7 @@ export const myBands = query({
     const out = [];
     for (const membership of memberships) {
       const band = await ctx.db.get(membership.bandId);
-      if (band) {
+      if (band && band.archivedAt === undefined) {
         out.push({
           band: await toBandPayload(ctx, band),
           role: membership.role,
@@ -187,7 +196,9 @@ export const bySlug = query({
       .query("bands")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .first();
-    return band === null ? null : await toBandPayload(ctx, band);
+    return band === null || band.archivedAt !== undefined
+      ? null
+      : await toBandPayload(ctx, band);
   },
 });
 
@@ -198,7 +209,7 @@ export const profileDetails = query({
   returns: v.union(profileDetailsValidator, v.null()),
   handler: async (ctx, args) => {
     const band = await ctx.db.get(args.bandId);
-    if (!band) return null;
+    if (!band || band.archivedAt !== undefined) return null;
 
     const memberships = await ctx.db
       .query("bandMembers")
@@ -530,6 +541,186 @@ export const clearBandPhoto = mutation({
   handler: async (ctx, args) => {
     await requireBandAdmin(ctx, args.bandId);
     await ctx.db.patch(args.bandId, { imageStorageId: undefined });
+    return null;
+  },
+});
+
+async function cancelArchivedBandGigs(
+  ctx: MutationCtx,
+  bandId: Id<"bands">,
+  archivedAt: number,
+) {
+  const projects = await ctx.db
+    .query("gigProjects")
+    .withIndex("by_bandId_and_status_and_startsAt", (q) =>
+      q.eq("bandId", bandId).eq("status", "published").gte("startsAt", archivedAt),
+    )
+    .take(ARCHIVE_BATCH_SIZE);
+  for (const project of projects) {
+    if (project.publicGigId) {
+      await ctx.db.patch(project.publicGigId, {
+        lifecycle: "cancelled",
+        discoveryListingReady: false,
+      });
+    }
+    await ctx.db.patch(project._id, {
+      status: "cancelled",
+      updatedAt: archivedAt,
+    });
+  }
+  if (projects.length === ARCHIVE_BATCH_SIZE) {
+    await ctx.scheduler.runAfter(0, internal.bands.continueArchiveFutureGigs, {
+      bandId,
+      archivedAt,
+    });
+  }
+}
+
+/** User-facing band deletion. The row remains as a tombstone so shared and
+ * historical references never dangle. */
+export const archive = mutation({
+  args: { bandId: v.id("bands") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const membership = await ctx.db
+      .query("bandMembers")
+      .withIndex("by_band_user", (q) =>
+        q.eq("bandId", args.bandId).eq("userId", user._id),
+      )
+      .unique();
+    if (!membership || membership.role !== "admin") {
+      throw new Error("Not an admin of this band");
+    }
+    const band = await ctx.db.get(args.bandId);
+    if (!band) throw new Error("Band not found");
+    if (band.archivedAt !== undefined) return null;
+
+    const archivedAt = Date.now();
+    await ctx.db.patch(band._id, { archivedAt, archivedBy: user._id });
+    const invite = await ctx.db
+      .query("bandInvites")
+      .withIndex("by_band", (q) => q.eq("bandId", band._id))
+      .order("desc")
+      .first();
+    if (invite && !invite.revoked) {
+      await ctx.db.patch(invite._id, { revoked: true });
+    }
+    await cancelArchivedBandGigs(ctx, band._id, archivedAt);
+    await ctx.scheduler.runAfter(0, internal.bands.cancelArchivedPublicGigs, {
+      bandId: band._id,
+      archivedAt,
+      cursor: null,
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.bands.revokeArchivedBandPerformerInvites,
+      { bandId: band._id, cursor: null },
+    );
+    await ctx.scheduler.runAfter(0, internal.bands.removeArchivedBandFollows, {
+      bandId: band._id,
+    });
+    return null;
+  },
+});
+
+export const continueArchiveFutureGigs = internalMutation({
+  args: { bandId: v.id("bands"), archivedAt: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await cancelArchivedBandGigs(ctx, args.bandId, args.archivedAt);
+    return null;
+  },
+});
+
+/** Compatibility cleanup for legacy public gigs that predate gigProjects.
+ * The gigBands index bounds the scan to this band's future appearances; the
+ * creator check preserves gigs owned by another band. */
+export const cancelArchivedPublicGigs = internalMutation({
+  args: {
+    bandId: v.id("bands"),
+    archivedAt: v.number(),
+    cursor: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("gigBands")
+      .withIndex("by_band_startsAt", (q) =>
+        q.eq("bandId", args.bandId).gte("startsAt", args.archivedAt),
+      )
+      .paginate({ numItems: 100, cursor: args.cursor });
+    for (const appearance of page.page) {
+      const gig = await ctx.db.get(appearance.gigId);
+      if (
+        gig?.createdByBand === args.bandId &&
+        (gig.lifecycle === undefined || gig.lifecycle === "published")
+      ) {
+        await ctx.db.patch(gig._id, {
+          lifecycle: "cancelled",
+          discoveryListingReady: false,
+        });
+      }
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(0, internal.bands.cancelArchivedPublicGigs, {
+        ...args,
+        cursor: page.continueCursor,
+      });
+    }
+    return null;
+  },
+});
+
+export const removeArchivedBandFollows = internalMutation({
+  args: { bandId: v.id("bands") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const follows = await ctx.db
+      .query("follows")
+      .withIndex("by_band", (q) => q.eq("bandId", args.bandId))
+      .take(100);
+    for (const follow of follows) await ctx.db.delete(follow._id);
+    if (follows.length === 100) {
+      await ctx.scheduler.runAfter(0, internal.bands.removeArchivedBandFollows, {
+        bandId: args.bandId,
+      });
+    }
+    return null;
+  },
+});
+
+export const revokeArchivedBandPerformerInvites = internalMutation({
+  args: {
+    bandId: v.id("bands"),
+    cursor: v.union(v.string(), v.null()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const page = await ctx.db
+      .query("gigProjects")
+      .withIndex("by_band_and_status", (q) => q.eq("bandId", args.bandId))
+      .paginate({ numItems: 25, cursor: args.cursor });
+    for (const project of page.page) {
+      const performers = await ctx.db
+        .query("gigProjectPerformers")
+        .withIndex("by_project_and_order", (q) =>
+          q.eq("projectId", project._id),
+        )
+        .take(20);
+      for (const performer of performers) {
+        if (performer.inviteToken && performer.inviteRevoked !== true) {
+          await ctx.db.patch(performer._id, { inviteRevoked: true });
+        }
+      }
+    }
+    if (!page.isDone) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.bands.revokeArchivedBandPerformerInvites,
+        { bandId: args.bandId, cursor: page.continueCursor },
+      );
+    }
     return null;
   },
 });

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -10,10 +12,12 @@ import '../demo_data.dart';
 import '../models.dart';
 import '../services/flyer_text_extractor.dart';
 import '../services/media_picker.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
+import 'door_mode.dart';
 
 Future<void> _pickGigFlyerArt(BuildContext context) async {
   final app = context.read<AppState>();
@@ -815,12 +819,11 @@ class _LineupField extends StatelessWidget {
                       if (performer.inviteUrl != null)
                         IconButton(
                           tooltip: 'Copy invite link',
-                          onPressed: () {
-                            Clipboard.setData(
-                              ClipboardData(text: performer.inviteUrl!),
-                            );
-                            app.say('Invite link copied.');
-                          },
+                          onPressed: () => copyForUser(
+                            context,
+                            performer.inviteUrl!,
+                            successMessage: 'Invite link copied.',
+                          ),
                           icon: const Icon(Icons.link, size: 18),
                         ),
                       PopupMenuButton<GigPerformerRole>(
@@ -1739,7 +1742,7 @@ void showVenueSheet(BuildContext context) {
         '+ NEW VENUE',
         onTap: () {
           Navigator.pop(ctx);
-          app.say("Adding venues isn't ready yet. Pick from the list for now.");
+          if (context.mounted) showNewVenueSheet(context);
         },
         size: 11,
         letterSpacing: .6,
@@ -1781,6 +1784,166 @@ void showVenueSheet(BuildContext context) {
       ),
     );
   });
+}
+
+void showNewVenueSheet(BuildContext context) {
+  showEpSheet(
+    context,
+    (_) => const _Sheet(title: 'New venue', child: _NewVenueBody()),
+  );
+}
+
+class _NewVenueBody extends StatefulWidget {
+  const _NewVenueBody();
+
+  @override
+  State<_NewVenueBody> createState() => _NewVenueBodyState();
+}
+
+class _NewVenueBodyState extends State<_NewVenueBody> {
+  final _name = TextEditingController();
+  final _address = TextEditingController();
+  final _area = TextEditingController();
+  LatLng? _pin;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _address.dispose();
+    _area.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final pin = _pin;
+    if (_name.text.trim().isEmpty ||
+        _address.text.trim().isEmpty ||
+        _area.text.trim().isEmpty ||
+        pin == null) {
+      setState(
+        () => _error = 'Name, street address, area, and map pin are required.',
+      );
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      final result = await context.read<AppState>().createVenue(
+        name: _name.text,
+        area: _area.text,
+        address: _address.text,
+        point: pin,
+      );
+      if (!mounted) return;
+      Navigator.pop(context);
+      context.read<AppState>().say(
+        result.created
+            ? 'Venue created and selected.'
+            : 'Existing venue selected.',
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _error =
+              'Venue could not be created. Check the details and retry.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const center = LatLng(37.7749, -122.4194);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          key: const Key('new-venue-name'),
+          controller: _name,
+          maxLength: 120,
+          decoration: sheetInput('Venue name'),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('new-venue-address'),
+          controller: _address,
+          maxLength: 240,
+          decoration: sheetInput('Street address'),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          key: const Key('new-venue-area'),
+          controller: _area,
+          maxLength: 80,
+          decoration: sheetInput('Neighborhood or city'),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          _pin == null
+              ? 'TAP THE MAP TO PLACE THE REQUIRED PIN'
+              : 'MAP PIN SET ✓',
+          style: epText(
+            size: 10,
+            weight: FontWeight.w900,
+            color: _pin == null ? Ep.warning : Ep.accent,
+          ),
+        ),
+        const SizedBox(height: 7),
+        SizedBox(
+          key: const Key('new-venue-map'),
+          height: 220,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: FlutterMap(
+              options: MapOptions(
+                initialCenter: center,
+                initialZoom: 11.5,
+                onTap: (_, point) => setState(() => _pin = point),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'dev.earplug.app',
+                ),
+                if (_pin case final pin?)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: pin,
+                        width: 40,
+                        height: 40,
+                        child: const Icon(
+                          Icons.location_pin,
+                          color: Ep.accent,
+                          size: 40,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (_error case final error?) ...[
+          const SizedBox(height: 8),
+          Text(error, style: epText(size: 11, color: Ep.warning)),
+        ],
+        const SizedBox(height: 12),
+        EpButton(
+          _saving ? 'CREATING…' : 'CREATE & SELECT VENUE',
+          kind: _saving ? EpButtonKind.disabled : EpButtonKind.filled,
+          onTap: _saving ? null : _save,
+        ),
+      ],
+    );
+  }
 }
 
 // ---------------------------- price ----------------------------
@@ -2043,7 +2206,12 @@ class _TicketsBodyState extends State<_TicketsBody> {
               keyboardType: TextInputType.url,
               onChanged: app.setGfExt,
               style: epText(size: 12.5),
-              decoration: sheetInput('https://…'),
+              decoration: sheetInput('https://…').copyWith(
+                errorText:
+                    app.gfExt.trim().isNotEmpty && !app.validExternalTicketUrl
+                    ? 'Enter a complete HTTPS URL.'
+                    : null,
+              ),
             ),
           ),
         const SizedBox(height: 14),
@@ -2085,7 +2253,7 @@ class _DraftPreview extends StatelessWidget {
                   borderRadius: BorderRadius.circular(99),
                 ),
                 child: Text(
-                  'PRIVATE DRAFT',
+                  app.gigPreviewLabel,
                   style: epText(
                     size: 9,
                     weight: FontWeight.w900,
@@ -2214,26 +2382,25 @@ class _PublishedView extends StatelessWidget {
                         'SHARE LINK',
                         fontSize: 11.5,
                         padding: const EdgeInsets.symmetric(vertical: 13),
-                        onTap: () {
-                          Clipboard.setData(
-                            ClipboardData(text: 'https://${app.gigUrl}'),
-                          );
-                          app.say('Link copied: ${app.gigUrl}');
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: EpButton(
-                        'DOOR QR',
-                        kind: EpButtonKind.ghost,
-                        fontSize: 11.5,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        onTap: () => app.say(
-                          "Door QR isn't ready yet. RSVPs still count live.",
+                        onTap: () => copyForUser(
+                          context,
+                          'https://${app.gigUrl}',
+                          successMessage: 'Link copied: ${app.gigUrl}',
                         ),
                       ),
                     ),
+                    if (app.gfProject?.ticketing == Ticketing.rsvp) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: EpButton(
+                          'DOOR MODE',
+                          kind: EpButtonKind.ghost,
+                          fontSize: 11.5,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          onTap: () => showDoorMode(context, app.gfProject!.id),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

@@ -297,7 +297,7 @@ describe("maintenance:publishRealGig", () => {
           ticketing: "external" as const,
           externalUrl: "ftp://tickets.example.com",
         },
-        message: "External ticketing requires a valid http(s) URL",
+        message: "External ticketing requires a valid HTTPS URL",
       },
       {
         args: { ...fields, flyKey: "custom" as const },

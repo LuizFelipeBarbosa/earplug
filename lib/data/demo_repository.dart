@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:ui' show Color;
 
+import 'package:latlong2/latlong.dart';
+
 import '../app_links.dart';
 import '../band_identity.dart';
 import '../demo_data.dart';
@@ -17,6 +19,7 @@ String _slugify(String value) => value
 class DemoRepository implements EarplugRepository {
   DemoRepository({required this._auth}) {
     _bands = Map<String, Band>.of(DemoData.bands);
+    _venues = Map<String, Venue>.of(DemoData.venues);
     _memberships = [BandMembership(band: _bands['b1']!, role: 'admin')];
     _mediaLists = {
       'b1': List<BandMedia>.of(DemoData.b1Media),
@@ -36,6 +39,7 @@ class DemoRepository implements EarplugRepository {
       StreamController<List<BandMembership>>.broadcast();
 
   late final Map<String, Band> _bands;
+  late final Map<String, Venue> _venues;
   late final List<BandMembership> _memberships;
   late final Map<String, List<BandMedia>> _mediaLists;
   final List<Gig> _publishedGigs = [];
@@ -43,6 +47,8 @@ class DemoRepository implements EarplugRepository {
   final Set<String> _rsvpGigIds = {};
   final Set<String> _followBandIds = {};
   final Set<String> _savedGigIds = {};
+  final Map<String, RsvpTicket> _ticketsByGigId = {};
+  final Set<String> _checkedInGigIds = {};
   final Set<String> _userGenres = {};
   final Map<String, String> _heroByBand = {};
   final Set<String> _previewedBands = {};
@@ -69,6 +75,7 @@ class DemoRepository implements EarplugRepository {
   int _nextGigPerformerId = 1;
   int _nextMediaId = 1;
   int _nextInviteId = 1;
+  int _nextVenueId = 1;
   bool _interactionsSeeded = false;
 
   /// Nothing to push: the demo data does not check identity.
@@ -98,11 +105,11 @@ class DemoRepository implements EarplugRepository {
   Stream<FeedSnapshot> feed() => _replay(_feedController, _currentFeed);
 
   @override
-  Stream<Gig?> publicGig(String gigId) => Stream.value(
+  Stream<Gig?> publicGig(String ref) => Stream.value(
     [
       ...DemoData.gigs,
       ..._publishedGigs,
-    ].where((gig) => gig.id == gigId).firstOrNull,
+    ].where((gig) => gig.id == ref || gig.slug == ref).firstOrNull,
   );
 
   @override
@@ -445,11 +452,56 @@ class DemoRepository implements EarplugRepository {
 
   @override
   Future<List<Venue>> venues() async =>
-      DemoData.venues.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+      _venues.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+
+  @override
+  Future<VenueCreationResult> createVenue({
+    required String bandId,
+    required String name,
+    required String area,
+    required String address,
+    required double latitude,
+    required double longitude,
+  }) async {
+    if (!_memberships.any(
+      (membership) =>
+          membership.band.id == bandId && membership.role == 'admin',
+    )) {
+      throw StateError('Band admin access required.');
+    }
+    String normalize(String value) =>
+        value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+    final normalizedName = normalize(name);
+    final normalizedArea = normalize(area);
+    final normalizedAddress = normalize(address);
+    final existing = _venues.values
+        .where(
+          (venue) =>
+              normalize(venue.addr) == normalizedAddress ||
+              (normalize(venue.name) == normalizedName &&
+                  normalize(venue.area) == normalizedArea),
+        )
+        .firstOrNull;
+    if (existing != null) {
+      return VenueCreationResult(venue: existing, created: false);
+    }
+    final venue = Venue(
+      id: 'demo-venue-${_nextVenueId++}',
+      name: name.trim(),
+      area: area.trim(),
+      addr: address.trim(),
+      distSF: '—',
+      distOak: '—',
+      point: LatLng(latitude, longitude),
+    );
+    _venues[venue.id] = venue;
+    _feedController.add(_currentFeed());
+    return VenueCreationResult(venue: venue, created: true);
+  }
 
   @override
   Future<VenueDetail?> venueDetail(String venueId) async {
-    final venue = DemoData.venues[venueId];
+    final venue = _venues[venueId];
     if (venue == null) return null;
     final gigs =
         [...DemoData.gigs, ..._publishedGigs]
@@ -479,6 +531,11 @@ class DemoRepository implements EarplugRepository {
 
   @override
   Future<Band?> band(String bandId) async => _bands[bandId];
+
+  @override
+  Future<Band?> bandBySlug(String slug) async => _bands.values
+      .where((band) => band.slug == slug || _slugify(band.name) == slug)
+      .firstOrNull;
 
   @override
   Future<BandProfileDetails> bandProfileDetails(String bandId) async {
@@ -532,6 +589,10 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> toggleRsvp(String gigId) async {
     _toggle(_rsvpGigIds, gigId);
+    if (!_rsvpGigIds.contains(gigId)) {
+      _ticketsByGigId.remove(gigId);
+      _checkedInGigIds.remove(gigId);
+    }
     _emitInteractionsIfSignedIn();
   }
 
@@ -545,6 +606,17 @@ class DemoRepository implements EarplugRepository {
   Future<void> toggleSave(String gigId) async {
     _toggle(_savedGigIds, gigId);
     _emitInteractionsIfSignedIn();
+  }
+
+  @override
+  Future<RsvpTicket> ticketForGig(String gigId) async {
+    if (!_rsvpGigIds.contains(gigId)) {
+      throw StateError('RSVP before opening your ticket.');
+    }
+    return _ticketsByGigId.putIfAbsent(
+      gigId,
+      () => RsvpTicket(payload: 'earplug:ticket:v1:demo-$gigId'),
+    );
   }
 
   @override
@@ -655,6 +727,24 @@ class DemoRepository implements EarplugRepository {
   }
 
   final Set<String> _issuedSlugs = {};
+  final Set<String> _issuedGigSlugs = {};
+
+  String _uniqueGigSlug(String title) {
+    var base = _slugify(title);
+    if (base.isEmpty) base = 'gig';
+    final taken = {
+      ..._issuedGigSlugs,
+      for (final gig in [...DemoData.gigs, ..._publishedGigs])
+        if (gig.slug.isNotEmpty) gig.slug,
+    };
+    for (var suffix = 1; ; suffix++) {
+      final candidate = suffix == 1 ? base : '$base-$suffix';
+      if (taken.add(candidate)) {
+        _issuedGigSlugs.add(candidate);
+        return candidate;
+      }
+    }
+  }
 
   @override
   Future<({Band band, String slug})> createBand({
@@ -672,6 +762,7 @@ class DemoRepository implements EarplugRepository {
     final slug = _uniqueSlug(bandName);
     final created = Band(
       id: id,
+      slug: slug,
       name: bandName,
       genres: genres.isEmpty ? const ['punk'] : List<String>.of(genres),
       area: area,
@@ -717,6 +808,37 @@ class DemoRepository implements EarplugRepository {
     );
     _bands[update.bandId] = updated;
     _refreshBandReadiness(update.bandId);
+    _feedController.add(_currentFeed());
+    _bandsController.add(_currentMemberships());
+  }
+
+  @override
+  Future<void> archiveBand(String bandId) async {
+    final membership = _memberships
+        .where(
+          (candidate) =>
+              candidate.band.id == bandId && candidate.role == 'admin',
+        )
+        .firstOrNull;
+    if (membership == null) throw StateError('Band admin access required.');
+    final now = DateTime.now();
+    for (final project in _gigProjects.values.toList()) {
+      if (project.bandId == bandId &&
+          project.startsAt?.isAfter(now) == true &&
+          project.status == GigProjectStatus.published) {
+        _gigProjects[project.id] = _copyGigProject(
+          project,
+          status: GigProjectStatus.cancelled,
+        );
+      }
+    }
+    _publishedGigs.removeWhere(
+      (gig) => gig.createdByBand == bandId && gig.startsAt.isAfter(now),
+    );
+    _bandInvites.remove(bandId);
+    _followBandIds.remove(bandId);
+    _memberships.removeWhere((candidate) => candidate.band.id == bandId);
+    _bands.remove(bandId);
     _feedController.add(_currentFeed());
     _bandsController.add(_currentMemberships());
   }
@@ -1090,6 +1212,7 @@ class DemoRepository implements EarplugRepository {
       id: project.id,
       bandId: project.bandId,
       publicGigId: project.publicGigId,
+      publicSlug: project.publicSlug,
       status: project.status,
       revision: revision + 1,
       publishedRevision: project.publishedRevision,
@@ -1206,9 +1329,11 @@ class DemoRepository implements EarplugRepository {
       throw Exception('Gig is incomplete');
     }
     final gigId = project.publicGigId ?? 'gx${_nextGigId++}';
+    final slug = project.publicSlug ?? _uniqueGigSlug(project.title!);
     final time = '${_demoTimeLabel(doorsAt)} / ${_demoTimeLabel(startsAt)}';
     final gig = Gig(
       id: gigId,
+      slug: slug,
       title: project.title!,
       venueId: project.venueId!,
       price: project.price,
@@ -1255,6 +1380,7 @@ class DemoRepository implements EarplugRepository {
       project,
       status: GigProjectStatus.published,
       publicGigId: gigId,
+      publicSlug: slug,
       publishedRevision: project.revision,
     );
     _feedController.add(_currentFeed());
@@ -1332,6 +1458,52 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<DoorRoster> doorRoster(String projectId) async {
+    final project = _requireGigProject(projectId);
+    final gigId = project.publicGigId;
+    if (gigId == null || project.ticketing != Ticketing.rsvp) {
+      throw StateError('Door Mode is available only for in-app RSVP gigs.');
+    }
+    return DoorRoster(
+      total: _rsvpGigIds.contains(gigId) ? 1 : 0,
+      checkedIn: _checkedInGigIds.contains(gigId) ? 1 : 0,
+      truncated: false,
+    );
+  }
+
+  @override
+  Future<DoorCheckInResult> checkInTicket({
+    required String projectId,
+    required String payload,
+  }) async {
+    final project = _requireGigProject(projectId);
+    final gigId = project.publicGigId;
+    if (gigId == null || payload != 'earplug:ticket:v1:demo-$gigId') {
+      final belongsToAnotherGig = payload.startsWith('earplug:ticket:v1:demo-');
+      return DoorCheckInResult(
+        status: belongsToAnotherGig
+            ? DoorCheckInStatus.wrongGig
+            : DoorCheckInStatus.invalid,
+      );
+    }
+    if (!_rsvpGigIds.contains(gigId)) {
+      return const DoorCheckInResult(status: DoorCheckInStatus.invalid);
+    }
+    if (!_checkedInGigIds.add(gigId)) {
+      return DoorCheckInResult(
+        status: DoorCheckInStatus.alreadyCheckedIn,
+        fanName: _userName ?? 'Earplug Fan',
+        checkedInAt: DateTime.now(),
+      );
+    }
+    return DoorCheckInResult(
+      status: DoorCheckInStatus.checkedIn,
+      fanName: _userName ?? 'Earplug Fan',
+      checkedInAt: DateTime.now(),
+    );
+  }
+
+  @override
   Future<String> publishGig({
     required String bandId,
     required String title,
@@ -1347,11 +1519,13 @@ class DemoRepository implements EarplugRepository {
     required String cap,
   }) async {
     final id = 'gx${_nextGigId++}';
+    final slug = _uniqueGigSlug(title);
     final now = DateTime.now();
     final bandName = _bands[bandId]?.name ?? '';
     _publishedGigs.add(
       Gig(
         id: id,
+        slug: slug,
         title: title,
         venueId: venueId,
         price: price,
@@ -1431,11 +1605,13 @@ class DemoRepository implements EarplugRepository {
     int? revision,
     int? publishedRevision,
     String? publicGigId,
+    String? publicSlug,
     List<GigPerformer>? performers,
   }) => GigProject(
     id: project.id,
     bandId: project.bandId,
     publicGigId: publicGigId ?? project.publicGigId,
+    publicSlug: publicSlug ?? project.publicSlug,
     status: status ?? project.status,
     revision: revision ?? project.revision,
     publishedRevision: publishedRevision ?? project.publishedRevision,
@@ -1459,7 +1635,7 @@ class DemoRepository implements EarplugRepository {
 
   FeedSnapshot _currentFeed() => FeedSnapshot(
     gigs: List<Gig>.unmodifiable([...DemoData.gigs, ..._publishedGigs]),
-    venues: DemoData.venues,
+    venues: Map<String, Venue>.unmodifiable(_venues),
     bands: Map<String, Band>.unmodifiable(_bands),
     nextStartsAt: null,
   );

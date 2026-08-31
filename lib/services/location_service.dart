@@ -55,18 +55,41 @@ abstract interface class LocationService {
 }
 
 class GeolocatorLocationService implements LocationService {
-  GeolocatorLocationService({GeolocatorPlatform? platform})
-    : _platform = platform ?? GeolocatorPlatform.instance;
+  factory GeolocatorLocationService({
+    GeolocatorPlatform? platform,
+    Duration requestDeadline = const Duration(seconds: 20),
+  }) => GeolocatorLocationService._(
+    platform ?? GeolocatorPlatform.instance,
+    requestDeadline,
+  );
+
+  GeolocatorLocationService._(this._platform, this._requestDeadline);
 
   static const LocationSettings _settings = LocationSettings(
     accuracy: LocationAccuracy.high,
     timeLimit: Duration(seconds: 15),
   );
-
   final GeolocatorPlatform _platform;
+  final Duration _requestDeadline;
 
   @override
   Future<LocationResult> requestCurrentLocation() async {
+    try {
+      return await _requestCurrentLocation().timeout(_requestDeadline);
+    } on TimeoutException {
+      return const LocationFailure(
+        LocationFailureReason.unavailable,
+        message: 'Location request timed out. Retry or choose a city.',
+      );
+    } catch (error) {
+      return LocationFailure(
+        LocationFailureReason.unavailable,
+        message: error.toString(),
+      );
+    }
+  }
+
+  Future<LocationResult> _requestCurrentLocation() async {
     try {
       final servicesEnabled = await _platform.isLocationServiceEnabled();
       if (!servicesEnabled) {
