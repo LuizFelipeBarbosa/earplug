@@ -1013,7 +1013,7 @@ class EpStatCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.epChipLabel.copyWith(
                       fontSize: 11,
-                      letterSpacing: compact ? .6 : 1.5,
+                      letterSpacing: compact ? 0 : 1.5,
                       color: Ep.mute,
                     ),
                   ),
