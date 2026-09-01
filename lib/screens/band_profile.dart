@@ -40,7 +40,8 @@ class BandProfileScreen extends StatelessWidget {
     final media = context.watch<BandMediaController>();
     final vids = media.videosFor(bandId);
     final pinned = media.pinnedVideoFor(bandId);
-    final clips = vids.where((v) => v.id != pinned?.id).take(4).toList();
+    final soundVideos = vids.where((video) => video.id != pinned?.id).toList();
+    if (pinned != null) soundVideos.insert(0, pinned);
     final photos = media.photosFor(bandId);
     final upcoming = [
       for (final id in band.upcoming)
@@ -64,7 +65,11 @@ class BandProfileScreen extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 60),
             children: [
-              _BandHero(band: band, bio: app.bioFor(bandId)),
+              _BandHero(
+                band: band,
+                bio: app.bioFor(bandId),
+                onEditBanner: app.isAdminOf(bandId) ? app.openBandMedia : null,
+              ),
               const SizedBox(height: 12),
               EpButton(
                 following
@@ -76,10 +81,8 @@ class BandProfileScreen extends StatelessWidget {
                 onTap: () => app.requestFollow(bandId),
               ),
               _BandLinks(app: app, bandId: bandId),
-              if (pinned != null) ...[
+              if (soundVideos.isNotEmpty) ...[
                 const SectionBar(label: 'THIS IS WHAT WE SOUND LIKE'),
-                _PinnedVideo(pinned: pinned, band: band, app: app),
-                const SectionBar(label: 'CLIPS'),
                 GridView.count(
                   crossAxisCount: 2,
                   mainAxisSpacing: 8,
@@ -88,8 +91,13 @@ class BandProfileScreen extends StatelessWidget {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   children: [
-                    for (final v in clips)
-                      _ClipTile(clip: v, band: band, app: app),
+                    for (final video in soundVideos)
+                      _ClipTile(
+                        clip: video,
+                        band: band,
+                        app: app,
+                        pinned: video.id == pinned?.id,
+                      ),
                   ],
                 ),
               ],
@@ -210,10 +218,15 @@ class BandProfileScreen extends StatelessWidget {
 }
 
 class _BandHero extends StatelessWidget {
-  const _BandHero({required this.band, required this.bio});
+  const _BandHero({
+    required this.band,
+    required this.bio,
+    required this.onEditBanner,
+  });
 
   final Band band;
   final String bio;
+  final VoidCallback? onEditBanner;
 
   @override
   Widget build(BuildContext context) {
@@ -223,34 +236,96 @@ class _BandHero extends StatelessWidget {
       children: [
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(18, 22, 96, 22),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: band.color,
             borderRadius: BorderRadius.circular(14),
           ),
           constraints: const BoxConstraints(minHeight: 142),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
+            fit: StackFit.passthrough,
             children: [
-              Text(
-                [
-                  'BAND',
-                  if (band.area.trim().isNotEmpty) band.area,
-                ].join(' · ').toUpperCase(),
-                style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                  color: Colors.white,
-                  letterSpacing: 1.8,
+              Positioned.fill(
+                child: EpNetworkImage(
+                  url: band.heroUrl,
+                  fit: BoxFit.cover,
+                  fallback: ColoredBox(color: band.color),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(
-                band.name,
-                style: Theme.of(context).textTheme.epDisplay.copyWith(
-                  color: Colors.white,
-                  fontSize: 31,
-                  height: 1.02,
+              Positioned.fill(
+                child: DecoratedBox(
+                  key: const ValueKey('band-profile-banner-scrim'),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: .66),
+                        Colors.black.withValues(alpha: .58),
+                      ],
+                    ),
+                  ),
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 22, 96, 22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      [
+                        'BAND',
+                        if (band.area.trim().isNotEmpty) band.area,
+                      ].join(' · ').toUpperCase(),
+                      style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                        color: Colors.white,
+                        letterSpacing: 1.8,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      band.name,
+                      style: Theme.of(context).textTheme.epDisplay.copyWith(
+                        color: Colors.white,
+                        fontSize: 31,
+                        height: 1.02,
+                        shadows: const [
+                          Shadow(
+                            color: Colors.black54,
+                            blurRadius: 8,
+                            offset: Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (onEditBanner != null)
+                Positioned(
+                  right: 12,
+                  bottom: 10,
+                  child: Semantics(
+                    button: true,
+                    label: 'Edit profile banner',
+                    excludeSemantics: true,
+                    child: IconButton(
+                      key: const ValueKey('edit-band-profile-banner'),
+                      tooltip: 'Edit profile banner',
+                      onPressed: onEditBanner,
+                      style: ButtonStyle(
+                        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+                        backgroundColor: WidgetStatePropertyAll(
+                          Colors.black.withValues(alpha: .72),
+                        ),
+                        foregroundColor: const WidgetStatePropertyAll(
+                          Colors.white,
+                        ),
+                      ),
+                      icon: const Icon(Icons.photo_camera_outlined, size: 19),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -330,18 +405,16 @@ class _BandStamp extends StatelessWidget {
         child: Stack(
           alignment: Alignment.center,
           children: [
-            Transform.rotate(
-              angle: -.14,
-              child: Container(
-                width: 64,
-                height: 64,
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: .8),
-                    width: 2,
-                  ),
-                  borderRadius: BorderRadius.circular(11),
+            Container(
+              key: const ValueKey('band-profile-avatar-frame'),
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: .8),
+                  width: 2,
                 ),
+                borderRadius: BorderRadius.circular(11),
               ),
             ),
             BandAvatar(band, size: 54, radius: 9, fontSize: 18),
@@ -632,77 +705,18 @@ List<PastGig> _pastRowsFrom(BandHistory history) {
   return rows;
 }
 
-class _PinnedVideo extends StatelessWidget {
-  final BandMedia pinned;
-  final Band band;
-  final AppState app;
-
-  const _PinnedVideo({
-    required this.pinned,
-    required this.band,
-    required this.app,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return EpCard(
-      onTap: () {
-        if (pinned.url == null || pinned.url!.isEmpty) {
-          app.say('That clip is still processing.');
-          return;
-        }
-        showBandVideo(context, media: pinned, bandName: band.name);
-      },
-      padding: const EdgeInsets.all(10),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            alignment: Alignment.center,
-            decoration: const BoxDecoration(
-              color: Ep.volt,
-              shape: BoxShape.circle,
-            ),
-            child: const Padding(
-              padding: EdgeInsets.only(left: 3),
-              child: PlayTriangle(size: 15, color: Ep.dark),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  pinned.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.epLabel,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  pinned.url == null || pinned.url!.isEmpty
-                      ? 'PROCESSING · ${pinned.lenLabel}'
-                      : '${pinned.viewsLabel} · ${pinned.lenLabel}',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-              ],
-            ),
-          ),
-          const Icon(Icons.chevron_right, color: Ep.contentSecondary),
-        ],
-      ),
-    );
-  }
-}
-
 class _ClipTile extends StatelessWidget {
   final BandMedia clip;
   final Band band;
   final AppState app;
+  final bool pinned;
 
-  const _ClipTile({required this.clip, required this.band, required this.app});
+  const _ClipTile({
+    required this.clip,
+    required this.band,
+    required this.app,
+    required this.pinned,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -725,6 +739,18 @@ class _ClipTile extends StatelessWidget {
               media: clip,
               fallback: ClipTexture(bandColor: band.color),
             ),
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black87],
+                    stops: [.38, 1],
+                  ),
+                ),
+              ),
+            ),
             Center(child: PlayTriangle(size: 13, color: Ep.contentPrimary)),
             Positioned(
               left: 8,
@@ -740,20 +766,67 @@ class _ClipTile extends StatelessWidget {
               ),
             ),
             Positioned(
+              left: 7,
               right: 7,
               top: 6,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: .6),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  clip.lenLabel,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.epCaption.copyWith(color: Ep.contentPrimary),
-                ),
+              child: Row(
+                children: [
+                  if (pinned)
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Ep.volt,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'PINNED',
+                              style: Theme.of(context).textTheme.epCaption
+                                  .copyWith(
+                                    color: Ep.dark,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    const Spacer(),
+                  const SizedBox(width: 5),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: .72),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          clip.url == null || clip.url!.isEmpty
+                              ? 'PROCESSING'
+                              : clip.lenLabel,
+                          style: Theme.of(context).textTheme.epCaption.copyWith(
+                            color: Ep.contentPrimary,
+                            fontSize: 9.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

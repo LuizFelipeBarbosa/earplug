@@ -22,21 +22,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('EDIT BAND'), findsOne);
-    expect(find.text('REQUIRED DETAILS'), findsOne);
-    expect(find.text('BAND NAME'), findsOne);
-    expect(find.text('Band name'), findsOne);
+    expect(find.text('IDENTITY'), findsOne);
+    expect(find.text('BAND NAME · REQUIRED'), findsOne);
     expect(find.bySemanticsLabel('Band name'), findsOne);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
+          .style
+          ?.fontSize,
+      22,
+    );
     expect(find.text('GENRES'), findsOne);
     expect(find.text('HOME BASE'), findsOne);
     expect(find.bySemanticsLabel('Home base'), findsOne);
-    expect(find.text('PREVIEW →'), findsOne);
+    expect(find.text('PREVIEW'), findsOne);
     expect(find.byType(StickyActionBar), findsOne);
+    expect(find.text('PROFILE ARTWORK'), findsOne);
+    expect(find.byKey(const ValueKey('edit-band-profile-artwork')), findsOne);
+    expect(find.text('ADD PROFILE BANNER'), findsOne);
+    expect(find.text('ABOUT'), findsOne);
     expect(find.text('SHORT BIO'), findsOne);
     expect(find.bySemanticsLabel('Short bio'), findsOne);
     expect(find.text('LINKS'), findsOne);
-    expect(find.text('CREDITS'), findsOne);
+    expect(find.text('CREDITS'), findsWidgets);
     expect(find.bySemanticsLabel('Credits'), findsOne);
-    expect(find.text('MANAGE MUSIC AND MEDIA'), findsOne);
+    expect(find.text('MANAGE VIDEOS AND PHOTOS'), findsOne);
     expect(find.textContaining('BAND MEMBERS'), findsOne);
     expect(find.text('ACCEPTED MEMBERS'), findsOne);
     expect(find.text('Invitation link'), findsNothing);

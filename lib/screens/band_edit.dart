@@ -255,38 +255,63 @@ class _BandEditScreenState extends State<BandEditScreen> {
                       style: Theme.of(context).textTheme.epPageHeading,
                     ),
                   ),
-                  TextAction(
-                    'PREVIEW →',
-                    onTap: _saving ? null : app.previewPublicProfile,
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                  ),
                 ],
               ),
               Text(
-                'Update the public details fans use to recognize and discover your band.',
+                'Shape the profile fans see without leaving the editor guessing what is editable.',
                 style: Theme.of(context).textTheme.epCaption,
               ),
               KeyedSubtree(
                 key: _requiredKey,
                 child: _EditorSection(
-                  title: 'Required details',
+                  title: 'Identity',
                   description:
-                      'These details keep your profile useful in discovery.',
+                      'Your name, sound, and home base power the public profile and discovery.',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Semantics(
-                        label: 'Band name',
-                        textField: true,
-                        child: TextField(
-                          key: const ValueKey('edit-band-name'),
-                          controller: _name,
-                          enabled: !_saving,
-                          onChanged: _draftChanged,
-                          style: Theme.of(context).textTheme.epBody,
-                          decoration: _bandInput('BAND NAME', 'Band name'),
-                        ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'BAND NAME · REQUIRED',
+                            style: Theme.of(context).textTheme.epChipLabel
+                                .copyWith(
+                                  color: _name.text.trim().isEmpty
+                                      ? Ep.warning
+                                      : Ep.success,
+                                  letterSpacing: 1.1,
+                                ),
+                          ),
+                          const SizedBox(height: 7),
+                          Semantics(
+                            label: 'Band name',
+                            textField: true,
+                            child: TextField(
+                              key: const ValueKey('edit-band-name'),
+                              controller: _name,
+                              enabled: !_saving,
+                              onChanged: (value) {
+                                _draftChanged(value);
+                                setState(() {});
+                              },
+                              style: Theme.of(
+                                context,
+                              ).textTheme.epDisplay.copyWith(fontSize: 22),
+                              decoration: epCollapsedInputDecoration(
+                                'Your band name',
+                                hintStyle: Theme.of(context).textTheme.epDisplay
+                                    .copyWith(
+                                      fontSize: 22,
+                                      color: Ep.contentDisabled,
+                                    ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 18),
+                      const Divider(),
                       const SizedBox(height: 16),
                       const _FieldLabel('GENRES'),
                       const SizedBox(height: 6),
@@ -364,118 +389,119 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 ),
               ),
               _EditorSection(
-                title: 'Optional details',
+                title: 'Profile artwork',
                 description:
-                    'Add these now or come back whenever you are ready.',
+                    'Choose the image that sits behind your public header and represents the band elsewhere.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      children: [
-                        BandAvatar(band, size: 58, radius: 12, fontSize: 20),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextAction(
-                            'CHANGE PROFILE IMAGE',
-                            onTap: _saving ? null : app.openBandMedia,
-                            padding: EdgeInsets.zero,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    Semantics(
-                      label: 'Short bio',
-                      textField: true,
-                      child: TextField(
-                        key: const ValueKey('edit-short-bio'),
-                        controller: _bio,
-                        enabled: !_saving,
-                        onChanged: _draftChanged,
-                        minLines: 3,
-                        maxLines: 6,
-                        style: Theme.of(context).textTheme.epBody,
-                        decoration: _bandInput(
-                          'SHORT BIO',
-                          'Tell fans about the band',
-                        ),
-                      ),
+                    _ProfileBannerEditor(
+                      band: band,
+                      onTap: _saving ? null : app.openBandMedia,
                     ),
                     const SizedBox(height: 14),
                     _MediaManagementRow(
                       onTap: _saving ? null : app.openBandMedia,
                     ),
-                    const SizedBox(height: 16),
-                    KeyedSubtree(
-                      key: _linksKey,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const _FieldLabel('LINKS'),
-                          const SizedBox(height: 7),
-                          TextField(
-                            key: const ValueKey('edit-instagram'),
-                            controller: _instagram,
-                            enabled: !_saving,
-                            onChanged: (value) {
-                              _instagramDirty = true;
-                              _draftChanged(value);
-                            },
-                            style: Theme.of(context).textTheme.epBody,
-                            decoration: _bandInput('INSTAGRAM', 'Instagram'),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            key: const ValueKey('edit-bandcamp'),
-                            controller: _bandcamp,
-                            enabled: !_saving,
-                            onChanged: (value) {
-                              _bandcampDirty = true;
-                              _draftChanged(value);
-                            },
-                            style: Theme.of(context).textTheme.epBody,
-                            decoration: _bandInput('BANDCAMP', 'Bandcamp'),
-                          ),
-                          const SizedBox(height: 10),
-                          TextField(
-                            key: const ValueKey('edit-youtube'),
-                            controller: _youtube,
-                            enabled: !_saving,
-                            onChanged: (value) {
-                              _youtubeDirty = true;
-                              _draftChanged(value);
-                            },
-                            style: Theme.of(context).textTheme.epBody,
-                            decoration: _bandInput(
-                              'YOUTUBE OR VIDEO',
-                              'YouTube or video',
-                            ),
-                          ),
-                        ],
-                      ),
+                  ],
+                ),
+              ),
+              _EditorSection(
+                title: 'About',
+                description:
+                    'Give fans a concise introduction in your own words.',
+                child: Semantics(
+                  label: 'Short bio',
+                  textField: true,
+                  child: TextField(
+                    key: const ValueKey('edit-short-bio'),
+                    controller: _bio,
+                    enabled: !_saving,
+                    onChanged: _draftChanged,
+                    minLines: 4,
+                    maxLines: 7,
+                    style: Theme.of(context).textTheme.epBody,
+                    decoration: _bandInput(
+                      'SHORT BIO',
+                      'Tell fans about the band',
                     ),
-                    const SizedBox(height: 14),
-                    Semantics(
-                      label: 'Credits',
-                      textField: true,
-                      child: TextField(
-                        key: const ValueKey('edit-credits'),
-                        controller: _credits,
+                  ),
+                ),
+              ),
+              KeyedSubtree(
+                key: _linksKey,
+                child: _EditorSection(
+                  title: 'Links',
+                  description:
+                      'Add the places where fans can listen, watch, and follow.',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        key: const ValueKey('edit-instagram'),
+                        controller: _instagram,
                         enabled: !_saving,
                         onChanged: (value) {
-                          _creditsDirty = true;
+                          _instagramDirty = true;
                           _draftChanged(value);
                         },
-                        minLines: 3,
-                        maxLines: 6,
+                        style: Theme.of(context).textTheme.epBody,
+                        decoration: _bandInput('INSTAGRAM', 'Instagram'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const ValueKey('edit-bandcamp'),
+                        controller: _bandcamp,
+                        enabled: !_saving,
+                        onChanged: (value) {
+                          _bandcampDirty = true;
+                          _draftChanged(value);
+                        },
+                        style: Theme.of(context).textTheme.epBody,
+                        decoration: _bandInput('BANDCAMP', 'Bandcamp'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const ValueKey('edit-youtube'),
+                        controller: _youtube,
+                        enabled: !_saving,
+                        onChanged: (value) {
+                          _youtubeDirty = true;
+                          _draftChanged(value);
+                        },
                         style: Theme.of(context).textTheme.epBody,
                         decoration: _bandInput(
-                          'CREDITS',
-                          'Producers, artists, labels, and collaborators',
+                          'YOUTUBE OR VIDEO',
+                          'YouTube or video',
                         ),
                       ),
+                    ],
+                  ),
+                ),
+              ),
+              _EditorSection(
+                title: 'Credits',
+                description:
+                    'Acknowledge producers, artists, labels, and collaborators.',
+                child: Semantics(
+                  label: 'Credits',
+                  textField: true,
+                  child: TextField(
+                    key: const ValueKey('edit-credits'),
+                    controller: _credits,
+                    enabled: !_saving,
+                    onChanged: (value) {
+                      _creditsDirty = true;
+                      _draftChanged(value);
+                    },
+                    minLines: 3,
+                    maxLines: 6,
+                    style: Theme.of(context).textTheme.epBody,
+                    decoration: _bandInput(
+                      'CREDITS',
+                      'Who helped make the work',
                     ),
-                  ],
+                  ),
                 ),
               ),
               KeyedSubtree(
@@ -518,6 +544,8 @@ class _BandEditScreenState extends State<BandEditScreen> {
           bottom: 66,
           child: StickyActionBar(
             key: const ValueKey('save-band-profile'),
+            secondaryLabel: 'PREVIEW',
+            onSecondary: _saving ? null : app.previewPublicProfile,
             primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
             onPrimary: _saving ? null : _save,
           ),
@@ -554,8 +582,102 @@ class _EditorSection extends StatelessWidget {
         SectionBar(label: title, count: count),
         Text(description, style: Theme.of(context).textTheme.epCaption),
         const SizedBox(height: 14),
-        child,
+        EpCard(
+          variant: EpCardVariant.raised,
+          padding: const EdgeInsets.all(15),
+          child: child,
+        ),
       ],
+    );
+  }
+}
+
+class _ProfileBannerEditor extends StatelessWidget {
+  const _ProfileBannerEditor({required this.band, required this.onTap});
+
+  final Band band;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = ColoredBox(
+      color: band.color,
+      child: Center(
+        child: Text(
+          band.initials,
+          style: Theme.of(
+            context,
+          ).textTheme.epDisplay.copyWith(color: Colors.white, fontSize: 28),
+        ),
+      ),
+    );
+
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: band.heroUrl == null
+          ? 'Add profile banner'
+          : 'Change profile banner',
+      excludeSemantics: true,
+      child: Material(
+        color: Ep.surface,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          key: const ValueKey('edit-band-profile-artwork'),
+          onTap: onTap,
+          child: AspectRatio(
+            aspectRatio: 16 / 7,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                EpNetworkImage(
+                  url: band.heroUrl,
+                  fit: BoxFit.cover,
+                  fallback: fallback,
+                ),
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black38, Colors.black87],
+                    ),
+                  ),
+                ),
+                Positioned(
+                  left: 14,
+                  right: 14,
+                  bottom: 12,
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.photo_camera_outlined,
+                        size: 19,
+                        color: Colors.white,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          band.heroUrl == null
+                              ? 'ADD PROFILE BANNER'
+                              : 'CHANGE PROFILE BANNER',
+                          style: Theme.of(context).textTheme.epLabel.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: .6,
+                          ),
+                        ),
+                      ),
+                      const Icon(Icons.chevron_right, color: Colors.white),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -589,7 +711,7 @@ class _MediaManagementRow extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: onTap != null,
-      label: 'Manage music and media',
+      label: 'Manage videos and photos',
       excludeSemantics: true,
       child: Material(
         color: Ep.surface,
@@ -613,7 +735,7 @@ class _MediaManagementRow extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'MANAGE MUSIC AND MEDIA',
+                      'MANAGE VIDEOS AND PHOTOS',
                       style: Theme.of(context).textTheme.epLabel.copyWith(
                         color: onTap == null
                             ? Ep.contentDisabled

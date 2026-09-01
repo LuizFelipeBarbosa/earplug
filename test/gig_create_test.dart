@@ -426,6 +426,55 @@ void main() {
     },
   );
 
+  testWidgets('draft preview uses the redesigned gig presentation and data', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(402, 1400);
+    tester.view.devicePixelRatio = 1;
+    final harness = await _pumpGigCreate(tester);
+    final app = harness.app;
+    final date = DateTime.now().add(const Duration(days: 3));
+    app.setGfName('Current Draft Noise');
+    app.setGfDate(date);
+    app.setGfVenue('v1');
+    app.setGfPrice(r'$12');
+    app.setGfDescription('Everything entered in the editor stays visible.');
+    app.previewGigDraft();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey('redesigned-gig-draft-preview')),
+      findsOne,
+    );
+    expect(find.byKey(const ValueKey('gig-detail-hero-content')), findsOne);
+    expect(find.text('CURRENT DRAFT NOISE'), findsOne);
+    expect(find.text('PRIVATE DRAFT'), findsWidgets);
+    expect(find.textContaining('THE FOGHORN CLUB'), findsWidgets);
+    expect(find.text('LINEUP · 1'), findsOne);
+    expect(find.text('ABOUT'), findsOne);
+    expect(
+      find.text('Everything entered in the editor stays visible.'),
+      findsOne,
+    );
+    expect(find.text(r'RSVP — $12 AT DOOR'), findsOne);
+    expect(find.text("WHO'S GOING"), findsNothing);
+    expect(
+      find.byKey(const ValueKey('gig-detail-save-draft-preview')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('gig-detail-share-draft-preview')),
+      findsNothing,
+    );
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(app.gfPreviewing, isFalse);
+    expect(find.text('GIG DRAFT'), findsOne);
+    expect(app.gfName, 'Current Draft Noise');
+    expect(app.gfDesc, 'Everything entered in the editor stays visible.');
+  });
+
   testWidgets('lineup mutations save pending form edits before applying', (
     tester,
   ) async {

@@ -18,6 +18,7 @@ import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 import 'door_mode.dart';
+import 'gig_detail.dart';
 
 Future<void> _pickGigFlyerArt(BuildContext context) async {
   final app = context.read<AppState>();
@@ -2201,106 +2202,84 @@ class _DraftPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
     return ColoredBox(
       color: Ep.background,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 40),
-        children: [
-          Row(
-            children: [
-              CircleIconButton(
-                icon: Icons.chevron_left,
-                onTap: app.closeGigPreview,
-              ),
-              const SizedBox(width: 10),
-              Expanded(child: Text('FAN PREVIEW', style: epDisplay(size: 16))),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Ep.surfaceSelected,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  app.gigPreviewLabel,
-                  style: epText(
-                    size: 11,
-                    weight: FontWeight.w900,
-                    letterSpacing: .8,
-                    color: Ep.accent,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Center(child: _Poster(width: 250, height: 328)),
-          const SizedBox(height: 20),
-          Text(
-            app.gfName.trim().isEmpty
-                ? 'UNTITLED GIG'
-                : app.gfName.toUpperCase(),
-            style: epDisplay(size: 24),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            [
-              if (app.gfDate != null) app.gfDateLabel,
-              'Doors ${app.gfDoorsLabel}',
-              'Start ${app.gfStartLabel}',
-            ].join(' · '),
-            style: epText(size: 12, color: Ep.contentSecondary),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            venue == null ? 'VENUE NOT SET' : venue.name.toUpperCase(),
-            style: epText(size: 12, weight: FontWeight.w800),
-          ),
-          const SizedBox(height: 20),
-          const SectionLabel('LINEUP'),
-          const SizedBox(height: 8),
-          if (app.gfPerformers.isEmpty)
-            Text('No performers yet.', style: epText(color: Ep.contentDisabled))
-          else
-            for (final performer in app.gfPerformers)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: EpCard(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          performer.name.toUpperCase(),
-                          style: epText(size: 13, weight: FontWeight.w800),
-                        ),
-                      ),
-                      Text(
-                        performer.role.name.toUpperCase(),
-                        style: epText(
-                          size: 11,
-                          weight: FontWeight.w900,
-                          color: Ep.contentDisabled,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          if (app.gfDesc.trim().isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              app.gfDesc.trim(),
-              style: epText(size: 13, color: Ep.contentSecondary, height: 1.5),
-            ),
-          ],
-        ],
+      child: GigDetailPresentation(
+        key: const ValueKey('redesigned-gig-draft-preview'),
+        gig: _draftGig(app),
+        app: app,
+        performers: app.gfPerformers,
+        previewLabel: app.gigPreviewLabel,
+        onBack: app.closeGigPreview,
+        flyerBytes: app.gfFlyerArt?.bytes,
+        venueSet: app.gfVenueId != null,
       ),
     );
   }
+}
+
+Gig _draftGig(AppState app) {
+  final draftDate = app.gfDate;
+  final date = draftDate ?? DateTime.now();
+  final doorsAt = DateTime(
+    date.year,
+    date.month,
+    date.day,
+    app.gfDoors.hour,
+    app.gfDoors.minute,
+  );
+  var startsAt = DateTime(
+    date.year,
+    date.month,
+    date.day,
+    app.gfStart.hour,
+    app.gfStart.minute,
+  );
+  if (startsAt.isBefore(doorsAt)) {
+    startsAt = startsAt.add(const Duration(days: 1));
+  }
+  final price =
+      int.tryParse(app.gfPrice.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+  final lineup = [
+    for (final performer in app.gfPerformers)
+      if (performer.bandId != null) performer.bandId!,
+  ];
+  final genres = <String>{
+    for (final bandId in lineup) ...?app.band(bandId)?.genres,
+  }.toList();
+
+  return Gig(
+    id: 'draft-preview',
+    title: app.gfName.trim().isEmpty ? 'Untitled gig' : app.gfName.trim(),
+    venueId: app.gfVenueId ?? '',
+    price: price,
+    startsAt: startsAt,
+    doorsAt: doorsAt,
+    dateShort: draftDate == null
+        ? 'DATE NOT SET'
+        : Gig.dateShortFor(doorsAt.millisecondsSinceEpoch),
+    dateLine: draftDate == null
+        ? 'DATE NOT SET · DOORS ${app.gfDoorsLabel}'
+        : Gig.dateLineFor(
+            startsAt.millisecondsSinceEpoch,
+            '${app.gfDoorsLabel} / ${app.gfStartLabel}',
+          ),
+    time: '${app.gfDoorsLabel} / ${app.gfStartLabel}',
+    when: Gig.whenFor(startsAt.millisecondsSinceEpoch),
+    flyKey: app.gfFly,
+    lineup: lineup,
+    performers: List.of(app.gfPerformers),
+    going: 0,
+    genres: genres,
+    desc: app.gfDesc,
+    tix: app.gfTix,
+    externalUrl: app.gfExt.trim().isEmpty ? null : app.gfExt.trim(),
+    flyerUrl: app.gfFlyerUrl,
+    cap: app.gfCap,
+    ageRequirement: app.gfAgeRequirement,
+    lifecycle: GigLifecycle.unpublished,
+    createdByBand: app.bandId.isEmpty ? null : app.bandId,
+  );
 }
 
 // ============================ published ============================

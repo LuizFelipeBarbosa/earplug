@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -48,7 +50,6 @@ class GigDetailScreen extends StatelessWidget {
       }
       return const Center(child: CircularProgressIndicator());
     }
-    final venue = app.venue(gig.venueId);
     final performers = gig.performers.isNotEmpty
         ? gig.performers
         : [
@@ -65,12 +66,50 @@ class GigDetailScreen extends StatelessWidget {
                 ),
           ];
 
+    return GigDetailPresentation(gig: gig, app: app, performers: performers);
+  }
+}
+
+/// The redesigned public gig composition, also used by the editor's read-only
+/// draft preview so current form values are shown in the same hierarchy.
+class GigDetailPresentation extends StatelessWidget {
+  const GigDetailPresentation({
+    super.key,
+    required this.gig,
+    required this.app,
+    required this.performers,
+    this.previewLabel,
+    this.onBack,
+    this.flyerBytes,
+    this.venueSet = true,
+  });
+
+  final Gig gig;
+  final AppState app;
+  final List<GigPerformer> performers;
+  final String? previewLabel;
+  final VoidCallback? onBack;
+  final Uint8List? flyerBytes;
+  final bool venueSet;
+
+  bool get isPreview => previewLabel != null;
+
+  @override
+  Widget build(BuildContext context) {
+    final venue = app.venue(gig.venueId);
     return Stack(
       children: [
         ListView(
           padding: const EdgeInsets.only(bottom: 120),
           children: [
-            _Hero(gig: gig, app: app, performers: performers),
+            _Hero(
+              gig: gig,
+              app: app,
+              performers: performers,
+              onBack: onBack ?? app.back,
+              previewLabel: previewLabel,
+              flyerBytes: flyerBytes,
+            ),
             if (gig.lifecycle == GigLifecycle.cancelled)
               Container(
                 margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -96,11 +135,21 @@ class GigDetailScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _InfoCards(gig: gig, venue: venue, app: app),
+                  _InfoCards(
+                    gig: gig,
+                    venue: venue,
+                    app: app,
+                    showGoing: !isPreview,
+                    previewLabel: previewLabel,
+                  ),
                   const SizedBox(height: 16),
                   SectionBar(label: 'LINEUP', count: performers.length),
                   for (final performer in performers) ...[
-                    _LineupRow(performer: performer, app: app),
+                    _LineupRow(
+                      performer: performer,
+                      app: app,
+                      interactive: !isPreview,
+                    ),
                     const SizedBox(height: 8),
                   ],
                   if (gig.desc.trim().isNotEmpty) ...[
@@ -115,9 +164,14 @@ class GigDetailScreen extends StatelessWidget {
                     ),
                   ],
                   const SectionBar(label: 'VENUE'),
-                  _VenueCard(venue: venue, app: app),
-                  const SectionBar(label: "WHO'S GOING"),
-                  _WhosGoing(gig: gig, app: app),
+                  if (venueSet)
+                    _VenueCard(venue: venue, app: app, interactive: !isPreview)
+                  else
+                    const _MissingVenueCard(),
+                  if (!isPreview) ...[
+                    const SectionBar(label: "WHO'S GOING"),
+                    _WhosGoing(gig: gig, app: app),
+                  ],
                 ],
               ),
             ),
@@ -127,7 +181,9 @@ class GigDetailScreen extends StatelessWidget {
           left: 0,
           right: 0,
           bottom: 0,
-          child: _CtaBar(gig: gig, app: app),
+          child: isPreview
+              ? _PreviewCtaBar(gig: gig)
+              : _CtaBar(gig: gig, app: app),
         ),
       ],
     );
@@ -138,8 +194,18 @@ class _Hero extends StatelessWidget {
   final Gig gig;
   final AppState app;
   final List<GigPerformer> performers;
+  final VoidCallback onBack;
+  final String? previewLabel;
+  final Uint8List? flyerBytes;
 
-  const _Hero({required this.gig, required this.app, required this.performers});
+  const _Hero({
+    required this.gig,
+    required this.app,
+    required this.performers,
+    required this.onBack,
+    required this.previewLabel,
+    required this.flyerBytes,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -154,129 +220,184 @@ class _Hero extends StatelessWidget {
         .toUpperCase();
     final topPad = headerTopPad(context);
 
+    final content = Stack(
+      fit: StackFit.expand,
+      children: [
+        if (gig.flyKey == 'custom')
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.black54, Colors.transparent, Colors.black87],
+                stops: [0, .42, 1],
+              ),
+            ),
+          ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(22, topPad + 8, 22, 20),
+          child: Stack(
+            key: const ValueKey('gig-detail-hero-content'),
+            clipBehavior: Clip.none,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(top: 40),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (presenter != null) ...[
+                          Text(
+                            '${presenter.name.toUpperCase()} PRESENTS',
+                            style: epText(
+                              size: 11,
+                              weight: FontWeight.w900,
+                              color: fly.fg,
+                              letterSpacing: 1.8,
+                            ),
+                          ),
+                          const SizedBox(height: 9),
+                        ],
+                        Text(
+                          gig.title.toUpperCase(),
+                          maxLines: 4,
+                          overflow: TextOverflow.ellipsis,
+                          style: epDisplay(
+                            size: 34,
+                            color: fly.fg,
+                            letterSpacing: -.5,
+                            height: .98,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${gig.dateShort} · ${venue.name.toUpperCase()}',
+                        style: epDisplay(size: 15, color: fly.fg),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        lineupLine,
+                        style: epText(
+                          size: 11,
+                          weight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                          color: fly.fg.withValues(alpha: .75),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Positioned(
+                left: -8,
+                top: -2,
+                child: CircleIconButton(
+                  tooltip: 'Back',
+                  onTap: onBack,
+                  background: Colors.black.withValues(alpha: .55),
+                  bordered: false,
+                ),
+              ),
+              Positioned(
+                right: -8,
+                top: -2,
+                child: previewLabel == null
+                    ? Row(
+                        children: [
+                          _HeroAction(
+                            key: ValueKey('gig-detail-save-${gig.id}'),
+                            tooltip: app.saved.contains(gig.id)
+                                ? 'Remove saved event'
+                                : 'Save event',
+                            onTap: () => app.requestSave(gig.id),
+                            child: Icon(
+                              app.saved.contains(gig.id)
+                                  ? Icons.bookmark
+                                  : Icons.bookmark_border,
+                              size: 18,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          _HeroAction(
+                            key: ValueKey('gig-detail-share-${gig.id}'),
+                            tooltip: 'Share event',
+                            onTap: () => copyForUser(
+                              context,
+                              publicWebUrl('g/${gig.publicRef}'),
+                              successMessage:
+                                  'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
+                            ),
+                            child: Text(
+                              'SHARE ↗',
+                              style: epText(
+                                size: 11,
+                                weight: FontWeight.w800,
+                                letterSpacing: 1,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Container(
+                        key: const ValueKey('gig-draft-preview-status'),
+                        constraints: const BoxConstraints(minHeight: 48),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: .72),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: .35),
+                          ),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                        child: Text(
+                          previewLabel!,
+                          style: epText(
+                            size: 10.5,
+                            weight: FontWeight.w900,
+                            letterSpacing: .7,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+
+    final bytes = flyerBytes;
+    if (bytes != null) {
+      return SizedBox(
+        height: 330,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.memory(bytes, fit: BoxFit.cover),
+            content,
+          ],
+        ),
+      );
+    }
+
     return GigFlyer(
       gig,
       fly,
       height: 330,
       radius: 0,
       shadow: false,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(22, topPad + 8, 22, 20),
-        child: Stack(
-          key: const ValueKey('gig-detail-hero-content'),
-          clipBehavior: Clip.none,
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 40),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (presenter != null) ...[
-                        Text(
-                          '${presenter.name.toUpperCase()} PRESENTS',
-                          style: epText(
-                            size: 11,
-                            weight: FontWeight.w900,
-                            color: fly.fg,
-                            letterSpacing: 1.8,
-                          ),
-                        ),
-                        const SizedBox(height: 9),
-                      ],
-                      Text(
-                        gig.title.toUpperCase(),
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
-                        style: epDisplay(
-                          size: 34,
-                          color: fly.fg,
-                          letterSpacing: -.5,
-                          height: .98,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${gig.dateShort} · ${venue.name.toUpperCase()}',
-                      style: epDisplay(size: 15, color: fly.fg),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      lineupLine,
-                      style: epText(
-                        size: 11,
-                        weight: FontWeight.w800,
-                        letterSpacing: 1.5,
-                        color: fly.fg.withValues(alpha: .75),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            Positioned(
-              left: -8,
-              top: -2,
-              child: CircleIconButton(
-                tooltip: 'Back',
-                onTap: app.back,
-                background: Colors.black.withValues(alpha: .55),
-                bordered: false,
-              ),
-            ),
-            Positioned(
-              right: -8,
-              top: -2,
-              child: Row(
-                children: [
-                  _HeroAction(
-                    key: ValueKey('gig-detail-save-${gig.id}'),
-                    tooltip: app.saved.contains(gig.id)
-                        ? 'Remove saved event'
-                        : 'Save event',
-                    onTap: () => app.requestSave(gig.id),
-                    child: Icon(
-                      app.saved.contains(gig.id)
-                          ? Icons.bookmark
-                          : Icons.bookmark_border,
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  _HeroAction(
-                    key: ValueKey('gig-detail-share-${gig.id}'),
-                    tooltip: 'Share event',
-                    onTap: () => copyForUser(
-                      context,
-                      publicWebUrl('g/${gig.publicRef}'),
-                      successMessage:
-                          'Link copied: ${publicWebDisplayUrl('g/${gig.publicRef}')}',
-                    ),
-                    child: Text(
-                      'SHARE ↗',
-                      style: epText(
-                        size: 11,
-                        weight: FontWeight.w800,
-                        letterSpacing: 1,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      child: content,
     );
   }
 }
@@ -321,8 +442,16 @@ class _InfoCards extends StatelessWidget {
   final Gig gig;
   final Venue venue;
   final AppState app;
+  final bool showGoing;
+  final String? previewLabel;
 
-  const _InfoCards({required this.gig, required this.venue, required this.app});
+  const _InfoCards({
+    required this.gig,
+    required this.venue,
+    required this.app,
+    required this.showGoing,
+    required this.previewLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -403,10 +532,16 @@ class _InfoCards extends StatelessWidget {
                 valueColor: gig.free ? Ep.accent : Ep.contentPrimary,
               ),
               pill('AGE', gig.ageRequirement.label),
-              StatusPill(
-                label: '$going GOING',
-                tone: EpStatusPillTone.selected,
-              ),
+              if (showGoing)
+                StatusPill(
+                  label: '$going GOING',
+                  tone: EpStatusPillTone.selected,
+                )
+              else
+                StatusPill(
+                  label: previewLabel ?? 'DRAFT PREVIEW',
+                  tone: EpStatusPillTone.warning,
+                ),
             ],
           ),
         ],
@@ -418,15 +553,20 @@ class _InfoCards extends StatelessWidget {
 class _LineupRow extends StatelessWidget {
   final GigPerformer performer;
   final AppState app;
+  final bool interactive;
 
-  const _LineupRow({required this.performer, required this.app});
+  const _LineupRow({
+    required this.performer,
+    required this.app,
+    required this.interactive,
+  });
 
   @override
   Widget build(BuildContext context) {
     final band = performer.bandId == null ? null : app.band(performer.bandId!);
     return EpCard(
       padding: const EdgeInsets.all(10),
-      onTap: band == null ? null : () => app.openBand(band.id),
+      onTap: !interactive || band == null ? null : () => app.openBand(band.id),
       child: Row(
         children: [
           if (band != null)
@@ -453,7 +593,7 @@ class _LineupRow extends StatelessWidget {
               ],
             ),
           ),
-          if (band != null) ...[
+          if (interactive && band != null) ...[
             const SizedBox(width: 8),
             OutlinedButton(
               key: ValueKey('gig-lineup-follow-${band.id}'),
@@ -478,8 +618,13 @@ class _LineupRow extends StatelessWidget {
 class _VenueCard extends StatelessWidget {
   final Venue venue;
   final AppState app;
+  final bool interactive;
 
-  const _VenueCard({required this.venue, required this.app});
+  const _VenueCard({
+    required this.venue,
+    required this.app,
+    required this.interactive,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -490,7 +635,7 @@ class _VenueCard extends StatelessWidget {
           Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () => app.openVenue(venue.id),
+              onTap: interactive ? () => app.openVenue(venue.id) : null,
               child: VenueMiniMap(venue: venue),
             ),
           ),
@@ -502,7 +647,7 @@ class _VenueCard extends StatelessWidget {
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: () => app.openVenue(venue.id),
+                      onTap: interactive ? () => app.openVenue(venue.id) : null,
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
                         child: Column(
@@ -529,16 +674,43 @@ class _VenueCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                OutlinedButton(
-                  onPressed: () => openExternalForUser(
-                    context,
-                    'https://www.google.com/maps/search/?api=1&query='
-                    '${venue.point.latitude},${venue.point.longitude}',
+                if (interactive) ...[
+                  const SizedBox(width: 10),
+                  OutlinedButton(
+                    onPressed: () => openExternalForUser(
+                      context,
+                      'https://www.google.com/maps/search/?api=1&query='
+                      '${venue.point.latitude},${venue.point.longitude}',
+                    ),
+                    child: const Text('DIRECTIONS ↗'),
                   ),
-                  child: const Text('DIRECTIONS ↗'),
-                ),
+                ],
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MissingVenueCard extends StatelessWidget {
+  const _MissingVenueCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return EpCard(
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          const Icon(Icons.location_off_outlined, color: Ep.contentDisabled),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'VENUE NOT SET',
+              style: Theme.of(
+                context,
+              ).textTheme.epLabel.copyWith(color: Ep.contentSecondary),
             ),
           ),
         ],
@@ -588,6 +760,56 @@ class _WhosGoing extends StatelessWidget {
               color: Ep.contentDisabled,
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PreviewCtaBar extends StatelessWidget {
+  const _PreviewCtaBar({required this.gig});
+
+  final Gig gig;
+
+  @override
+  Widget build(BuildContext context) {
+    final external = gig.tix == Ticketing.external;
+    final note = external
+        ? 'External ticketing · preview only'
+        : gig.free
+        ? 'Free RSVP · preview only'
+        : 'Pay at the door · preview only';
+    final label = external
+        ? 'GET TICKETS ↗'
+        : gig.free
+        ? 'RSVP — FREE'
+        : 'RSVP — ${gig.priceLabel} AT DOOR';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          stops: [0, .75, 1],
+          colors: [Ep.background, Ep.background, Colors.transparent],
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            note,
+            textAlign: TextAlign.center,
+            style: epText(
+              size: 11,
+              weight: FontWeight.w700,
+              letterSpacing: .5,
+              color: Ep.contentSecondary,
+            ),
+          ),
+          const SizedBox(height: 7),
+          EpButton(label, kind: EpButtonKind.disabled, onTap: null),
         ],
       ),
     );

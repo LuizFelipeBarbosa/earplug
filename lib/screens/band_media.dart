@@ -124,7 +124,7 @@ class BandMediaScreen extends StatelessWidget {
                   ],
                 ],
                 const SizedBox(height: 18),
-                const SectionLabel('BAND PHOTO'),
+                const SectionLabel('PROFILE BANNER'),
                 const SizedBox(height: 8),
                 _HeroStrip(
                   photos: photos,
@@ -402,7 +402,7 @@ class _HeroStrip extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'SET A BAND PHOTO',
+                    'SET A PROFILE BANNER',
                     style: epText(
                       size: 12,
                       weight: FontWeight.w900,
@@ -411,7 +411,7 @@ class _HeroStrip extends StatelessWidget {
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    'Replaces the initials tile everywhere.',
+                    'Used behind your public header and on band tiles.',
                     style: epText(size: 10.5, color: Ep.contentDisabled),
                   ),
                 ],
@@ -452,6 +452,7 @@ class _HeroStrip extends StatelessWidget {
           );
 
     return EpCard(
+      key: const ValueKey('profile-banner-picker'),
       variant: isAdmin ? EpCardVariant.standard : EpCardVariant.disabled,
       padding: EdgeInsets.zero,
       onTap: onTap,
@@ -722,7 +723,7 @@ void _showHeroSheet(
   showEpSheet(
     context,
     (sheetContext) => _MediaSheet(
-      title: 'Choose band photo',
+      title: 'Choose profile banner',
       child: SizedBox(
         height: math.min(MediaQuery.sizeOf(sheetContext).height * .58, 460),
         child: Column(

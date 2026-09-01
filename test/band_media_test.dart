@@ -21,11 +21,16 @@ void main() {
 
     expect(find.text('+ MUSIC CLIP'), findsOneWidget);
     expect(find.text('+ PHOTOS'), findsOneWidget);
+    expect(find.text('PROFILE BANNER'), findsOneWidget);
     expect(
       find.text('This is what we sound like — live at Foghorn Club'),
       findsOneWidget,
     );
     expect(find.text('Riptide (practice take, one mic)'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('profile-banner-picker')));
+    await tester.pumpAndSettle();
+    expect(find.text('CHOOSE PROFILE BANNER'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

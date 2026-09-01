@@ -1,6 +1,8 @@
+import 'package:earplug/app_state.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
+import 'package:earplug/widgets/video_thumbnail.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -30,16 +32,42 @@ void main() {
     );
   });
 
-  testWidgets('profile renders the pinned video and clip grid', (tester) async {
+  testWidgets('profile renders every video in one thumbnail section', (
+    tester,
+  ) async {
     await _pumpProfile(tester);
-    final pinned = DemoData.b1Media.singleWhere((media) => media.pinned);
-    final clip = DemoData.b1Media.firstWhere(
-      (media) => media.isVideo && !media.pinned,
-    );
+    final videos = DemoData.b1Media.where((media) => media.isVideo).toList();
 
-    expect(find.text(pinned.title), findsOne);
-    expect(find.text(clip.title), findsOne);
-    expect(find.text('CLIPS'), findsOne);
+    expect(find.text('THIS IS WHAT WE SOUND LIKE'), findsOne);
+    expect(find.text('CLIPS'), findsNothing);
+    expect(find.text('PINNED'), findsOne);
+    for (final video in videos) {
+      expect(find.text(video.title), findsOne);
+    }
+    expect(find.byType(BandVideoThumbnail), findsNWidgets(videos.length));
+  });
+
+  testWidgets('profile banner is scrimmed, upright, and editable by admins', (
+    tester,
+  ) async {
+    final harness = await _pumpProfile(tester);
+
+    final scrim = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('band-profile-banner-scrim')),
+    );
+    final gradient = (scrim.decoration as BoxDecoration).gradient!;
+    expect(gradient, isA<LinearGradient>());
+    expect(
+      (gradient as LinearGradient).colors.every((color) => color.a >= .58),
+      isTrue,
+    );
+    expect(find.byKey(const ValueKey('band-profile-avatar-frame')), findsOne);
+    final edit = find.byKey(const ValueKey('edit-band-profile-banner'));
+    expect(edit, findsOne);
+
+    await tester.tap(edit);
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.bandMedia);
   });
 
   testWidgets('profile renders all demo photo tiles', (tester) async {
