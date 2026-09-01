@@ -14,6 +14,11 @@ void main() {
       home: const Scaffold(body: ExploreScreen()),
     );
 
+    expect(harness.app.exploreResultType.name, 'all');
+    for (final scope in const ['all', 'events', 'bands', 'venues']) {
+      expect(find.byKey(ValueKey('explore-tab-$scope')), findsOne);
+    }
+
     await tester.enterText(
       find.byKey(const Key('explore-search-field')),
       '  Mission Creep  ',
@@ -93,6 +98,32 @@ void main() {
     expect(find.text('BANDS'), findsOne);
   });
 
+  testWidgets('browse scopes share one bounded directory and keep filters', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+    );
+
+    expect(find.byKey(const Key('explore-event-g1')), findsOne);
+    expect(find.byKey(const Key('explore-toggle-bands')), findsOne);
+    expect(find.byKey(const Key('explore-toggle-venues')), findsOne);
+
+    await tester.tap(find.byKey(const Key('explore-tab-bands')));
+    await tester.pump();
+    expect(harness.app.exploreResultType.name, 'bands');
+    expect(find.byKey(const Key('explore-event-g1')), findsNothing);
+    expect(find.byKey(const Key('explore-toggle-bands')), findsOne);
+    expect(find.byKey(const Key('explore-toggle-venues')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('explore-tab-all')));
+    await tester.pump();
+    await tester.tap(find.text('+ FILTERS'));
+    await tester.pumpAndSettle();
+    expect(find.text('FILTERS'), findsOne);
+  });
+
   testWidgets('search results construct off-screen rows lazily', (
     tester,
   ) async {
@@ -144,8 +175,12 @@ void main() {
       ValueKey('explore-band-card-${previewBandIds.last}'),
     );
     expect(
-      tester.getTopLeft(secondBand).dx - tester.getTopRight(firstBand).dx,
-      10,
+      tester.getTopLeft(secondBand).dy - tester.getBottomLeft(firstBand).dy,
+      7,
+    );
+    expect(
+      find.byKey(ValueKey('explore-follow-${previewBandIds.first}')),
+      findsOne,
     );
 
     await tester.tap(bandsToggle);

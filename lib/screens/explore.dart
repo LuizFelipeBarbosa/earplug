@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../genres.dart';
+import '../date_names.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/discovery_filters_sheet.dart';
 import '../widgets/fan_event_card.dart';
 
 class ExploreScreen extends StatefulWidget {
@@ -60,10 +61,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'SEARCH & EXPLORE',
-                style: Theme.of(context).textTheme.epPageHeading,
-              ),
+              Text('Explore', style: Theme.of(context).textTheme.epPageHeading),
               const SizedBox(height: 10),
               TextField(
                 key: const Key('explore-search-field'),
@@ -72,7 +70,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => _submitSearch(app),
                 style: Theme.of(context).textTheme.epBody,
-                decoration: epInputDecoration('Bands, gigs, venues…').copyWith(
+                decoration: epInputDecoration('Bands, venues, gigs…').copyWith(
                   suffixIcon: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -96,6 +94,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
             ],
           ),
         ),
+        _SearchTypeTabs(app: app),
         Expanded(
           child: searching
               ? _SearchResults(app: app, q: q)
@@ -116,6 +115,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                   onToggleVenues: () {
                     setState(() => _showAllVenues = !_showAllVenues);
                   },
+                  onOpenFilters: () => showDiscoveryFiltersSheet(context),
                 ),
         ),
       ],
@@ -266,18 +266,11 @@ class _SearchResults extends StatelessWidget {
       }
     }
 
-    return Column(
-      children: [
-        _SearchTypeTabs(app: app),
-        Expanded(
-          child: ListView.builder(
-            key: ValueKey('explore-results-${type.name}'),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
-            itemCount: resultBuilders.length,
-            itemBuilder: (context, index) => resultBuilders[index](context),
-          ),
-        ),
-      ],
+    return ListView.builder(
+      key: ValueKey('explore-results-${type.name}'),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
+      itemCount: resultBuilders.length,
+      itemBuilder: (context, index) => resultBuilders[index](context),
     );
   }
 }
@@ -326,16 +319,15 @@ class _SearchTypeTabs extends StatelessWidget {
           textStyle: WidgetStatePropertyAll(
             Theme.of(
               context,
-            ).textTheme.epLabel.copyWith(fontSize: 10, letterSpacing: .4),
+            ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .4),
           ),
           backgroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected)
-                ? Ep.surfaceSelected
-                : Ep.surface,
+            (states) =>
+                states.contains(WidgetState.selected) ? Ep.volt : Ep.surface,
           ),
           foregroundColor: WidgetStateProperty.resolveWith(
             (states) => states.contains(WidgetState.selected)
-                ? Ep.contentPrimary
+                ? Ep.dark
                 : Ep.contentSecondary,
           ),
           side: const WidgetStatePropertyAll(BorderSide(color: Ep.border)),
@@ -356,6 +348,7 @@ class _BandRow extends StatelessWidget {
     final band = app.band(bandId);
     if (band == null) return const SizedBox.shrink();
     return EpCard(
+      key: ValueKey('explore-band-card-$bandId'),
       padding: const EdgeInsets.all(9),
       onTap: () => app.openBand(bandId),
       child: Row(
@@ -371,10 +364,24 @@ class _BandRow extends StatelessWidget {
                   style: Theme.of(context).textTheme.epLabel,
                 ),
                 Text(
-                  band.genreLine,
+                  [band.genreLine, '${band.followersLabel} fans'].join(' · '),
                   style: Theme.of(context).textTheme.epCaption,
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            key: ValueKey('explore-follow-$bandId'),
+            onPressed: () => app.requestFollow(bandId),
+            style: const ButtonStyle(
+              minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+              padding: WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 10),
+              ),
+            ),
+            child: Text(
+              app.follows.contains(bandId) ? 'FOLLOWING ✓' : 'FOLLOW',
             ),
           ),
         ],
@@ -390,6 +397,7 @@ class _BrowseRows extends StatelessWidget {
   final ValueChanged<String> onSearch;
   final VoidCallback onToggleBands;
   final VoidCallback onToggleVenues;
+  final VoidCallback onOpenFilters;
 
   const _BrowseRows({
     required this.app,
@@ -398,105 +406,170 @@ class _BrowseRows extends StatelessWidget {
     required this.onSearch,
     required this.onToggleBands,
     required this.onToggleVenues,
+    required this.onOpenFilters,
   });
 
   @override
   Widget build(BuildContext context) {
     final gigs = app.allGigs;
-    final previewBandIds = app.exploreBandIds.take(4).toList();
-    final tonight = [
-      ...gigs.where((g) => g.when == GigWhen.tonight),
-      ...gigs.where((g) => g.when == GigWhen.week).take(3),
-    ];
-    final free = gigs.where((g) => g.free && g.when != GigWhen.later).toList();
+    final previewBandIds = app.exploreBandIds.take(3).toList();
+    final tonight = gigs.where((gig) => gig.when == GigWhen.tonight).toList();
+    final tonightIds = tonight.map((gig) => gig.id).toSet();
+    final free = gigs
+        .where(
+          (gig) =>
+              gig.free &&
+              gig.when != GigWhen.later &&
+              !tonightIds.contains(gig.id),
+        )
+        .toList();
+    final type = app.exploreResultType;
+    final showEvents =
+        type == ExploreResultType.all || type == ExploreResultType.events;
+    final showBands =
+        type == ExploreResultType.all || type == ExploreResultType.bands;
+    final showVenues =
+        type == ExploreResultType.all || type == ExploreResultType.venues;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, tabBarClearance),
       children: [
         const SectionLabel('GENRES'),
         const SizedBox(height: 8),
-        SizedBox(
-          height:
-              48 +
-              12 * (MediaQuery.textScalerOf(context).scale(1).clamp(1, 2) - 1),
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: kGenres.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 7),
-            itemBuilder: (context, index) {
-              final genre = kGenres[index];
-              return EpChip(
-                label: genre,
-                active: false,
-                onTap: () => onSearch(genre),
-              );
-            },
-          ),
+        Wrap(
+          spacing: 7,
+          runSpacing: 7,
+          children: [
+            for (final genre in const ['punk', 'garage', 'noise'])
+              EpChip(label: genre, active: false, onTap: () => onSearch(genre)),
+            EpChip(
+              label: '+ FILTERS',
+              active: false,
+              ghost: true,
+              onTap: onOpenFilters,
+            ),
+          ],
         ),
-        const SizedBox(height: 18),
-        const SectionLabel('TONIGHT NEAR YOU', blue: true),
-        const SizedBox(height: 8),
-        _FlyerRail(gigs: tonight, app: app),
-        const SizedBox(height: 18),
-        const SectionLabel('FREE THIS WEEK', blue: true),
-        const SizedBox(height: 8),
-        _FlyerRail(gigs: free, app: app, freeTag: true),
-        const SizedBox(height: 18),
-        _SectionHeading(
-          label: 'BANDS ON EARPLUG',
-          actionLabel: showAllBands ? 'SEE LESS BANDS' : 'SEE ALL BANDS',
-          actionKey: const Key('explore-toggle-bands'),
-          onAction: onToggleBands,
-        ),
-        const SizedBox(height: 8),
-        if (showAllBands)
-          Column(
-            children: [
-              GridView.builder(
-                key: const Key('explore-all-bands'),
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: app.exploreBandIds.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                  mainAxisExtent:
-                      126 +
-                      40 *
-                          (MediaQuery.textScalerOf(
-                                context,
-                              ).scale(1).clamp(1, 2) -
-                              1),
-                ),
-                itemBuilder: (context, index) => _BandTile(
-                  bandId: app.exploreBandIds[index],
-                  app: app,
-                  width: double.infinity,
-                ),
+        if (showEvents) ...[
+          if (tonight.isNotEmpty) ...[
+            SectionBar(label: 'TONIGHT NEAR YOU', count: tonight.length),
+            _EventRows(gigs: tonight, app: app),
+          ],
+          if (free.isNotEmpty) ...[
+            SectionBar(label: 'FREE THIS WEEK', count: free.length),
+            _EventRows(gigs: free, app: app),
+          ],
+          if (tonight.isEmpty && free.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 20),
+              child: Text(
+                'No nearby events in the loaded feed.',
+                style: Theme.of(context).textTheme.epCaption,
               ),
-              const SizedBox(height: 8),
-              _BandPageStatus(app: app),
+            ),
+        ],
+        if (showBands) ...[
+          _SectionHeading(
+            label: 'BANDS ON EARPLUG',
+            actionLabel: showAllBands ? 'SEE LESS BANDS' : 'SEE ALL BANDS',
+            actionKey: const Key('explore-toggle-bands'),
+            onAction: onToggleBands,
+          ),
+          const SizedBox(height: 8),
+          Column(
+            key: showAllBands
+                ? const Key('explore-all-bands')
+                : const Key('explore-band-preview'),
+            children: [
+              for (final bandId
+                  in showAllBands ? app.exploreBandIds : previewBandIds) ...[
+                _BandRow(bandId: bandId, app: app),
+                const SizedBox(height: 7),
+              ],
+              if (showAllBands) _BandPageStatus(app: app),
             ],
-          )
-        else
-          SizedBox(
-            key: const Key('explore-band-preview'),
-            height:
-                126 +
-                40 *
-                    (MediaQuery.textScalerOf(context).scale(1).clamp(1, 2) - 1),
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: previewBandIds.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, index) =>
-                  _BandTile(bandId: previewBandIds[index], app: app),
+          ),
+        ],
+        if (showVenues) ...[
+          const SizedBox(height: 10),
+          _VenueRows(
+            app: app,
+            showAll: showAllVenues,
+            onToggle: onToggleVenues,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _EventRows extends StatelessWidget {
+  const _EventRows({required this.gigs, required this.app});
+
+  final List<Gig> gigs;
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (final gig in gigs) ...[
+          _ExploreEventRow(gig: gig, app: app),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _ExploreEventRow extends StatelessWidget {
+  const _ExploreEventRow({required this.gig, required this.app});
+
+  final Gig gig;
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final venue = app.venue(gig.venueId);
+    return EpCard(
+      key: ValueKey('explore-event-${gig.id}'),
+      padding: const EdgeInsets.all(10),
+      onTap: () => app.openGig(gig.id),
+      child: Row(
+        children: [
+          DateBlock(
+            day: gig.startsAt.day.toString().padLeft(2, '0'),
+            month: monthNamesUpper[gig.startsAt.month - 1],
+            semanticLabel: gig.dateShort,
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  gig.title.toUpperCase(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.epLabel,
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  [venue.name, app.distanceOf(venue)].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${gig.priceLabel} · ${gig.going} going',
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+              ],
             ),
           ),
-        const SizedBox(height: 18),
-        _VenueRows(app: app, showAll: showAllVenues, onToggle: onToggleVenues),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -573,7 +646,7 @@ class _SectionHeading extends StatelessWidget {
             textAlign: TextAlign.end,
             style: Theme.of(
               context,
-            ).textTheme.epLabel.copyWith(fontSize: 10, letterSpacing: .7),
+            ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .7),
           ),
         ),
       ],
@@ -672,174 +745,6 @@ class _VenueRow extends StatelessWidget {
             style: Theme.of(context).textTheme.epCaption,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _FlyerRail extends StatelessWidget {
-  final List<Gig> gigs;
-  final AppState app;
-  final bool freeTag;
-
-  const _FlyerRail({
-    required this.gigs,
-    required this.app,
-    this.freeTag = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height:
-          186 +
-          36 * (MediaQuery.textScalerOf(context).scale(1).clamp(1, 2) - 1),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        clipBehavior: Clip.none,
-        children: [
-          for (final g in gigs)
-            Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: SizedBox(
-                width: 134,
-                child: EpCard(
-                  variant: EpCardVariant.raised,
-                  padding: const EdgeInsets.all(8),
-                  onTap: () => app.openGig(g.id),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          GigFlyer(
-                            g,
-                            app.flyer(g.flyKey),
-                            width: 118,
-                            height: 130,
-                            radius: 8,
-                            padding: const EdgeInsets.all(10),
-                            child: MediaQuery.withNoTextScaling(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    g.title.toUpperCase(),
-                                    maxLines: 5,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: epDisplay(
-                                      size: 12,
-                                      color: app.flyer(g.flyKey).fg,
-                                      height: 1.1,
-                                    ),
-                                  ),
-                                  Text(
-                                    g.dateShort,
-                                    style: epText(
-                                      size: 9,
-                                      weight: FontWeight.w800,
-                                      letterSpacing: .5,
-                                      color: app
-                                          .flyer(g.flyKey)
-                                          .fg
-                                          .withValues(alpha: .85),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          if (freeTag)
-                            Positioned(
-                              top: 6,
-                              right: 6,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 7,
-                                  vertical: 3,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Ep.brand,
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                                child: Text(
-                                  'FREE',
-                                  style: Theme.of(context).textTheme.epCaption
-                                      .copyWith(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: .8,
-                                        color: Colors.white,
-                                      ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        app.venue(g.venueId).name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epCaption,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BandTile extends StatelessWidget {
-  final String bandId;
-  final AppState app;
-  final double width;
-
-  const _BandTile({required this.bandId, required this.app, this.width = 100});
-
-  @override
-  Widget build(BuildContext context) {
-    final band = app.band(bandId);
-    if (band == null) return const SizedBox.shrink();
-    return SizedBox(
-      key: ValueKey('explore-band-card-$bandId'),
-      width: width,
-      child: EpCard(
-        variant: EpCardVariant.raised,
-        padding: const EdgeInsets.all(6),
-        onTap: () => app.openBand(bandId),
-        child: Column(
-          children: [
-            BandAvatar(band, size: 56, radius: 12, fontSize: 18),
-            const SizedBox(height: 5),
-            Text(
-              band.name.toUpperCase(),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.epLabel.copyWith(fontSize: 10.5, height: 1.2),
-            ),
-            const SizedBox(height: 2),
-            if (band.genres.isNotEmpty)
-              Text(
-                band.genres.first,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.epCaption.copyWith(fontSize: 9.5),
-              ),
-          ],
-        ),
       ),
     );
   }
