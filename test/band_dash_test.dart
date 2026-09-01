@@ -5,6 +5,7 @@ import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_dash.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -25,8 +26,14 @@ void main() {
 
     expect(find.text('MANAGING · ADMIN'), findsOne);
     expect(find.text('DISCOVER'), findsOne);
-    expect(find.text('Edit profile'), findsOne);
-    expect(find.text('Preview public profile'), findsNWidgets(2));
+    expect(find.byType(VoltStrip), findsOne);
+    expect(find.text('DOOR MODE'), findsOne);
+    expect(find.byKey(const Key('band-next-public-gig')), findsOne);
+    expect(find.text('PUBLISH GIG'), findsOne);
+    expect(find.text('ADD MEDIA'), findsOne);
+    expect(find.text('ANALYTICS'), findsOne);
+    expect(find.byKey(const Key('band-command-edit-profile')), findsOne);
+    expect(find.text('PREVIEW PUBLIC PROFILE →'), findsOne);
     await tester.scrollUntilVisible(
       find.text('SETUP CHECKLIST'),
       250,
@@ -34,15 +41,29 @@ void main() {
     );
     expect(find.text('SETUP CHECKLIST'), findsOne);
     expect(find.text('3 of 7 complete'), findsOne);
-    expect(find.text('Complete profile'), findsOne);
-    expect(find.text('Add a profile image'), findsOne);
-    expect(find.text('Add music or a clip'), findsOne);
-    expect(find.text('Add social links'), findsOne);
-    expect(find.text('Create first gig'), findsOne);
-    expect(find.text('Invite band members'), findsOne);
-    expect(find.text('Preview public profile'), findsNWidgets(2));
-    expect(find.byIcon(Icons.check_circle), findsNWidgets(3));
-    expect(find.byIcon(Icons.radio_button_unchecked), findsNWidgets(4));
+    final setup = find.byKey(const Key('band-setup-checklist'));
+    for (final label in [
+      'Complete profile',
+      'Add a profile image',
+      'Add music or a clip',
+      'Add social links',
+      'Create first gig',
+      'Invite band members',
+      'Preview public profile',
+    ]) {
+      expect(find.descendant(of: setup, matching: find.text(label)), findsOne);
+    }
+    expect(
+      find.descendant(of: setup, matching: find.byIcon(Icons.check_circle)),
+      findsNWidgets(3),
+    );
+    expect(
+      find.descendant(
+        of: setup,
+        matching: find.byIcon(Icons.radio_button_unchecked),
+      ),
+      findsNWidgets(4),
+    );
   });
 
   testWidgets('dashboard profile controls use explicit admin navigation', (
@@ -53,18 +74,40 @@ void main() {
       home: const Scaffold(body: BandDashScreen()),
     );
 
-    await tester.tap(find.text('Edit profile'));
+    final editProfile = find.byKey(const Key('band-command-edit-profile'));
+    await tester.scrollUntilVisible(
+      editProfile,
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(editProfile);
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandEdit);
 
     harness.app.returnToBandDashboard();
     await tester.pump();
-    await tester.tap(
-      find.widgetWithText(OutlinedButton, 'Preview public profile'),
+    await tester.scrollUntilVisible(
+      find.text('PREVIEW PUBLIC PROFILE →'),
+      180,
+      scrollable: find.byType(Scrollable).first,
     );
+    await tester.tap(find.text('PREVIEW PUBLIC PROFILE →'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandPreview);
     expect(harness.app.current.param, 'b1');
+  });
+
+  testWidgets('Next Up retains the public gig deep link', (tester) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: BandDashScreen()),
+    );
+
+    await tester.tap(find.byKey(const Key('band-next-public-gig')));
+    await tester.pump();
+
+    expect(harness.app.current.screen, Screen.gig);
+    expect(harness.app.current.param, 'g2');
   });
 
   testWidgets('discovery readiness is separate from the setup checklist', (
@@ -80,11 +123,19 @@ void main() {
     );
     expect(card, findsOne);
     expect(find.text('5 of 6 complete'), findsOne);
+    for (var index = 0; index < 6; index++) {
+      expect(find.byKey(ValueKey('discovery-segment-$index')), findsOne);
+    }
     expect(find.text('Assign a valid profile image'), findsOne);
     expect(find.text('Upload a video clip'), findsOne);
     expect(
       find.textContaining('NEXT ELIGIBLE · RIPTIDE RELEASE SHOW'),
       findsOne,
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('band-setup-checklist')),
+      180,
+      scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('SETUP CHECKLIST'), findsOne);
   });
@@ -170,9 +221,11 @@ void main() {
       final action = find.byKey(ValueKey('band-setup-$key'));
       await tester.scrollUntilVisible(
         action,
-        180,
+        140,
         scrollable: find.byType(Scrollable).first,
       );
+      await tester.ensureVisible(action);
+      await tester.pump();
       await tester.tap(action);
       await tester.pump();
       expect(harness.app.current.screen, screen);
@@ -203,10 +256,11 @@ void main() {
     );
 
     expect(find.text('MANAGING · MEMBER'), findsOne);
-    expect(find.text('Preview public profile'), findsOne);
-    expect(find.text('Edit profile'), findsNothing);
+    expect(find.text('PREVIEW PUBLIC PROFILE →'), findsOne);
+    expect(find.byKey(const Key('band-command-edit-profile')), findsNothing);
+    expect(find.text('DOOR MODE'), findsNothing);
     expect(find.text('SETUP CHECKLIST'), findsNothing);
-    expect(find.text('+ PUBLISH GIG'), findsNothing);
+    expect(find.text('PUBLISH GIG'), findsNothing);
     expect(repository.setupStatusCalls, 0);
   });
 
