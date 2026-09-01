@@ -80,7 +80,7 @@ void main() {
     semantics.dispose();
   });
 
-  testWidgets('home location supports more scenes and the current position', (
+  testWidgets('home location autocompletes scenes and the current position', (
     tester,
   ) async {
     await pumpApp(
@@ -91,25 +91,68 @@ void main() {
     tester.view.physicalSize = const Size(402, 1800);
     await tester.pumpAndSettle();
 
-    final picker = tester.widget<DropdownButton<FanCity>>(
-      find.byKey(const Key('home-location-picker')),
-    );
-    expect(picker.items, hasLength(FanCity.values.length));
+    expect(find.byType(DropdownButton<FanCity>), findsNothing);
+    expect(find.byKey(const Key('home-location-input')), findsOne);
     expect(FanCity.values.length, greaterThan(2));
+
+    await tester.enterText(
+      find.byKey(const Key('home-location-input')),
+      'san j',
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('home-location-suggestion-sanJose')), findsOne);
+    await tester.tap(find.byKey(const Key('home-location-suggestion-sanJose')));
+    await tester.pumpAndSettle();
     expect(
-      picker.items!.map((item) => item.value),
-      containsAll([FanCity.berkeley, FanCity.sanJose, FanCity.sanRafael]),
+      tester
+          .widget<TextField>(find.byKey(const Key('home-location-input')))
+          .controller!
+          .text,
+      'San Jose, CA',
     );
 
     await tester.tap(find.byKey(const Key('use-current-home-location')));
     await tester.pumpAndSettle();
 
-    final selected = tester.widget<DropdownButton<FanCity>>(
-      find.byKey(const Key('home-location-picker')),
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('home-location-input')))
+          .controller!
+          .text,
+      'Berkeley, CA',
     );
-    expect(selected.value, FanCity.berkeley);
     expect(find.textContaining('nearest supported scene'), findsOne);
     expect(find.byKey(const Key('clear-home-location')), findsOne);
+  });
+
+  testWidgets('unknown home locations stay typed with a no-results state', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: EditProfileScreen()));
+    tester.view.physicalSize = const Size(402, 1800);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('fan-name-field')),
+      'Keep This Name',
+    );
+    await tester.enterText(
+      find.byKey(const Key('home-location-input')),
+      'Los Angeles',
+    );
+    await tester.pump();
+    expect(find.byKey(const Key('home-location-no-results')), findsOne);
+
+    await tester.tap(find.byKey(const Key('save-fan-profile')));
+    await tester.pump();
+    expect(find.byKey(const Key('home-location-validation')), findsOne);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('home-location-input')))
+          .controller!
+          .text,
+      'Los Angeles',
+    );
   });
 
   testWidgets('a failed location request keeps profile edits intact', (
@@ -127,17 +170,29 @@ void main() {
       find.byKey(const Key('fan-name-field')),
       'Still Here',
     );
+    await tester.enterText(
+      find.byKey(const Key('home-location-input')),
+      'San Mateo, California',
+    );
     await tester.tap(find.byKey(const Key('use-current-home-location')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('home-location-error')), findsOne);
     expect(find.textContaining('not granted'), findsOne);
+    expect(find.byKey(const Key('retry-current-home-location')), findsOne);
     expect(
       tester
           .widget<TextField>(find.byKey(const Key('fan-name-field')))
           .controller!
           .text,
       'Still Here',
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('home-location-input')))
+          .controller!
+          .text,
+      'San Mateo, California',
     );
   });
 
@@ -613,10 +668,16 @@ void main() {
       repository: _FailingProfileRepository(auth: auth),
       home: const Scaffold(body: EditProfileScreen()),
     );
+    tester.view.physicalSize = const Size(402, 1800);
+    await tester.pumpAndSettle();
 
     await tester.enterText(
       find.byKey(const Key('fan-name-field')),
       'Changed Name',
+    );
+    await tester.enterText(
+      find.byKey(const Key('home-location-input')),
+      'BERKELEY, CA',
     );
     await tester.scrollUntilVisible(
       find.byKey(const Key('save-fan-profile')),
@@ -635,6 +696,13 @@ void main() {
           .controller
           ?.text,
       'Changed Name',
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('home-location-input')))
+          .controller!
+          .text,
+      'BERKELEY, CA',
     );
     await tester.pump(const Duration(seconds: 3));
   });

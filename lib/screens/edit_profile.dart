@@ -24,6 +24,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _scrollController = ScrollController();
   late final TextEditingController _nameController;
   late final TextEditingController _bioController;
+  late final TextEditingController _homeLocationController;
+  late final FocusNode _homeLocationFocusNode;
   late final MediaPicker _mediaPicker;
   late final Set<String> _genres;
   FanCity? _homeLocation;
@@ -34,6 +36,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   var _locatingHome = false;
   LocationFailure? _homeLocationFailure;
   String? _homeLocationNotice;
+  String? _homeLocationValidation;
+  var _updatingHomeLocationText = false;
   var _saving = false;
   String? _error;
 
@@ -45,6 +49,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _bioController = TextEditingController(text: profile?.bio ?? '');
     _genres = Set.of(profile?.genres ?? const []);
     _homeLocation = profile?.homeLocation;
+    _homeLocationController = TextEditingController(
+      text: _homeLocation?.autocompleteLabel ?? '',
+    )..addListener(_homeLocationTextChanged);
+    _homeLocationFocusNode = FocusNode()
+      ..addListener(_homeLocationFocusChanged);
     _locationPersonalizationEnabled =
         profile?.locationPersonalizationEnabled ?? false;
     _followedBandUpdatesEnabled = profile?.followedBandUpdatesEnabled ?? true;
@@ -56,7 +65,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _scrollController.dispose();
     _nameController.dispose();
     _bioController.dispose();
+    _homeLocationController
+      ..removeListener(_homeLocationTextChanged)
+      ..dispose();
+    _homeLocationFocusNode
+      ..removeListener(_homeLocationFocusChanged)
+      ..dispose();
     super.dispose();
+  }
+
+  void _homeLocationTextChanged() {
+    if (_updatingHomeLocationText || !mounted) return;
+    setState(() {
+      _homeLocation = fanCityFromLocationInput(_homeLocationController.text);
+      _homeLocationFailure = null;
+      _homeLocationNotice = null;
+      _homeLocationValidation = null;
+    });
+  }
+
+  void _homeLocationFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _setHomeLocation(FanCity? city, {String? notice}) {
+    _updatingHomeLocationText = true;
+    _homeLocationController.value = TextEditingValue(
+      text: city?.autocompleteLabel ?? '',
+      selection: TextSelection.collapsed(
+        offset: city?.autocompleteLabel.length ?? 0,
+      ),
+    );
+    _updatingHomeLocationText = false;
+    setState(() {
+      _homeLocation = city;
+      _homeLocationFailure = null;
+      _homeLocationNotice = notice;
+      _homeLocationValidation = null;
+    });
   }
 
   Future<void> _pickAvatar() async {
@@ -97,12 +143,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     switch (result) {
       case LocationSuccess(:final location):
         final city = _nearestFanCity(location);
-        setState(() {
-          _locatingHome = false;
-          _homeLocation = city;
-          _homeLocationNotice =
-              'Using ${city.label}, the nearest supported scene.';
-        });
+        _setHomeLocation(
+          city,
+          notice:
+              'Using ${city.autocompleteLabel}, the nearest supported scene.',
+        );
+        setState(() => _locatingHome = false);
       case final LocationFailure failure:
         setState(() {
           _locatingHome = false;
@@ -129,10 +175,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       setState(() => _error = 'Add the name you want shown on your profile.');
       return;
     }
+    final locationInput = _homeLocationController.text.trim();
+    final resolvedHomeLocation = locationInput.isEmpty
+        ? null
+        : fanCityFromLocationInput(locationInput);
+    if (locationInput.isNotEmpty && resolvedHomeLocation == null) {
+      setState(() {
+        _homeLocationValidation =
+            'Choose a suggested location, or clear this field to keep it undisclosed.';
+      });
+      _homeLocationFocusNode.requestFocus();
+      return;
+    }
 
     setState(() {
       _saving = true;
       _error = null;
+      _homeLocation = resolvedHomeLocation;
+      _homeLocationValidation = null;
     });
     final app = context.read<AppState>();
     final saved = await app.saveFanProfile(
@@ -141,7 +201,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         '' => null,
         final value => value,
       },
-      homeLocation: _homeLocation,
+      homeLocation: resolvedHomeLocation,
       genres: _genres.toList()..sort(),
       locationPersonalizationEnabled: _locationPersonalizationEnabled,
       followedBandUpdatesEnabled: _followedBandUpdatesEnabled,
@@ -251,132 +311,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 label: 'HOME LOCATION',
                 caption:
                     'Private to your account. Personalization below decides whether this scene tunes discovery.',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<FanCity>(
-                        key: const Key('home-location-picker'),
-                        value: _homeLocation,
-                        isExpanded: true,
-                        itemHeight: 52,
-                        menuMaxHeight: 360,
-                        dropdownColor: Ep.surfaceRaised,
-                        icon: const Icon(
-                          Icons.expand_more,
-                          color: Ep.contentSecondary,
-                        ),
-                        hint: Text(
-                          'CHOOSE A HOME LOCATION',
-                          style: Theme.of(context).textTheme.epLabel,
-                        ),
-                        style: Theme.of(context).textTheme.epLabel.copyWith(
-                          color: Ep.contentPrimary,
-                          fontSize: 14,
-                        ),
-                        items: [
-                          for (final city in FanCity.values)
-                            DropdownMenuItem(
-                              value: city,
-                              child: Text(city.label.toUpperCase()),
-                            ),
-                        ],
-                        onChanged: _saving || _locatingHome
-                            ? null
-                            : (city) => setState(() {
-                                _homeLocation = city;
-                                _homeLocationFailure = null;
-                                _homeLocationNotice = null;
-                              }),
-                      ),
-                    ),
-                    const Divider(color: Ep.border, height: 1),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
-                      children: [
-                        TextButton.icon(
-                          key: const Key('use-current-home-location'),
-                          onPressed: _saving || _locatingHome
-                              ? null
-                              : _useCurrentLocation,
-                          style: TextButton.styleFrom(
-                            foregroundColor: Ep.contentPrimary,
-                            minimumSize: const Size(48, 48),
-                          ),
-                          icon: _locatingHome
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    color: Ep.contentSecondary,
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.my_location, size: 19),
-                          label: Text(
-                            _locatingHome
-                                ? 'FINDING YOUR LOCATION…'
-                                : 'USE CURRENT LOCATION',
-                          ),
-                        ),
-                        if (_homeLocation != null)
-                          TextButton(
-                            key: const Key('clear-home-location'),
-                            onPressed: _saving || _locatingHome
-                                ? null
-                                : () => setState(() {
-                                    _homeLocation = null;
-                                    _homeLocationFailure = null;
-                                    _homeLocationNotice = null;
-                                  }),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Ep.contentSecondary,
-                              minimumSize: const Size(48, 48),
-                            ),
-                            child: const Text('KEEP UNDISCLOSED'),
-                          ),
-                      ],
-                    ),
-                    if (_homeLocationNotice case final notice?)
-                      Semantics(
-                        liveRegion: true,
-                        child: Text(
-                          notice,
-                          key: const Key('home-location-notice'),
-                          style: Theme.of(context).textTheme.epCaption,
-                        ),
-                      ),
-                    if (_homeLocationFailure case final failure?) ...[
-                      Text(
-                        _locationFailureMessage(failure),
-                        key: const Key('home-location-error'),
-                        style: Theme.of(
-                          context,
-                        ).textTheme.epCaption.copyWith(color: Ep.destructive),
-                      ),
-                      if (failure.reason ==
-                              LocationFailureReason.servicesDisabled ||
-                          failure.reason ==
-                              LocationFailureReason.permissionDeniedForever)
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: TextButton(
-                            onPressed: _openLocationRecovery,
-                            style: TextButton.styleFrom(
-                              foregroundColor: Ep.contentPrimary,
-                              minimumSize: const Size(48, 48),
-                            ),
-                            child: Text(
-                              failure.reason ==
-                                      LocationFailureReason.servicesDisabled
-                                  ? 'OPEN LOCATION SETTINGS'
-                                  : 'OPEN APP SETTINGS',
-                            ),
-                          ),
-                        ),
-                    ],
-                  ],
+                child: _HomeLocationEditor(
+                  controller: _homeLocationController,
+                  focusNode: _homeLocationFocusNode,
+                  enabled: !_saving && !_locatingHome,
+                  locating: _locatingHome,
+                  selectedLocation: _homeLocation,
+                  failure: _homeLocationFailure,
+                  notice: _homeLocationNotice,
+                  validationMessage: _homeLocationValidation,
+                  onSelected: _setHomeLocation,
+                  onUseCurrentLocation: _useCurrentLocation,
+                  onClear: () => _setHomeLocation(null),
+                  onRetry: _useCurrentLocation,
+                  onRecovery: _openLocationRecovery,
                 ),
               ),
               const SizedBox(height: 14),
@@ -506,6 +454,280 @@ String _locationFailureMessage(
     failure.message ??
         'Your location is unavailable. Try again or choose a place.',
 };
+
+class _HomeLocationEditor extends StatelessWidget {
+  const _HomeLocationEditor({
+    required this.controller,
+    required this.focusNode,
+    required this.enabled,
+    required this.locating,
+    required this.selectedLocation,
+    required this.failure,
+    required this.notice,
+    required this.validationMessage,
+    required this.onSelected,
+    required this.onUseCurrentLocation,
+    required this.onClear,
+    required this.onRetry,
+    required this.onRecovery,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool enabled;
+  final bool locating;
+  final FanCity? selectedLocation;
+  final LocationFailure? failure;
+  final String? notice;
+  final String? validationMessage;
+  final ValueChanged<FanCity> onSelected;
+  final VoidCallback onUseCurrentLocation;
+  final VoidCallback onClear;
+  final VoidCallback onRetry;
+  final VoidCallback onRecovery;
+
+  @override
+  Widget build(BuildContext context) {
+    final query = controller.text.trim();
+    final hasNoResults =
+        focusNode.hasFocus &&
+        query.isNotEmpty &&
+        fanCitySuggestions(query).isEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) => RawAutocomplete<FanCity>(
+            key: const Key('home-location-autocomplete'),
+            textEditingController: controller,
+            focusNode: focusNode,
+            displayStringForOption: (city) => city.autocompleteLabel,
+            optionsBuilder: (value) => fanCitySuggestions(value.text),
+            onSelected: onSelected,
+            fieldViewBuilder:
+                (context, fieldController, fieldFocusNode, onSubmitted) =>
+                    TextField(
+                      key: const Key('home-location-input'),
+                      controller: fieldController,
+                      focusNode: fieldFocusNode,
+                      enabled: enabled,
+                      textCapitalization: TextCapitalization.words,
+                      textInputAction: TextInputAction.done,
+                      autofillHints: const [AutofillHints.addressCity],
+                      onSubmitted: (_) => onSubmitted(),
+                      decoration: InputDecoration(
+                        hintText: 'Type a city or location',
+                        hintStyle: Theme.of(
+                          context,
+                        ).textTheme.epBody.copyWith(color: Ep.contentDisabled),
+                        prefixIcon: const Icon(
+                          Icons.location_city_outlined,
+                          color: Ep.contentSecondary,
+                          size: 20,
+                        ),
+                        suffixIcon: query.isEmpty
+                            ? null
+                            : IconButton(
+                                key: const Key('clear-home-location'),
+                                tooltip: 'Clear home location',
+                                onPressed: enabled ? onClear : null,
+                                icon: const Icon(Icons.close, size: 18),
+                              ),
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 15,
+                        ),
+                      ),
+                    ),
+            optionsViewBuilder: (context, choose, options) {
+              final suggestions = options.toList(growable: false);
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  color: Ep.surfaceRaised,
+                  elevation: 12,
+                  shadowColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: const BorderSide(color: Ep.border),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: SizedBox(
+                    width: constraints.maxWidth,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 280),
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        itemCount: suggestions.length,
+                        itemBuilder: (context, index) {
+                          final city = suggestions[index];
+                          final highlighted =
+                              AutocompleteHighlightedOption.of(context) ==
+                              index;
+                          return Semantics(
+                            button: true,
+                            label: 'Use ${city.autocompleteLabel}',
+                            child: Material(
+                              color: highlighted
+                                  ? Ep.surfaceDisabled
+                                  : Colors.transparent,
+                              child: InkWell(
+                                key: ValueKey(
+                                  'home-location-suggestion-${city.name}',
+                                ),
+                                onTap: () => choose(city),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 13,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.place_outlined,
+                                        size: 18,
+                                        color: Ep.contentSecondary,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          city.autocompleteLabel,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.epBody,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const Divider(color: Ep.border, height: 1),
+        if (hasNoResults)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              'No supported locations match “$query”. Try a city name or City, CA.',
+              key: const Key('home-location-no-results'),
+              style: Theme.of(context).textTheme.epCaption,
+            ),
+          ),
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            TextButton.icon(
+              key: const Key('use-current-home-location'),
+              onPressed: enabled ? onUseCurrentLocation : null,
+              style: TextButton.styleFrom(
+                foregroundColor: Ep.contentPrimary,
+                minimumSize: const Size(48, 48),
+              ),
+              icon: locating
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(
+                        color: Ep.contentSecondary,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.my_location, size: 19),
+              label: Text(
+                locating ? 'FINDING YOUR LOCATION…' : 'USE CURRENT LOCATION',
+              ),
+            ),
+            if (selectedLocation != null && query.isNotEmpty)
+              Text(
+                'SELECTED',
+                style: Theme.of(
+                  context,
+                ).textTheme.epChipLabel.copyWith(color: Ep.contentSecondary),
+              ),
+          ],
+        ),
+        if (notice case final message?)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              message,
+              key: const Key('home-location-notice'),
+              style: Theme.of(context).textTheme.epCaption,
+            ),
+          ),
+        if (validationMessage case final message?)
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              message,
+              key: const Key('home-location-validation'),
+              style: Theme.of(
+                context,
+              ).textTheme.epCaption.copyWith(color: Ep.destructive),
+            ),
+          ),
+        if (failure case final locationFailure?) ...[
+          Text(
+            _locationFailureMessage(locationFailure),
+            key: const Key('home-location-error'),
+            style: Theme.of(
+              context,
+            ).textTheme.epCaption.copyWith(color: Ep.destructive),
+          ),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            children: [
+              TextButton(
+                key: const Key('retry-current-home-location'),
+                onPressed: locating ? null : onRetry,
+                style: TextButton.styleFrom(
+                  foregroundColor: Ep.contentPrimary,
+                  minimumSize: const Size(48, 48),
+                ),
+                child: const Text('RETRY'),
+              ),
+              if (locationFailure.reason ==
+                      LocationFailureReason.servicesDisabled ||
+                  locationFailure.reason ==
+                      LocationFailureReason.permissionDeniedForever)
+                TextButton(
+                  key: const Key('open-home-location-settings'),
+                  onPressed: onRecovery,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Ep.contentPrimary,
+                    minimumSize: const Size(48, 48),
+                  ),
+                  child: Text(
+                    locationFailure.reason ==
+                            LocationFailureReason.servicesDisabled
+                        ? 'OPEN LOCATION SETTINGS'
+                        : 'OPEN APP SETTINGS',
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
 
 class _FanIdentityPreview extends StatelessWidget {
   const _FanIdentityPreview({

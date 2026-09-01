@@ -146,6 +146,57 @@ extension FanCityDetails on FanCity {
     FanCity.walnutCreek => const LatLng(37.9101, -122.0652),
     FanCity.sanRafael => const LatLng(37.9735, -122.5311),
   };
+
+  String get autocompleteLabel => '$label, CA';
+
+  Iterable<String> get _locationSearchValues => [
+    label,
+    '$label, CA',
+    '$label, California',
+    ...switch (this) {
+      FanCity.sf => const ['SF', 'San Fran'],
+      FanCity.sanJose => const ['SJ'],
+      _ => const <String>[],
+    },
+  ];
+
+  bool matchesLocationQuery(String query) {
+    final normalizedQuery = _normalizeLocationInput(query);
+    if (normalizedQuery.isEmpty) return false;
+    final queryTerms = normalizedQuery.split(' ');
+    return _locationSearchValues.any((value) {
+      final normalizedValue = _normalizeLocationInput(value);
+      return queryTerms.every(normalizedValue.contains);
+    });
+  }
+
+  bool matchesExactLocation(String input) {
+    final normalizedInput = _normalizeLocationInput(input);
+    return normalizedInput.isNotEmpty &&
+        _locationSearchValues.any(
+          (value) => _normalizeLocationInput(value) == normalizedInput,
+        );
+  }
+}
+
+String _normalizeLocationInput(String input) => input
+    .toLowerCase()
+    .replaceAll(RegExp('[^a-z0-9]+'), ' ')
+    .trim()
+    .replaceAll(RegExp(r'\s+'), ' ');
+
+FanCity? fanCityFromLocationInput(String input) {
+  for (final city in FanCity.values) {
+    if (city.matchesExactLocation(input)) return city;
+  }
+  return null;
+}
+
+Iterable<FanCity> fanCitySuggestions(String query) sync* {
+  if (query.trim().isEmpty) return;
+  for (final city in FanCity.values) {
+    if (city.matchesLocationQuery(query)) yield city;
+  }
 }
 
 FanCity? _fanCityFromWire(Object? value) {

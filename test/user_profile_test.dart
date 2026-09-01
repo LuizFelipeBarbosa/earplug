@@ -85,6 +85,29 @@ void main() {
     });
   });
 
+  group('fan home location search', () {
+    test('matches city names and common region formats case-insensitively', () {
+      expect(fanCityFromLocationInput('berkeley'), FanCity.berkeley);
+      expect(fanCityFromLocationInput('BERKELEY, CA'), FanCity.berkeley);
+      expect(
+        fanCityFromLocationInput('San Mateo, California'),
+        FanCity.sanMateo,
+      );
+      expect(fanCityFromLocationInput('sf'), FanCity.sf);
+      expect(fanCityFromLocationInput('unknown'), isNull);
+    });
+
+    test('suggests only supported locations', () {
+      expect(fanCitySuggestions('san').toList(), [
+        FanCity.sf,
+        FanCity.sanMateo,
+        FanCity.sanJose,
+        FanCity.sanRafael,
+      ]);
+      expect(fanCitySuggestions('los angeles'), isEmpty);
+    });
+  });
+
   test('fan history parses the enriched RSVP-only wire shape', () {
     final item = FanHistoryItem.fromJson({
       'gigId': 'gig-1',

@@ -852,18 +852,46 @@ class CircleIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final resolvedTooltip =
+        tooltip ??
+        switch (icon) {
+          Icons.close => 'Close',
+          _ => 'Back',
+        };
     return IconButton(
       onPressed: onTap,
-      tooltip: tooltip,
+      tooltip: resolvedTooltip,
       style: ButtonStyle(
         fixedSize: const WidgetStatePropertyAll(Size.square(48)),
-        backgroundColor: WidgetStatePropertyAll(background),
-        side: bordered
-            ? const WidgetStatePropertyAll(BorderSide(color: Ep.border))
-            : null,
+        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled)
+              ? Ep.contentDisabled
+              : Ep.contentPrimary,
+        ),
+        overlayColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.pressed)) {
+            return Ep.contentPrimary.withValues(alpha: .14);
+          }
+          if (states.contains(WidgetState.hovered) ||
+              states.contains(WidgetState.focused)) {
+            return Ep.contentPrimary.withValues(alpha: .08);
+          }
+          return Colors.transparent;
+        }),
         shape: const WidgetStatePropertyAll(CircleBorder()),
       ),
-      icon: Icon(icon, size: 20),
+      icon: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: onTap == null ? Ep.surfaceDisabled : background,
+          shape: BoxShape.circle,
+          border: bordered ? Border.all(color: Ep.border) : null,
+        ),
+        alignment: Alignment.center,
+        child: Icon(icon, size: 18),
+      ),
     );
   }
 }

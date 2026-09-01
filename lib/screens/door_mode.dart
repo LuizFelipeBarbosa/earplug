@@ -210,12 +210,12 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
         backgroundColor: Ep.dark,
         appBar: AppBar(
           backgroundColor: Ep.dark,
-          leading: IconButton(
+          leading: CircleIconButton(
             tooltip: _scannerOpen ? 'Back to door overview' : 'Close Door Mode',
-            onPressed: _scannerOpen
+            onTap: _scannerOpen
                 ? _closeScanner
                 : () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back),
+            icon: Icons.arrow_back,
           ),
           title: Text(_scannerOpen ? 'SCAN TICKET' : 'DOOR MODE'),
         ),

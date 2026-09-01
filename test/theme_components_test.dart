@@ -105,6 +105,12 @@ void main() {
         greaterThanOrEqualTo(48),
       );
       expect(tester.getSize(find.byType(IconButton)), const Size(48, 48));
+      final circleVisual = find.descendant(
+        of: find.byType(CircleIconButton),
+        matching: find.byType(Container),
+      );
+      expect(tester.getSize(circleVisual), const Size(32, 32));
+      expect(find.byTooltip('Back'), findsOne);
 
       final buttonData = tester
           .getSemantics(find.byType(FilledButton))
