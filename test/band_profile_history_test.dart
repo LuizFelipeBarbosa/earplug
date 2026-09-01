@@ -32,11 +32,14 @@ void main() {
     );
     expect(find.text('PAST GIGS · 2 PLAYED', skipOffstage: false), findsOne);
     expect(
-      find.text('Riptide Release Show · The Foghorn Club', skipOffstage: false),
+      find.textContaining(
+        'Riptide Release Show · The Foghorn Club',
+        skipOffstage: false,
+      ),
       findsOne,
     );
     expect(
-      find.text('Basement Blowout · Casa Quake', skipOffstage: false),
+      find.textContaining('Basement Blowout · Casa Quake', skipOffstage: false),
       findsOne,
     );
     expect(
@@ -59,11 +62,11 @@ void main() {
     expect(find.text('PAST GIGS · 4 PLAYED', skipOffstage: false), findsOne);
     for (final show in DemoData.bands['b1']!.past) {
       await tester.scrollUntilVisible(
-        find.text(show.title),
+        find.textContaining(show.title),
         250,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.text(show.title, skipOffstage: false), findsOne);
+      expect(find.textContaining(show.title, skipOffstage: false), findsOne);
     }
   });
 
@@ -120,12 +123,12 @@ void main() {
 
     expect(repository.calls, 2);
     await tester.scrollUntilVisible(
-      find.text('Basement Blowout · Casa Quake'),
+      find.textContaining('Basement Blowout · Casa Quake'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
     expect(
-      find.text('Basement Blowout · Casa Quake', skipOffstage: false),
+      find.textContaining('Basement Blowout · Casa Quake', skipOffstage: false),
       findsOne,
     );
     expect(

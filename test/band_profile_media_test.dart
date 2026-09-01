@@ -50,7 +50,8 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('PHOTOS'), findsOne);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -120));
+    await tester.pumpAndSettle();
     for (final photo in DemoData.b1Media.where(
       (media) => media.kind == MediaKind.photo,
     )) {
@@ -137,14 +138,15 @@ void main() {
     for (final link in links) {
       final button = find.byKey(link.key);
       expect(button, findsOneWidget);
-      expect(tester.getSize(button), const Size.square(48));
+      expect(tester.getSize(button).height, 48);
+      expect(tester.getSize(button).width, greaterThanOrEqualTo(48));
       expect(find.byTooltip(link.label), findsOneWidget);
       expect(find.bySemanticsLabel(link.label), findsOneWidget);
       expect(find.byIcon(link.icon.data), findsOneWidget);
     }
-    expect(find.text('INSTAGRAM ↗'), findsNothing);
-    expect(find.text('BANDCAMP ↗'), findsNothing);
-    expect(find.text('YOUTUBE ↗'), findsNothing);
+    expect(find.text('INSTAGRAM ↗'), findsOne);
+    expect(find.text('BANDCAMP ↗'), findsOne);
+    expect(find.text('YOUTUBE ↗'), findsOne);
     semantics.dispose();
   });
 
@@ -183,13 +185,18 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
 
-    expect(tester.getSize(instagram), const Size.square(48));
-    expect(tester.getSize(bandcamp), const Size.square(48));
-    expect(tester.getSize(youtube), const Size.square(48));
-    expect(tester.getTopLeft(instagram).dy, tester.getTopLeft(bandcamp).dy);
+    for (final link in [instagram, bandcamp, youtube]) {
+      final size = tester.getSize(link);
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(size.width, lessThanOrEqualTo(138));
+    }
+    expect(
+      tester.getTopLeft(bandcamp).dy,
+      greaterThan(tester.getTopLeft(instagram).dy),
+    );
     expect(
       tester.getTopLeft(youtube).dy,
-      greaterThan(tester.getTopLeft(instagram).dy),
+      greaterThan(tester.getTopLeft(bandcamp).dy),
     );
   });
 }

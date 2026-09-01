@@ -161,6 +161,19 @@ void main() {
     expect(find.text('Edit profile'), findsNothing);
   });
 
+  testWidgets('press hero keeps follow as the sole primary profile action', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+
+    expect(find.byKey(const ValueKey('band-profile-hero-b1')), findsOne);
+    expect(find.textContaining('FOLLOW ·'), findsOne);
+    expect(find.byType(FilledButton), findsOne);
+  });
+
   testWidgets('public profile badge follows derived profile completion', (
     tester,
   ) async {
