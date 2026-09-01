@@ -239,7 +239,7 @@ class _FlyerStudio extends StatelessWidget {
                 : 'Use the fields below; the poster previews changes live.',
             textAlign: TextAlign.center,
             style: epText(
-              size: 10.5,
+              size: 11,
               weight: FontWeight.w600,
               letterSpacing: .3,
               color: Ep.contentDisabled,
@@ -375,7 +375,7 @@ class _ArtPlaceholder extends StatelessWidget {
                 Text(
                   'CUSTOM FLYER PREVIEW',
                   style: epText(
-                    size: 10.5,
+                    size: 11,
                     weight: FontWeight.w900,
                     letterSpacing: .8,
                     color: Ep.contentDisabled,
@@ -1158,7 +1158,7 @@ class _FlyerReviewBodyState extends State<_FlyerReviewBody> {
                       alignment: Alignment.centerLeft,
                       child: SelectableText(
                         proposal.rawText,
-                        style: epText(size: 10.5, color: Ep.contentSecondary),
+                        style: epText(size: 11, color: Ep.contentSecondary),
                       ),
                     ),
                   ],
@@ -1222,7 +1222,7 @@ class _ReviewChoice extends StatelessWidget {
     value: selected,
     onChanged: (value) => onChanged(value ?? false),
     title: Text(value, style: epText(size: 12.5, weight: FontWeight.w800)),
-    subtitle: Text(label.toUpperCase(), style: epText(size: 9.5)),
+    subtitle: Text(label.toUpperCase(), style: epText(size: 11)),
     controlAffinity: ListTileControlAffinity.leading,
   );
 }
@@ -1321,7 +1321,7 @@ class _SlotCard extends StatelessWidget {
               sub,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: epText(size: 10.5, color: Ep.contentDisabled),
+              style: epText(size: 11, color: Ep.contentDisabled),
             ),
           ],
         ],
@@ -1462,7 +1462,7 @@ class _OptionCard extends StatelessWidget {
             style: epText(size: 12.5, weight: FontWeight.w800),
           ),
           const SizedBox(height: 2),
-          Text(subtitle, style: epText(size: 10.5, color: Ep.contentSecondary)),
+          Text(subtitle, style: epText(size: 11, color: Ep.contentSecondary)),
         ],
       ),
     );
@@ -1523,7 +1523,7 @@ class _WhenBody extends StatelessWidget {
                   Text(
                     'DOORS',
                     style: epText(
-                      size: 10.5,
+                      size: 11,
                       weight: FontWeight.w800,
                       letterSpacing: 1.3,
                       color: Ep.contentSecondary,
@@ -1548,7 +1548,7 @@ class _WhenBody extends StatelessWidget {
                   Text(
                     'START',
                     style: epText(
-                      size: 10.5,
+                      size: 11,
                       weight: FontWeight.w800,
                       letterSpacing: 1.3,
                       color: Ep.contentSecondary,
@@ -1677,7 +1677,7 @@ class _Month extends StatelessWidget {
         Text(
           monthLabel(first).toUpperCase(),
           style: epText(
-            size: 10.5,
+            size: 11,
             weight: FontWeight.w900,
             letterSpacing: 1.3,
             color: Ep.contentDisabled,
@@ -1690,7 +1690,7 @@ class _Month extends StatelessWidget {
             const ['S', 'M', 'T', 'W', 'T', 'F', 'S'][slot],
             textAlign: TextAlign.center,
             style: epText(
-              size: 8.5,
+              size: 11,
               weight: FontWeight.w900,
               letterSpacing: .5,
               color: Ep.contentDisabled,
@@ -1733,11 +1733,7 @@ void showVenueSheet(BuildContext context) {
             Text(
               'Venues are shared records, so the address stays consistent across '
               "every band's listings.",
-              style: epText(
-                size: 10.5,
-                color: Ep.contentDisabled,
-                height: 1.45,
-              ),
+              style: epText(size: 11, color: Ep.contentDisabled, height: 1.45),
             ),
             for (final venue in app.venues)
               Padding(
@@ -1866,7 +1862,7 @@ class _NewVenueBodyState extends State<_NewVenueBody> {
               ? 'TAP THE MAP TO PLACE THE REQUIRED PIN'
               : 'MAP PIN SET ✓',
           style: epText(
-            size: 10,
+            size: 11,
             weight: FontWeight.w900,
             color: _pin == null ? Ep.warning : Ep.accent,
           ),
@@ -2023,7 +2019,7 @@ class _PriceBodyState extends State<_PriceBody> {
               Text(
                 'AT THE DOOR',
                 style: epText(
-                  size: 10.5,
+                  size: 11,
                   weight: FontWeight.w800,
                   letterSpacing: .6,
                   color: Ep.contentDisabled,
@@ -2036,7 +2032,7 @@ class _PriceBodyState extends State<_PriceBody> {
         Text(
           'Free gigs get roughly twice the RSVPs. Sliding scale? Put the range '
           'in the gig name.',
-          style: epText(size: 10.5, color: Ep.contentDisabled, height: 1.45),
+          style: epText(size: 11, color: Ep.contentDisabled, height: 1.45),
         ),
       ],
     );
@@ -2155,7 +2151,7 @@ class _TicketsBodyState extends State<_TicketsBody> {
                       Text(
                         'SPOTS',
                         style: epText(
-                          size: 10.5,
+                          size: 11,
                           weight: FontWeight.w800,
                           letterSpacing: .6,
                           color: Ep.contentDisabled,
@@ -2231,7 +2227,7 @@ class _DraftPreview extends StatelessWidget {
                 child: Text(
                   app.gigPreviewLabel,
                   style: epText(
-                    size: 9,
+                    size: 11,
                     weight: FontWeight.w900,
                     letterSpacing: .8,
                     color: Ep.accent,
@@ -2285,7 +2281,7 @@ class _DraftPreview extends StatelessWidget {
                       Text(
                         performer.role.name.toUpperCase(),
                         style: epText(
-                          size: 9,
+                          size: 11,
                           weight: FontWeight.w900,
                           color: Ep.contentDisabled,
                         ),
@@ -2326,7 +2322,7 @@ class _PublishedView extends StatelessWidget {
               Text(
                 'PUBLISHED',
                 style: epText(
-                  size: 10.5,
+                  size: 11,
                   weight: FontWeight.w900,
                   letterSpacing: 2,
                   color: Ep.accent,
