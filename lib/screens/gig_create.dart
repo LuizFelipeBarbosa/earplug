@@ -15,6 +15,7 @@ import '../services/media_picker.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_map.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 import 'door_mode.dart';
@@ -122,8 +123,10 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
           children: [
             Container(
               padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: Ep.border)),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: context.epColors.border),
+                ),
               ),
               child: Row(
                 children: [
@@ -149,8 +152,8 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                             weight: FontWeight.w800,
                             letterSpacing: .8,
                             color: app.gfSaveState == 'SAVE FAILED'
-                                ? Ep.warning
-                                : Ep.contentDisabled,
+                                ? context.epColors.warning
+                                : context.epColors.contentDisabled,
                           ),
                         ),
                       ],
@@ -158,7 +161,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                   ),
                   TextButton(
                     onPressed: app.saveGigDraft,
-                    child: const Text('SAVE DRAFT'),
+                    child: Text('SAVE DRAFT'),
                   ),
                 ],
               ),
@@ -210,7 +213,7 @@ class _FlyerStudio extends StatelessWidget {
             children: [
               TextButton.icon(
                 onPressed: () => _pickGigFlyerArt(context),
-                icon: const Icon(Icons.add_photo_alternate_outlined),
+                icon: Icon(Icons.add_photo_alternate_outlined),
                 label: Text(
                   app.gfFlyerArt == null && app.gfFlyerUrl == null
                       ? 'ADD FLYER ART'
@@ -221,8 +224,8 @@ class _FlyerStudio extends StatelessWidget {
                 TextButton.icon(
                   key: const ValueKey('clear-flyer-art'),
                   onPressed: () => app.setGfFlyerArt(null),
-                  icon: const Icon(Icons.close),
-                  label: const Text('REMOVE ART'),
+                  icon: Icon(Icons.close),
+                  label: Text('REMOVE ART'),
                 ),
             ],
           ),
@@ -243,7 +246,7 @@ class _FlyerStudio extends StatelessWidget {
               size: 11,
               weight: FontWeight.w600,
               letterSpacing: .3,
-              color: Ep.contentDisabled,
+              color: context.epColors.contentDisabled,
               height: 1.4,
             ),
           ),
@@ -361,7 +364,7 @@ class _ArtPlaceholder extends StatelessWidget {
         padding: const EdgeInsets.all(10),
         child: DashedBox(
           padding: const EdgeInsets.all(12),
-          color: Ep.border,
+          color: context.epColors.border,
           radius: 4,
           child: Center(
             child: Column(
@@ -370,7 +373,7 @@ class _ArtPlaceholder extends StatelessWidget {
                 Icon(
                   Icons.add_photo_alternate_outlined,
                   size: 22,
-                  color: Ep.contentDisabled,
+                  color: context.epColors.contentDisabled,
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -379,7 +382,7 @@ class _ArtPlaceholder extends StatelessWidget {
                     size: 11,
                     weight: FontWeight.w900,
                     letterSpacing: .8,
-                    color: Ep.contentDisabled,
+                    color: context.epColors.contentDisabled,
                   ),
                 ),
               ],
@@ -523,8 +526,12 @@ class _SwatchRow extends StatelessWidget {
           selected: app.gfCustomFlyer,
           dashed: true,
           onTap: () => app.setGfFly('custom'),
-          child: const Center(
-            child: Icon(Icons.arrow_upward, size: 15, color: Ep.accent),
+          child: Center(
+            child: Icon(
+              Icons.arrow_upward,
+              size: 15,
+              color: context.epColors.accent,
+            ),
           ),
         ),
       ],
@@ -546,7 +553,7 @@ class _OverlayToggle extends StatelessWidget {
       child: SwitchListTile.adaptive(
         value: on,
         onChanged: (_) => app.toggleGfOverlay(),
-        title: const Text('Text overlay'),
+        title: Text('Text overlay'),
         subtitle: Text(
           on
               ? 'Name, date and venue printed on the art'
@@ -588,14 +595,14 @@ class _SlotShell extends StatelessWidget {
       container: true,
       button: onTap != null,
       child: Material(
-        color: Ep.surface,
+        color: context.epColors.surface,
         borderRadius: radius,
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: onTap,
           borderRadius: radius,
           child: DashedBox(
-            color: Ep.volt,
+            color: context.epColors.volt,
             radius: 12,
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
             child: content,
@@ -644,7 +651,7 @@ class _NameCard extends StatelessWidget {
         children: [
           _SlotTag(
             filled ? 'YOUR GIG NAME ✓' : 'YOUR GIG NAME · REQUIRED',
-            filled ? Ep.success : Ep.warning,
+            filled ? context.epColors.success : context.epColors.warning,
           ),
           const SizedBox(height: 5),
           TextField(
@@ -654,7 +661,10 @@ class _NameCard extends StatelessWidget {
             style: epDisplay(size: 18),
             decoration: epCollapsedInputDecoration(
               'Riptide Release Show',
-              hintStyle: epDisplay(size: 18, color: Ep.contentDisabled),
+              hintStyle: epDisplay(
+                size: 18,
+                color: context.epColors.contentDisabled,
+              ),
             ),
           ),
         ],
@@ -789,7 +799,7 @@ class _LineupField extends StatelessWidget {
                             minWidth: 48,
                             minHeight: 48,
                           ),
-                          child: const Icon(Icons.drag_handle, size: 20),
+                          child: Icon(Icons.drag_handle, size: 20),
                         ),
                       ),
                       Expanded(
@@ -812,8 +822,8 @@ class _LineupField extends StatelessWidget {
                                 letterSpacing: .7,
                                 color:
                                     performer.kind == GigPerformerKind.invited
-                                    ? Ep.volt
-                                    : Ep.contentDisabled,
+                                    ? context.epColors.volt
+                                    : context.epColors.contentDisabled,
                               ),
                             ),
                           ],
@@ -827,7 +837,7 @@ class _LineupField extends StatelessWidget {
                             performer.inviteUrl!,
                             successMessage: 'Invite link copied.',
                           ),
-                          icon: const Icon(Icons.link, size: 18),
+                          icon: Icon(Icons.link, size: 18),
                         ),
                       PopupMenuButton<GigPerformerRole>(
                         tooltip: 'Billing role',
@@ -845,8 +855,10 @@ class _LineupField extends StatelessWidget {
                           constraints: const BoxConstraints(minHeight: 48),
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: Ep.surfaceSelected,
-                              border: Border.all(color: Ep.accent),
+                              color: context.epColors.surfaceSelected,
+                              border: Border.all(
+                                color: context.epColors.accent,
+                              ),
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Padding(
@@ -860,7 +872,7 @@ class _LineupField extends StatelessWidget {
                                   style: epText(
                                     size: 11,
                                     weight: FontWeight.w900,
-                                    color: Ep.accent,
+                                    color: context.epColors.accent,
                                   ),
                                 ),
                               ),
@@ -871,7 +883,7 @@ class _LineupField extends StatelessWidget {
                       IconButton(
                         tooltip: 'Remove performer',
                         onPressed: () => app.removeGigPerformer(performer.id),
-                        icon: const Icon(Icons.close, size: 18),
+                        icon: Icon(Icons.close, size: 18),
                       ),
                     ],
                   ),
@@ -949,7 +961,7 @@ class _AddPerformerBodyState extends State<_AddPerformerBody> {
         TextField(
           controller: _search,
           onChanged: _runSearch,
-          decoration: sheetInput('Search EarPlug bands'),
+          decoration: sheetInput(context, 'Search EarPlug bands'),
         ),
         const SizedBox(height: 8),
         SizedBox(
@@ -966,7 +978,7 @@ class _AddPerformerBodyState extends State<_AddPerformerBody> {
                     ListTile(
                       title: Text(band.name),
                       subtitle: Text(band.area),
-                      trailing: const Icon(Icons.add),
+                      trailing: Icon(Icons.add),
                       onTap: () async {
                         await app.addExistingGigPerformer(band.id);
                         if (context.mounted) Navigator.pop(context);
@@ -977,10 +989,10 @@ class _AddPerformerBodyState extends State<_AddPerformerBody> {
             },
           ),
         ),
-        const Divider(),
+        Divider(),
         TextField(
           controller: _name,
-          decoration: sheetInput('Unlisted band or performer name'),
+          decoration: sheetInput(context, 'Unlisted band or performer name'),
         ),
         const SizedBox(height: 8),
         Row(
@@ -988,14 +1000,14 @@ class _AddPerformerBodyState extends State<_AddPerformerBody> {
             Expanded(
               child: OutlinedButton(
                 onPressed: () => _addNamed(invite: false),
-                child: const Text('ADD TEXT ONLY'),
+                child: Text('ADD TEXT ONLY'),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: FilledButton(
                 onPressed: () => _addNamed(invite: true),
-                child: const Text('CREATE INVITE'),
+                child: Text('CREATE INVITE'),
               ),
             ),
           ],
@@ -1048,6 +1060,7 @@ class _AdditionalInfoFieldState extends State<_AdditionalInfoField> {
     maxLines: 7,
     onChanged: context.read<AppState>().setGfDescription,
     decoration: sheetInput(
+      context,
       'Accessibility, set times, parking, or anything fans should know',
     ),
   );
@@ -1140,7 +1153,11 @@ class _FlyerReviewBodyState extends State<_FlyerReviewBody> {
       children: [
         Text(
           'Flyer text can be stylized or incomplete. Check each suggestion before adding it to the draft.',
-          style: epText(size: 11, color: Ep.contentSecondary, height: 1.4),
+          style: epText(
+            size: 11,
+            color: context.epColors.contentSecondary,
+            height: 1.4,
+          ),
         ),
         const SizedBox(height: 10),
         ConstrainedBox(
@@ -1153,13 +1170,16 @@ class _FlyerReviewBodyState extends State<_FlyerReviewBody> {
                 ...choices,
                 ExpansionTile(
                   tilePadding: EdgeInsets.zero,
-                  title: const Text('VIEW EXTRACTED TEXT'),
+                  title: Text('VIEW EXTRACTED TEXT'),
                   children: [
                     Align(
                       alignment: Alignment.centerLeft,
                       child: SelectableText(
                         proposal.rawText,
-                        style: epText(size: 11, color: Ep.contentSecondary),
+                        style: epText(
+                          size: 11,
+                          color: context.epColors.contentSecondary,
+                        ),
                       ),
                     ),
                   ],
@@ -1298,11 +1318,13 @@ class _SlotCard extends StatelessWidget {
               Expanded(
                 child: _SlotTag(
                   tag,
-                  state == _SlotState.needed ? Ep.warning : Ep.contentSecondary,
+                  state == _SlotState.needed
+                      ? context.epColors.warning
+                      : context.epColors.contentSecondary,
                 ),
               ),
               if (state == _SlotState.done)
-                const Icon(Icons.check, size: 17, color: Ep.success),
+                Icon(Icons.check, size: 17, color: context.epColors.success),
             ],
           ),
           const SizedBox(height: 4),
@@ -1312,8 +1334,8 @@ class _SlotCard extends StatelessWidget {
               size: 13,
               weight: FontWeight.w800,
               color: state == _SlotState.needed
-                  ? Ep.warning
-                  : Ep.contentPrimary,
+                  ? context.epColors.warning
+                  : context.epColors.contentPrimary,
             ),
           ),
           if (sub.isNotEmpty) ...[
@@ -1322,7 +1344,7 @@ class _SlotCard extends StatelessWidget {
               sub,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: epText(size: 11, color: Ep.contentDisabled),
+              style: epText(size: 11, color: context.epColors.contentDisabled),
             ),
           ],
         ],
@@ -1339,7 +1361,7 @@ class _PublishBar extends StatelessWidget {
     final app = context.watch<AppState>();
     final missing = app.gigMissing;
     return ColoredBox(
-      color: Ep.tabBarBackground.withValues(alpha: .95),
+      color: context.epColors.tabBarBackground.withValues(alpha: .95),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1356,7 +1378,9 @@ class _PublishBar extends StatelessWidget {
                   size: 11,
                   weight: FontWeight.w700,
                   letterSpacing: .3,
-                  color: missing.isEmpty ? Ep.success : Ep.contentSecondary,
+                  color: missing.isEmpty
+                      ? context.epColors.success
+                      : context.epColors.contentSecondary,
                 ),
               ),
             ),
@@ -1396,8 +1420,8 @@ class _Sheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      decoration: const BoxDecoration(
-        color: Ep.surface,
+      decoration: BoxDecoration(
+        color: context.epColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
       child: Column(
@@ -1415,7 +1439,7 @@ class _Sheet extends StatelessWidget {
                     IconButton(
                       tooltip: 'Close',
                       onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close),
+                      icon: Icon(Icons.close),
                     ),
               ],
             ),
@@ -1463,7 +1487,10 @@ class _OptionCard extends StatelessWidget {
             style: epText(size: 12.5, weight: FontWeight.w800),
           ),
           const SizedBox(height: 2),
-          Text(subtitle, style: epText(size: 11, color: Ep.contentSecondary)),
+          Text(
+            subtitle,
+            style: epText(size: 11, color: context.epColors.contentSecondary),
+          ),
         ],
       ),
     );
@@ -1513,7 +1540,7 @@ class _WhenBody extends StatelessWidget {
         Container(
           padding: const EdgeInsets.fromLTRB(16, 13, 16, 34),
           decoration: BoxDecoration(
-            border: const Border(top: BorderSide(color: Ep.border)),
+            border: Border(top: BorderSide(color: context.epColors.border)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1527,7 +1554,7 @@ class _WhenBody extends StatelessWidget {
                       size: 11,
                       weight: FontWeight.w800,
                       letterSpacing: 1.3,
-                      color: Ep.contentSecondary,
+                      color: context.epColors.contentSecondary,
                     ),
                   ),
                   OutlinedButton(
@@ -1552,7 +1579,7 @@ class _WhenBody extends StatelessWidget {
                       size: 11,
                       weight: FontWeight.w800,
                       letterSpacing: 1.3,
-                      color: Ep.contentSecondary,
+                      color: context.epColors.contentSecondary,
                     ),
                   ),
                   OutlinedButton(
@@ -1627,16 +1654,16 @@ class _Month extends StatelessWidget {
           color: past
               ? Colors.transparent
               : selected
-              ? Ep.surfaceSelected
-              : Ep.surface,
+              ? context.epColors.surfaceSelected
+              : context.epColors.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
             side: BorderSide(
               color: past
-                  ? Ep.surfaceDisabled
+                  ? context.epColors.surfaceDisabled
                   : selected || date == today
-                  ? Ep.accent
-                  : Ep.border,
+                  ? context.epColors.accent
+                  : context.epColors.border,
             ),
           ),
           child: InkWell(
@@ -1650,10 +1677,10 @@ class _Month extends StatelessWidget {
                   '$day',
                   style: Theme.of(context).textTheme.epLabel.copyWith(
                     color: past
-                        ? Ep.contentDisabled
+                        ? context.epColors.contentDisabled
                         : selected
-                        ? Ep.contentPrimary
-                        : Ep.contentSecondary,
+                        ? context.epColors.contentPrimary
+                        : context.epColors.contentSecondary,
                   ),
                 ),
               ),
@@ -1681,7 +1708,7 @@ class _Month extends StatelessWidget {
             size: 11,
             weight: FontWeight.w900,
             letterSpacing: 1.3,
-            color: Ep.contentDisabled,
+            color: context.epColors.contentDisabled,
           ),
         ),
         const SizedBox(height: 8),
@@ -1694,7 +1721,7 @@ class _Month extends StatelessWidget {
               size: 11,
               weight: FontWeight.w900,
               letterSpacing: .5,
-              color: Ep.contentDisabled,
+              color: context.epColors.contentDisabled,
             ),
           ),
         ),
@@ -1734,7 +1761,11 @@ void showVenueSheet(BuildContext context) {
             Text(
               'Venues are shared records, so the address stays consistent across '
               "every band's listings.",
-              style: epText(size: 11, color: Ep.contentDisabled, height: 1.45),
+              style: epText(
+                size: 11,
+                color: context.epColors.contentDisabled,
+                height: 1.45,
+              ),
             ),
             for (final venue in app.venues)
               Padding(
@@ -1841,21 +1872,21 @@ class _NewVenueBodyState extends State<_NewVenueBody> {
           key: const Key('new-venue-name'),
           controller: _name,
           maxLength: 120,
-          decoration: sheetInput('Venue name'),
+          decoration: sheetInput(context, 'Venue name'),
         ),
         const SizedBox(height: 8),
         TextField(
           key: const Key('new-venue-address'),
           controller: _address,
           maxLength: 240,
-          decoration: sheetInput('Street address'),
+          decoration: sheetInput(context, 'Street address'),
         ),
         const SizedBox(height: 8),
         TextField(
           key: const Key('new-venue-area'),
           controller: _area,
           maxLength: 80,
-          decoration: sheetInput('Neighborhood or city'),
+          decoration: sheetInput(context, 'Neighborhood or city'),
         ),
         const SizedBox(height: 10),
         Text(
@@ -1865,7 +1896,9 @@ class _NewVenueBodyState extends State<_NewVenueBody> {
           style: epText(
             size: 11,
             weight: FontWeight.w900,
-            color: _pin == null ? Ep.warning : Ep.accent,
+            color: _pin == null
+                ? context.epColors.warning
+                : context.epColors.accent,
           ),
         ),
         const SizedBox(height: 7),
@@ -1874,17 +1907,14 @@ class _NewVenueBodyState extends State<_NewVenueBody> {
           height: 220,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: FlutterMap(
+            child: EpMap(
               options: MapOptions(
                 initialCenter: center,
                 initialZoom: 11.5,
+                backgroundColor: context.epColors.background,
                 onTap: (_, point) => setState(() => _pin = point),
               ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'dev.earplug.app',
-                ),
+              layers: [
                 if (_pin case final pin?)
                   MarkerLayer(
                     markers: [
@@ -1892,9 +1922,9 @@ class _NewVenueBodyState extends State<_NewVenueBody> {
                         point: pin,
                         width: 40,
                         height: 40,
-                        child: const Icon(
+                        child: Icon(
                           Icons.location_pin,
-                          color: Ep.accent,
+                          color: context.epColors.accent,
                           size: 40,
                         ),
                       ),
@@ -1906,7 +1936,7 @@ class _NewVenueBodyState extends State<_NewVenueBody> {
         ),
         if (_error case final error?) ...[
           const SizedBox(height: 8),
-          Text(error, style: epText(size: 11, color: Ep.warning)),
+          Text(error, style: epText(size: 11, color: context.epColors.warning)),
         ],
         const SizedBox(height: 12),
         EpButton(
@@ -1983,17 +2013,22 @@ class _PriceBodyState extends State<_PriceBody> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
           decoration: BoxDecoration(
-            color: isCustom ? Ep.surfaceSelected : Ep.background,
+            color: isCustom
+                ? context.epColors.surfaceSelected
+                : context.epColors.background,
             border: isCustom
-                ? Border.all(color: Ep.accent, width: 1.5)
-                : Border.all(color: Ep.border),
+                ? Border.all(color: context.epColors.accent, width: 1.5)
+                : Border.all(color: context.epColors.border),
             borderRadius: BorderRadius.circular(11),
           ),
           child: Row(
             children: [
               Text(
                 '\$',
-                style: epDisplay(size: 19, color: Ep.contentSecondary),
+                style: epDisplay(
+                  size: 19,
+                  color: context.epColors.contentSecondary,
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -2011,7 +2046,7 @@ class _PriceBodyState extends State<_PriceBody> {
                     hintStyle: epText(
                       size: 16,
                       weight: FontWeight.w800,
-                      color: Ep.contentDisabled,
+                      color: context.epColors.contentDisabled,
                     ),
                   ),
                 ),
@@ -2023,7 +2058,7 @@ class _PriceBodyState extends State<_PriceBody> {
                   size: 11,
                   weight: FontWeight.w800,
                   letterSpacing: .6,
-                  color: Ep.contentDisabled,
+                  color: context.epColors.contentDisabled,
                 ),
               ),
             ],
@@ -2033,7 +2068,11 @@ class _PriceBodyState extends State<_PriceBody> {
         Text(
           'Free gigs get roughly twice the RSVPs. Sliding scale? Put the range '
           'in the gig name.',
-          style: epText(size: 11, color: Ep.contentDisabled, height: 1.45),
+          style: epText(
+            size: 11,
+            color: context.epColors.contentDisabled,
+            height: 1.45,
+          ),
         ),
       ],
     );
@@ -2119,10 +2158,12 @@ class _TicketsBodyState extends State<_TicketsBody> {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: capIsCustom ? Ep.surfaceSelected : Ep.background,
+                    color: capIsCustom
+                        ? context.epColors.surfaceSelected
+                        : context.epColors.background,
                     border: capIsCustom
-                        ? Border.all(color: Ep.accent, width: 1.5)
-                        : Border.all(color: Ep.border),
+                        ? Border.all(color: context.epColors.accent, width: 1.5)
+                        : Border.all(color: context.epColors.border),
                     borderRadius: BorderRadius.circular(11),
                   ),
                   child: Row(
@@ -2144,7 +2185,7 @@ class _TicketsBodyState extends State<_TicketsBody> {
                             hintStyle: epText(
                               size: 14,
                               weight: FontWeight.w800,
-                              color: Ep.contentDisabled,
+                              color: context.epColors.contentDisabled,
                             ),
                           ),
                         ),
@@ -2155,7 +2196,7 @@ class _TicketsBodyState extends State<_TicketsBody> {
                           size: 11,
                           weight: FontWeight.w800,
                           letterSpacing: .6,
-                          color: Ep.contentDisabled,
+                          color: context.epColors.contentDisabled,
                         ),
                       ),
                     ],
@@ -2179,7 +2220,7 @@ class _TicketsBodyState extends State<_TicketsBody> {
               keyboardType: TextInputType.url,
               onChanged: app.setGfExt,
               style: epText(size: 12.5),
-              decoration: sheetInput('https://…').copyWith(
+              decoration: sheetInput(context, 'https://…').copyWith(
                 errorText:
                     app.gfExt.trim().isNotEmpty && !app.validExternalTicketUrl
                     ? 'Enter a complete HTTPS URL.'
@@ -2203,7 +2244,7 @@ class _DraftPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     return ColoredBox(
-      color: Ep.background,
+      color: context.epColors.background,
       child: GigDetailPresentation(
         key: const ValueKey('redesigned-gig-draft-preview'),
         gig: _draftGig(app),
@@ -2291,7 +2332,7 @@ class _PublishedView extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     return ColoredBox(
-      color: Ep.background,
+      color: context.epColors.background,
       child: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -2304,7 +2345,7 @@ class _PublishedView extends StatelessWidget {
                   size: 11,
                   weight: FontWeight.w900,
                   letterSpacing: 2,
-                  color: Ep.accent,
+                  color: context.epColors.accent,
                 ),
               ),
               const SizedBox(height: 16),
@@ -2321,7 +2362,10 @@ class _PublishedView extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 app.gigUrl,
-                style: epText(size: 12, color: Ep.contentSecondary),
+                style: epText(
+                  size: 12,
+                  color: context.epColors.contentSecondary,
+                ),
               ),
               const SizedBox(height: 16),
               SizedBox(
@@ -2376,7 +2420,7 @@ class _PublishedView extends StatelessWidget {
                   TextAction(
                     'KEEP EDITING',
                     onTap: app.editPublishedGig,
-                    color: Ep.contentSecondary,
+                    color: context.epColors.contentSecondary,
                     size: 11,
                     letterSpacing: .6,
                   ),
@@ -2392,7 +2436,7 @@ class _PublishedView extends StatelessWidget {
               TextAction(
                 'BACK TO GIGS',
                 onTap: app.closeGigCreate,
-                color: Ep.contentDisabled,
+                color: context.epColors.contentDisabled,
                 size: 11,
                 letterSpacing: .6,
               ),

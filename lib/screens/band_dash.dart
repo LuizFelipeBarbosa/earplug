@@ -65,7 +65,7 @@ class BandDashScreen extends StatelessWidget {
                               size: 11,
                               weight: FontWeight.w800,
                               letterSpacing: 1,
-                              color: Ep.accent,
+                              color: context.epColors.accent,
                             ),
                           ),
                           if (band.profileComplete) ...[
@@ -83,10 +83,7 @@ class BandDashScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: app.toFanView,
-              child: const Text('DISCOVER'),
-            ),
+            OutlinedButton(onPressed: app.toFanView, child: Text('DISCOVER')),
           ],
         ),
         if (next != null) ...[
@@ -106,7 +103,7 @@ class BandDashScreen extends StatelessWidget {
             child: TextButton(
               key: const Key('band-next-public-gig'),
               onPressed: () => app.openGig(next.id),
-              child: const Text('VIEW PUBLIC GIG →'),
+              child: Text('VIEW PUBLIC GIG →'),
             ),
           ),
         ],
@@ -230,7 +227,7 @@ class _DiscoveryReadinessCard extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: TextButton(
                 onPressed: () => app.refreshBandDiscoveryReadiness(bandId),
-                child: const Text('Retry discovery readiness'),
+                child: Text('Retry discovery readiness'),
               ),
             ),
         ],
@@ -323,7 +320,9 @@ class _DiscoveryReadinessCard extends StatelessWidget {
               '– ${Gig.dateShortFor(window.closesAt.millisecondsSinceEpoch)}'
               '${window.active ? ' · ACTIVE NOW' : ''}',
               style: Theme.of(context).textTheme.epCaption.copyWith(
-                color: window.active ? Ep.success : Ep.contentSecondary,
+                color: window.active
+                    ? context.epColors.success
+                    : context.epColors.contentSecondary,
               ),
             ),
           ],
@@ -368,7 +367,7 @@ class _ReadinessSegments extends StatelessWidget {
                 key: ValueKey('discovery-segment-$index'),
                 height: 6,
                 decoration: BoxDecoration(
-                  color: steps[index] ? Ep.brand : Ep.raised,
+                  color: steps[index] ? Ep.brand : context.epColors.raised,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
@@ -402,7 +401,9 @@ class _DiscoveryTaskRow extends StatelessWidget {
                     ? Icons.check_circle
                     : Icons.radio_button_unchecked,
                 size: 16,
-                color: task.complete ? Ep.success : Ep.accent,
+                color: task.complete
+                    ? context.epColors.success
+                    : context.epColors.accent,
               ),
               const SizedBox(width: 9),
               Expanded(
@@ -501,7 +502,7 @@ class _SetupChecklist extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: TextButton(
                       onPressed: () => app.refreshBandSetupStatus(bandId),
-                      child: const Text('Retry setup checklist'),
+                      child: Text('Retry setup checklist'),
                     ),
                   ),
           )
@@ -541,8 +542,8 @@ class _BandTaskRow extends StatelessWidget {
         child: Container(
           constraints: const BoxConstraints(minHeight: 48),
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Ep.border)),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: context.epColors.border)),
           ),
           child: Row(
             children: [
@@ -551,7 +552,9 @@ class _BandTaskRow extends StatelessWidget {
                     ? Icons.check_circle
                     : Icons.radio_button_unchecked,
                 size: 16,
-                color: task.complete ? Ep.success : Ep.accent,
+                color: task.complete
+                    ? context.epColors.success
+                    : context.epColors.accent,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -560,7 +563,10 @@ class _BandTaskRow extends StatelessWidget {
                   style: Theme.of(context).textTheme.epBody,
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Ep.contentSecondary),
+              Icon(
+                Icons.chevron_right,
+                color: context.epColors.contentSecondary,
+              ),
             ],
           ),
         ),
@@ -637,16 +643,18 @@ class _CommandTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final foreground = command.primary ? Colors.white : Ep.ink;
+    final foreground = command.primary ? Colors.white : context.epColors.ink;
     return Semantics(
       button: true,
       label: command.label,
       excludeSemantics: true,
       child: Material(
-        color: command.primary ? Ep.brand : Ep.surface,
+        color: command.primary ? Ep.brand : context.epColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: command.primary ? Ep.brand : Ep.border),
+          side: BorderSide(
+            color: command.primary ? Ep.brand : context.epColors.border,
+          ),
         ),
         child: InkWell(
           key: ValueKey(

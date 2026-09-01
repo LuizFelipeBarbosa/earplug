@@ -25,7 +25,7 @@ class EpNavigationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? Ep.ink : Ep.mute;
+    final color = selected ? context.epColors.ink : context.epColors.mute;
     return Semantics(
       button: true,
       selected: selected,
@@ -36,7 +36,7 @@ class EpNavigationItem extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
-          focusColor: Ep.accent.withValues(alpha: .2),
+          focusColor: context.epColors.accent.withValues(alpha: .2),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 66, minWidth: 48),
             child: Column(
@@ -98,7 +98,7 @@ class _TabBarShell extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
           decoration: BoxDecoration(
-            color: Ep.tabBarBackground.withValues(alpha: .95),
+            color: context.epColors.tabBarBackground.withValues(alpha: .95),
             border: Border(top: BorderSide(color: borderColor)),
           ),
           padding: EdgeInsets.only(bottom: bottomPad),
@@ -128,7 +128,7 @@ class FanTabBar extends StatelessWidget {
     final membershipsLoading =
         app.authed && !app.membershipsLoaded && bandCount == 0;
     return _TabBarShell(
-      borderColor: Ep.border,
+      borderColor: context.epColors.border,
       items: [
         EpNavigationItem(
           icon: Icons.home_outlined,
@@ -182,7 +182,7 @@ class BandTabBar extends StatelessWidget {
     final app = context.watch<AppState>();
     final scr = app.current.screen;
     return _TabBarShell(
-      borderColor: Ep.border,
+      borderColor: context.epColors.border,
       items: [
         EpNavigationItem(
           icon: Icons.grid_view_rounded,

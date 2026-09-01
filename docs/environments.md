@@ -54,8 +54,10 @@ look for:
 ```sh
 flutter run                        --dart-define-from-file=config/dev.json
 flutter build web       --release  --dart-define-from-file=config/prod.json
-flutter build ipa       --release  --dart-define-from-file=config/prod.json
-flutter build appbundle --release  --dart-define-from-file=config/prod.json
+flutter build ipa       --release  --dart-define-from-file=config/prod.json \
+  --dart-define=STADIA_MAPS_API_KEY="$STADIA_MAPS_API_KEY"
+flutter build appbundle --release  --dart-define-from-file=config/prod.json \
+  --dart-define=STADIA_MAPS_API_KEY="$STADIA_MAPS_API_KEY"
 ```
 
 Deploy and verify the production backend before building a client that calls
@@ -81,7 +83,27 @@ backend separately before triggering the production build; Netlify then uses
 the already-deployed backend. Development builds do not deploy and can be
 checked against the shared development deployment manually with
 `npm run check:release-contract -- dev`. `EARPLUG_ENV` remains the only Netlify
-environment variable consumed by the web client itself.
+environment selector consumed by the web client itself. Netlify also forwards
+the optional `STADIA_MAPS_API_KEY` Dart define: preview and branch deploys must
+receive a scoped key from the Netlify environment, while the production site
+uses Stadia domain authentication for `earplug.dev` and should leave the key
+empty. Local web development on `localhost` or `127.0.0.1` is intentionally
+keyless. Native builds require the scoped key; omitting it leaves the app
+usable and gives each map a recoverable configuration error.
+
+## Stadia Maps authentication and caching
+
+The client reads `STADIA_MAPS_API_KEY` only as a compile-time Dart define. A
+key added to a hosted or native client is extractable, so use a separately
+scoped, monitored, and rotatable key for previews and native releases. Never
+put a real value in `.env.example`, `config/*.json`, or source control.
+
+Register `earplug.dev` in the Stadia property before production release.
+Domain authentication relies on browser `Origin` and `Referer` headers; verify
+those headers on the Netlify preview before promoting the release. The app
+caches only visited vector tiles, capped at 50 MB with a seven-day TTL. This is
+below Stadia's 100 MB per-device ceiling, but still requires an active plan
+that permits caching. No region download or public OSM fallback is configured.
 
 ## Sign-in capabilities
 

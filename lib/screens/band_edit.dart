@@ -352,7 +352,10 @@ class _BandEditScreenState extends State<BandEditScreen> {
                         child: Text(
                           error,
                           key: const ValueKey('band-artwork-error'),
-                          style: epText(size: 11, color: Ep.warning),
+                          style: epText(
+                            size: 11,
+                            color: context.epColors.warning,
+                          ),
                         ),
                       ),
                     ],
@@ -432,7 +435,11 @@ class _BandEditScreenState extends State<BandEditScreen> {
                           _draftChanged(value);
                         },
                         style: Theme.of(context).textTheme.epBody,
-                        decoration: _bandInput('INSTAGRAM', 'Instagram'),
+                        decoration: _bandInput(
+                          context,
+                          'INSTAGRAM',
+                          'Instagram',
+                        ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -444,7 +451,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                           _draftChanged(value);
                         },
                         style: Theme.of(context).textTheme.epBody,
-                        decoration: _bandInput('BANDCAMP', 'Bandcamp'),
+                        decoration: _bandInput(context, 'BANDCAMP', 'Bandcamp'),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -457,6 +464,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                         },
                         style: Theme.of(context).textTheme.epBody,
                         decoration: _bandInput(
+                          context,
                           'YOUTUBE OR VIDEO',
                           'YouTube or video',
                         ),
@@ -484,6 +492,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                     maxLines: 6,
                     style: Theme.of(context).textTheme.epBody,
                     decoration: _bandInput(
+                      context,
                       'CREDITS',
                       'Who helped make the work',
                     ),
@@ -501,9 +510,9 @@ class _BandEditScreenState extends State<BandEditScreen> {
                   child: Text(
                     error,
                     key: const ValueKey('profile-save-error'),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epBody.copyWith(color: Ep.warning),
+                    style: Theme.of(context).textTheme.epBody.copyWith(
+                      color: context.epColors.warning,
+                    ),
                   ),
                 ),
               ] else if (_saved) ...[
@@ -513,9 +522,9 @@ class _BandEditScreenState extends State<BandEditScreen> {
                   child: Text(
                     'Changes saved.',
                     key: const ValueKey('profile-save-success'),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epBody.copyWith(color: Ep.success),
+                    style: Theme.of(context).textTheme.epBody.copyWith(
+                      color: context.epColors.success,
+                    ),
                   ),
                 ),
               ],
@@ -541,8 +550,8 @@ class _BandEditScreenState extends State<BandEditScreen> {
   }
 }
 
-InputDecoration _bandInput(String label, String hint) =>
-    epInputDecoration(hint).copyWith(
+InputDecoration _bandInput(BuildContext context, String label, String hint) =>
+    epInputDecoration(context, hint).copyWith(
       labelText: label,
       floatingLabelBehavior: FloatingLabelBehavior.always,
     );
@@ -596,7 +605,7 @@ class _FieldLabel extends StatelessWidget {
         fontSize: 11,
         fontWeight: FontWeight.w900,
         letterSpacing: .8,
-        color: Ep.contentSecondary,
+        color: context.epColors.contentSecondary,
       ),
     );
   }
@@ -615,10 +624,10 @@ class _MediaManagementRow extends StatelessWidget {
       label: 'Manage videos and photos',
       excludeSemantics: true,
       child: Material(
-        color: Ep.surface,
+        color: context.epColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(11),
-          side: const BorderSide(color: Ep.border),
+          side: BorderSide(color: context.epColors.border),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -631,7 +640,9 @@ class _MediaManagementRow extends StatelessWidget {
                 children: [
                   Icon(
                     Icons.play_arrow_rounded,
-                    color: onTap == null ? Ep.contentDisabled : Ep.volt,
+                    color: onTap == null
+                        ? context.epColors.contentDisabled
+                        : context.epColors.volt,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -639,14 +650,16 @@ class _MediaManagementRow extends StatelessWidget {
                       'MANAGE VIDEOS AND PHOTOS',
                       style: Theme.of(context).textTheme.epLabel.copyWith(
                         color: onTap == null
-                            ? Ep.contentDisabled
-                            : Ep.contentPrimary,
+                            ? context.epColors.contentDisabled
+                            : context.epColors.contentPrimary,
                       ),
                     ),
                   ),
                   Icon(
                     Icons.chevron_right,
-                    color: onTap == null ? Ep.contentDisabled : Ep.mute,
+                    color: onTap == null
+                        ? context.epColors.contentDisabled
+                        : context.epColors.mute,
                   ),
                 ],
               ),
@@ -724,7 +737,10 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
           if (members.isEmpty)
             Text(
               'No additional members have joined yet.',
-              style: epText(size: 11.5, color: Ep.contentSecondary),
+              style: epText(
+                size: 11.5,
+                color: context.epColors.contentSecondary,
+              ),
             )
           else
             Wrap(
@@ -750,7 +766,10 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                 invite.revoked
                     ? 'The previous invitation was revoked.'
                     : 'The previous invitation expired.',
-                style: epText(size: 11, color: Ep.contentSecondary),
+                style: epText(
+                  size: 11,
+                  color: context.epColors.contentSecondary,
+                ),
               ),
             if (invite != null) const SizedBox(height: 8),
             EpButton(
@@ -782,7 +801,7 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                     style: epText(
                       size: 11,
                       weight: FontWeight.w800,
-                      color: Ep.accent,
+                      color: context.epColors.accent,
                     ),
                   ),
                 ],
@@ -797,8 +816,8 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                       invite.url,
                       successMessage: 'Invitation link copied.',
                     ),
-              icon: const Icon(Icons.copy, size: 17),
-              label: const Text('COPY INVITATION LINK'),
+              icon: Icon(Icons.copy, size: 17),
+              label: Text('COPY INVITATION LINK'),
             ),
             const SizedBox(height: 6),
             Row(
@@ -810,7 +829,7 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                         : () => _run(() async {
                             await app.rotateBandInvitation();
                           }),
-                    child: const Text('ROTATE LINK'),
+                    child: Text('ROTATE LINK'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -819,7 +838,7 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                     onPressed: _working
                         ? null
                         : () => _run(app.revokeBandInvitation),
-                    child: const Text('REVOKE LINK'),
+                    child: Text('REVOKE LINK'),
                   ),
                 ),
               ],
@@ -834,7 +853,7 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
             Text(
               error,
               key: const ValueKey('invite-management-error'),
-              style: epText(size: 11, color: Ep.warning),
+              style: epText(size: 11, color: context.epColors.warning),
             ),
           ],
         ],
@@ -890,12 +909,12 @@ class _ArchiveBandDialogState extends State<_ArchiveBandDialog> {
   Widget build(BuildContext context) {
     final matches = _controller.text.trim() == widget.band.name;
     return AlertDialog(
-      title: const Text('ARCHIVE BAND?'),
+      title: Text('ARCHIVE BAND?'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
+          Text(
             'This removes the band from public pages and management, revokes invitations, and cancels future gigs it owns. You cannot restore the band in EarPlug. Historical and shared records are preserved.',
           ),
           const SizedBox(height: 14),
@@ -906,20 +925,20 @@ class _ArchiveBandDialogState extends State<_ArchiveBandDialog> {
             controller: _controller,
             enabled: !_working,
             onChanged: (_) => setState(() {}),
-            decoration: epInputDecoration(widget.band.name),
+            decoration: epInputDecoration(context, widget.band.name),
           ),
         ],
       ),
       actions: [
         TextButton(
           onPressed: _working ? null : () => Navigator.pop(context),
-          child: const Text('KEEP BAND'),
+          child: Text('KEEP BAND'),
         ),
         FilledButton(
           onPressed: !matches || _working ? null : _archive,
           style: FilledButton.styleFrom(
-            backgroundColor: Ep.destructive,
-            foregroundColor: Ep.dark,
+            backgroundColor: context.epColors.destructive,
+            foregroundColor: context.epColors.dark,
           ),
           child: Text(_working ? 'ARCHIVING…' : 'ARCHIVE BAND'),
         ),

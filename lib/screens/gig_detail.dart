@@ -31,7 +31,7 @@ class GigDetailScreen extends StatelessWidget {
                 Text(
                   "THIS GIG ISN'T AVAILABLE RIGHT NOW",
                   textAlign: TextAlign.center,
-                  style: epText(color: Ep.contentSecondary),
+                  style: epText(color: context.epColors.contentSecondary),
                 ),
                 const SizedBox(height: 16),
                 EpButton('TRY AGAIN', onTap: () => app.retryPublicGig(gigId)),
@@ -44,7 +44,7 @@ class GigDetailScreen extends StatelessWidget {
         return Center(
           child: Text(
             'THIS GIG IS NO LONGER AVAILABLE',
-            style: epText(color: Ep.contentSecondary),
+            style: epText(color: context.epColors.contentSecondary),
           ),
         );
       }
@@ -115,8 +115,8 @@ class GigDetailPresentation extends StatelessWidget {
                 margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Ep.warning.withValues(alpha: .12),
-                  border: Border.all(color: Ep.warning),
+                  color: context.epColors.warning.withValues(alpha: .12),
+                  border: Border.all(color: context.epColors.warning),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -126,7 +126,7 @@ class GigDetailPresentation extends StatelessWidget {
                     size: 12,
                     weight: FontWeight.w900,
                     letterSpacing: .8,
-                    color: Ep.warning,
+                    color: context.epColors.warning,
                   ),
                 ),
               ),
@@ -156,7 +156,7 @@ class GigDetailPresentation extends StatelessWidget {
                       gig.desc,
                       style: epText(
                         size: 13.5,
-                        color: Ep.contentSecondary,
+                        color: context.epColors.contentSecondary,
                         height: 1.5,
                       ),
                     ),
@@ -474,7 +474,7 @@ class _InfoCards extends StatelessWidget {
     Widget fact(IconData icon, String text) {
       return Row(
         children: [
-          Icon(icon, size: 18, color: Ep.accent),
+          Icon(icon, size: 18, color: context.epColors.accent),
           const SizedBox(width: 9),
           Expanded(
             child: Text(
@@ -493,8 +493,8 @@ class _InfoCards extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 48, minWidth: 72),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: Ep.surface,
-          border: Border.all(color: Ep.border),
+          color: context.epColors.surface,
+          border: Border.all(color: context.epColors.border),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Column(
@@ -512,7 +512,7 @@ class _InfoCards extends StatelessWidget {
             Text(
               value,
               style: Theme.of(context).textTheme.epLabel.copyWith(
-                color: valueColor ?? Ep.contentPrimary,
+                color: valueColor ?? context.epColors.contentPrimary,
               ),
             ),
           ],
@@ -544,7 +544,9 @@ class _InfoCards extends StatelessWidget {
               pill(
                 'PRICE',
                 gig.priceLabel,
-                valueColor: gig.free ? Ep.accent : Ep.contentPrimary,
+                valueColor: gig.free
+                    ? context.epColors.accent
+                    : context.epColors.contentPrimary,
               ),
               pill('AGE', gig.ageRequirement.label),
               if (previewLabel != null)
@@ -598,7 +600,10 @@ class _LineupRow extends StatelessWidget {
                 ),
                 Text(
                   band?.genreLine ?? performer.role.name.toUpperCase(),
-                  style: epText(size: 11.5, color: Ep.contentSecondary),
+                  style: epText(
+                    size: 11.5,
+                    color: context.epColors.contentSecondary,
+                  ),
                 ),
               ],
             ),
@@ -675,7 +680,7 @@ class _VenueCard extends StatelessWidget {
                               '${venue.addr} · ${venue.area}',
                               style: epText(
                                 size: 11.5,
-                                color: Ep.contentSecondary,
+                                color: context.epColors.contentSecondary,
                               ),
                             ),
                           ],
@@ -692,7 +697,7 @@ class _VenueCard extends StatelessWidget {
                       'https://www.google.com/maps/search/?api=1&query='
                       '${venue.point.latitude},${venue.point.longitude}',
                     ),
-                    child: const Text('DIRECTIONS ↗'),
+                    child: Text('DIRECTIONS ↗'),
                   ),
                 ],
               ],
@@ -713,14 +718,17 @@ class _MissingVenueCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       child: Row(
         children: [
-          const Icon(Icons.location_off_outlined, color: Ep.contentDisabled),
+          Icon(
+            Icons.location_off_outlined,
+            color: context.epColors.contentDisabled,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
               'VENUE NOT SET',
-              style: Theme.of(
-                context,
-              ).textTheme.epLabel.copyWith(color: Ep.contentSecondary),
+              style: Theme.of(context).textTheme.epLabel.copyWith(
+                color: context.epColors.contentSecondary,
+              ),
             ),
           ),
         ],
@@ -764,7 +772,7 @@ class _WhosGoing extends StatelessWidget {
                     Text(
                       '$going of $capacity $spotsLabel filled',
                       style: Theme.of(context).textTheme.epCaption.copyWith(
-                        color: Ep.contentSecondary,
+                        color: context.epColors.contentSecondary,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -777,8 +785,8 @@ class _WhosGoing extends StatelessWidget {
                         value: value,
                         minHeight: 8,
                         borderRadius: BorderRadius.circular(99),
-                        backgroundColor: Ep.border,
-                        color: Ep.volt,
+                        backgroundColor: context.epColors.border,
+                        color: context.epColors.volt,
                       ),
                     ),
                   ],
@@ -813,12 +821,16 @@ class _PreviewCtaBar extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
           stops: [0, .75, 1],
-          colors: [Ep.background, Ep.background, Colors.transparent],
+          colors: [
+            context.epColors.background,
+            context.epColors.background,
+            Colors.transparent,
+          ],
         ),
       ),
       child: Column(
@@ -831,7 +843,7 @@ class _PreviewCtaBar extends StatelessWidget {
               size: 11,
               weight: FontWeight.w700,
               letterSpacing: .5,
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
             ),
           ),
           const SizedBox(height: 7),
@@ -853,7 +865,7 @@ class _CtaBar extends StatelessWidget {
     if (gig.lifecycle == GigLifecycle.cancelled) {
       return Container(
         padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
-        color: Ep.background,
+        color: context.epColors.background,
         child: EpButton(
           'GIG CANCELLED',
           kind: EpButtonKind.disabled,
@@ -903,12 +915,16 @@ class _CtaBar extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
           stops: [0, .75, 1],
-          colors: [Ep.background, Ep.background, Colors.transparent],
+          colors: [
+            context.epColors.background,
+            context.epColors.background,
+            Colors.transparent,
+          ],
         ),
       ),
       child: Column(
@@ -921,7 +937,7 @@ class _CtaBar extends StatelessWidget {
               size: 11,
               weight: FontWeight.w700,
               letterSpacing: .5,
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
             ),
           ),
           const SizedBox(height: 7),

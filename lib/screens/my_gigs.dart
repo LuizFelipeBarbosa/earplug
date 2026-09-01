@@ -69,7 +69,7 @@ class MyGigsScreen extends StatelessWidget {
               style: const ButtonStyle(
                 fixedSize: WidgetStatePropertyAll(Size.square(48)),
               ),
-              icon: const Icon(Icons.edit_outlined),
+              icon: Icon(Icons.edit_outlined),
             ),
             IconButton(
               key: const Key('share-fan-profile'),
@@ -87,7 +87,7 @@ class MyGigsScreen extends StatelessWidget {
               style: const ButtonStyle(
                 fixedSize: WidgetStatePropertyAll(Size.square(48)),
               ),
-              icon: const Icon(Icons.ios_share_outlined),
+              icon: Icon(Icons.ios_share_outlined),
             ),
             IconButton(
               key: const Key('profile-settings-action'),
@@ -96,7 +96,7 @@ class MyGigsScreen extends StatelessWidget {
               style: const ButtonStyle(
                 fixedSize: WidgetStatePropertyAll(Size.square(48)),
               ),
-              icon: const Icon(Icons.settings_outlined),
+              icon: Icon(Icons.settings_outlined),
             ),
           ],
         ),
@@ -105,8 +105,8 @@ class MyGigsScreen extends StatelessWidget {
           key: const Key('fan-profile-header'),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Ep.surfaceRaised,
-            border: Border.all(color: Ep.border),
+            color: context.epColors.surfaceRaised,
+            border: Border.all(color: context.epColors.border),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
@@ -118,7 +118,7 @@ class MyGigsScreen extends StatelessWidget {
                     key: const Key('fan-profile-avatar-frame'),
                     padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
-                      color: Ep.border,
+                      color: context.epColors.border,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: EpFanAvatar(
@@ -140,7 +140,7 @@ class MyGigsScreen extends StatelessWidget {
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.epDisplay.copyWith(
-                            color: Ep.contentPrimary,
+                            color: context.epColors.contentPrimary,
                             fontSize: 22,
                           ),
                         ),
@@ -151,7 +151,7 @@ class MyGigsScreen extends StatelessWidget {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: Theme.of(context).textTheme.epBody.copyWith(
-                              color: Ep.contentSecondary,
+                              color: context.epColors.contentSecondary,
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                             ),
@@ -281,7 +281,10 @@ class MyGigsScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           child: Row(
             children: [
-              const Icon(Icons.settings_outlined, color: Ep.contentSecondary),
+              Icon(
+                Icons.settings_outlined,
+                color: context.epColors.contentSecondary,
+              ),
               const SizedBox(width: 11),
               Expanded(
                 child: Text(
@@ -289,7 +292,10 @@ class MyGigsScreen extends StatelessWidget {
                   style: Theme.of(context).textTheme.epLabel,
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Ep.contentSecondary),
+              Icon(
+                Icons.chevron_right,
+                color: context.epColors.contentSecondary,
+              ),
             ],
           ),
         ),
@@ -319,10 +325,10 @@ class _ProfileStat extends StatelessWidget {
       label: semanticLabel,
       excludeSemantics: true,
       child: Material(
-        color: Ep.surface,
+        color: context.epColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Ep.border),
+          side: BorderSide(color: context.epColors.border),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -340,7 +346,7 @@ class _ProfileStat extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.epDisplay.copyWith(
-                      color: Ep.contentPrimary,
+                      color: context.epColors.contentPrimary,
                       fontSize: 24,
                     ),
                   ),
@@ -354,7 +360,7 @@ class _ProfileStat extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.epChipLabel
                               .copyWith(
-                                color: Ep.contentSecondary,
+                                color: context.epColors.contentSecondary,
                                 letterSpacing: .7,
                               ),
                         ),
@@ -362,7 +368,7 @@ class _ProfileStat extends StatelessWidget {
                       Icon(
                         Icons.chevron_right,
                         size: 18,
-                        color: Ep.contentSecondary,
+                        color: context.epColors.contentSecondary,
                       ),
                     ],
                   ),
@@ -515,18 +521,19 @@ class _FollowingSheetState extends State<_FollowingSheet> {
                   autocorrect: false,
                   decoration:
                       epInputDecoration(
+                        context,
                         'Search by name, genre, or home base',
                       ).copyWith(
                         labelText: 'Search followed bands',
                         floatingLabelBehavior: FloatingLabelBehavior.always,
-                        prefixIcon: const Icon(Icons.search),
+                        prefixIcon: Icon(Icons.search),
                         suffixIcon: normalizedQuery.isEmpty
                             ? null
                             : IconButton(
                                 key: const Key('clear-following-search'),
                                 tooltip: 'Clear Following search',
                                 onPressed: _clearSearch,
-                                icon: const Icon(Icons.close),
+                                icon: Icon(Icons.close),
                               ),
                       ),
                 ),
@@ -579,7 +586,7 @@ class _HistorySheet extends StatelessWidget {
         'RSVP RECORD — ATTENDANCE NOT VERIFIED',
         key: const Key('history-qualification'),
         style: Theme.of(context).textTheme.epMeta.copyWith(
-          color: Ep.contentSecondary,
+          color: context.epColors.contentSecondary,
           fontWeight: FontWeight.w800,
         ),
       ),
@@ -626,10 +633,10 @@ class _ProfileDetailSheet extends StatelessWidget {
       child: Container(
         height: MediaQuery.sizeOf(context).height * .84,
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        decoration: const BoxDecoration(
-          color: Ep.surfaceRaised,
+        decoration: BoxDecoration(
+          color: context.epColors.surfaceRaised,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border(top: BorderSide(color: Ep.border)),
+          border: Border(top: BorderSide(color: context.epColors.border)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -639,7 +646,7 @@ class _ProfileDetailSheet extends StatelessWidget {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Ep.contentDisabled,
+                  color: context.epColors.contentDisabled,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
@@ -666,7 +673,7 @@ class _ProfileDetailSheet extends StatelessWidget {
                 IconButton(
                   tooltip: 'Close $title',
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
+                  icon: Icon(Icons.close),
                 ),
               ],
             ),
@@ -674,7 +681,7 @@ class _ProfileDetailSheet extends StatelessWidget {
               const SizedBox(height: 8),
               DefaultTextStyle.merge(
                 style: Theme.of(context).textTheme.epMeta.copyWith(
-                  color: Ep.contentSecondary,
+                  color: context.epColors.contentSecondary,
                   fontWeight: FontWeight.w800,
                 ),
                 child: notice!,
@@ -709,9 +716,9 @@ class _EmptySection extends StatelessWidget {
           Text(
             message,
             textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+            style: Theme.of(context).textTheme.epBody.copyWith(
+              color: context.epColors.contentSecondary,
+            ),
           ),
           TextAction(action, onTap: onTap),
         ],
@@ -760,14 +767,14 @@ class _ProfileTutorialState extends State<_ProfileTutorial> {
                   'PROFILE TOUR · ${_step + 1} OF ${_titles.length}',
                   style: Theme.of(
                     context,
-                  ).textTheme.epLabel.copyWith(color: Ep.accent),
+                  ).textTheme.epLabel.copyWith(color: context.epColors.accent),
                 ),
               ),
               IconButton(
                 key: const Key('dismiss-profile-tutorial'),
                 tooltip: 'Dismiss profile tutorial',
                 onPressed: widget.app.completeProfileTutorial,
-                icon: const Icon(Icons.close),
+                icon: Icon(Icons.close),
               ),
             ],
           ),
@@ -854,9 +861,9 @@ class _HistoryRow extends StatelessWidget {
                     '$dateLabel · $statusLabel',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epMeta.copyWith(color: Ep.contentSecondary),
+                    style: Theme.of(context).textTheme.epMeta.copyWith(
+                      color: context.epColors.contentSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -884,7 +891,7 @@ class _FanSetup extends StatelessWidget {
         onTap: () => app.setFanOnboardingCollapsed(false),
         child: Row(
           children: [
-            const Icon(Icons.tune, color: Ep.accent),
+            Icon(Icons.tune, color: context.epColors.accent),
             const SizedBox(width: 11),
             Expanded(
               child: Column(
@@ -902,7 +909,7 @@ class _FanSetup extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: Ep.contentSecondary),
+            Icon(Icons.chevron_right, color: context.epColors.contentSecondary),
           ],
         ),
       );
@@ -981,13 +988,13 @@ class _FanSetup extends StatelessWidget {
                 ? TextButton(
                     key: const Key('fan-setup-find-show'),
                     onPressed: () => app.resetTo(Screen.home),
-                    child: const Text('FIND A SHOW'),
+                    child: Text('FIND A SHOW'),
                   )
                 : Text(
                     'A show is saved in your Profile.',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epCaption.copyWith(color: Ep.accent),
+                    style: Theme.of(context).textTheme.epCaption.copyWith(
+                      color: context.epColors.accent,
+                    ),
                   ),
           ),
           const SizedBox(height: 8),
@@ -996,7 +1003,7 @@ class _FanSetup extends StatelessWidget {
             child: TextButton(
               key: const Key('fan-setup-not-now'),
               onPressed: () => app.setFanOnboardingCollapsed(true),
-              child: const Text('NOT NOW'),
+              child: Text('NOT NOW'),
             ),
           ),
         ],
@@ -1029,11 +1036,17 @@ class _SetupStep extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: complete ? Ep.accent : Ep.surfaceSelected,
-            border: Border.all(color: complete ? Ep.accent : Ep.border),
+            color: complete
+                ? context.epColors.accent
+                : context.epColors.surfaceSelected,
+            border: Border.all(
+              color: complete
+                  ? context.epColors.accent
+                  : context.epColors.border,
+            ),
           ),
           child: complete
-              ? const Icon(Icons.check, size: 16, color: Colors.white)
+              ? Icon(Icons.check, size: 16, color: Colors.white)
               : Text('$number', style: Theme.of(context).textTheme.epLabel),
         ),
         const SizedBox(width: 10),
@@ -1068,10 +1081,10 @@ class _QrAction extends StatelessWidget {
       tooltip: 'Show QR code',
       onPressed: () => showQrDialog(context, gig, venue),
       style: ButtonStyle(
-        fixedSize: const WidgetStatePropertyAll(Size.square(48)),
-        foregroundColor: const WidgetStatePropertyAll(Ep.accent),
+        fixedSize: WidgetStatePropertyAll(Size.square(48)),
+        foregroundColor: WidgetStatePropertyAll(context.epColors.accent),
       ),
-      icon: const Icon(Icons.qr_code_2, size: 20),
+      icon: Icon(Icons.qr_code_2, size: 20),
     );
   }
 }
@@ -1096,7 +1109,7 @@ class _FollowRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
         child: Row(
           children: [
-            const Icon(Icons.music_note, color: Ep.contentSecondary),
+            Icon(Icons.music_note, color: context.epColors.contentSecondary),
             const SizedBox(width: 11),
             Expanded(
               child: Column(
@@ -1113,7 +1126,7 @@ class _FollowRow extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: Ep.contentSecondary),
+            Icon(Icons.chevron_right, color: context.epColors.contentSecondary),
           ],
         ),
       );
@@ -1144,8 +1157,8 @@ class _FollowRow extends StatelessWidget {
           OutlinedButton(
             onPressed: () => app.toggleFollow(bandId),
             style: ButtonStyle(
-              minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-              padding: const WidgetStatePropertyAll(
+              minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+              padding: WidgetStatePropertyAll(
                 EdgeInsets.symmetric(horizontal: 10),
               ),
               textStyle: WidgetStatePropertyAll(
@@ -1154,7 +1167,7 @@ class _FollowRow extends StatelessWidget {
                 ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .4),
               ),
             ),
-            child: const Text('FOLLOWING ✓'),
+            child: Text('FOLLOWING ✓'),
           ),
         ],
       ),

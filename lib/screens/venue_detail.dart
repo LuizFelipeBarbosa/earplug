@@ -59,9 +59,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-      decoration: const BoxDecoration(
-        color: Ep.background,
-        border: Border(bottom: BorderSide(color: Ep.border)),
+      decoration: BoxDecoration(
+        color: context.epColors.background,
+        border: Border(bottom: BorderSide(color: context.epColors.border)),
       ),
       child: Row(
         children: [
@@ -71,7 +71,7 @@ class _Header extends StatelessWidget {
             'VENUE',
             style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1.4,
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
             ),
           ),
         ],
@@ -153,9 +153,9 @@ class _CenteredState extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+              style: Theme.of(context).textTheme.epBody.copyWith(
+                color: context.epColors.contentSecondary,
+              ),
             ),
             if (action != null) ...[
               const SizedBox(height: 16),
@@ -216,9 +216,9 @@ class _VenueContent extends StatelessWidget {
                   child: Text(
                     'Nothing on the calendar right now.',
                     textAlign: TextAlign.center,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+                    style: Theme.of(context).textTheme.epBody.copyWith(
+                      color: context.epColors.contentSecondary,
+                    ),
                   ),
                 ),
               for (final gig in gigs) ...[
@@ -272,9 +272,11 @@ class _VenueHero extends StatelessWidget {
           key: const Key('venue-detail-hero'),
           constraints: const BoxConstraints(minHeight: 150),
           padding: const EdgeInsets.fromLTRB(16, 24, 16, 28),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: Ep.brand,
-            border: Border(bottom: BorderSide(color: Ep.accent, width: 2)),
+            border: Border(
+              bottom: BorderSide(color: context.epColors.accent, width: 2),
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,14 +289,14 @@ class _VenueHero extends StatelessWidget {
                 ].join(' · '),
                 style: Theme.of(
                   context,
-                ).textTheme.epSection.copyWith(color: Ep.ink),
+                ).textTheme.epSection.copyWith(color: context.epColors.ink),
               ),
               const SizedBox(height: 8),
               Text(
                 venue.name.toUpperCase(),
                 style: Theme.of(
                   context,
-                ).textTheme.epPosterTitle.copyWith(color: Ep.ink),
+                ).textTheme.epPosterTitle.copyWith(color: context.epColors.ink),
               ),
             ],
           ),
@@ -360,7 +362,11 @@ class _PerformerRow extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, size: 18, color: Ep.contentSecondary),
+          Icon(
+            Icons.chevron_right,
+            size: 18,
+            color: context.epColors.contentSecondary,
+          ),
         ],
       ),
     );

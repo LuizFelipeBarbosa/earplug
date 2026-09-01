@@ -13,7 +13,7 @@ class GigInviteScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     return ColoredBox(
-      color: Ep.background,
+      color: context.epColors.background,
       child: SafeArea(
         child: Column(
           children: [
@@ -35,7 +35,7 @@ class GigInviteScreen extends StatelessWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, color: Ep.border),
+            Divider(height: 1, color: context.epColors.border),
             Expanded(
               child: Center(
                 child: SingleChildScrollView(
@@ -112,7 +112,7 @@ class _Confirmation extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.queue_music, size: 58, color: Ep.accent),
+        Icon(Icons.queue_music, size: 58, color: context.epColors.accent),
         const SizedBox(height: 18),
         Text(
           'Join ${invite.gigTitle}?',
@@ -124,7 +124,11 @@ class _Confirmation extends StatelessWidget {
           'You were invited to replace “${invite.performerName}” in the lineup. '
           'Choose which band should appear on the bill.',
           textAlign: TextAlign.center,
-          style: epText(size: 13, color: Ep.contentSecondary, height: 1.5),
+          style: epText(
+            size: 13,
+            color: context.epColors.contentSecondary,
+            height: 1.5,
+          ),
         ),
         if (waitingForBands) ...[
           const SizedBox(height: 20),
@@ -134,7 +138,11 @@ class _Confirmation extends StatelessWidget {
           Text(
             'You need to be an admin of a band before you can claim this spot.',
             textAlign: TextAlign.center,
-            style: epText(size: 12, color: Ep.warning, height: 1.4),
+            style: epText(
+              size: 12,
+              color: context.epColors.warning,
+              height: 1.4,
+            ),
           ),
         ] else if (app.authed) ...[
           const SizedBox(height: 18),
@@ -159,7 +167,7 @@ class _Confirmation extends StatelessWidget {
           Text(
             error,
             textAlign: TextAlign.center,
-            style: epText(size: 12, color: Ep.destructive),
+            style: epText(size: 12, color: context.epColors.destructive),
           ),
         ],
         const SizedBox(height: 22),
@@ -200,7 +208,7 @@ class _Claimed extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.check_circle, size: 62, color: Ep.accent),
+        Icon(Icons.check_circle, size: 62, color: context.epColors.accent),
         const SizedBox(height: 18),
         Text(
           invite == null
@@ -213,7 +221,7 @@ class _Claimed extends StatelessWidget {
         Text(
           'Your band now appears in the lineup.',
           textAlign: TextAlign.center,
-          style: epText(size: 12.5, color: Ep.contentSecondary),
+          style: epText(size: 12.5, color: context.epColors.contentSecondary),
         ),
         const SizedBox(height: 22),
         EpButton(
@@ -238,7 +246,11 @@ class _Unavailable extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.link_off, size: 54, color: Ep.contentSecondary),
+        Icon(
+          Icons.link_off,
+          size: 54,
+          color: context.epColors.contentSecondary,
+        ),
         const SizedBox(height: 16),
         Text(
           'Invitation unavailable',
@@ -249,7 +261,11 @@ class _Unavailable extends StatelessWidget {
         Text(
           message,
           textAlign: TextAlign.center,
-          style: epText(size: 12.5, color: Ep.contentSecondary, height: 1.45),
+          style: epText(
+            size: 12.5,
+            color: context.epColors.contentSecondary,
+            height: 1.45,
+          ),
         ),
         if (onRetry != null) ...[
           const SizedBox(height: 20),

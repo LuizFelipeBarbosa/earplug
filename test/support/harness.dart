@@ -1,16 +1,24 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/services/appearance_controller.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/services/media_upload_service.dart';
+import 'package:earplug/services/stadia_map_style_repository.dart';
 import 'package:earplug/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map_vector_tiles/flutter_map_vector_tiles.dart' as vt;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 import 'fakes.dart';
 
@@ -78,6 +86,50 @@ Future<AppHarness> pumpApp(
     say: app.say,
   );
   app.attachMediaController(media);
+  SharedPreferencesAsyncPlatform.instance =
+      InMemorySharedPreferencesAsync.empty();
+  final appearance = await AppearanceController.load();
+  addTearDown(appearance.dispose);
+  final mapClient = MockClient((request) async {
+    if (request.url.path.endsWith('.json')) {
+      return http.Response(
+        jsonEncode({
+          'version': 8,
+          'name': 'EarPlug test map',
+          'sources': {
+            'openmaptiles': {
+              'type': 'vector',
+              'tiles': ['https://tiles.test/{z}/{x}/{y}.pbf'],
+              'attribution':
+                  '<a href="https://stadiamaps.com/">© Stadia Maps</a> '
+                  '<a href="https://openmaptiles.org/">© OpenMapTiles</a> '
+                  '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap</a>',
+            },
+          },
+          'layers': [
+            {
+              'id': 'background',
+              'type': 'background',
+              'paint': {'background-color': '#101114'},
+            },
+          ],
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    return http.Response.bytes(const [], 200);
+  });
+  final mapStyles = StadiaMapStyleRepository(
+    apiKey: 'test-key',
+    httpClient: mapClient,
+    cacheStyleBundles: false,
+    resolveProvider: (_) async => _EmptyVectorTileProvider(),
+  );
+  addTearDown(() {
+    mapStyles.dispose();
+    mapClient.close();
+  });
 
   await beforePump?.call(app);
 
@@ -86,6 +138,8 @@ Future<AppHarness> pumpApp(
       key: UniqueKey(),
       providers: [
         ChangeNotifierProvider<AppState>(create: (_) => app),
+        ChangeNotifierProvider<AppearanceController>.value(value: appearance),
+        Provider<StadiaMapStyleRepository>.value(value: mapStyles),
         ChangeNotifierProvider<BandMediaController>(create: (_) => media),
       ],
       child: MaterialApp(theme: buildEpTheme(), home: home),
@@ -98,4 +152,24 @@ Future<AppHarness> pumpApp(
   }
 
   return AppHarness(app: app, auth: resolvedAuth, media: media, picker: picker);
+}
+
+class _EmptyVectorTileProvider extends vt.VectorTileProvider {
+  @override
+  bool get cacheBytesToDisk => false;
+
+  @override
+  String get cacheKey => 'earplug-test-map';
+
+  @override
+  int get maximumZoom => 14;
+
+  @override
+  int get minimumZoom => 0;
+
+  @override
+  Future<vt.TileResponse> load(
+    vt.TileKey tile, {
+    vt.CancellationToken? cancellation,
+  }) async => const vt.TileResponseNotFound();
 }

@@ -24,7 +24,7 @@ class GigManagerScreen extends StatelessWidget {
           child: Text(
             'Only band admins can create and manage gigs.',
             textAlign: TextAlign.center,
-            style: epText(color: Ep.contentSecondary),
+            style: epText(color: context.epColors.contentSecondary),
           ),
         ),
       );
@@ -61,7 +61,7 @@ class GigManagerScreen extends StatelessWidget {
               ),
               FilledButton(
                 onPressed: app.startGigCreate,
-                child: const Text('+ NEW GIG'),
+                child: Text('+ NEW GIG'),
               ),
             ],
           ),
@@ -177,7 +177,7 @@ class _DraftSection extends StatelessWidget {
                           'More actions for ${_projectTitle(projects[index])}',
                       onPressed: () =>
                           _showProjectActions(context, app, projects[index]),
-                      icon: const Icon(Icons.more_horiz),
+                      icon: Icon(Icons.more_horiz),
                     ),
                   ],
                 ),
@@ -319,12 +319,12 @@ class _ProjectCard extends StatelessWidget {
                   key: ValueKey('gig-actions-${project.id}'),
                   tooltip: 'More actions for ${_projectTitle(project)}',
                   onPressed: () => _showProjectActions(context, app, project),
-                  icon: const Icon(Icons.more_horiz),
+                  icon: Icon(Icons.more_horiz),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
+          Divider(height: 1),
           Row(
             children: [
               if (doorLaunch != null)
@@ -395,7 +395,7 @@ class _FeatureAction extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 17, color: Ep.accent),
+              Icon(icon, size: 17, color: context.epColors.accent),
               const SizedBox(width: 6),
               Text(label, style: Theme.of(context).textTheme.epChipLabel),
             ],
@@ -559,11 +559,11 @@ Future<bool> _confirm(BuildContext context, String title, String body) async =>
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('KEEP'),
+            child: Text('KEEP'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('CONFIRM'),
+            child: Text('CONFIRM'),
           ),
         ],
       ),

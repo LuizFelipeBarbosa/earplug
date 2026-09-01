@@ -64,6 +64,55 @@ void main() {
       }
     });
 
+    test('uses the specified warm light palette and semantic mappings', () {
+      final theme = buildEpTheme(Brightness.light);
+      final palette = theme.extension<EpPalette>()!;
+
+      expect(palette.background, const Color(0xFFF6F5F1));
+      expect(palette.surface, const Color(0xFFFFFFFF));
+      expect(palette.surfaceRaised, const Color(0xFFFCFCFA));
+      expect(palette.surfaceSelected, const Color(0xFFE7EBFF));
+      expect(palette.surfaceDisabled, const Color(0xFFE5E7EC));
+      expect(palette.border, const Color(0xFFCDD1DA));
+      expect(palette.contentPrimary, const Color(0xFF16171C));
+      expect(palette.contentSecondary, const Color(0xFF525761));
+      expect(palette.contentDisabled, const Color(0xFF5E6470));
+      expect(palette.brand, const Color(0xFF1435F0));
+      expect(palette.success, const Color(0xFF087A5B));
+      expect(palette.warning, const Color(0xFF6F6500));
+      expect(palette.destructive, const Color(0xFFB4232D));
+      expect(theme.scaffoldBackgroundColor, palette.background);
+      expect(theme.colorScheme.surface, palette.surface);
+      expect(theme.colorScheme.error, palette.destructive);
+      expect(theme.textTheme.epBody.color, palette.contentPrimary);
+    });
+
+    test('semantic light text and status colors meet WCAG AA', () {
+      const palette = EpPalette.lightMode;
+      final pairs = <(Color, Color)>[
+        (palette.contentPrimary, palette.background),
+        (palette.contentPrimary, palette.surface),
+        (palette.contentSecondary, palette.surface),
+        (palette.contentDisabled, palette.surfaceDisabled),
+        (palette.contentDisabled, palette.surfaceSelected),
+        (palette.brand, palette.background),
+        (palette.success, palette.background),
+        (palette.warning, palette.background),
+        (palette.destructive, palette.background),
+        (Colors.white, palette.brand),
+      ];
+
+      for (final (foreground, background) in pairs) {
+        expect(
+          _contrastRatio(foreground, background),
+          greaterThanOrEqualTo(4.5),
+          reason:
+              '${foreground.toARGB32().toRadixString(16)} on '
+              '${background.toARGB32().toRadixString(16)}',
+        );
+      }
+    });
+
     test('dark surfaces remain visibly ordered from background to border', () {
       final luminance = [
         Ep.background,
@@ -269,13 +318,34 @@ void main() {
         ]),
       );
     });
+
+    testWidgets('logos keep their artwork dark and invert for light surfaces', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(const EpLogo.full(), brightness: Brightness.dark),
+      );
+      expect(find.byType(ColorFiltered), findsNothing);
+
+      await tester.pumpWidget(
+        _host(const EpLogo.full(), brightness: Brightness.light),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ColorFiltered), findsOne);
+      expect(find.byType(Image), findsOne);
+    });
   });
 }
 
-Widget _host(Widget child) => MaterialApp(
-  theme: buildEpTheme(),
-  home: Scaffold(body: Center(child: child)),
-);
+Widget _host(Widget child, {Brightness brightness = Brightness.dark}) =>
+    MaterialApp(
+      theme: buildEpTheme(brightness),
+      darkTheme: buildEpTheme(Brightness.dark),
+      themeMode: brightness == Brightness.dark
+          ? ThemeMode.dark
+          : ThemeMode.light,
+      home: Scaffold(body: Center(child: child)),
+    );
 
 Color _cardColor(WidgetTester tester, String key) {
   final material = tester.widget<Material>(

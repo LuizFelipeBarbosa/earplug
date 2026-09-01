@@ -272,7 +272,7 @@ class _StandardField extends StatelessWidget {
       minLines: minLines,
       maxLines: maxLines,
       style: Theme.of(context).textTheme.epBody,
-      decoration: epInputDecoration(hint).copyWith(
+      decoration: epInputDecoration(context, hint).copyWith(
         labelText: label,
         floatingLabelBehavior: FloatingLabelBehavior.always,
       ),
@@ -336,10 +336,10 @@ class _PostCreateRow extends StatelessWidget {
       button: true,
       enabled: enabled,
       child: Material(
-        color: Ep.surface,
+        color: context.epColors.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(11),
-          side: const BorderSide(color: Ep.border),
+          side: BorderSide(color: context.epColors.border),
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(11),
@@ -350,17 +350,24 @@ class _PostCreateRow extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               child: Row(
                 children: [
-                  Icon(icon, color: enabled ? Ep.volt : Ep.contentDisabled),
+                  Icon(
+                    icon,
+                    color: enabled
+                        ? context.epColors.volt
+                        : context.epColors.contentDisabled,
+                  ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       label,
                       style: Theme.of(context).textTheme.epLabel.copyWith(
-                        color: enabled ? Ep.contentPrimary : Ep.contentDisabled,
+                        color: enabled
+                            ? context.epColors.contentPrimary
+                            : context.epColors.contentDisabled,
                       ),
                     ),
                   ),
-                  const Icon(Icons.chevron_right, color: Ep.mute),
+                  Icon(Icons.chevron_right, color: context.epColors.mute),
                 ],
               ),
             ),
@@ -390,7 +397,10 @@ class _CreateBar extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Ep.background.withValues(alpha: 0), Ep.background],
+          colors: [
+            context.epColors.background.withValues(alpha: 0),
+            context.epColors.background,
+          ],
           stops: const [0, .34],
         ),
       ),
@@ -407,7 +417,9 @@ class _CreateBar extends StatelessWidget {
             style: epText(
               size: 11,
               weight: FontWeight.w700,
-              color: missing.isEmpty ? Ep.accent : Ep.contentSecondary,
+              color: missing.isEmpty
+                  ? context.epColors.accent
+                  : context.epColors.contentSecondary,
             ),
           ),
           const SizedBox(height: 9),
@@ -436,7 +448,7 @@ class _CreatedView extends StatelessWidget {
     final app = context.watch<AppState>();
     final profileUrl = publicWebDisplayUrl(app.nbShareSlug);
     return ColoredBox(
-      color: Ep.background,
+      color: context.epColors.background,
       child: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -449,7 +461,7 @@ class _CreatedView extends StatelessWidget {
                   size: 10.5,
                   weight: FontWeight.w900,
                   letterSpacing: 2,
-                  color: Ep.accent,
+                  color: context.epColors.accent,
                 ),
               ),
               const SizedBox(height: 18),
@@ -478,7 +490,10 @@ class _CreatedView extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 profileUrl,
-                style: epText(size: 12, color: Ep.contentSecondary),
+                style: epText(
+                  size: 12,
+                  color: context.epColors.contentSecondary,
+                ),
               ),
               const SizedBox(height: 18),
               SizedBox(
@@ -503,7 +518,7 @@ class _CreatedView extends StatelessWidget {
                     TextAction(
                       'NOT NOW',
                       onTap: app.openCreatedBand,
-                      color: Ep.contentSecondary,
+                      color: context.epColors.contentSecondary,
                     ),
                   ],
                 ),
@@ -517,7 +532,7 @@ class _CreatedView extends StatelessWidget {
                   TextAction(
                     'KEEP EDITING',
                     onTap: app.editCreatedBand,
-                    color: Ep.contentSecondary,
+                    color: context.epColors.contentSecondary,
                   ),
                   TextAction(
                     'SHARE PROFILE',
@@ -526,12 +541,12 @@ class _CreatedView extends StatelessWidget {
                       publicWebUrl(app.nbShareSlug),
                       successMessage: 'Link copied: $profileUrl',
                     ),
-                    color: Ep.contentSecondary,
+                    color: context.epColors.contentSecondary,
                   ),
                   TextAction(
                     'START ANOTHER',
                     onTap: app.makeAnotherBand,
-                    color: Ep.accent,
+                    color: context.epColors.accent,
                   ),
                 ],
               ),
@@ -563,7 +578,11 @@ class _UploadRecovery extends StatelessWidget {
               'ADDING $label…',
               style: epText(size: 11, weight: FontWeight.w800),
             )
-          : TextAction('RETRY $label', onTap: onRetry, color: Ep.accent),
+          : TextAction(
+              'RETRY $label',
+              onTap: onRetry,
+              color: context.epColors.accent,
+            ),
     );
   }
 }

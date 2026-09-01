@@ -40,9 +40,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-      decoration: const BoxDecoration(
-        color: Ep.background,
-        border: Border(bottom: BorderSide(color: Ep.border)),
+      decoration: BoxDecoration(
+        color: context.epColors.background,
+        border: Border(bottom: BorderSide(color: context.epColors.border)),
       ),
       child: Column(
         children: [
@@ -136,24 +136,24 @@ class _SegmentedToggle extends StatelessWidget {
       showSelectedIcon: false,
       onSelectionChanged: (selection) => app.setMapMode(selection.single),
       style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(56, 48)),
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(horizontal: 10),
-        ),
+        minimumSize: WidgetStatePropertyAll(Size(56, 48)),
+        padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10)),
         textStyle: WidgetStatePropertyAll(
           Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .8),
         ),
         backgroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? Ep.surfaceSelected
-              : Ep.surface,
+              ? context.epColors.surfaceSelected
+              : context.epColors.surface,
         ),
         foregroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? Ep.contentPrimary
-              : Ep.contentSecondary,
+              ? context.epColors.contentPrimary
+              : context.epColors.contentSecondary,
         ),
-        side: const WidgetStatePropertyAll(BorderSide(color: Ep.border)),
+        side: WidgetStatePropertyAll(
+          BorderSide(color: context.epColors.border),
+        ),
       ),
     );
   }
@@ -172,9 +172,9 @@ class _CityPill extends StatelessWidget {
       style: OutlinedButton.styleFrom(
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.symmetric(horizontal: 11),
-        foregroundColor: Ep.contentPrimary,
+        foregroundColor: context.epColors.contentPrimary,
       ),
-      icon: const Icon(Icons.location_on, color: Ep.accent, size: 18),
+      icon: Icon(Icons.location_on, color: context.epColors.accent, size: 18),
       label: Text(
         '${app.locationLabel} ▾',
         maxLines: 1,
@@ -204,7 +204,7 @@ class _FeedList extends StatelessWidget {
             '${feed.length} $gigNoun NEAR YOU · LOCAL ORDER',
             style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1.2,
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
             ),
           ),
           const SizedBox(height: 10),
@@ -264,7 +264,7 @@ class _FeedSection extends StatelessWidget {
               'DISCOVERY BOOST · COMPLETE LISTING',
               key: ValueKey('discovery-boost-${gig.id}'),
               style: Theme.of(context).textTheme.epMeta.copyWith(
-                color: Ep.accent,
+                color: context.epColors.accent,
                 fontSize: 11,
                 fontWeight: FontWeight.w900,
                 letterSpacing: .45,
@@ -310,7 +310,7 @@ class _DiscoveryEmptyState extends StatelessWidget {
             '0 GIGS NEAR YOU · LOCAL ORDER',
             style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1,
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
             ),
           ),
           const SizedBox(height: 10),
@@ -319,9 +319,9 @@ class _DiscoveryEmptyState extends StatelessWidget {
                 ? 'No upcoming gigs yet.\nWhen a band books one, it shows up here.'
                 : 'Nothing matches those filters.\nLoosen them up and see what is out there.',
             textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+            style: Theme.of(context).textTheme.epBody.copyWith(
+              color: context.epColors.contentSecondary,
+            ),
           ),
           if (!noGigs) ...[
             const SizedBox(height: 14),
@@ -426,10 +426,8 @@ class _RecoveryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = ButtonStyle(
-      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-      padding: const WidgetStatePropertyAll(
-        EdgeInsets.symmetric(horizontal: 11),
-      ),
+      minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+      padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 11)),
       textStyle: WidgetStatePropertyAll(
         Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .4),
       ),

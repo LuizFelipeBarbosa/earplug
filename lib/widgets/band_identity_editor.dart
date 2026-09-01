@@ -64,7 +64,7 @@ class BandIdentityHeader extends StatelessWidget {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Ep.border),
+          border: Border.all(color: context.epColors.border),
         ),
         child: Stack(
           fit: StackFit.expand,
@@ -210,7 +210,7 @@ class BandIdentityHeader extends StatelessWidget {
                                                       color: Colors.white,
                                                     ),
                                               )
-                                            : const Icon(
+                                            : Icon(
                                                 Icons.photo_camera_outlined,
                                                 color: Colors.white,
                                                 size: 16,
@@ -298,7 +298,7 @@ class BandIdentityTextField extends StatelessWidget {
         fontSize: minLines > 1 ? 18 : 21,
         height: 1.25,
       ),
-      decoration: epInputDecoration(hint).copyWith(
+      decoration: epInputDecoration(context, hint).copyWith(
         labelText: required ? '$label · REQUIRED' : label,
         floatingLabelBehavior: FloatingLabelBehavior.always,
         contentPadding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
@@ -333,8 +333,8 @@ class BandGenreEditor extends StatelessWidget {
       key: const ValueKey('band-genres-field'),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Ep.surface,
-        border: Border.all(color: Ep.border),
+        color: context.epColors.surface,
+        border: Border.all(color: context.epColors.border),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -343,7 +343,9 @@ class BandGenreEditor extends StatelessWidget {
           Text(
             'GENRES · REQUIRED',
             style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              color: genres.isEmpty ? Ep.warning : Ep.contentSecondary,
+              color: genres.isEmpty
+                  ? context.epColors.warning
+                  : context.epColors.contentSecondary,
               letterSpacing: 1.1,
             ),
           ),
@@ -380,13 +382,13 @@ class BandGenreEditor extends StatelessWidget {
                     autofocus: true,
                     onSubmitted: (_) => onAddCustomGenre(),
                     style: Theme.of(context).textTheme.epBody,
-                    decoration: epInputDecoration('Another genre'),
+                    decoration: epInputDecoration(context, 'Another genre'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 FilledButton(
                   onPressed: enabled ? onAddCustomGenre : null,
-                  child: const Text('ADD'),
+                  child: Text('ADD'),
                 ),
               ],
             ),
@@ -431,11 +433,7 @@ class _EditLabel extends StatelessWidget {
               ),
             )
           else
-            const Icon(
-              Icons.photo_camera_outlined,
-              size: 17,
-              color: Colors.white,
-            ),
+            Icon(Icons.photo_camera_outlined, size: 17, color: Colors.white),
           const SizedBox(width: 7),
           Text(
             label,

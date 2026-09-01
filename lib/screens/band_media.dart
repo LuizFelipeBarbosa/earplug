@@ -37,7 +37,7 @@ class BandMediaScreen extends StatelessWidget {
     void explainAdminGate() => app.say(_adminGateMessage);
 
     return ColoredBox(
-      color: Ep.background,
+      color: context.epColors.background,
       child: Column(
         children: [
           _MediaHeader(itemCount: items.length, onBack: app.back),
@@ -168,8 +168,8 @@ class _MediaHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 12),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Ep.border)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.epColors.border)),
       ),
       child: Row(
         children: [
@@ -255,7 +255,9 @@ class _UploadAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = enabled ? Ep.contentPrimary : Ep.contentDisabled;
+    final color = enabled
+        ? context.epColors.contentPrimary
+        : context.epColors.contentDisabled;
     return EpCard(
       variant: enabled ? EpCardVariant.raised : EpCardVariant.disabled,
       onTap: onTap,
@@ -266,10 +268,17 @@ class _UploadAction extends StatelessWidget {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: enabled ? Ep.selected : Ep.surfaceDisabled,
+              color: enabled
+                  ? context.epColors.selected
+                  : context.epColors.surfaceDisabled,
               borderRadius: BorderRadius.circular(11),
             ),
-            child: Icon(icon, color: enabled ? Ep.accent : Ep.contentDisabled),
+            child: Icon(
+              icon,
+              color: enabled
+                  ? context.epColors.accent
+                  : context.epColors.contentDisabled,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -308,7 +317,9 @@ class _UploadTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final failed = upload.phase == MediaUploadPhase.failed;
     return EpCard(
-      borderColor: failed ? Ep.destructive : Ep.accent,
+      borderColor: failed
+          ? context.epColors.destructive
+          : context.epColors.accent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -321,12 +332,12 @@ class _UploadTile extends StatelessWidget {
                   height: 54,
                   child: upload.preview != null
                       ? Image.memory(upload.preview!, fit: BoxFit.cover)
-                      : const ColoredBox(
-                          color: Ep.surfaceRaised,
+                      : ColoredBox(
+                          color: context.epColors.surfaceRaised,
                           child: Center(
                             child: PlayTriangle(
                               size: 11,
-                              color: Ep.contentPrimary,
+                              color: context.epColors.contentPrimary,
                             ),
                           ),
                         ),
@@ -363,9 +374,9 @@ class _UploadTile extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               upload.error ?? 'Upload failed.',
-              style: Theme.of(
-                context,
-              ).textTheme.epCaption.copyWith(color: Ep.destructive),
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                color: context.epColors.destructive,
+              ),
             ),
             const SizedBox(height: 8),
             Row(
@@ -373,14 +384,14 @@ class _UploadTile extends StatelessWidget {
               children: [
                 TextAction(
                   'RETRY',
-                  color: Ep.accent,
+                  color: context.epColors.accent,
                   padding: _uploadActionPadding,
                   onTap: () => media.retryUpload(upload.id),
                 ),
                 const SizedBox(width: 18),
                 TextAction(
                   'DISCARD',
-                  color: Ep.contentSecondary,
+                  color: context.epColors.contentSecondary,
                   padding: _uploadActionPadding,
                   onTap: () => media.dismissUpload(upload.id),
                 ),
@@ -388,10 +399,10 @@ class _UploadTile extends StatelessWidget {
             ),
           ] else ...[
             const SizedBox(height: 11),
-            const LinearProgressIndicator(
+            LinearProgressIndicator(
               minHeight: 3,
-              color: Ep.accent,
-              backgroundColor: Ep.surfaceDisabled,
+              color: context.epColors.accent,
+              backgroundColor: context.epColors.surfaceDisabled,
             ),
           ],
         ],
@@ -440,7 +451,7 @@ class _VideoManageCard extends StatelessWidget {
                 children: [
                   BandVideoThumbnail(
                     media: item,
-                    fallback: const ColoredBox(color: Ep.surfaceRaised),
+                    fallback: ColoredBox(color: context.epColors.surfaceRaised),
                   ),
                   const DecoratedBox(
                     decoration: BoxDecoration(
@@ -452,7 +463,7 @@ class _VideoManageCard extends StatelessWidget {
                     ),
                   ),
                   const Center(
-                    child: PlayTriangle(size: 11, color: Ep.contentPrimary),
+                    child: PlayTriangle(size: 11, color: Colors.white),
                   ),
                 ],
               ),
@@ -502,7 +513,7 @@ class _VideoManageCard extends StatelessWidget {
               key: ValueKey('media-actions-${item.id}'),
               tooltip: 'Manage ${item.title}',
               onPressed: onManage,
-              icon: const Icon(Icons.more_horiz),
+              icon: Icon(Icons.more_horiz),
             ),
         ],
       ),
@@ -608,7 +619,7 @@ class _PhotoManageTile extends StatelessWidget {
                         backgroundColor: Colors.black.withValues(alpha: .72),
                         foregroundColor: Colors.white,
                       ),
-                      icon: const Icon(Icons.more_horiz),
+                      icon: Icon(Icons.more_horiz),
                     ),
                   ),
               ],
@@ -624,7 +635,7 @@ class _PhotoManageTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.epCaption.copyWith(
-                    color: Ep.contentPrimary,
+                    color: context.epColors.contentPrimary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
@@ -651,12 +662,12 @@ class _PhotoSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final placeholder = ColoredBox(
-      color: Ep.surface,
+      color: context.epColors.surface,
       child: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.photo_outlined, color: Ep.contentDisabled),
+            Icon(Icons.photo_outlined, color: context.epColors.contentDisabled),
             if (placeholderLabel != null) ...[
               const SizedBox(height: 6),
               Text(
@@ -698,7 +709,7 @@ class _EmptyMediaState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Column(
         children: [
-          Icon(icon, color: Ep.contentDisabled),
+          Icon(icon, color: context.epColors.contentDisabled),
           const SizedBox(height: 10),
           Text(title, style: Theme.of(context).textTheme.epSectionHeading),
           const SizedBox(height: 6),
@@ -709,7 +720,11 @@ class _EmptyMediaState extends StatelessWidget {
           ),
           if (actionLabel != null) ...[
             const SizedBox(height: 12),
-            TextAction(actionLabel!, onTap: onAction, color: Ep.accent),
+            TextAction(
+              actionLabel!,
+              onTap: onAction,
+              color: context.epColors.accent,
+            ),
           ],
         ],
       ),
@@ -747,7 +762,7 @@ class _LoadFailure extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return EpCard(
-      borderColor: Ep.warning,
+      borderColor: context.epColors.warning,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -758,7 +773,7 @@ class _LoadFailure extends StatelessWidget {
           const SizedBox(height: 9),
           Text(message, style: Theme.of(context).textTheme.epCaption),
           const SizedBox(height: 10),
-          TextAction('RETRY', onTap: onRetry, color: Ep.accent),
+          TextAction('RETRY', onTap: onRetry, color: context.epColors.accent),
         ],
       ),
     );
@@ -822,10 +837,10 @@ class _ConfirmRemoveSheet extends StatelessWidget {
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-        decoration: const BoxDecoration(
-          color: Ep.raised,
+        decoration: BoxDecoration(
+          color: context.epColors.raised,
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          border: Border(top: BorderSide(color: Ep.border)),
+          border: Border(top: BorderSide(color: context.epColors.border)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -836,7 +851,7 @@ class _ConfirmRemoveSheet extends StatelessWidget {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Ep.mute,
+                  color: context.epColors.mute,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
@@ -855,18 +870,20 @@ class _ConfirmRemoveSheet extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             OutlinedButton(
-              style: OutlinedButton.styleFrom(foregroundColor: Ep.destructive),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: context.epColors.destructive,
+              ),
               onPressed: () async {
                 await onDelete();
                 if (!context.mounted) return;
                 Navigator.pop(context);
               },
-              child: const Text('DELETE'),
+              child: Text('DELETE'),
             ),
             const SizedBox(height: 8),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('KEEP'),
+              child: Text('KEEP'),
             ),
           ],
         ),

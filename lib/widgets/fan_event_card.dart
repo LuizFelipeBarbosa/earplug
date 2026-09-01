@@ -74,7 +74,7 @@ class FanEventCard extends StatelessWidget {
                         'DISCOVERY BOOST · COMPLETE LISTING',
                         key: ValueKey('discovery-boost-${gig.id}'),
                         style: Theme.of(context).textTheme.epMeta.copyWith(
-                          color: Ep.accent,
+                          color: context.epColors.accent,
                           fontSize: 11,
                           fontWeight: FontWeight.w900,
                           letterSpacing: .45,
@@ -94,9 +94,9 @@ class FanEventCard extends StatelessWidget {
                     const SizedBox(height: 5),
                     Text(
                       '${gig.dateShort} · DOORS ${_doorsTime(gig.time)}',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.epMeta.copyWith(color: Ep.accent),
+                      style: Theme.of(context).textTheme.epMeta.copyWith(
+                        color: context.epColors.accent,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     Text(
@@ -210,7 +210,7 @@ class FanEventCard extends StatelessWidget {
             ),
           ),
           Container(
-            color: Ep.selected,
+            color: context.epColors.selected,
             padding: const EdgeInsets.fromLTRB(13, 12, 13, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -219,7 +219,7 @@ class FanEventCard extends StatelessWidget {
                   '${gig.dateShort} · DOORS ${_doorsTime(gig.time)}',
                   style: Theme.of(
                     context,
-                  ).textTheme.epLabel.copyWith(color: Ep.volt),
+                  ).textTheme.epLabel.copyWith(color: context.epColors.volt),
                 ),
                 const SizedBox(height: 3),
                 Text(
@@ -232,7 +232,7 @@ class FanEventCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(
                     context,
-                  ).textTheme.epMeta.copyWith(color: Ep.ink),
+                  ).textTheme.epMeta.copyWith(color: context.epColors.ink),
                 ),
                 const SizedBox(height: 8),
                 Wrap(
@@ -297,14 +297,14 @@ class _AgeBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        border: Border.all(color: Ep.border),
+        border: Border.all(color: context.epColors.border),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         label.toUpperCase(),
         style: Theme.of(context).textTheme.epChipLabel.copyWith(
           fontSize: 11,
-          color: Ep.contentSecondary,
+          color: context.epColors.contentSecondary,
         ),
       ),
     );
@@ -372,9 +372,9 @@ class _IconAction extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onTap,
       style: ButtonStyle(
-        fixedSize: const WidgetStatePropertyAll(Size.square(48)),
+        fixedSize: WidgetStatePropertyAll(Size.square(48)),
         foregroundColor: WidgetStatePropertyAll(
-          active ? Ep.accent : Ep.contentSecondary,
+          active ? context.epColors.accent : context.epColors.contentSecondary,
         ),
       ),
       icon: Icon(icon, size: 19),
@@ -397,10 +397,8 @@ class _TicketAction extends StatelessWidget {
         ? () => _openTickets(context, app, gig)
         : () => going ? app.toggleRsvp(gig.id) : app.requestRsvp(gig.id);
     final style = ButtonStyle(
-      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-      padding: const WidgetStatePropertyAll(
-        EdgeInsets.symmetric(horizontal: 11),
-      ),
+      minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+      padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 11)),
       textStyle: WidgetStatePropertyAll(
         Theme.of(context).textTheme.epChipLabel.copyWith(fontSize: 11),
       ),

@@ -14,7 +14,7 @@ class BandJoinScreen extends StatelessWidget {
     final app = context.watch<AppState>();
 
     return ColoredBox(
-      color: Ep.background,
+      color: context.epColors.background,
       child: SafeArea(
         child: Column(
           children: [
@@ -33,7 +33,7 @@ class BandJoinScreen extends StatelessWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, color: Ep.border),
+            Divider(height: 1, color: context.epColors.border),
             Expanded(
               child: Center(
                 child: SingleChildScrollView(
@@ -113,7 +113,7 @@ class _JoinLoading extends StatelessWidget {
             size: 11,
             weight: FontWeight.w900,
             letterSpacing: 1,
-            color: Ep.contentSecondary,
+            color: context.epColors.contentSecondary,
           ),
         ),
       ],
@@ -153,7 +153,11 @@ class _JoinConfirmation extends StatelessWidget {
           'You were invited to become a band member. Members can return to the '
           'band dashboard and help manage gigs and media.',
           textAlign: TextAlign.center,
-          style: epText(size: 13, color: Ep.contentSecondary, height: 1.5),
+          style: epText(
+            size: 13,
+            color: context.epColors.contentSecondary,
+            height: 1.5,
+          ),
         ),
         const SizedBox(height: 12),
         Text(
@@ -161,7 +165,11 @@ class _JoinConfirmation extends StatelessWidget {
               ? 'You will only join after you confirm below.'
               : 'Sign in first, then return here to confirm. You will not join automatically.',
           textAlign: TextAlign.center,
-          style: epText(size: 11, color: Ep.contentDisabled, height: 1.4),
+          style: epText(
+            size: 11,
+            color: context.epColors.contentDisabled,
+            height: 1.4,
+          ),
         ),
         const SizedBox(height: 22),
         EpButton(
@@ -195,7 +203,7 @@ class _JoinAccepted extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.check_circle, size: 62, color: Ep.accent),
+        Icon(Icons.check_circle, size: 62, color: context.epColors.accent),
         const SizedBox(height: 18),
         Text(
           invite == null
@@ -208,7 +216,7 @@ class _JoinAccepted extends StatelessWidget {
         Text(
           'Your membership is active.',
           textAlign: TextAlign.center,
-          style: epText(size: 12.5, color: Ep.contentSecondary),
+          style: epText(size: 12.5, color: context.epColors.contentSecondary),
         ),
         const SizedBox(height: 22),
         EpButton(
@@ -233,7 +241,11 @@ class _JoinError extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.link_off, size: 54, color: Ep.contentSecondary),
+        Icon(
+          Icons.link_off,
+          size: 54,
+          color: context.epColors.contentSecondary,
+        ),
         const SizedBox(height: 16),
         Text(
           'Invitation unavailable',
@@ -244,7 +256,11 @@ class _JoinError extends StatelessWidget {
         Text(
           message,
           textAlign: TextAlign.center,
-          style: epText(size: 12.5, color: Ep.contentSecondary, height: 1.45),
+          style: epText(
+            size: 12.5,
+            color: context.epColors.contentSecondary,
+            height: 1.45,
+          ),
         ),
         if (onRetry != null) ...[
           const SizedBox(height: 20),
@@ -273,7 +289,7 @@ class _InviteAvatar extends StatelessWidget {
       ),
       child: Text(
         invite.initials,
-        style: epDisplay(size: 27, color: Ep.background),
+        style: epDisplay(size: 27, color: context.epColors.background),
       ),
     );
   }

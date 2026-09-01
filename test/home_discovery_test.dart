@@ -134,6 +134,7 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester, home: const Scaffold(body: HomeScreen()));
+    await _expandClusterContaining(tester, 'venue-marker-v1');
 
     final button = find.byKey(const ValueKey('map-marker-button-v1'));
     expect(tester.getSize(button), const Size.square(48));
@@ -165,7 +166,10 @@ void main() {
     final pinDecoration = decorations.firstWhere(
       (decoration) => decoration.shape == BoxShape.circle,
     );
-    expect(pinDecoration.border, Border.all(color: Ep.accent, width: 3.5));
+    expect(
+      pinDecoration.border,
+      Border.all(color: Ep.contentPrimary, width: 2),
+    );
   });
 
   testWidgets('active complete listings carry the transparent boost label', (
@@ -216,6 +220,7 @@ void main() {
       home: const Scaffold(body: HomeScreen()),
     );
 
+    await _expandClusterContaining(tester, 'gig-marker-g1');
     await tester.tap(find.byKey(const Key('gig-marker-g1')));
     await tester.pumpAndSettle();
     expect(find.text('OPEN GIG →'), findsOne);
@@ -236,6 +241,15 @@ void main() {
       home: const Scaffold(body: HomeScreen()),
     );
 
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            (widget.properties.label?.endsWith(' venues') ?? false),
+      ),
+      findsWidgets,
+    );
+    await _expandClusterContaining(tester, 'venue-marker-v1');
     expect(find.byKey(const Key('venue-marker-v1')), findsOne);
     expect(find.byKey(const Key('gig-marker-g2')), findsNothing);
     expect(find.byKey(const Key('gig-marker-g7')), findsNothing);
@@ -344,6 +358,25 @@ void main() {
     expect(harness.app.filters.activeCount, 0);
     expect(harness.app.feed, isNotEmpty);
   });
+}
+
+Future<void> _expandClusterContaining(
+  WidgetTester tester,
+  String memberKey,
+) async {
+  final marker = find.byKey(Key(memberKey));
+  for (var attempt = 0; attempt < 4 && marker.evaluate().isEmpty; attempt++) {
+    final cluster = find.byWidgetPredicate((widget) {
+      final key = widget.key;
+      return key is ValueKey<String> &&
+          key.value.startsWith('venue-cluster-') &&
+          key.value.contains(memberKey);
+    });
+    expect(cluster, findsWidgets);
+    await tester.tap(cluster.first);
+    await tester.pumpAndSettle();
+  }
+  expect(marker, findsOne);
 }
 
 class _SuccessfulLocationService implements LocationService {

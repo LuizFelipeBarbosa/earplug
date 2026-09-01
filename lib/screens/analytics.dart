@@ -38,13 +38,13 @@ class AnalyticsScreen extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             _windowLabel(recap),
-            style: Theme.of(
-              context,
-            ).textTheme.epSection.copyWith(color: Ep.contentSecondary),
+            style: Theme.of(context).textTheme.epSection.copyWith(
+              color: context.epColors.contentSecondary,
+            ),
           ),
         ],
         const SizedBox(height: 14),
-        ..._bodyFor(app, band, recap, error),
+        ..._bodyFor(context, app, band, recap, error),
       ],
     );
   }
@@ -60,6 +60,7 @@ class AnalyticsScreen extends StatelessWidget {
   }
 
   List<Widget> _bodyFor(
+    BuildContext context,
     AppState app,
     Band band,
     BandRecap? recap,
@@ -84,16 +85,16 @@ class AnalyticsScreen extends StatelessWidget {
       const SizedBox(height: 14),
       _contextGrid(recap),
       const SizedBox(height: 14),
-      _newVsReturning(recap),
+      _newVsReturning(context, recap),
       const SizedBox(height: 14),
-      _whenFansCommit(recap),
+      _whenFansCommit(context, recap),
       const SizedBox(height: 14),
       _roomsThatDraw(recap),
       const SizedBox(height: 14),
       _bestNights(recap),
       const SizedBox(height: 14),
       _repeatFans(recap),
-      ..._footnotes(recap),
+      ..._footnotes(context, recap),
     ];
   }
 
@@ -103,7 +104,7 @@ class AnalyticsScreen extends StatelessWidget {
         'Loading fan analytics…',
         style: Theme.of(
           context,
-        ).textTheme.epCaption.copyWith(color: Ep.contentDisabled),
+        ).textTheme.epCaption.copyWith(color: context.epColors.contentDisabled),
       ),
     );
   }
@@ -115,9 +116,9 @@ class AnalyticsScreen extends StatelessWidget {
         children: [
           Text(
             "Couldn't load fan analytics. $error",
-            style: Theme.of(
-              context,
-            ).textTheme.epCaption.copyWith(color: Ep.contentDisabled),
+            style: Theme.of(context).textTheme.epCaption.copyWith(
+              color: context.epColors.contentDisabled,
+            ),
           ),
           const SizedBox(height: 10),
           SizedBox(
@@ -147,7 +148,7 @@ class AnalyticsScreen extends StatelessWidget {
           textAlign: TextAlign.center,
           style: Theme.of(
             context,
-          ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+          ).textTheme.epBody.copyWith(color: context.epColors.contentSecondary),
         ),
       ),
     );
@@ -162,7 +163,7 @@ class AnalyticsScreen extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.shield_outlined, color: Ep.volt, size: 20),
+            Icon(Icons.shield_outlined, color: context.epColors.volt, size: 20),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
@@ -321,7 +322,7 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  Widget _newVsReturning(BandRecap recap) {
+  Widget _newVsReturning(BuildContext context, BandRecap recap) {
     return _analyticsSection(
       key: const Key('analytics-new-returning'),
       title: 'NEW VS RETURNING',
@@ -339,7 +340,7 @@ class AnalyticsScreen extends StatelessWidget {
                       style: epText(
                         size: 11,
                         weight: FontWeight.w800,
-                        color: Ep.contentSecondary,
+                        color: context.epColors.contentSecondary,
                       ),
                     ),
                     const SizedBox(height: 7),
@@ -354,14 +355,17 @@ class AnalyticsScreen extends StatelessWidget {
                     '“New” means new within this analyzed window, not new-ever. '
                     'The oldest analyzed show reads as entirely new because '
                     'earlier shows were outside the measurement window.',
-                    style: epText(size: 11, color: Ep.contentDisabled),
+                    style: epText(
+                      size: 11,
+                      color: context.epColors.contentDisabled,
+                    ),
                   ),
               ],
             ),
     );
   }
 
-  Widget _whenFansCommit(BandRecap recap) {
+  Widget _whenFansCommit(BuildContext context, BandRecap recap) {
     final leadTime = recap.leadTime;
     final maxCount = leadTime.buckets.fold<int>(
       0,
@@ -389,13 +393,19 @@ class AnalyticsScreen extends StatelessWidget {
                   Text(
                     'Median RSVP: ${_formatNumber(leadTime.medianDays!)} days '
                     'before the show.',
-                    style: epText(size: 11, color: Ep.contentSecondary),
+                    style: epText(
+                      size: 11,
+                      color: context.epColors.contentSecondary,
+                    ),
                   ),
                 if (leadTime.unmeasurable > 0) ...[
                   const SizedBox(height: 12),
                   Text(
                     _unmeasurableLeadTimeNote(leadTime.unmeasurable),
-                    style: epText(size: 11, color: Ep.contentDisabled),
+                    style: epText(
+                      size: 11,
+                      color: context.epColors.contentDisabled,
+                    ),
                   ),
                 ],
               ],
@@ -484,7 +494,7 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  List<Widget> _footnotes(BandRecap recap) {
+  List<Widget> _footnotes(BuildContext context, BandRecap recap) {
     final notes = <String>[
       if (recap.window.truncated)
         'Only the most recent shows are analyzed here; older shows exist '
@@ -499,7 +509,11 @@ class AnalyticsScreen extends StatelessWidget {
       const SizedBox(height: 14),
       Text(
         notes.join('\n'),
-        style: epText(size: 11, color: Ep.contentDisabled, height: 1.5),
+        style: epText(
+          size: 11,
+          color: context.epColors.contentDisabled,
+          height: 1.5,
+        ),
       ),
     ];
   }
@@ -654,13 +668,13 @@ class _TurnoutChart extends StatelessWidget {
             right: 0,
             child: Row(
               children: [
-                const Expanded(child: Divider(color: Ep.accent)),
+                Expanded(child: Divider(color: context.epColors.accent)),
                 const SizedBox(width: 6),
                 Text(
                   'AVG ${AnalyticsScreen._formatNumber(average)}',
                   style: Theme.of(
                     context,
-                  ).textTheme.epMeta.copyWith(color: Ep.accent),
+                  ).textTheme.epMeta.copyWith(color: context.epColors.accent),
                 ),
               ],
             ),
@@ -694,7 +708,9 @@ class _TurnoutChart extends StatelessWidget {
                                             .textTheme
                                             .epMeta
                                             .copyWith(
-                                              color: Ep.contentPrimary,
+                                              color: context
+                                                  .epColors
+                                                  .contentPrimary,
                                               fontWeight: FontWeight.w900,
                                             ),
                                       ),
@@ -707,7 +723,7 @@ class _TurnoutChart extends StatelessWidget {
                                               1,
                                             ) *
                                             (plotHeight - 40),
-                                        decoration: const BoxDecoration(
+                                        decoration: BoxDecoration(
                                           color: Ep.brand,
                                           borderRadius: BorderRadius.vertical(
                                             top: Radius.circular(4),
@@ -769,8 +785,8 @@ class _AnalyticsStackedBar extends StatelessWidget {
             height: 8,
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: Ep.surfaceDisabled,
-              border: Border.all(color: Ep.border),
+              color: context.epColors.surfaceDisabled,
+              border: Border.all(color: context.epColors.border),
               borderRadius: BorderRadius.circular(99),
             ),
             child: total == 0
@@ -785,7 +801,7 @@ class _AnalyticsStackedBar extends StatelessWidget {
                       if (returningFans > 0)
                         Expanded(
                           flex: returningFlex,
-                          child: const ColoredBox(color: Ep.accent),
+                          child: ColoredBox(color: context.epColors.accent),
                         ),
                     ],
                   ),
@@ -796,7 +812,10 @@ class _AnalyticsStackedBar extends StatelessWidget {
             runSpacing: 5,
             children: [
               _ChartLegend(color: Ep.brand, label: 'NEW $newFans'),
-              _ChartLegend(color: Ep.accent, label: 'RETURNING $returningFans'),
+              _ChartLegend(
+                color: context.epColors.accent,
+                label: 'RETURNING $returningFans',
+              ),
             ],
           ),
         ],
@@ -857,16 +876,16 @@ class _ContextTile extends StatelessWidget {
           children: [
             Text(
               label,
-              style: Theme.of(
-                context,
-              ).textTheme.epChipLabel.copyWith(color: Ep.contentSecondary),
+              style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                color: context.epColors.contentSecondary,
+              ),
             ),
             const SizedBox(height: 8),
             if (suppressed) ...[
               Text(
                 'SUPPRESSED',
                 style: Theme.of(context).textTheme.epSectionHeading.copyWith(
-                  color: Ep.contentDisabled,
+                  color: context.epColors.contentDisabled,
                 ),
               ),
               const SizedBox(height: 4),
@@ -910,9 +929,9 @@ class _SuppressedBreakdown extends StatelessWidget {
           children: [
             Text(
               'SUPPRESSED',
-              style: Theme.of(
-                context,
-              ).textTheme.epChipLabel.copyWith(color: Ep.contentDisabled),
+              style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                color: context.epColors.contentDisabled,
+              ),
             ),
             const SizedBox(height: 4),
             const EpSuppressedNote(),

@@ -401,9 +401,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   child: Text(
                     error,
                     key: const Key('edit-profile-error'),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epBody.copyWith(color: Ep.destructive),
+                    style: Theme.of(context).textTheme.epBody.copyWith(
+                      color: context.epColors.destructive,
+                    ),
                   ),
                 ),
               ],
@@ -518,12 +518,12 @@ class _HomeLocationEditor extends StatelessWidget {
           onSubmitted: (_) => focusNode.unfocus(),
           decoration: InputDecoration(
             hintText: 'Type a city or location',
-            hintStyle: Theme.of(
-              context,
-            ).textTheme.epBody.copyWith(color: Ep.contentDisabled),
-            prefixIcon: const Icon(
+            hintStyle: Theme.of(context).textTheme.epBody.copyWith(
+              color: context.epColors.contentDisabled,
+            ),
+            prefixIcon: Icon(
               Icons.location_city_outlined,
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
               size: 20,
             ),
             suffixIcon: query.isEmpty
@@ -532,7 +532,7 @@ class _HomeLocationEditor extends StatelessWidget {
                     key: const Key('clear-home-location'),
                     tooltip: 'Clear home location',
                     onPressed: enabled ? onClear : null,
-                    icon: const Icon(Icons.close, size: 18),
+                    icon: Icon(Icons.close, size: 18),
                   ),
             filled: false,
             border: InputBorder.none,
@@ -544,8 +544,8 @@ class _HomeLocationEditor extends StatelessWidget {
         ),
         if (suggestions.isNotEmpty)
           DecoratedBox(
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Ep.border)),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: context.epColors.border)),
             ),
             child: Column(
               children: [
@@ -554,19 +554,19 @@ class _HomeLocationEditor extends StatelessWidget {
                     key: ValueKey('home-location-suggestion-${city.name}'),
                     onPressed: () => onSelected(city),
                     style: TextButton.styleFrom(
-                      foregroundColor: Ep.contentPrimary,
+                      foregroundColor: context.epColors.contentPrimary,
                       minimumSize: const Size.fromHeight(48),
                       alignment: Alignment.centerLeft,
                       padding: const EdgeInsets.symmetric(horizontal: 14),
                       shape: const RoundedRectangleBorder(),
                     ),
-                    icon: const Icon(Icons.place_outlined, size: 18),
+                    icon: Icon(Icons.place_outlined, size: 18),
                     label: Text(city.autocompleteLabel),
                   ),
               ],
             ),
           ),
-        const Divider(color: Ep.border, height: 1),
+        Divider(color: context.epColors.border, height: 1),
         if (hasNoResults)
           Padding(
             padding: const EdgeInsets.only(top: 10),
@@ -585,18 +585,18 @@ class _HomeLocationEditor extends StatelessWidget {
               key: const Key('use-current-home-location'),
               onPressed: enabled ? onUseCurrentLocation : null,
               style: TextButton.styleFrom(
-                foregroundColor: Ep.contentPrimary,
+                foregroundColor: context.epColors.contentPrimary,
                 minimumSize: const Size(48, 48),
               ),
               icon: locating
-                  ? const SizedBox.square(
+                  ? SizedBox.square(
                       dimension: 18,
                       child: CircularProgressIndicator(
-                        color: Ep.contentSecondary,
+                        color: context.epColors.contentSecondary,
                         strokeWidth: 2,
                       ),
                     )
-                  : const Icon(Icons.my_location, size: 19),
+                  : Icon(Icons.my_location, size: 19),
               label: Text(
                 locating ? 'FINDING YOUR LOCATION…' : 'USE CURRENT LOCATION',
               ),
@@ -604,9 +604,9 @@ class _HomeLocationEditor extends StatelessWidget {
             if (selectedLocation != null && query.isNotEmpty)
               Text(
                 'SELECTED',
-                style: Theme.of(
-                  context,
-                ).textTheme.epChipLabel.copyWith(color: Ep.contentSecondary),
+                style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                  color: context.epColors.contentSecondary,
+                ),
               ),
           ],
         ),
@@ -625,9 +625,9 @@ class _HomeLocationEditor extends StatelessWidget {
             child: Text(
               message,
               key: const Key('home-location-validation'),
-              style: Theme.of(
-                context,
-              ).textTheme.epCaption.copyWith(color: Ep.destructive),
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                color: context.epColors.destructive,
+              ),
             ),
           ),
         if (failure case final locationFailure?) ...[
@@ -636,7 +636,7 @@ class _HomeLocationEditor extends StatelessWidget {
             key: const Key('home-location-error'),
             style: Theme.of(
               context,
-            ).textTheme.epCaption.copyWith(color: Ep.destructive),
+            ).textTheme.epCaption.copyWith(color: context.epColors.destructive),
           ),
           Wrap(
             spacing: 4,
@@ -646,10 +646,10 @@ class _HomeLocationEditor extends StatelessWidget {
                 key: const Key('retry-current-home-location'),
                 onPressed: locating ? null : onRetry,
                 style: TextButton.styleFrom(
-                  foregroundColor: Ep.contentPrimary,
+                  foregroundColor: context.epColors.contentPrimary,
                   minimumSize: const Size(48, 48),
                 ),
-                child: const Text('RETRY'),
+                child: Text('RETRY'),
               ),
               if (locationFailure.reason ==
                       LocationFailureReason.servicesDisabled ||
@@ -659,7 +659,7 @@ class _HomeLocationEditor extends StatelessWidget {
                   key: const Key('open-home-location-settings'),
                   onPressed: onRecovery,
                   style: TextButton.styleFrom(
-                    foregroundColor: Ep.contentPrimary,
+                    foregroundColor: context.epColors.contentPrimary,
                     minimumSize: const Size(48, 48),
                   ),
                   child: Text(
@@ -701,8 +701,8 @@ class _FanIdentityPreview extends StatelessWidget {
       key: const Key('fan-identity-preview'),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Ep.surfaceRaised,
-        border: Border.all(color: Ep.border),
+        color: context.epColors.surfaceRaised,
+        border: Border.all(color: context.epColors.border),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -711,7 +711,7 @@ class _FanIdentityPreview extends StatelessWidget {
           Text(
             'IDENTITY PREVIEW',
             style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
               letterSpacing: 1.3,
             ),
           ),
@@ -753,7 +753,7 @@ class _FanIdentityPreview extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.epDisplay.copyWith(
-                        color: Ep.contentPrimary,
+                        color: context.epColors.contentPrimary,
                         fontSize: 25,
                       ),
                     ),
@@ -764,7 +764,7 @@ class _FanIdentityPreview extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.epBody.copyWith(
-                        color: Ep.contentSecondary,
+                        color: context.epColors.contentSecondary,
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
@@ -772,7 +772,7 @@ class _FanIdentityPreview extends StatelessWidget {
                     TextAction(
                       'CHANGE PROFILE IMAGE',
                       key: const Key('choose-fan-avatar'),
-                      color: Ep.contentPrimary,
+                      color: context.epColors.contentPrimary,
                       padding: EdgeInsets.zero,
                       onTap: onChooseAvatar,
                     ),
@@ -780,7 +780,7 @@ class _FanIdentityPreview extends StatelessWidget {
                       TextAction(
                         'REMOVE PHOTO',
                         key: const Key('remove-fan-avatar'),
-                        color: Ep.destructive,
+                        color: context.epColors.destructive,
                         padding: EdgeInsets.zero,
                         onTap: onRemoveAvatar,
                       ),
@@ -812,8 +812,8 @@ class _FanSelectionField extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: Ep.surface,
-        border: Border.all(color: Ep.border),
+        color: context.epColors.surface,
+        border: Border.all(color: context.epColors.border),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -822,7 +822,7 @@ class _FanSelectionField extends StatelessWidget {
           Text(
             label,
             style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
               letterSpacing: 1.1,
             ),
           ),
@@ -880,11 +880,14 @@ class _AvatarPreview extends StatelessWidget {
               width: 28,
               height: 28,
               decoration: BoxDecoration(
-                color: Ep.volt,
+                color: context.epColors.volt,
                 shape: BoxShape.circle,
-                border: Border.all(color: Ep.background, width: 3),
+                border: Border.all(
+                  color: context.epColors.background,
+                  width: 3,
+                ),
               ),
-              child: const Icon(Icons.edit, size: 14, color: Ep.dark),
+              child: Icon(Icons.edit, size: 14, color: context.epColors.dark),
             ),
           ),
         ),

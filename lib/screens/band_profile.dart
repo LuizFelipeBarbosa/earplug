@@ -31,7 +31,7 @@ class BandProfileScreen extends StatelessWidget {
         return Center(
           child: Text(
             'BAND NOT FOUND',
-            style: epText(color: Ep.contentSecondary),
+            style: epText(color: context.epColors.contentSecondary),
           ),
         );
       }
@@ -128,8 +128,8 @@ class BandProfileScreen extends StatelessWidget {
                                     children: [
                                       EpNetworkImage(
                                         url: photos[i].url,
-                                        fallback: const ColoredBox(
-                                          color: Ep.surface,
+                                        fallback: ColoredBox(
+                                          color: context.epColors.surface,
                                         ),
                                       ),
                                       ColoredBox(
@@ -185,7 +185,10 @@ class BandProfileScreen extends StatelessWidget {
               if (upcoming.isEmpty)
                 Text(
                   'Nothing on the calendar right now.',
-                  style: epText(size: 11.5, color: Ep.contentDisabled),
+                  style: epText(
+                    size: 11.5,
+                    color: context.epColors.contentDisabled,
+                  ),
                 ),
               _PastShows(band: band, app: app),
               if (details?.credits?.trim().isNotEmpty == true) ...[
@@ -194,7 +197,7 @@ class BandProfileScreen extends StatelessWidget {
                   details!.credits!.trim(),
                   style: epText(
                     size: 12,
-                    color: Ep.contentSecondary,
+                    color: context.epColors.contentSecondary,
                     height: 1.45,
                   ),
                 ),
@@ -258,15 +261,13 @@ class _BandHero extends StatelessWidget {
                     tooltip: 'Edit header image',
                     onPressed: onEditBanner,
                     style: ButtonStyle(
-                      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+                      minimumSize: WidgetStatePropertyAll(Size(48, 48)),
                       backgroundColor: WidgetStatePropertyAll(
                         Colors.black.withValues(alpha: .72),
                       ),
-                      foregroundColor: const WidgetStatePropertyAll(
-                        Colors.white,
-                      ),
+                      foregroundColor: WidgetStatePropertyAll(Colors.white),
                     ),
-                    icon: const Icon(Icons.photo_camera_outlined, size: 19),
+                    icon: Icon(Icons.photo_camera_outlined, size: 19),
                   ),
                 ),
               ),
@@ -277,8 +278,8 @@ class _BandHero extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Ep.raised,
-            border: Border.all(color: Ep.border),
+            color: context.epColors.raised,
+            border: Border.all(color: context.epColors.border),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
@@ -291,9 +292,9 @@ class _BandHero extends StatelessWidget {
                   for (final genre in band.genres)
                     Text(
                       genre.toUpperCase(),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.epChipLabel.copyWith(color: Ep.accent),
+                      style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                        color: context.epColors.accent,
+                      ),
                     ),
                 ],
               ),
@@ -331,8 +332,8 @@ class _ProfileHeader extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Ep.border)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.epColors.border)),
       ),
       child: isManagedPreview
           ? Column(
@@ -347,21 +348,21 @@ class _ProfileHeader extends StatelessWidget {
                           size: 12,
                           weight: FontWeight.w800,
                           letterSpacing: 1.4,
-                          color: Ep.contentSecondary,
+                          color: context.epColors.contentSecondary,
                         ),
                       ),
                     ),
                     if (isAdmin)
                       TextButton(
                         onPressed: app.openBandEditor,
-                        child: const Text('Edit profile'),
+                        child: Text('Edit profile'),
                       ),
                   ],
                 ),
                 OutlinedButton.icon(
                   onPressed: app.returnToBandDashboard,
-                  icon: const Icon(Icons.arrow_back, size: 17),
-                  label: const Text('Return to band dashboard'),
+                  icon: Icon(Icons.arrow_back, size: 17),
+                  label: Text('Return to band dashboard'),
                 ),
               ],
             )
@@ -375,7 +376,7 @@ class _ProfileHeader extends StatelessWidget {
                     size: 12,
                     weight: FontWeight.w800,
                     letterSpacing: 1.4,
-                    color: Ep.contentSecondary,
+                    color: context.epColors.contentSecondary,
                   ),
                 ),
               ],
@@ -533,7 +534,7 @@ class _PastShows extends StatelessWidget {
         const SectionBar(label: 'PAST GIGS'),
         Text(
           'Loading past shows…',
-          style: epText(size: 11.5, color: Ep.contentDisabled),
+          style: epText(size: 11.5, color: context.epColors.contentDisabled),
         ),
       ];
     } else if (error != null) {
@@ -541,7 +542,7 @@ class _PastShows extends StatelessWidget {
         const SectionBar(label: 'PAST GIGS'),
         Text(
           "Couldn't load past shows.",
-          style: epText(size: 11.5, color: Ep.contentDisabled),
+          style: epText(size: 11.5, color: context.epColors.contentDisabled),
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -560,7 +561,7 @@ class _PastShows extends StatelessWidget {
         const SectionBar(label: 'PAST GIGS'),
         Text(
           'No past shows yet.',
-          style: epText(size: 11.5, color: Ep.contentDisabled),
+          style: epText(size: 11.5, color: context.epColors.contentDisabled),
         ),
       ];
     }
@@ -611,7 +612,7 @@ class _ClipTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Ep.surface,
+      color: context.epColors.surface,
       borderRadius: BorderRadius.circular(10),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -641,7 +642,12 @@ class _ClipTile extends StatelessWidget {
                 ),
               ),
             ),
-            Center(child: PlayTriangle(size: 13, color: Ep.contentPrimary)),
+            Center(
+              child: PlayTriangle(
+                size: 13,
+                color: context.epColors.contentPrimary,
+              ),
+            ),
             Positioned(
               left: 8,
               right: 8,
@@ -650,9 +656,9 @@ class _ClipTile extends StatelessWidget {
                 clip.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.epCaption.copyWith(color: Ep.contentPrimary),
+                style: Theme.of(context).textTheme.epCaption.copyWith(
+                  color: context.epColors.contentPrimary,
+                ),
               ),
             ),
             Positioned(
@@ -673,14 +679,14 @@ class _ClipTile extends StatelessWidget {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: Ep.volt,
+                              color: context.epColors.volt,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
                               'PINNED',
                               style: Theme.of(context).textTheme.epCaption
                                   .copyWith(
-                                    color: Ep.dark,
+                                    color: context.epColors.dark,
                                     fontSize: 9,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -709,7 +715,7 @@ class _ClipTile extends StatelessWidget {
                               ? 'PROCESSING'
                               : clip.lenLabel,
                           style: Theme.of(context).textTheme.epCaption.copyWith(
-                            color: Ep.contentPrimary,
+                            color: context.epColors.contentPrimary,
                             fontSize: 9.5,
                           ),
                         ),

@@ -59,9 +59,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
       children: [
         Container(
           padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 12),
-          decoration: const BoxDecoration(
-            color: Ep.background,
-            border: Border(bottom: BorderSide(color: Ep.border)),
+          decoration: BoxDecoration(
+            color: context.epColors.background,
+            border: Border(bottom: BorderSide(color: context.epColors.border)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -75,26 +75,27 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => _submitSearch(app),
                 style: Theme.of(context).textTheme.epBody,
-                decoration: epInputDecoration('Bands, venues, gigs…').copyWith(
-                  suffixIcon: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        key: const Key('explore-search-submit'),
-                        tooltip: 'Search',
-                        onPressed: () => _submitSearch(app),
-                        icon: const Icon(Icons.search),
+                decoration: epInputDecoration(context, 'Bands, venues, gigs…')
+                    .copyWith(
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            key: const Key('explore-search-submit'),
+                            tooltip: 'Search',
+                            onPressed: () => _submitSearch(app),
+                            icon: Icon(Icons.search),
+                          ),
+                          if (_controller.text.isNotEmpty || searching)
+                            IconButton(
+                              key: const Key('explore-search-clear'),
+                              tooltip: 'Clear search',
+                              onPressed: () => _clearSearch(app),
+                              icon: Icon(Icons.close),
+                            ),
+                        ],
                       ),
-                      if (_controller.text.isNotEmpty || searching)
-                        IconButton(
-                          key: const Key('explore-search-clear'),
-                          tooltip: 'Clear search',
-                          onPressed: () => _clearSearch(app),
-                          icon: const Icon(Icons.close),
-                        ),
-                    ],
-                  ),
-                ),
+                    ),
               ),
             ],
           ),
@@ -332,8 +333,8 @@ class _SearchTypeTabs extends StatelessWidget {
       key: const Key('explore-result-tabs'),
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Ep.border)),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.epColors.border)),
       ),
       child: Row(
         children: [
@@ -355,8 +356,8 @@ class _SearchTypeTabs extends StatelessWidget {
                 onSelected(selection.single);
               },
               style: ButtonStyle(
-                minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-                padding: const WidgetStatePropertyAll(
+                minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+                padding: WidgetStatePropertyAll(
                   EdgeInsets.symmetric(horizontal: 6),
                 ),
                 textStyle: WidgetStatePropertyAll(
@@ -366,16 +367,16 @@ class _SearchTypeTabs extends StatelessWidget {
                 ),
                 backgroundColor: WidgetStateProperty.resolveWith(
                   (states) => states.contains(WidgetState.selected)
-                      ? Ep.volt
-                      : Ep.surface,
+                      ? context.epColors.volt
+                      : context.epColors.surface,
                 ),
                 foregroundColor: WidgetStateProperty.resolveWith(
                   (states) => states.contains(WidgetState.selected)
-                      ? Ep.dark
-                      : Ep.contentSecondary,
+                      ? context.epColors.dark
+                      : context.epColors.contentSecondary,
                 ),
-                side: const WidgetStatePropertyAll(
-                  BorderSide(color: Ep.border),
+                side: WidgetStatePropertyAll(
+                  BorderSide(color: context.epColors.border),
                 ),
               ),
             ),
@@ -415,16 +416,22 @@ class _ExploreFilterButton extends StatelessWidget {
         style: IconButton.styleFrom(
           fixedSize: const Size.square(48),
           minimumSize: const Size.square(48),
-          backgroundColor: active ? Ep.selected : Ep.surface,
-          foregroundColor: active ? Ep.accent : Ep.contentSecondary,
-          side: BorderSide(color: active ? Ep.accent : Ep.border),
+          backgroundColor: active
+              ? context.epColors.selected
+              : context.epColors.surface,
+          foregroundColor: active
+              ? context.epColors.accent
+              : context.epColors.contentSecondary,
+          side: BorderSide(
+            color: active ? context.epColors.accent : context.epColors.border,
+          ),
         ),
         icon: Badge(
           isLabelVisible: active,
           label: Text('$activeCount'),
-          backgroundColor: Ep.volt,
-          textColor: Ep.dark,
-          child: const Icon(Icons.tune),
+          backgroundColor: context.epColors.volt,
+          textColor: context.epColors.dark,
+          child: Icon(Icons.tune),
         ),
       ),
     );
@@ -677,7 +684,7 @@ class _BandPageStatus extends StatelessWidget {
           TextButton(
             key: const Key('explore-bands-retry'),
             onPressed: app.retryExploreBands,
-            child: const Text('RETRY'),
+            child: Text('RETRY'),
           ),
         ],
       );
@@ -686,7 +693,7 @@ class _BandPageStatus extends StatelessWidget {
       return TextButton(
         key: const Key('explore-bands-load-more'),
         onPressed: app.loadMoreExploreBands,
-        child: const Text('LOAD MORE BANDS'),
+        child: Text('LOAD MORE BANDS'),
       );
     }
     return Text(

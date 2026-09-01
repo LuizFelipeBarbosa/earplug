@@ -207,9 +207,9 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
         if (!didPop) unawaited(_closeScanner());
       },
       child: Scaffold(
-        backgroundColor: Ep.dark,
+        backgroundColor: context.epColors.dark,
         appBar: AppBar(
-          backgroundColor: Ep.dark,
+          backgroundColor: context.epColors.dark,
           leading: CircleIconButton(
             tooltip: _scannerOpen ? 'Back to door overview' : 'Close Door Mode',
             onTap: _scannerOpen
@@ -294,9 +294,10 @@ class _Viewer extends StatelessWidget {
       children: [
         Text(
           'DOOR MODE · ${launch.venueName.toUpperCase()}',
-          style: Theme.of(
-            context,
-          ).textTheme.epSection.copyWith(color: Ep.volt, fontSize: 11),
+          style: Theme.of(context).textTheme.epSection.copyWith(
+            color: context.epColors.volt,
+            fontSize: 11,
+          ),
         ),
         const SizedBox(height: 8),
         Text(launch.gigTitle, style: Theme.of(context).textTheme.epPosterTitle),
@@ -326,15 +327,16 @@ class _Viewer extends StatelessWidget {
               children: [
                 TextSpan(
                   text: '${roster?.checkedIn ?? '…'}',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.epDisplay.copyWith(fontSize: 54, color: Ep.volt),
+                  style: Theme.of(context).textTheme.epDisplay.copyWith(
+                    fontSize: 54,
+                    color: context.epColors.volt,
+                  ),
                 ),
                 TextSpan(
                   text: ' / $denominator',
                   style: Theme.of(context).textTheme.epDisplay.copyWith(
                     fontSize: roster?.truncated == true ? 17 : 28,
-                    color: Ep.mute,
+                    color: context.epColors.mute,
                   ),
                 ),
               ],
@@ -348,7 +350,7 @@ class _Viewer extends StatelessWidget {
             key: const Key('door-roster-limited'),
             style: Theme.of(
               context,
-            ).textTheme.epCaption.copyWith(color: Ep.volt),
+            ).textTheme.epCaption.copyWith(color: context.epColors.volt),
           ),
         ],
         const SizedBox(height: 18),
@@ -357,8 +359,8 @@ class _Viewer extends StatelessWidget {
           child: LinearProgressIndicator(
             minHeight: 7,
             value: progress,
-            backgroundColor: Ep.raised,
-            color: Ep.volt,
+            backgroundColor: context.epColors.raised,
+            color: context.epColors.volt,
           ),
         ),
         if (rosterFailure != null && roster == null) ...[
@@ -368,25 +370,22 @@ class _Viewer extends StatelessWidget {
             textAlign: TextAlign.center,
             style: Theme.of(
               context,
-            ).textTheme.epCaption.copyWith(color: Ep.destructive),
+            ).textTheme.epCaption.copyWith(color: context.epColors.destructive),
           ),
-          TextButton(
-            onPressed: onRetryRoster,
-            child: const Text('RETRY ROSTER'),
-          ),
+          TextButton(onPressed: onRetryRoster, child: Text('RETRY ROSTER')),
         ],
         const SizedBox(height: 24),
         FilledButton.icon(
           key: const Key('door-open-scanner'),
           onPressed: onOpenScanner,
-          icon: const Icon(Icons.qr_code_scanner),
-          label: const Text('OPEN SCANNER'),
+          icon: Icon(Icons.qr_code_scanner),
+          label: Text('OPEN SCANNER'),
         ),
         const SizedBox(height: 10),
         OutlinedButton(
           key: const Key('door-enter-code'),
           onPressed: onEnterCode,
-          child: const Text('ENTER TICKET CODE'),
+          child: Text('ENTER TICKET CODE'),
         ),
         const SizedBox(height: 22),
         SectionBar(
@@ -403,7 +402,11 @@ class _Viewer extends StatelessWidget {
         else
           for (final result in recentCheckIns)
             LedgerRow(
-              leading: const Icon(Icons.check, size: 18, color: Ep.success),
+              leading: Icon(
+                Icons.check,
+                size: 18,
+                color: context.epColors.success,
+              ),
               title: result.fanName ?? 'Fan',
               details: [_checkInTime(context, result.checkedInAt), 'door'],
             ),
@@ -504,20 +507,20 @@ class _ScannerView extends StatelessWidget {
         Text.rich(
           TextSpan(
             style: Theme.of(context).textTheme.epCaption,
-            children: const [
+            children: [
               TextSpan(
                 text: '✓ checked in',
-                style: TextStyle(color: Ep.success),
+                style: TextStyle(color: context.epColors.success),
               ),
               TextSpan(text: ' · '),
               TextSpan(
                 text: 'already checked in / wrong gig',
-                style: TextStyle(color: Ep.volt),
+                style: TextStyle(color: context.epColors.volt),
               ),
               TextSpan(text: ' · '),
               TextSpan(
                 text: 'invalid or revoked',
-                style: TextStyle(color: Ep.destructive),
+                style: TextStyle(color: context.epColors.destructive),
               ),
             ],
           ),
@@ -539,9 +542,11 @@ class _ScannerFrame extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          ColoredBox(color: Ep.surface, child: child),
-          const IgnorePointer(child: CustomPaint(painter: _ScannerPainter())),
-          const Positioned(
+          ColoredBox(color: context.epColors.surface, child: child),
+          IgnorePointer(
+            child: CustomPaint(painter: _ScannerPainter(context.epColors.volt)),
+          ),
+          Positioned(
             left: 12,
             right: 12,
             bottom: 14,
@@ -549,7 +554,7 @@ class _ScannerFrame extends StatelessWidget {
               "POINT AT A FAN'S QR — NO BUTTON NEEDED",
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Ep.contentSecondary,
+                color: context.epColors.contentSecondary,
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
                 letterSpacing: .7,
@@ -563,12 +568,14 @@ class _ScannerFrame extends StatelessWidget {
 }
 
 class _ScannerPainter extends CustomPainter {
-  const _ScannerPainter();
+  const _ScannerPainter(this.color);
+
+  final Color color;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Ep.volt
+      ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3
       ..strokeCap = StrokeCap.square;
@@ -591,7 +598,7 @@ class _ScannerPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(_ScannerPainter oldDelegate) => oldDelegate.color != color;
 }
 
 class _CameraFallback extends StatelessWidget {
@@ -602,14 +609,14 @@ class _CameraFallback extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: Ep.surface,
+      color: context.epColors.surface,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.all(48),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.photo_camera, size: 46, color: Ep.mute),
+              Icon(Icons.photo_camera, size: 46, color: context.epColors.mute),
               const SizedBox(height: 16),
               Text(
                 message,
@@ -632,7 +639,7 @@ class _ResultBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tone = _resultTone(result.status);
+    final tone = _resultTone(context, result.status);
     final message = _resultMessage(result);
     final count = result.status == DoorCheckInStatus.checkedIn && roster != null
         ? roster!.truncated
@@ -679,15 +686,15 @@ class _FailureBanner extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Ep.destructiveTint,
-          border: Border.all(color: Ep.destructive),
+          color: context.epColors.destructiveTint,
+          border: Border.all(color: context.epColors.destructive),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Text(
           message,
           style: Theme.of(
             context,
-          ).textTheme.epLabel.copyWith(color: Ep.destructive),
+          ).textTheme.epLabel.copyWith(color: context.epColors.destructive),
         ),
       ),
     );
@@ -709,32 +716,37 @@ class _RosterRefreshFailureNotice extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Ep.warningTint,
-          border: Border.all(color: Ep.volt),
+          color: context.epColors.warningTint,
+          border: Border.all(color: context.epColors.volt),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Text(
           'CHECK-IN RECORDED · COUNT COULD NOT REFRESH · DO NOT SCAN AGAIN',
-          style: Theme.of(context).textTheme.epLabel.copyWith(color: Ep.volt),
+          style: Theme.of(
+            context,
+          ).textTheme.epLabel.copyWith(color: context.epColors.volt),
         ),
       ),
     );
   }
 }
 
-({Color foreground, Color background}) _resultTone(DoorCheckInStatus status) {
+({Color foreground, Color background}) _resultTone(
+  BuildContext context,
+  DoorCheckInStatus status,
+) {
   return switch (status) {
     DoorCheckInStatus.checkedIn => (
-      foreground: Ep.success,
-      background: Ep.successTint,
+      foreground: context.epColors.success,
+      background: context.epColors.successTint,
     ),
     DoorCheckInStatus.alreadyCheckedIn || DoorCheckInStatus.wrongGig => (
-      foreground: Ep.volt,
-      background: Ep.warningTint,
+      foreground: context.epColors.volt,
+      background: context.epColors.warningTint,
     ),
     DoorCheckInStatus.invalid => (
-      foreground: Ep.destructive,
-      background: Ep.destructiveTint,
+      foreground: context.epColors.destructive,
+      background: context.epColors.destructiveTint,
     ),
   };
 }

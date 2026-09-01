@@ -16,8 +16,12 @@ class ReadyPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: ready ? Ep.surfaceSelected : Ep.surfaceDisabled,
-        border: Border.all(color: ready ? Ep.accent : Ep.border),
+        color: ready
+            ? context.epColors.surfaceSelected
+            : context.epColors.surfaceDisabled,
+        border: Border.all(
+          color: ready ? context.epColors.accent : context.epColors.border,
+        ),
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
@@ -26,7 +30,9 @@ class ReadyPill extends StatelessWidget {
           fontSize: 9.5,
           fontWeight: FontWeight.w900,
           letterSpacing: 1.2,
-          color: ready ? Ep.contentPrimary : Ep.contentDisabled,
+          color: ready
+              ? context.epColors.contentPrimary
+              : context.epColors.contentDisabled,
         ),
       ),
     );
@@ -57,17 +63,24 @@ class Swatch extends StatelessWidget {
       width: 30,
       height: 30,
       decoration: BoxDecoration(
-        color: dashed ? Ep.background : null,
+        color: dashed ? context.epColors.background : null,
         shape: BoxShape.circle,
         border: dashed
             ? null
-            : Border.all(color: selected ? Ep.accent : Ep.border, width: 2),
+            : Border.all(
+                color: selected
+                    ? context.epColors.accent
+                    : context.epColors.border,
+                width: 2,
+              ),
       ),
       child: dashed
           ? DashedBox(
               padding: EdgeInsets.zero,
               radius: 15,
-              color: selected ? Ep.accent : Ep.border,
+              color: selected
+                  ? context.epColors.accent
+                  : context.epColors.border,
               child: child,
             )
           : child,
@@ -105,22 +118,23 @@ class DoneButton extends StatelessWidget {
 }
 
 /// Text-field styling for inputs that sit inside a create-flow sheet.
-InputDecoration sheetInput(String hint) => InputDecoration(
-  hintText: hint,
-  filled: true,
-  fillColor: Ep.background,
-  isDense: true,
-  constraints: const BoxConstraints(minHeight: 48),
-  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: const BorderSide(color: Ep.border),
-  ),
-  focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: const BorderSide(color: Ep.accent, width: 2),
-  ),
-);
+InputDecoration sheetInput(BuildContext context, String hint) =>
+    InputDecoration(
+      hintText: hint,
+      filled: true,
+      fillColor: context.epColors.background,
+      isDense: true,
+      constraints: const BoxConstraints(minHeight: 48),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(11),
+        borderSide: BorderSide(color: context.epColors.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(11),
+        borderSide: BorderSide(color: context.epColors.accent, width: 2),
+      ),
+    );
 
 /// A bare tappable label — no box, no fill. Defaults to the roomy tracked-out
 /// form-footer look; pass the metrics for the tight inline variant.
@@ -147,12 +161,12 @@ class TextAction extends StatelessWidget {
     return TextButton(
       onPressed: onTap,
       style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+        minimumSize: WidgetStatePropertyAll(Size(48, 48)),
         padding: WidgetStatePropertyAll(padding),
         foregroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.disabled)
-              ? Ep.contentDisabled
-              : color ?? Ep.accent,
+              ? context.epColors.contentDisabled
+              : color ?? context.epColors.accent,
         ),
         textStyle: WidgetStatePropertyAll(
           Theme.of(context).textTheme.epLabel.copyWith(
@@ -198,10 +212,10 @@ class SwitchRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Material(
-            color: Ep.surface,
+            color: context.epColors.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
-              side: const BorderSide(color: Ep.border),
+              side: BorderSide(color: context.epColors.border),
             ),
             clipBehavior: Clip.antiAlias,
             child: InkWell(
@@ -216,7 +230,9 @@ class SwitchRow extends StatelessWidget {
                         child: Text(
                           label,
                           style: Theme.of(context).textTheme.epBody.copyWith(
-                            color: enabled ? Ep.ink : Ep.contentDisabled,
+                            color: enabled
+                                ? context.epColors.ink
+                                : context.epColors.contentDisabled,
                           ),
                         ),
                       ),
@@ -254,11 +270,13 @@ class _CompactSwitch extends StatelessWidget {
       padding: const EdgeInsets.all(2),
       decoration: BoxDecoration(
         color: !enabled
-            ? Ep.surfaceDisabled
+            ? context.epColors.surfaceDisabled
             : value
             ? Ep.brand
-            : Ep.raised,
-        border: Border.all(color: value && enabled ? Ep.brand : Ep.border),
+            : context.epColors.raised,
+        border: Border.all(
+          color: value && enabled ? Ep.brand : context.epColors.border,
+        ),
         borderRadius: BorderRadius.circular(99),
       ),
       child: AnimatedAlign(
@@ -270,10 +288,10 @@ class _CompactSwitch extends StatelessWidget {
           height: 12,
           decoration: BoxDecoration(
             color: !enabled
-                ? Ep.mute
+                ? context.epColors.mute
                 : value
                 ? Colors.white
-                : Ep.mute,
+                : context.epColors.mute,
             shape: BoxShape.circle,
           ),
         ),
@@ -324,17 +342,17 @@ class GhostDraftRow extends StatelessWidget {
                       description,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.epMeta.copyWith(color: Ep.contentSecondary),
+                      style: Theme.of(context).textTheme.epMeta.copyWith(
+                        color: context.epColors.contentSecondary,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 10),
                   Text(
                     actionLabel,
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epChipLabel.copyWith(color: Ep.accent),
+                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                      color: context.epColors.accent,
+                    ),
                   ),
                 ],
               ),
@@ -368,8 +386,8 @@ class StickyActionBar extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Ep.tabBarBackground.withValues(alpha: .95),
-            border: const Border(top: BorderSide(color: Ep.border)),
+            color: context.epColors.tabBarBackground.withValues(alpha: .95),
+            border: Border(top: BorderSide(color: context.epColors.border)),
           ),
           child: SafeArea(
             top: false,
@@ -424,7 +442,7 @@ class DangerZone extends StatelessWidget {
           child: TextButton(
             onPressed: onPressed,
             style: TextButton.styleFrom(
-              foregroundColor: Ep.destructive,
+              foregroundColor: context.epColors.destructive,
               alignment: Alignment.centerLeft,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               textStyle: Theme.of(context).textTheme.epChipLabel,

@@ -23,10 +23,10 @@ class _SheetShell extends StatelessWidget {
           maxHeight: MediaQuery.sizeOf(context).height * .88,
         ),
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-        decoration: const BoxDecoration(
-          color: Ep.surfaceRaised,
+        decoration: BoxDecoration(
+          color: context.epColors.surfaceRaised,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border(top: BorderSide(color: Ep.border)),
+          border: Border(top: BorderSide(color: context.epColors.border)),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -38,7 +38,7 @@ class _SheetShell extends StatelessWidget {
                   width: 36,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Ep.contentDisabled,
+                    color: context.epColors.contentDisabled,
                     borderRadius: BorderRadius.circular(99),
                   ),
                 ),
@@ -118,10 +118,10 @@ class EpActionSheet extends StatelessWidget {
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-        decoration: const BoxDecoration(
-          color: Ep.raised,
+        decoration: BoxDecoration(
+          color: context.epColors.raised,
           borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          border: Border(top: BorderSide(color: Ep.border)),
+          border: Border(top: BorderSide(color: context.epColors.border)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -132,7 +132,7 @@ class EpActionSheet extends StatelessWidget {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Ep.mute,
+                  color: context.epColors.mute,
                   borderRadius: BorderRadius.circular(99),
                 ),
               ),
@@ -142,13 +142,14 @@ class EpActionSheet extends StatelessWidget {
               header.toUpperCase(),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.epSection.copyWith(color: Ep.mute, fontSize: 11),
+              style: Theme.of(context).textTheme.epSection.copyWith(
+                color: context.epColors.mute,
+                fontSize: 11,
+              ),
             ),
             const SizedBox(height: 8),
             for (var index = 0; index < items.length; index++) ...[
-              if (index == firstDestructive) const Divider(height: 17),
+              if (index == firstDestructive) Divider(height: 17),
               _ActionSheetRow(item: items[index]),
             ],
           ],
@@ -165,7 +166,9 @@ class _ActionSheetRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = item.destructive ? Ep.destructive : Ep.ink;
+    final color = item.destructive
+        ? context.epColors.destructive
+        : context.epColors.ink;
     return Semantics(
       button: true,
       enabled: item.onPressed != null,
@@ -240,7 +243,7 @@ void showCitySheet(BuildContext context) {
           "Pick a scene. Everything's within BART distance anyway.",
           style: Theme.of(
             ctx,
-          ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+          ).textTheme.epBody.copyWith(color: context.epColors.contentSecondary),
         ),
         option('San Francisco', 'Mission & around', 'sf'),
         option('Oakland', 'Temescal & around', 'oak'),
@@ -330,7 +333,7 @@ void showSwitcherSheet(BuildContext context) {
               Navigator.pop(ctx);
               app.startBandCreate();
             },
-            icon: const Icon(Icons.add),
+            icon: Icon(Icons.add),
             label: Text(
               app.myBands.isEmpty ? 'START A BAND' : 'START ANOTHER BAND',
             ),
@@ -366,7 +369,7 @@ Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
     barrierColor: Colors.black.withValues(alpha: .72),
     builder: (ctx) {
       return Dialog(
-        backgroundColor: Ep.contentPrimary,
+        backgroundColor: context.epColors.contentPrimary,
         insetPadding: const EdgeInsets.all(30),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: Padding(
@@ -377,7 +380,11 @@ Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
               Text(
                 gig.title.toUpperCase(),
                 textAlign: TextAlign.center,
-                style: epDisplay(size: 14, color: Ep.background, height: 1.2),
+                style: epDisplay(
+                  size: 14,
+                  color: context.epColors.background,
+                  height: 1.2,
+                ),
               ),
               const SizedBox(height: 12),
               Container(
@@ -388,10 +395,8 @@ Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
                   version: QrVersions.auto,
                   size: 180,
                   backgroundColor: Colors.white,
-                  eyeStyle: const QrEyeStyle(color: Ep.background),
-                  dataModuleStyle: const QrDataModuleStyle(
-                    color: Ep.background,
-                  ),
+                  eyeStyle: const QrEyeStyle(color: Colors.black),
+                  dataModuleStyle: const QrDataModuleStyle(color: Colors.black),
                 ),
               ),
               const SizedBox(height: 12),
@@ -402,7 +407,7 @@ Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,
-                ).textTheme.epCaption.copyWith(color: Ep.surface),
+                ).textTheme.epCaption.copyWith(color: context.epColors.surface),
               ),
             ],
           ),
