@@ -9,25 +9,73 @@ import 'package:earplug/screens/settings.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
 void main() {
-  testWidgets('profile fields avoid duplicate headings but keep semantics', (
+  testWidgets('profile fields use labelled form grammar and keep semantics', (
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
     await pumpApp(tester, home: const Scaffold(body: EditProfileScreen()));
+    tester.view.physicalSize = const Size(402, 3000);
+    await tester.pumpAndSettle();
 
-    expect(find.text('NAME'), findsNothing);
-    expect(find.text('BIO · OPTIONAL'), findsNothing);
+    expect(find.text('YOUR NAME'), findsOne);
     expect(find.bySemanticsLabel('Name'), findsOne);
-    expect(find.bySemanticsLabel('Bio, optional'), findsOne);
     expect(find.text('HOME LOCATION'), findsOne);
-    expect(find.text('FAVORITE GENRES'), findsOne);
+    expect(find.textContaining('FAVORITE GENRES'), findsOne);
+    expect(find.bySemanticsLabel('Bio, optional'), findsOne);
+    expect(find.byType(StickyActionBar), findsOne);
     semantics.dispose();
+  });
+
+  testWidgets('editor exposes only supported preferences in sticky form', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      home: const Scaffold(body: EditProfileScreen()),
+    );
+    final barTop = tester.getTopLeft(find.byType(StickyActionBar)).dy;
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('followed-band-updates')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -160));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SwitchRow), findsNWidgets(2));
+    expect(find.text('Personalize with home location'), findsOne);
+    expect(find.text('Show followed-band updates'), findsOne);
+    expect(find.textContaining('Your location stays private'), findsOne);
+    expect(find.textContaining('bands you follow'), findsOne);
+    expect(find.textContaining('going count'), findsNothing);
+    expect(find.textContaining('reminder'), findsNothing);
+    expect(tester.getTopLeft(find.byType(StickyActionBar)).dy, barTop);
+
+    await tester.tap(find.text('Personalize with home location'));
+    await tester.tap(find.text('Show followed-band updates'));
+    await tester.tap(find.byKey(const Key('save-fan-profile')));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.profile?.locationPersonalizationEnabled, isTrue);
+    expect(harness.app.profile?.followedBandUpdatesEnabled, isFalse);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('fan-bio-field')))
+          .maxLength,
+      280,
+    );
   });
 
   testWidgets('profile leads with private identity and branded fan fallback', (
@@ -176,7 +224,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('edit-profile-error')), findsOne);
-    expect(find.text('Changed Name'), findsOne);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 3000));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('fan-name-field')))
+          .controller
+          ?.text,
+      'Changed Name',
+    );
     await tester.pump(const Duration(seconds: 3));
   });
 
