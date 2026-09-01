@@ -128,7 +128,7 @@ void main() {
         repository.futureGig.id,
       ]);
       expect(
-        find.byKey(ValueKey('fan-event-${repository.futureGig.id}')),
+        find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
         findsOne,
       );
       expect(
@@ -245,6 +245,11 @@ void main() {
       home: const Scaffold(body: MyGigsScreen()),
     );
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('profile-tutorial')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byKey(const Key('profile-tutorial')), findsOne);
     for (var step = 0; step < 3; step++) {
       await tester.tap(find.byKey(const Key('profile-tutorial-next')));
@@ -263,6 +268,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(replayHarness.app.current.screen, Screen.myGigs);
     expect(replayHarness.app.profileTutorialVisible, isTrue);
+  });
+
+  testWidgets('next in-app RSVP is promoted only out of upcoming section', (
+    tester,
+  ) async {
+    final now = DateTime(2026, 8, 31, 16);
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _MixedDateRsvpRepository(auth: auth, now: now);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      now: () => now,
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+
+    tester.view.physicalSize = const Size(402, 3000);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
+      findsOne,
+    );
+    expect(
+      find.byKey(ValueKey('fan-event-${repository.futureGig.id}')),
+      findsNothing,
+    );
+    expect(find.text('QR PASS'), findsOne);
+    expect(harness.app.upcomingRsvpGigs, contains(repository.futureGig));
   });
 
   testWidgets('legacy backend payload hides unsupported tutorial controls', (
