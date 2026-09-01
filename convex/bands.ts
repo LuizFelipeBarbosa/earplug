@@ -278,7 +278,10 @@ export const setupStatus = query({
     }
     return {
       profileComplete: isBandProfileComplete(band),
-      profileImageAdded: band.imageStorageId !== undefined,
+      profileImageAdded:
+        band.avatarStorageId === undefined
+          ? band.imageStorageId !== undefined
+          : band.avatarStorageId !== null,
       musicAdded:
         video !== null ||
         (band.linkBc?.trim() ?? "") !== "" ||
@@ -527,6 +530,25 @@ export const updateProfile = mutation({
   },
 });
 
+async function artworkPhotoForBand(
+  ctx: MutationCtx,
+  bandId: Id<"bands">,
+  mediaId: Id<"bandMedia">,
+) {
+  await requireBandAdmin(ctx, bandId);
+  const media = await ctx.db.get(mediaId);
+  if (!media) throw new Error("Media not found");
+  if (media.bandId !== bandId) {
+    throw new Error("Media belongs to a different band");
+  }
+  if (media.kind !== "photo") {
+    throw new Error("Only photos can be band artwork");
+  }
+  return media;
+}
+
+/** Compatibility mutation for clients that still use one image for both
+ * artwork roles. New clients call the role-specific mutations below. */
 export const setBandPhoto = mutation({
   args: {
     bandId: v.id("bands"),
@@ -534,16 +556,12 @@ export const setBandPhoto = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireBandAdmin(ctx, args.bandId);
-    const media = await ctx.db.get(args.mediaId);
-    if (!media) throw new Error("Media not found");
-    if (media.bandId !== args.bandId) {
-      throw new Error("Media belongs to a different band");
-    }
-    if (media.kind !== "photo") {
-      throw new Error("Only photos can be the band photo");
-    }
-    await ctx.db.patch(args.bandId, { imageStorageId: media.storageId });
+    const media = await artworkPhotoForBand(ctx, args.bandId, args.mediaId);
+    await ctx.db.patch(args.bandId, {
+      imageStorageId: media.storageId,
+      avatarStorageId: media.storageId,
+      bannerStorageId: media.storageId,
+    });
     return null;
   },
 });
@@ -553,7 +571,57 @@ export const clearBandPhoto = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     await requireBandAdmin(ctx, args.bandId);
-    await ctx.db.patch(args.bandId, { imageStorageId: undefined });
+    await ctx.db.patch(args.bandId, {
+      imageStorageId: undefined,
+      avatarStorageId: null,
+      bannerStorageId: null,
+    });
+    return null;
+  },
+});
+
+export const setBandAvatar = mutation({
+  args: {
+    bandId: v.id("bands"),
+    mediaId: v.id("bandMedia"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const media = await artworkPhotoForBand(ctx, args.bandId, args.mediaId);
+    await ctx.db.patch(args.bandId, { avatarStorageId: media.storageId });
+    return null;
+  },
+});
+
+export const clearBandAvatar = mutation({
+  args: { bandId: v.id("bands") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireBandAdmin(ctx, args.bandId);
+    await ctx.db.patch(args.bandId, { avatarStorageId: null });
+    return null;
+  },
+});
+
+export const setBandBanner = mutation({
+  args: {
+    bandId: v.id("bands"),
+    mediaId: v.id("bandMedia"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const media = await artworkPhotoForBand(ctx, args.bandId, args.mediaId);
+    await ctx.db.patch(args.bandId, { bannerStorageId: media.storageId });
+    return null;
+  },
+});
+
+export const clearBandBanner = mutation({
+  args: { bandId: v.id("bands") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await requireBandAdmin(ctx, args.bandId);
+    await ctx.db.patch(args.bandId, { bannerStorageId: null });
     return null;
   },
 });

@@ -10,6 +10,7 @@ import '../data/repository.dart';
 import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
+import '../widgets/band_identity_editor.dart';
 import '../widgets/common.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/photo_viewer.dart';
@@ -230,121 +231,55 @@ class _BandHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    return Column(
       key: ValueKey('band-profile-hero-${band.id}'),
-      clipBehavior: Clip.none,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          width: double.infinity,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: band.color,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          constraints: const BoxConstraints(minHeight: 142),
-          child: Stack(
-            fit: StackFit.passthrough,
-            children: [
-              Positioned.fill(
-                child: EpNetworkImage(
-                  url: band.heroUrl,
-                  fit: BoxFit.cover,
-                  fallback: ColoredBox(color: band.color),
-                ),
-              ),
-              Positioned.fill(
-                child: DecoratedBox(
-                  key: const ValueKey('band-profile-banner-scrim'),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.black.withValues(alpha: .66),
-                        Colors.black.withValues(alpha: .58),
-                      ],
+        Stack(
+          children: [
+            BandIdentityHeader(
+              name: band.name,
+              area: band.area,
+              initials: band.initials,
+              color: band.color,
+              avatarUrl: band.profileImageUrl,
+              bannerUrl: band.headerImageUrl,
+            ),
+            if (onEditBanner != null)
+              Positioned(
+                right: 96,
+                bottom: 10,
+                child: Semantics(
+                  button: true,
+                  label: 'Edit header image',
+                  excludeSemantics: true,
+                  child: IconButton(
+                    key: const ValueKey('edit-band-profile-banner'),
+                    tooltip: 'Edit header image',
+                    onPressed: onEditBanner,
+                    style: ButtonStyle(
+                      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+                      backgroundColor: WidgetStatePropertyAll(
+                        Colors.black.withValues(alpha: .72),
+                      ),
+                      foregroundColor: const WidgetStatePropertyAll(
+                        Colors.white,
+                      ),
                     ),
+                    icon: const Icon(Icons.photo_camera_outlined, size: 19),
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(18, 22, 96, 22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      [
-                        'BAND',
-                        if (band.area.trim().isNotEmpty) band.area,
-                      ].join(' · ').toUpperCase(),
-                      style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                        color: Colors.white,
-                        letterSpacing: 1.8,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      band.name,
-                      style: Theme.of(context).textTheme.epDisplay.copyWith(
-                        color: Colors.white,
-                        fontSize: 31,
-                        height: 1.02,
-                        shadows: const [
-                          Shadow(
-                            color: Colors.black54,
-                            blurRadius: 8,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (onEditBanner != null)
-                Positioned(
-                  right: 12,
-                  bottom: 10,
-                  child: Semantics(
-                    button: true,
-                    label: 'Edit profile banner',
-                    excludeSemantics: true,
-                    child: IconButton(
-                      key: const ValueKey('edit-band-profile-banner'),
-                      tooltip: 'Edit profile banner',
-                      onPressed: onEditBanner,
-                      style: ButtonStyle(
-                        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-                        backgroundColor: WidgetStatePropertyAll(
-                          Colors.black.withValues(alpha: .72),
-                        ),
-                        foregroundColor: const WidgetStatePropertyAll(
-                          Colors.white,
-                        ),
-                      ),
-                      icon: const Icon(Icons.photo_camera_outlined, size: 19),
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          ],
         ),
-        Positioned(top: 22, right: 18, child: _BandStamp(band: band)),
+        const SizedBox(height: 10),
         Container(
           width: double.infinity,
-          margin: const EdgeInsets.only(top: 116, left: 10, right: 10),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: Ep.raised,
             border: Border.all(color: Ep.border),
             borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: .3),
-                blurRadius: 14,
-                offset: const Offset(0, 5),
-              ),
-            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -367,60 +302,15 @@ class _BandHero extends StatelessWidget {
                 Text(bio, style: Theme.of(context).textTheme.epBody),
               ],
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Text(
-                    '${band.followersLabel} '
-                    '${band.followers == 1 ? 'follower' : 'followers'}',
-                    style: Theme.of(context).textTheme.epCaption,
-                  ),
-                  if (band.profileComplete) const ProfileCompleteBadge(),
-                ],
+              Text(
+                '${band.followersLabel} '
+                '${band.followers == 1 ? 'follower' : 'followers'}',
+                style: Theme.of(context).textTheme.epCaption,
               ),
             ],
           ),
         ),
       ],
-    );
-  }
-}
-
-class _BandStamp extends StatelessWidget {
-  const _BandStamp({required this.band});
-
-  final Band band;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: '${band.name} profile image',
-      image: true,
-      excludeSemantics: true,
-      child: SizedBox(
-        width: 66,
-        height: 66,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Container(
-              key: const ValueKey('band-profile-avatar-frame'),
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: .8),
-                  width: 2,
-                ),
-                borderRadius: BorderRadius.circular(11),
-              ),
-            ),
-            BandAvatar(band, size: 54, radius: 9, fontSize: 18),
-          ],
-        ),
-      ),
     );
   }
 }

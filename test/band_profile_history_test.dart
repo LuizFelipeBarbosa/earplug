@@ -81,6 +81,7 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
+    await _scrollToPastGigs(tester);
     expect(find.text('No past shows yet.', skipOffstage: false), findsOne);
     expect(find.text('PAST GIGS', skipOffstage: false), findsOne);
     expect(find.text('RETRY', skipOffstage: false), findsNothing);
@@ -105,6 +106,7 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
+    await _scrollToPastGigs(tester);
     expect(
       find.text("Couldn't load past shows.", skipOffstage: false),
       findsOne,
@@ -152,12 +154,22 @@ void main() {
     );
     await tester.pump();
 
+    await _scrollToPastGigs(tester);
     expect(find.text('Loading past shows…', skipOffstage: false), findsOne);
 
     gate.complete();
     await tester.pumpAndSettle();
     expect(find.text('No past shows yet.', skipOffstage: false), findsOne);
   });
+}
+
+Future<void> _scrollToPastGigs(WidgetTester tester) async {
+  await tester.scrollUntilVisible(
+    find.text('PAST GIGS'),
+    250,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pump();
 }
 
 class _HistoryRepository extends DemoRepository {

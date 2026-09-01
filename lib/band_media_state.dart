@@ -325,12 +325,43 @@ class BandMediaController extends ChangeNotifier {
   Future<void> setHero(String bandId, String mediaId) async {
     await _mutate(
       bandId,
-      () => repository.setBandPhoto(bandId: bandId, mediaId: mediaId),
+      () => repository.setBandBanner(bandId: bandId, mediaId: mediaId),
     );
   }
 
   Future<void> clearHero(String bandId) async {
-    await _mutate(bandId, () => repository.clearBandPhoto(bandId));
+    await _mutate(bandId, () => repository.clearBandBanner(bandId));
+  }
+
+  Future<bool> setAvatar(String bandId, String mediaId) => _mutateResult(
+    bandId,
+    () => repository.setBandAvatar(bandId: bandId, mediaId: mediaId),
+  );
+
+  Future<bool> setBanner(String bandId, String mediaId) => _mutateResult(
+    bandId,
+    () => repository.setBandBanner(bandId: bandId, mediaId: mediaId),
+  );
+
+  Future<bool> clearAvatar(String bandId) =>
+      _mutateResult(bandId, () => repository.clearBandAvatar(bandId));
+
+  Future<bool> clearBanner(String bandId) =>
+      _mutateResult(bandId, () => repository.clearBandBanner(bandId));
+
+  Future<bool> _mutateResult(
+    String bandId,
+    Future<void> Function() mutation,
+  ) async {
+    try {
+      await mutation();
+      await refresh(bandId);
+      return true;
+    } catch (error) {
+      logError('band media mutation', error);
+      say(genericErrorMessage);
+      return false;
+    }
   }
 
   Future<void> _mutate(String bandId, Future<void> Function() mutation) async {

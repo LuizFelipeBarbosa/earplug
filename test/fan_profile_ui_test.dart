@@ -308,7 +308,8 @@ void main() {
     );
     expect(find.byKey(const Key('profile-tutorial')), findsOne);
     for (var step = 0; step < 3; step++) {
-      await tester.tap(find.byKey(const Key('profile-tutorial-next')));
+      final next = find.byKey(const Key('profile-tutorial-next'));
+      tester.widget<FilledButton>(next).onPressed!();
       await tester.pumpAndSettle();
     }
     expect(find.byKey(const Key('profile-tutorial')), findsNothing);

@@ -87,7 +87,7 @@ void main() {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = _CancelledRsvpRepository(auth: auth);
-      await pumpApp(
+      final harness = await pumpApp(
         tester,
         auth: auth,
         repository: repository,
@@ -95,6 +95,14 @@ void main() {
       );
 
       final gig = repository.cancelledGig;
+      await tester.pumpAndSettle();
+      expect(harness.app.rsvps, contains(gig.id));
+      expect(harness.app.upcomingRsvpGigs, contains(gig));
+      await tester.scrollUntilVisible(
+        find.byKey(ValueKey('fan-event-${gig.id}')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.byKey(ValueKey('next-show-${gig.id}')), findsNothing);
       expect(find.byKey(ValueKey('fan-event-${gig.id}')), findsOne);
       expect(find.text('CANCELLED'), findsOne);
@@ -112,7 +120,11 @@ void main() {
 class _CancelledRsvpRepository extends DemoRepository {
   _CancelledRsvpRepository({required super.auth})
     : cancelledGig = DemoData.gigs
-          .firstWhere((gig) => gig.tix == Ticketing.rsvp)
+          .firstWhere(
+            (gig) =>
+                gig.tix == Ticketing.rsvp &&
+                gig.startsAt.isAfter(DateTime.now()),
+          )
           .copyWith(lifecycle: GigLifecycle.cancelled);
 
   final Gig cancelledGig;

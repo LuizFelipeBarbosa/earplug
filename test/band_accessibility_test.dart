@@ -35,7 +35,7 @@ void main() {
       home: _scaledScreen(const BandCreateScreen()),
     );
 
-    expect(find.text('CREATE BAND'), findsOne);
+    expect(find.text('CREATE BAND'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
   });
 

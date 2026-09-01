@@ -300,13 +300,17 @@ describe("bands: slugs and profile updates", () => {
     });
   });
 
-  test("get resolves heroUrl from the selected live photo", async () => {
+  test("avatar and banner roles widen legacy artwork independently", async () => {
     const { t, asAdmin } = await setup();
     const { bandId } = await asAdmin.mutation(api.bands.createBand, {
       name: "Static Bloom",
       ...bandArgs,
     });
-    expect((await t.query(api.bands.get, { bandId }))?.heroUrl).toBeNull();
+    expect(await t.query(api.bands.get, { bandId })).toMatchObject({
+      heroUrl: null,
+      avatarUrl: null,
+      bannerUrl: null,
+    });
 
     const { storageId, mediaId } = await t.run(async (ctx) => {
       const storageId = await ctx.storage.store(
@@ -323,9 +327,37 @@ describe("bands: slugs and profile updates", () => {
       return { storageId, mediaId };
     });
     await asAdmin.mutation(api.bands.setBandPhoto, { bandId, mediaId });
-    expect((await t.query(api.bands.get, { bandId }))?.heroUrl).toEqual(
-      expect.any(String),
-    );
+    const legacy = await t.query(api.bands.get, { bandId });
+    expect(legacy?.heroUrl).toEqual(expect.any(String));
+    expect(legacy?.avatarUrl).toBe(legacy?.heroUrl);
+    expect(legacy?.bannerUrl).toBe(legacy?.heroUrl);
+
+    const bannerMediaId = await t.run(async (ctx) => {
+      const bannerStorageId = await ctx.storage.store(
+        new Blob([new Uint8Array([4, 5, 6])]),
+      );
+      return ctx.db.insert("bandMedia", {
+        bandId,
+        kind: "photo",
+        storageId: bannerStorageId,
+        title: "Banner",
+        order: 1,
+        pinned: false,
+      });
+    });
+    await asAdmin.mutation(api.bands.setBandBanner, {
+      bandId,
+      mediaId: bannerMediaId,
+    });
+    const separated = await t.query(api.bands.get, { bandId });
+    expect(separated?.avatarUrl).toBe(legacy?.avatarUrl);
+    expect(separated?.bannerUrl).not.toBe(legacy?.bannerUrl);
+
+    await asAdmin.mutation(api.bands.clearBandBanner, { bandId });
+    expect(await t.query(api.bands.get, { bandId })).toMatchObject({
+      avatarUrl: legacy?.avatarUrl,
+      bannerUrl: null,
+    });
 
     await t.run(async (ctx) => ctx.storage.delete(storageId));
     expect((await t.query(api.bands.get, { bandId }))?.heroUrl).toBeNull();

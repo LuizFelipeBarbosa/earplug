@@ -810,7 +810,7 @@ class BandAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     return EpProfileAvatar(
       name: band.name,
-      imageUrl: band.heroUrl,
+      imageUrl: band.profileImageUrl,
       size: size,
       radius: radius,
       fontSize: fontSize,

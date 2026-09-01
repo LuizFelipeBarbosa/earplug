@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../genres.dart';
+import '../band_media_state.dart';
 import '../models.dart';
+import '../services/media_picker.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
+import '../widgets/band_identity_editor.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
+
+enum _EditArtworkRole { avatar, banner }
 
 class BandEditScreen extends StatefulWidget {
   const BandEditScreen({super.key});
@@ -42,6 +46,11 @@ class _BandEditScreenState extends State<BandEditScreen> {
   bool _addingCustomGenre = false;
   bool _saving = false;
   bool _saved = false;
+  bool _avatarUploading = false;
+  bool _bannerUploading = false;
+  PickedMedia? _avatarPreview;
+  PickedMedia? _bannerPreview;
+  String? _artworkError;
   String? _error;
 
   @override
@@ -166,6 +175,52 @@ class _BandEditScreenState extends State<BandEditScreen> {
     });
   }
 
+  Future<void> _changeArtwork(_EditArtworkRole role) async {
+    final app = context.read<AppState>();
+    final media = context.read<BandMediaController>();
+    final band = app.myBand;
+    if (band == null || !app.isAdminOf(band.id)) return;
+
+    final PickedMedia? picked;
+    try {
+      picked = await media.pickFlyerArt();
+    } on MediaPickException catch (error) {
+      app.say(error.message);
+      return;
+    }
+    if (!mounted || picked == null) return;
+
+    setState(() {
+      _artworkError = null;
+      if (role == _EditArtworkRole.avatar) {
+        _avatarPreview = picked;
+        _avatarUploading = true;
+      } else {
+        _bannerPreview = picked;
+        _bannerUploading = true;
+      }
+    });
+
+    final mediaId = await media.uploadHeldPhoto(band.id, picked);
+    final assigned =
+        mediaId != null &&
+        (role == _EditArtworkRole.avatar
+            ? await media.setAvatar(band.id, mediaId)
+            : await media.setBanner(band.id, mediaId));
+    if (!mounted) return;
+    setState(() {
+      if (role == _EditArtworkRole.avatar) {
+        _avatarUploading = false;
+      } else {
+        _bannerUploading = false;
+      }
+      if (!assigned) {
+        _artworkError =
+            'The ${role == _EditArtworkRole.avatar ? 'profile' : 'header'} image could not be saved. Choose it again here; the failed upload remains available in Media.';
+      }
+    });
+  }
+
   Future<void> _save() async {
     final name = _name.text.trim();
     final area = _area.text.trim();
@@ -261,171 +316,104 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 'Shape the profile fans see without leaving the editor guessing what is editable.',
                 style: Theme.of(context).textTheme.epCaption,
               ),
+              const SizedBox(height: 18),
               KeyedSubtree(
                 key: _requiredKey,
-                child: _EditorSection(
-                  title: 'Identity',
-                  description:
-                      'Your name, sound, and home base power the public profile and discovery.',
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'BAND NAME · REQUIRED',
-                            style: Theme.of(context).textTheme.epChipLabel
-                                .copyWith(
-                                  color: _name.text.trim().isEmpty
-                                      ? Ep.warning
-                                      : Ep.success,
-                                  letterSpacing: 1.1,
-                                ),
-                          ),
-                          const SizedBox(height: 7),
-                          Semantics(
-                            label: 'Band name',
-                            textField: true,
-                            child: TextField(
-                              key: const ValueKey('edit-band-name'),
-                              controller: _name,
-                              enabled: !_saving,
-                              onChanged: (value) {
-                                _draftChanged(value);
-                                setState(() {});
-                              },
-                              style: Theme.of(
-                                context,
-                              ).textTheme.epDisplay.copyWith(fontSize: 22),
-                              decoration: epCollapsedInputDecoration(
-                                'Your band name',
-                                hintStyle: Theme.of(context).textTheme.epDisplay
-                                    .copyWith(
-                                      fontSize: 22,
-                                      color: Ep.contentDisabled,
-                                    ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 18),
-                      const Divider(),
-                      const SizedBox(height: 16),
-                      const _FieldLabel('GENRES'),
-                      const SizedBox(height: 6),
-                      Wrap(
-                        spacing: 7,
-                        runSpacing: 7,
-                        children: [
-                          for (final genre in {...kGenres, ..._genres})
-                            EpChip(
-                              label: genre,
-                              active: _genres.contains(genre),
-                              onTap: _saving ? null : () => _toggleGenre(genre),
-                            ),
-                          EpChip(
-                            key: const ValueKey('show-custom-genre'),
-                            label: '+ ADD',
-                            active: false,
-                            ghost: true,
-                            semanticLabel: 'Add custom genre',
-                            onTap: _saving
-                                ? null
-                                : () => setState(() {
-                                    _addingCustomGenre = true;
-                                    _error = null;
-                                  }),
-                          ),
-                        ],
-                      ),
-                      if (_addingCustomGenre) ...[
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                key: const ValueKey('edit-custom-genre'),
-                                controller: _customGenre,
-                                enabled: !_saving,
-                                autofocus: true,
-                                onSubmitted: (_) => _addCustomGenre(),
-                                style: Theme.of(context).textTheme.epBody,
-                                decoration: epInputDecoration('Another genre'),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            FilledButton(
-                              onPressed: _saving ? null : _addCustomGenre,
-                              child: const Text('ADD'),
-                            ),
-                          ],
-                        ),
-                      ],
-                      const SizedBox(height: 5),
-                      Text(
-                        '${_genres.length} of 3 selected',
-                        style: Theme.of(context).textTheme.epCaption,
-                      ),
-                      const SizedBox(height: 16),
-                      Semantics(
-                        label: 'Home base',
-                        textField: true,
-                        child: TextField(
-                          key: const ValueKey('edit-home-base'),
-                          controller: _area,
-                          enabled: !_saving,
-                          onChanged: _draftChanged,
-                          style: Theme.of(context).textTheme.epBody,
-                          decoration: _bandInput(
-                            'HOME BASE',
-                            'Neighborhood or city',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              _EditorSection(
-                title: 'Profile artwork',
-                description:
-                    'Choose the image that sits behind your public header and represents the band elsewhere.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _ProfileBannerEditor(
-                      band: band,
-                      onTap: _saving ? null : app.openBandMedia,
+                    BandIdentityHeader(
+                      name: _name.text,
+                      area: _area.text,
+                      initials: band.initials,
+                      color: band.color,
+                      avatarUrl: band.profileImageUrl,
+                      bannerUrl: band.headerImageUrl,
+                      avatarBytes: _avatarPreview?.bytes,
+                      bannerBytes: _bannerPreview?.bytes,
+                      avatarBusy: _avatarUploading,
+                      bannerBusy: _bannerUploading,
+                      onAvatarTap: _saving
+                          ? null
+                          : () => _changeArtwork(_EditArtworkRole.avatar),
+                      onBannerTap: _saving
+                          ? null
+                          : () => _changeArtwork(_EditArtworkRole.banner),
+                    ),
+                    const SizedBox(height: 9),
+                    Text(
+                      'Profile image and header image are separate. Changing one will not replace the other.',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                    if (_artworkError case final error?) ...[
+                      const SizedBox(height: 8),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          error,
+                          key: const ValueKey('band-artwork-error'),
+                          style: epText(size: 11, color: Ep.warning),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    BandIdentityTextField(
+                      fieldKey: const ValueKey('edit-band-name'),
+                      label: 'BAND NAME',
+                      semanticLabel: 'Band name',
+                      hint: 'Your band name',
+                      controller: _name,
+                      required: true,
+                      enabled: !_saving,
+                      onChanged: (value) {
+                        _draftChanged(value);
+                        setState(() {});
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    BandIdentityTextField(
+                      fieldKey: const ValueKey('edit-home-base'),
+                      label: 'HOME BASE',
+                      semanticLabel: 'Home base',
+                      hint: 'Neighborhood or city',
+                      controller: _area,
+                      required: true,
+                      enabled: !_saving,
+                      onChanged: (value) {
+                        _draftChanged(value);
+                        setState(() {});
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    BandIdentityTextField(
+                      fieldKey: const ValueKey('edit-short-bio'),
+                      label: 'ABOUT',
+                      semanticLabel: 'About',
+                      hint: 'Tell fans about the band',
+                      controller: _bio,
+                      enabled: !_saving,
+                      minLines: 4,
+                      maxLines: 7,
+                      onChanged: _draftChanged,
+                    ),
+                    const SizedBox(height: 14),
+                    BandGenreEditor(
+                      genres: _genres,
+                      onToggle: _toggleGenre,
+                      customController: _customGenre,
+                      addingCustomGenre: _addingCustomGenre,
+                      onShowCustomGenre: () => setState(() {
+                        _addingCustomGenre = true;
+                        _error = null;
+                      }),
+                      onAddCustomGenre: _addCustomGenre,
+                      enabled: !_saving,
                     ),
                     const SizedBox(height: 14),
                     _MediaManagementRow(
                       onTap: _saving ? null : app.openBandMedia,
                     ),
                   ],
-                ),
-              ),
-              _EditorSection(
-                title: 'About',
-                description:
-                    'Give fans a concise introduction in your own words.',
-                child: Semantics(
-                  label: 'Short bio',
-                  textField: true,
-                  child: TextField(
-                    key: const ValueKey('edit-short-bio'),
-                    controller: _bio,
-                    enabled: !_saving,
-                    onChanged: _draftChanged,
-                    minLines: 4,
-                    maxLines: 7,
-                    style: Theme.of(context).textTheme.epBody,
-                    decoration: _bandInput(
-                      'SHORT BIO',
-                      'Tell fans about the band',
-                    ),
-                  ),
                 ),
               ),
               KeyedSubtree(
@@ -588,96 +576,6 @@ class _EditorSection extends StatelessWidget {
           child: child,
         ),
       ],
-    );
-  }
-}
-
-class _ProfileBannerEditor extends StatelessWidget {
-  const _ProfileBannerEditor({required this.band, required this.onTap});
-
-  final Band band;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final fallback = ColoredBox(
-      color: band.color,
-      child: Center(
-        child: Text(
-          band.initials,
-          style: Theme.of(
-            context,
-          ).textTheme.epDisplay.copyWith(color: Colors.white, fontSize: 28),
-        ),
-      ),
-    );
-
-    return Semantics(
-      button: true,
-      enabled: onTap != null,
-      label: band.heroUrl == null
-          ? 'Add profile banner'
-          : 'Change profile banner',
-      excludeSemantics: true,
-      child: Material(
-        color: Ep.surface,
-        borderRadius: BorderRadius.circular(12),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          key: const ValueKey('edit-band-profile-artwork'),
-          onTap: onTap,
-          child: AspectRatio(
-            aspectRatio: 16 / 7,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                EpNetworkImage(
-                  url: band.heroUrl,
-                  fit: BoxFit.cover,
-                  fallback: fallback,
-                ),
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.black38, Colors.black87],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  left: 14,
-                  right: 14,
-                  bottom: 12,
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.photo_camera_outlined,
-                        size: 19,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          band.heroUrl == null
-                              ? 'ADD PROFILE BANNER'
-                              : 'CHANGE PROFILE BANNER',
-                          style: Theme.of(context).textTheme.epLabel.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: .6,
-                          ),
-                        ),
-                      ),
-                      const Icon(Icons.chevron_right, color: Colors.white),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

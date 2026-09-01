@@ -161,8 +161,22 @@ export const deleteMedia = mutation({
     const media = await mediaForAdmin(ctx, args.mediaId);
 
     const band = await ctx.db.get(media.bandId);
-    if (band?.imageStorageId === media.storageId) {
-      await ctx.db.patch(band._id, { imageStorageId: undefined });
+    if (band) {
+      const patch: {
+        imageStorageId?: undefined;
+        avatarStorageId?: null;
+        bannerStorageId?: null;
+      } = {};
+      if (band.imageStorageId === media.storageId) {
+        patch.imageStorageId = undefined;
+      }
+      if (band.avatarStorageId === media.storageId) {
+        patch.avatarStorageId = null;
+      }
+      if (band.bannerStorageId === media.storageId) {
+        patch.bannerStorageId = null;
+      }
+      if (Object.keys(patch).length > 0) await ctx.db.patch(band._id, patch);
     }
     // Physical blob deletion belongs exclusively to sweepOrphanBlobs so shared or missing blobs cannot wedge row deletion.
     await ctx.db.delete(media._id);
@@ -264,7 +278,11 @@ export const forBand = query({
         ? await ctx.storage.getUrl(media.thumbnailStorageId)
         : null;
       payloads.push(
-        toMediaPayload(media, url, thumbnailUrl, band?.imageStorageId),
+        toMediaPayload(media, url, thumbnailUrl, {
+          legacyStorageId: band?.imageStorageId,
+          avatarStorageId: band?.avatarStorageId,
+          bannerStorageId: band?.bannerStorageId,
+        }),
       );
     }
     return payloads;
@@ -344,6 +362,8 @@ export const sweepOrphanBlobs = internalMutation({
       if (band.imageStorageId !== undefined) {
         referenced.add(band.imageStorageId);
       }
+      if (band.avatarStorageId) referenced.add(band.avatarStorageId);
+      if (band.bannerStorageId) referenced.add(band.bannerStorageId);
     }
     for (const gig of gigs) {
       if (gig.flyStorageId !== undefined) referenced.add(gig.flyStorageId);

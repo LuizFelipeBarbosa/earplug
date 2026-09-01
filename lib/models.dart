@@ -682,6 +682,12 @@ class Band {
   final String? linkBc;
   final String? linkYt;
   final String? credits;
+  final String? avatarUrl;
+  final String? bannerUrl;
+  final bool _avatarUrlResolved;
+  final bool _bannerUrlResolved;
+
+  /// Legacy shared artwork URL retained for older/demo payloads.
   final String? heroUrl;
   final List<String> upcoming; // gig ids
   final List<PastGig> past;
@@ -702,6 +708,10 @@ class Band {
     this.linkBc,
     this.linkYt,
     this.credits,
+    this.avatarUrl,
+    this.bannerUrl,
+    this._avatarUrlResolved = false,
+    this._bannerUrlResolved = false,
     this.heroUrl,
     this.upcoming = const [],
     this.past = const [],
@@ -730,6 +740,10 @@ class Band {
       linkBc: json['linkBc'] as String?,
       linkYt: json['linkYt'] as String?,
       credits: json['credits'] as String?,
+      avatarUrl: json['avatarUrl'] as String?,
+      bannerUrl: json['bannerUrl'] as String?,
+      avatarUrlResolved: json.containsKey('avatarUrl'),
+      bannerUrlResolved: json.containsKey('bannerUrl'),
       heroUrl: json['heroUrl'] as String?,
       profileComplete: json['profileComplete'] == true,
       discoveryProfileReady: json['discoveryProfileReady'] == true,
@@ -743,6 +757,10 @@ class Band {
 
   String get genreLine => genres.join(' · ');
   String get followersLabel => _compactCount(followers);
+  String? get profileImageUrl =>
+      _avatarUrlResolved ? avatarUrl : avatarUrl ?? heroUrl;
+  String? get headerImageUrl =>
+      _bannerUrlResolved ? bannerUrl : bannerUrl ?? heroUrl;
 
   Band copyWith({
     String? slug,
@@ -756,6 +774,10 @@ class Band {
     String? linkBc,
     String? linkYt,
     String? credits,
+    String? avatarUrl,
+    String? bannerUrl,
+    bool? avatarUrlResolved,
+    bool? bannerUrlResolved,
     String? heroUrl,
     List<String>? upcoming,
     bool? profileComplete,
@@ -774,6 +796,10 @@ class Band {
     linkBc: linkBc ?? this.linkBc,
     linkYt: linkYt ?? this.linkYt,
     credits: credits ?? this.credits,
+    avatarUrl: avatarUrl ?? this.avatarUrl,
+    bannerUrl: bannerUrl ?? this.bannerUrl,
+    avatarUrlResolved: avatarUrlResolved ?? _avatarUrlResolved,
+    bannerUrlResolved: bannerUrlResolved ?? _bannerUrlResolved,
     heroUrl: heroUrl ?? this.heroUrl,
     upcoming: upcoming ?? this.upcoming,
     past: past,
@@ -1132,6 +1158,8 @@ class BandMedia {
   final bool pinned;
   final int order;
   final bool isHero;
+  final bool isAvatar;
+  final bool isBanner;
 
   const BandMedia({
     required this.id,
@@ -1147,6 +1175,8 @@ class BandMedia {
     required this.pinned,
     required this.order,
     required this.isHero,
+    this.isAvatar = false,
+    this.isBanner = false,
   });
 
   factory BandMedia.fromJson(Map<String, dynamic> json) => BandMedia(
@@ -1163,6 +1193,8 @@ class BandMedia {
     pinned: json['pinned'] as bool,
     order: (json['order'] as num).toInt(),
     isHero: json['isHero'] as bool,
+    isAvatar: json['isAvatar'] as bool? ?? false,
+    isBanner: json['isBanner'] as bool? ?? json['isHero'] as bool,
   );
 
   bool get isVideo => kind == MediaKind.video;
@@ -1190,6 +1222,8 @@ class BandMedia {
     pinned: pinned ?? this.pinned,
     order: order ?? this.order,
     isHero: isHero,
+    isAvatar: isAvatar,
+    isBanner: isBanner,
   );
 }
 

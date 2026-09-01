@@ -174,9 +174,7 @@ void main() {
     expect(find.byType(FilledButton), findsOne);
   });
 
-  testWidgets('public profile badge follows derived profile completion', (
-    tester,
-  ) async {
+  testWidgets('public profile keeps completion state private', (tester) async {
     final auth = FakeAuthService();
     await pumpApp(
       tester,
@@ -188,7 +186,8 @@ void main() {
       ),
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
-    expect(find.byKey(const Key('profile-complete-badge')), findsOne);
+    expect(find.byKey(const Key('profile-complete-badge')), findsNothing);
+    expect(find.text('486 followers'), findsOne);
 
     await tester.pumpWidget(const SizedBox.shrink());
     final incompleteAuth = FakeAuthService();

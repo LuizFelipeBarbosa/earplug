@@ -137,6 +137,38 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<void> setBandAvatar({
+    required String bandId,
+    required String mediaId,
+  }) async {
+    await _convexService.mutation('bands:setBandAvatar', {
+      'bandId': bandId,
+      'mediaId': mediaId,
+    });
+  }
+
+  @override
+  Future<void> clearBandAvatar(String bandId) async {
+    await _convexService.mutation('bands:clearBandAvatar', {'bandId': bandId});
+  }
+
+  @override
+  Future<void> setBandBanner({
+    required String bandId,
+    required String mediaId,
+  }) async {
+    await _convexService.mutation('bands:setBandBanner', {
+      'bandId': bandId,
+      'mediaId': mediaId,
+    });
+  }
+
+  @override
+  Future<void> clearBandBanner(String bandId) async {
+    await _convexService.mutation('bands:clearBandBanner', {'bandId': bandId});
+  }
+
+  @override
   Future<List<FanHistoryItem>> history() async {
     final result = await _convexService.query('interactions:history', {
       'now': DateTime.now().millisecondsSinceEpoch,

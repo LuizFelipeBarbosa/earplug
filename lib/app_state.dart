@@ -56,6 +56,8 @@ enum PriceFilter { any, free, paid }
 
 enum DiscoveryLocation { sf, oak, current }
 
+enum _BandArtworkRole { avatar, banner }
+
 class DiscoveryFilters {
   const DiscoveryFilters({
     this.date = DateFilter.all,
@@ -505,9 +507,17 @@ class AppState extends ChangeNotifier {
   String nbBc = '';
   String nbYt = '';
   String nbLabel = 'cream';
+
+  /// Kept as `nbPhoto` for compatibility with the existing creation recovery
+  /// path; it is now the avatar/profile image only.
   PickedMedia? nbPhoto;
   String? nbPhotoError;
   bool nbPhotoUploading = false;
+  PickedMedia? nbBanner;
+  String? nbBannerError;
+  bool nbBannerUploading = false;
+  bool _nbPhotoUploaded = false;
+  bool _nbBannerUploaded = false;
   bool nbCreated = false;
 
   /// Set once the band lands; later saves update this record instead of
@@ -2863,6 +2873,11 @@ class AppState extends ChangeNotifier {
     nbPhoto = null;
     nbPhotoError = null;
     nbPhotoUploading = false;
+    nbBanner = null;
+    nbBannerError = null;
+    nbBannerUploading = false;
+    _nbPhotoUploaded = false;
+    _nbBannerUploaded = false;
     nbCreated = false;
     _nbBandId = null;
     _nbCreatedSlug = null;
@@ -2874,11 +2889,8 @@ class AppState extends ChangeNotifier {
 
   void setNbCredits(String v) => _set(() => nbCredits = v);
 
-  void setNbArea(String v) {
-    final area = v.trim();
-    if (area.isEmpty) return;
-    _set(() => nbArea = area);
-  }
+  void setNbArea(String v) =>
+      _set(() => nbArea = v.trim().isEmpty ? null : v.trim());
 
   void setNbIg(String v) => _set(() => nbIg = v);
 
@@ -2888,7 +2900,17 @@ class AppState extends ChangeNotifier {
 
   void setNbLabel(String key) => _set(() => nbLabel = key);
 
-  void setNbPhoto(PickedMedia? photo) => _set(() => nbPhoto = photo);
+  void setNbPhoto(PickedMedia? photo) => _set(() {
+    nbPhoto = photo;
+    nbPhotoError = null;
+    _nbPhotoUploaded = false;
+  });
+
+  void setNbBanner(PickedMedia? photo) => _set(() {
+    nbBanner = photo;
+    nbBannerError = null;
+    _nbBannerUploaded = false;
+  });
 
   void toggleNbGenre(String g) {
     if (nbGenres.contains(g)) {
@@ -2923,13 +2945,14 @@ class AppState extends ChangeNotifier {
     if (nbArea == null) 'a home base',
   ];
 
-  /// How full the tape winds: the six setup checklist lines, equally weighted.
+  /// How full the tape winds: the seven setup checklist lines, equally weighted.
   double get nbCompletion {
     final done = [
       nbName.trim().isNotEmpty,
       nbGenres.isNotEmpty,
       nbArea != null,
       nbPhoto != null,
+      nbBanner != null,
       nbBio.trim().isNotEmpty,
       nbIg.trim().isNotEmpty ||
           nbBc.trim().isNotEmpty ||
@@ -3040,10 +3063,14 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }
 
-    final photo = nbPhoto;
     final media = _media;
-    if (photo != null && media != null) {
-      unawaited(_uploadBandPhoto(bandId, photo));
+    if (media != null) {
+      if (nbPhoto case final photo? when !_nbPhotoUploaded) {
+        unawaited(_uploadBandArtwork(bandId, photo, _BandArtworkRole.avatar));
+      }
+      if (nbBanner case final banner? when !_nbBannerUploaded) {
+        unawaited(_uploadBandArtwork(bandId, banner, _BandArtworkRole.banner));
+      }
     }
     nbCreated = true;
     notifyListeners();
@@ -3052,25 +3079,51 @@ class AppState extends ChangeNotifier {
     _refreshExploreBands();
   }
 
-  Future<void> _uploadBandPhoto(String bandId, PickedMedia photo) async {
+  Future<void> _uploadBandArtwork(
+    String bandId,
+    PickedMedia photo,
+    _BandArtworkRole role,
+  ) async {
     final media = _media;
     if (media == null) return;
 
-    nbPhotoUploading = true;
-    nbPhotoError = null;
+    if (role == _BandArtworkRole.avatar) {
+      nbPhotoUploading = true;
+      nbPhotoError = null;
+    } else {
+      nbBannerUploading = true;
+      nbBannerError = null;
+    }
     notifyListeners();
 
     final mediaId = await media.uploadHeldPhoto(bandId, photo);
     if (mediaId == null) {
-      nbPhotoUploading = false;
-      nbPhotoError = 'upload failed';
+      if (role == _BandArtworkRole.avatar) {
+        nbPhotoUploading = false;
+        nbPhotoError = 'upload failed';
+      } else {
+        nbBannerUploading = false;
+        nbBannerError = 'upload failed';
+      }
       notifyListeners();
-      say("Band's up. The photo didn't upload. Add it from Media.");
+      say(
+        "Band's up. The ${role == _BandArtworkRole.avatar ? 'profile' : 'header'} image didn't upload. Retry it here.",
+      );
       return;
     }
 
-    await media.setHero(bandId, mediaId);
-    nbPhotoUploading = false;
+    final assigned = role == _BandArtworkRole.avatar
+        ? await media.setAvatar(bandId, mediaId)
+        : await media.setBanner(bandId, mediaId);
+    if (role == _BandArtworkRole.avatar) {
+      nbPhotoUploading = false;
+      _nbPhotoUploaded = assigned;
+      nbPhotoError = assigned ? null : 'assignment failed';
+    } else {
+      nbBannerUploading = false;
+      _nbBannerUploaded = assigned;
+      nbBannerError = assigned ? null : 'assignment failed';
+    }
     notifyListeners();
     unawaited(refreshBandSetupStatus(bandId));
     unawaited(refreshBandDiscoveryReadiness(bandId));
@@ -3079,7 +3132,13 @@ class AppState extends ChangeNotifier {
   Future<void> retryNbPhoto() async {
     final photo = nbPhoto;
     if (photo == null) return;
-    await _uploadBandPhoto(bandId, photo);
+    await _uploadBandArtwork(bandId, photo, _BandArtworkRole.avatar);
+  }
+
+  Future<void> retryNbBanner() async {
+    final photo = nbBanner;
+    if (photo == null) return;
+    await _uploadBandArtwork(bandId, photo, _BandArtworkRole.banner);
   }
 
   /// "Keep editing" — back to the tape with everything still filled in.

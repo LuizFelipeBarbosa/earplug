@@ -681,6 +681,24 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<void> clearBandPhoto(String bandId) async {}
 
   @override
+  Future<void> setBandAvatar({
+    required String bandId,
+    required String mediaId,
+  }) async {}
+
+  @override
+  Future<void> clearBandAvatar(String bandId) async {}
+
+  @override
+  Future<void> setBandBanner({
+    required String bandId,
+    required String mediaId,
+  }) async {}
+
+  @override
+  Future<void> clearBandBanner(String bandId) async {}
+
+  @override
   Future<List<FanHistoryItem>> history() async => const [];
 
   @override

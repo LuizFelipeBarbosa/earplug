@@ -5,11 +5,13 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_edit.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/band_identity_editor.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -22,7 +24,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('EDIT BAND'), findsOne);
-    expect(find.text('IDENTITY'), findsOne);
+    expect(find.byType(BandIdentityHeader), findsOne);
+    expect(find.byKey(const ValueKey('band-profile-image-control')), findsOne);
+    expect(find.byKey(const ValueKey('band-header-image-control')), findsOne);
     expect(find.text('BAND NAME · REQUIRED'), findsOne);
     expect(find.bySemanticsLabel('Band name'), findsOne);
     expect(
@@ -30,19 +34,15 @@ void main() {
           .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
           .style
           ?.fontSize,
-      22,
+      21,
     );
-    expect(find.text('GENRES'), findsOne);
-    expect(find.text('HOME BASE'), findsOne);
+    expect(find.text('GENRES · REQUIRED'), findsOne);
+    expect(find.text('HOME BASE · REQUIRED'), findsOne);
     expect(find.bySemanticsLabel('Home base'), findsOne);
+    expect(find.text('ABOUT'), findsOne);
+    expect(find.bySemanticsLabel('About'), findsOne);
     expect(find.text('PREVIEW'), findsOne);
     expect(find.byType(StickyActionBar), findsOne);
-    expect(find.text('PROFILE ARTWORK'), findsOne);
-    expect(find.byKey(const ValueKey('edit-band-profile-artwork')), findsOne);
-    expect(find.text('ADD PROFILE BANNER'), findsOne);
-    expect(find.text('ABOUT'), findsOne);
-    expect(find.text('SHORT BIO'), findsOne);
-    expect(find.bySemanticsLabel('Short bio'), findsOne);
     expect(find.text('LINKS'), findsOne);
     expect(find.text('CREDITS'), findsWidgets);
     expect(find.bySemanticsLabel('Credits'), findsOne);
@@ -88,6 +88,41 @@ void main() {
       isNull,
     );
   });
+
+  testWidgets(
+    'profile and header images edit independently without losing the draft',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: BandEditScreen()),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('edit-band-name')),
+        'Unsaved New Name',
+      );
+
+      harness.picker.nextPhoto = photoFixture(filename: 'new_banner.png');
+      await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
+      await tester.pumpAndSettle();
+      harness.picker.nextPhoto = photoFixture(filename: 'new_avatar.png');
+      await tester.tap(
+        find.byKey(const ValueKey('band-profile-image-control')),
+      );
+      await tester.pumpAndSettle();
+
+      final photos = harness.media.photosFor('b1');
+      expect(photos.singleWhere((photo) => photo.isBanner).title, 'NEW BANNER');
+      expect(photos.singleWhere((photo) => photo.isAvatar).title, 'NEW AVATAR');
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
+            .controller!
+            .text,
+        'Unsaved New Name',
+      );
+      expect(harness.app.myBand!.name, 'Foghorn Diet');
+    },
+  );
 
   testWidgets(
     'accepted members are read-only and archive copy is irreversible',
@@ -155,6 +190,7 @@ void main() {
       find.byKey(const ValueKey('edit-short-bio')),
       'A concise new bio.',
     );
+    await _scrollToKey(tester, const ValueKey('edit-instagram'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-instagram')),
       '@newrhythm',
@@ -167,6 +203,7 @@ void main() {
       find.byKey(const ValueKey('edit-youtube')),
       'youtube.com/@newrhythm',
     );
+    await _scrollToKey(tester, const ValueKey('edit-credits'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-credits')),
       'Recorded by Mara K.',
@@ -463,20 +500,19 @@ void main() {
 }
 
 Future<void> _scrollTo(WidgetTester tester, String text) async {
-  await tester.scrollUntilVisible(
-    find.text(text),
-    260,
-    scrollable: find.byType(Scrollable).first,
-  );
-  await tester.pumpAndSettle();
+  await _scrollToFinder(tester, find.text(text));
 }
 
 Future<void> _scrollToKey(WidgetTester tester, Key key) async {
-  await tester.scrollUntilVisible(
-    find.byKey(key),
-    260,
-    scrollable: find.byType(Scrollable).first,
-  );
+  await _scrollToFinder(tester, find.byKey(key));
+}
+
+Future<void> _scrollToFinder(WidgetTester tester, Finder target) async {
+  for (var attempt = 0; attempt < 20 && target.evaluate().isEmpty; attempt++) {
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pump();
+  }
+  await tester.ensureVisible(target);
   await tester.pumpAndSettle();
 }
 

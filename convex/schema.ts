@@ -114,7 +114,13 @@ export default defineSchema({
     // transactionally; an absent legacy value is deliberately read as false
     // until migrations:backfillBandHasClip has visited the row.
     hasClip: v.optional(v.boolean()),
-    // Storage / link content with no home in the v1 UI, kept rather than swept.
+    // Independent public-profile artwork. `null` is intentional: it records an
+    // explicit removal, while `undefined` lets legacy rows fall back to the
+    // original shared image below.
+    avatarStorageId: v.optional(v.union(v.id("_storage"), v.null())),
+    bannerStorageId: v.optional(v.union(v.id("_storage"), v.null())),
+    // Legacy shared avatar/banner image. Older clients still write this field;
+    // current reads use it only when the corresponding new role is undefined.
     imageStorageId: v.optional(v.id("_storage")),
     legacySocialLinks: v.optional(legacySocialLinksValidator),
     // Legacy fake invite handles remain readable but no live path writes them.

@@ -211,6 +211,8 @@ export const bandPayloadValidator = v.object({
   initials: v.string(),
   followerCount: v.number(),
   heroUrl: v.union(v.string(), v.null()),
+  avatarUrl: v.union(v.string(), v.null()),
+  bannerUrl: v.union(v.string(), v.null()),
   bio: v.string(),
   linkIg: v.union(v.string(), v.null()),
   linkBc: v.union(v.string(), v.null()),
@@ -494,6 +496,8 @@ export const mediaPayloadValidator = v.object({
   order: v.number(),
   /** True when this row's blob is also the band's profile photo. */
   isHero: v.boolean(),
+  isAvatar: v.boolean(),
+  isBanner: v.boolean(),
 });
 
 export const userPayloadValidator = v.object({
@@ -530,6 +534,14 @@ export const userPayloadValidator = v.object({
 export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
   const profileComplete = isBandProfileComplete(band);
   const profileImageReady = await hasValidProfileImage(ctx, band);
+  const avatarStorageId =
+    band.avatarStorageId === undefined
+      ? band.imageStorageId
+      : band.avatarStorageId ?? undefined;
+  const bannerStorageId =
+    band.bannerStorageId === undefined
+      ? band.imageStorageId
+      : band.bannerStorageId ?? undefined;
   return {
     _id: band._id,
     slug: band.slug,
@@ -541,6 +553,12 @@ export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
     followerCount: band.followerCount,
     heroUrl: band.imageStorageId
       ? await ctx.storage.getUrl(band.imageStorageId)
+      : null,
+    avatarUrl: avatarStorageId
+      ? await ctx.storage.getUrl(avatarStorageId)
+      : null,
+    bannerUrl: bannerStorageId
+      ? await ctx.storage.getUrl(bannerStorageId)
       : null,
     bio: band.bio ?? "",
     linkIg: band.linkIg ?? null,
@@ -615,8 +633,20 @@ export function toMediaPayload(
   media: Doc<"bandMedia">,
   url: string | null,
   thumbnailUrl: string | null,
-  heroStorageId: Id<"_storage"> | undefined,
+  artwork: {
+    legacyStorageId: Id<"_storage"> | undefined;
+    avatarStorageId: Id<"_storage"> | null | undefined;
+    bannerStorageId: Id<"_storage"> | null | undefined;
+  },
 ) {
+  const avatarStorageId =
+    artwork.avatarStorageId === undefined
+      ? artwork.legacyStorageId
+      : artwork.avatarStorageId ?? undefined;
+  const bannerStorageId =
+    artwork.bannerStorageId === undefined
+      ? artwork.legacyStorageId
+      : artwork.bannerStorageId ?? undefined;
   return {
     _id: media._id,
     bandId: media.bandId,
@@ -631,7 +661,11 @@ export function toMediaPayload(
     lengthSec: media.lengthSec ?? null,
     pinned: media.pinned,
     order: media.order,
-    isHero: heroStorageId !== undefined && heroStorageId === media.storageId,
+    // `isHero` remains the compatibility name for the banner selection used
+    // by existing media-management clients.
+    isHero: bannerStorageId !== undefined && bannerStorageId === media.storageId,
+    isAvatar: avatarStorageId !== undefined && avatarStorageId === media.storageId,
+    isBanner: bannerStorageId !== undefined && bannerStorageId === media.storageId,
   };
 }
 
@@ -754,8 +788,12 @@ export async function hasValidProfileImage(
   ctx: QueryCtx | MutationCtx,
   band: Doc<"bands">,
 ): Promise<boolean> {
-  if (band.imageStorageId === undefined) return false;
-  const upload = await ctx.db.system.get("_storage", band.imageStorageId);
+  const avatarStorageId =
+    band.avatarStorageId === undefined
+      ? band.imageStorageId
+      : band.avatarStorageId ?? undefined;
+  if (avatarStorageId === undefined) return false;
+  const upload = await ctx.db.system.get("_storage", avatarStorageId);
   if (!upload) return false;
   try {
     assertUploadAcceptable(

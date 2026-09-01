@@ -2,6 +2,7 @@ import 'package:earplug/app_state.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
+import 'package:earplug/widgets/band_identity_editor.dart';
 import 'package:earplug/widgets/video_thumbnail.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,36 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'support/harness.dart';
 
 void main() {
+  test('resolved artwork roles do not resurrect cleared legacy artwork', () {
+    final legacyPayload = <String, dynamic>{
+      '_id': 'band-1',
+      'slug': 'band-1',
+      'name': 'Band One',
+      'genres': <String>['punk'],
+      'area': 'Oakland',
+      'colorHex': '#1435F0',
+      'initials': 'BO',
+      'followerCount': 1,
+      'bio': '',
+      'heroUrl': 'https://example.com/legacy.jpg',
+      'profileComplete': true,
+      'discoveryProfileReady': false,
+      'pastShows': <dynamic>[],
+    };
+
+    final legacy = Band.fromJson(legacyPayload);
+    expect(legacy.profileImageUrl, legacy.heroUrl);
+    expect(legacy.headerImageUrl, legacy.heroUrl);
+
+    final roleAware = Band.fromJson({
+      ...legacyPayload,
+      'avatarUrl': null,
+      'bannerUrl': 'https://example.com/banner.jpg',
+    });
+    expect(roleAware.profileImageUrl, isNull);
+    expect(roleAware.headerImageUrl, 'https://example.com/banner.jpg');
+  });
+
   test('Instagram links normalize handles and scheme-less profile URLs', () {
     expect(
       bandLinkUri('@foghorn.diet', instagram: true).toString(),
@@ -62,6 +93,9 @@ void main() {
       isTrue,
     );
     expect(find.byKey(const ValueKey('band-profile-avatar-frame')), findsOne);
+    expect(find.byType(BandIdentityHeader), findsOne);
+    expect(find.text('486 followers'), findsOne);
+    expect(find.text('PROFILE COMPLETE'), findsNothing);
     final edit = find.byKey(const ValueKey('edit-band-profile-banner'));
     expect(edit, findsOne);
 
