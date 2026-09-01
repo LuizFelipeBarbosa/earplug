@@ -1,7 +1,10 @@
 import 'package:earplug/app_state.dart';
+import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
+import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/band_identity_editor.dart';
 import 'package:earplug/widgets/video_thumbnail.dart';
 import 'package:flutter/material.dart';
@@ -102,6 +105,28 @@ void main() {
     await tester.tap(edit);
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandMedia);
+  });
+
+  testWidgets('member preview is public-profile read-only', (tester) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _MemberRepository(auth: auth),
+      beforePump: (app) => app.go(Screen.bandPreview, 'b1'),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+
+    expect(find.text('PUBLIC PROFILE PREVIEW'), findsOne);
+    expect(find.text('Edit profile'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('edit-band-profile-banner')),
+      findsNothing,
+    );
+    expect(find.text('Return to band dashboard'), findsOne);
+
+    harness.app.openBandEditor();
+    expect(harness.app.current.screen, Screen.bandPreview);
   });
 
   testWidgets('profile renders all demo photo tiles', (tester) async {
@@ -267,3 +292,12 @@ Future<AppHarness> _pumpProfile(WidgetTester tester) => pumpApp(
   tester,
   home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
 );
+
+class _MemberRepository extends DemoRepository {
+  _MemberRepository({required super.auth});
+
+  @override
+  Stream<List<BandMembership>> myBands() => Stream.value([
+    BandMembership(band: DemoData.bands['b1']!, role: 'member'),
+  ]);
+}

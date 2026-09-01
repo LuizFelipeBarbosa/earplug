@@ -285,7 +285,7 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     final repository = _MemberRepository(auth: auth);
-    await pumpApp(
+    final harness = await pumpApp(
       tester,
       auth: auth,
       repository: repository,
@@ -293,12 +293,21 @@ void main() {
     );
 
     expect(find.text('MANAGING · MEMBER'), findsOne);
-    expect(find.text('PREVIEW PUBLIC PROFILE →'), findsOne);
+    expect(find.text('VIEW PUBLIC PROFILE →'), findsOne);
+    expect(find.byKey(const Key('band-public-profile')), findsOne);
     expect(find.byKey(const Key('band-command-edit-profile')), findsNothing);
     expect(find.text('DOOR MODE'), findsNothing);
     expect(find.text('SETUP CHECKLIST'), findsNothing);
     expect(find.text('PUBLISH GIG'), findsNothing);
     expect(repository.setupStatusCalls, 0);
+
+    await tester.tap(find.byKey(const Key('band-public-profile')));
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.bandPreview);
+    expect(harness.app.current.param, 'b1');
+
+    harness.app.openBandEditor();
+    expect(harness.app.current.screen, Screen.bandPreview);
   });
 
   testWidgets('single-band switcher uses manage language', (tester) async {

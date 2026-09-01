@@ -17,11 +17,17 @@ void showDiscoveryLocationSheet(BuildContext context) {
   );
 }
 
-void showDiscoveryFiltersSheet(BuildContext context) {
+void showDiscoveryFiltersSheet(
+  BuildContext context, {
+  bool labelConfirmationAsApply = false,
+}) {
   showEpSheet(
     context,
     (context) => Consumer<AppState>(
-      builder: (context, app, _) => _FiltersSheet(app: app),
+      builder: (context, app, _) => _FiltersSheet(
+        app: app,
+        labelConfirmationAsApply: labelConfirmationAsApply,
+      ),
     ),
   );
 }
@@ -207,15 +213,22 @@ class _LocationFailureMessage extends StatelessWidget {
 }
 
 class _FiltersSheet extends StatelessWidget {
-  const _FiltersSheet({required this.app});
+  const _FiltersSheet({
+    required this.app,
+    required this.labelConfirmationAsApply,
+  });
 
   final AppState app;
+  final bool labelConfirmationAsApply;
 
   @override
   Widget build(BuildContext context) {
     return _SheetFrame(
       title: 'FILTERS',
-      footer: _ResultsButton(count: app.feed.length),
+      footer: _ResultsButton(
+        count: app.feed.length,
+        labelAsApply: labelConfirmationAsApply,
+      ),
       child: ListView(
         children: [
           Row(
@@ -407,9 +420,10 @@ class _FiltersSheet extends StatelessWidget {
 }
 
 class _ResultsButton extends StatelessWidget {
-  const _ResultsButton({required this.count});
+  const _ResultsButton({required this.count, required this.labelAsApply});
 
   final int count;
+  final bool labelAsApply;
 
   @override
   Widget build(BuildContext context) {
@@ -417,7 +431,8 @@ class _ResultsButton extends StatelessWidget {
       key: const Key('show-filter-results'),
       onPressed: () => Navigator.pop(context),
       child: Text(
-        'SHOW $count ${count == 1 ? 'RESULT' : 'RESULTS'}',
+        '${labelAsApply ? 'APPLY FILTERS · ' : 'SHOW '}'
+        '$count ${count == 1 ? 'RESULT' : 'RESULTS'}',
         style: Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .8),
       ),
     );

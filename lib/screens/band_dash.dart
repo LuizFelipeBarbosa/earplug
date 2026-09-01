@@ -153,8 +153,11 @@ class BandDashScreen extends StatelessWidget {
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton(
+            key: const Key('band-public-profile'),
             onPressed: app.previewPublicProfile,
-            child: const Text('PREVIEW PUBLIC PROFILE →'),
+            child: Text(
+              isAdmin ? 'PREVIEW PUBLIC PROFILE →' : 'VIEW PUBLIC PROFILE →',
+            ),
           ),
         ),
         if (isAdmin) ...[

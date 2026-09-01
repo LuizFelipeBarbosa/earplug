@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
@@ -5,6 +7,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
@@ -22,6 +25,7 @@ void main() {
     for (final scope in const ['all', 'events', 'bands', 'venues']) {
       expect(find.byKey(ValueKey('explore-tab-$scope')), findsOne);
     }
+    expect(find.byKey(const Key('explore-filter-button')), findsOne);
 
     await tester.enterText(
       find.byKey(const Key('explore-search-field')),
@@ -30,7 +34,8 @@ void main() {
     await tester.pump();
 
     expect(harness.app.query, isEmpty);
-    expect(find.text('GENRES'), findsOne);
+    expect(find.text('GENRES'), findsNothing);
+    expect(find.text('PUNK'), findsNothing);
 
     await tester.tap(find.byKey(const Key('explore-search-submit')));
     await tester.pumpAndSettle();
@@ -74,7 +79,8 @@ void main() {
           .text,
       isEmpty,
     );
-    expect(find.text('GENRES'), findsOne);
+    expect(find.byKey(const Key('explore-filter-button')), findsOne);
+    expect(find.text('GENRES'), findsNothing);
   });
 
   testWidgets('scope changes keep results visible and announce progress', (
@@ -112,29 +118,101 @@ void main() {
     expect(find.textContaining('1 fans'), findsNothing);
   });
 
-  testWidgets('genre chips submit immediately', (tester) async {
+  testWidgets('one accessible filter control applies and resets filters', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: ExploreScreen()),
+    );
+    final button = find.byKey(const Key('explore-filter-button'));
+
+    expect(tester.getSize(button), const Size(48, 48));
+    var data = tester.getSemantics(button).getSemanticsData();
+    expect(data.label, 'Filters, none applied');
+    expect(data.flagsCollection.isButton, isTrue);
+    expect(data.flagsCollection.isSelected, Tristate.isFalse);
+
+    tester
+        .getSemantics(button)
+        .owner!
+        .performAction(tester.getSemantics(button).id, SemanticsAction.tap);
+    await tester.pumpAndSettle();
+
+    for (final label in const [
+      'DATE',
+      'GENRES · CHOOSE ANY',
+      'DISTANCE',
+      'PRICE',
+      'PUNK',
+      'GARAGE',
+      'NOISE',
+    ]) {
+      expect(find.text(label), findsOne);
+    }
+    expect(find.textContaining('APPLY FILTERS ·'), findsOne);
+
+    await tester.tap(find.text('PUNK'));
+    await tester.pump();
+    expect(harness.app.fGenres, {'punk'});
+    expect(harness.app.query, isEmpty);
+    await tester.scrollUntilVisible(
+      find.text('VENUE'),
+      280,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('VENUE'), findsOne);
+    await tester.scrollUntilVisible(
+      find.text('CLEAR ALL'),
+      280,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('CLEAR ALL'), findsOne);
+    await tester.tap(find.byKey(const Key('show-filter-results')));
+    await tester.pumpAndSettle();
+
+    data = tester.getSemantics(button).getSemanticsData();
+    expect(data.label, 'Filters, 1 active');
+    expect(data.flagsCollection.isSelected, Tristate.isTrue);
+    expect(find.text('PUNK'), findsNothing);
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('CLEAR ALL'),
+      280,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.tap(find.text('CLEAR ALL'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('show-filter-results')));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.activeFilterCount, 0);
+    data = tester.getSemantics(button).getSemanticsData();
+    expect(data.label, 'Filters, none applied');
+    expect(data.flagsCollection.isSelected, Tristate.isFalse);
+    semantics.dispose();
+  });
+
+  testWidgets('genre filters keep Explore events on existing feed logic', (
+    tester,
+  ) async {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: ExploreScreen()),
     );
 
-    await tester.tap(find.text('PUNK'));
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('explore-event-g1')), findsOne);
+    expect(find.byKey(const ValueKey('explore-event-g5')), findsOne);
 
-    expect(harness.app.query, 'punk');
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('explore-search-field')))
-          .controller!
-          .text,
-      'punk',
-    );
-    await tester.scrollUntilVisible(
-      find.text('BANDS'),
-      200,
-      scrollable: _allResultsScrollable(),
-    );
-    expect(find.text('BANDS'), findsOne);
+    harness.app.toggleGenre('noise');
+    await tester.pump();
+
+    expect(harness.app.feed.map((gig) => gig.id), containsAll(['g1', 'g3']));
+    expect(find.byKey(const ValueKey('explore-event-g1')), findsOne);
+    expect(find.byKey(const ValueKey('explore-event-g5')), findsNothing);
   });
 
   testWidgets('browse scopes share one bounded directory and keep filters', (
@@ -158,7 +236,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('explore-tab-all')));
     await tester.pump();
-    await tester.tap(find.text('+ FILTERS'));
+    await tester.tap(find.byKey(const Key('explore-filter-button')));
     await tester.pumpAndSettle();
     expect(find.text('FILTERS'), findsOne);
   });

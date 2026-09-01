@@ -102,6 +102,10 @@ class _ExploreScreenState extends State<ExploreScreen> {
         _SearchTypeTabs(
           app: app,
           onSelected: (type) => _selectScope(app, type),
+          onFilters: () => showDiscoveryFiltersSheet(
+            context,
+            labelConfirmationAsApply: true,
+          ),
         ),
         Expanded(
           child: Stack(
@@ -113,22 +117,12 @@ class _ExploreScreenState extends State<ExploreScreen> {
                         app: app,
                         showAllBands: _showAllBands,
                         showAllVenues: _showAllVenues,
-                        onSearch: (query) {
-                          _controller.value = TextEditingValue(
-                            text: query,
-                            selection: TextSelection.collapsed(
-                              offset: query.length,
-                            ),
-                          );
-                          _submitSearch(app);
-                        },
                         onToggleBands: () {
                           setState(() => _showAllBands = !_showAllBands);
                         },
                         onToggleVenues: () {
                           setState(() => _showAllVenues = !_showAllVenues);
                         },
-                        onOpenFilters: () => showDiscoveryFiltersSheet(context),
                       ),
               ),
               if (_showScopeFeedback)
@@ -316,10 +310,15 @@ class _SearchResults extends StatelessWidget {
 }
 
 class _SearchTypeTabs extends StatelessWidget {
-  const _SearchTypeTabs({required this.app, required this.onSelected});
+  const _SearchTypeTabs({
+    required this.app,
+    required this.onSelected,
+    required this.onFilters,
+  });
 
   final AppState app;
   final ValueChanged<ExploreResultType> onSelected;
+  final VoidCallback onFilters;
 
   @override
   Widget build(BuildContext context) {
@@ -336,42 +335,96 @@ class _SearchTypeTabs extends StatelessWidget {
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: Ep.border)),
       ),
-      child: SegmentedButton<ExploreResultType>(
-        segments: [
-          for (final entry in labels.entries)
-            ButtonSegment(
-              value: entry.key,
-              label: Text(
-                entry.value,
-                key: ValueKey('explore-tab-${entry.key.name}'),
+      child: Row(
+        children: [
+          Expanded(
+            child: SegmentedButton<ExploreResultType>(
+              segments: [
+                for (final entry in labels.entries)
+                  ButtonSegment(
+                    value: entry.key,
+                    label: Text(
+                      entry.value,
+                      key: ValueKey('explore-tab-${entry.key.name}'),
+                    ),
+                  ),
+              ],
+              selected: {app.exploreResultType},
+              showSelectedIcon: false,
+              onSelectionChanged: (selection) {
+                onSelected(selection.single);
+              },
+              style: ButtonStyle(
+                minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+                padding: const WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 6),
+                ),
+                textStyle: WidgetStatePropertyAll(
+                  Theme.of(
+                    context,
+                  ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .4),
+                ),
+                backgroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? Ep.volt
+                      : Ep.surface,
+                ),
+                foregroundColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? Ep.dark
+                      : Ep.contentSecondary,
+                ),
+                side: const WidgetStatePropertyAll(
+                  BorderSide(color: Ep.border),
+                ),
               ),
             ),
+          ),
+          const SizedBox(width: 8),
+          _ExploreFilterButton(
+            activeCount: app.activeFilterCount,
+            onPressed: onFilters,
+          ),
         ],
-        selected: {app.exploreResultType},
-        showSelectedIcon: false,
-        onSelectionChanged: (selection) {
-          onSelected(selection.single);
-        },
-        style: ButtonStyle(
-          minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-          padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(horizontal: 6),
-          ),
-          textStyle: WidgetStatePropertyAll(
-            Theme.of(
-              context,
-            ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .4),
-          ),
-          backgroundColor: WidgetStateProperty.resolveWith(
-            (states) =>
-                states.contains(WidgetState.selected) ? Ep.volt : Ep.surface,
-          ),
-          foregroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected)
-                ? Ep.dark
-                : Ep.contentSecondary,
-          ),
-          side: const WidgetStatePropertyAll(BorderSide(color: Ep.border)),
+      ),
+    );
+  }
+}
+
+class _ExploreFilterButton extends StatelessWidget {
+  const _ExploreFilterButton({
+    required this.activeCount,
+    required this.onPressed,
+  });
+
+  final int activeCount;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = activeCount > 0;
+    return Semantics(
+      key: const Key('explore-filter-button'),
+      button: true,
+      selected: active,
+      label: active ? 'Filters, $activeCount active' : 'Filters, none applied',
+      onTap: onPressed,
+      excludeSemantics: true,
+      child: IconButton(
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          fixedSize: const Size.square(48),
+          minimumSize: const Size.square(48),
+          backgroundColor: active ? Ep.selected : Ep.surface,
+          foregroundColor: active ? Ep.accent : Ep.contentSecondary,
+          side: BorderSide(color: active ? Ep.accent : Ep.border),
+        ),
+        icon: Badge(
+          isLabelVisible: active,
+          label: Text('$activeCount'),
+          backgroundColor: Ep.volt,
+          textColor: Ep.dark,
+          child: const Icon(Icons.tune),
         ),
       ),
     );
@@ -439,24 +492,20 @@ class _BrowseRows extends StatelessWidget {
   final AppState app;
   final bool showAllBands;
   final bool showAllVenues;
-  final ValueChanged<String> onSearch;
   final VoidCallback onToggleBands;
   final VoidCallback onToggleVenues;
-  final VoidCallback onOpenFilters;
 
   const _BrowseRows({
     required this.app,
     required this.showAllBands,
     required this.showAllVenues,
-    required this.onSearch,
     required this.onToggleBands,
     required this.onToggleVenues,
-    required this.onOpenFilters,
   });
 
   @override
   Widget build(BuildContext context) {
-    final gigs = app.allGigs;
+    final gigs = app.feed;
     final previewBandIds = app.exploreBandIds.take(3).toList();
     final tonight = gigs.where((gig) => gig.when == GigWhen.tonight).toList();
     final tonightIds = tonight.map((gig) => gig.id).toSet();
@@ -479,22 +528,6 @@ class _BrowseRows extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, tabBarClearance),
       children: [
-        const SectionLabel('GENRES'),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 7,
-          runSpacing: 7,
-          children: [
-            for (final genre in const ['punk', 'garage', 'noise'])
-              EpChip(label: genre, active: false, onTap: () => onSearch(genre)),
-            EpChip(
-              label: '+ FILTERS',
-              active: false,
-              ghost: true,
-              onTap: onOpenFilters,
-            ),
-          ],
-        ),
         if (showEvents) ...[
           if (tonight.isNotEmpty) ...[
             SectionBar(label: 'TONIGHT NEAR YOU', count: tonight.length),

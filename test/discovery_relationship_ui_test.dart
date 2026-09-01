@@ -63,7 +63,8 @@ void main() {
     await tester.tap(find.byKey(const Key('explore-search-clear')));
     await tester.pumpAndSettle();
     expect(harness.app.query, isEmpty);
-    expect(find.text('GENRES'), findsOne);
+    expect(find.text('GENRES'), findsNothing);
+    expect(find.byKey(const Key('explore-filter-button')), findsOne);
   });
 
   testWidgets('venue search rows navigate without replacing the query', (

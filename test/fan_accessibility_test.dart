@@ -27,6 +27,12 @@ void main() {
     await pumpApp(tester, home: _scaledScreen(const ExploreScreen()));
 
     expect(find.text('Explore'), findsOne);
+    final filters = find.byKey(const Key('explore-filter-button'));
+    expect(filters, findsOne);
+    expect(tester.getSize(filters), const Size(48, 48));
+    expect(find.text('PUNK'), findsNothing);
+    await tester.tap(filters);
+    await tester.pumpAndSettle();
     expect(find.text('PUNK'), findsOne);
     expect(tester.takeException(), isNull);
   });
