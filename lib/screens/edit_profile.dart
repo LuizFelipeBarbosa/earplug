@@ -509,8 +509,7 @@ class _HomeLocationEditor extends StatelessWidget {
             focusNode: focusNode,
             displayStringForOption: (city) => city.autocompleteLabel,
             optionsBuilder: (value) {
-              final exactMatch = fanCityFromLocationInput(value.text);
-              if (selectedLocation != null && exactMatch == selectedLocation) {
+              if (fanCityFromLocationInput(value.text) != null) {
                 return const <FanCity>[];
               }
               return fanCitySuggestions(value.text);
