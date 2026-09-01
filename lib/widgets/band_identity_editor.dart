@@ -267,6 +267,8 @@ class BandIdentityTextField extends StatelessWidget {
     this.enabled = true,
     this.minLines = 1,
     this.maxLines = 1,
+    this.maxLength,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   final String label;
@@ -278,6 +280,8 @@ class BandIdentityTextField extends StatelessWidget {
   final bool enabled;
   final int minLines;
   final int maxLines;
+  final int? maxLength;
+  final TextCapitalization textCapitalization;
 
   @override
   Widget build(BuildContext context) {
@@ -288,6 +292,8 @@ class BandIdentityTextField extends StatelessWidget {
       onChanged: onChanged,
       minLines: minLines,
       maxLines: maxLines,
+      maxLength: maxLength,
+      textCapitalization: textCapitalization,
       style: Theme.of(context).textTheme.epDisplay.copyWith(
         fontSize: minLines > 1 ? 18 : 21,
         height: 1.25,

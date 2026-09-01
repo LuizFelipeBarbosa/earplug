@@ -25,6 +25,11 @@ class MyGigsScreen extends StatelessWidget {
         ? 'YOUR PROFILE'
         : profileName.toUpperCase();
     final fanSince = profile == null ? null : monthLabel(profile.createdAt);
+    final sceneLabel = switch (profile?.homeLocation) {
+      FanCity.sf => 'SAN FRANCISCO SCENE',
+      FanCity.oak => 'OAKLAND SCENE',
+      null => 'SCENE UNDISCLOSED',
+    };
     final upcoming = app.upcomingRsvpGigs;
     final nextShow = upcoming.cast<Gig?>().firstWhere(
       (gig) =>
@@ -55,35 +60,80 @@ class MyGigsScreen extends StatelessWidget {
         Row(
           children: [
             Expanded(
-              child: Text(
-                'PROFILE',
-                style: Theme.of(context).textTheme.epPageHeading,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'PROFILE',
+                  style: Theme.of(context).textTheme.epPageHeading,
+                ),
               ),
+            ),
+            IconButton(
+              key: const Key('edit-profile-action'),
+              tooltip: 'Edit profile',
+              onPressed: profile == null ? null : app.openEditProfile,
+              style: const ButtonStyle(
+                fixedSize: WidgetStatePropertyAll(Size.square(48)),
+              ),
+              icon: const Icon(Icons.edit_outlined),
+            ),
+            IconButton(
+              key: const Key('share-fan-profile'),
+              tooltip: 'Share profile summary',
+              onPressed: profile == null
+                  ? null
+                  : () => _shareFanProfile(
+                      context,
+                      displayName: profileName == null || profileName.isEmpty
+                          ? 'EarPlug fan'
+                          : profileName,
+                      followingCount: app.follows.length,
+                      historyCount: app.history.length,
+                    ),
+              style: const ButtonStyle(
+                fixedSize: WidgetStatePropertyAll(Size.square(48)),
+              ),
+              icon: const Icon(Icons.ios_share_outlined),
             ),
             IconButton(
               key: const Key('profile-settings-action'),
               tooltip: 'Privacy and account settings',
               onPressed: app.openSettings,
+              style: const ButtonStyle(
+                fixedSize: WidgetStatePropertyAll(Size.square(48)),
+              ),
               icon: const Icon(Icons.settings_outlined),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        EpCard(
+        Container(
           key: const Key('fan-profile-header'),
-          variant: EpCardVariant.raised,
           padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Ep.surfaceRaised,
+            border: Border.all(color: Ep.border),
+            borderRadius: BorderRadius.circular(14),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  EpFanAvatar(
-                    key: const Key('fan-profile-avatar'),
-                    name: profileName,
-                    imageUrl: profile?.avatarUrl,
-                    size: 64,
-                    radius: 18,
+                  Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: Ep.volt,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: EpFanAvatar(
+                      key: const Key('fan-profile-avatar'),
+                      name: profileName,
+                      imageUrl: profile?.avatarUrl,
+                      size: 64,
+                      radius: 17,
+                    ),
                   ),
                   const SizedBox(width: 13),
                   Expanded(
@@ -94,12 +144,20 @@ class MyGigsScreen extends StatelessWidget {
                           displayName,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.epSectionHeading,
+                          style: Theme.of(
+                            context,
+                          ).textTheme.epSectionHeading.copyWith(color: Ep.volt),
                         ),
                         if (fanSince != null)
                           Text(
-                            'fan since $fanSince',
-                            style: Theme.of(context).textTheme.epCaption,
+                            '$sceneLabel · FAN SINCE ${fanSince.toUpperCase()}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.epCaption
+                                .copyWith(
+                                  color: Ep.accent,
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
                       ],
                     ),
@@ -123,6 +181,8 @@ class MyGigsScreen extends StatelessWidget {
                         value: '${app.follows.length}',
                         semanticLabel:
                             'Following, ${app.follows.length} $followingNoun. Open followed bands.',
+                        backgroundColor: Ep.surface,
+                        foregroundColor: Ep.volt,
                         onTap: () => _showFollowingSheet(context),
                       ),
                     ),
@@ -134,42 +194,13 @@ class MyGigsScreen extends StatelessWidget {
                         value: '${app.history.length}',
                         semanticLabel:
                             'RSVP History, ${app.history.length} past $historyNoun. Open RSVP history.',
+                        backgroundColor: Ep.surface,
+                        foregroundColor: Ep.accent,
                         onTap: () => _showHistorySheet(context),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  TextAction(
-                    'EDIT PROFILE',
-                    key: const Key('edit-profile-action'),
-                    onTap: profile == null ? null : app.openEditProfile,
-                    padding: EdgeInsets.zero,
-                  ),
-                  OutlinedButton.icon(
-                    key: const Key('share-fan-profile'),
-                    onPressed: profile == null
-                        ? null
-                        : () => _shareFanProfile(
-                            context,
-                            displayName:
-                                profileName == null || profileName.isEmpty
-                                ? 'EarPlug fan'
-                                : profileName,
-                            followingCount: app.follows.length,
-                            historyCount: app.history.length,
-                          ),
-                    icon: const Icon(Icons.ios_share_outlined, size: 18),
-                    label: const Text('SHARE PROFILE'),
-                  ),
-                ],
               ),
             ],
           ),
@@ -290,12 +321,16 @@ class _ProfileStat extends StatelessWidget {
     required this.label,
     required this.value,
     required this.semanticLabel,
+    required this.backgroundColor,
+    required this.foregroundColor,
     required this.onTap,
   });
 
   final String label;
   final String value;
   final String semanticLabel;
+  final Color backgroundColor;
+  final Color foregroundColor;
   final VoidCallback onTap;
 
   @override
@@ -304,43 +339,58 @@ class _ProfileStat extends StatelessWidget {
       button: true,
       label: semanticLabel,
       excludeSemantics: true,
-      child: EpCard(
-        onTap: onTap,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.epDisplay.copyWith(fontSize: 24),
-            ),
-            const SizedBox(height: 3),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label.toUpperCase(),
-                    maxLines: 2,
+      child: Material(
+        color: backgroundColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: foregroundColor.withValues(alpha: .32)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 72),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    value,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                      color: Ep.contentSecondary,
-                      letterSpacing: .7,
+                    style: Theme.of(context).textTheme.epDisplay.copyWith(
+                      color: foregroundColor,
+                      fontSize: 24,
                     ),
                   ),
-                ),
-                const Icon(
-                  Icons.chevron_right,
-                  size: 18,
-                  color: Ep.contentSecondary,
-                ),
-              ],
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          label.toUpperCase(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.epChipLabel
+                              .copyWith(
+                                color: foregroundColor,
+                                letterSpacing: .7,
+                              ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        size: 18,
+                        color: foregroundColor,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -402,7 +452,7 @@ Future<void> _shareFanProfile(
   );
 }
 
-class _FollowingSheet extends StatelessWidget {
+class _FollowingSheet extends StatefulWidget {
   const _FollowingSheet({
     required this.app,
     required this.onOpenBand,
@@ -414,18 +464,56 @@ class _FollowingSheet extends StatelessWidget {
   final VoidCallback onExplore;
 
   @override
+  State<_FollowingSheet> createState() => _FollowingSheetState();
+}
+
+class _FollowingSheetState extends State<_FollowingSheet> {
+  final _searchController = TextEditingController();
+  var _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() => _query = '');
+  }
+
+  bool _matches(Band? band, String query) {
+    if (band == null) return false;
+    return [
+      band.name,
+      band.area,
+      ...band.genres,
+    ].any((value) => value.toLowerCase().contains(query));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final bandIds = app.follows.toList()
+    final bandIds = widget.app.follows.toList()
       ..sort((left, right) {
-        final leftName = app.band(left)?.name ?? left;
-        final rightName = app.band(right)?.name ?? right;
+        final leftName = widget.app.band(left)?.name ?? left;
+        final rightName = widget.app.band(right)?.name ?? right;
         return leftName.toLowerCase().compareTo(rightName.toLowerCase());
       });
+    final normalizedQuery = _query.trim().toLowerCase();
+    final visibleBandIds = normalizedQuery.isEmpty
+        ? bandIds
+        : [
+            for (final bandId in bandIds)
+              if (_matches(widget.app.band(bandId), normalizedQuery)) bandId,
+          ];
+    final subtitle = normalizedQuery.isEmpty
+        ? '${bandIds.length} ${bandIds.length == 1 ? 'band' : 'bands'} in your list'
+        : '${visibleBandIds.length} of ${bandIds.length} bands';
+
     return _ProfileDetailSheet(
       key: const Key('fan-following-sheet'),
       title: 'Following',
-      subtitle:
-          '${bandIds.length} ${bandIds.length == 1 ? 'band' : 'bands'} in your list',
+      subtitle: subtitle,
       child: bandIds.isEmpty
           ? ListView(
               padding: const EdgeInsets.only(top: 8),
@@ -433,22 +521,63 @@ class _FollowingSheet extends StatelessWidget {
                 _EmptySection(
                   message: 'Follow bands to keep their profiles close.',
                   action: 'EXPLORE BANDS',
-                  onTap: onExplore,
+                  onTap: widget.onExplore,
                 ),
               ],
             )
-          : ListView.separated(
-              padding: const EdgeInsets.only(top: 8),
-              itemCount: bandIds.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final bandId = bandIds[index];
-                return _FollowRow(
-                  bandId: bandId,
-                  app: app,
-                  onOpen: () => onOpenBand(bandId),
-                );
-              },
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  key: const Key('following-search-field'),
+                  controller: _searchController,
+                  onChanged: (value) => setState(() => _query = value),
+                  textInputAction: TextInputAction.search,
+                  autocorrect: false,
+                  decoration:
+                      epInputDecoration(
+                        'Search by name, genre, or home base',
+                      ).copyWith(
+                        labelText: 'Search followed bands',
+                        floatingLabelBehavior: FloatingLabelBehavior.always,
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: normalizedQuery.isEmpty
+                            ? null
+                            : IconButton(
+                                key: const Key('clear-following-search'),
+                                tooltip: 'Clear Following search',
+                                onPressed: _clearSearch,
+                                icon: const Icon(Icons.close),
+                              ),
+                      ),
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: visibleBandIds.isEmpty
+                      ? ListView(
+                          children: [
+                            _EmptySection(
+                              message:
+                                  'No followed bands match “${_query.trim()}”.',
+                              action: 'CLEAR SEARCH',
+                              onTap: _clearSearch,
+                            ),
+                          ],
+                        )
+                      : ListView.separated(
+                          itemCount: visibleBandIds.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (context, index) {
+                            final bandId = visibleBandIds[index];
+                            return _FollowRow(
+                              bandId: bandId,
+                              app: widget.app,
+                              onOpen: () => widget.onOpenBand(bandId),
+                            );
+                          },
+                        ),
+                ),
+              ],
             ),
     );
   }

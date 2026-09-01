@@ -8,12 +8,15 @@ import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/screens/settings.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/band_identity_editor.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/fakes.dart';
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -25,13 +28,71 @@ void main() {
     tester.view.physicalSize = const Size(402, 3000);
     await tester.pumpAndSettle();
 
-    expect(find.text('YOUR NAME'), findsOne);
-    expect(find.bySemanticsLabel('Name'), findsOne);
+    expect(find.byKey(const Key('fan-identity-preview')), findsOne);
+    final editorPreview = tester.widget<Container>(
+      find.byKey(const Key('fan-identity-preview')),
+    );
+    final editorDecoration = editorPreview.decoration! as BoxDecoration;
+    expect(editorDecoration.color, Ep.surfaceRaised);
+    expect(editorDecoration.gradient, isNull);
+    expect(find.bySemanticsLabel('Change profile image'), findsOne);
+    expect(find.text('DISPLAY NAME · REQUIRED'), findsOne);
+    expect(find.bySemanticsLabel('DISPLAY NAME · REQUIRED'), findsOne);
     expect(find.text('HOME LOCATION'), findsOne);
+    expect(find.text('ABOUT'), findsOne);
+    expect(find.bySemanticsLabel('ABOUT'), findsOne);
     expect(find.textContaining('FAVORITE GENRES'), findsOne);
-    expect(find.bySemanticsLabel('Bio, optional'), findsOne);
+    expect(find.text('PREFERENCES'), findsOne);
+    expect(find.byType(BandIdentityTextField), findsNWidgets(2));
     expect(find.byType(StickyActionBar), findsOne);
+
+    final orderedFields = [
+      find.byKey(const Key('fan-identity-preview')),
+      find.byKey(const Key('fan-name-field')),
+      find.byKey(const Key('fan-home-location-field')),
+      find.byKey(const Key('fan-bio-field')),
+      find.byKey(const Key('fan-favorite-genres-field')),
+      find.byKey(const Key('location-personalization')),
+    ];
+    for (var index = 1; index < orderedFields.length; index++) {
+      expect(
+        tester.getTopLeft(orderedFields[index]).dy,
+        greaterThan(tester.getTopLeft(orderedFields[index - 1]).dy),
+      );
+    }
+    for (final key in const [Key('fan-name-field'), Key('fan-bio-field')]) {
+      final field = tester.widget<TextField>(find.byKey(key));
+      expect(field.style!.fontFamily, 'Archivo Black');
+      expect(field.decoration!.enabledBorder, isA<OutlineInputBorder>());
+    }
     semantics.dispose();
+  });
+
+  testWidgets('identity preview edits and removes only the profile image', (
+    tester,
+  ) async {
+    final picker = FakeMediaPicker()
+      ..nextPhoto = photoFixture(filename: 'fan-avatar.png');
+    await pumpApp(
+      tester,
+      home: Scaffold(body: EditProfileScreen(mediaPicker: picker)),
+    );
+
+    await tester.tap(find.byKey(const Key('fan-avatar-preview-control')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('picked-fan-avatar-preview')), findsOne);
+    expect(find.byKey(const Key('remove-fan-avatar')), findsOne);
+
+    await tester.tap(find.byKey(const Key('remove-fan-avatar')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('picked-fan-avatar-preview')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('fan-identity-preview')),
+        matching: find.byType(EpFanAvatar),
+      ),
+      findsOne,
+    );
   });
 
   testWidgets('editor exposes only supported preferences in sticky form', (
@@ -98,6 +159,45 @@ void main() {
     expect(find.text('EF'), findsOne);
     expect(find.byKey(const Key('edit-profile-action')), findsOne);
     expect(find.byKey(const Key('share-fan-profile')), findsOne);
+    expect(find.byKey(const Key('profile-settings-action')), findsOne);
+    expect(find.byTooltip('Edit profile'), findsOne);
+    expect(find.byTooltip('Share profile summary'), findsOne);
+    expect(find.byTooltip('Privacy and account settings'), findsOne);
+    expect(find.text('EDIT PROFILE'), findsNothing);
+    expect(find.text('SHARE PROFILE'), findsNothing);
+    expect(find.textContaining('SCENE'), findsOne);
+    final profileHeader = tester.widget<Container>(
+      find.byKey(const Key('fan-profile-header')),
+    );
+    final headerDecoration = profileHeader.decoration! as BoxDecoration;
+    expect(headerDecoration.color, Ep.surfaceRaised);
+    expect(headerDecoration.gradient, isNull);
+    final identityTop = tester
+        .getTopLeft(find.byKey(const Key('fan-profile-header')))
+        .dy;
+    for (final key in const [
+      Key('edit-profile-action'),
+      Key('share-fan-profile'),
+      Key('profile-settings-action'),
+    ]) {
+      final action = find.byKey(key);
+      expect(tester.getSize(action), const Size(48, 48));
+      expect(tester.getBottomLeft(action).dy, lessThanOrEqualTo(identityTop));
+    }
+    final followingValue = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const Key('fan-following-stat')),
+        matching: find.text('${harness.app.follows.length}'),
+      ),
+    );
+    final historyValue = tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(const Key('fan-history-stat')),
+        matching: find.text('${harness.app.history.length}'),
+      ),
+    );
+    expect(followingValue.style!.color, Ep.volt);
+    expect(historyValue.style!.color, Ep.accent);
     expect(
       find.descendant(
         of: find.byKey(const Key('fan-following-stat')),
@@ -188,6 +288,7 @@ void main() {
       await tester.tap(find.byKey(const Key('fan-following-stat')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('fan-following-sheet')), findsOne);
+      expect(find.byKey(const Key('following-search-field')), findsNothing);
       expect(find.text('Follow bands to keep their profiles close.'), findsOne);
       expect(find.text('EXPLORE BANDS'), findsNWidgets(2));
       await tester.tap(find.byTooltip('Close Following'));
@@ -207,6 +308,7 @@ void main() {
   testWidgets('header statistics open complete private profile views', (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     final auth = FakeAuthService();
     await auth.signInDemo();
     final harness = await pumpApp(
@@ -220,14 +322,64 @@ void main() {
     await tester.tap(find.byKey(const Key('fan-following-stat')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('fan-following-sheet')), findsOne);
+    final followingSheet = find.byKey(const Key('fan-following-sheet'));
+    final search = find.byKey(const Key('following-search-field'));
+    expect(followingSheet, findsOne);
+    expect(search, findsOne);
+    expect(find.bySemanticsLabel('Search followed bands'), findsOne);
     for (final bandId in harness.app.follows) {
       final band = harness.app.band(bandId);
       if (band != null) expect(find.text(band.name.toUpperCase()), findsOne);
     }
     final bandId = harness.app.follows.first;
     final band = harness.app.band(bandId)!;
-    await tester.tap(find.text(band.name.toUpperCase()));
+
+    await tester.enterText(search, band.name);
+    await tester.pump();
+    expect(
+      find.descendant(
+        of: followingSheet,
+        matching: find.text(band.name.toUpperCase()),
+      ),
+      findsOne,
+    );
+    await tester.tap(find.byKey(const Key('clear-following-search')));
+    await tester.pump();
+
+    await tester.enterText(search, band.genres.first);
+    await tester.pump();
+    expect(
+      find.descendant(
+        of: followingSheet,
+        matching: find.text(band.name.toUpperCase()),
+      ),
+      findsOne,
+    );
+    await tester.tap(find.byKey(const Key('clear-following-search')));
+    await tester.pump();
+
+    await tester.enterText(search, band.area);
+    await tester.pump();
+    expect(
+      find.descendant(
+        of: followingSheet,
+        matching: find.text(band.name.toUpperCase()),
+      ),
+      findsOne,
+    );
+    await tester.enterText(search, 'no-band-will-match-this');
+    await tester.pump();
+    expect(find.textContaining('No followed bands match'), findsOne);
+    expect(find.text('CLEAR SEARCH'), findsOne);
+    await tester.tap(find.text('CLEAR SEARCH'));
+    await tester.pump();
+
+    await tester.tap(
+      find.descendant(
+        of: followingSheet,
+        matching: find.text(band.name.toUpperCase()),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.band);
     expect(harness.app.current.param, bandId);
@@ -241,6 +393,7 @@ void main() {
     for (final item in harness.app.history) {
       expect(find.text(item.title), findsOne);
     }
+    semantics.dispose();
   });
 
   testWidgets('profile sharing includes counts but no event-level history', (

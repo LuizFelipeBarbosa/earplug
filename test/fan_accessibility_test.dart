@@ -1,4 +1,5 @@
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/screens/edit_profile.dart';
 import 'package:earplug/screens/explore.dart';
 import 'package:earplug/screens/home.dart';
 import 'package:earplug/screens/my_gigs.dart';
@@ -53,7 +54,17 @@ void main() {
 
     expect(find.byKey(const Key('fan-following-stat')), findsOne);
     expect(find.byKey(const Key('fan-history-stat')), findsOne);
-    expect(find.byKey(const Key('share-fan-profile')), findsOne);
+    for (final key in const [
+      Key('edit-profile-action'),
+      Key('share-fan-profile'),
+      Key('profile-settings-action'),
+    ]) {
+      expect(find.byKey(key), findsOne);
+      expect(tester.getSize(find.byKey(key)), const Size(48, 48));
+    }
+    expect(find.byTooltip('Edit profile'), findsOne);
+    expect(find.byTooltip('Share profile summary'), findsOne);
+    expect(find.byTooltip('Privacy and account settings'), findsOne);
     await tester.scrollUntilVisible(
       find.text('UPCOMING RSVPS'),
       180,
@@ -64,6 +75,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('fan-following-stat')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('following-search-field')), findsOne);
     expect(find.text('FOLLOWING ✓'), findsWidgets);
     final followingButton = tester.widget<OutlinedButton>(
       find.widgetWithText(OutlinedButton, 'FOLLOWING ✓').first,
@@ -76,6 +88,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'Edit Profile remains usable when narrow at increased text scale',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      await pumpApp(
+        tester,
+        auth: auth,
+        repository: DemoRepository(auth: auth),
+        home: _scaledScreen(
+          const EditProfileScreen(),
+          size: const Size(320, 900),
+        ),
+      );
+      tester.view.physicalSize = const Size(320, 900);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('fan-identity-preview')), findsOne);
+      expect(find.byKey(const Key('fan-name-field')), findsOne);
+      expect(find.byKey(const Key('fan-home-location-field')), findsOne);
+      expect(find.byKey(const Key('save-fan-profile')), findsOne);
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('fan-bio-field')),
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.byKey(const Key('fan-bio-field')), findsOne);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('fan-favorite-genres-field')),
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.byKey(const Key('fan-favorite-genres-field')), findsOne);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('followed-band-updates')),
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.byKey(const Key('location-personalization')), findsOne);
+      expect(find.byKey(const Key('followed-band-updates')), findsOne);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('Profile visibly qualifies RSVP history at phone width', (
     tester,
