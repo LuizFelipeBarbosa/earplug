@@ -75,7 +75,7 @@ class FanEventCard extends StatelessWidget {
                         key: ValueKey('discovery-boost-${gig.id}'),
                         style: Theme.of(context).textTheme.epMeta.copyWith(
                           color: Ep.accent,
-                          fontSize: 9,
+                          fontSize: 11,
                           fontWeight: FontWeight.w900,
                           letterSpacing: .45,
                         ),
@@ -130,10 +130,16 @@ class FanEventCard extends StatelessWidget {
             children: [
               PriceBadge(gig),
               _AgeBadge(gig.ageRequirement.label),
-              StatusPill(
-                label: '${gig.going} GOING',
-                tone: EpStatusPillTone.selected,
-              ),
+              if (gig.lifecycle == GigLifecycle.cancelled)
+                const StatusPill(
+                  label: 'Cancelled',
+                  tone: EpStatusPillTone.warning,
+                )
+              else
+                StatusPill(
+                  label: '${gig.going} GOING',
+                  tone: EpStatusPillTone.selected,
+                ),
             ],
           ),
           _EventActions(gig: gig, app: app, trailingAction: trailingAction),
@@ -235,10 +241,16 @@ class FanEventCard extends StatelessWidget {
                   children: [
                     PriceBadge(gig),
                     _AgeBadge(gig.ageRequirement.label),
-                    StatusPill(
-                      label: '${gig.going} GOING',
-                      tone: EpStatusPillTone.selected,
-                    ),
+                    if (gig.lifecycle == GigLifecycle.cancelled)
+                      const StatusPill(
+                        label: 'Cancelled',
+                        tone: EpStatusPillTone.warning,
+                      )
+                    else
+                      StatusPill(
+                        label: '${gig.going} GOING',
+                        tone: EpStatusPillTone.selected,
+                      ),
                   ],
                 ),
                 _EventActions(
@@ -291,7 +303,7 @@ class _AgeBadge extends StatelessWidget {
       child: Text(
         label.toUpperCase(),
         style: Theme.of(context).textTheme.epChipLabel.copyWith(
-          fontSize: 10,
+          fontSize: 11,
           color: Ep.contentSecondary,
         ),
       ),
@@ -312,6 +324,7 @@ class _EventActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cancelled = gig.lifecycle == GigLifecycle.cancelled;
     return Row(
       key: ValueKey('event-actions-${gig.id}'),
       mainAxisAlignment: MainAxisAlignment.end,
@@ -333,8 +346,7 @@ class _EventActions extends StatelessWidget {
           icon: Icons.ios_share,
           onTap: () => _share(context, gig),
         ),
-        _TicketAction(gig: gig, app: app),
-        ?trailingAction,
+        if (!cancelled) ...[_TicketAction(gig: gig, app: app), ?trailingAction],
       ],
     );
   }

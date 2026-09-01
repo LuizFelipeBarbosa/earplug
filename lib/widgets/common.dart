@@ -155,7 +155,7 @@ class DateBlock extends StatelessWidget {
                       maxLines: 1,
                       style: Theme.of(context).textTheme.epChipLabel.copyWith(
                         color: Ep.volt,
-                        fontSize: math.max(7, size * .175),
+                        fontSize: math.max(11, size * .175),
                         letterSpacing: 1.1,
                         height: 1,
                       ),
@@ -311,7 +311,7 @@ class StatusPill extends StatelessWidget {
             label.toUpperCase(),
             style: Theme.of(
               context,
-            ).textTheme.epChipLabel.copyWith(color: foreground, fontSize: 10),
+            ).textTheme.epChipLabel.copyWith(color: foreground, fontSize: 11),
           ),
         ),
       ),
@@ -463,7 +463,7 @@ class PriceBadge extends StatelessWidget {
       child: Text(
         gig.priceLabel,
         style: Theme.of(context).textTheme.epLabel.copyWith(
-          fontSize: 10,
+          fontSize: 11,
           fontWeight: FontWeight.w900,
           letterSpacing: .8,
           color: gig.free ? Colors.white : Ep.contentPrimary,
@@ -782,7 +782,7 @@ class ProfileCompleteBadge extends StatelessWidget {
         'PROFILE COMPLETE',
         style: Theme.of(context).textTheme.epCaption.copyWith(
           color: Ep.success,
-          fontSize: 9,
+          fontSize: 11,
           fontWeight: FontWeight.w900,
           letterSpacing: .7,
         ),
@@ -1005,7 +1005,7 @@ class EpStatCard extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              fontSize: 9,
+              fontSize: 11,
               letterSpacing: 1.5,
               color: Ep.mute,
             ),
@@ -1179,7 +1179,7 @@ class EpStackedBar extends StatelessWidget {
             Text(
               newLabel,
               style: Theme.of(context).textTheme.epCaption.copyWith(
-                fontSize: 9.5,
+                fontSize: 11,
                 fontWeight: FontWeight.w800,
                 color: Ep.contentSecondary,
               ),
@@ -1197,7 +1197,7 @@ class EpStackedBar extends StatelessWidget {
             Text(
               returningLabel,
               style: Theme.of(context).textTheme.epCaption.copyWith(
-                fontSize: 9.5,
+                fontSize: 11,
                 fontWeight: FontWeight.w800,
                 color: Ep.contentSecondary,
               ),

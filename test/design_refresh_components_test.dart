@@ -42,6 +42,7 @@ void main() {
                 semanticLabel: 'Wednesday September 10',
               ),
               const StatusPill(label: 'Going ✓'),
+              const ProfileCompleteBadge(),
               LedgerRow(
                 title: 'Riptide',
                 details: const ['Foghorn Club', 'SEP 10', '56 going'],
@@ -57,6 +58,18 @@ void main() {
       expect(find.text('SEP'), findsOne);
       expect(find.bySemanticsLabel('Wednesday September 10'), findsOne);
       expect(find.text('GOING ✓'), findsOne);
+      expect(
+        tester.widget<Text>(find.text('GOING ✓')).style!.fontSize,
+        greaterThanOrEqualTo(11),
+      );
+      expect(
+        tester.widget<Text>(find.text('PROFILE COMPLETE')).style!.fontSize,
+        greaterThanOrEqualTo(11),
+      );
+      expect(
+        tester.widget<Text>(find.text('SEP')).style!.fontSize,
+        greaterThanOrEqualTo(11),
+      );
       expect(
         tester.getSize(find.byType(LedgerRow)).height,
         greaterThanOrEqualTo(48),
@@ -242,6 +255,10 @@ void main() {
     );
 
     expect(find.text('FOLLOWERS'), findsOne);
+    expect(
+      tester.widget<Text>(find.text('FOLLOWERS')).style!.fontSize,
+      greaterThanOrEqualTo(11),
+    );
     expect(find.text('486'), findsOne);
     expect(find.text('NEXT UP'), findsOne);
     expect(find.text('Riptide Release Show'), findsOne);

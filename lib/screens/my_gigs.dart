@@ -25,7 +25,9 @@ class MyGigsScreen extends StatelessWidget {
     final fanSince = profile == null ? null : monthLabel(profile.createdAt);
     final upcoming = app.upcomingRsvpGigs;
     final nextShow = upcoming.cast<Gig?>().firstWhere(
-      (gig) => gig?.tix == Ticketing.rsvp,
+      (gig) =>
+          gig?.tix == Ticketing.rsvp &&
+          gig?.lifecycle == GigLifecycle.published,
       orElse: () => null,
     );
     final remainingUpcoming = [
@@ -136,7 +138,8 @@ class MyGigsScreen extends StatelessWidget {
           FanEventCard(
             gig: g,
             app: app,
-            trailingAction: g.tix == Ticketing.rsvp
+            trailingAction:
+                g.tix == Ticketing.rsvp && g.lifecycle == GigLifecycle.published
                 ? _QrAction(gig: g, venue: app.venue(g.venueId))
                 : null,
           ),
@@ -189,12 +192,27 @@ class MyGigsScreen extends StatelessWidget {
           FanEventCard(gig: gig, app: app),
           const SizedBox(height: 8),
         ],
-        const SectionBar(label: 'EVENT HISTORY'),
+        SectionBar(
+          label: 'EVENT HISTORY',
+          padding: EdgeInsets.only(
+            top: 20,
+            bottom: app.history.isEmpty ? 10 : 2,
+          ),
+        ),
         if (app.history.isEmpty)
           _EmptySection(
             message: 'Past RSVPs will build your private event history.',
             action: 'FIND A SHOW',
             onTap: () => app.resetTo(Screen.home),
+          )
+        else
+          Text(
+            'RSVP RECORD — ATTENDANCE NOT VERIFIED',
+            key: const Key('history-qualification'),
+            style: Theme.of(context).textTheme.epMeta.copyWith(
+              color: Ep.contentSecondary,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         for (final item in app.history) ...[
           _HistoryRow(item: item),
@@ -369,7 +387,6 @@ class _HistoryRow extends StatelessWidget {
         if (item.venueName.isNotEmpty) item.venueName,
         dateLabel,
         statusLabel,
-        'RSVP RECORD — ATTENDANCE NOT VERIFIED',
       ],
     );
   }
@@ -691,7 +708,7 @@ class _FollowRow extends StatelessWidget {
               textStyle: WidgetStatePropertyAll(
                 Theme.of(
                   context,
-                ).textTheme.epLabel.copyWith(fontSize: 10, letterSpacing: .4),
+                ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .4),
               ),
             ),
             child: const Text('FOLLOWING ✓'),

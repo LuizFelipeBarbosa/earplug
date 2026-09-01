@@ -26,7 +26,7 @@ void main() {
   testWidgets('Explore remains usable at increased text scale', (tester) async {
     await pumpApp(tester, home: _scaledScreen(const ExploreScreen()));
 
-    expect(find.text('SEARCH & EXPLORE'), findsOne);
+    expect(find.text('Explore'), findsOne);
     expect(find.text('PUNK'), findsOne);
     expect(tester.takeException(), isNull);
   });
@@ -47,6 +47,51 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('UPCOMING RSVPS'), findsOne);
+    await tester.scrollUntilVisible(
+      find.text('FOLLOWING'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('FOLLOWING ✓'), findsWidgets);
+    final followingButton = tester.widget<OutlinedButton>(
+      find.widgetWithText(OutlinedButton, 'FOLLOWING ✓').first,
+    );
+    expect(
+      followingButton.style!.textStyle!.resolve({})!.fontSize,
+      greaterThanOrEqualTo(11),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Profile visibly qualifies RSVP history at phone width', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+
+    const qualification = 'RSVP RECORD — ATTENDANCE NOT VERIFIED';
+    const qualificationKey = Key('history-qualification');
+    await tester.scrollUntilVisible(
+      find.byKey(qualificationKey),
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    final qualificationFinder = find.byKey(qualificationKey);
+    expect(find.text(qualification), findsWidgets);
+    final text = tester.widget<Text>(qualificationFinder);
+    final bounds = tester.getRect(qualificationFinder);
+    expect(text.style!.fontSize, greaterThanOrEqualTo(11));
+    expect(bounds.left, greaterThanOrEqualTo(0));
+    expect(bounds.right, lessThanOrEqualTo(402));
+    expect(bounds.bottom, greaterThan(0));
+    expect(bounds.top, lessThan(900));
     expect(tester.takeException(), isNull);
   });
 }

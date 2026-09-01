@@ -1,5 +1,10 @@
 import 'package:earplug/app_state.dart';
+import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
+import 'package:earplug/models.dart';
+import 'package:earplug/screens/my_gigs.dart';
+import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:flutter/material.dart';
@@ -12,19 +17,24 @@ void main() {
   testWidgets('compact is the default date-first card presentation', (
     tester,
   ) async {
-    final gig = DemoData.gigs.first;
-    await pumpApp(
+    final gig = DemoData.gigs.firstWhere((item) => item.discoveryListingReady);
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
       tester,
+      auth: auth,
+      repository: _BoostedGigRepository(auth: auth, boostedGig: gig),
+      now: () => gig.startsAt.subtract(const Duration(days: 1)),
       home: Builder(
         builder: (context) => Scaffold(
           body: Padding(
             padding: const EdgeInsets.all(16),
-            child: FanEventCard(gig: gig, app: context.read<AppState>()),
+            child: FanEventCard(gig: gig, app: context.watch<AppState>()),
           ),
         ),
       ),
     );
 
+    expect(harness.app.isDiscoveryBoosted(gig), isTrue);
     final card = tester.widget<FanEventCard>(find.byType(FanEventCard));
     expect(card.presentation, FanEventCardPresentation.compact);
     expect(find.byType(DateBlock), findsOne);
@@ -33,6 +43,14 @@ void main() {
     expect(find.byKey(ValueKey('save-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('share-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);
+    final boostLabel = tester.widget<Text>(
+      find.byKey(ValueKey('discovery-boost-${gig.id}')),
+    );
+    expect(boostLabel.style!.fontSize, greaterThanOrEqualTo(11));
+    final ageLabel = tester.widget<Text>(
+      find.text(gig.ageRequirement.label.toUpperCase()),
+    );
+    expect(ageLabel.style!.fontSize, greaterThanOrEqualTo(11));
   });
 
   testWidgets('featured presentation uses the resolved presenter and flyer', (
@@ -62,4 +80,86 @@ void main() {
     expect(find.text(gig.title.toUpperCase()), findsOne);
     expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);
   });
+
+  testWidgets(
+    'cancelled future RSVP stays visible without promotion or ticket actions',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = _CancelledRsvpRepository(auth: auth);
+      await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const Scaffold(body: MyGigsScreen()),
+      );
+
+      final gig = repository.cancelledGig;
+      expect(find.byKey(ValueKey('next-show-${gig.id}')), findsNothing);
+      expect(find.byKey(ValueKey('fan-event-${gig.id}')), findsOne);
+      expect(find.text('CANCELLED'), findsOne);
+      expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsNothing);
+      expect(find.byKey(ValueKey('show-qr-${gig.id}')), findsNothing);
+      expect(find.text('QR PASS'), findsNothing);
+
+      // Cancelling ticket fulfillment does not remove harmless card actions.
+      expect(find.byKey(ValueKey('save-${gig.id}')), findsOne);
+      expect(find.byKey(ValueKey('share-${gig.id}')), findsOne);
+    },
+  );
+}
+
+class _CancelledRsvpRepository extends DemoRepository {
+  _CancelledRsvpRepository({required super.auth})
+    : cancelledGig = DemoData.gigs
+          .firstWhere((gig) => gig.tix == Ticketing.rsvp)
+          .copyWith(lifecycle: GigLifecycle.cancelled);
+
+  final Gig cancelledGig;
+
+  @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: [
+        for (final gig in DemoData.gigs)
+          if (gig.id == cancelledGig.id) cancelledGig else gig,
+      ],
+      venues: DemoData.venues,
+      bands: DemoData.bands,
+    ),
+  );
+
+  @override
+  Stream<Interactions> myInteractions() => Stream.value(
+    Interactions(
+      rsvpGigIds: {cancelledGig.id},
+      followBandIds: const {},
+      savedGigIds: const {},
+      gigs: [cancelledGig],
+      attendedCount: 0,
+    ),
+  );
+}
+
+class _BoostedGigRepository extends DemoRepository {
+  _BoostedGigRepository({required super.auth, required this.boostedGig});
+
+  final Gig boostedGig;
+
+  Band get _boostedBand => DemoData.bands[boostedGig.createdByBand]!.copyWith(
+    discoveryProfileReady: true,
+  );
+
+  @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: DemoData.gigs,
+      venues: DemoData.venues,
+      bands: {...DemoData.bands, boostedGig.createdByBand!: _boostedBand},
+    ),
+  );
+
+  @override
+  Stream<List<BandMembership>> myBands() =>
+      Stream.value([BandMembership(band: _boostedBand, role: 'admin')]);
 }
