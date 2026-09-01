@@ -63,4 +63,41 @@ void main() {
     expect(app.publicGigMissing('malformed-reference'), isTrue);
     expect(app.publicGigError('malformed-reference'), isNull);
   });
+
+  test('in-app back exits a directly opened gig to the Gigs home', () async {
+    final auth = FakeAuthService();
+    final app = AppState(
+      repository: DemoRepository(auth: auth),
+      auth: auth,
+      initialGigId: 'g1',
+    );
+    addTearDown(app.dispose);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(app.current.screen, Screen.gig);
+    expect(app.canGoBack, isFalse);
+    app.back();
+    expect(app.current.screen, Screen.home);
+  });
+
+  test('in-app back pops an internal gig without revisiting auth', () async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final app = AppState(
+      repository: DemoRepository(auth: auth),
+      auth: auth,
+    );
+    addTearDown(app.dispose);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    app.openMyGigsTab();
+    app.openGig('g1');
+    expect(app.current.screen, Screen.gig);
+    expect(app.canGoBack, isTrue);
+
+    app.back();
+
+    expect(app.current.screen, Screen.myGigs);
+    expect(app.authed, isTrue);
+  });
 }
