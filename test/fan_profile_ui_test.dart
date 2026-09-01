@@ -7,6 +7,7 @@ import 'package:earplug/screens/edit_profile.dart';
 import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/screens/settings.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/band_identity_editor.dart';
 import 'package:earplug/widgets/common.dart';
@@ -35,6 +36,17 @@ void main() {
     final editorDecoration = editorPreview.decoration! as BoxDecoration;
     expect(editorDecoration.color, Ep.surfaceRaised);
     expect(editorDecoration.gradient, isNull);
+    expect(editorDecoration.border!.top.color, Ep.border);
+    final previewName = tester.widget<Text>(
+      find.byKey(const Key('fan-preview-name')),
+    );
+    final previewScene = tester.widget<Text>(
+      find.byKey(const Key('fan-preview-scene')),
+    );
+    expect(previewName.style!.color, Ep.contentPrimary);
+    expect(previewName.style!.fontSize, 25);
+    expect(previewScene.style!.color, Ep.contentSecondary);
+    expect(previewScene.style!.fontSize, 13);
     expect(find.bySemanticsLabel('Change profile image'), findsOne);
     expect(find.text('DISPLAY NAME · REQUIRED'), findsOne);
     expect(find.bySemanticsLabel('DISPLAY NAME · REQUIRED'), findsOne);
@@ -66,6 +78,67 @@ void main() {
       expect(field.decoration!.enabledBorder, isA<OutlineInputBorder>());
     }
     semantics.dispose();
+  });
+
+  testWidgets('home location supports more scenes and the current position', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      locationService: const _ProfileLocationService(),
+      home: const Scaffold(body: EditProfileScreen()),
+    );
+    tester.view.physicalSize = const Size(402, 1800);
+    await tester.pumpAndSettle();
+
+    final picker = tester.widget<DropdownButton<FanCity>>(
+      find.byKey(const Key('home-location-picker')),
+    );
+    expect(picker.items, hasLength(FanCity.values.length));
+    expect(FanCity.values.length, greaterThan(2));
+    expect(
+      picker.items!.map((item) => item.value),
+      containsAll([FanCity.berkeley, FanCity.sanJose, FanCity.sanRafael]),
+    );
+
+    await tester.tap(find.byKey(const Key('use-current-home-location')));
+    await tester.pumpAndSettle();
+
+    final selected = tester.widget<DropdownButton<FanCity>>(
+      find.byKey(const Key('home-location-picker')),
+    );
+    expect(selected.value, FanCity.berkeley);
+    expect(find.textContaining('nearest supported scene'), findsOne);
+    expect(find.byKey(const Key('clear-home-location')), findsOne);
+  });
+
+  testWidgets('a failed location request keeps profile edits intact', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      locationService: const _FailedProfileLocationService(),
+      home: const Scaffold(body: EditProfileScreen()),
+    );
+    tester.view.physicalSize = const Size(402, 1800);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('fan-name-field')),
+      'Still Here',
+    );
+    await tester.tap(find.byKey(const Key('use-current-home-location')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('home-location-error')), findsOne);
+    expect(find.textContaining('not granted'), findsOne);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('fan-name-field')))
+          .controller!
+          .text,
+      'Still Here',
+    );
   });
 
   testWidgets('identity preview edits and removes only the profile image', (
@@ -172,6 +245,21 @@ void main() {
     final headerDecoration = profileHeader.decoration! as BoxDecoration;
     expect(headerDecoration.color, Ep.surfaceRaised);
     expect(headerDecoration.gradient, isNull);
+    expect(headerDecoration.border!.top.color, Ep.border);
+    final profileName = tester.widget<Text>(
+      find.byKey(const Key('fan-profile-name')),
+    );
+    final profileScene = tester.widget<Text>(
+      find.byKey(const Key('fan-profile-scene')),
+    );
+    expect(profileName.style!.color, Ep.contentPrimary);
+    expect(profileName.style!.fontSize, 22);
+    expect(profileScene.style!.color, Ep.contentSecondary);
+    expect(profileScene.style!.fontSize, 13);
+    final avatarFrame = tester.widget<Container>(
+      find.byKey(const Key('fan-profile-avatar-frame')),
+    );
+    expect((avatarFrame.decoration! as BoxDecoration).color, Ep.border);
     final identityTop = tester
         .getTopLeft(find.byKey(const Key('fan-profile-header')))
         .dy;
@@ -196,8 +284,8 @@ void main() {
         matching: find.text('${harness.app.history.length}'),
       ),
     );
-    expect(followingValue.style!.color, Ep.volt);
-    expect(historyValue.style!.color, Ep.accent);
+    expect(followingValue.style!.color, Ep.contentPrimary);
+    expect(historyValue.style!.color, Ep.contentPrimary);
     expect(
       find.descendant(
         of: find.byKey(const Key('fan-following-stat')),
@@ -819,6 +907,40 @@ class _FailingProfileRepository extends DemoRepository {
   }) async {
     throw StateError('profile update failed');
   }
+}
+
+class _ProfileLocationService implements LocationService {
+  const _ProfileLocationService();
+
+  @override
+  Future<LocationResult> requestCurrentLocation() async =>
+      const LocationSuccess(
+        UserLocation(
+          latitude: 37.8717,
+          longitude: -122.2728,
+          accuracyMeters: 6,
+        ),
+      );
+
+  @override
+  Future<bool> openAppSettings() async => true;
+
+  @override
+  Future<bool> openLocationSettings() async => true;
+}
+
+class _FailedProfileLocationService implements LocationService {
+  const _FailedProfileLocationService();
+
+  @override
+  Future<LocationResult> requestCurrentLocation() async =>
+      const LocationFailure(LocationFailureReason.permissionDenied);
+
+  @override
+  Future<bool> openAppSettings() async => true;
+
+  @override
+  Future<bool> openLocationSettings() async => true;
 }
 
 class _MixedDateRsvpRepository extends DemoRepository {

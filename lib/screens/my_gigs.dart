@@ -25,11 +25,9 @@ class MyGigsScreen extends StatelessWidget {
         ? 'YOUR PROFILE'
         : profileName.toUpperCase();
     final fanSince = profile == null ? null : monthLabel(profile.createdAt);
-    final sceneLabel = switch (profile?.homeLocation) {
-      FanCity.sf => 'SAN FRANCISCO SCENE',
-      FanCity.oak => 'OAKLAND SCENE',
-      null => 'SCENE UNDISCLOSED',
-    };
+    final sceneLabel = profile?.homeLocation == null
+        ? 'SCENE UNDISCLOSED'
+        : '${profile!.homeLocation!.label.toUpperCase()} SCENE';
     final upcoming = app.upcomingRsvpGigs;
     final nextShow = upcoming.cast<Gig?>().firstWhere(
       (gig) =>
@@ -122,9 +120,10 @@ class MyGigsScreen extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(3),
+                    key: const Key('fan-profile-avatar-frame'),
+                    padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
-                      color: Ep.volt,
+                      color: Ep.border,
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: EpFanAvatar(
@@ -142,22 +141,25 @@ class MyGigsScreen extends StatelessWidget {
                       children: [
                         Text(
                           displayName,
+                          key: const Key('fan-profile-name'),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(
-                            context,
-                          ).textTheme.epSectionHeading.copyWith(color: Ep.volt),
+                          style: Theme.of(context).textTheme.epDisplay.copyWith(
+                            color: Ep.contentPrimary,
+                            fontSize: 22,
+                          ),
                         ),
                         if (fanSince != null)
                           Text(
                             '$sceneLabel · FAN SINCE ${fanSince.toUpperCase()}',
+                            key: const Key('fan-profile-scene'),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.epCaption
-                                .copyWith(
-                                  color: Ep.accent,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            style: Theme.of(context).textTheme.epBody.copyWith(
+                              color: Ep.contentSecondary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                       ],
                     ),
@@ -181,8 +183,6 @@ class MyGigsScreen extends StatelessWidget {
                         value: '${app.follows.length}',
                         semanticLabel:
                             'Following, ${app.follows.length} $followingNoun. Open followed bands.',
-                        backgroundColor: Ep.surface,
-                        foregroundColor: Ep.volt,
                         onTap: () => _showFollowingSheet(context),
                       ),
                     ),
@@ -194,8 +194,6 @@ class MyGigsScreen extends StatelessWidget {
                         value: '${app.history.length}',
                         semanticLabel:
                             'RSVP History, ${app.history.length} past $historyNoun. Open RSVP history.',
-                        backgroundColor: Ep.surface,
-                        foregroundColor: Ep.accent,
                         onTap: () => _showHistorySheet(context),
                       ),
                     ),
@@ -321,16 +319,12 @@ class _ProfileStat extends StatelessWidget {
     required this.label,
     required this.value,
     required this.semanticLabel,
-    required this.backgroundColor,
-    required this.foregroundColor,
     required this.onTap,
   });
 
   final String label;
   final String value;
   final String semanticLabel;
-  final Color backgroundColor;
-  final Color foregroundColor;
   final VoidCallback onTap;
 
   @override
@@ -340,10 +334,10 @@ class _ProfileStat extends StatelessWidget {
       label: semanticLabel,
       excludeSemantics: true,
       child: Material(
-        color: backgroundColor,
+        color: Ep.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: foregroundColor.withValues(alpha: .32)),
+          side: const BorderSide(color: Ep.border),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -361,7 +355,7 @@ class _ProfileStat extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.epDisplay.copyWith(
-                      color: foregroundColor,
+                      color: Ep.contentPrimary,
                       fontSize: 24,
                     ),
                   ),
@@ -375,7 +369,7 @@ class _ProfileStat extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(context).textTheme.epChipLabel
                               .copyWith(
-                                color: foregroundColor,
+                                color: Ep.contentSecondary,
                                 letterSpacing: .7,
                               ),
                         ),
@@ -383,7 +377,7 @@ class _ProfileStat extends StatelessWidget {
                       Icon(
                         Icons.chevron_right,
                         size: 18,
-                        color: foregroundColor,
+                        color: Ep.contentSecondary,
                       ),
                     ],
                   ),

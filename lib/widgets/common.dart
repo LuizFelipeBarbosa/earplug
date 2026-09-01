@@ -177,6 +177,7 @@ class EpChip extends StatelessWidget {
   final bool active;
   final VoidCallback? onTap;
   final bool ghost;
+  final bool neutralSelected;
   final VoidCallback? onRemoved;
   final String? semanticLabel;
 
@@ -186,6 +187,7 @@ class EpChip extends StatelessWidget {
     required this.active,
     required this.onTap,
     this.ghost = false,
+    this.neutralSelected = false,
     this.onRemoved,
     this.semanticLabel,
   });
@@ -197,7 +199,9 @@ class EpChip extends StatelessWidget {
       color: !enabled
           ? Ep.contentDisabled
           : active
-          ? Ep.dark
+          ? neutralSelected
+                ? Ep.contentPrimary
+                : Ep.dark
           : ghost
           ? Ep.mute
           : Ep.contentSecondary,
@@ -240,12 +244,18 @@ class EpChip extends StatelessWidget {
           onPressed: onTap,
           onDeleted: onRemoved,
           deleteIcon: const Icon(Icons.close, size: 16),
-          deleteIconColor: active ? Ep.dark : Ep.mute,
+          deleteIconColor: active && !neutralSelected ? Ep.dark : Ep.mute,
           showCheckmark: false,
           backgroundColor: Colors.transparent,
-          selectedColor: Ep.volt,
+          selectedColor: neutralSelected ? Ep.surfaceDisabled : Ep.volt,
           disabledColor: Colors.transparent,
-          side: BorderSide(color: active ? Ep.volt : Ep.border),
+          side: BorderSide(
+            color: active && neutralSelected
+                ? Ep.contentSecondary
+                : active
+                ? Ep.volt
+                : Ep.border,
+          ),
           shape: const StadiumBorder(),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         ),
@@ -259,12 +269,18 @@ class EpChip extends StatelessWidget {
         onSelected: onTap == null ? null : (_) => onTap!(),
         onDeleted: onRemoved,
         deleteIcon: const Icon(Icons.close, size: 16),
-        deleteIconColor: active ? Ep.dark : Ep.mute,
+        deleteIconColor: active && !neutralSelected ? Ep.dark : Ep.mute,
         showCheckmark: false,
         backgroundColor: Colors.transparent,
-        selectedColor: Ep.volt,
+        selectedColor: neutralSelected ? Ep.surfaceDisabled : Ep.volt,
         disabledColor: Colors.transparent,
-        side: BorderSide(color: active ? Ep.volt : Ep.border),
+        side: BorderSide(
+          color: active && neutralSelected
+              ? Ep.contentSecondary
+              : active
+              ? Ep.volt
+              : Ep.border,
+        ),
         shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       ),

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../genres.dart';
 import '../models.dart';
+import '../services/location_service.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
 import '../widgets/band_identity_editor.dart';
@@ -30,6 +31,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   var _followedBandUpdatesEnabled = true;
   PickedMedia? _pickedAvatar;
   var _removeAvatar = false;
+  var _locatingHome = false;
+  LocationFailure? _homeLocationFailure;
+  String? _homeLocationNotice;
   var _saving = false;
   String? _error;
 
@@ -71,6 +75,52 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         setState(() => _error = "Couldn't open that photo. Try another one.");
       }
     }
+  }
+
+  Future<void> _useCurrentLocation() async {
+    if (_locatingHome) return;
+    setState(() {
+      _locatingHome = true;
+      _homeLocationFailure = null;
+      _homeLocationNotice = null;
+    });
+    LocationResult result;
+    try {
+      result = await context
+          .read<AppState>()
+          .locationService
+          .requestCurrentLocation();
+    } catch (_) {
+      result = const LocationFailure(LocationFailureReason.unavailable);
+    }
+    if (!mounted) return;
+    switch (result) {
+      case LocationSuccess(:final location):
+        final city = _nearestFanCity(location);
+        setState(() {
+          _locatingHome = false;
+          _homeLocation = city;
+          _homeLocationNotice =
+              'Using ${city.label}, the nearest supported scene.';
+        });
+      case final LocationFailure failure:
+        setState(() {
+          _locatingHome = false;
+          _homeLocationFailure = failure;
+        });
+    }
+  }
+
+  Future<void> _openLocationRecovery() async {
+    final app = context.read<AppState>();
+    final recovery = switch (_homeLocationFailure?.reason) {
+      LocationFailureReason.servicesDisabled =>
+        app.locationService.openLocationSettings(),
+      LocationFailureReason.permissionDeniedForever =>
+        app.locationService.openAppSettings(),
+      _ => null,
+    };
+    if (recovery != null) await recovery;
   }
 
   Future<void> _save() async {
@@ -201,34 +251,131 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 label: 'HOME LOCATION',
                 caption:
                     'Private to your account. Personalization below decides whether this scene tunes discovery.',
-                child: Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    EpChip(
-                      key: const Key('profile-home-sf'),
-                      label: 'SAN FRANCISCO',
-                      active: _homeLocation == FanCity.sf,
-                      onTap: _saving
-                          ? null
-                          : () => setState(() => _homeLocation = FanCity.sf),
+                    DropdownButtonHideUnderline(
+                      child: DropdownButton<FanCity>(
+                        key: const Key('home-location-picker'),
+                        value: _homeLocation,
+                        isExpanded: true,
+                        itemHeight: 52,
+                        menuMaxHeight: 360,
+                        dropdownColor: Ep.surfaceRaised,
+                        icon: const Icon(
+                          Icons.expand_more,
+                          color: Ep.contentSecondary,
+                        ),
+                        hint: Text(
+                          'CHOOSE A HOME LOCATION',
+                          style: Theme.of(context).textTheme.epLabel,
+                        ),
+                        style: Theme.of(context).textTheme.epLabel.copyWith(
+                          color: Ep.contentPrimary,
+                          fontSize: 14,
+                        ),
+                        items: [
+                          for (final city in FanCity.values)
+                            DropdownMenuItem(
+                              value: city,
+                              child: Text(city.label.toUpperCase()),
+                            ),
+                        ],
+                        onChanged: _saving || _locatingHome
+                            ? null
+                            : (city) => setState(() {
+                                _homeLocation = city;
+                                _homeLocationFailure = null;
+                                _homeLocationNotice = null;
+                              }),
+                      ),
                     ),
-                    EpChip(
-                      key: const Key('profile-home-oak'),
-                      label: 'OAKLAND',
-                      active: _homeLocation == FanCity.oak,
-                      onTap: _saving
-                          ? null
-                          : () => setState(() => _homeLocation = FanCity.oak),
+                    const Divider(color: Ep.border, height: 1),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      children: [
+                        TextButton.icon(
+                          key: const Key('use-current-home-location'),
+                          onPressed: _saving || _locatingHome
+                              ? null
+                              : _useCurrentLocation,
+                          style: TextButton.styleFrom(
+                            foregroundColor: Ep.contentPrimary,
+                            minimumSize: const Size(48, 48),
+                          ),
+                          icon: _locatingHome
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    color: Ep.contentSecondary,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.my_location, size: 19),
+                          label: Text(
+                            _locatingHome
+                                ? 'FINDING YOUR LOCATION…'
+                                : 'USE CURRENT LOCATION',
+                          ),
+                        ),
+                        if (_homeLocation != null)
+                          TextButton(
+                            key: const Key('clear-home-location'),
+                            onPressed: _saving || _locatingHome
+                                ? null
+                                : () => setState(() {
+                                    _homeLocation = null;
+                                    _homeLocationFailure = null;
+                                    _homeLocationNotice = null;
+                                  }),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Ep.contentSecondary,
+                              minimumSize: const Size(48, 48),
+                            ),
+                            child: const Text('KEEP UNDISCLOSED'),
+                          ),
+                      ],
                     ),
-                    EpChip(
-                      key: const Key('profile-home-undisclosed'),
-                      label: 'UNDISCLOSED',
-                      active: _homeLocation == null,
-                      onTap: _saving
-                          ? null
-                          : () => setState(() => _homeLocation = null),
-                    ),
+                    if (_homeLocationNotice case final notice?)
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          notice,
+                          key: const Key('home-location-notice'),
+                          style: Theme.of(context).textTheme.epCaption,
+                        ),
+                      ),
+                    if (_homeLocationFailure case final failure?) ...[
+                      Text(
+                        _locationFailureMessage(failure),
+                        key: const Key('home-location-error'),
+                        style: Theme.of(
+                          context,
+                        ).textTheme.epCaption.copyWith(color: Ep.destructive),
+                      ),
+                      if (failure.reason ==
+                              LocationFailureReason.servicesDisabled ||
+                          failure.reason ==
+                              LocationFailureReason.permissionDeniedForever)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: TextButton(
+                            onPressed: _openLocationRecovery,
+                            style: TextButton.styleFrom(
+                              foregroundColor: Ep.contentPrimary,
+                              minimumSize: const Size(48, 48),
+                            ),
+                            child: Text(
+                              failure.reason ==
+                                      LocationFailureReason.servicesDisabled
+                                  ? 'OPEN LOCATION SETTINGS'
+                                  : 'OPEN APP SETTINGS',
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),
@@ -257,6 +404,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         key: ValueKey('profile-genre-$genre'),
                         label: genre,
                         active: _genres.contains(genre),
+                        neutralSelected: true,
                         onTap: _saving
                             ? null
                             : () => setState(() {
@@ -324,10 +472,39 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 }
 
-String _sceneName(FanCity? city) => switch (city) {
-  FanCity.sf => 'San Francisco scene',
-  FanCity.oak => 'Oakland scene',
-  null => 'Scene undisclosed',
+String _sceneName(FanCity? city) =>
+    city == null ? 'Scene undisclosed' : '${city.label} scene';
+
+FanCity _nearestFanCity(UserLocation location) {
+  var nearest = FanCity.values.first;
+  var nearestDistance = double.infinity;
+  for (final city in FanCity.values) {
+    final distance = distanceInMiles(
+      startLatitude: location.latitude,
+      startLongitude: location.longitude,
+      endLatitude: city.center.latitude,
+      endLongitude: city.center.longitude,
+    );
+    if (distance < nearestDistance) {
+      nearest = city;
+      nearestDistance = distance;
+    }
+  }
+  return nearest;
+}
+
+String _locationFailureMessage(
+  LocationFailure failure,
+) => switch (failure.reason) {
+  LocationFailureReason.servicesDisabled =>
+    'Location services are off. Turn them on or choose a place.',
+  LocationFailureReason.permissionDenied =>
+    'Location access was not granted. Try again or choose a place.',
+  LocationFailureReason.permissionDeniedForever =>
+    'Location access is blocked. Allow it in app settings or choose a place.',
+  LocationFailureReason.unavailable =>
+    failure.message ??
+        'Your location is unavailable. Try again or choose a place.',
 };
 
 class _FanIdentityPreview extends StatelessWidget {
@@ -355,7 +532,7 @@ class _FanIdentityPreview extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Ep.surfaceRaised,
-        border: Border.all(color: Ep.brand),
+        border: Border.all(color: Ep.border),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -364,7 +541,7 @@ class _FanIdentityPreview extends StatelessWidget {
           Text(
             'IDENTITY PREVIEW',
             style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              color: Ep.volt,
+              color: Ep.contentSecondary,
               letterSpacing: 1.3,
             ),
           ),
@@ -402,27 +579,30 @@ class _FanIdentityPreview extends StatelessWidget {
                   children: [
                     Text(
                       displayName,
+                      key: const Key('fan-preview-name'),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.epDisplay.copyWith(
-                        color: Ep.volt,
-                        fontSize: 22,
+                        color: Ep.contentPrimary,
+                        fontSize: 25,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       scene.toUpperCase(),
+                      key: const Key('fan-preview-scene'),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epCaption.copyWith(
-                        color: Ep.accent,
+                      style: Theme.of(context).textTheme.epBody.copyWith(
+                        color: Ep.contentSecondary,
+                        fontSize: 13,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     TextAction(
                       'CHANGE PROFILE IMAGE',
                       key: const Key('choose-fan-avatar'),
-                      color: Ep.volt,
+                      color: Ep.contentPrimary,
                       padding: EdgeInsets.zero,
                       onTap: onChooseAvatar,
                     ),

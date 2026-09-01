@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../genres.dart';
+import '../models.dart';
 import '../services/location_service.dart';
 import '../theme.dart';
 import 'common.dart';
@@ -136,6 +137,15 @@ class _LocationSheet extends StatelessWidget {
             const SizedBox(height: 8),
             _LocationFailureMessage(failure: failure, app: app),
           ],
+          if (app.discoveryLocation == DiscoveryLocation.home)
+            if (app.discoveryHomeCity case final homeCity?)
+              _OptionTile(
+                title: homeCity.label,
+                subtitle: 'Saved home location',
+                selected: true,
+                leading: const Icon(Icons.home_outlined, size: 20),
+                onTap: () => Navigator.pop(context),
+              ),
           _OptionTile(
             title: 'Mission, SF',
             subtitle: 'San Francisco',
@@ -299,12 +309,11 @@ class _FiltersSheet extends StatelessWidget {
           const _Divider(),
           const _FilterHeading('DISTANCE'),
           const SizedBox(height: 5),
-          Text(
-            app.discoveryLocation == DiscoveryLocation.current
-                ? 'Measured from your current location.'
-                : 'Choose Current location to filter by distance.',
-            style: Theme.of(context).textTheme.epCaption,
-          ),
+          Text(switch (app.discoveryLocation) {
+            DiscoveryLocation.current => 'Measured from your current location.',
+            DiscoveryLocation.home => 'Measured from your saved home location.',
+            _ => 'Choose Current location to filter by distance.',
+          }, style: Theme.of(context).textTheme.epCaption),
           const SizedBox(height: 9),
           Wrap(
             spacing: 7,
@@ -313,7 +322,7 @@ class _FiltersSheet extends StatelessWidget {
               _ChoiceChip(
                 label: 'Any',
                 selected: app.fMaxDistanceMiles == null,
-                onTap: app.discoveryLocation == DiscoveryLocation.current
+                onTap: app.canFilterByDistance
                     ? () => app.setDistanceFilter(null)
                     : null,
               ),
@@ -321,7 +330,7 @@ class _FiltersSheet extends StatelessWidget {
                 _ChoiceChip(
                   label: '${miles.toInt()} MI',
                   selected: app.fMaxDistanceMiles == miles,
-                  onTap: app.discoveryLocation == DiscoveryLocation.current
+                  onTap: app.canFilterByDistance
                       ? () => app.setDistanceFilter(miles)
                       : null,
                 ),

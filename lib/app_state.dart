@@ -54,7 +54,7 @@ enum DateFilter { all, tonight, week, custom }
 
 enum PriceFilter { any, free, paid }
 
-enum DiscoveryLocation { sf, oak, current }
+enum DiscoveryLocation { sf, oak, home, current }
 
 enum _BandArtworkRole { avatar, banner }
 
@@ -450,8 +450,10 @@ class AppState extends ChangeNotifier {
 
   // ---- home filters
   bool mapMode = true;
-  String city = 'sf'; // 'sf' | 'oak'
+  String city = 'sf';
   DiscoveryLocation discoveryLocation = DiscoveryLocation.sf;
+  FanCity? _discoveryHomeCity;
+  FanCity? get discoveryHomeCity => _discoveryHomeCity;
   LatLng? currentPosition;
   bool locating = false;
   LocationFailure? locationFailure;
@@ -467,6 +469,10 @@ class AppState extends ChangeNotifier {
   PriceFilter get fPrice => filters.price;
   String? get fVenueId => filters.venueId;
   double? get fMaxDistanceMiles => filters.maxDistanceMiles;
+  bool get canFilterByDistance =>
+      (discoveryLocation == DiscoveryLocation.current &&
+          currentPosition != null) ||
+      discoveryLocation == DiscoveryLocation.home;
   int get activeFilterCount => filters.activeCount;
 
   // ---- explore
@@ -669,12 +675,12 @@ class AppState extends ChangeNotifier {
         preferredCity = loadedProfile?.fanOnboarding?.preferredCity;
       }
       if (preferredCity != null) {
-        _applyDiscoveryCity(preferredCity.name);
+        _applyFanCity(preferredCity);
         if (loadedProfile?.locationPersonalizationEnabled == true) {
           _appliedHomePersonalization = preferredCity;
         }
       } else if (_appliedHomePersonalization != null) {
-        _applyDiscoveryCity('sf');
+        _applyFanCity(FanCity.sf);
       }
       notifyListeners();
       return true;
@@ -1224,6 +1230,7 @@ class AppState extends ChangeNotifier {
     _locationRequestGeneration++;
     city = 'sf';
     discoveryLocation = DiscoveryLocation.sf;
+    _discoveryHomeCity = null;
     currentPosition = null;
     locating = false;
     locationFailure = null;
@@ -1464,10 +1471,10 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addAll(savedGenres);
     if (locationPersonalizationEnabled && homeLocation != null) {
-      _applyDiscoveryCity(homeLocation.name);
+      _applyFanCity(homeLocation);
       _appliedHomePersonalization = homeLocation;
     } else if (_appliedHomePersonalization != null) {
-      _applyDiscoveryCity('sf');
+      _applyFanCity(FanCity.sf);
     }
     notifyListeners();
     return true;
@@ -1600,13 +1607,14 @@ class AppState extends ChangeNotifier {
     final previousDiscoveryState = (
       city: city,
       location: discoveryLocation,
+      homeCity: _discoveryHomeCity,
       position: currentPosition,
       locating: locating,
       failure: locationFailure,
       filters: filters,
     );
 
-    _applyDiscoveryCity(preferredCity.name);
+    _applyFanCity(preferredCity);
     _setLocalFanOnboarding(
       FanOnboarding(
         preferredCity: preferredCity,
@@ -1614,11 +1622,7 @@ class AppState extends ChangeNotifier {
         collapsed: previous.collapsed,
       ),
     );
-    say(
-      preferredCity == FanCity.oak
-          ? 'Browsing Oakland shows.'
-          : 'Browsing San Francisco shows.',
-    );
+    say('Browsing ${preferredCity.label} shows.');
 
     unawaited(
       repository.updateFanOnboarding(preferredCity: preferredCity).catchError((
@@ -1630,6 +1634,7 @@ class AppState extends ChangeNotifier {
           _locationRequestGeneration++;
           city = previousDiscoveryState.city;
           discoveryLocation = previousDiscoveryState.location;
+          _discoveryHomeCity = previousDiscoveryState.homeCity;
           currentPosition = previousDiscoveryState.position;
           locating = previousDiscoveryState.locating;
           locationFailure = previousDiscoveryState.failure;
@@ -1747,6 +1752,26 @@ class AppState extends ChangeNotifier {
     discoveryLocation = c == 'oak'
         ? DiscoveryLocation.oak
         : DiscoveryLocation.sf;
+    _discoveryHomeCity = null;
+    currentPosition = null;
+    locating = false;
+    locationFailure = null;
+    filters = filters.copyWith(maxDistanceMiles: null);
+  }
+
+  void _applyFanCity(FanCity selectedCity) {
+    _appliedHomePersonalization = null;
+    _locationRequestGeneration++;
+    city = selectedCity.name;
+    discoveryLocation = switch (selectedCity) {
+      FanCity.sf => DiscoveryLocation.sf,
+      FanCity.oak => DiscoveryLocation.oak,
+      _ => DiscoveryLocation.home,
+    };
+    _discoveryHomeCity = switch (selectedCity) {
+      FanCity.sf || FanCity.oak => null,
+      _ => selectedCity,
+    };
     currentPosition = null;
     locating = false;
     locationFailure = null;
@@ -1758,6 +1783,7 @@ class AppState extends ChangeNotifier {
     _locationRequestGeneration++;
     currentPosition = position;
     discoveryLocation = DiscoveryLocation.current;
+    _discoveryHomeCity = null;
     locating = false;
     locationFailure = null;
   });
@@ -1781,6 +1807,7 @@ class AppState extends ChangeNotifier {
           _appliedHomePersonalization = null;
           currentPosition = LatLng(location.latitude, location.longitude);
           discoveryLocation = DiscoveryLocation.current;
+          _discoveryHomeCity = null;
           locationFailure = null;
           say('Showing gigs near your current location.');
           return true;
@@ -1818,6 +1845,8 @@ class AppState extends ChangeNotifier {
 
   String get locationLabel => switch (discoveryLocation) {
     DiscoveryLocation.current => 'CURRENT LOCATION',
+    DiscoveryLocation.home =>
+      '${(_discoveryHomeCity ?? FanCity.sf).label.toUpperCase()} SCENE',
     DiscoveryLocation.oak => 'TEMESCAL, OAK',
     DiscoveryLocation.sf => 'MISSION, SF',
   };
@@ -1825,6 +1854,7 @@ class AppState extends ChangeNotifier {
   LatLng get discoveryCenter => switch (discoveryLocation) {
     DiscoveryLocation.current =>
       currentPosition ?? const LatLng(37.7599, -122.4148),
+    DiscoveryLocation.home => (_discoveryHomeCity ?? FanCity.sf).center,
     DiscoveryLocation.oak => const LatLng(37.8378, -122.2628),
     DiscoveryLocation.sf => const LatLng(37.7599, -122.4148),
   };
@@ -1967,9 +1997,6 @@ class AppState extends ChangeNotifier {
       _set(() => filters = filters.copyWith(venueId: venueId));
 
   void setDistanceFilter(double? miles) => _set(() {
-    final canFilterByDistance =
-        discoveryLocation == DiscoveryLocation.current &&
-        currentPosition != null;
     filters = filters.copyWith(
       maxDistanceMiles: canFilterByDistance ? miles : null,
     );

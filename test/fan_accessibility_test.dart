@@ -112,6 +112,18 @@ void main() {
       expect(find.byKey(const Key('save-fan-profile')), findsOne);
 
       await tester.scrollUntilVisible(
+        find.byKey(const Key('use-current-home-location')),
+        180,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        tester
+            .getSize(find.byKey(const Key('use-current-home-location')))
+            .height,
+        greaterThanOrEqualTo(48),
+      );
+
+      await tester.scrollUntilVisible(
         find.byKey(const Key('fan-bio-field')),
         240,
         scrollable: find.byType(Scrollable).first,

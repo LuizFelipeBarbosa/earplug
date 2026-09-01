@@ -80,7 +80,7 @@ void main() {
     },
   );
 
-  testWidgets('chips support volt, ghost, and removable states compatibly', (
+  testWidgets('chips support volt, neutral, ghost, and removable states', (
     tester,
   ) async {
     var selected = 0;
@@ -90,6 +90,12 @@ void main() {
         Wrap(
           children: [
             EpChip(label: 'Punk', active: true, onTap: () => selected++),
+            EpChip(
+              label: 'Noise',
+              active: true,
+              neutralSelected: true,
+              onTap: () => selected++,
+            ),
             EpChip(
               label: '+ Add',
               active: false,
@@ -108,9 +114,12 @@ void main() {
     );
 
     final active = tester.widget<FilterChip>(find.byType(FilterChip).first);
+    final neutral = tester.widget<FilterChip>(find.byType(FilterChip).at(1));
     expect(active.selectedColor, Ep.volt);
+    expect(neutral.selectedColor, Ep.surfaceDisabled);
+    expect(neutral.side!.color, Ep.contentSecondary);
     expect(
-      tester.getSize(find.byType(EpChip).at(1)).height,
+      tester.getSize(find.byType(EpChip).at(2)).height,
       greaterThanOrEqualTo(48),
     );
     await tester.tap(find.text('+ ADD'));

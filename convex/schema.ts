@@ -49,7 +49,22 @@ export const gigPublicPerformerValidator = v.object({
   bandId: v.optional(v.id("bands")),
 });
 
-export const fanCityValidator = v.union(v.literal("sf"), v.literal("oak"));
+export const fanCityValidator = v.union(
+  v.literal("sf"),
+  v.literal("oak"),
+  v.literal("berkeley"),
+  v.literal("alameda"),
+  v.literal("emeryville"),
+  v.literal("richmond"),
+  v.literal("dalyCity"),
+  v.literal("sanMateo"),
+  v.literal("paloAlto"),
+  v.literal("sanJose"),
+  v.literal("hayward"),
+  v.literal("fremont"),
+  v.literal("walnutCreek"),
+  v.literal("sanRafael"),
+);
 
 export const fanGenreChoiceValidator = v.union(
   v.literal("pending"),

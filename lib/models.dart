@@ -95,7 +95,66 @@ class DoorCheckInResult {
       );
 }
 
-enum FanCity { sf, oak }
+enum FanCity {
+  sf,
+  oak,
+  berkeley,
+  alameda,
+  emeryville,
+  richmond,
+  dalyCity,
+  sanMateo,
+  paloAlto,
+  sanJose,
+  hayward,
+  fremont,
+  walnutCreek,
+  sanRafael,
+}
+
+extension FanCityDetails on FanCity {
+  String get label => switch (this) {
+    FanCity.sf => 'San Francisco',
+    FanCity.oak => 'Oakland',
+    FanCity.berkeley => 'Berkeley',
+    FanCity.alameda => 'Alameda',
+    FanCity.emeryville => 'Emeryville',
+    FanCity.richmond => 'Richmond',
+    FanCity.dalyCity => 'Daly City',
+    FanCity.sanMateo => 'San Mateo',
+    FanCity.paloAlto => 'Palo Alto',
+    FanCity.sanJose => 'San Jose',
+    FanCity.hayward => 'Hayward',
+    FanCity.fremont => 'Fremont',
+    FanCity.walnutCreek => 'Walnut Creek',
+    FanCity.sanRafael => 'San Rafael',
+  };
+
+  LatLng get center => switch (this) {
+    FanCity.sf => const LatLng(37.7749, -122.4194),
+    FanCity.oak => const LatLng(37.8044, -122.2712),
+    FanCity.berkeley => const LatLng(37.8715, -122.2730),
+    FanCity.alameda => const LatLng(37.7652, -122.2416),
+    FanCity.emeryville => const LatLng(37.8313, -122.2852),
+    FanCity.richmond => const LatLng(37.9358, -122.3477),
+    FanCity.dalyCity => const LatLng(37.6879, -122.4702),
+    FanCity.sanMateo => const LatLng(37.5630, -122.3255),
+    FanCity.paloAlto => const LatLng(37.4419, -122.1430),
+    FanCity.sanJose => const LatLng(37.3382, -121.8863),
+    FanCity.hayward => const LatLng(37.6688, -122.0808),
+    FanCity.fremont => const LatLng(37.5485, -121.9886),
+    FanCity.walnutCreek => const LatLng(37.9101, -122.0652),
+    FanCity.sanRafael => const LatLng(37.9735, -122.5311),
+  };
+}
+
+FanCity? _fanCityFromWire(Object? value) {
+  if (value is! String) return null;
+  for (final city in FanCity.values) {
+    if (city.name == value) return city;
+  }
+  return null;
+}
 
 enum FanGenreChoice { pending, selected, open }
 
@@ -111,10 +170,7 @@ class FanOnboarding {
   });
 
   factory FanOnboarding.fromJson(Map<String, dynamic> json) => FanOnboarding(
-    preferredCity: switch (json['preferredCity']) {
-      final String value => FanCity.values.byName(value),
-      _ => null,
-    },
+    preferredCity: _fanCityFromWire(json['preferredCity']),
     genreChoice: FanGenreChoice.values.byName(json['genreChoice'] as String),
     collapsed: json['collapsed'] as bool,
   );
@@ -161,11 +217,7 @@ class UserProfile {
     ),
     avatarUrl: json['avatarUrl'] is String ? json['avatarUrl'] as String : null,
     bio: json['bio'] is String ? json['bio'] as String : null,
-    homeLocation: switch (json['homeLocation']) {
-      'sf' => FanCity.sf,
-      'oak' => FanCity.oak,
-      _ => null,
-    },
+    homeLocation: _fanCityFromWire(json['homeLocation']),
     locationPersonalizationEnabled:
         json['locationPersonalizationEnabled'] is bool
         ? json['locationPersonalizationEnabled'] as bool

@@ -69,7 +69,7 @@ void main() {
         'createdAt': 1234,
         'avatarUrl': 'https://example.com/avatar.jpg',
         'bio': 'Always by the speakers.',
-        'homeLocation': 'oak',
+        'homeLocation': 'berkeley',
         'locationPersonalizationEnabled': true,
         'followedBandUpdatesEnabled': false,
         'profileTutorialCompleted': true,
@@ -77,7 +77,7 @@ void main() {
 
       expect(profile.avatarUrl, 'https://example.com/avatar.jpg');
       expect(profile.bio, 'Always by the speakers.');
-      expect(profile.homeLocation, FanCity.oak);
+      expect(profile.homeLocation, FanCity.berkeley);
       expect(profile.locationPersonalizationEnabled, isTrue);
       expect(profile.followedBandUpdatesEnabled, isFalse);
       expect(profile.profileTutorialAvailable, isTrue);
