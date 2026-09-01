@@ -47,36 +47,58 @@ class _Header extends StatelessWidget {
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const EpLogo.compact(height: 42),
+              const Padding(
+                padding: EdgeInsets.only(top: 2),
+                child: EpLogo.compact(key: ValueKey('home-logo'), height: 42),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ExcludeSemantics(
+                      child: Text(
+                        'EARPLUG',
+                        key: const ValueKey('home-wordmark'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.epSectionHeading
+                            .copyWith(letterSpacing: 1.4),
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    _CityPill(app: app),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
               _SegmentedToggle(app: app),
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(child: _CityPill(app: app)),
-              const SizedBox(width: 8),
-              EpChip(
-                label: app.activeFilterCount == 0
-                    ? 'FILTERS'
-                    : 'FILTERS · ${app.activeFilterCount}',
-                active:
-                    app.fGenres.isNotEmpty ||
-                    app.fVenueId != null ||
-                    app.fMaxDistanceMiles != null ||
-                    app.fPrice == PriceFilter.paid ||
-                    app.fDate == DateFilter.custom,
-                onTap: () => showDiscoveryFiltersSheet(context),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [for (final chip in _shortcutChips(app)) chip],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                EpChip(
+                  label: app.activeFilterCount == 0
+                      ? 'FILTERS'
+                      : 'FILTERS · ${app.activeFilterCount}',
+                  active:
+                      app.fGenres.isNotEmpty ||
+                      app.fVenueId != null ||
+                      app.fMaxDistanceMiles != null ||
+                      app.fPrice == PriceFilter.paid ||
+                      app.fDate == DateFilter.custom,
+                  onTap: () => showDiscoveryFiltersSheet(context),
+                ),
+                for (final chip in _shortcutChips(app)) chip,
+              ],
+            ),
           ),
         ],
       ),
@@ -147,6 +169,7 @@ class _CityPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return OutlinedButton.icon(
+      key: const ValueKey('home-location-control'),
       onPressed: () => showDiscoveryLocationSheet(context),
       style: OutlinedButton.styleFrom(
         alignment: Alignment.centerLeft,

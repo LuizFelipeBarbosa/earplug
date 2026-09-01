@@ -28,6 +28,15 @@ void main() {
     expect(harness.app.mapMode, isTrue);
     expect(find.byType(GigMapView), findsOne);
     expect(find.text('PUNK'), findsNothing);
+    expect(find.text('EARPLUG'), findsOne);
+
+    final logo = tester.getRect(find.byKey(const Key('home-logo')));
+    final wordmark = tester.getRect(find.byKey(const Key('home-wordmark')));
+    final location = tester.getRect(
+      find.byKey(const Key('home-location-control')),
+    );
+    expect(logo.right, lessThan(wordmark.left));
+    expect(wordmark.bottom, lessThan(location.top));
 
     await tester.tap(find.text('LIST'));
     await tester.pumpAndSettle();
