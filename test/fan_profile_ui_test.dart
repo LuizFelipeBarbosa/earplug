@@ -701,20 +701,38 @@ void main() {
         find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
         findsOne,
       );
+      expect(
+        find.byKey(ValueKey('upcoming-rsvp-${repository.futureGig.id}')),
+        findsOne,
+      );
+      expect(find.text('Your next RSVP is ready above.'), findsNothing);
 
       repository.completeMutation();
       await tester.pump();
       await tester.pump();
       expect(harness.app.upcomingRsvpGigs, [repository.futureGig]);
+      expect(
+        find.byKey(ValueKey('upcoming-rsvp-${repository.futureGig.id}')),
+        findsOne,
+      );
 
       await tester.tap(
-        find.byKey(ValueKey('ticket-action-${repository.futureGig.id}')),
+        find.descendant(
+          of: find.byKey(ValueKey('upcoming-rsvp-${repository.futureGig.id}')),
+          matching: find.byKey(
+            ValueKey('ticket-action-${repository.futureGig.id}'),
+          ),
+        ),
       );
       await tester.pump();
       expect(harness.app.rsvps, isNot(contains(repository.futureGig.id)));
       expect(harness.app.upcomingRsvpGigs, isEmpty);
       expect(
         find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(ValueKey('upcoming-rsvp-${repository.futureGig.id}')),
         findsNothing,
       );
 
@@ -921,7 +939,7 @@ void main() {
     expect(replayHarness.app.profileTutorialVisible, isTrue);
   });
 
-  testWidgets('next in-app RSVP is promoted only out of upcoming section', (
+  testWidgets('next in-app RSVP is promoted and stays in upcoming section', (
     tester,
   ) async {
     final now = DateTime(2026, 8, 31, 16);
@@ -943,10 +961,11 @@ void main() {
       findsOne,
     );
     expect(
-      find.byKey(ValueKey('fan-event-${repository.futureGig.id}')),
-      findsNothing,
+      find.byKey(ValueKey('upcoming-rsvp-${repository.futureGig.id}')),
+      findsOne,
     );
     expect(find.text('QR PASS'), findsOne);
+    expect(find.byTooltip('Show QR code'), findsOne);
     expect(harness.app.upcomingRsvpGigs, contains(repository.futureGig));
   });
 

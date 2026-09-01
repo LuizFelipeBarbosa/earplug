@@ -325,9 +325,9 @@ class _EventActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cancelled = gig.lifecycle == GigLifecycle.cancelled;
-    return Row(
+    return Wrap(
       key: ValueKey('event-actions-${gig.id}'),
-      mainAxisAlignment: MainAxisAlignment.end,
+      alignment: WrapAlignment.end,
       children: [
         _IconAction(
           key: ValueKey('save-${gig.id}'),

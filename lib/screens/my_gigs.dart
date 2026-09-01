@@ -30,10 +30,6 @@ class MyGigsScreen extends StatelessWidget {
         : '${profile!.homeLocation!.label.toUpperCase()} SCENE';
     final upcoming = app.upcomingRsvpGigs;
     final nextShow = upcoming.firstOrNull;
-    final remainingUpcoming = [
-      for (final gig in upcoming)
-        if (gig.id != nextShow?.id) gig,
-    ];
     final savedGigs = [
       for (final id in app.saved)
         if (app.gig(id) case final Gig g) g,
@@ -214,16 +210,15 @@ class MyGigsScreen extends StatelessWidget {
           ),
         ],
         const SectionBar(label: 'UPCOMING RSVPS', padding: sectionPadding),
-        if (remainingUpcoming.isEmpty)
+        if (upcoming.isEmpty)
           _EmptySection(
-            message: nextShow == null
-                ? 'No upcoming RSVPs. Pick a show you want to catch.'
-                : 'Your next RSVP is ready above.',
+            message: 'No upcoming RSVPs. Pick a show you want to catch.',
             action: 'FIND A SHOW',
             onTap: () => app.resetTo(Screen.home),
           ),
-        for (final g in remainingUpcoming) ...[
+        for (final g in upcoming) ...[
           FanEventCard(
+            key: ValueKey('upcoming-rsvp-${g.id}'),
             gig: g,
             app: app,
             trailingAction:
