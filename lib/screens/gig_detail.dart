@@ -138,8 +138,6 @@ class GigDetailPresentation extends StatelessWidget {
                   _InfoCards(
                     gig: gig,
                     venue: venue,
-                    app: app,
-                    showGoing: !isPreview,
                     previewLabel: previewLabel,
                   ),
                   const SizedBox(height: 16),
@@ -168,10 +166,32 @@ class GigDetailPresentation extends StatelessWidget {
                     _VenueCard(venue: venue, app: app, interactive: !isPreview)
                   else
                     const _MissingVenueCard(),
-                  if (!isPreview) ...[
-                    const SectionBar(label: "WHO'S GOING"),
-                    _WhosGoing(gig: gig, app: app),
-                  ],
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 260),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeInCubic,
+                    transitionBuilder: (child, animation) => SizeTransition(
+                      sizeFactor: animation,
+                      alignment: Alignment.topCenter,
+                      child: FadeTransition(opacity: animation, child: child),
+                    ),
+                    child:
+                        !isPreview &&
+                            gig.tix == Ticketing.rsvp &&
+                            gig.lifecycle == GigLifecycle.published &&
+                            app.hasConfirmedRsvp(gig.id)
+                        ? Column(
+                            key: ValueKey('gig-attendance-${gig.id}'),
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const SectionBar(label: "WHO'S GOING"),
+                              _WhosGoing(gig: gig, app: app),
+                            ],
+                          )
+                        : SizedBox.shrink(
+                            key: ValueKey('gig-attendance-hidden-${gig.id}'),
+                          ),
+                  ),
                 ],
               ),
             ),
@@ -441,15 +461,11 @@ class _HeroAction extends StatelessWidget {
 class _InfoCards extends StatelessWidget {
   final Gig gig;
   final Venue venue;
-  final AppState app;
-  final bool showGoing;
   final String? previewLabel;
 
   const _InfoCards({
     required this.gig,
     required this.venue,
-    required this.app,
-    required this.showGoing,
     required this.previewLabel,
   });
 
@@ -504,7 +520,6 @@ class _InfoCards extends StatelessWidget {
       );
     }
 
-    final going = gig.going + (app.rsvps.contains(gig.id) ? 1 : 0);
     return EpCard(
       variant: EpCardVariant.raised,
       padding: const EdgeInsets.all(14),
@@ -532,14 +547,9 @@ class _InfoCards extends StatelessWidget {
                 valueColor: gig.free ? Ep.accent : Ep.contentPrimary,
               ),
               pill('AGE', gig.ageRequirement.label),
-              if (showGoing)
+              if (previewLabel != null)
                 StatusPill(
-                  label: '$going GOING',
-                  tone: EpStatusPillTone.selected,
-                )
-              else
-                StatusPill(
-                  label: previewLabel ?? 'DRAFT PREVIEW',
+                  label: previewLabel!,
                   tone: EpStatusPillTone.warning,
                 ),
             ],
@@ -727,39 +737,55 @@ class _WhosGoing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final going = gig.going + (app.rsvps.contains(gig.id) ? 1 : 0);
-    final followedOnBill = app.follows.where(gig.lineup.contains).toList();
-    final followedBandNames = [
-      for (final id in followedOnBill)
-        if (app.band(id) case final Band band) band.name,
-    ];
-    final socialLine = !app.authed
-        ? 'Log in to see when bands you follow are on the bill.'
-        : followedBandNames.isEmpty
-        ? 'None of the bands you follow are on this bill yet.'
-        : 'Bands you follow on this bill: '
-              '${followedBandNames.join(', ')}.';
+    final going = app.rsvpCount(gig);
+    final parsedCapacity = int.tryParse(gig.cap.trim());
+    final capacity = parsedCapacity != null && parsedCapacity > 0
+        ? parsedCapacity
+        : null;
+    final progress = capacity == null ? null : (going / capacity).clamp(0, 1);
+    final spotsLabel = capacity == 1 ? 'spot' : 'spots';
 
     return EpCard(
+      key: ValueKey('who-is-going-${gig.id}'),
       padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$going+ going', style: epDisplay(size: 22)),
-          const SizedBox(height: 5),
-          Text(
-            socialLine,
-            style: epText(size: 12, color: Ep.contentSecondary, height: 1.5),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Attendance stays vague on purpose. There is no public list.',
-            style: epText(
-              size: 10.5,
-              letterSpacing: .3,
-              color: Ep.contentDisabled,
+          Text('$going+ GOING', style: epDisplay(size: 22)),
+          if (capacity != null && progress != null) ...[
+            const SizedBox(height: 12),
+            Semantics(
+              container: true,
+              label: '$going of $capacity $spotsLabel filled',
+              child: ExcludeSemantics(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '$going of $capacity $spotsLabel filled',
+                      style: Theme.of(context).textTheme.epCaption.copyWith(
+                        color: Ep.contentSecondary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 7),
+                    TweenAnimationBuilder<double>(
+                      duration: const Duration(milliseconds: 420),
+                      curve: Curves.easeOutCubic,
+                      tween: Tween<double>(begin: 0, end: progress.toDouble()),
+                      builder: (context, value, _) => LinearProgressIndicator(
+                        value: value,
+                        minHeight: 8,
+                        borderRadius: BorderRadius.circular(99),
+                        backgroundColor: Ep.border,
+                        color: Ep.volt,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

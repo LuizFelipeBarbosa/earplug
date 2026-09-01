@@ -1762,7 +1762,13 @@ class DemoRepository implements EarplugRepository {
       followBandIds: Set<String>.unmodifiable(_followBandIds),
       savedGigIds: Set<String>.unmodifiable(_savedGigIds),
       gigs: List<Gig>.unmodifiable([
-        for (final id in {..._rsvpGigIds, ..._savedGigIds}) ?gigsById[id],
+        for (final id in {..._rsvpGigIds, ..._savedGigIds})
+          if (gigsById[id] case final gig?)
+            gig.copyWith(
+              // Production stores the complete confirmed total on the gig.
+              // Keep the demo subscription faithful to that contract.
+              going: gig.going + (_rsvpGigIds.contains(id) ? 1 : 0),
+            ),
       ]),
       attendedCount: _attendedCount,
     );

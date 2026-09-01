@@ -412,6 +412,7 @@ class AppState extends ChangeNotifier {
 
   // ---- fan data
   Set<String> rsvps = {};
+  Set<String> _confirmedRsvps = {};
   final Map<String, ({bool desired, Object operation})> _pendingRsvps = {};
   Set<String> follows = {};
   Set<String> saved = {};
@@ -899,7 +900,8 @@ class AppState extends ChangeNotifier {
   }
 
   void _cacheInteractions(Interactions interactions) {
-    final nextRsvps = Set<String>.of(interactions.rsvpGigIds);
+    _confirmedRsvps = Set<String>.of(interactions.rsvpGigIds);
+    final nextRsvps = Set<String>.of(_confirmedRsvps);
     for (final entry in _pendingRsvps.entries.toList()) {
       if (nextRsvps.contains(entry.key) == entry.value.desired) {
         _pendingRsvps.remove(entry.key);
@@ -1218,6 +1220,7 @@ class AppState extends ChangeNotifier {
     authed = false;
     _clearMemberships();
     rsvps = {};
+    _confirmedRsvps = {};
     _pendingRsvps.clear();
     follows = {};
     saved = {};
@@ -2483,8 +2486,26 @@ class AppState extends ChangeNotifier {
     now: now ?? _now(),
   ).contains(gig.id);
 
-  /// RSVP count shown to bands: base demo count plus this user's RSVP.
-  int rsvpCount(Gig g) => g.going + (rsvps.contains(g.id) ? 1 : 0);
+  /// The most recent server-confirmed RSVP state, excluding local optimism.
+  ///
+  /// Requiring the local state too hides confirmed-only UI immediately when a
+  /// removal is pending, while an add stays gated until its subscription
+  /// confirmation arrives.
+  bool hasConfirmedRsvp(String gigId) =>
+      _confirmedRsvps.contains(gigId) && rsvps.contains(gigId);
+
+  /// Reconciles the subscribed server total with the one local mutation that
+  /// has not appeared in the interaction subscription yet.
+  int rsvpCount(Gig gig) {
+    final authoritativeGig = _interactionGigs[gig.id] ?? gig;
+    final pending = _pendingRsvps[gig.id];
+    if (pending == null ||
+        pending.desired == _confirmedRsvps.contains(gig.id)) {
+      return authoritativeGig.going;
+    }
+    final reconciled = authoritativeGig.going + (pending.desired ? 1 : -1);
+    return reconciled < 0 ? 0 : reconciled;
+  }
 
   String bioFor(String id) => band(id)?.bio ?? '';
 

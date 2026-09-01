@@ -640,7 +640,7 @@ class _ExploreEventRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${gig.priceLabel} · ${gig.going} going',
+                  '${gig.priceLabel} · ${app.rsvpCount(gig)} going',
                   style: Theme.of(context).textTheme.epCaption,
                 ),
               ],

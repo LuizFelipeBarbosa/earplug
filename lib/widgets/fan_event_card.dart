@@ -137,7 +137,7 @@ class FanEventCard extends StatelessWidget {
                 )
               else
                 StatusPill(
-                  label: '${gig.going} GOING',
+                  label: '${app.rsvpCount(gig)} GOING',
                   tone: EpStatusPillTone.selected,
                 ),
             ],
@@ -248,7 +248,7 @@ class FanEventCard extends StatelessWidget {
                       )
                     else
                       StatusPill(
-                        label: '${gig.going} GOING',
+                        label: '${app.rsvpCount(gig)} GOING',
                         tone: EpStatusPillTone.selected,
                       ),
                   ],
