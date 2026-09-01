@@ -62,7 +62,7 @@ class BandDashScreen extends StatelessWidget {
                           Text(
                             'MANAGING · ${app.roleFor(band.id).toUpperCase()}',
                             style: epText(
-                              size: 10,
+                              size: 11,
                               weight: FontWeight.w800,
                               letterSpacing: 1,
                               color: Ep.accent,
@@ -388,25 +388,30 @@ class _DiscoveryTaskRow extends StatelessWidget {
     return InkWell(
       key: ValueKey('band-discovery-${task.id}'),
       onTap: task.onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Row(
-          children: [
-            Icon(
-              task.complete ? Icons.check_circle : Icons.radio_button_unchecked,
-              size: 16,
-              color: task.complete ? Ep.success : Ep.accent,
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Text(
-                task.label,
-                style: Theme.of(context).textTheme.epBody,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          child: Row(
+            children: [
+              Icon(
+                task.complete
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked,
+                size: 16,
+                color: task.complete ? Ep.success : Ep.accent,
               ),
-            ),
-            const SizedBox(width: 6),
-            Text(task.action, style: Theme.of(context).textTheme.epCaption),
-          ],
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  task.label,
+                  style: Theme.of(context).textTheme.epBody,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(task.action, style: Theme.of(context).textTheme.epCaption),
+            ],
+          ),
         ),
       ),
     );
@@ -531,6 +536,7 @@ class _BandTaskRow extends StatelessWidget {
         key: ValueKey('band-setup-${task.id}'),
         onTap: task.onTap,
         child: Container(
+          constraints: const BoxConstraints(minHeight: 48),
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: Ep.border)),

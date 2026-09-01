@@ -77,6 +77,72 @@ void main() {
     );
   });
 
+  testWidgets('successful check-in survives a roster refresh failure', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _DoorRepository(auth: auth, rosterFailures: const {2});
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const DoorModeScreen(launch: launch),
+    );
+
+    await tester.tap(find.byKey(const Key('door-enter-code')));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.enterText(
+      find.byKey(const Key('door-manual-ticket')),
+      'EP-REFRESH-FAIL',
+    );
+    await tester.tap(find.text('CHECK TICKET'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.textContaining('Mara K. checked in'), findsOne);
+    expect(find.byKey(const Key('door-roster-refresh-failure')), findsOne);
+    expect(find.textContaining('DO NOT SCAN AGAIN'), findsOne);
+    expect(find.textContaining('Check-in failed'), findsNothing);
+
+    await tester.tap(find.byTooltip('Back to door overview'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.byKey(const Key('door-recent-empty')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(LedgerRow),
+        matching: find.textContaining('Mara K.'),
+      ),
+      findsOne,
+    );
+  });
+
+  testWidgets('initial roster failure persists across Scanner and can retry', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _DoorRepository(auth: auth, rosterFailures: const {1});
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const DoorModeScreen(launch: launch),
+    );
+
+    expect(find.textContaining('Door roster is unavailable'), findsOne);
+    expect(find.text('RETRY ROSTER'), findsOne);
+
+    await tester.tap(find.byKey(const Key('door-open-scanner')));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.tap(find.byTooltip('Back to door overview'));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.textContaining('Door roster is unavailable'), findsOne);
+    await tester.tap(find.text('RETRY ROSTER'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Door roster is unavailable'), findsNothing);
+    expect(find.text('41 / 87'), findsOne);
+  });
+
   testWidgets(
     'non-success results use typed status copy and do not add history',
     (tester) async {
@@ -113,6 +179,7 @@ class _DoorRepository extends DemoRepository {
   _DoorRepository({
     required super.auth,
     this.truncated = false,
+    this.rosterFailures = const {},
     this.result = const DoorCheckInResult(
       status: DoorCheckInStatus.checkedIn,
       fanName: 'Mara K.',
@@ -120,13 +187,20 @@ class _DoorRepository extends DemoRepository {
   });
 
   final bool truncated;
+  final Set<int> rosterFailures;
   final DoorCheckInResult result;
   String? lastPayload;
   int checkedIn = 41;
+  int rosterCalls = 0;
 
   @override
-  Future<DoorRoster> doorRoster(String projectId) async =>
-      DoorRoster(total: 87, checkedIn: checkedIn, truncated: truncated);
+  Future<DoorRoster> doorRoster(String projectId) async {
+    rosterCalls++;
+    if (rosterFailures.contains(rosterCalls)) {
+      throw StateError('Roster unavailable');
+    }
+    return DoorRoster(total: 87, checkedIn: checkedIn, truncated: truncated);
+  }
 
   @override
   Future<DoorCheckInResult> checkInTicket({

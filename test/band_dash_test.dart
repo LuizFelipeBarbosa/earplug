@@ -66,6 +66,42 @@ void main() {
     );
   });
 
+  testWidgets('role copy and interactive checklist rows meet size floors', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: BandDashScreen()));
+
+    final roleText = tester.widget<Text>(find.text('MANAGING · ADMIN'));
+    expect(roleText.style?.fontSize, greaterThanOrEqualTo(11));
+
+    final scrollable = find.byType(Scrollable).first;
+    for (final id in [
+      'profile',
+      'image',
+      'clip',
+      'show',
+      'listing',
+      'revision',
+    ]) {
+      final row = find.byKey(ValueKey('band-discovery-$id'));
+      await tester.scrollUntilVisible(row, 120, scrollable: scrollable);
+      expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
+    }
+    for (final id in [
+      'profile',
+      'image',
+      'music',
+      'social',
+      'gig',
+      'members',
+      'preview',
+    ]) {
+      final row = find.byKey(ValueKey('band-setup-$id'));
+      await tester.scrollUntilVisible(row, 120, scrollable: scrollable);
+      expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
+    }
+  });
+
   testWidgets('dashboard profile controls use explicit admin navigation', (
     tester,
   ) async {

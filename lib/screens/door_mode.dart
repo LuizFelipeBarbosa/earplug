@@ -55,7 +55,8 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
 
   DoorRoster? _roster;
   DoorCheckInResult? _result;
-  String? _failureMessage;
+  String? _rosterFailureMessage;
+  String? _checkInFailureMessage;
   bool _checking = false;
   bool _scannerOpen = false;
   bool _scannerLocked = false;
@@ -76,16 +77,26 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
     super.dispose();
   }
 
-  Future<void> _refreshRoster() async {
+  Future<void> _refreshRoster({bool checkInSucceeded = false}) async {
     try {
       final roster = await context.read<AppState>().repository.doorRoster(
         widget.launch.projectId,
       );
-      if (mounted) setState(() => _roster = roster);
+      if (!mounted) return;
+      setState(() {
+        _roster = roster;
+        _rosterFailureMessage = null;
+      });
     } catch (_) {
       if (!mounted) return;
-      _showFailure(
-        'Door roster is unavailable. Check your admin access and connection.',
+      const message =
+          'Door roster is unavailable. Check your admin access and connection.';
+      setState(() => _rosterFailureMessage = message);
+      _announce(
+        checkInSucceeded
+            ? 'Check-in succeeded, but the roster count could not refresh. Do not scan this ticket again.'
+            : message,
+        assertive: true,
       );
     }
   }
@@ -98,7 +109,7 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
     setState(() {
       _checking = true;
       _scannerLocked = fromScanner;
-      _failureMessage = null;
+      _checkInFailureMessage = null;
     });
     try {
       final result = await context.read<AppState>().repository.checkInTicket(
@@ -117,10 +128,14 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
         }
       });
       _announce(_resultMessage(result));
-      await _refreshRoster();
+      await _refreshRoster(
+        checkInSucceeded: result.status == DoorCheckInStatus.checkedIn,
+      );
     } catch (_) {
       if (mounted) {
-        _showFailure('Check-in failed. Keep the fan at the door and retry.');
+        _showCheckInFailure(
+          'Check-in failed. Keep the fan at the door and retry.',
+        );
       }
     } finally {
       if (mounted) {
@@ -134,9 +149,9 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
     }
   }
 
-  void _showFailure(String message) {
+  void _showCheckInFailure(String message) {
     setState(() {
-      _failureMessage = message;
+      _checkInFailureMessage = message;
       _result = null;
     });
     _announce(message, assertive: true);
@@ -159,7 +174,7 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
     setState(() {
       _scannerOpen = true;
       _result = null;
-      _failureMessage = null;
+      _checkInFailureMessage = null;
     });
     if (focusManual) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -180,7 +195,7 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
       _scannerOpen = false;
       _scannerLocked = false;
       _result = null;
-      _failureMessage = null;
+      _checkInFailureMessage = null;
     });
   }
 
@@ -216,11 +231,12 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
                     manualFocus: _manualFocus,
                     roster: _roster,
                     result: _result,
-                    failureMessage: _failureMessage,
+                    rosterFailure: _rosterFailureMessage,
+                    checkInFailure: _checkInFailureMessage,
                     checking: _checking,
                     scannerLocked: _scannerLocked,
                     onDetect: (value) => _checkIn(value, fromScanner: true),
-                    onDetectError: () => _showFailure(
+                    onDetectError: () => _showCheckInFailure(
                       'The scan could not be read. Hold the ticket steady or enter it below.',
                     ),
                     onManualCheck: () => _checkIn(_manualCode.text),
@@ -230,7 +246,7 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
                     launch: widget.launch,
                     roster: _roster,
                     recentCheckIns: _recentCheckIns,
-                    rosterFailure: _failureMessage,
+                    rosterFailure: _rosterFailureMessage,
                     onOpenScanner: _openScanner,
                     onEnterCode: () => _openScanner(focusManual: true),
                     onRetryRoster: _refreshRoster,
@@ -404,7 +420,8 @@ class _ScannerView extends StatelessWidget {
     required this.manualFocus,
     required this.roster,
     required this.result,
-    required this.failureMessage,
+    required this.rosterFailure,
+    required this.checkInFailure,
     required this.checking,
     required this.scannerLocked,
     required this.onDetect,
@@ -417,7 +434,8 @@ class _ScannerView extends StatelessWidget {
   final FocusNode manualFocus;
   final DoorRoster? roster;
   final DoorCheckInResult? result;
-  final String? failureMessage;
+  final String? rosterFailure;
+  final String? checkInFailure;
   final bool checking;
   final bool scannerLocked;
   final ValueChanged<String> onDetect;
@@ -451,9 +469,17 @@ class _ScannerView extends StatelessWidget {
         ),
         const SizedBox(height: 14),
         if (result != null)
-          _ResultBanner(result: result!, roster: roster)
-        else if (failureMessage != null)
-          _FailureBanner(message: failureMessage!),
+          _ResultBanner(
+            result: result!,
+            roster: rosterFailure == null ? roster : null,
+          )
+        else if (checkInFailure != null)
+          _FailureBanner(message: checkInFailure!),
+        if (result?.status == DoorCheckInStatus.checkedIn &&
+            rosterFailure != null) ...[
+          const SizedBox(height: 8),
+          const _RosterRefreshFailureNotice(),
+        ],
         const SizedBox(height: 18),
         const SectionBar(label: 'MANUAL FALLBACK'),
         const SizedBox(height: 8),
@@ -662,6 +688,34 @@ class _FailureBanner extends StatelessWidget {
           style: Theme.of(
             context,
           ).textTheme.epLabel.copyWith(color: Ep.destructive),
+        ),
+      ),
+    );
+  }
+}
+
+class _RosterRefreshFailureNotice extends StatelessWidget {
+  const _RosterRefreshFailureNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      key: const Key('door-roster-refresh-failure'),
+      container: true,
+      liveRegion: true,
+      label:
+          'Check-in recorded. Roster count could not refresh. Do not scan this ticket again.',
+      excludeSemantics: true,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Ep.warningTint,
+          border: Border.all(color: Ep.volt),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          'CHECK-IN RECORDED · COUNT COULD NOT REFRESH · DO NOT SCAN AGAIN',
+          style: Theme.of(context).textTheme.epLabel.copyWith(color: Ep.volt),
         ),
       ),
     );
