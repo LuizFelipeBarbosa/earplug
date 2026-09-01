@@ -104,6 +104,10 @@ void main() {
     await tester.tap(find.byKey(const Key('home-location-suggestion-sanJose')));
     await tester.pumpAndSettle();
     expect(
+      find.byKey(const Key('home-location-suggestion-sanJose')),
+      findsNothing,
+    );
+    expect(
       tester
           .widget<TextField>(find.byKey(const Key('home-location-input')))
           .controller!

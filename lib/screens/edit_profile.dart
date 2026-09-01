@@ -105,6 +105,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     });
   }
 
+  void _selectHomeLocation(FanCity city) {
+    _setHomeLocation(city);
+    _homeLocationFocusNode.unfocus();
+  }
+
   Future<void> _pickAvatar() async {
     try {
       final picked = await _mediaPicker.pickPhoto();
@@ -320,7 +325,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   failure: _homeLocationFailure,
                   notice: _homeLocationNotice,
                   validationMessage: _homeLocationValidation,
-                  onSelected: _setHomeLocation,
+                  onSelected: _selectHomeLocation,
                   onUseCurrentLocation: _useCurrentLocation,
                   onClear: () => _setHomeLocation(null),
                   onRetry: _useCurrentLocation,
