@@ -37,7 +37,7 @@ void main() {
     expect(find.byKey(const ValueKey('band-social-bandcamp')), findsOneWidget);
     expect(find.byKey(const ValueKey('band-social-youtube')), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('CREDITS'),
+      find.text('Recorded by Jo Rivera at Room Tone.'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
