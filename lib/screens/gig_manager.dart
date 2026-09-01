@@ -270,7 +270,23 @@ class _ProjectRow extends StatelessWidget {
       case _ProjectAction.duplicate:
         await app.duplicateGigProject(project.id);
       case _ProjectAction.doorMode:
-        await showDoorMode(context, project.id);
+        await showDoorMode(
+          context,
+          DoorModeLaunch(
+            projectId: project.id,
+            gigTitle: project.title?.trim().isNotEmpty == true
+                ? project.title!
+                : 'Untitled gig',
+            venueName: project.venueId == null
+                ? 'Venue TBD'
+                : app.venue(project.venueId!).name,
+            doorsTime: project.doorsAt == null
+                ? 'TBD'
+                : TimeOfDay.fromDateTime(
+                    project.doorsAt!.toLocal(),
+                  ).format(context),
+          ),
+        );
       case _ProjectAction.unpublish:
         if (await _confirm(
           context,

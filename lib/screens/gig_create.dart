@@ -2397,7 +2397,19 @@ class _PublishedView extends StatelessWidget {
                           kind: EpButtonKind.ghost,
                           fontSize: 11.5,
                           padding: const EdgeInsets.symmetric(vertical: 13),
-                          onTap: () => showDoorMode(context, app.gfProject!.id),
+                          onTap: () => showDoorMode(
+                            context,
+                            DoorModeLaunch(
+                              projectId: app.gfProject!.id,
+                              gigTitle: app.gfName.trim().isEmpty
+                                  ? 'Untitled gig'
+                                  : app.gfName,
+                              venueName: app.gfVenueId == null
+                                  ? 'Venue TBD'
+                                  : app.venue(app.gfVenueId!).name,
+                              doorsTime: app.gfDoorsLabel,
+                            ),
+                          ),
                         ),
                       ),
                     ],
