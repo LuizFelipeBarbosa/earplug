@@ -6,6 +6,7 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
@@ -19,16 +20,20 @@ void main() {
     (tester) async {
       final app = (await _pumpGigCreate(tester)).app;
 
-      // The editor keeps structural labels while each field/card identifies
-      // itself without a second heading immediately above it.
+      // The editor keeps section labels while the six checklist tiles identify
+      // every picker without duplicate headings immediately above them.
       expect(find.text('GIG DRAFT'), findsOne);
       expect(find.text('DRAFT'), findsOne);
       expect(find.text('SAVE DRAFT'), findsOne);
       expect(find.text('GIG NAME'), findsNothing);
-      expect(find.text('DATE'), findsNothing);
+      expect(find.text('DATE'), findsOne);
       expect(find.text('DOORS AND START TIME'), findsNothing);
-      expect(find.text('VENUE'), findsNothing);
-      expect(find.text('LINEUP'), findsOne);
+      expect(find.text('TIMES'), findsOne);
+      expect(find.text('VENUE'), findsOne);
+      expect(find.text('COVER'), findsOne);
+      expect(find.text('ACCESS'), findsOne);
+      expect(find.text('AUDIENCE'), findsOne);
+      expect(find.text('LINEUP · 1'), findsOne);
       expect(find.text('POSTER'), findsOne);
       expect(find.text('Still needs a name + a date + a venue'), findsOne);
 
@@ -36,7 +41,7 @@ void main() {
       await tester.enterText(find.byType(TextField).first, 'Riptide Release');
       await tester.pump();
       expect(app.gfName, 'Riptide Release');
-      expect(find.text('GIG NAME ✓'), findsOne);
+      expect(find.text('YOUR GIG NAME ✓'), findsOne);
       expect(find.text('Still needs a date + a venue'), findsOne);
 
       // When sheet — pick a day from the rolling calendar.
@@ -138,10 +143,65 @@ void main() {
 
       await tester.tap(find.text('MAKE ANOTHER'));
       await tester.pumpAndSettle();
-      expect(find.text('GIG NAME · REQUIRED'), findsOne);
+      expect(find.text('YOUR GIG NAME · REQUIRED'), findsOne);
       expect(app.gfPrice, 'FREE');
     },
   );
+
+  testWidgets('the six editing slots use the two-column checklist grammar', (
+    tester,
+  ) async {
+    await _pumpGigCreate(tester);
+
+    final date = tester.getTopLeft(find.byKey(const ValueKey('gig-slot-date')));
+    final times = tester.getTopLeft(
+      find.byKey(const ValueKey('gig-slot-times')),
+    );
+    final venue = tester.getTopLeft(
+      find.byKey(const ValueKey('gig-slot-venue')),
+    );
+    final cover = tester.getTopLeft(
+      find.byKey(const ValueKey('gig-slot-cover')),
+    );
+    final access = tester.getTopLeft(
+      find.byKey(const ValueKey('gig-slot-access')),
+    );
+    final audience = tester.getTopLeft(
+      find.byKey(const ValueKey('gig-slot-audience')),
+    );
+
+    expect(date.dy, times.dy);
+    expect(venue.dy, cover.dy);
+    expect(access.dy, audience.dy);
+    expect(times.dx, greaterThan(date.dx));
+    expect(venue.dx, date.dx);
+    expect(cover.dx, times.dx);
+    expect(access.dx, date.dx);
+    expect(audience.dx, times.dx);
+    expect(find.byType(StickyActionBar), findsOne);
+  });
+
+  testWidgets('the editing slots collapse to one column for enlarged text', (
+    tester,
+  ) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await _pumpGigCreate(tester);
+
+    final leftEdges = [
+      for (final key in const [
+        'gig-slot-date',
+        'gig-slot-times',
+        'gig-slot-venue',
+        'gig-slot-cover',
+        'gig-slot-access',
+        'gig-slot-audience',
+      ])
+        tester.getTopLeft(find.byKey(ValueKey(key))).dx,
+    ];
+    expect(leftEdges.toSet(), hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'uploaded art swaps the press for a drop slot and an overlay toggle',

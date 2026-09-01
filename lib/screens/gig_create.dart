@@ -144,7 +144,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                         Text(
                           app.gfSaveState,
                           style: epText(
-                            size: 9.5,
+                            size: 11,
                             weight: FontWeight.w800,
                             letterSpacing: .8,
                             color: app.gfSaveState == 'SAVE FAILED'
@@ -164,29 +164,17 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 150),
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 170),
                 children: [
                   _NameCard(controller: _cardName, focusNode: _cardFocus),
                   const SizedBox(height: 18),
                   const _SlotGrid(),
-                  const SizedBox(height: 18),
-                  const _FormLabel('LINEUP'),
-                  const SizedBox(height: 7),
+                  SectionBar(label: 'Lineup', count: app.gfPerformers.length),
                   const _LineupField(),
-                  const SizedBox(height: 18),
-                  const _CommerceFields(),
-                  const SizedBox(height: 18),
-                  const _FormLabel('POSTER'),
-                  const SizedBox(height: 7),
+                  const SectionBar(label: 'Poster'),
                   const _FlyerStudio(),
-                  const SizedBox(height: 18),
-                  const _FormLabel('ADDITIONAL INFORMATION'),
-                  const SizedBox(height: 7),
+                  const SectionBar(label: 'Additional information'),
                   const _AdditionalInfoField(),
-                  const SizedBox(height: 18),
-                  const _FormLabel('PUBLISH SETTINGS'),
-                  const SizedBox(height: 7),
-                  const _PublishSettingsField(),
                 ],
               ),
             ),
@@ -570,8 +558,8 @@ class _OverlayToggle extends StatelessWidget {
 
 // ============================ form cards ============================
 
-/// Card outline states shared by the name card and the four slot cards.
-enum _SlotState { done, needed, optional }
+/// Card outline states shared by the six editing slots.
+enum _SlotState { done, needed }
 
 class _SlotShell extends StatelessWidget {
   final _SlotState state;
@@ -582,13 +570,37 @@ class _SlotShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EpCard(
-      variant: state == _SlotState.done
-          ? EpCardVariant.selected
-          : EpCardVariant.standard,
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-      onTap: onTap,
-      child: child,
+    final content = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 72),
+      child: Align(alignment: Alignment.centerLeft, child: child),
+    );
+    if (state != _SlotState.needed) {
+      return EpCard(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+        onTap: onTap,
+        child: content,
+      );
+    }
+
+    final radius = BorderRadius.circular(12);
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      child: Material(
+        color: Ep.surface,
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          child: DashedBox(
+            color: Ep.volt,
+            radius: 12,
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
+            child: content,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -604,7 +616,7 @@ class _SlotTag extends StatelessWidget {
     return Text(
       text,
       style: epText(
-        size: 9.5,
+        size: 11,
         weight: FontWeight.w900,
         letterSpacing: 1.2,
         color: color,
@@ -623,28 +635,25 @@ class _NameCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final filled = app.gfName.trim().isNotEmpty;
-    return _SlotShell(
-      state: filled ? _SlotState.done : _SlotState.needed,
+    return EpCard(
+      variant: EpCardVariant.raised,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SlotTag(
-            filled ? 'GIG NAME ✓' : 'GIG NAME · REQUIRED',
-            filled ? Ep.accent : Ep.warning,
+            filled ? 'YOUR GIG NAME ✓' : 'YOUR GIG NAME · REQUIRED',
+            filled ? Ep.success : Ep.warning,
           ),
           const SizedBox(height: 5),
           TextField(
             controller: controller,
             focusNode: focusNode,
             onChanged: app.setGfName,
-            style: epText(size: 15, weight: FontWeight.w800),
+            style: epDisplay(size: 18),
             decoration: epCollapsedInputDecoration(
               'Riptide Release Show',
-              hintStyle: epText(
-                size: 15,
-                weight: FontWeight.w800,
-                color: Ep.contentDisabled,
-              ),
+              hintStyle: epDisplay(size: 18, color: Ep.contentDisabled),
             ),
           ),
         ],
@@ -660,93 +669,80 @@ class _SlotGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _SlotCard(
-          tag: app.gfDate == null ? 'REQUIRED' : 'DATE ✓',
-          tagColor: app.gfDate == null ? Ep.warning : Ep.accent,
-          value: app.gfDate == null
-              ? 'Choose a date'
-              : app.gfDateLabel.toUpperCase(),
-          sub: 'Calendar date for doors',
-          state: app.gfDate == null ? _SlotState.needed : _SlotState.done,
-          onTap: () => showWhenSheet(context),
-        ),
-        const SizedBox(height: 18),
-        _SlotCard(
-          tag: 'TIMES',
-          tagColor: Ep.contentSecondary,
-          value: 'Doors ${app.gfDoorsLabel} · Start ${app.gfStartLabel}',
-          sub: 'A start earlier than doors is treated as after midnight',
-          state: _SlotState.done,
-          onTap: () => showWhenSheet(context),
-        ),
-        const SizedBox(height: 18),
-        _SlotCard(
-          tag: venue == null ? 'REQUIRED' : 'VENUE ✓',
-          tagColor: venue == null ? Ep.warning : Ep.accent,
-          value: venue?.name ?? 'Choose a venue',
-          sub: venue?.area ?? 'Search EarPlug venues',
-          state: venue == null ? _SlotState.needed : _SlotState.done,
-          onTap: () => showVenueSheet(context),
-        ),
-      ],
+    final slots = <Widget>[
+      _SlotCard(
+        key: const ValueKey('gig-slot-date'),
+        tag: 'DATE',
+        value: app.gfDate == null ? 'REQUIRED' : app.gfDateLabel.toUpperCase(),
+        sub: app.gfDate == null ? 'Choose a date' : 'Calendar date for doors',
+        state: app.gfDate == null ? _SlotState.needed : _SlotState.done,
+        onTap: () => showWhenSheet(context),
+      ),
+      _SlotCard(
+        key: const ValueKey('gig-slot-times'),
+        tag: 'TIMES',
+        value: 'Doors ${app.gfDoorsLabel} · Start ${app.gfStartLabel}',
+        sub: 'A start earlier than doors is treated as after midnight',
+        state: _SlotState.done,
+        onTap: () => showWhenSheet(context),
+      ),
+      _SlotCard(
+        key: const ValueKey('gig-slot-venue'),
+        tag: 'VENUE',
+        value: venue?.name ?? 'REQUIRED',
+        sub: venue?.area ?? 'Choose a venue',
+        state: venue == null ? _SlotState.needed : _SlotState.done,
+        onTap: () => showVenueSheet(context),
+      ),
+      _SlotCard(
+        key: const ValueKey('gig-slot-cover'),
+        tag: 'COVER',
+        value: app.gfPrice,
+        sub: app.gfPrice == 'FREE' ? 'No cover' : 'At the door',
+        state: _SlotState.done,
+        onTap: () => showPriceSheet(context),
+      ),
+      _SlotCard(
+        key: const ValueKey('gig-slot-access'),
+        tag: 'ACCESS',
+        value: app.gfTix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
+        sub: switch (app.gfTix) {
+          Ticketing.rsvp when app.gfCap == 'No cap' => 'No RSVP cap',
+          Ticketing.rsvp => 'RSVP cap ${app.gfCap}',
+          Ticketing.external =>
+            app.gfExt.isEmpty ? 'Add ticket URL' : app.gfExt,
+        },
+        state: _SlotState.done,
+        onTap: () => showTicketsSheet(context),
+      ),
+      _SlotCard(
+        key: const ValueKey('gig-slot-audience'),
+        tag: 'AUDIENCE',
+        value: app.gfAgeRequirement.label,
+        sub: 'Age requirement',
+        state: _SlotState.done,
+        onTap: () => showAgeSheet(context),
+      ),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final singleColumn =
+            constraints.maxWidth < 330 ||
+            MediaQuery.textScalerOf(context).scale(1) > 1.25;
+        const gap = 12.0;
+        final tileWidth = singleColumn
+            ? constraints.maxWidth
+            : (constraints.maxWidth - gap) / 2;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final slot in slots) SizedBox(width: tileWidth, child: slot),
+          ],
+        );
+      },
     );
   }
-}
-
-class _CommerceFields extends StatelessWidget {
-  const _CommerceFields();
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _SlotCard(
-          tag: 'COVER',
-          tagColor: Ep.contentSecondary,
-          value: app.gfPrice,
-          sub: app.gfPrice == 'FREE' ? 'No cover' : 'At the door',
-          state: _SlotState.optional,
-          onTap: () => showPriceSheet(context),
-        ),
-        const SizedBox(height: 18),
-        _SlotCard(
-          tag: 'ACCESS',
-          tagColor: Ep.contentSecondary,
-          value: app.gfTix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
-          sub: switch (app.gfTix) {
-            Ticketing.rsvp when app.gfCap == 'No cap' => 'No RSVP cap',
-            Ticketing.rsvp => 'RSVP cap ${app.gfCap}',
-            Ticketing.external =>
-              app.gfExt.isEmpty ? 'Add ticket URL' : app.gfExt,
-          },
-          state: _SlotState.optional,
-          onTap: () => showTicketsSheet(context),
-        ),
-      ],
-    );
-  }
-}
-
-class _FormLabel extends StatelessWidget {
-  final String label;
-
-  const _FormLabel(this.label);
-
-  @override
-  Widget build(BuildContext context) => Text(
-    label,
-    style: epText(
-      size: 10.5,
-      weight: FontWeight.w900,
-      letterSpacing: 1.25,
-      color: Ep.contentSecondary,
-    ),
-  );
 }
 
 class _LineupField extends StatelessWidget {
@@ -787,9 +783,12 @@ class _LineupField extends StatelessWidget {
                     children: [
                       ReorderableDragStartListener(
                         index: index,
-                        child: const Padding(
-                          padding: EdgeInsets.only(right: 10),
-                          child: Icon(Icons.drag_handle, size: 20),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            minWidth: 48,
+                            minHeight: 48,
+                          ),
+                          child: const Icon(Icons.drag_handle, size: 20),
                         ),
                       ),
                       Expanded(
@@ -807,10 +806,13 @@ class _LineupField extends StatelessWidget {
                                 GigPerformerKind.text => 'TEXT-ONLY PERFORMER',
                               },
                               style: epText(
-                                size: 9,
+                                size: 11,
                                 weight: FontWeight.w800,
                                 letterSpacing: .7,
-                                color: Ep.contentDisabled,
+                                color:
+                                    performer.kind == GigPerformerKind.invited
+                                    ? Ep.volt
+                                    : Ep.contentDisabled,
                               ),
                             ),
                           ],
@@ -838,23 +840,28 @@ class _LineupField extends StatelessWidget {
                               child: Text(role.name.toUpperCase()),
                             ),
                         ],
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: Ep.surfaceSelected,
-                            border: Border.all(color: Ep.accent),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 6,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Ep.surfaceSelected,
+                              border: Border.all(color: Ep.accent),
+                              borderRadius: BorderRadius.circular(999),
                             ),
-                            child: Text(
-                              performer.role.name.toUpperCase(),
-                              style: epText(
-                                size: 9.5,
-                                weight: FontWeight.w900,
-                                color: Ep.accent,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 9,
+                                vertical: 6,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  performer.role.name.toUpperCase(),
+                                  style: epText(
+                                    size: 11,
+                                    weight: FontWeight.w900,
+                                    color: Ep.accent,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -871,16 +878,20 @@ class _LineupField extends StatelessWidget {
               );
             },
           ),
-        OutlinedButton.icon(
-          onPressed: () => showEpSheet(
-            context,
-            (_) => const _Sheet(
-              title: 'Add performer',
-              child: _AddPerformerBody(),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: EpChip(
+            label: '+ Add band or performer',
+            active: false,
+            ghost: true,
+            onTap: () => showEpSheet(
+              context,
+              (_) => const _Sheet(
+                title: 'Add performer',
+                child: _AddPerformerBody(),
+              ),
             ),
           ),
-          icon: const Icon(Icons.add),
-          label: const Text('ADD BAND OR PERFORMER'),
         ),
       ],
     );
@@ -1216,23 +1227,6 @@ class _ReviewChoice extends StatelessWidget {
   );
 }
 
-class _PublishSettingsField extends StatelessWidget {
-  const _PublishSettingsField();
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    return _SlotCard(
-      tag: 'AUDIENCE',
-      tagColor: Ep.contentSecondary,
-      value: app.gfAgeRequirement.label,
-      sub: 'Age requirement · visibility goes live only when you publish',
-      state: _SlotState.optional,
-      onTap: () => showAgeSheet(context),
-    );
-  }
-}
-
 // ---------------------------- age ----------------------------
 
 void showAgeSheet(BuildContext context) {
@@ -1275,15 +1269,14 @@ class _AgeBody extends StatelessWidget {
 
 class _SlotCard extends StatelessWidget {
   final String tag;
-  final Color tagColor;
   final String value;
   final String sub;
   final _SlotState state;
   final VoidCallback onTap;
 
   const _SlotCard({
+    super.key,
     required this.tag,
-    required this.tagColor,
     required this.value,
     required this.sub,
     required this.state,
@@ -1299,7 +1292,18 @@ class _SlotCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _SlotTag(tag, tagColor),
+          Row(
+            children: [
+              Expanded(
+                child: _SlotTag(
+                  tag,
+                  state == _SlotState.needed ? Ep.warning : Ep.contentSecondary,
+                ),
+              ),
+              if (state == _SlotState.done)
+                const Icon(Icons.check, size: 17, color: Ep.success),
+            ],
+          ),
           const SizedBox(height: 4),
           Text(
             value,
@@ -1307,7 +1311,7 @@ class _SlotCard extends StatelessWidget {
               size: 13,
               weight: FontWeight.w800,
               color: state == _SlotState.needed
-                  ? Ep.contentDisabled
+                  ? Ep.warning
                   : Ep.contentPrimary,
             ),
           ),
@@ -1333,64 +1337,36 @@ class _PublishBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final missing = app.gigMissing;
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        30,
-        16,
-        32 + MediaQuery.paddingOf(context).bottom,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Ep.background.withValues(alpha: 0), Ep.background],
-          stops: const [0, .34],
-        ),
-      ),
+    return ColoredBox(
+      color: Ep.tabBarBackground.withValues(alpha: .95),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            missing.isEmpty
-                ? 'Ready. Fans nearby see it as soon as you publish.'
-                : 'Still needs ${missing.join(' + ')}',
-            textAlign: TextAlign.center,
-            style: epText(
-              size: 11,
-              weight: FontWeight.w700,
-              letterSpacing: .3,
-              color: missing.isEmpty ? Ep.accent : Ep.contentSecondary,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                missing.isEmpty
+                    ? 'Ready. Fans nearby see it as soon as you publish.'
+                    : 'Still needs ${missing.join(' + ')}',
+                textAlign: TextAlign.center,
+                style: epText(
+                  size: 11,
+                  weight: FontWeight.w700,
+                  letterSpacing: .3,
+                  color: missing.isEmpty ? Ep.success : Ep.contentSecondary,
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 9),
-          Row(
-            children: [
-              Expanded(
-                child: EpButton(
-                  'PREVIEW',
-                  fontSize: 12,
-                  kind: EpButtonKind.ghost,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  onTap: app.previewGigDraft,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: EpButton(
-                  app.gfProject?.status == GigProjectStatus.published
-                      ? 'PUBLISH UPDATES'
-                      : 'PUBLISH GIG',
-                  fontSize: 14,
-                  kind: app.canPublishGig
-                      ? EpButtonKind.filled
-                      : EpButtonKind.disabled,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  onTap: app.canPublishGig ? app.publishGig : null,
-                ),
-              ),
-            ],
+          StickyActionBar(
+            secondaryLabel: 'Preview',
+            onSecondary: app.previewGigDraft,
+            primaryLabel: app.gfProject?.status == GigProjectStatus.published
+                ? 'Publish updates'
+                : 'Publish gig',
+            onPrimary: app.canPublishGig ? app.publishGig : null,
           ),
         ],
       ),
