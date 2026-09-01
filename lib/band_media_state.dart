@@ -318,6 +318,47 @@ class BandMediaController extends ChangeNotifier {
     await _mutate(bandId, () => repository.moveBandMedia(mediaId, direction));
   }
 
+  /// Moves an item to the adjacent position fans can actually see within its
+  /// video or photo section. Older/demo repositories already move by kind;
+  /// production ordering may include the other kind between two visible
+  /// neighbors, so cross those hidden positions in one user action.
+  Future<void> moveWithinKind(
+    String bandId,
+    String mediaId,
+    String direction,
+  ) async {
+    final globallyOrdered = List<BandMedia>.of(mediaFor(bandId))
+      ..sort((a, b) => a.order.compareTo(b.order));
+    final itemIndex = globallyOrdered.indexWhere((item) => item.id == mediaId);
+    if (itemIndex == -1) return;
+
+    final item = globallyOrdered[itemIndex];
+    final visiblePeers = globallyOrdered
+        .where((candidate) => candidate.kind == item.kind)
+        .toList();
+    final peerIndex = visiblePeers.indexWhere((peer) => peer.id == mediaId);
+    final neighborIndex = direction == 'up' ? peerIndex - 1 : peerIndex + 1;
+    if (peerIndex == -1 ||
+        neighborIndex < 0 ||
+        neighborIndex >= visiblePeers.length) {
+      return;
+    }
+
+    final neighborId = visiblePeers[neighborIndex].id;
+    final neighborGlobalIndex = globallyOrdered.indexWhere(
+      (candidate) => candidate.id == neighborId,
+    );
+    final ordersAreUnique =
+        globallyOrdered.map((item) => item.order).toSet().length ==
+        globallyOrdered.length;
+    final steps = ordersAreUnique ? (itemIndex - neighborGlobalIndex).abs() : 1;
+    await _mutate(bandId, () async {
+      for (var step = 0; step < steps; step++) {
+        await repository.moveBandMedia(mediaId, direction);
+      }
+    });
+  }
+
   Future<void> remove(String bandId, String mediaId) async {
     await _mutate(bandId, () => repository.deleteBandMedia(mediaId));
   }

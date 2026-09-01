@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/services/media_upload_service.dart';
@@ -206,6 +207,22 @@ void main() {
       expect(harness.said, isEmpty);
     });
 
+    test('section ordering crosses globally interposed media', () async {
+      final repository = _GlobalOrderDemoRepository(auth: FakeAuthService());
+      final harness = _makeController(repository: repository);
+      const bandId = 'b1';
+      await harness.controller.refresh(bandId);
+
+      await harness.controller.moveWithinKind(bandId, 'video-1', 'down');
+
+      expect(repository.moveCalls, 2);
+      expect(harness.controller.videosFor(bandId).map((item) => item.id), [
+        'video-2',
+        'video-1',
+      ]);
+      expect(harness.controller.photosFor(bandId).single.id, 'photo-1');
+    });
+
     test('clearForSignOut clears caches and uploads and notifies', () async {
       final repository = HttpUploadDemoRepository();
       final harness = _makeController(
@@ -273,3 +290,47 @@ _makeController({EarplugRepository? repository, MediaUploadService? uploader}) {
   addTearDown(controller.dispose);
   return (controller: controller, picker: picker, said: said);
 }
+
+class _GlobalOrderDemoRepository extends DemoRepository {
+  _GlobalOrderDemoRepository({required super.auth});
+
+  var moveCalls = 0;
+  final _items = <BandMedia>[
+    _media('video-1', MediaKind.video, 0),
+    _media('photo-1', MediaKind.photo, 1),
+    _media('video-2', MediaKind.video, 2),
+  ];
+
+  @override
+  Future<List<BandMedia>> mediaFor(String bandId) async {
+    return List<BandMedia>.of(_items)
+      ..sort((a, b) => a.order.compareTo(b.order));
+  }
+
+  @override
+  Future<void> moveBandMedia(String mediaId, String direction) async {
+    moveCalls++;
+    _items.sort((a, b) => a.order.compareTo(b.order));
+    final index = _items.indexWhere((item) => item.id == mediaId);
+    final target = direction == 'up' ? index - 1 : index + 1;
+    if (index == -1 || target < 0 || target >= _items.length) return;
+    final order = _items[index].order;
+    _items[index] = _items[index].copyWith(order: _items[target].order);
+    _items[target] = _items[target].copyWith(order: order);
+  }
+}
+
+BandMedia _media(String id, MediaKind kind, int order) => BandMedia(
+  id: id,
+  bandId: 'b1',
+  kind: kind,
+  url: null,
+  title: id,
+  caption: null,
+  sizeBytes: null,
+  views: null,
+  lengthSec: null,
+  pinned: id == 'video-1',
+  order: order,
+  isHero: false,
+);

@@ -419,6 +419,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                   title: 'Links',
                   description:
                       'Add the places where fans can listen, watch, and follow.',
+                  boxed: false,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -552,12 +553,14 @@ class _EditorSection extends StatelessWidget {
     required this.description,
     required this.child,
     this.count,
+    this.boxed = true,
   });
 
   final String title;
   final String description;
   final Widget child;
   final int? count;
+  final bool boxed;
 
   @override
   Widget build(BuildContext context) {
@@ -567,11 +570,14 @@ class _EditorSection extends StatelessWidget {
         SectionBar(label: title, count: count),
         Text(description, style: Theme.of(context).textTheme.epCaption),
         const SizedBox(height: 14),
-        EpCard(
-          variant: EpCardVariant.raised,
-          padding: const EdgeInsets.all(15),
-          child: child,
-        ),
+        if (boxed)
+          EpCard(
+            variant: EpCardVariant.raised,
+            padding: const EdgeInsets.all(15),
+            child: child,
+          )
+        else
+          child,
       ],
     );
   }

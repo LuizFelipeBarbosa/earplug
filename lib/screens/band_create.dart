@@ -184,6 +184,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 title: 'Links',
                 description:
                     'Add the places where fans can listen, watch, and follow.',
+                boxed: false,
                 child: Column(
                   children: [
                     _StandardField(
@@ -226,15 +227,6 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                   onChanged: app.setNbCredits,
                 ),
               ),
-              _PostCreateRow(
-                icon: Icons.play_arrow_rounded,
-                label: 'MANAGE VIDEOS AND PHOTOS',
-                enabled: app.nbEditingCreated,
-                onTap: app.openBandMedia,
-                disabledMessage:
-                    'Create your band first, then add music and clips.',
-              ),
-              const SizedBox(height: 10),
               _PostCreateRow(
                 icon: Icons.group_outlined,
                 label: 'INVITE BAND MEMBERS',
@@ -293,11 +285,13 @@ class _OptionalSection extends StatelessWidget {
     required this.title,
     required this.description,
     required this.child,
+    this.boxed = true,
   });
 
   final String title;
   final String description;
   final Widget child;
+  final bool boxed;
 
   @override
   Widget build(BuildContext context) {
@@ -307,11 +301,14 @@ class _OptionalSection extends StatelessWidget {
         SectionBar(label: title),
         Text(description, style: Theme.of(context).textTheme.epCaption),
         const SizedBox(height: 12),
-        EpCard(
-          variant: EpCardVariant.raised,
-          padding: const EdgeInsets.all(15),
-          child: child,
-        ),
+        if (boxed)
+          EpCard(
+            variant: EpCardVariant.raised,
+            padding: const EdgeInsets.all(15),
+            child: child,
+          )
+        else
+          child,
       ],
     );
   }

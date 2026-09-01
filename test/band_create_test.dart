@@ -7,6 +7,7 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_create.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/band_identity_editor.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -56,6 +57,18 @@ void main() {
       expect(field.decoration?.enabledBorder, isA<OutlineInputBorder>());
       expect(field.style?.fontSize, greaterThanOrEqualTo(18));
     }
+
+    for (final key in const [
+      ValueKey('create-instagram'),
+      ValueKey('create-bandcamp'),
+      ValueKey('create-youtube'),
+    ]) {
+      expect(
+        find.ancestor(of: find.byKey(key), matching: find.byType(EpCard)),
+        findsNothing,
+      );
+    }
+    expect(find.text('MANAGE VIDEOS AND PHOTOS'), findsNothing);
 
     harness.picker.nextPhoto = photoFixture(filename: 'banner.png');
     await tester.tap(find.byKey(const ValueKey('band-header-image-control')));

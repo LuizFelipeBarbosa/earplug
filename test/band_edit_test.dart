@@ -53,6 +53,17 @@ void main() {
     expect(find.text('Sleeve notes'), findsNothing);
     expect(find.text('Home taping'), findsNothing);
     expect(find.text('PREVIEW AS FAN'), findsNothing);
+
+    for (final key in const [
+      ValueKey('edit-instagram'),
+      ValueKey('edit-bandcamp'),
+      ValueKey('edit-youtube'),
+    ]) {
+      expect(
+        find.ancestor(of: find.byKey(key), matching: find.byType(EpCard)),
+        findsNothing,
+      );
+    }
     semantics.dispose();
   });
 
