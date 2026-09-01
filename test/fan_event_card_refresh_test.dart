@@ -81,40 +81,29 @@ void main() {
     expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);
   });
 
-  testWidgets(
-    'cancelled future RSVP stays visible without promotion or ticket actions',
-    (tester) async {
-      final auth = FakeAuthService();
-      await auth.signInDemo();
-      final repository = _CancelledRsvpRepository(auth: auth);
-      final harness = await pumpApp(
-        tester,
-        auth: auth,
-        repository: repository,
-        home: const Scaffold(body: MyGigsScreen()),
-      );
+  testWidgets('cancelled future RSVP is excluded from the upcoming profile', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _CancelledRsvpRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: MyGigsScreen()),
+    );
 
-      final gig = repository.cancelledGig;
-      await tester.pumpAndSettle();
-      expect(harness.app.rsvps, contains(gig.id));
-      expect(harness.app.upcomingRsvpGigs, contains(gig));
-      await tester.scrollUntilVisible(
-        find.byKey(ValueKey('fan-event-${gig.id}')),
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
-      expect(find.byKey(ValueKey('next-show-${gig.id}')), findsNothing);
-      expect(find.byKey(ValueKey('fan-event-${gig.id}')), findsOne);
-      expect(find.text('CANCELLED'), findsOne);
-      expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsNothing);
-      expect(find.byKey(ValueKey('show-qr-${gig.id}')), findsNothing);
-      expect(find.text('QR PASS'), findsNothing);
-
-      // Cancelling ticket fulfillment does not remove harmless card actions.
-      expect(find.byKey(ValueKey('save-${gig.id}')), findsOne);
-      expect(find.byKey(ValueKey('share-${gig.id}')), findsOne);
-    },
-  );
+    final gig = repository.cancelledGig;
+    await tester.pumpAndSettle();
+    expect(harness.app.rsvps, contains(gig.id));
+    expect(harness.app.upcomingRsvpGigs, isEmpty);
+    expect(find.byKey(ValueKey('next-show-${gig.id}')), findsNothing);
+    expect(find.byKey(ValueKey('fan-event-${gig.id}')), findsNothing);
+    expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsNothing);
+    expect(find.byKey(ValueKey('show-qr-${gig.id}')), findsNothing);
+    expect(find.text('QR PASS'), findsNothing);
+  });
 }
 
 class _CancelledRsvpRepository extends DemoRepository {

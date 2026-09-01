@@ -412,6 +412,7 @@ class AppState extends ChangeNotifier {
 
   // ---- fan data
   Set<String> rsvps = {};
+  final Map<String, ({bool desired, Object operation})> _pendingRsvps = {};
   Set<String> follows = {};
   Set<String> saved = {};
   int attended = 0;
@@ -898,7 +899,17 @@ class AppState extends ChangeNotifier {
   }
 
   void _cacheInteractions(Interactions interactions) {
-    rsvps = Set<String>.of(interactions.rsvpGigIds);
+    final nextRsvps = Set<String>.of(interactions.rsvpGigIds);
+    for (final entry in _pendingRsvps.entries.toList()) {
+      if (nextRsvps.contains(entry.key) == entry.value.desired) {
+        _pendingRsvps.remove(entry.key);
+      } else if (entry.value.desired) {
+        nextRsvps.add(entry.key);
+      } else {
+        nextRsvps.remove(entry.key);
+      }
+    }
+    rsvps = nextRsvps;
     follows = Set<String>.of(interactions.followBandIds);
     saved = Set<String>.of(interactions.savedGigIds);
     _interactionGigs
@@ -1207,6 +1218,7 @@ class AppState extends ChangeNotifier {
     authed = false;
     _clearMemberships();
     rsvps = {};
+    _pendingRsvps.clear();
     follows = {};
     saved = {};
     attended = 0;
@@ -1361,7 +1373,21 @@ class AppState extends ChangeNotifier {
   }
 
   void toggleRsvp(String id) {
-    final nowGoing = _toggleOptimistically(rsvps, id, repository.toggleRsvp);
+    final wasGoing = rsvps.contains(id);
+    final nowGoing = !wasGoing;
+    final operation = Object();
+    _pendingRsvps[id] = (desired: nowGoing, operation: operation);
+    nowGoing ? rsvps.add(id) : rsvps.remove(id);
+    notifyListeners();
+    unawaited(
+      repository.toggleRsvp(id).catchError((Object error) {
+        logError('toggle $id', error);
+        if (!identical(_pendingRsvps[id]?.operation, operation)) return;
+        _pendingRsvps.remove(id);
+        wasGoing ? rsvps.add(id) : rsvps.remove(id);
+        say(genericErrorMessage);
+      }),
+    );
     say(nowGoing ? "You're on the list. QR is in Profile." : 'RSVP removed.');
   }
 
@@ -2021,7 +2047,10 @@ class AppState extends ChangeNotifier {
     final now = _now();
     final gigs = [
       for (final id in rsvps)
-        if (_cachedGig(id) case final Gig gig when !gig.startsAt.isBefore(now))
+        if (_interactionGigs[id] ?? _cachedGig(id) case final Gig gig
+            when gig.startsAt.isAfter(now) &&
+                gig.lifecycle == GigLifecycle.published &&
+                gig.tix == Ticketing.rsvp)
           gig,
     ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
     return List<Gig>.unmodifiable(gigs);
@@ -2778,6 +2807,15 @@ class AppState extends ChangeNotifier {
     try {
       final accepted = await repository.acceptBandInvite(token);
       bandId = accepted.bandId;
+      if (!myBands.contains(accepted.bandId)) {
+        myBands = [...myBands, accepted.bandId];
+      }
+      if (accepted.membershipCreated) {
+        _bandRoles[accepted.bandId] = 'member';
+      }
+      if (!_bands.containsKey(accepted.bandId)) {
+        unawaited(_loadFollowBand(accepted.bandId));
+      }
       joinInviteAccepted = true;
       _restartMemberships();
       unawaited(loadBandProfileDetails(accepted.bandId, refresh: true));

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
@@ -664,6 +666,118 @@ void main() {
     },
   );
 
+  testWidgets(
+    'saved-show RSVP immediately synchronizes Next Show and subscriptions',
+    (tester) async {
+      final now = DateTime(2026, 8, 31, 16);
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = _RsvpSyncRepository(auth: auth, now: now);
+      addTearDown(repository.close);
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        now: () => now,
+        home: const Scaffold(body: MyGigsScreen()),
+      );
+      tester.view.physicalSize = const Size(402, 3000);
+      await tester.pumpAndSettle();
+
+      expect(harness.app.upcomingRsvpGigs, isEmpty);
+      expect(
+        find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
+        findsNothing,
+      );
+
+      await tester.tap(
+        find.byKey(ValueKey('ticket-action-${repository.futureGig.id}')),
+      );
+      await tester.pump();
+
+      expect(harness.app.rsvps, contains(repository.futureGig.id));
+      expect(harness.app.upcomingRsvpGigs, [repository.futureGig]);
+      expect(
+        find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
+        findsOne,
+      );
+
+      repository.completeMutation();
+      await tester.pump();
+      await tester.pump();
+      expect(harness.app.upcomingRsvpGigs, [repository.futureGig]);
+
+      await tester.tap(
+        find.byKey(ValueKey('ticket-action-${repository.futureGig.id}')),
+      );
+      await tester.pump();
+      expect(harness.app.rsvps, isNot(contains(repository.futureGig.id)));
+      expect(harness.app.upcomingRsvpGigs, isEmpty);
+      expect(
+        find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
+        findsNothing,
+      );
+
+      repository.completeMutation();
+      await tester.pump();
+      await tester.pump();
+
+      repository.emitRsvps({
+        repository.futureGig.id,
+        repository.pastGig.id,
+        repository.cancelledGig.id,
+      });
+      await tester.pump();
+      expect(harness.app.upcomingRsvpGigs, [repository.futureGig]);
+
+      repository.emitRsvps({repository.pastGig.id, repository.cancelledGig.id});
+      await tester.pump();
+      expect(harness.app.upcomingRsvpGigs, isEmpty);
+      expect(
+        find.byKey(ValueKey('next-show-${repository.cancelledGig.id}')),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('failed saved-show RSVP rolls the promoted show back', (
+    tester,
+  ) async {
+    final now = DateTime(2026, 8, 31, 16);
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _RsvpSyncRepository(
+      auth: auth,
+      now: now,
+      failNextMutation: true,
+    );
+    addTearDown(repository.close);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      now: () => now,
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+    tester.view.physicalSize = const Size(402, 3000);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(ValueKey('ticket-action-${repository.futureGig.id}')),
+    );
+    await tester.pump();
+    expect(harness.app.upcomingRsvpGigs, [repository.futureGig]);
+
+    repository.completeMutation();
+    await tester.pump();
+    await tester.pump();
+
+    expect(harness.app.rsvps, isNot(contains(repository.futureGig.id)));
+    expect(harness.app.upcomingRsvpGigs, isEmpty);
+    expect(harness.app.toast, 'Something broke. Try again.');
+    await tester.pump(const Duration(seconds: 3));
+  });
+
   testWidgets('failed explicit save keeps edits on screen with an error', (
     tester,
   ) async {
@@ -1060,6 +1174,7 @@ Gig _rsvpGig({
   required String id,
   required String title,
   required DateTime startsAt,
+  GigLifecycle lifecycle = GigLifecycle.published,
 }) => Gig(
   id: id,
   title: title,
@@ -1076,7 +1191,82 @@ Gig _rsvpGig({
   genres: const ['indie'],
   desc: '',
   tix: Ticketing.rsvp,
+  lifecycle: lifecycle,
 );
+
+class _RsvpSyncRepository extends DemoRepository {
+  _RsvpSyncRepository({
+    required super.auth,
+    required DateTime now,
+    this.failNextMutation = false,
+  }) : pastGig = _rsvpGig(
+         id: 'sync-past',
+         title: 'Past Sync Show',
+         startsAt: now.subtract(const Duration(days: 1)),
+       ),
+       futureGig = _rsvpGig(
+         id: 'sync-future',
+         title: 'Future Sync Show',
+         startsAt: now.add(const Duration(days: 1)),
+       ),
+       cancelledGig = _rsvpGig(
+         id: 'sync-cancelled',
+         title: 'Cancelled Sync Show',
+         startsAt: now.add(const Duration(days: 2)),
+         lifecycle: GigLifecycle.cancelled,
+       ) {
+    _rsvpIds.addAll([pastGig.id, cancelledGig.id]);
+  }
+
+  final Gig pastGig;
+  final Gig futureGig;
+  final Gig cancelledGig;
+  final bool failNextMutation;
+  final Set<String> _rsvpIds = {};
+  final StreamController<Interactions> _interactions =
+      StreamController<Interactions>.broadcast();
+  Completer<void>? _mutation;
+
+  Interactions get _snapshot => Interactions(
+    rsvpGigIds: Set.unmodifiable(_rsvpIds),
+    followBandIds: const {},
+    savedGigIds: {futureGig.id},
+    gigs: [pastGig, futureGig, cancelledGig],
+    attendedCount: 1,
+  );
+
+  @override
+  Stream<Interactions> myInteractions() async* {
+    yield _snapshot;
+    yield* _interactions.stream;
+  }
+
+  @override
+  Future<void> toggleRsvp(String gigId) async {
+    final mutation = Completer<void>();
+    _mutation = mutation;
+    await mutation.future;
+    _mutation = null;
+    if (failNextMutation) throw StateError('RSVP update failed');
+    _rsvpIds.contains(gigId) ? _rsvpIds.remove(gigId) : _rsvpIds.add(gigId);
+    _interactions.add(_snapshot);
+  }
+
+  void completeMutation() {
+    final mutation = _mutation;
+    if (mutation == null) throw StateError('No RSVP mutation is pending.');
+    mutation.complete();
+  }
+
+  void emitRsvps(Set<String> ids) {
+    _rsvpIds
+      ..clear()
+      ..addAll(ids);
+    _interactions.add(_snapshot);
+  }
+
+  Future<void> close() => _interactions.close();
+}
 
 class _LegacyProfileRepository extends DemoRepository {
   _LegacyProfileRepository({required super.auth});

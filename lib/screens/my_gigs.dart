@@ -29,12 +29,7 @@ class MyGigsScreen extends StatelessWidget {
         ? 'SCENE UNDISCLOSED'
         : '${profile!.homeLocation!.label.toUpperCase()} SCENE';
     final upcoming = app.upcomingRsvpGigs;
-    final nextShow = upcoming.cast<Gig?>().firstWhere(
-      (gig) =>
-          gig?.tix == Ticketing.rsvp &&
-          gig?.lifecycle == GigLifecycle.published,
-      orElse: () => null,
-    );
+    final nextShow = upcoming.firstOrNull;
     final remainingUpcoming = [
       for (final gig in upcoming)
         if (gig.id != nextShow?.id) gig,
@@ -279,16 +274,6 @@ class MyGigsScreen extends StatelessWidget {
           const SectionBar(label: 'PROFILE SETUP', padding: sectionPadding),
           _FanSetup(app: app),
         ],
-        const SectionBar(label: 'PLAY IN A BAND?', padding: sectionPadding),
-        _BandEntry(app: app),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextAction(
-            'CREATE A BAND',
-            key: const Key('create-band-from-profile'),
-            onTap: app.requestStartBand,
-          ),
-        ),
         const SectionBar(label: 'SETTINGS', padding: sectionPadding),
         EpCard(
           key: const Key('settings-entry'),
@@ -1066,71 +1051,6 @@ class _SetupStep extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _BandEntry extends StatelessWidget {
-  const _BandEntry({required this.app});
-
-  final AppState app;
-
-  @override
-  Widget build(BuildContext context) {
-    final membershipsLoading = app.authed && !app.membershipsLoaded;
-    final count = app.membershipsLoaded ? app.myBands.length : 0;
-    final label = membershipsLoading
-        ? 'BANDS'
-        : bandEntryLabel(count).toUpperCase();
-    final detail = membershipsLoading
-        ? 'Loading your bands'
-        : count == 0
-        ? 'Create a band profile'
-        : count == 1
-        ? (app.band(app.myBands.single)?.name ?? 'Your band')
-        : app.myBandNames;
-
-    return EpCard(
-      key: const Key('band-entry'),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      onTap: () {
-        if (!app.authed) {
-          app.requestStartBand();
-        } else if (!app.membershipsLoaded) {
-          return;
-        } else if (count == 0) {
-          app.requestStartBand();
-        } else if (count == 1) {
-          app.switchToBand(app.myBands.single);
-        } else {
-          showSwitcherSheet(context);
-        }
-      },
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: Theme.of(
-                context,
-              ).textTheme.epLabel.copyWith(letterSpacing: .8),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              '$detail ›',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.end,
-              style: Theme.of(
-                context,
-              ).textTheme.epLabel.copyWith(color: Ep.accent),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

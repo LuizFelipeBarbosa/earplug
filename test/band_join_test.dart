@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_join.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -58,6 +61,36 @@ void main() {
     expect(harness.app.joinInviteAccepted, isTrue);
     expect(find.text('You joined Foghorn Diet.'), findsOne);
     expect(find.text('OPEN BAND DASHBOARD'), findsOne);
+  });
+
+  testWidgets('accepted membership updates band navigation before its stream', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _DeferredJoinMembershipRepository(auth: auth);
+    addTearDown(repository.close);
+    final invite = await repository.createBandInvite('b2');
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.openJoinInvite(invite.token),
+      home: const Scaffold(
+        body: BandJoinScreen(),
+        bottomNavigationBar: FanTabBar(),
+      ),
+    );
+
+    expect(find.text('CREATE BAND'), findsOne);
+    await tester.tap(find.text('JOIN BAND'));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.myBands, ['b2']);
+    expect(find.text('SWITCH BAND'), findsOne);
+    await tester.tap(find.text('SWITCH BAND'));
+    await tester.pumpAndSettle();
+    expect(find.text('PIGEON COURT'), findsOne);
   });
 
   testWidgets('signed-out recipient keeps the invite through authentication', (
@@ -136,4 +169,21 @@ class _FailingAcceptRepository extends DemoRepository {
   Future<BandInviteAcceptance> acceptBandInvite(String token) async {
     throw StateError('offline');
   }
+}
+
+class _DeferredJoinMembershipRepository extends DemoRepository {
+  _DeferredJoinMembershipRepository({required super.auth});
+
+  final StreamController<List<BandMembership>> _updates =
+      StreamController<List<BandMembership>>.broadcast();
+  var _subscriptions = 0;
+
+  @override
+  Stream<List<BandMembership>> myBands() async* {
+    _subscriptions++;
+    if (_subscriptions == 1) yield const [];
+    yield* _updates.stream;
+  }
+
+  Future<void> close() => _updates.close();
 }

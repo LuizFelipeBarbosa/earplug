@@ -281,35 +281,24 @@ void main() {
     expect(harness.app.pending?.id, 'g4');
   });
 
-  testWidgets('external upcoming cards do not offer EarPlug QR tickets', (
+  testWidgets('external ticket records are not treated as active RSVPs', (
     tester,
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _ExternalRsvpRepository(auth: auth);
-    await pumpApp(
+    final harness = await pumpApp(
       tester,
       auth: auth,
       repository: repository,
       home: const Scaffold(body: MyGigsScreen()),
     );
 
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('fan-event-g4')),
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.byKey(const ValueKey('fan-event-g4')), findsOne);
-    expect(find.text('21+'), findsOne);
-    expect(find.text('TICKETS ↗'), findsOne);
+    expect(harness.app.rsvps, contains('g4'));
+    expect(harness.app.upcomingRsvpGigs, isEmpty);
+    expect(find.byKey(const ValueKey('fan-event-g4')), findsNothing);
+    expect(find.byKey(const ValueKey('next-show-g4')), findsNothing);
     expect(find.byTooltip('Show QR code'), findsNothing);
-
-    final save = find.byKey(const ValueKey('save-g4'));
-    final share = find.byKey(const ValueKey('share-g4'));
-    final tickets = find.byKey(const ValueKey('ticket-action-g4'));
-    final actionY = tester.getCenter(save).dy;
-    expect(tester.getCenter(share).dy, actionY);
-    expect(tester.getCenter(tickets).dy, actionY);
     expect(find.byKey(const ValueKey('show-qr-g4')), findsNothing);
   });
 }
