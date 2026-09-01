@@ -26,6 +26,7 @@ void main() {
 
     expect(find.text('MANAGING · ADMIN'), findsOne);
     expect(find.text('DISCOVER'), findsOne);
+    expect(find.text('FANS'), findsOne);
     expect(find.byType(VoltStrip), findsOne);
     expect(find.text('DOOR MODE'), findsOne);
     expect(find.byKey(const Key('band-next-public-gig')), findsOne);

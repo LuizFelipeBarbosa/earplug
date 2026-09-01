@@ -114,7 +114,7 @@ class BandDashScreen extends StatelessWidget {
         Row(
           children: [
             EpStatCard(
-              label: 'FOLLOWERS',
+              label: 'FANS',
               value: band.followersLabel,
               caption: band.followers == 0
                   ? 'just the band so far'
