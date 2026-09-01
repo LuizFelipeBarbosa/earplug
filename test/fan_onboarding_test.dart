@@ -37,17 +37,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('fan-setup-expanded')), findsOne);
-    await tester.tap(find.byKey(const Key('fan-city-oak')));
+    await _tapVisible(tester, find.byKey(const Key('fan-city-oak')));
     await tester.pump();
     expect(first.app.city, 'oak');
     expect(repository.onboarding?.preferredCity, FanCity.oak);
 
-    await tester.tap(find.byKey(const Key('fan-genres-open')));
+    await _tapVisible(tester, find.byKey(const Key('fan-genres-open')));
     await tester.pump();
     expect(repository.onboarding?.genreChoice, FanGenreChoice.open);
     expect(repository.genres, isEmpty);
 
-    await tester.tap(find.byKey(const Key('fan-setup-not-now')));
+    await _tapVisible(tester, find.byKey(const Key('fan-setup-not-now')));
     await tester.pump();
     expect(first.app.fanOnboarding?.collapsed, isTrue);
     expect(repository.onboarding?.collapsed, isTrue);
@@ -64,7 +64,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('fan-setup-collapsed')), findsOne);
 
-    await tester.tap(find.byKey(const Key('fan-setup-collapsed')));
+    await _tapVisible(tester, find.byKey(const Key('fan-setup-collapsed')));
     await tester.pump();
     expect(find.byKey(const Key('fan-setup-expanded')), findsOne);
     expect(repository.onboarding?.collapsed, isFalse);
@@ -108,7 +108,7 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('START A BAND'), findsOne);
-    await tester.tap(find.byKey(const Key('band-entry')));
+    await _tapVisible(tester, find.byKey(const Key('band-entry')));
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandCreate);
   });
@@ -234,7 +234,7 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('MANAGE BAND'), findsOne);
-    await tester.tap(find.byKey(const Key('band-entry')));
+    await _tapVisible(tester, find.byKey(const Key('band-entry')));
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandDash);
     expect(harness.app.bandId, 'b1');
@@ -256,11 +256,17 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('SWITCH BAND'), findsOne);
-    await tester.tap(find.byKey(const Key('band-entry')));
+    await _tapVisible(tester, find.byKey(const Key('band-entry')));
     await tester.pumpAndSettle();
     expect(find.text('SWITCH BAND'), findsWidgets);
     expect(find.text('PIGEON COURT'), findsWidgets);
   });
+}
+
+Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
 }
 
 class _ProfileRepository extends DemoRepository {
