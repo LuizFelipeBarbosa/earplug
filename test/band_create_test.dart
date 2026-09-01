@@ -81,6 +81,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(harness.app.nbPhoto, isNotNull);
     expect(harness.app.nbBanner?.filename, 'banner.png');
+
+    expect(find.byKey(const ValueKey('clear-band-photo')), findsOne);
+    expect(find.byKey(const ValueKey('clear-band-banner')), findsOne);
+    await tester.tap(find.byKey(const ValueKey('clear-band-photo')));
+    await tester.pump();
+    expect(harness.app.nbPhoto, isNull);
+    expect(find.byKey(const ValueKey('clear-band-photo')), findsNothing);
+    expect(find.byKey(const ValueKey('clear-band-banner')), findsOne);
+
+    await tester.tap(find.byKey(const ValueKey('clear-band-banner')));
+    await tester.pump();
+    expect(harness.app.nbBanner, isNull);
+    expect(find.byKey(const ValueKey('clear-band-banner')), findsNothing);
     semantics.dispose();
   });
 
@@ -149,6 +162,67 @@ void main() {
     await tester.tap(find.text('NOT NOW'));
     await tester.pumpAndSettle();
     expect(app.current.screen, Screen.bandDash);
+  });
+
+  testWidgets('start another clears the rendered form and backing draft', (
+    tester,
+  ) async {
+    final harness = await _pumpBandCreate(tester);
+    tester.view.physicalSize = const Size(402, 3000);
+    await tester.pumpAndSettle();
+
+    await _fillForm(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('create-about')),
+      'Signal-heavy post-punk.',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('create-instagram')),
+      '@staticbloom',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('create-bandcamp')),
+      'staticbloom.bandcamp.com',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('create-youtube')),
+      'youtube.com/@staticbloom',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('create-credits')),
+      'Recorded by June.',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'CREATE BAND'));
+    await tester.pumpAndSettle();
+    expect(find.text("YOU'RE LIVE"), findsOne);
+
+    await tester.tap(find.text('START ANOTHER'));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.nbCreated, isFalse);
+    expect(harness.app.canCreateBand, isFalse);
+    expect(harness.app.nbGenres, isEmpty);
+    expect(find.text('Static Bloom'), findsNothing);
+    expect(find.text('Still needs a name + a genre + a home base'), findsOne);
+    for (final key in const [
+      ValueKey('create-band-name'),
+      ValueKey('create-home-base'),
+      ValueKey('create-about'),
+      ValueKey('create-instagram'),
+      ValueKey('create-bandcamp'),
+      ValueKey('create-youtube'),
+      ValueKey('create-credits'),
+    ]) {
+      expect(
+        tester.widget<TextField>(find.byKey(key)).controller!.text,
+        isEmpty,
+      );
+    }
+    expect(
+      tester.widget<EpChip>(find.widgetWithText(EpChip, 'PUNK')).active,
+      isFalse,
+    );
+    expect(find.text('0 of 3 selected'), findsOne);
   });
 
   testWidgets('the create bar goes pending while the save is in flight', (

@@ -32,6 +32,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
   final _credits = TextEditingController();
 
   bool _loaded = false;
+  bool _wasCreated = false;
   bool _addingCustomGenre = false;
 
   @override
@@ -39,6 +40,12 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
     super.didChangeDependencies();
     if (_loaded) return;
     final app = context.read<AppState>();
+    _syncControllers(app);
+    _wasCreated = app.nbCreated;
+    _loaded = true;
+  }
+
+  void _syncControllers(AppState app) {
     _name.text = app.nbName;
     _area.text = app.nbArea ?? '';
     _bio.text = app.nbBio;
@@ -46,7 +53,6 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
     _bandcamp.text = app.nbBc;
     _youtube.text = app.nbYt;
     _credits.text = app.nbCredits;
-    _loaded = true;
   }
 
   @override
@@ -91,6 +97,10 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    if (_wasCreated && !app.nbCreated && !app.nbEditingCreated) {
+      _syncControllers(app);
+    }
+    _wasCreated = app.nbCreated;
     if (app.nbCreated) return const _CreatedView();
 
     return Stack(
@@ -138,6 +148,29 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 'Profile image and header image are separate. Changing one will not replace the other.',
                 style: Theme.of(context).textTheme.epCaption,
               ),
+              if (app.nbPhoto != null || app.nbBanner != null) ...[
+                const SizedBox(height: 2),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 2,
+                  children: [
+                    if (app.nbPhoto != null)
+                      TextAction(
+                        'REMOVE PHOTO',
+                        key: const ValueKey('clear-band-photo'),
+                        onTap: () => app.setNbPhoto(null),
+                        color: context.epColors.contentSecondary,
+                      ),
+                    if (app.nbBanner != null)
+                      TextAction(
+                        'REMOVE HEADER IMAGE',
+                        key: const ValueKey('clear-band-banner'),
+                        onTap: () => app.setNbBanner(null),
+                        color: context.epColors.contentSecondary,
+                      ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 20),
               BandIdentityTextField(
                 fieldKey: const ValueKey('create-band-name'),

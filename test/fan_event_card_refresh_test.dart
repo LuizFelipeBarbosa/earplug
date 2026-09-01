@@ -81,7 +81,7 @@ void main() {
     expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);
   });
 
-  testWidgets('cancelled future RSVP is excluded from the upcoming profile', (
+  testWidgets('cancelled future RSVP still surfaces in the upcoming profile', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -97,12 +97,13 @@ void main() {
     final gig = repository.cancelledGig;
     await tester.pumpAndSettle();
     expect(harness.app.rsvps, contains(gig.id));
-    expect(harness.app.upcomingRsvpGigs, isEmpty);
-    expect(find.byKey(ValueKey('next-show-${gig.id}')), findsNothing);
-    expect(find.byKey(ValueKey('fan-event-${gig.id}')), findsNothing);
+    expect(harness.app.upcomingRsvpGigs.map((g) => g.id), [gig.id]);
+    expect(find.byKey(ValueKey('next-show-${gig.id}')), findsOne);
+    expect(find.byKey(ValueKey('fan-event-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsNothing);
     expect(find.byKey(ValueKey('show-qr-${gig.id}')), findsNothing);
     expect(find.text('QR PASS'), findsNothing);
+    expect(find.text('CANCELLED'), findsWidgets);
   });
 }
 

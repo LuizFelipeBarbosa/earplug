@@ -198,15 +198,23 @@ class MyGigsScreen extends StatelessWidget {
           const SizedBox(height: 14),
           VoltStrip(
             key: ValueKey('next-show-${nextShow.id}'),
-            kicker: 'NEXT SHOW · ${nextShow.dateShort}',
+            kicker:
+                'NEXT SHOW · ${nextShow.dateShort}${nextShow.lifecycle == GigLifecycle.cancelled ? ' · CANCELLED' : ''}',
             title: nextShow.title,
             meta: [
               app.venue(nextShow.venueId).name,
               nextShow.dateLine,
             ].join(' · '),
-            actionLabel: 'QR PASS',
-            onAction: () =>
-                showQrDialog(context, nextShow, app.venue(nextShow.venueId)),
+            actionLabel: nextShow.lifecycle == GigLifecycle.published
+                ? 'QR PASS'
+                : null,
+            onAction: nextShow.lifecycle == GigLifecycle.published
+                ? () => showQrDialog(
+                    context,
+                    nextShow,
+                    app.venue(nextShow.venueId),
+                  )
+                : null,
           ),
         ],
         const SectionBar(label: 'UPCOMING RSVPS', padding: sectionPadding),

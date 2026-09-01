@@ -115,10 +115,18 @@ void main() {
       harness.picker.nextPhoto = photoFixture(filename: 'new_banner.png');
       await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
       await tester.pumpAndSettle();
+      expect(find.text('REPLACE'), findsOne);
+      expect(find.text('USE INITIALS INSTEAD'), findsNothing);
+      await tester.tap(find.text('REPLACE'));
+      await tester.pumpAndSettle();
       harness.picker.nextPhoto = photoFixture(filename: 'new_avatar.png');
       await tester.tap(
         find.byKey(const ValueKey('band-profile-image-control')),
       );
+      await tester.pumpAndSettle();
+      expect(find.text('REPLACE'), findsOne);
+      expect(find.text('USE INITIALS INSTEAD'), findsNothing);
+      await tester.tap(find.text('REPLACE'));
       await tester.pumpAndSettle();
 
       final photos = harness.media.photosFor('b1');
@@ -134,6 +142,39 @@ void main() {
       expect(harness.app.myBand!.name, 'Foghorn Diet');
     },
   );
+
+  testWidgets('artwork sheet removes an assigned profile image', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ArtworkAuditRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandEditScreen()),
+    );
+
+    harness.picker.nextPhoto = photoFixture(filename: 'new_avatar.png');
+    final avatar = find.byKey(const ValueKey('band-profile-image-control'));
+    await tester.tap(avatar);
+    await tester.pumpAndSettle();
+    expect(find.text('REPLACE'), findsOne);
+    expect(find.text('USE INITIALS INSTEAD'), findsNothing);
+
+    await tester.tap(find.text('REPLACE'));
+    await tester.pumpAndSettle();
+    await tester.tap(avatar);
+    await tester.pumpAndSettle();
+    expect(find.text('REPLACE'), findsOne);
+    expect(find.text('USE INITIALS INSTEAD'), findsOne);
+
+    await tester.tap(find.text('USE INITIALS INSTEAD'));
+    await tester.pumpAndSettle();
+    expect(repository.clearAvatarCalls, 1);
+    expect(harness.app.myBand!.profileImageUrl, isNull);
+    expect(find.text('FD'), findsOne);
+  });
 
   testWidgets(
     'accepted members are read-only and archive copy is irreversible',
@@ -538,6 +579,18 @@ class _ControlledProfileRepository extends DemoRepository {
     updateCalls++;
     if (updateCalls == 1) await firstSave.future;
     await super.updateBandProfile(update);
+  }
+}
+
+class _ArtworkAuditRepository extends DemoRepository {
+  _ArtworkAuditRepository({required super.auth});
+
+  int clearAvatarCalls = 0;
+
+  @override
+  Future<void> clearBandAvatar(String bandId) {
+    clearAvatarCalls++;
+    return super.clearBandAvatar(bandId);
   }
 }
 

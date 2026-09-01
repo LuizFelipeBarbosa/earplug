@@ -104,7 +104,29 @@ void main() {
 
     await tester.tap(edit);
     await tester.pump();
-    expect(harness.app.current.screen, Screen.bandMedia);
+    expect(harness.app.current.screen, Screen.bandEdit);
+  });
+
+  testWidgets('profile banner edit is hidden for a non-active managed band', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _MultiBandRepository(auth: auth),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+    expect(harness.app.isAdminOf('b1'), isTrue);
+
+    harness.app.switchToBand('b2');
+    await tester.pumpAndSettle();
+
+    expect(harness.app.bandId, 'b2');
+    expect(
+      find.byKey(const ValueKey('edit-band-profile-banner')),
+      findsNothing,
+    );
   });
 
   testWidgets('member preview is public-profile read-only', (tester) async {
@@ -299,5 +321,15 @@ class _MemberRepository extends DemoRepository {
   @override
   Stream<List<BandMembership>> myBands() => Stream.value([
     BandMembership(band: DemoData.bands['b1']!, role: 'member'),
+  ]);
+}
+
+class _MultiBandRepository extends DemoRepository {
+  _MultiBandRepository({required super.auth});
+
+  @override
+  Stream<List<BandMembership>> myBands() => Stream.value([
+    BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
+    BandMembership(band: DemoData.bands['b2']!, role: 'admin'),
   ]);
 }

@@ -1,12 +1,18 @@
 import 'dart:ui' show Tristate;
 
+import 'package:earplug/app_state.dart';
+import 'package:earplug/models.dart';
+import 'package:earplug/screens/venue_detail.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/harness.dart';
 
 void main() {
   test('refresh tokens preserve old names and expose semantic aliases', () {
@@ -354,7 +360,119 @@ void main() {
     );
     semantics.dispose();
   });
+
+  testWidgets('featured custom flyer image receives its contrast scrim', (
+    tester,
+  ) async {
+    late AppState app;
+    await pumpApp(
+      tester,
+      beforePump: (value) => app = value,
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: SingleChildScrollView(
+            child: Column(
+              children: [
+                FanEventCard(
+                  gig: _gig(
+                    id: 'custom',
+                    title: 'Custom Flyer',
+                    flyKey: 'custom',
+                    flyerUrl: 'https://example.test/custom-flyer.jpg',
+                  ),
+                  app: app,
+                  presentation: FanEventCardPresentation.featured,
+                ),
+                FanEventCard(
+                  gig: _gig(
+                    id: 'generated',
+                    title: 'Generated Flyer',
+                    flyKey: 'paper',
+                    flyerUrl: 'https://example.test/ignored-flyer.jpg',
+                  ),
+                  app: app,
+                  presentation: FanEventCardPresentation.featured,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('fan-event-custom')),
+        matching: find.byKey(const ValueKey('flyer-image-scrim')),
+      ),
+      findsOne,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('fan-event-generated')),
+        matching: find.byKey(const ValueKey('flyer-image-scrim')),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('venue hero foreground remains light in both themes', (
+    tester,
+  ) async {
+    final brightness = ValueNotifier(Brightness.light);
+    addTearDown(brightness.dispose);
+    await pumpApp(
+      tester,
+      home: ValueListenableBuilder(
+        valueListenable: brightness,
+        builder: (context, value, child) => Theme(
+          data: buildEpTheme(value),
+          child: const Scaffold(body: VenueDetailScreen(venueId: 'v1')),
+        ),
+      ),
+    );
+
+    void expectLightHeroText() {
+      expect(
+        tester.widget<Text>(find.textContaining('VENUE ·')).style!.color,
+        Ep.ink,
+      );
+      expect(
+        tester.widget<Text>(find.text('THE FOGHORN CLUB')).style!.color,
+        Ep.ink,
+      );
+    }
+
+    expectLightHeroText();
+    brightness.value = Brightness.dark;
+    await tester.pumpAndSettle();
+    expectLightHeroText();
+  });
 }
+
+Gig _gig({
+  required String id,
+  required String title,
+  required String flyKey,
+  required String flyerUrl,
+}) => Gig(
+  id: id,
+  title: title,
+  venueId: 'v1',
+  price: 0,
+  startsAt: DateTime(2026, 9, 1, 20),
+  dateShort: 'TUE SEP 1',
+  dateLine: 'TONIGHT · DOORS 8PM',
+  time: '8PM',
+  when: GigWhen.tonight,
+  flyKey: flyKey,
+  lineup: const [],
+  going: 0,
+  genres: const [],
+  desc: '',
+  tix: Ticketing.rsvp,
+  flyerUrl: flyerUrl,
+);
 
 Widget _host(Widget child) => MaterialApp(
   theme: buildEpTheme(),

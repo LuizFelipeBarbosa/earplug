@@ -278,6 +278,10 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<void> moveMediaWithinKind(String mediaId, String direction) =>
+      moveBandMedia(mediaId, direction == 'earlier' ? 'up' : 'down');
+
+  @override
   Future<void> setBandPhoto({
     required String bandId,
     required String mediaId,
@@ -643,8 +647,11 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
-  Future<void> toggleRsvp(String gigId) async {
-    _toggle(_rsvpGigIds, gigId);
+  Future<void> toggleRsvp(String gigId, {bool? on}) async {
+    final wasOn = _rsvpGigIds.contains(gigId);
+    final goingNow = on ?? !wasOn;
+    if (goingNow == wasOn) return;
+    goingNow ? _rsvpGigIds.add(gigId) : _rsvpGigIds.remove(gigId);
     if (!_rsvpGigIds.contains(gigId)) {
       _ticketsByGigId.remove(gigId);
       _checkedInGigIds.remove(gigId);

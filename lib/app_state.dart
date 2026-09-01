@@ -526,6 +526,8 @@ class AppState extends ChangeNotifier {
   bool nbBannerUploading = false;
   bool _nbPhotoUploaded = false;
   bool _nbBannerUploaded = false;
+  String? _nbPhotoMediaId;
+  String? _nbBannerMediaId;
   bool nbCreated = false;
 
   /// Set once the band lands; later saves update this record instead of
@@ -1383,13 +1385,19 @@ class AppState extends ChangeNotifier {
     nowGoing ? rsvps.add(id) : rsvps.remove(id);
     notifyListeners();
     unawaited(
-      repository.toggleRsvp(id).catchError((Object error) {
-        logError('toggle $id', error);
-        if (!identical(_pendingRsvps[id]?.operation, operation)) return;
-        _pendingRsvps.remove(id);
-        wasGoing ? rsvps.add(id) : rsvps.remove(id);
-        say(genericErrorMessage);
-      }),
+      repository
+          .toggleRsvp(id, on: nowGoing)
+          .then((_) {
+            if (!identical(_pendingRsvps[id]?.operation, operation)) return;
+            _pendingRsvps.remove(id);
+          })
+          .catchError((Object error) {
+            logError('toggle $id', error);
+            if (!identical(_pendingRsvps[id]?.operation, operation)) return;
+            _pendingRsvps.remove(id);
+            wasGoing ? rsvps.add(id) : rsvps.remove(id);
+            say(genericErrorMessage);
+          }),
     );
     say(nowGoing ? "You're on the list. QR is in Profile." : 'RSVP removed.');
   }
@@ -2052,7 +2060,8 @@ class AppState extends ChangeNotifier {
       for (final id in rsvps)
         if (_interactionGigs[id] ?? _cachedGig(id) case final Gig gig
             when gig.startsAt.isAfter(now) &&
-                gig.lifecycle == GigLifecycle.published &&
+                (gig.lifecycle == GigLifecycle.published ||
+                    gig.lifecycle == GigLifecycle.cancelled) &&
                 gig.tix == Ticketing.rsvp)
           gig,
     ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
@@ -2462,7 +2471,9 @@ class AppState extends ChangeNotifier {
         if (gig.venueId != venueId) return false;
       }
       if (filters.maxDistanceMiles case final double maxMiles) {
-        final distance = distanceMilesFromCurrent(venue(gig.venueId));
+        final distance = discoveryLocation == DiscoveryLocation.home
+            ? _distanceMilesFromDiscoveryCenter(venue(gig.venueId))
+            : distanceMilesFromCurrent(venue(gig.venueId));
         if (distance != null && distance > maxMiles) return false;
       }
       return true;
@@ -2964,6 +2975,8 @@ class AppState extends ChangeNotifier {
     nbBannerUploading = false;
     _nbPhotoUploaded = false;
     _nbBannerUploaded = false;
+    _nbPhotoMediaId = null;
+    _nbBannerMediaId = null;
     nbCreated = false;
     _nbBandId = null;
     _nbCreatedSlug = null;
@@ -2990,12 +3003,14 @@ class AppState extends ChangeNotifier {
     nbPhoto = photo;
     nbPhotoError = null;
     _nbPhotoUploaded = false;
+    _nbPhotoMediaId = null;
   });
 
   void setNbBanner(PickedMedia? photo) => _set(() {
     nbBanner = photo;
     nbBannerError = null;
     _nbBannerUploaded = false;
+    _nbBannerMediaId = null;
   });
 
   void toggleNbGenre(String g) {
@@ -3152,10 +3167,10 @@ class AppState extends ChangeNotifier {
     final media = _media;
     if (media != null) {
       if (nbPhoto case final photo? when !_nbPhotoUploaded) {
-        unawaited(_uploadBandArtwork(bandId, photo, _BandArtworkRole.avatar));
+        unawaited(_uploadBandArtwork(photo, _BandArtworkRole.avatar));
       }
       if (nbBanner case final banner? when !_nbBannerUploaded) {
-        unawaited(_uploadBandArtwork(bandId, banner, _BandArtworkRole.banner));
+        unawaited(_uploadBandArtwork(banner, _BandArtworkRole.banner));
       }
     }
     nbCreated = true;
@@ -3166,12 +3181,12 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _uploadBandArtwork(
-    String bandId,
     PickedMedia photo,
     _BandArtworkRole role,
   ) async {
     final media = _media;
-    if (media == null) return;
+    final targetBandId = _nbBandId;
+    if (media == null || targetBandId == null) return;
 
     if (role == _BandArtworkRole.avatar) {
       nbPhotoUploading = true;
@@ -3182,7 +3197,10 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
 
-    final mediaId = await media.uploadHeldPhoto(bandId, photo);
+    final pending = role == _BandArtworkRole.avatar
+        ? _nbPhotoMediaId
+        : _nbBannerMediaId;
+    final mediaId = pending ?? await media.uploadHeldPhoto(targetBandId, photo);
     if (mediaId == null) {
       if (role == _BandArtworkRole.avatar) {
         nbPhotoUploading = false;
@@ -3197,34 +3215,41 @@ class AppState extends ChangeNotifier {
       );
       return;
     }
+    if (role == _BandArtworkRole.avatar) {
+      _nbPhotoMediaId = mediaId;
+    } else {
+      _nbBannerMediaId = mediaId;
+    }
 
     final assigned = role == _BandArtworkRole.avatar
-        ? await media.setAvatar(bandId, mediaId)
-        : await media.setBanner(bandId, mediaId);
+        ? await media.setAvatar(targetBandId, mediaId)
+        : await media.setBanner(targetBandId, mediaId);
     if (role == _BandArtworkRole.avatar) {
       nbPhotoUploading = false;
       _nbPhotoUploaded = assigned;
       nbPhotoError = assigned ? null : 'assignment failed';
+      if (assigned) _nbPhotoMediaId = null;
     } else {
       nbBannerUploading = false;
       _nbBannerUploaded = assigned;
       nbBannerError = assigned ? null : 'assignment failed';
+      if (assigned) _nbBannerMediaId = null;
     }
     notifyListeners();
-    unawaited(refreshBandSetupStatus(bandId));
-    unawaited(refreshBandDiscoveryReadiness(bandId));
+    unawaited(refreshBandSetupStatus(targetBandId));
+    unawaited(refreshBandDiscoveryReadiness(targetBandId));
   }
 
   Future<void> retryNbPhoto() async {
     final photo = nbPhoto;
     if (photo == null) return;
-    await _uploadBandArtwork(bandId, photo, _BandArtworkRole.avatar);
+    await _uploadBandArtwork(photo, _BandArtworkRole.avatar);
   }
 
   Future<void> retryNbBanner() async {
     final photo = nbBanner;
     if (photo == null) return;
-    await _uploadBandArtwork(bandId, photo, _BandArtworkRole.banner);
+    await _uploadBandArtwork(photo, _BandArtworkRole.banner);
   }
 
   /// "Keep editing" — back to the tape with everything still filled in.

@@ -289,14 +289,14 @@ class _VenueHero extends StatelessWidget {
                 ].join(' · '),
                 style: Theme.of(
                   context,
-                ).textTheme.epSection.copyWith(color: context.epColors.ink),
+                ).textTheme.epSection.copyWith(color: Ep.ink),
               ),
               const SizedBox(height: 8),
               Text(
                 venue.name.toUpperCase(),
                 style: Theme.of(
                   context,
-                ).textTheme.epPosterTitle.copyWith(color: context.epColors.ink),
+                ).textTheme.epPosterTitle.copyWith(color: Ep.ink),
               ),
             ],
           ),

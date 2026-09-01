@@ -155,6 +155,11 @@ class FanEventCard extends StatelessWidget {
     Band? presenter,
   ) {
     final flyer = app.flyer(gig.flyKey);
+    final hasCustomFlyerImage =
+        gig.flyKey == 'custom' && (gig.flyerUrl?.isNotEmpty ?? false);
+    final flyerTextShadows = hasCustomFlyerImage
+        ? const [Shadow(color: Colors.black54, blurRadius: 8)]
+        : null;
     return EpCard(
       key: ValueKey('fan-event-${gig.id}'),
       padding: EdgeInsets.zero,
@@ -169,6 +174,7 @@ class FanEventCard extends StatelessWidget {
             height: 220,
             radius: 0,
             shadow: false,
+            scrim: true,
             padding: const EdgeInsets.all(18),
             child: MediaQuery.withNoTextScaling(
               child: Column(
@@ -182,14 +188,18 @@ class FanEventCard extends StatelessWidget {
                         weight: FontWeight.w900,
                         color: flyer.fg,
                         letterSpacing: 1.8,
-                      ),
+                      ).copyWith(shadows: flyerTextShadows),
                     ),
                   const Spacer(),
                   Text(
                     gig.title.toUpperCase(),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: epDisplay(size: 34, color: flyer.fg, height: 1.03),
+                    style: epDisplay(
+                      size: 34,
+                      color: flyer.fg,
+                      height: 1.03,
+                    ).copyWith(shadows: flyerTextShadows),
                   ),
                   if (lineup.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -202,7 +212,7 @@ class FanEventCard extends StatelessWidget {
                         weight: FontWeight.w900,
                         color: flyer.fg,
                         letterSpacing: .8,
-                      ),
+                      ).copyWith(shadows: flyerTextShadows),
                     ),
                   ],
                 ],

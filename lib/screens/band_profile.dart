@@ -69,7 +69,9 @@ class BandProfileScreen extends StatelessWidget {
               _BandHero(
                 band: band,
                 bio: app.bioFor(bandId),
-                onEditBanner: app.isAdminOf(bandId) ? app.openBandMedia : null,
+                onEditBanner: app.bandId == bandId && app.isAdminOf(bandId)
+                    ? app.openBandEditor
+                    : null,
               ),
               const SizedBox(height: 12),
               EpButton(

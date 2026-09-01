@@ -684,7 +684,7 @@ void main() {
       tester.view.physicalSize = const Size(402, 3000);
       await tester.pumpAndSettle();
 
-      expect(harness.app.upcomingRsvpGigs, isEmpty);
+      expect(harness.app.upcomingRsvpGigs, [repository.cancelledGig]);
       expect(
         find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
         findsNothing,
@@ -696,7 +696,10 @@ void main() {
       await tester.pump();
 
       expect(harness.app.rsvps, contains(repository.futureGig.id));
-      expect(harness.app.upcomingRsvpGigs, [repository.futureGig]);
+      expect(harness.app.upcomingRsvpGigs, [
+        repository.futureGig,
+        repository.cancelledGig,
+      ]);
       expect(
         find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
         findsOne,
@@ -710,7 +713,10 @@ void main() {
       repository.completeMutation();
       await tester.pump();
       await tester.pump();
-      expect(harness.app.upcomingRsvpGigs, [repository.futureGig]);
+      expect(harness.app.upcomingRsvpGigs, [
+        repository.futureGig,
+        repository.cancelledGig,
+      ]);
       expect(
         find.byKey(ValueKey('upcoming-rsvp-${repository.futureGig.id}')),
         findsOne,
@@ -726,7 +732,7 @@ void main() {
       );
       await tester.pump();
       expect(harness.app.rsvps, isNot(contains(repository.futureGig.id)));
-      expect(harness.app.upcomingRsvpGigs, isEmpty);
+      expect(harness.app.upcomingRsvpGigs, [repository.cancelledGig]);
       expect(
         find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
         findsNothing,
@@ -746,13 +752,30 @@ void main() {
         repository.cancelledGig.id,
       });
       await tester.pump();
-      expect(harness.app.upcomingRsvpGigs, [repository.futureGig]);
+      expect(harness.app.upcomingRsvpGigs, [
+        repository.futureGig,
+        repository.cancelledGig,
+      ]);
 
       repository.emitRsvps({repository.pastGig.id, repository.cancelledGig.id});
       await tester.pump();
-      expect(harness.app.upcomingRsvpGigs, isEmpty);
+      expect(harness.app.upcomingRsvpGigs, [repository.cancelledGig]);
       expect(
         find.byKey(ValueKey('next-show-${repository.cancelledGig.id}')),
+        findsOne,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('next-show-${repository.cancelledGig.id}')),
+          matching: find.textContaining('CANCELLED'),
+        ),
+        findsOne,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('next-show-${repository.cancelledGig.id}')),
+          matching: find.text('QR PASS'),
+        ),
         findsNothing,
       );
     },
@@ -784,14 +807,17 @@ void main() {
       find.byKey(ValueKey('ticket-action-${repository.futureGig.id}')),
     );
     await tester.pump();
-    expect(harness.app.upcomingRsvpGigs, [repository.futureGig]);
+    expect(harness.app.upcomingRsvpGigs, [
+      repository.futureGig,
+      repository.cancelledGig,
+    ]);
 
     repository.completeMutation();
     await tester.pump();
     await tester.pump();
 
     expect(harness.app.rsvps, isNot(contains(repository.futureGig.id)));
-    expect(harness.app.upcomingRsvpGigs, isEmpty);
+    expect(harness.app.upcomingRsvpGigs, [repository.cancelledGig]);
     expect(harness.app.toast, 'Something broke. Try again.');
     await tester.pump(const Duration(seconds: 3));
   });
@@ -1261,13 +1287,16 @@ class _RsvpSyncRepository extends DemoRepository {
   }
 
   @override
-  Future<void> toggleRsvp(String gigId) async {
+  Future<void> toggleRsvp(String gigId, {bool? on}) async {
     final mutation = Completer<void>();
     _mutation = mutation;
     await mutation.future;
     _mutation = null;
     if (failNextMutation) throw StateError('RSVP update failed');
-    _rsvpIds.contains(gigId) ? _rsvpIds.remove(gigId) : _rsvpIds.add(gigId);
+    final wasOn = _rsvpIds.contains(gigId);
+    final goingNow = on ?? !wasOn;
+    if (goingNow == wasOn) return;
+    goingNow ? _rsvpIds.add(gigId) : _rsvpIds.remove(gigId);
     _interactions.add(_snapshot);
   }
 

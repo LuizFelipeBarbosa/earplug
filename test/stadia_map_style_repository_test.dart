@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:earplug/services/stadia_map_style_repository.dart';
@@ -113,6 +114,60 @@ void main() {
       throwsA(isA<MapStyleConfigurationException>()),
     );
   });
+
+  test('failed loads are evicted after concurrent callers settle', () async {
+    final failure = StateError('transient style failure');
+    final client = _FailOnceStyleClient(failure);
+    final repository = StadiaMapStyleRepository(
+      apiKey: 'test-key',
+      httpClient: client,
+      cacheStyleBundles: false,
+      resolveProvider: (_) async => _TrackingProvider(),
+    );
+    addTearDown(repository.dispose);
+
+    final firstLoad = repository.load(Brightness.light);
+    final concurrentLoad = repository.load(Brightness.light);
+
+    expect(identical(firstLoad, concurrentLoad), isTrue);
+    await client.firstRequestStarted.future;
+    expect(client.lightRequestCount, 1);
+
+    client.releaseFirstRequest();
+    await expectLater(firstLoad, throwsA(same(failure)));
+
+    final retriedLoad = repository.load(Brightness.light);
+    expect(identical(retriedLoad, firstLoad), isFalse);
+    await expectLater(retriedLoad, completes);
+    expect(client.lightRequestCount, 2);
+  });
+}
+
+class _FailOnceStyleClient extends _StyleClient {
+  _FailOnceStyleClient(this.failure);
+
+  final Object failure;
+  final firstRequestStarted = Completer<void>();
+  final _releaseFirstRequest = Completer<void>();
+  bool _failed = false;
+
+  int get lightRequestCount => requests
+      .where((request) => request.url.path.endsWith('alidade_smooth.json'))
+      .length;
+
+  void releaseFirstRequest() => _releaseFirstRequest.complete();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!_failed && request.url.path.endsWith('alidade_smooth.json')) {
+      _failed = true;
+      requests.add(request);
+      firstRequestStarted.complete();
+      await _releaseFirstRequest.future;
+      throw failure;
+    }
+    return super.send(request);
+  }
 }
 
 class _StyleClient extends http.BaseClient {

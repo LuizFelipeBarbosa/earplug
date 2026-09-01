@@ -331,7 +331,7 @@ class _AttendanceRepository extends DemoRepository {
   }
 
   @override
-  Future<void> toggleRsvp(String gigId) async {
+  Future<void> toggleRsvp(String gigId, {bool? on}) async {
     final mutation = Completer<void>();
     _mutation = mutation;
     await mutation.future;
@@ -341,9 +341,11 @@ class _AttendanceRepository extends DemoRepository {
       throw StateError('RSVP update failed');
     }
 
-    final wasGoing = _rsvpIds.remove(gigId);
-    if (!wasGoing) _rsvpIds.add(gigId);
-    gig = gig.copyWith(going: gig.going + (wasGoing ? -1 : 1));
+    final wasGoing = _rsvpIds.contains(gigId);
+    final goingNow = on ?? !wasGoing;
+    if (goingNow == wasGoing) return;
+    goingNow ? _rsvpIds.add(gigId) : _rsvpIds.remove(gigId);
+    gig = gig.copyWith(going: gig.going + (goingNow ? 1 : -1));
     _interactions.add(_snapshot);
     _publicGig.add(gig);
   }

@@ -621,6 +621,7 @@ class FlyerBox extends StatelessWidget {
   final EdgeInsets padding;
   final Widget? child;
   final bool shadow;
+  final bool scrim;
 
   /// Multiplies [FlyerStyle.pitch] so small swatches read as the same texture.
   final double patternScale;
@@ -635,6 +636,7 @@ class FlyerBox extends StatelessWidget {
     this.padding = EdgeInsets.zero,
     this.child,
     this.shadow = true,
+    this.scrim = false,
     this.patternScale = 1,
   });
 
@@ -672,6 +674,17 @@ class FlyerBox extends StatelessWidget {
                     painter: _FlyerPatternPainter(style, patternScale),
                   ),
                 ),
+                if (scrim)
+                  const DecoratedBox(
+                    key: ValueKey('flyer-image-scrim'),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Color(0xA8000000), Color(0xBD000000)],
+                      ),
+                    ),
+                  ),
                 Padding(padding: padding, child: child),
               ],
             ),
@@ -688,6 +701,7 @@ class GigFlyer extends StatelessWidget {
   final EdgeInsets padding;
   final Widget? child;
   final bool shadow;
+  final bool scrim;
   final double patternScale;
 
   const GigFlyer(
@@ -700,6 +714,7 @@ class GigFlyer extends StatelessWidget {
     this.padding = EdgeInsets.zero,
     this.child,
     this.shadow = true,
+    this.scrim = false,
     this.patternScale = 1,
   });
 
@@ -713,6 +728,7 @@ class GigFlyer extends StatelessWidget {
       radius: radius,
       padding: padding,
       shadow: shadow,
+      scrim: scrim,
       patternScale: patternScale,
       child: child,
     );

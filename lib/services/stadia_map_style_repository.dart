@@ -44,7 +44,17 @@ class StadiaMapStyleRepository {
     }
     return _loads.putIfAbsent(brightness, () {
       final epoch = _epochs[brightness] ?? 0;
-      return _load(brightness, epoch);
+      late final Future<vt.Style> load;
+      load = _load(brightness, epoch).catchError((
+        Object error,
+        StackTrace stackTrace,
+      ) {
+        if (identical(_loads[brightness], load)) {
+          _loads.remove(brightness);
+        }
+        Error.throwWithStackTrace(error, stackTrace);
+      });
+      return load;
     });
   }
 

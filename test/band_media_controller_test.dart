@@ -215,7 +215,7 @@ void main() {
 
       await harness.controller.moveWithinKind(bandId, 'video-1', 'down');
 
-      expect(repository.moveCalls, 2);
+      expect(repository.moveCalls, 1);
       expect(harness.controller.videosFor(bandId).map((item) => item.id), [
         'video-2',
         'video-1',
@@ -308,15 +308,22 @@ class _GlobalOrderDemoRepository extends DemoRepository {
   }
 
   @override
-  Future<void> moveBandMedia(String mediaId, String direction) async {
+  Future<void> moveMediaWithinKind(String mediaId, String direction) async {
     moveCalls++;
     _items.sort((a, b) => a.order.compareTo(b.order));
-    final index = _items.indexWhere((item) => item.id == mediaId);
-    final target = direction == 'up' ? index - 1 : index + 1;
-    if (index == -1 || target < 0 || target >= _items.length) return;
-    final order = _items[index].order;
-    _items[index] = _items[index].copyWith(order: _items[target].order);
-    _items[target] = _items[target].copyWith(order: order);
+    final target = _items.firstWhere((item) => item.id == mediaId);
+    final sameKind = _items.where((item) => item.kind == target.kind).toList();
+    final index = sameKind.indexWhere((item) => item.id == mediaId);
+    final neighborIndex = direction == 'earlier' ? index - 1 : index + 1;
+    if (neighborIndex < 0 || neighborIndex >= sameKind.length) return;
+    final neighbor = sameKind[neighborIndex];
+    final targetOrder = target.order;
+    final neighborOrder = neighbor.order;
+    _items[_items.indexWhere((item) => item.id == target.id)] = target.copyWith(
+      order: neighborOrder,
+    );
+    _items[_items.indexWhere((item) => item.id == neighbor.id)] = neighbor
+        .copyWith(order: targetOrder);
   }
 }
 

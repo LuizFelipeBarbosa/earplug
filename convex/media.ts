@@ -261,6 +261,35 @@ export const moveMedia = mutation({
   },
 });
 
+export const moveWithinKind = mutation({
+  args: {
+    mediaId: v.id("bandMedia"),
+    direction: v.union(v.literal("earlier"), v.literal("later")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const media = await mediaForAdmin(ctx, args.mediaId);
+    const siblings = await ctx.db
+      .query("bandMedia")
+      .withIndex("by_band_kind_order", (q) =>
+        q.eq("bandId", media.bandId).eq("kind", media.kind),
+      )
+      .order("asc")
+      .take(MAX_MEDIA_PER_BAND);
+    const index = siblings.findIndex((sibling) => sibling._id === args.mediaId);
+    if (index === -1) {
+      throw new Error("Media not found among band's ordered media");
+    }
+    const neighborIndex =
+      args.direction === "earlier" ? index - 1 : index + 1;
+    if (neighborIndex < 0 || neighborIndex >= siblings.length) return null;
+    const neighbor = siblings[neighborIndex];
+    await ctx.db.patch(media._id, { order: neighbor.order });
+    await ctx.db.patch(neighbor._id, { order: media.order });
+    return null;
+  },
+});
+
 export const forBand = query({
   args: { bandId: v.id("bands") },
   returns: v.array(mediaPayloadValidator),

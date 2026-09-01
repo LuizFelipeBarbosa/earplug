@@ -121,6 +121,14 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<void> moveMediaWithinKind(String mediaId, String direction) async {
+    await _convexService.mutation('media:moveWithinKind', {
+      'mediaId': mediaId,
+      'direction': direction,
+    });
+  }
+
+  @override
   Future<void> setBandPhoto({
     required String bandId,
     required String mediaId,
@@ -276,8 +284,11 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<void> toggleRsvp(String gigId) async {
-    await _convexService.mutation('interactions:toggleRsvp', {'gigId': gigId});
+  Future<void> toggleRsvp(String gigId, {bool? on}) async {
+    await _convexService.mutation('interactions:toggleRsvp', {
+      'gigId': gigId,
+      'on': ?on,
+    });
   }
 
   @override

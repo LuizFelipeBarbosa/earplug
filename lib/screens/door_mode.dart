@@ -363,7 +363,7 @@ class _Viewer extends StatelessWidget {
             color: context.epColors.volt,
           ),
         ),
-        if (rosterFailure != null && roster == null) ...[
+        if (rosterFailure != null) ...[
           const SizedBox(height: 12),
           Text(
             rosterFailure!,
@@ -372,6 +372,15 @@ class _Viewer extends StatelessWidget {
               context,
             ).textTheme.epCaption.copyWith(color: context.epColors.destructive),
           ),
+          if (roster != null)
+            Text(
+              'DISPLAYED COUNTS MAY BE STALE',
+              key: const Key('door-roster-stale-failure'),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                color: context.epColors.destructive,
+              ),
+            ),
           TextButton(onPressed: onRetryRoster, child: Text('RETRY ROSTER')),
         ],
         const SizedBox(height: 24),

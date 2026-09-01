@@ -116,6 +116,45 @@ void main() {
     );
   });
 
+  testWidgets('viewer surfaces a stale roster failure and can retry', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _DoorRepository(auth: auth, rosterFailures: const {2});
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const DoorModeScreen(launch: launch),
+    );
+
+    expect(find.text('41 / 87'), findsOne);
+    await tester.tap(find.byKey(const Key('door-enter-code')));
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.enterText(
+      find.byKey(const Key('door-manual-ticket')),
+      'EP-STALE-ROSTER',
+    );
+    await tester.tap(find.text('CHECK TICKET'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    await tester.tap(find.byTooltip('Back to door overview'));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(find.text('41 / 87'), findsOne);
+    expect(find.byKey(const Key('door-roster-stale-failure')), findsOne);
+    expect(find.text('DISPLAYED COUNTS MAY BE STALE'), findsOne);
+    expect(find.text('RETRY ROSTER'), findsOne);
+
+    await tester.tap(find.text('RETRY ROSTER'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('door-roster-stale-failure')), findsNothing);
+    expect(find.text('DISPLAYED COUNTS MAY BE STALE'), findsNothing);
+    expect(find.text('42 / 87'), findsOne);
+  });
+
   testWidgets('initial roster failure persists across Scanner and can retry', (
     tester,
   ) async {

@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../widgets/band_identity_editor.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/sheets.dart';
 
 enum _EditArtworkRole { avatar, banner }
 
@@ -221,6 +222,70 @@ class _BandEditScreenState extends State<BandEditScreen> {
     });
   }
 
+  void _showArtworkSheet(_EditArtworkRole role) {
+    final app = context.read<AppState>();
+    final band = app.myBand;
+    if (band == null || !app.isAdminOf(band.id)) return;
+
+    final hasArtwork = role == _EditArtworkRole.avatar
+        ? band.profileImageUrl != null || _avatarPreview != null
+        : band.headerImageUrl != null || _bannerPreview != null;
+    showEpActionSheet(
+      context,
+      header: role == _EditArtworkRole.avatar
+          ? 'Profile image'
+          : 'Header image',
+      items: [
+        EpActionSheetItem(
+          label: 'REPLACE',
+          icon: Icons.photo_library_outlined,
+          onPressed: () => _changeArtwork(role),
+        ),
+        if (hasArtwork)
+          EpActionSheetItem(
+            label: 'USE INITIALS INSTEAD',
+            icon: Icons.delete_outline,
+            destructive: true,
+            onPressed: () => _clearArtwork(role),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _clearArtwork(_EditArtworkRole role) async {
+    final app = context.read<AppState>();
+    final media = context.read<BandMediaController>();
+    final band = app.myBand;
+    if (band == null || !app.isAdminOf(band.id)) return;
+
+    setState(() {
+      _artworkError = null;
+      if (role == _EditArtworkRole.avatar) {
+        _avatarUploading = true;
+      } else {
+        _bannerUploading = true;
+      }
+    });
+
+    final cleared = role == _EditArtworkRole.avatar
+        ? await media.clearAvatar(band.id)
+        : await media.clearBanner(band.id);
+    if (!mounted) return;
+    setState(() {
+      if (role == _EditArtworkRole.avatar) {
+        _avatarUploading = false;
+        if (cleared) _avatarPreview = null;
+      } else {
+        _bannerUploading = false;
+        if (cleared) _bannerPreview = null;
+      }
+      if (!cleared) {
+        _artworkError =
+            'The ${role == _EditArtworkRole.avatar ? 'profile' : 'header'} image could not be removed. Try again.';
+      }
+    });
+  }
+
   Future<void> _save() async {
     final name = _name.text.trim();
     final area = _area.text.trim();
@@ -335,10 +400,10 @@ class _BandEditScreenState extends State<BandEditScreen> {
                       bannerBusy: _bannerUploading,
                       onAvatarTap: _saving
                           ? null
-                          : () => _changeArtwork(_EditArtworkRole.avatar),
+                          : () => _showArtworkSheet(_EditArtworkRole.avatar),
                       onBannerTap: _saving
                           ? null
-                          : () => _changeArtwork(_EditArtworkRole.banner),
+                          : () => _showArtworkSheet(_EditArtworkRole.banner),
                     ),
                     const SizedBox(height: 9),
                     Text(

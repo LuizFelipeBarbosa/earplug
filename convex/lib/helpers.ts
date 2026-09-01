@@ -661,9 +661,9 @@ export function toMediaPayload(
     lengthSec: media.lengthSec ?? null,
     pinned: media.pinned,
     order: media.order,
-    // `isHero` remains the compatibility name for the banner selection used
-    // by existing media-management clients.
-    isHero: bannerStorageId !== undefined && bannerStorageId === media.storageId,
+    // `isHero` is the legacy name for the band's profile photo. Keep it as an
+    // alias of the avatar role for old clients; banners use `isBanner` only.
+    isHero: avatarStorageId !== undefined && avatarStorageId === media.storageId,
     isAvatar: avatarStorageId !== undefined && avatarStorageId === media.storageId,
     isBanner: bannerStorageId !== undefined && bannerStorageId === media.storageId,
   };

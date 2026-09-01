@@ -21,14 +21,24 @@ export const requiredClientFunctions = Object.freeze({
   "bands.js:bySlug": "Query",
   "bands.js:archive": "Mutation",
   "bands.js:archiveStatus": "Query",
+  "bands.js:setBandAvatar": "Mutation",
+  "bands.js:clearBandAvatar": "Mutation",
+  "bands.js:setBandBanner": "Mutation",
+  "bands.js:clearBandBanner": "Mutation",
   "media.js:addMedia": "Mutation",
   "media.js:forBand": "Query",
+  "media.js:moveWithinKind": "Mutation",
   "interactions.js:ticketForGig": "Mutation",
 });
 
 export const requiredClientFields = Object.freeze([
   ["media.js:addMedia", "args", "thumbnailStorageId", true],
+  ["interactions.js:toggleRsvp", "args", "on", true],
   ["media.js:forBand", "arrayReturn", "thumbnailUrl", false],
+  ["media.js:forBand", "arrayReturn", "isAvatar", false],
+  ["media.js:forBand", "arrayReturn", "isBanner", false],
+  ["bands.js:bySlug", "return", "avatarUrl", false],
+  ["bands.js:bySlug", "return", "bannerUrl", false],
   ["bands.js:archive", "return", "bandId", false],
   ["bands.js:archive", "return", "archivedAt", false],
   ["bands.js:archive", "return", "alreadyArchived", false],
@@ -48,6 +58,12 @@ export function deploymentNameFromUrl(value) {
     throw new Error(`Invalid Convex deployment URL: ${value}`);
   }
   return deploymentName;
+}
+
+function returnObjectFields(validator) {
+  if (validator?.type !== "union") return validator?.value;
+  if (!Array.isArray(validator.value)) return undefined;
+  return validator.value.find((member) => member?.type === "object")?.value;
 }
 
 export function contractProblems(expectedUrl, specification) {
@@ -87,7 +103,7 @@ export function contractProblems(expectedUrl, specification) {
         ? entry.args?.value
         : surface === "arrayReturn"
           ? entry.returns?.value?.value
-          : entry.returns?.value;
+          : returnObjectFields(entry.returns);
     const field = fields?.[fieldName];
     if (field === undefined) {
       problems.push(`${identifier} is missing ${surface}.${fieldName}`);
