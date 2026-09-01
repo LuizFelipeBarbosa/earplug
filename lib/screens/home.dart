@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../models.dart';
 import '../theme.dart';
 import '../widgets/branding.dart';
 import '../widgets/common.dart';
@@ -171,6 +172,8 @@ class _FeedList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final feed = app.feed;
+    final featured = feed.firstOrNull;
+    final remaining = feed.skip(1).toList(growable: false);
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
       children: [
@@ -185,8 +188,78 @@ class _FeedList extends StatelessWidget {
           const SizedBox(height: 10),
         ],
         if (feed.isEmpty) _DiscoveryEmptyState(app: app),
-        for (final g in feed) ...[
-          FanEventCard(gig: g, app: app, showDistance: true),
+        if (featured != null) ...[
+          _FeedSection(
+            label: 'FEATURED NEAR YOU',
+            featured: featured,
+            gigs: const [],
+            app: app,
+          ),
+          for (final section in GigWhen.values)
+            _FeedSection(
+              label: switch (section) {
+                GigWhen.tonight => 'TONIGHT',
+                GigWhen.week => 'THIS WEEK',
+                GigWhen.later => 'LATER',
+              },
+              featured: null,
+              gigs: remaining
+                  .where((gig) => gig.when == section)
+                  .toList(growable: false),
+              app: app,
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FeedSection extends StatelessWidget {
+  const _FeedSection({
+    required this.label,
+    required this.featured,
+    required this.gigs,
+    required this.app,
+  });
+
+  final String label;
+  final Gig? featured;
+  final List<Gig> gigs;
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = gigs.length + (featured == null ? 0 : 1);
+    if (count == 0) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionBar(label: label, count: count),
+        if (featured case final gig?) ...[
+          if (app.isDiscoveryBoosted(gig)) ...[
+            Text(
+              'DISCOVERY BOOST · COMPLETE LISTING',
+              key: ValueKey('discovery-boost-${gig.id}'),
+              style: Theme.of(context).textTheme.epMeta.copyWith(
+                color: Ep.accent,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                letterSpacing: .45,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          FanEventCard(
+            gig: gig,
+            app: app,
+            showDistance: true,
+            presentation: FanEventCardPresentation.featured,
+          ),
+          const SizedBox(height: 10),
+        ],
+        for (final gig in gigs) ...[
+          FanEventCard(gig: gig, app: app, showDistance: true),
           const SizedBox(height: 10),
         ],
       ],

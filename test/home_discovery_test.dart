@@ -9,6 +9,7 @@ import 'package:earplug/screens/home.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +35,22 @@ void main() {
     expect(harness.app.mapMode, isFalse);
     expect(find.byType(GigMapView), findsNothing);
     expect(find.text('7 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
+    final cards = tester.widgetList<FanEventCard>(find.byType(FanEventCard));
+    final featured = cards.first;
+    expect(featured.gig.id, harness.app.feed.first.id);
+    expect(featured.presentation, FanEventCardPresentation.featured);
+    expect(
+      cards
+          .skip(1)
+          .every(
+            (card) => card.presentation == FanEventCardPresentation.compact,
+          ),
+      isTrue,
+    );
+    expect(
+      find.byKey(ValueKey('fan-event-${harness.app.feed.first.id}')),
+      findsOne,
+    );
 
     harness.app.resetTo(Screen.explore);
     harness.app.resetTo(Screen.home);
