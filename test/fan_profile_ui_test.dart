@@ -83,6 +83,7 @@ void main() {
   testWidgets('home location autocompletes scenes and the current position', (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     await pumpApp(
       tester,
       locationService: const _ProfileLocationService(),
@@ -101,6 +102,7 @@ void main() {
     );
     await tester.pump();
     expect(find.byKey(const Key('home-location-suggestion-sanJose')), findsOne);
+    expect(find.bySemanticsLabel('San Jose, CA'), findsOne);
     await tester.tap(find.byKey(const Key('home-location-suggestion-sanJose')));
     await tester.pumpAndSettle();
     expect(
@@ -127,6 +129,7 @@ void main() {
     );
     expect(find.textContaining('nearest supported scene'), findsOne);
     expect(find.byKey(const Key('clear-home-location')), findsOne);
+    semantics.dispose();
   });
 
   testWidgets('unknown home locations stay typed with a no-results state', (

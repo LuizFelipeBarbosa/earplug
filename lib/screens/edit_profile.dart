@@ -550,23 +550,18 @@ class _HomeLocationEditor extends StatelessWidget {
             child: Column(
               children: [
                 for (final city in suggestions)
-                  Semantics(
-                    button: true,
-                    label: 'Use ${city.autocompleteLabel}',
-                    excludeSemantics: true,
-                    child: TextButton.icon(
-                      key: ValueKey('home-location-suggestion-${city.name}'),
-                      onPressed: () => onSelected(city),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Ep.contentPrimary,
-                        minimumSize: const Size.fromHeight(48),
-                        alignment: Alignment.centerLeft,
-                        padding: const EdgeInsets.symmetric(horizontal: 14),
-                        shape: const RoundedRectangleBorder(),
-                      ),
-                      icon: const Icon(Icons.place_outlined, size: 18),
-                      label: Text(city.autocompleteLabel),
+                  TextButton.icon(
+                    key: ValueKey('home-location-suggestion-${city.name}'),
+                    onPressed: () => onSelected(city),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Ep.contentPrimary,
+                      minimumSize: const Size.fromHeight(48),
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      shape: const RoundedRectangleBorder(),
                     ),
+                    icon: const Icon(Icons.place_outlined, size: 18),
+                    label: Text(city.autocompleteLabel),
                   ),
               ],
             ),
