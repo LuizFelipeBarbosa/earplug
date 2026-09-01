@@ -37,27 +37,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Profile remains usable at increased text scale', (tester) async {
+  testWidgets('Profile remains usable when narrow with increased text scale', (
+    tester,
+  ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     await pumpApp(
       tester,
       auth: auth,
       repository: DemoRepository(auth: auth),
-      home: _scaledScreen(const MyGigsScreen()),
+      home: _scaledScreen(const MyGigsScreen(), size: const Size(320, 900)),
     );
+    tester.view.physicalSize = const Size(320, 900);
+    await tester.pumpAndSettle();
 
+    expect(find.byKey(const Key('fan-following-stat')), findsOne);
+    expect(find.byKey(const Key('fan-history-stat')), findsOne);
+    expect(find.byKey(const Key('share-fan-profile')), findsOne);
     await tester.scrollUntilVisible(
       find.text('UPCOMING RSVPS'),
       180,
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('UPCOMING RSVPS'), findsOne);
-    await tester.scrollUntilVisible(
-      find.text('FOLLOWING'),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, 600));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('fan-following-stat')));
+    await tester.pumpAndSettle();
     expect(find.text('FOLLOWING ✓'), findsWidgets);
     final followingButton = tester.widget<OutlinedButton>(
       find.widgetWithText(OutlinedButton, 'FOLLOWING ✓').first,
@@ -66,6 +72,8 @@ void main() {
       followingButton.style!.textStyle!.resolve({})!.fontSize,
       greaterThanOrEqualTo(11),
     );
+    await tester.tap(find.byTooltip('Close Following'));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 
@@ -83,11 +91,8 @@ void main() {
 
     const qualification = 'RSVP RECORD — ATTENDANCE NOT VERIFIED';
     const qualificationKey = Key('history-qualification');
-    await tester.scrollUntilVisible(
-      find.byKey(qualificationKey),
-      240,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.tap(find.byKey(const Key('fan-history-stat')));
+    await tester.pumpAndSettle();
 
     final qualificationFinder = find.byKey(qualificationKey);
     expect(find.text(qualification), findsWidgets);
@@ -102,12 +107,9 @@ void main() {
   });
 }
 
-Widget _scaledScreen(Widget child) {
+Widget _scaledScreen(Widget child, {Size size = const Size(402, 900)}) {
   return MediaQuery(
-    data: const MediaQueryData(
-      size: Size(402, 900),
-      textScaler: TextScaler.linear(1.5),
-    ),
+    data: MediaQueryData(size: size, textScaler: TextScaler.linear(1.5)),
     child: Scaffold(body: child),
   );
 }

@@ -11,6 +11,7 @@ import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
@@ -81,20 +82,53 @@ void main() {
   testWidgets('profile leads with private identity and branded fan fallback', (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     final auth = FakeAuthService();
     await auth.signInDemo();
-    await pumpApp(
+    final harness = await pumpApp(
       tester,
       auth: auth,
       repository: DemoRepository(auth: auth),
       home: const Scaffold(body: MyGigsScreen()),
     );
 
-    expect(find.text('IDENTITY & EDIT PROFILE'), findsOne);
+    expect(find.byKey(const Key('fan-profile-header')), findsOne);
     expect(find.byKey(const Key('fan-profile-avatar')), findsOne);
     expect(find.byType(EpFanAvatar), findsOne);
     expect(find.text('EF'), findsOne);
     expect(find.byKey(const Key('edit-profile-action')), findsOne);
+    expect(find.byKey(const Key('share-fan-profile')), findsOne);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('fan-following-stat')),
+        matching: find.text('${harness.app.follows.length}'),
+      ),
+      findsOne,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('fan-history-stat')),
+        matching: find.text('${harness.app.history.length}'),
+      ),
+      findsOne,
+    );
+    expect(
+      find.bySemanticsLabel(
+        'Following, ${harness.app.follows.length} '
+        '${harness.app.follows.length == 1 ? 'band' : 'bands'}. '
+        'Open followed bands.',
+      ),
+      findsOne,
+    );
+    expect(
+      find.bySemanticsLabel(
+        'RSVP History, ${harness.app.history.length} past '
+        '${harness.app.history.length == 1 ? 'event' : 'events'}. '
+        'Open RSVP history.',
+      ),
+      findsOne,
+    );
+    semantics.dispose();
   });
 
   testWidgets('profile sections stay in the required order', (tester) async {
@@ -102,14 +136,13 @@ void main() {
 
     tester.view.physicalSize = const Size(402, 3000);
     await tester.pumpAndSettle();
-    final positions = <Offset>[];
+    final positions = <Offset>[
+      tester.getTopLeft(find.byKey(const Key('fan-profile-header'))),
+    ];
     for (final label in [
-      'IDENTITY & EDIT PROFILE',
       'UPCOMING RSVPS',
       'SAVED SHOWS',
-      'FOLLOWING',
       'UPCOMING SHOWS FROM FOLLOWED BANDS',
-      'EVENT HISTORY',
       'SETTINGS',
     ]) {
       positions.add(tester.getTopLeft(find.text(label)));
@@ -118,6 +151,8 @@ void main() {
     for (var index = 1; index < positions.length; index++) {
       expect(positions[index].dy, greaterThan(positions[index - 1].dy));
     }
+    expect(find.text('EVENT HISTORY'), findsNothing);
+    expect(find.byKey(const Key('history-qualification')), findsNothing);
   });
 
   testWidgets(
@@ -135,19 +170,146 @@ void main() {
         find.text('Nothing saved. Bookmark a show to keep it handy.'),
         findsOne,
       );
-      expect(find.text('Follow bands to keep their profiles close.'), findsOne);
       expect(
         find.text('Follow a band to see its upcoming shows here.'),
         findsOne,
       );
       expect(
+        find.text('Follow bands to keep their profiles close.'),
+        findsNothing,
+      );
+      expect(
+        find.text('Past RSVPs will build your private event history.'),
+        findsNothing,
+      );
+      expect(find.text('FIND A SHOW'), findsNWidgets(2));
+      expect(find.text('EXPLORE BANDS'), findsOne);
+
+      await tester.tap(find.byKey(const Key('fan-following-stat')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('fan-following-sheet')), findsOne);
+      expect(find.text('Follow bands to keep their profiles close.'), findsOne);
+      expect(find.text('EXPLORE BANDS'), findsNWidgets(2));
+      await tester.tap(find.byTooltip('Close Following'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('fan-history-stat')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('fan-history-sheet')), findsOne);
+      expect(
         find.text('Past RSVPs will build your private event history.'),
         findsOne,
       );
       expect(find.text('FIND A SHOW'), findsNWidgets(3));
-      expect(find.text('EXPLORE BANDS'), findsNWidgets(2));
     },
   );
+
+  testWidgets('header statistics open complete private profile views', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+
+    expect(find.byKey(const Key('history-qualification')), findsNothing);
+    await tester.tap(find.byKey(const Key('fan-following-stat')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('fan-following-sheet')), findsOne);
+    for (final bandId in harness.app.follows) {
+      final band = harness.app.band(bandId);
+      if (band != null) expect(find.text(band.name.toUpperCase()), findsOne);
+    }
+    final bandId = harness.app.follows.first;
+    final band = harness.app.band(bandId)!;
+    await tester.tap(find.text(band.name.toUpperCase()));
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.band);
+    expect(harness.app.current.param, bandId);
+
+    harness.app.back();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('fan-history-stat')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('fan-history-sheet')), findsOne);
+    expect(find.text('RSVP RECORD — ATTENDANCE NOT VERIFIED'), findsOne);
+    for (final item in harness.app.history) {
+      expect(find.text(item.title), findsOne);
+    }
+  });
+
+  testWidgets('profile sharing includes counts but no event-level history', (
+    tester,
+  ) async {
+    String? sharedText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          sharedText = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+
+    await tester.tap(find.byKey(const Key('share-fan-profile')));
+    await tester.pump();
+
+    expect(sharedText, contains('Following: ${harness.app.follows.length}'));
+    expect(sharedText, contains('RSVP History: ${harness.app.history.length}'));
+    expect(sharedText, contains('not verified attendance'));
+    for (final item in harness.app.history) {
+      expect(sharedText, isNot(contains(item.title)));
+      if (item.venueName.isNotEmpty) {
+        expect(sharedText, isNot(contains(item.venueName)));
+      }
+    }
+    expect(find.text('Profile summary copied.'), findsOne);
+  });
+
+  testWidgets('long history titles and venues truncate in compact rows', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _LongHistoryRepository(auth: auth),
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+    tester.view.physicalSize = const Size(320, 700);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('fan-history-stat')));
+    await tester.pumpAndSettle();
+    final title = tester.widget<Text>(find.text(_longHistoryTitle));
+    final venue = tester.widget<Text>(find.text(_longHistoryVenue));
+    expect(title.maxLines, 1);
+    expect(title.overflow, TextOverflow.ellipsis);
+    expect(venue.maxLines, 1);
+    expect(venue.overflow, TextOverflow.ellipsis);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'revisiting Explore and Profile never promotes a past RSVP to upcoming',
@@ -278,6 +440,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(harness.app.follows, contains('b1'));
+    await tester.tap(find.byKey(const Key('fan-following-stat')));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('FOLLOWING ✓'));
     await tester.pump(const Duration(milliseconds: 20));
 
@@ -463,6 +627,29 @@ void main() {
     expect(find.byKey(const Key('delete-account-error')), findsNothing);
     await tester.pump(const Duration(seconds: 3));
   });
+}
+
+const _longHistoryTitle =
+    'A Very Long Event Name That Must Stay Inside The Compact History Card';
+const _longHistoryVenue =
+    'The Extremely Long Independent Venue Name Near The End Of The Street';
+
+class _LongHistoryRepository extends DemoRepository {
+  _LongHistoryRepository({required super.auth});
+
+  @override
+  Future<List<FanHistoryItem>> history() async => [
+    FanHistoryItem(
+      gigId: 'long-history',
+      title: _longHistoryTitle,
+      startsAt: DateTime(2026, 1, 2, 20),
+      venueName: _longHistoryVenue,
+      bandNames: const [],
+      flyKey: 'paper',
+      flyerUrl: null,
+      status: FanHistoryStatus.rsvped,
+    ),
+  ];
 }
 
 class _FailingProfileRepository extends DemoRepository {

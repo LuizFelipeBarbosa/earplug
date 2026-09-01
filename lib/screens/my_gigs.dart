@@ -5,8 +5,10 @@ import '../app_state.dart';
 import '../date_names.dart';
 import '../genres.dart';
 import '../models.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
@@ -38,10 +40,9 @@ class MyGigsScreen extends StatelessWidget {
       for (final id in app.saved)
         if (app.gig(id) case final Gig g) g,
     ];
-    final followedBandIds = [
-      for (final id in app.follows)
-        if (app.band(id) != null) id,
-    ];
+    final followingNoun = app.follows.length == 1 ? 'band' : 'bands';
+    final historyNoun = app.history.length == 1 ? 'event' : 'events';
+    const sectionPadding = EdgeInsets.only(top: 16, bottom: 8);
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -67,51 +68,114 @@ class MyGigsScreen extends StatelessWidget {
             ),
           ],
         ),
-        const SectionBar(
-          label: 'IDENTITY & EDIT PROFILE',
-          padding: EdgeInsets.only(top: 14, bottom: 10),
-        ),
-        Row(
-          children: [
-            EpFanAvatar(
-              key: const Key('fan-profile-avatar'),
-              name: profileName,
-              imageUrl: profile?.avatarUrl,
-              size: 64,
-              radius: 18,
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: 10),
+        EpCard(
+          key: const Key('fan-profile-header'),
+          variant: EpCardVariant.raised,
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Text(
-                    displayName,
-                    style: Theme.of(context).textTheme.epSectionHeading,
+                  EpFanAvatar(
+                    key: const Key('fan-profile-avatar'),
+                    name: profileName,
+                    imageUrl: profile?.avatarUrl,
+                    size: 64,
+                    radius: 18,
                   ),
-                  Text(
-                    '${fanSince == null ? '' : 'fan since $fanSince · '}'
-                    '${app.history.length} past RSVPs',
-                    style: Theme.of(context).textTheme.epCaption,
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          displayName,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.epSectionHeading,
+                        ),
+                        if (fanSince != null)
+                          Text(
+                            'fan since $fanSince',
+                            style: Theme.of(context).textTheme.epCaption,
+                          ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 3),
+                ],
+              ),
+              if (profile?.bio case final String bio
+                  when bio.trim().isNotEmpty) ...[
+                const SizedBox(height: 11),
+                Text(bio, style: Theme.of(context).textTheme.epBody),
+              ],
+              const SizedBox(height: 14),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: _ProfileStat(
+                        key: const Key('fan-following-stat'),
+                        label: 'Following',
+                        value: '${app.follows.length}',
+                        semanticLabel:
+                            'Following, ${app.follows.length} $followingNoun. Open followed bands.',
+                        onTap: () => _showFollowingSheet(context),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _ProfileStat(
+                        key: const Key('fan-history-stat'),
+                        label: 'RSVP History',
+                        value: '${app.history.length}',
+                        semanticLabel:
+                            'RSVP History, ${app.history.length} past $historyNoun. Open RSVP history.',
+                        onTap: () => _showHistorySheet(context),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
                   TextAction(
                     'EDIT PROFILE',
                     key: const Key('edit-profile-action'),
                     onTap: profile == null ? null : app.openEditProfile,
                     padding: EdgeInsets.zero,
                   ),
+                  OutlinedButton.icon(
+                    key: const Key('share-fan-profile'),
+                    onPressed: profile == null
+                        ? null
+                        : () => _shareFanProfile(
+                            context,
+                            displayName:
+                                profileName == null || profileName.isEmpty
+                                ? 'EarPlug fan'
+                                : profileName,
+                            followingCount: app.follows.length,
+                            historyCount: app.history.length,
+                          ),
+                    icon: const Icon(Icons.ios_share_outlined, size: 18),
+                    label: const Text('SHARE PROFILE'),
+                  ),
                 ],
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-        if (profile?.bio case final String bio when bio.trim().isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Text(bio, style: Theme.of(context).textTheme.epBody),
-        ],
         if (nextShow != null) ...[
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           VoltStrip(
             key: ValueKey('next-show-${nextShow.id}'),
             kicker: 'NEXT SHOW · ${nextShow.dateShort}',
@@ -125,7 +189,7 @@ class MyGigsScreen extends StatelessWidget {
                 showQrDialog(context, nextShow, app.venue(nextShow.venueId)),
           ),
         ],
-        const SectionBar(label: 'UPCOMING RSVPS'),
+        const SectionBar(label: 'UPCOMING RSVPS', padding: sectionPadding),
         if (remainingUpcoming.isEmpty)
           _EmptySection(
             message: nextShow == null
@@ -145,7 +209,7 @@ class MyGigsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
         ],
-        const SectionBar(label: 'SAVED SHOWS'),
+        const SectionBar(label: 'SAVED SHOWS', padding: sectionPadding),
         if (savedGigs.isEmpty)
           _EmptySection(
             message: 'Nothing saved. Bookmark a show to keep it handy.',
@@ -156,24 +220,10 @@ class MyGigsScreen extends StatelessWidget {
           FanEventCard(gig: g, app: app),
           const SizedBox(height: 8),
         ],
-        const SectionBar(label: 'FOLLOWING'),
-        if (app.follows.isEmpty)
-          _EmptySection(
-            message: 'Follow bands to keep their profiles close.',
-            action: 'EXPLORE BANDS',
-            onTap: () => app.resetTo(Screen.explore),
-          ),
-        if (app.follows.isNotEmpty && followedBandIds.isEmpty)
-          _EmptySection(
-            message: 'Followed band details are not available yet.',
-            action: 'EXPLORE BANDS',
-            onTap: () => app.resetTo(Screen.explore),
-          ),
-        for (final id in followedBandIds) ...[
-          _FollowRow(bandId: id, app: app),
-          const SizedBox(height: 8),
-        ],
-        const SectionBar(label: 'UPCOMING SHOWS FROM FOLLOWED BANDS'),
+        const SectionBar(
+          label: 'UPCOMING SHOWS FROM FOLLOWED BANDS',
+          padding: sectionPadding,
+        ),
         if (app.followedBandShows.isEmpty)
           _EmptySection(
             message: profile?.followedBandUpdatesEnabled == false
@@ -192,41 +242,15 @@ class MyGigsScreen extends StatelessWidget {
           FanEventCard(gig: gig, app: app),
           const SizedBox(height: 8),
         ],
-        SectionBar(
-          label: 'EVENT HISTORY',
-          padding: EdgeInsets.only(
-            top: 20,
-            bottom: app.history.isEmpty ? 10 : 2,
-          ),
-        ),
-        if (app.history.isEmpty)
-          _EmptySection(
-            message: 'Past RSVPs will build your private event history.',
-            action: 'FIND A SHOW',
-            onTap: () => app.resetTo(Screen.home),
-          )
-        else
-          Text(
-            'RSVP RECORD — ATTENDANCE NOT VERIFIED',
-            key: const Key('history-qualification'),
-            style: Theme.of(context).textTheme.epMeta.copyWith(
-              color: Ep.contentSecondary,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        for (final item in app.history) ...[
-          _HistoryRow(item: item),
-          const SizedBox(height: 8),
-        ],
         if (app.profileTutorialVisible) ...[
-          const SectionBar(label: 'PROFILE GUIDE'),
+          const SectionBar(label: 'PROFILE GUIDE', padding: sectionPadding),
           _ProfileTutorial(app: app),
         ],
         if (app.showFanOnboarding) ...[
-          const SectionBar(label: 'PROFILE SETUP'),
+          const SectionBar(label: 'PROFILE SETUP', padding: sectionPadding),
           _FanSetup(app: app),
         ],
-        const SectionBar(label: 'PLAY IN A BAND?'),
+        const SectionBar(label: 'PLAY IN A BAND?', padding: sectionPadding),
         _BandEntry(app: app),
         Align(
           alignment: Alignment.centerRight,
@@ -236,7 +260,7 @@ class MyGigsScreen extends StatelessWidget {
             onTap: app.requestStartBand,
           ),
         ),
-        const SectionBar(label: 'SETTINGS'),
+        const SectionBar(label: 'SETTINGS', padding: sectionPadding),
         EpCard(
           key: const Key('settings-entry'),
           onTap: app.openSettings,
@@ -256,6 +280,303 @@ class MyGigsScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ProfileStat extends StatelessWidget {
+  const _ProfileStat({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.semanticLabel,
+    required this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final String semanticLabel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: EpCard(
+        onTap: onTap,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(
+                context,
+              ).textTheme.epDisplay.copyWith(fontSize: 24),
+            ),
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label.toUpperCase(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                      color: Ep.contentSecondary,
+                      letterSpacing: .7,
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.chevron_right,
+                  size: 18,
+                  color: Ep.contentSecondary,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void _showFollowingSheet(BuildContext context) {
+  showEpSheet(
+    context,
+    (sheetContext) => Consumer<AppState>(
+      builder: (context, app, _) => _FollowingSheet(
+        app: app,
+        onOpenBand: (bandId) {
+          Navigator.pop(sheetContext);
+          app.openBand(bandId);
+        },
+        onExplore: () {
+          Navigator.pop(sheetContext);
+          app.resetTo(Screen.explore);
+        },
+      ),
+    ),
+  );
+}
+
+void _showHistorySheet(BuildContext context) {
+  showEpSheet(
+    context,
+    (sheetContext) => Consumer<AppState>(
+      builder: (context, app, _) => _HistorySheet(
+        app: app,
+        onFindShow: () {
+          Navigator.pop(sheetContext);
+          app.resetTo(Screen.home);
+        },
+      ),
+    ),
+  );
+}
+
+Future<void> _shareFanProfile(
+  BuildContext context, {
+  required String displayName,
+  required int followingCount,
+  required int historyCount,
+}) async {
+  final bandLabel = followingCount == 1 ? 'band' : 'bands';
+  final eventLabel = historyCount == 1 ? 'event' : 'events';
+  final summary = [
+    '$displayName on EarPlug',
+    'Following: $followingCount $bandLabel',
+    'RSVP History: $historyCount past $eventLabel',
+    'RSVP history is not verified attendance.',
+  ].join('\n');
+  await copyForUser(
+    context,
+    summary,
+    successMessage: 'Profile summary copied.',
+  );
+}
+
+class _FollowingSheet extends StatelessWidget {
+  const _FollowingSheet({
+    required this.app,
+    required this.onOpenBand,
+    required this.onExplore,
+  });
+
+  final AppState app;
+  final ValueChanged<String> onOpenBand;
+  final VoidCallback onExplore;
+
+  @override
+  Widget build(BuildContext context) {
+    final bandIds = app.follows.toList()
+      ..sort((left, right) {
+        final leftName = app.band(left)?.name ?? left;
+        final rightName = app.band(right)?.name ?? right;
+        return leftName.toLowerCase().compareTo(rightName.toLowerCase());
+      });
+    return _ProfileDetailSheet(
+      key: const Key('fan-following-sheet'),
+      title: 'Following',
+      subtitle:
+          '${bandIds.length} ${bandIds.length == 1 ? 'band' : 'bands'} in your list',
+      child: bandIds.isEmpty
+          ? ListView(
+              padding: const EdgeInsets.only(top: 8),
+              children: [
+                _EmptySection(
+                  message: 'Follow bands to keep their profiles close.',
+                  action: 'EXPLORE BANDS',
+                  onTap: onExplore,
+                ),
+              ],
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.only(top: 8),
+              itemCount: bandIds.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final bandId = bandIds[index];
+                return _FollowRow(
+                  bandId: bandId,
+                  app: app,
+                  onOpen: () => onOpenBand(bandId),
+                );
+              },
+            ),
+    );
+  }
+}
+
+class _HistorySheet extends StatelessWidget {
+  const _HistorySheet({required this.app, required this.onFindShow});
+
+  final AppState app;
+  final VoidCallback onFindShow;
+
+  @override
+  Widget build(BuildContext context) {
+    return _ProfileDetailSheet(
+      key: const Key('fan-history-sheet'),
+      title: 'RSVP History',
+      subtitle:
+          '${app.history.length} past ${app.history.length == 1 ? 'event' : 'events'}',
+      notice: Text(
+        'RSVP RECORD — ATTENDANCE NOT VERIFIED',
+        key: const Key('history-qualification'),
+        style: Theme.of(context).textTheme.epMeta.copyWith(
+          color: Ep.contentSecondary,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      child: app.history.isEmpty
+          ? ListView(
+              padding: const EdgeInsets.only(top: 8),
+              children: [
+                _EmptySection(
+                  message: 'Past RSVPs will build your private event history.',
+                  action: 'FIND A SHOW',
+                  onTap: onFindShow,
+                ),
+              ],
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.only(top: 8),
+              itemCount: app.history.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) =>
+                  _HistoryRow(item: app.history[index]),
+            ),
+    );
+  }
+}
+
+class _ProfileDetailSheet extends StatelessWidget {
+  const _ProfileDetailSheet({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+    this.notice,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget child;
+  final Widget? notice;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        height: MediaQuery.sizeOf(context).height * .84,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        decoration: const BoxDecoration(
+          color: Ep.surfaceRaised,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          border: Border(top: BorderSide(color: Ep.border)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Ep.contentDisabled,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title.toUpperCase(),
+                        style: Theme.of(context).textTheme.epSectionHeading,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.epCaption,
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close $title',
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            if (notice != null) ...[
+              const SizedBox(height: 8),
+              DefaultTextStyle.merge(
+                style: Theme.of(context).textTheme.epMeta.copyWith(
+                  color: Ep.contentSecondary,
+                  fontWeight: FontWeight.w800,
+                ),
+                child: notice!,
+              ),
+            ],
+            const SizedBox(height: 6),
+            Expanded(child: child),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -377,17 +698,64 @@ class _HistoryRow extends StatelessWidget {
     final dateLabel =
         '${monthNamesUpper[date.month - 1]} ${date.day}, ${date.year}';
     final statusLabel = switch (item.status) {
-      FanHistoryStatus.rsvped => "RSVP'D",
+      FanHistoryStatus.rsvped => 'RSVP RECORD',
     };
+    final semanticLabel = [
+      item.title,
+      if (item.venueName.isNotEmpty) item.venueName,
+      dateLabel,
+      statusLabel,
+    ].join(', ');
 
-    return LedgerRow(
+    return Semantics(
       key: ValueKey('history-${item.gigId}'),
-      title: item.title,
-      details: [
-        if (item.venueName.isNotEmpty) item.venueName,
-        dateLabel,
-        statusLabel,
-      ],
+      container: true,
+      label: semanticLabel,
+      excludeSemantics: true,
+      child: EpCard(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          children: [
+            DateBlock(
+              day: '${date.day}',
+              month: monthNamesUpper[date.month - 1].substring(0, 3),
+              semanticLabel: dateLabel,
+              size: 44,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.epLabel,
+                  ),
+                  if (item.venueName.isNotEmpty)
+                    Text(
+                      item.venueName,
+                      key: ValueKey('history-venue-${item.gigId}'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$dateLabel · $statusLabel',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epMeta.copyWith(color: Ep.contentSecondary),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -668,16 +1036,48 @@ class _QrAction extends StatelessWidget {
 class _FollowRow extends StatelessWidget {
   final String bandId;
   final AppState app;
+  final VoidCallback onOpen;
 
-  const _FollowRow({required this.bandId, required this.app});
+  const _FollowRow({
+    required this.bandId,
+    required this.app,
+    required this.onOpen,
+  });
 
   @override
   Widget build(BuildContext context) {
     final band = app.band(bandId);
-    if (band == null) return const SizedBox.shrink();
+    if (band == null) {
+      return EpCard(
+        onTap: onOpen,
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+        child: Row(
+          children: [
+            const Icon(Icons.music_note, color: Ep.contentSecondary),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'FOLLOWED BAND',
+                    style: Theme.of(context).textTheme.epLabel,
+                  ),
+                  Text(
+                    'Profile details are loading',
+                    style: Theme.of(context).textTheme.epCaption,
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Ep.contentSecondary),
+          ],
+        ),
+      );
+    }
     return EpCard(
       padding: const EdgeInsets.all(9),
-      onTap: () => app.openBand(bandId),
+      onTap: onOpen,
       child: Row(
         children: [
           BandAvatar(band, size: 36, radius: 8, fontSize: 12),
