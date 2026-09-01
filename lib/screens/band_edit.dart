@@ -39,6 +39,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
   bool _bandcampDirty = false;
   bool _youtubeDirty = false;
   bool _creditsDirty = false;
+  bool _addingCustomGenre = false;
   bool _saving = false;
   bool _saved = false;
   String? _error;
@@ -159,6 +160,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
     setState(() {
       _genres.add(genre);
       _customGenre.clear();
+      _addingCustomGenre = false;
       _saved = false;
       _error = null;
     });
@@ -172,10 +174,12 @@ class _BandEditScreenState extends State<BandEditScreen> {
         _saved = false;
         _error = 'Band name, sound, and home base are required.';
       });
+      _revealFeedback();
       return;
     }
     if (_genres.length > 3) {
       setState(() => _error = 'Choose no more than three genres.');
+      _revealFeedback();
       return;
     }
 
@@ -200,14 +204,27 @@ class _BandEditScreenState extends State<BandEditScreen> {
       );
       if (!mounted) return;
       setState(() => _saved = true);
+      _revealFeedback();
     } on Object {
       if (!mounted) return;
       setState(() {
         _error = 'Changes could not be saved. Check your connection and retry.';
       });
+      _revealFeedback();
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _revealFeedback() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
@@ -218,276 +235,327 @@ class _BandEditScreenState extends State<BandEditScreen> {
       return const SizedBox.shrink();
     }
 
-    return ListView(
-      controller: _scrollController,
-      padding: EdgeInsets.fromLTRB(
-        16,
-        headerTopPad(context),
-        16,
-        tabBarClearance + 24,
-      ),
+    return Stack(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'EDIT PROFILE',
-              style: Theme.of(context).textTheme.epPageHeading,
+        Positioned.fill(
+          child: ListView(
+            controller: _scrollController,
+            padding: EdgeInsets.fromLTRB(
+              16,
+              headerTopPad(context),
+              16,
+              tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
             ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton(
-                onPressed: app.previewPublicProfile,
-                child: const Text('PREVIEW PUBLIC PROFILE'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'Update the public details fans use to recognize and discover your band.',
-          style: epText(size: 12, color: Ep.contentSecondary, height: 1.4),
-        ),
-        const SizedBox(height: 18),
-        KeyedSubtree(
-          key: _requiredKey,
-          child: _EditorSection(
-            title: 'Required details',
-            description: 'These details keep your profile useful in discovery.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Semantics(
-                  label: 'Band name',
-                  textField: true,
-                  child: TextField(
-                    key: const ValueKey('edit-band-name'),
-                    controller: _name,
-                    onChanged: _draftChanged,
-                    style: epText(size: 13),
-                    decoration: epInputDecoration('Band name'),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const _FieldLabel('Sound / genres'),
-                const SizedBox(height: 7),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    for (final genre in {...kGenres, ..._genres})
-                      EpChip(
-                        label: genre,
-                        active: _genres.contains(genre),
-                        onTap: () => _toggleGenre(genre),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        key: const ValueKey('edit-custom-genre'),
-                        controller: _customGenre,
-                        onSubmitted: (_) => _addCustomGenre(),
-                        style: epText(size: 12.5),
-                        decoration: epInputDecoration('Another genre'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _addCustomGenre,
-                      child: const Text('ADD'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${_genres.length} of 3 selected',
-                  style: epText(size: 10.5, color: Ep.contentDisabled),
-                ),
-                const SizedBox(height: 14),
-                Semantics(
-                  label: 'Home base',
-                  textField: true,
-                  child: TextField(
-                    key: const ValueKey('edit-home-base'),
-                    controller: _area,
-                    onChanged: _draftChanged,
-                    style: epText(size: 13),
-                    decoration: epInputDecoration('Neighborhood or city'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _EditorSection(
-          title: 'Optional details',
-          description: 'Add these now or come back whenever you are ready.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
-                  BandAvatar(band, size: 58, radius: 12, fontSize: 20),
-                  const SizedBox(width: 12),
                   Expanded(
-                    child: TextAction(
-                      'CHANGE PROFILE IMAGE',
-                      onTap: app.openBandMedia,
-                      padding: EdgeInsets.zero,
+                    child: Text(
+                      'EDIT BAND',
+                      style: Theme.of(context).textTheme.epPageHeading,
                     ),
+                  ),
+                  TextAction(
+                    'PREVIEW →',
+                    onTap: _saving ? null : app.previewPublicProfile,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              Semantics(
-                label: 'Short bio',
-                textField: true,
-                child: TextField(
-                  key: const ValueKey('edit-short-bio'),
-                  controller: _bio,
-                  onChanged: _draftChanged,
-                  minLines: 3,
-                  maxLines: 6,
-                  style: epText(size: 13, height: 1.45),
-                  decoration: epInputDecoration('Tell fans about the band'),
+              Text(
+                'Update the public details fans use to recognize and discover your band.',
+                style: Theme.of(context).textTheme.epCaption,
+              ),
+              KeyedSubtree(
+                key: _requiredKey,
+                child: _EditorSection(
+                  title: 'Required details',
+                  description:
+                      'These details keep your profile useful in discovery.',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Semantics(
+                        label: 'Band name',
+                        textField: true,
+                        child: TextField(
+                          key: const ValueKey('edit-band-name'),
+                          controller: _name,
+                          enabled: !_saving,
+                          onChanged: _draftChanged,
+                          style: Theme.of(context).textTheme.epBody,
+                          decoration: _bandInput('BAND NAME', 'Band name'),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const _FieldLabel('GENRES'),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 7,
+                        runSpacing: 7,
+                        children: [
+                          for (final genre in {...kGenres, ..._genres})
+                            EpChip(
+                              label: genre,
+                              active: _genres.contains(genre),
+                              onTap: _saving ? null : () => _toggleGenre(genre),
+                            ),
+                          EpChip(
+                            key: const ValueKey('show-custom-genre'),
+                            label: '+ ADD',
+                            active: false,
+                            ghost: true,
+                            semanticLabel: 'Add custom genre',
+                            onTap: _saving
+                                ? null
+                                : () => setState(() {
+                                    _addingCustomGenre = true;
+                                    _error = null;
+                                  }),
+                          ),
+                        ],
+                      ),
+                      if (_addingCustomGenre) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                key: const ValueKey('edit-custom-genre'),
+                                controller: _customGenre,
+                                enabled: !_saving,
+                                autofocus: true,
+                                onSubmitted: (_) => _addCustomGenre(),
+                                style: Theme.of(context).textTheme.epBody,
+                                decoration: epInputDecoration('Another genre'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              onPressed: _saving ? null : _addCustomGenre,
+                              child: const Text('ADD'),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 5),
+                      Text(
+                        '${_genres.length} of 3 selected',
+                        style: Theme.of(context).textTheme.epCaption,
+                      ),
+                      const SizedBox(height: 16),
+                      Semantics(
+                        label: 'Home base',
+                        textField: true,
+                        child: TextField(
+                          key: const ValueKey('edit-home-base'),
+                          controller: _area,
+                          enabled: !_saving,
+                          onChanged: _draftChanged,
+                          style: Theme.of(context).textTheme.epBody,
+                          decoration: _bandInput(
+                            'HOME BASE',
+                            'Neighborhood or city',
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 14),
-              KeyedSubtree(
-                key: _linksKey,
+              _EditorSection(
+                title: 'Optional details',
+                description:
+                    'Add these now or come back whenever you are ready.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _FieldLabel('Links'),
-                    const SizedBox(height: 7),
-                    TextField(
-                      key: const ValueKey('edit-instagram'),
-                      controller: _instagram,
-                      onChanged: (value) {
-                        _instagramDirty = true;
-                        _draftChanged(value);
-                      },
-                      style: epText(size: 12.5),
-                      decoration: epInputDecoration('Instagram'),
+                    Row(
+                      children: [
+                        BandAvatar(band, size: 58, radius: 12, fontSize: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextAction(
+                            'CHANGE PROFILE IMAGE',
+                            onTap: _saving ? null : app.openBandMedia,
+                            padding: EdgeInsets.zero,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      key: const ValueKey('edit-bandcamp'),
-                      controller: _bandcamp,
-                      onChanged: (value) {
-                        _bandcampDirty = true;
-                        _draftChanged(value);
-                      },
-                      style: epText(size: 12.5),
-                      decoration: epInputDecoration('Bandcamp'),
+                    const SizedBox(height: 14),
+                    Semantics(
+                      label: 'Short bio',
+                      textField: true,
+                      child: TextField(
+                        key: const ValueKey('edit-short-bio'),
+                        controller: _bio,
+                        enabled: !_saving,
+                        onChanged: _draftChanged,
+                        minLines: 3,
+                        maxLines: 6,
+                        style: Theme.of(context).textTheme.epBody,
+                        decoration: _bandInput(
+                          'SHORT BIO',
+                          'Tell fans about the band',
+                        ),
+                      ),
                     ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      key: const ValueKey('edit-youtube'),
-                      controller: _youtube,
-                      onChanged: (value) {
-                        _youtubeDirty = true;
-                        _draftChanged(value);
-                      },
-                      style: epText(size: 12.5),
-                      decoration: epInputDecoration('YouTube or video'),
+                    const SizedBox(height: 14),
+                    _MediaManagementRow(
+                      onTap: _saving ? null : app.openBandMedia,
+                    ),
+                    const SizedBox(height: 16),
+                    KeyedSubtree(
+                      key: _linksKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const _FieldLabel('LINKS'),
+                          const SizedBox(height: 7),
+                          TextField(
+                            key: const ValueKey('edit-instagram'),
+                            controller: _instagram,
+                            enabled: !_saving,
+                            onChanged: (value) {
+                              _instagramDirty = true;
+                              _draftChanged(value);
+                            },
+                            style: Theme.of(context).textTheme.epBody,
+                            decoration: _bandInput('INSTAGRAM', 'Instagram'),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            key: const ValueKey('edit-bandcamp'),
+                            controller: _bandcamp,
+                            enabled: !_saving,
+                            onChanged: (value) {
+                              _bandcampDirty = true;
+                              _draftChanged(value);
+                            },
+                            style: Theme.of(context).textTheme.epBody,
+                            decoration: _bandInput('BANDCAMP', 'Bandcamp'),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            key: const ValueKey('edit-youtube'),
+                            controller: _youtube,
+                            enabled: !_saving,
+                            onChanged: (value) {
+                              _youtubeDirty = true;
+                              _draftChanged(value);
+                            },
+                            style: Theme.of(context).textTheme.epBody,
+                            decoration: _bandInput(
+                              'YOUTUBE OR VIDEO',
+                              'YouTube or video',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Semantics(
+                      label: 'Credits',
+                      textField: true,
+                      child: TextField(
+                        key: const ValueKey('edit-credits'),
+                        controller: _credits,
+                        enabled: !_saving,
+                        onChanged: (value) {
+                          _creditsDirty = true;
+                          _draftChanged(value);
+                        },
+                        minLines: 3,
+                        maxLines: 6,
+                        style: Theme.of(context).textTheme.epBody,
+                        decoration: _bandInput(
+                          'CREDITS',
+                          'Producers, artists, labels, and collaborators',
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
-              Semantics(
-                label: 'Credits',
-                textField: true,
-                child: TextField(
-                  key: const ValueKey('edit-credits'),
-                  controller: _credits,
-                  onChanged: (value) {
-                    _creditsDirty = true;
-                    _draftChanged(value);
-                  },
-                  minLines: 3,
-                  maxLines: 6,
-                  style: epText(size: 13, height: 1.45),
-                  decoration: epInputDecoration(
-                    'Producers, artists, labels, and collaborators',
+              KeyedSubtree(
+                key: _membersKey,
+                child: const _BandMembersSection(),
+              ),
+              if (_error case final error?) ...[
+                const SizedBox(height: 16),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    error,
+                    key: const ValueKey('profile-save-error'),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epBody.copyWith(color: Ep.warning),
                   ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: app.openBandMedia,
-                icon: const Icon(Icons.play_circle_outline),
-                label: const Text('MANAGE MUSIC AND MEDIA'),
-              ),
+              ] else if (_saved) ...[
+                const SizedBox(height: 16),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    'Changes saved.',
+                    key: const ValueKey('profile-save-success'),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epBody.copyWith(color: Ep.success),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              _ArchiveBandAction(band: band),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        KeyedSubtree(key: _membersKey, child: const _BandMembersSection()),
-        const SizedBox(height: 16),
-        if (_error case final error?) ...[
-          Text(
-            error,
-            key: const ValueKey('profile-save-error'),
-            style: epText(size: 11.5, color: Ep.warning, height: 1.4),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 66,
+          child: StickyActionBar(
+            key: const ValueKey('save-band-profile'),
+            primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
+            onPrimary: _saving ? null : _save,
           ),
-          const SizedBox(height: 8),
-        ] else if (_saved) ...[
-          Text(
-            'Changes saved.',
-            key: const ValueKey('profile-save-success'),
-            style: epText(size: 11.5, color: Ep.accent),
-          ),
-          const SizedBox(height: 8),
-        ],
-        EpButton(
-          _saving ? 'SAVING…' : 'SAVE CHANGES',
-          kind: _saving ? EpButtonKind.disabled : EpButtonKind.filled,
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          onTap: _saving ? null : _save,
         ),
-        const SizedBox(height: 24),
-        _ArchiveBandAction(band: band),
       ],
     );
   }
 }
+
+InputDecoration _bandInput(String label, String hint) =>
+    epInputDecoration(hint).copyWith(
+      labelText: label,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+    );
 
 class _EditorSection extends StatelessWidget {
   const _EditorSection({
     required this.title,
     required this.description,
     required this.child,
+    this.count,
   });
 
   final String title;
   final String description;
   final Widget child;
+  final int? count;
 
   @override
   Widget build(BuildContext context) {
-    return EpCard(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(title, style: epDisplay(size: 15)),
-          const SizedBox(height: 3),
-          Text(
-            description,
-            style: epText(size: 10.5, color: Ep.contentSecondary, height: 1.4),
-          ),
-          const SizedBox(height: 14),
-          child,
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionBar(label: title, count: count),
+        Text(description, style: Theme.of(context).textTheme.epCaption),
+        const SizedBox(height: 14),
+        child,
+      ],
     );
   }
 }
@@ -501,11 +569,67 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       label,
-      style: epText(
-        size: 10,
-        weight: FontWeight.w900,
+      style: Theme.of(context).textTheme.epLabel.copyWith(
+        fontSize: 11,
+        fontWeight: FontWeight.w900,
         letterSpacing: .8,
         color: Ep.contentSecondary,
+      ),
+    );
+  }
+}
+
+class _MediaManagementRow extends StatelessWidget {
+  const _MediaManagementRow({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: 'Manage music and media',
+      excludeSemantics: true,
+      child: Material(
+        color: Ep.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(11),
+          side: const BorderSide(color: Ep.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.play_arrow_rounded,
+                    color: onTap == null ? Ep.contentDisabled : Ep.volt,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'MANAGE MUSIC AND MEDIA',
+                      style: Theme.of(context).textTheme.epLabel.copyWith(
+                        color: onTap == null
+                            ? Ep.contentDisabled
+                            : Ep.contentPrimary,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: onTap == null ? Ep.contentDisabled : Ep.mute,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -566,12 +690,13 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
 
     return _EditorSection(
       title: 'Band members',
+      count: members.length,
       description:
           'Share one secure link. It can be used by multiple members for seven days.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _FieldLabel('Accepted members'),
+          const _FieldLabel('ACCEPTED MEMBERS'),
           const SizedBox(height: 7),
           if (members.isEmpty)
             Text(
@@ -579,21 +704,20 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
               style: epText(size: 11.5, color: Ep.contentSecondary),
             )
           else
-            for (final member in members)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.check_circle_outline,
-                      size: 17,
-                      color: Ep.accent,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(member, style: epText(size: 12.5))),
-                  ],
-                ),
-              ),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                for (final member in members)
+                  EpChip(
+                    key: ValueKey('accepted-member-$member'),
+                    label: member,
+                    active: false,
+                    onTap: null,
+                    semanticLabel: '$member, accepted member',
+                  ),
+              ],
+            ),
           const SizedBox(height: 10),
           if (loading && invite == null)
             const Center(child: CircularProgressIndicator())
@@ -633,7 +757,7 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                   Text(
                     'ACTIVE · EXPIRES ${_expiryLabel(invite.expiresAt)}',
                     style: epText(
-                      size: 9.5,
+                      size: 11,
                       weight: FontWeight.w800,
                       color: Ep.accent,
                     ),
@@ -642,7 +766,7 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
               ),
             ),
             const SizedBox(height: 8),
-            FilledButton.icon(
+            OutlinedButton.icon(
               onPressed: _working
                   ? null
                   : () => copyForUser(
@@ -703,12 +827,12 @@ class _ArchiveBandAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
+    return DangerZone(
       key: const Key('archive-band'),
+      label: 'Archive band',
+      consequence:
+          'Archiving removes this band from public pages and management, revokes invitations, and cancels future gigs it owns. You cannot restore the band in EarPlug. Historical and shared records remain.',
       onPressed: () => _confirmArchive(context),
-      style: OutlinedButton.styleFrom(foregroundColor: Ep.destructive),
-      icon: const Icon(Icons.archive_outlined),
-      label: const Text('ARCHIVE BAND'),
     );
   }
 
@@ -749,7 +873,7 @@ class _ArchiveBandDialogState extends State<_ArchiveBandDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const Text(
-            'This removes the band from public pages and management, revokes invitations, and cancels future gigs it owns. Historical and shared records are preserved.',
+            'This removes the band from public pages and management, revokes invitations, and cancels future gigs it owns. You cannot restore the band in EarPlug. Historical and shared records are preserved.',
           ),
           const SizedBox(height: 14),
           Text('Type ${widget.band.name} to confirm.'),
@@ -770,6 +894,10 @@ class _ArchiveBandDialogState extends State<_ArchiveBandDialog> {
         ),
         FilledButton(
           onPressed: !matches || _working ? null : _archive,
+          style: FilledButton.styleFrom(
+            backgroundColor: Ep.destructive,
+            foregroundColor: Ep.dark,
+          ),
           child: Text(_working ? 'ARCHIVING…' : 'ARCHIVE BAND'),
         ),
       ],

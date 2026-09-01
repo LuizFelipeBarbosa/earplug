@@ -5,6 +5,8 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_edit.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -16,31 +18,111 @@ void main() {
   ) async {
     final semantics = tester.ensureSemantics();
     await pumpApp(tester, home: const Scaffold(body: BandEditScreen()));
+    tester.view.physicalSize = const Size(402, 5000);
+    await tester.pumpAndSettle();
 
-    expect(find.text('EDIT PROFILE'), findsOne);
-    expect(find.text('Required details'), findsOne);
-    // The remaining match is the field hint, not a duplicate heading.
+    expect(find.text('EDIT BAND'), findsOne);
+    expect(find.text('REQUIRED DETAILS'), findsOne);
+    expect(find.text('BAND NAME'), findsOne);
     expect(find.text('Band name'), findsOne);
     expect(find.bySemanticsLabel('Band name'), findsOne);
-    expect(find.text('Sound / genres'), findsOne);
-    expect(find.text('Home base'), findsNothing);
+    expect(find.text('GENRES'), findsOne);
+    expect(find.text('HOME BASE'), findsOne);
     expect(find.bySemanticsLabel('Home base'), findsOne);
-    expect(find.text('PREVIEW PUBLIC PROFILE'), findsOne);
-    await _scrollTo(tester, 'Optional details');
-    expect(find.text('Short bio'), findsNothing);
+    expect(find.text('PREVIEW →'), findsOne);
+    expect(find.byType(StickyActionBar), findsOne);
+    expect(find.text('SHORT BIO'), findsOne);
     expect(find.bySemanticsLabel('Short bio'), findsOne);
-    expect(find.text('Links'), findsOne);
-    expect(find.text('Credits'), findsNothing);
+    expect(find.text('LINKS'), findsOne);
+    expect(find.text('CREDITS'), findsOne);
     expect(find.bySemanticsLabel('Credits'), findsOne);
-    expect(find.text('Music and clips'), findsNothing);
-    await _scrollTo(tester, 'Band members');
-    expect(find.text('Band members'), findsOne);
-    expect(find.text('Accepted members'), findsOne);
+    expect(find.text('MANAGE MUSIC AND MEDIA'), findsOne);
+    expect(find.textContaining('BAND MEMBERS'), findsOne);
+    expect(find.text('ACCEPTED MEMBERS'), findsOne);
     expect(find.text('Invitation link'), findsNothing);
     expect(find.text('Sleeve notes'), findsNothing);
     expect(find.text('Home taping'), findsNothing);
     expect(find.text('PREVIEW AS FAN'), findsNothing);
     semantics.dispose();
+  });
+
+  testWidgets('custom genres use a ghost add flow without a band bio limit', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: BandEditScreen()));
+    tester.view.physicalSize = const Size(402, 1800);
+    await tester.pumpAndSettle();
+
+    final addChip = tester.widget<EpChip>(
+      find.byKey(const ValueKey('show-custom-genre')),
+    );
+    expect(addChip.ghost, isTrue);
+    expect(find.byKey(const ValueKey('edit-custom-genre')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('show-custom-genre')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('edit-custom-genre')),
+      'doom jazz',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'ADD'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DOOM JAZZ'), findsOne);
+    expect(find.byKey(const ValueKey('edit-custom-genre')), findsNothing);
+    await _scrollToKey(tester, const ValueKey('edit-short-bio'));
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('edit-short-bio')))
+          .maxLength,
+      isNull,
+    );
+  });
+
+  testWidgets(
+    'accepted members are read-only and archive copy is irreversible',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: BandEditScreen()),
+      );
+      harness.app.openBandEditor(section: 'members');
+      await tester.pumpAndSettle();
+
+      final member = tester.widget<EpChip>(
+        find.byKey(const ValueKey('accepted-member-Band admin')),
+      );
+      expect(member.onTap, isNull);
+      expect(member.onRemoved, isNull);
+
+      await _scrollTo(tester, 'ARCHIVE BAND');
+      expect(find.byType(DangerZone), findsOne);
+      expect(find.textContaining('cannot restore'), findsOne);
+      expect(
+        find.textContaining('Historical and shared records remain'),
+        findsOne,
+      );
+    },
+  );
+
+  testWidgets('editor remains usable at two-times text scale', (tester) async {
+    await pumpApp(
+      tester,
+      home: const MediaQuery(
+        data: MediaQueryData(
+          size: Size(402, 900),
+          textScaler: TextScaler.linear(2),
+        ),
+        child: Scaffold(body: BandEditScreen()),
+      ),
+    );
+
+    for (var page = 0; page < 8; page++) {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -600));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    }
+    expect(find.byType(StickyActionBar), findsOne);
   });
 
   testWidgets('profile changes remain local until one explicit atomic save', (
@@ -186,7 +268,7 @@ void main() {
       );
       await _scrollTo(tester, 'SAVE CHANGES');
       await tester.tap(find.text('SAVE CHANGES'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(
         find.text('Band name, sound, and home base are required.'),
@@ -246,8 +328,8 @@ void main() {
     harness.app.openBandEditor(section: 'members');
     await tester.pumpAndSettle();
 
-    expect(find.text('Band members'), findsOne);
-    expect(find.text('Band admin'), findsOne);
+    expect(find.textContaining('BAND MEMBERS'), findsOne);
+    expect(find.text('BAND ADMIN'), findsOne);
     await tester.tap(find.text('CREATE INVITATION LINK'));
     await tester.pumpAndSettle();
     final first = harness.app.inviteFor(harness.app.bandId)!;
@@ -313,7 +395,7 @@ void main() {
         home: const Scaffold(body: BandEditScreen()),
       );
       await _scrollTo(tester, 'ARCHIVE BAND');
-      await tester.tap(find.byKey(const Key('archive-band')));
+      await tester.tap(find.text('ARCHIVE BAND'));
       await tester.pumpAndSettle();
 
       final confirm = find.byKey(const Key('archive-band-confirmation'));
