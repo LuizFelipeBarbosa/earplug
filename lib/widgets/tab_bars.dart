@@ -10,6 +10,7 @@ import 'sheets.dart';
 class EpNavigationItem extends StatelessWidget {
   final IconData icon;
   final String label;
+  final String? compactLabel;
   final bool selected;
   final VoidCallback onPressed;
 
@@ -17,6 +18,7 @@ class EpNavigationItem extends StatelessWidget {
     super.key,
     required this.icon,
     required this.label,
+    this.compactLabel,
     required this.selected,
     required this.onPressed,
   });
@@ -53,17 +55,25 @@ class EpNavigationItem extends StatelessWidget {
                 const SizedBox(height: 6),
                 Icon(icon, size: 19, color: color),
                 const SizedBox(height: 4),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.epCaption.copyWith(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: .8,
-                    color: color,
-                  ),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final visualLabel =
+                        compactLabel != null && constraints.maxWidth < 82
+                        ? compactLabel!
+                        : label;
+                    return Text(
+                      visualLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.epCaption.copyWith(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .8,
+                        color: color,
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -142,6 +152,7 @@ class FanTabBar extends StatelessWidget {
           label: membershipsLoading
               ? 'BANDS'
               : bandEntryLabel(bandCount).toUpperCase(),
+          compactLabel: 'BAND',
           selected: false,
           onPressed: () {
             if (!app.authed) {

@@ -1,5 +1,9 @@
+import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
+import 'package:earplug/models.dart';
 import 'package:earplug/screens/explore.dart';
+import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -71,6 +75,41 @@ void main() {
       isEmpty,
     );
     expect(find.text('GENRES'), findsOne);
+  });
+
+  testWidgets('scope changes keep results visible and announce progress', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: ExploreScreen()));
+
+    await tester.enterText(find.byKey(const Key('explore-search-field')), 'a');
+    await tester.tap(find.byKey(const Key('explore-search-submit')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('explore-tab-events')));
+    await tester.pump();
+
+    expect(find.byKey(const Key('explore-results-events')), findsOne);
+    expect(find.byKey(const Key('explore-scope-progress')), findsOne);
+
+    await tester.pump(const Duration(milliseconds: 250));
+    expect(find.byKey(const Key('explore-scope-progress')), findsNothing);
+  });
+
+  testWidgets('band rows use singular fan copy for a single follower', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _SingleFollowerRepository(auth: auth),
+      home: const Scaffold(body: ExploreScreen()),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('1 fan'), findsOne);
+    expect(find.textContaining('1 fans'), findsNothing);
   });
 
   testWidgets('genre chips submit immediately', (tester) async {
@@ -217,3 +256,27 @@ Finder _allResultsScrollable() => find.descendant(
   of: find.byKey(const Key('explore-results-all')),
   matching: find.byType(Scrollable),
 );
+
+class _SingleFollowerRepository extends DemoRepository {
+  _SingleFollowerRepository({required super.auth});
+
+  @override
+  Future<BandPage> listBands({String? cursor, int numItems = 50}) async =>
+      const BandPage(
+        items: [
+          Band(
+            id: 'one-fan-band',
+            slug: 'one-fan-band',
+            name: 'One Fan Band',
+            genres: ['punk'],
+            area: 'Berkeley',
+            color: Color(0xFF2233EE),
+            initials: 'OF',
+            followers: 1,
+            bio: '',
+          ),
+        ],
+        continueCursor: null,
+        isDone: true,
+      );
+}

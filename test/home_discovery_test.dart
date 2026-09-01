@@ -57,6 +57,20 @@ void main() {
     expect(harness.app.mapMode, isFalse);
   });
 
+  testWidgets('a single nearby result uses singular gig copy', (tester) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _SingleGigRepository(auth: auth),
+      home: const Scaffold(body: HomeScreen()),
+      beforePump: (app) => app.setMapMode(false),
+    );
+
+    expect(find.text('1 GIG NEAR YOU · LOCAL ORDER'), findsOne);
+    expect(find.text('1 GIGS NEAR YOU · LOCAL ORDER'), findsNothing);
+  });
+
   testWidgets('map markers use the same multi-genre filtered feed', (
     tester,
   ) async {
@@ -326,6 +340,19 @@ class _MissingVenueRepository extends DemoRepository {
 
   @override
   Future<List<Venue>> venues() async => const [];
+}
+
+class _SingleGigRepository extends DemoRepository {
+  _SingleGigRepository({required super.auth});
+
+  @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: [DemoData.gigs.first],
+      venues: DemoData.venues,
+      bands: DemoData.bands,
+    ),
+  );
 }
 
 class _BoostRepository extends DemoRepository {

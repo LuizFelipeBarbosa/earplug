@@ -76,9 +76,33 @@ void main() {
     expect(harness.app.pending?.kind, PendingKind.follow);
     expect(harness.app.pending?.id, 'b1');
   });
+
+  testWidgets('gigs without descriptions omit the empty About section', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledPublicGigRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      repository: repository,
+      home: const Scaffold(body: GigDetailScreen(gigId: 'shared-gig')),
+      beforePump: (app) {
+        repository.emit(_textOnlyGig(desc: '   '));
+        app.openGig('shared-gig');
+      },
+      pumpFor: const Duration(milliseconds: 100),
+    );
+
+    expect(harness.app.gig('shared-gig'), isNotNull);
+    expect(find.text('ABOUT'), findsNothing);
+    expect(find.text('VENUE'), findsOne);
+  });
 }
 
-Gig _textOnlyGig({GigLifecycle lifecycle = GigLifecycle.published}) {
+Gig _textOnlyGig({
+  GigLifecycle lifecycle = GigLifecycle.published,
+  String desc = 'A direct-link show.',
+}) {
   final startsAt = DateTime.now().add(const Duration(days: 2));
   return Gig(
     id: 'shared-gig',
@@ -103,7 +127,7 @@ Gig _textOnlyGig({GigLifecycle lifecycle = GigLifecycle.published}) {
     ],
     going: 0,
     genres: const [],
-    desc: 'A direct-link show.',
+    desc: desc,
     tix: Ticketing.rsvp,
     lifecycle: lifecycle,
   );

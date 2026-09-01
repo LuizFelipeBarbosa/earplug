@@ -294,6 +294,57 @@ void main() {
     expect(indicator.constraints!.maxHeight, 2.5);
     expect(tester.widget<Text>(find.text('GIGS')).style!.fontSize, 11);
   });
+
+  testWidgets('stat labels wrap instead of truncating on narrow tiles', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        const SizedBox(
+          width: 90,
+          child: EpStatCard(
+            label: 'Next gig RSVPs',
+            value: '12',
+            caption: 'Riptide Release Show',
+            expand: false,
+          ),
+        ),
+      ),
+    );
+
+    final label = tester.widget<Text>(find.text('NEXT GIG RSVPS'));
+    expect(label.maxLines, 2);
+    expect(label.style!.fontSize, greaterThanOrEqualTo(11));
+    expect(tester.getSize(find.text('NEXT GIG RSVPS')).height, greaterThan(20));
+  });
+
+  testWidgets('narrow navigation keeps its full accessible band label', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(
+      _host(
+        SizedBox(
+          width: 74,
+          child: EpNavigationItem(
+            icon: Icons.groups_outlined,
+            label: 'SWITCH BAND',
+            compactLabel: 'BAND',
+            selected: false,
+            onPressed: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('BAND'), findsOne);
+    expect(find.text('SWITCH BAND'), findsNothing);
+    expect(
+      tester.getSemantics(find.byType(EpNavigationItem)).label,
+      'SWITCH BAND',
+    );
+    semantics.dispose();
+  });
 }
 
 Widget _host(Widget child) => MaterialApp(

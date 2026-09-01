@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -21,6 +23,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
   late String _lastSubmittedQuery;
   bool _showAllBands = false;
   bool _showAllVenues = false;
+  Timer? _scopeFeedbackTimer;
+  bool _showScopeFeedback = false;
 
   @override
   void initState() {
@@ -31,6 +35,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
   @override
   void dispose() {
+    _scopeFeedbackTimer?.cancel();
     _controller.dispose();
     super.dispose();
   }
@@ -94,29 +99,54 @@ class _ExploreScreenState extends State<ExploreScreen> {
             ],
           ),
         ),
-        _SearchTypeTabs(app: app),
+        _SearchTypeTabs(
+          app: app,
+          onSelected: (type) => _selectScope(app, type),
+        ),
         Expanded(
-          child: searching
-              ? _SearchResults(app: app, q: q)
-              : _BrowseRows(
-                  app: app,
-                  showAllBands: _showAllBands,
-                  showAllVenues: _showAllVenues,
-                  onSearch: (query) {
-                    _controller.value = TextEditingValue(
-                      text: query,
-                      selection: TextSelection.collapsed(offset: query.length),
-                    );
-                    _submitSearch(app);
-                  },
-                  onToggleBands: () {
-                    setState(() => _showAllBands = !_showAllBands);
-                  },
-                  onToggleVenues: () {
-                    setState(() => _showAllVenues = !_showAllVenues);
-                  },
-                  onOpenFilters: () => showDiscoveryFiltersSheet(context),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: searching
+                    ? _SearchResults(app: app, q: q)
+                    : _BrowseRows(
+                        app: app,
+                        showAllBands: _showAllBands,
+                        showAllVenues: _showAllVenues,
+                        onSearch: (query) {
+                          _controller.value = TextEditingValue(
+                            text: query,
+                            selection: TextSelection.collapsed(
+                              offset: query.length,
+                            ),
+                          );
+                          _submitSearch(app);
+                        },
+                        onToggleBands: () {
+                          setState(() => _showAllBands = !_showAllBands);
+                        },
+                        onToggleVenues: () {
+                          setState(() => _showAllVenues = !_showAllVenues);
+                        },
+                        onOpenFilters: () => showDiscoveryFiltersSheet(context),
+                      ),
+              ),
+              if (_showScopeFeedback)
+                Positioned(
+                  top: 0,
+                  left: 16,
+                  right: 16,
+                  child: Semantics(
+                    liveRegion: true,
+                    label: 'Updating search results',
+                    child: const LinearProgressIndicator(
+                      key: Key('explore-scope-progress'),
+                      minHeight: 2,
+                    ),
+                  ),
                 ),
+            ],
+          ),
         ),
       ],
     );
@@ -138,6 +168,16 @@ class _ExploreScreenState extends State<ExploreScreen> {
     _controller.clear();
     _lastSubmittedQuery = '';
     app.setQuery('');
+  }
+
+  void _selectScope(AppState app, ExploreResultType type) {
+    if (type == app.exploreResultType) return;
+    _scopeFeedbackTimer?.cancel();
+    setState(() => _showScopeFeedback = true);
+    app.setExploreResultType(type);
+    _scopeFeedbackTimer = Timer(const Duration(milliseconds: 250), () {
+      if (mounted) setState(() => _showScopeFeedback = false);
+    });
   }
 }
 
@@ -276,9 +316,10 @@ class _SearchResults extends StatelessWidget {
 }
 
 class _SearchTypeTabs extends StatelessWidget {
-  const _SearchTypeTabs({required this.app});
+  const _SearchTypeTabs({required this.app, required this.onSelected});
 
   final AppState app;
+  final ValueChanged<ExploreResultType> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -309,7 +350,7 @@ class _SearchTypeTabs extends StatelessWidget {
         selected: {app.exploreResultType},
         showSelectedIcon: false,
         onSelectionChanged: (selection) {
-          app.setExploreResultType(selection.single);
+          onSelected(selection.single);
         },
         style: ButtonStyle(
           minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
@@ -364,7 +405,11 @@ class _BandRow extends StatelessWidget {
                   style: Theme.of(context).textTheme.epLabel,
                 ),
                 Text(
-                  [band.genreLine, '${band.followersLabel} fans'].join(' · '),
+                  [
+                    band.genreLine,
+                    '${band.followersLabel} '
+                        '${band.followers == 1 ? 'fan' : 'fans'}',
+                  ].join(' · '),
                   style: Theme.of(context).textTheme.epCaption,
                 ),
               ],

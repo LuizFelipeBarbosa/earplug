@@ -298,7 +298,8 @@ class _BandHero extends StatelessWidget {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(
-                    '${band.followersLabel} followers',
+                    '${band.followersLabel} '
+                    '${band.followers == 1 ? 'follower' : 'followers'}',
                     style: Theme.of(context).textTheme.epCaption,
                   ),
                   if (band.profileComplete) const ProfileCompleteBadge(),

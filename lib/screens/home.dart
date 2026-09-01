@@ -174,12 +174,13 @@ class _FeedList extends StatelessWidget {
     final feed = app.feed;
     final featured = feed.firstOrNull;
     final remaining = feed.skip(1).toList(growable: false);
+    final gigNoun = feed.length == 1 ? 'GIG' : 'GIGS';
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
       children: [
         if (feed.isNotEmpty) ...[
           Text(
-            '${feed.length} GIGS NEAR YOU · LOCAL ORDER',
+            '${feed.length} $gigNoun NEAR YOU · LOCAL ORDER',
             style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1.2,
               color: Ep.contentSecondary,

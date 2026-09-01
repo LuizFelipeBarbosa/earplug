@@ -997,36 +997,52 @@ class EpStatCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       radius: 14,
       borderColor: Ep.surface,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label.toUpperCase(),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              fontSize: 11,
-              letterSpacing: 1.5,
-              color: Ep.mute,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.epDisplay.copyWith(fontSize: 22),
-          ),
-          if (caption != null && caption!.trim().isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              caption!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epCaption,
-            ),
-          ],
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 100;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: compact ? 32 : 18,
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: Text(
+                    label.toUpperCase(),
+                    maxLines: compact ? 2 : 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                      fontSize: 11,
+                      letterSpacing: compact ? .6 : 1.5,
+                      color: Ep.mute,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(
+                  context,
+                ).textTheme.epDisplay.copyWith(fontSize: 22),
+              ),
+              if (caption != null && caption!.trim().isNotEmpty) ...[
+                const SizedBox(height: 2),
+                SizedBox(
+                  height: compact ? 48 : 32,
+                  child: Text(
+                    caption!,
+                    maxLines: compact ? 3 : 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.epCaption,
+                  ),
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
     return expand ? Expanded(child: tile) : tile;

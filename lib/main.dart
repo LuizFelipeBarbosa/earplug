@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 
 import 'app_state.dart';
@@ -32,8 +34,16 @@ import 'widgets/branding.dart';
 import 'widgets/common.dart';
 import 'widgets/tab_bars.dart';
 
+SemanticsHandle? _webSemanticsHandle;
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Flutter web otherwise waits for an accessibility request before building
+  // its semantic DOM. Keeping one handle alive makes the app keyboard- and
+  // screen-reader-discoverable from the first rendered frame.
+  if (kIsWeb) {
+    _webSemanticsHandle ??= SemanticsBinding.instance.ensureSemantics();
+  }
   final joinToken = joinTokenFromUri(Uri.base);
   final performerInviteToken = performerInviteTokenFromUri(Uri.base);
   final gigId = gigIdFromUri(Uri.base);

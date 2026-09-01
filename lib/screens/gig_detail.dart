@@ -103,15 +103,17 @@ class GigDetailScreen extends StatelessWidget {
                     _LineupRow(performer: performer, app: app),
                     const SizedBox(height: 8),
                   ],
-                  const SectionBar(label: 'ABOUT'),
-                  Text(
-                    gig.desc,
-                    style: epText(
-                      size: 13.5,
-                      color: Ep.contentSecondary,
-                      height: 1.5,
+                  if (gig.desc.trim().isNotEmpty) ...[
+                    const SectionBar(label: 'ABOUT'),
+                    Text(
+                      gig.desc,
+                      style: epText(
+                        size: 13.5,
+                        color: Ep.contentSecondary,
+                        height: 1.5,
+                      ),
                     ),
-                  ),
+                  ],
                   const SectionBar(label: 'VENUE'),
                   _VenueCard(venue: venue, app: app),
                   const SectionBar(label: "WHO'S GOING"),
