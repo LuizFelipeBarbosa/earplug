@@ -656,7 +656,9 @@ class _TurnoutChart extends StatelessWidget {
     );
     final scale = math.max<num>(1, math.max(maxValue, average));
     const plotHeight = 142.0;
-    final averageTop = plotHeight * (1 - (average / scale).clamp(0, 1));
+    double barHeightFor(num value) =>
+        ((value / scale).clamp(0, 1) * (plotHeight - 40)).toDouble();
+    final averageTop = plotHeight - barHeightFor(average);
 
     return SizedBox(
       height: 210,
@@ -717,12 +719,9 @@ class _TurnoutChart extends StatelessWidget {
                                       const SizedBox(height: 3),
                                       Container(
                                         width: 24,
-                                        height:
-                                            (show.measuredRsvps / scale).clamp(
-                                              0,
-                                              1,
-                                            ) *
-                                            (plotHeight - 40),
+                                        height: barHeightFor(
+                                          show.measuredRsvps,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: Ep.brand,
                                           borderRadius: BorderRadius.vertical(

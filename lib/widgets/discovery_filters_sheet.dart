@@ -8,6 +8,7 @@ import '../services/location_service.dart';
 import '../theme.dart';
 import 'common.dart';
 import 'ep_sheet.dart';
+import 'sheets.dart';
 
 void showDiscoveryLocationSheet(BuildContext context) {
   showEpSheet(
@@ -42,55 +43,37 @@ class _SheetFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final height = MediaQuery.sizeOf(context).height * .88;
-    return SafeArea(
-      top: false,
-      child: Container(
-        height: height,
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-        decoration: BoxDecoration(
-          color: context.epColors.surfaceRaised,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border(top: BorderSide(color: context.epColors.border)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: context.epColors.contentDisabled,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
+    return EpSheetShell(
+      heightFactor: .88,
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+      backgroundColor: context.epColors.surfaceRaised,
+      borderColor: context.epColors.border,
+      topRadius: 20,
+      handleColor: context.epColors.contentDisabled,
+      handleBottomSpacing: 12,
+      header: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.epSectionHeading,
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.epSectionHeading,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.pop(context),
-                  icon: Icon(Icons.close),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Expanded(child: child),
-            if (footer case final Widget footer) ...[
-              const SizedBox(height: 12),
-              footer,
-            ],
-          ],
-        ),
+          ),
+          IconButton(
+            tooltip: 'Close',
+            onPressed: () => Navigator.pop(context),
+            icon: Icon(Icons.close),
+          ),
+        ],
       ),
+      children: [
+        const SizedBox(height: 4),
+        Expanded(child: child),
+        if (footer case final Widget footer) ...[
+          const SizedBox(height: 12),
+          footer,
+        ],
+      ],
     );
   }
 }
@@ -141,14 +124,19 @@ class _LocationSheet extends StatelessWidget {
             const SizedBox(height: 8),
             _LocationFailureMessage(failure: failure, app: app),
           ],
-          if (app.discoveryLocation == DiscoveryLocation.home)
-            if (app.discoveryHomeCity case final homeCity?)
+          if (app.profile?.homeLocation case final homeCity?)
+            if (discoveryLocationForFanCity(homeCity) == DiscoveryLocation.home)
               _OptionTile(
                 title: homeCity.label,
                 subtitle: 'Saved home location',
-                selected: true,
+                selected: app.discoveryLocation == DiscoveryLocation.home,
                 leading: Icon(Icons.home_outlined, size: 20),
-                onTap: () => Navigator.pop(context),
+                onTap: () {
+                  if (app.discoveryLocation != DiscoveryLocation.home) {
+                    app.selectFanCity(homeCity);
+                  }
+                  Navigator.pop(context);
+                },
               ),
           _OptionTile(
             title: 'Mission, SF',

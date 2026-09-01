@@ -8,50 +8,74 @@ import '../theme.dart';
 import 'common.dart';
 import 'ep_sheet.dart';
 
-class _SheetShell extends StatelessWidget {
-  final String title;
-  final List<Widget> children;
+/// Shared visual chrome for bottom sheets presented by [showEpSheet].
+class EpSheetShell extends StatelessWidget {
+  const EpSheetShell({
+    super.key,
+    required this.padding,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.topRadius,
+    required this.handleColor,
+    required this.handleBottomSpacing,
+    required this.header,
+    required this.children,
+    this.heightFactor,
+    this.maxHeightFactor,
+    this.scrollable = false,
+    this.mainAxisSize = MainAxisSize.max,
+  }) : assert(heightFactor == null || maxHeightFactor == null);
 
-  const _SheetShell({required this.title, required this.children});
+  final EdgeInsetsGeometry padding;
+  final Color backgroundColor;
+  final Color borderColor;
+  final double topRadius;
+  final Color handleColor;
+  final double handleBottomSpacing;
+  final Widget header;
+  final List<Widget> children;
+  final double? heightFactor;
+  final double? maxHeightFactor;
+  final bool scrollable;
+  final MainAxisSize mainAxisSize;
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final content = Column(
+      mainAxisSize: mainAxisSize,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(
+          child: Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: handleColor,
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+        ),
+        SizedBox(height: handleBottomSpacing),
+        header,
+        ...children,
+      ],
+    );
+
     return SafeArea(
       top: false,
       child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * .88,
-        ),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+        height: heightFactor == null ? null : screenHeight * heightFactor!,
+        constraints: maxHeightFactor == null
+            ? null
+            : BoxConstraints(maxHeight: screenHeight * maxHeightFactor!),
+        padding: padding,
         decoration: BoxDecoration(
-          color: context.epColors.surfaceRaised,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border(top: BorderSide(color: context.epColors.border)),
+          color: backgroundColor,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
+          border: Border(top: BorderSide(color: borderColor)),
         ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: context.epColors.contentDisabled,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                title.toUpperCase(),
-                style: Theme.of(context).textTheme.epSectionHeading,
-              ),
-              ...children,
-            ],
-          ),
-        ),
+        child: scrollable ? SingleChildScrollView(child: content) : content,
       ),
     );
   }
@@ -114,47 +138,30 @@ class EpActionSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final firstDestructive = items.indexWhere((item) => item.destructive);
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-        decoration: BoxDecoration(
-          color: context.epColors.raised,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          border: Border(top: BorderSide(color: context.epColors.border)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: context.epColors.mute,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              header.toUpperCase(),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epSection.copyWith(
-                color: context.epColors.mute,
-                fontSize: 11,
-              ),
-            ),
-            const SizedBox(height: 8),
-            for (var index = 0; index < items.length; index++) ...[
-              if (index == firstDestructive) Divider(height: 17),
-              _ActionSheetRow(item: items[index]),
-            ],
-          ],
+    return EpSheetShell(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+      backgroundColor: context.epColors.raised,
+      borderColor: context.epColors.border,
+      topRadius: 16,
+      handleColor: context.epColors.mute,
+      handleBottomSpacing: 14,
+      mainAxisSize: MainAxisSize.min,
+      header: Text(
+        header.toUpperCase(),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.epSection.copyWith(
+          color: context.epColors.mute,
+          fontSize: 11,
         ),
       ),
+      children: [
+        const SizedBox(height: 8),
+        for (var index = 0; index < items.length; index++) ...[
+          if (index == firstDestructive) Divider(height: 17),
+          _ActionSheetRow(item: items[index]),
+        ],
+      ],
     );
   }
 }
@@ -235,8 +242,20 @@ void showCitySheet(BuildContext context) {
       );
     }
 
-    return _SheetShell(
-      title: 'Where are you?',
+    return EpSheetShell(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+      backgroundColor: ctx.epColors.surfaceRaised,
+      borderColor: ctx.epColors.border,
+      topRadius: 20,
+      handleColor: ctx.epColors.contentDisabled,
+      handleBottomSpacing: 10,
+      maxHeightFactor: .88,
+      scrollable: true,
+      mainAxisSize: MainAxisSize.min,
+      header: Text(
+        'WHERE ARE YOU?',
+        style: Theme.of(ctx).textTheme.epSectionHeading,
+      ),
       children: [
         const SizedBox(height: 6),
         Text(
@@ -267,8 +286,20 @@ void showSwitcherSheet(BuildContext context) {
     final displayName = profileName == null || profileName.isEmpty
         ? 'You'
         : profileName;
-    return _SheetShell(
-      title: bandEntryLabel(app.myBands.length),
+    return EpSheetShell(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+      backgroundColor: ctx.epColors.surfaceRaised,
+      borderColor: ctx.epColors.border,
+      topRadius: 20,
+      handleColor: ctx.epColors.contentDisabled,
+      handleBottomSpacing: 10,
+      maxHeightFactor: .88,
+      scrollable: true,
+      mainAxisSize: MainAxisSize.min,
+      header: Text(
+        bandEntryLabel(app.myBands.length).toUpperCase(),
+        style: Theme.of(ctx).textTheme.epSectionHeading,
+      ),
       children: [
         _SheetOption(
           onTap: () {

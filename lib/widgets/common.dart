@@ -1089,6 +1089,7 @@ class EpStatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
     final tile = EpCard(
       padding: const EdgeInsets.all(12),
       radius: 14,
@@ -1100,7 +1101,9 @@ class EpStatCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                height: compact ? 32 : 18,
+                height:
+                    (compact ? 32 : 18) +
+                    (textScale - 1).clamp(0, 1) * (compact ? 21 : 9),
                 child: Align(
                   alignment: Alignment.topLeft,
                   child: Text(
@@ -1127,7 +1130,9 @@ class EpStatCard extends StatelessWidget {
               if (caption != null && caption!.trim().isNotEmpty) ...[
                 const SizedBox(height: 2),
                 SizedBox(
-                  height: compact ? 48 : 32,
+                  height:
+                      (compact ? 48 : 32) +
+                      (textScale - 1).clamp(0, 1) * (compact ? 42 : 28),
                   child: Text(
                     caption!,
                     maxLines: compact ? 3 : 2,
@@ -1211,112 +1216,6 @@ class EpBar extends StatelessWidget {
               decoration: BoxDecoration(color: Ep.brand),
             ),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Two-part horizontal bar with a compact new/returning legend.
-class EpStackedBar extends StatelessWidget {
-  final num newValue;
-  final num returningValue;
-  final String newLabel;
-  final String returningLabel;
-
-  const EpStackedBar({
-    super.key,
-    required this.newValue,
-    required this.returningValue,
-    this.newLabel = 'NEW',
-    this.returningLabel = 'RETURNING',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final safeNew = math.max(0.0, newValue.toDouble());
-    final safeReturning = math.max(0.0, returningValue.toDouble());
-    final total = safeNew + safeReturning;
-    final newFlex = total == 0
-        ? 0
-        : math.max(1, (safeNew / total * 1000).round());
-    final returningFlex = total == 0
-        ? 0
-        : math.max(1, (safeReturning / total * 1000).round());
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          height: 8,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: context.epColors.surfaceDisabled,
-            border: Border.all(color: context.epColors.border),
-            borderRadius: BorderRadius.circular(99),
-          ),
-          child: total == 0
-              ? null
-              : Row(
-                  children: [
-                    if (safeNew > 0)
-                      Expanded(
-                        flex: newFlex,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(color: Ep.brand),
-                        ),
-                      ),
-                    if (safeReturning > 0)
-                      Expanded(
-                        flex: returningFlex,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: context.epColors.accent,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-        ),
-        const SizedBox(height: 6),
-        Row(
-          children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: Ep.brand,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              newLabel,
-              style: Theme.of(context).textTheme.epCaption.copyWith(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: context.epColors.contentSecondary,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: context.epColors.accent,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              returningLabel,
-              style: Theme.of(context).textTheme.epCaption.copyWith(
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: context.epColors.contentSecondary,
-              ),
-            ),
-          ],
         ),
       ],
     );

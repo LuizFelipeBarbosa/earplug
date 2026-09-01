@@ -723,7 +723,9 @@ class _SlotGrid extends StatelessWidget {
           Ticketing.external =>
             app.gfExt.isEmpty ? 'Add ticket URL' : app.gfExt,
         },
-        state: _SlotState.done,
+        state: app.gfTix == Ticketing.external && !app.validExternalTicketUrl
+            ? _SlotState.needed
+            : _SlotState.done,
         onTap: () => showTicketsSheet(context),
       ),
       _SlotCard(

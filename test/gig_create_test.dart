@@ -370,6 +370,23 @@ void main() {
     expect(app.canPublishGig, isTrue);
   });
 
+  testWidgets('access slot reflects the external ticket URL requirement', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    final accessSlot = find.byKey(const ValueKey('gig-slot-access'));
+    Finder doneIndicator() =>
+        find.descendant(of: accessSlot, matching: find.byIcon(Icons.check));
+
+    app.setGfTix(Ticketing.external);
+    await tester.pump();
+    expect(doneIndicator(), findsNothing);
+
+    app.setGfExt('https://dice.fm/show');
+    await tester.pump();
+    expect(doneIndicator(), findsOne);
+  });
+
   test(
     'new venues are created, deduplicated, refreshed, and selected',
     () async {

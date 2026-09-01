@@ -631,70 +631,50 @@ class _ProfileDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        height: MediaQuery.sizeOf(context).height * .84,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        decoration: BoxDecoration(
-          color: context.epColors.surfaceRaised,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border(top: BorderSide(color: context.epColors.border)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: context.epColors.contentDisabled,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
+    return EpSheetShell(
+      heightFactor: .84,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      backgroundColor: context.epColors.surfaceRaised,
+      borderColor: context.epColors.border,
+      topRadius: 20,
+      handleColor: context.epColors.contentDisabled,
+      handleBottomSpacing: 8,
+      header: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title.toUpperCase(),
-                        style: Theme.of(context).textTheme.epSectionHeading,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: Theme.of(context).textTheme.epCaption,
-                      ),
-                    ],
-                  ),
+                Text(
+                  title.toUpperCase(),
+                  style: Theme.of(context).textTheme.epSectionHeading,
                 ),
-                IconButton(
-                  tooltip: 'Close $title',
-                  onPressed: () => Navigator.pop(context),
-                  icon: Icon(Icons.close),
-                ),
+                const SizedBox(height: 2),
+                Text(subtitle, style: Theme.of(context).textTheme.epCaption),
               ],
             ),
-            if (notice != null) ...[
-              const SizedBox(height: 8),
-              DefaultTextStyle.merge(
-                style: Theme.of(context).textTheme.epMeta.copyWith(
-                  color: context.epColors.contentSecondary,
-                  fontWeight: FontWeight.w800,
-                ),
-                child: notice!,
-              ),
-            ],
-            const SizedBox(height: 6),
-            Expanded(child: child),
-          ],
-        ),
+          ),
+          IconButton(
+            tooltip: 'Close $title',
+            onPressed: () => Navigator.pop(context),
+            icon: Icon(Icons.close),
+          ),
+        ],
       ),
+      children: [
+        if (notice != null) ...[
+          const SizedBox(height: 8),
+          DefaultTextStyle.merge(
+            style: Theme.of(context).textTheme.epMeta.copyWith(
+              color: context.epColors.contentSecondary,
+              fontWeight: FontWeight.w800,
+            ),
+            child: notice!,
+          ),
+        ],
+        const SizedBox(height: 6),
+        Expanded(child: child),
+      ],
     );
   }
 }

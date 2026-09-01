@@ -833,61 +833,44 @@ class _ConfirmRemoveSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-        decoration: BoxDecoration(
-          color: context.epColors.raised,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-          border: Border(top: BorderSide(color: context.epColors.border)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: context.epColors.mute,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Text(
-              'REMOVE ${item.isVideo ? 'VIDEO' : 'PHOTO'}?',
-              style: Theme.of(context).textTheme.epSectionHeading,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              item.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epCaption,
-            ),
-            const SizedBox(height: 16),
-            OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: context.epColors.destructive,
-              ),
-              onPressed: () async {
-                await onDelete();
-                if (!context.mounted) return;
-                Navigator.pop(context);
-              },
-              child: Text('DELETE'),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('KEEP'),
-            ),
-          ],
-        ),
+    return EpSheetShell(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+      backgroundColor: context.epColors.raised,
+      borderColor: context.epColors.border,
+      topRadius: 16,
+      handleColor: context.epColors.mute,
+      handleBottomSpacing: 14,
+      mainAxisSize: MainAxisSize.min,
+      header: Text(
+        'REMOVE ${item.isVideo ? 'VIDEO' : 'PHOTO'}?',
+        style: Theme.of(context).textTheme.epSectionHeading,
       ),
+      children: [
+        const SizedBox(height: 8),
+        Text(
+          item.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+        const SizedBox(height: 16),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: context.epColors.destructive,
+          ),
+          onPressed: () async {
+            await onDelete();
+            if (!context.mounted) return;
+            Navigator.pop(context);
+          },
+          child: Text('DELETE'),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('KEEP'),
+        ),
+      ],
     );
   }
 }

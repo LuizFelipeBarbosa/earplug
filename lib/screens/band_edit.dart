@@ -212,8 +212,10 @@ class _BandEditScreenState extends State<BandEditScreen> {
     setState(() {
       if (role == _EditArtworkRole.avatar) {
         _avatarUploading = false;
+        if (!assigned) _avatarPreview = null;
       } else {
         _bannerUploading = false;
+        if (!assigned) _bannerPreview = null;
       }
       if (!assigned) {
         _artworkError =

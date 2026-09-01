@@ -125,6 +125,30 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
+  testWidgets('custom genre remains available when three are selected', (
+    tester,
+  ) async {
+    final harness = await _pumpBandCreate(tester);
+    tester.view.physicalSize = const Size(402, 2200);
+    await tester.pump();
+
+    await tester.tap(find.text('PUNK'));
+    await tester.tap(find.text('HARDCORE'));
+    await tester.tap(find.text('GARAGE'));
+    await tester.tap(find.byKey(const ValueKey('show-custom-genre')));
+    await tester.pump();
+    final customGenre = find.byKey(const ValueKey('edit-custom-genre'));
+    await tester.enterText(customGenre, 'ska');
+    await tester.tap(find.widgetWithText(FilledButton, 'ADD'));
+    await tester.pump();
+
+    expect(harness.app.nbGenres, ['punk', 'hardcore', 'garage']);
+    expect(harness.app.toast, 'Three genres max.');
+    expect(customGenre, findsOne);
+    expect(tester.widget<TextField>(customGenre).controller!.text, 'ska');
+    await tester.pump(const Duration(seconds: 3));
+  });
+
   testWidgets('avatar and banner upload into independent media roles', (
     tester,
   ) async {

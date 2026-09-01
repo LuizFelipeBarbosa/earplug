@@ -176,6 +176,37 @@ void main() {
     expect(find.text('FD'), findsOne);
   });
 
+  testWidgets('failed avatar replacement restores the saved artwork', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _FailingAvatarRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandEditScreen()),
+    );
+
+    harness.picker.nextPhoto = photoFixture(filename: 'failed_avatar.png');
+    final avatar = find.byKey(const ValueKey('band-profile-image-control'));
+    await tester.tap(avatar);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('REPLACE'));
+    await tester.pumpAndSettle();
+
+    final avatarFrame = find.byKey(const ValueKey('band-profile-avatar-frame'));
+    expect(
+      find.descendant(of: avatarFrame, matching: find.byType(Image)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: avatarFrame, matching: find.text('FD')),
+      findsOne,
+    );
+    expect(find.textContaining('profile image could not be saved'), findsOne);
+  });
+
   testWidgets(
     'accepted members are read-only and archive copy is irreversible',
     (tester) async {
@@ -592,6 +623,16 @@ class _ArtworkAuditRepository extends DemoRepository {
     clearAvatarCalls++;
     return super.clearBandAvatar(bandId);
   }
+}
+
+class _FailingAvatarRepository extends DemoRepository {
+  _FailingAvatarRepository({required super.auth});
+
+  @override
+  Future<void> setBandAvatar({
+    required String bandId,
+    required String mediaId,
+  }) async => throw StateError('avatar assignment failed');
 }
 
 class _DelayedDetailsRepository extends DemoRepository {

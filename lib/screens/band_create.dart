@@ -88,8 +88,12 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
 
   void _addCustomGenre() {
     final value = _customGenre.text;
-    context.read<AppState>().addNbGenre(value);
+    final app = context.read<AppState>();
+    final genre = value.trim().toLowerCase();
+    final alreadySelected = app.nbGenres.contains(genre);
+    final added = app.addNbGenre(value);
     if (value.trim().isEmpty) return;
+    if (!added && !alreadySelected) return;
     _customGenre.clear();
     setState(() => _addingCustomGenre = false);
   }

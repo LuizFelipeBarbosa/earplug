@@ -86,6 +86,51 @@ void main() {
     expect(renderedTitles, expectedTitles);
   });
 
+  testWidgets('average divider aligns with a show at the window average', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _AverageMatchingRecapRepository(auth: auth),
+      home: const Scaffold(body: AnalyticsScreen()),
+    );
+
+    await tester.scrollUntilVisible(
+      find.text('TURNOUT BY SHOW'),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final averageShow = find.byWidgetPredicate(
+      (widget) =>
+          widget is Semantics &&
+          widget.properties.label?.startsWith(
+                'Average Show, 20 measured RSVPs',
+              ) ==
+              true,
+    );
+    final averageBar = find.descendant(
+      of: averageShow,
+      matching: find.byType(Container),
+    );
+    final averageLine = find.byWidgetPredicate(
+      (widget) =>
+          widget is Row &&
+          widget.children.any(
+            (child) => child is Expanded && child.child is Divider,
+          ),
+    );
+
+    expect(averageBar, findsOne);
+    expect(find.text('AVG 20'), findsOne);
+    expect(averageLine, findsOne);
+    expect(
+      tester.getTopLeft(averageBar).dy,
+      closeTo(tester.getTopLeft(averageLine).dy, 2),
+    );
+  });
+
   testWidgets('suppressed section withholds its numbers', (tester) async {
     await pumpApp(tester, home: const Scaffold(body: AnalyticsScreen()));
 
@@ -316,6 +361,85 @@ class _TieZeroRecapRepository extends DemoRepository {
     pricing: RecapPricing(
       freeShows: 0,
       freeAvgRsvps: 0,
+      paidShows: 0,
+      paidAvgRsvps: 0,
+      suppressed: true,
+    ),
+  );
+}
+
+class _AverageMatchingRecapRepository extends DemoRepository {
+  _AverageMatchingRecapRepository({required super.auth});
+
+  @override
+  Future<BandRecap> bandRecap(String bandId) async => const BandRecap(
+    window: RecapWindow(
+      showsAnalyzed: 3,
+      scanned: 3,
+      truncated: false,
+      firstStartsAt: 1000,
+      lastStartsAt: 3000,
+    ),
+    totals: RecapTotals(
+      shows: 3,
+      reportedRsvps: 60,
+      measuredRsvps: 60,
+      avgPerShow: 20,
+      bestShowRsvps: 30,
+      distinctFans: 60,
+      followerCount: 60,
+    ),
+    shows: [
+      RecapShow(
+        gigId: 'below-average',
+        title: 'Below Average Show',
+        startsAt: 1000,
+        venueName: 'Small Room',
+        price: 0,
+        ticketing: Ticketing.rsvp,
+        goingCount: 10,
+        measuredRsvps: 10,
+        newFans: null,
+        returningFans: null,
+      ),
+      RecapShow(
+        gigId: 'at-average',
+        title: 'Average Show',
+        startsAt: 2000,
+        venueName: 'Middle Room',
+        price: 0,
+        ticketing: Ticketing.rsvp,
+        goingCount: 20,
+        measuredRsvps: 20,
+        newFans: null,
+        returningFans: null,
+      ),
+      RecapShow(
+        gigId: 'above-average',
+        title: 'Above Average Show',
+        startsAt: 3000,
+        venueName: 'Large Room',
+        price: 0,
+        ticketing: Ticketing.rsvp,
+        goingCount: 30,
+        measuredRsvps: 30,
+        newFans: null,
+        returningFans: null,
+      ),
+    ],
+    newReturningSuppressed: true,
+    leadTime: RecapLeadTime(
+      buckets: [],
+      medianDays: null,
+      unmeasurable: 0,
+      suppressed: true,
+    ),
+    venues: RecapVenues(rows: [], suppressed: true),
+    weekdays: RecapWeekdays(rows: [], suppressed: true),
+    repeatFans: RecapRepeatFans(tiers: [], suppressed: true),
+    pricing: RecapPricing(
+      freeShows: 3,
+      freeAvgRsvps: 20,
       paidShows: 0,
       paidAvgRsvps: 0,
       suppressed: true,

@@ -4,12 +4,38 @@ import 'package:earplug/screens/explore.dart';
 import 'package:earplug/screens/home.dart';
 import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('bottom tab bar accommodates accessibility text scale', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      home: const MediaQuery(
+        data: MediaQueryData(
+          size: Size(402, 900),
+          textScaler: TextScaler.linear(2),
+        ),
+        child: Scaffold(bottomNavigationBar: FanTabBar()),
+      ),
+    );
+
+    final tabBarRow = find.descendant(
+      of: find.byType(FanTabBar),
+      matching: find.byType(Row),
+    );
+    expect(
+      tester.getSize(tabBarRow).height,
+      greaterThan(66),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Home list remains usable at increased text scale', (
     tester,
   ) async {

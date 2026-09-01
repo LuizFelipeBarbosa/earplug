@@ -93,6 +93,7 @@ class _TabBarShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
@@ -103,7 +104,7 @@ class _TabBarShell extends StatelessWidget {
           ),
           padding: EdgeInsets.only(bottom: bottomPad),
           child: SizedBox(
-            height: 66,
+            height: 66 + (textScale - 1).clamp(0, 1) * 14,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10),
               child: Row(

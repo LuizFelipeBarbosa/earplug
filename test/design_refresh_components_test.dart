@@ -333,6 +333,56 @@ void main() {
     expect(tester.getSize(find.text('NEXT GIG RSVPS')).height, greaterThan(20));
   });
 
+  testWidgets('stat tiles accommodate accessibility text at both widths', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        const MediaQuery(
+          data: MediaQueryData(
+            size: Size(402, 900),
+            textScaler: TextScaler.linear(2),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 90,
+                child: EpStatCard(
+                  label: 'Next gig RSVPs',
+                  value: '12',
+                  caption: 'Riptide Release Show',
+                  expand: false,
+                ),
+              ),
+              SizedBox(width: 8),
+              SizedBox(
+                width: 160,
+                child: EpStatCard(
+                  label: 'Followers',
+                  value: '486',
+                  caption: 'and counting',
+                  expand: false,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(EpStatCard), findsNWidgets(2));
+    expect(
+      tester.getSize(find.byType(EpStatCard).first).height,
+      greaterThan(200),
+    );
+    expect(
+      tester.getSize(find.byType(EpStatCard).last).height,
+      greaterThan(150),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('narrow navigation keeps its full accessible band label', (
     tester,
   ) async {

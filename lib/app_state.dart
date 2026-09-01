@@ -56,6 +56,12 @@ enum PriceFilter { any, free, paid }
 
 enum DiscoveryLocation { sf, oak, home, current }
 
+DiscoveryLocation discoveryLocationForFanCity(FanCity city) => switch (city) {
+  FanCity.sf => DiscoveryLocation.sf,
+  FanCity.oak => DiscoveryLocation.oak,
+  _ => DiscoveryLocation.home,
+};
+
 enum _BandArtworkRole { avatar, banner }
 
 class DiscoveryFilters {
@@ -1800,15 +1806,10 @@ class AppState extends ChangeNotifier {
     _appliedHomePersonalization = null;
     _locationRequestGeneration++;
     city = selectedCity.name;
-    discoveryLocation = switch (selectedCity) {
-      FanCity.sf => DiscoveryLocation.sf,
-      FanCity.oak => DiscoveryLocation.oak,
-      _ => DiscoveryLocation.home,
-    };
-    _discoveryHomeCity = switch (selectedCity) {
-      FanCity.sf || FanCity.oak => null,
-      _ => selectedCity,
-    };
+    discoveryLocation = discoveryLocationForFanCity(selectedCity);
+    _discoveryHomeCity = discoveryLocation == DiscoveryLocation.home
+        ? selectedCity
+        : null;
     currentPosition = null;
     locating = false;
     locationFailure = null;
@@ -3025,15 +3026,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addNbGenre(String raw) {
+  bool addNbGenre(String raw) {
     final g = raw.trim().toLowerCase();
-    if (g.isEmpty) return;
-    if (nbGenres.contains(g)) return;
+    if (g.isEmpty) return false;
+    if (nbGenres.contains(g)) return false;
     if (nbGenres.length >= 3) {
       say('Three genres max.');
-      return;
+      return false;
     }
     _set(() => nbGenres.add(g));
+    return true;
   }
 
   bool get canCreateBand =>
