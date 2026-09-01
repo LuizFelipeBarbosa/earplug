@@ -9,24 +9,39 @@ abstract final class Ep {
   // Brand.
   static const brand = Color(0xFF1435F0);
   static const accent = Color(0xFF7B8FFF);
+  static const volt = Color(0xFFE4DC4A);
 
   // Surfaces.
   static const background = Color(0xFF0A0A0C);
-  static const surface = Color(0xFF17191F);
-  static const surfaceRaised = Color(0xFF22252E);
-  static const surfaceSelected = Color(0xFF182559);
-  static const border = Color(0xFF3C414F);
+  static const surface = Color(0xFF131418);
+  static const surfaceRaised = Color(0xFF1C1E26);
+  static const surfaceSelected = Color(0xFF1B2A6B);
+  static const border = Color(0xFF2E323E);
   static const surfaceDisabled = Color(0xFF262831);
+  static const tabBarBackground = Color(0xFF0A0A0C);
 
   // Content.
   static const contentPrimary = Color(0xFFF4F4F0);
   static const contentSecondary = Color(0xFFB8BAC2);
-  static const contentDisabled = Color(0xFF8D909F);
+  // Lifted slightly from the board's muted swatch so it remains AA on the
+  // selected surface, where disabled and secondary states can both appear.
+  static const contentDisabled = Color(0xFF9A9CA8);
 
   // Status.
   static const success = Color(0xFF4CD7A3);
-  static const warning = Color(0xFFE4DC4A);
+  static const warning = volt;
   static const destructive = Color(0xFFFF6B6B);
+  static const successTint = Color(0xFF15352C);
+  static const warningTint = Color(0xFF393717);
+  static const destructiveTint = Color(0xFF3B1C20);
+
+  // Short semantic aliases used by the refresh component grammar. Existing
+  // names remain the source of truth for compatibility with current screens.
+  static const ink = contentPrimary;
+  static const mute = contentDisabled;
+  static const raised = surfaceRaised;
+  static const selected = surfaceSelected;
+  static const dark = background;
 
   /// Intended for artwork and scrims, not ordinary text or component states.
   static Color whiteA(double a) => Colors.white.withValues(alpha: a);
@@ -39,9 +54,13 @@ abstract final class Ep {
 extension EpTextTheme on TextTheme {
   TextStyle get epDisplay => displayLarge!;
   TextStyle get epPageHeading => headlineLarge!;
+  TextStyle get epPosterTitle => headlineMedium!;
   TextStyle get epSectionHeading => titleLarge!;
+  TextStyle get epSection => titleMedium!;
   TextStyle get epBody => bodyMedium!;
   TextStyle get epLabel => labelLarge!;
+  TextStyle get epChipLabel => labelMedium!;
+  TextStyle get epMeta => labelSmall!;
   TextStyle get epCaption => bodySmall!;
 }
 
@@ -96,11 +115,25 @@ TextTheme _epTextTheme() {
       color: Ep.contentPrimary,
       height: 1.1,
     ),
+    headlineMedium: TextStyle(
+      fontFamily: 'Archivo Black',
+      fontSize: 22,
+      color: Ep.contentPrimary,
+      height: 1.18,
+    ),
     titleLarge: TextStyle(
       fontFamily: 'Archivo',
       fontSize: 17,
       fontWeight: FontWeight.w800,
       color: Ep.contentPrimary,
+      height: 1.2,
+    ),
+    titleMedium: TextStyle(
+      fontFamily: 'Archivo',
+      fontSize: 12,
+      fontWeight: FontWeight.w800,
+      color: Ep.contentPrimary,
+      letterSpacing: 2,
       height: 1.2,
     ),
     bodyMedium: TextStyle(
@@ -117,6 +150,21 @@ TextTheme _epTextTheme() {
       color: Ep.contentPrimary,
       letterSpacing: .4,
       height: 1.2,
+    ),
+    labelMedium: TextStyle(
+      fontFamily: 'Archivo',
+      fontSize: 11,
+      fontWeight: FontWeight.w800,
+      color: Ep.contentPrimary,
+      letterSpacing: .8,
+      height: 1.2,
+    ),
+    labelSmall: TextStyle(
+      fontFamily: 'Archivo',
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      color: Ep.contentSecondary,
+      height: 1.35,
     ),
     bodySmall: TextStyle(
       fontFamily: 'Archivo',

@@ -1,0 +1,292 @@
+import 'dart:ui' show Tristate;
+
+import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/form_bits.dart';
+import 'package:earplug/widgets/sheets.dart';
+import 'package:earplug/widgets/tab_bars.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  test('refresh tokens preserve old names and expose semantic aliases', () {
+    expect(Ep.volt, Ep.warning);
+    expect(Ep.ink, Ep.contentPrimary);
+    expect(Ep.raised, Ep.surfaceRaised);
+    expect(Ep.selected, Ep.surfaceSelected);
+    expect(Ep.dark, Ep.background);
+
+    final text = buildEpTheme().textTheme;
+    expect(text.epPosterTitle.fontFamily, 'Archivo Black');
+    expect(text.epPosterTitle.fontSize, 22);
+    expect(text.epSection.fontSize, 12);
+    expect(text.epSection.letterSpacing, 2);
+    expect(text.epChipLabel.fontSize, greaterThanOrEqualTo(11));
+    expect(text.epMeta.fontSize, greaterThanOrEqualTo(11));
+  });
+
+  testWidgets(
+    'date, section, status, and ledger primitives expose their data',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      var opened = false;
+      await tester.pumpWidget(
+        _host(
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SectionBar(label: 'Upcoming', count: 2),
+              const DateBlock(
+                day: '10',
+                month: 'Sep',
+                semanticLabel: 'Wednesday September 10',
+              ),
+              const StatusPill(label: 'Going ✓'),
+              LedgerRow(
+                title: 'Riptide',
+                details: const ['Foghorn Club', 'SEP 10', '56 going'],
+                onTap: () => opened = true,
+              ),
+            ],
+          ),
+        ),
+      );
+
+      expect(find.text('UPCOMING · 2'), findsOne);
+      expect(find.text('10'), findsOne);
+      expect(find.text('SEP'), findsOne);
+      expect(find.bySemanticsLabel('Wednesday September 10'), findsOne);
+      expect(find.text('GOING ✓'), findsOne);
+      expect(
+        tester.getSize(find.byType(LedgerRow)).height,
+        greaterThanOrEqualTo(48),
+      );
+      await tester.tap(find.byType(LedgerRow));
+      expect(opened, isTrue);
+      semantics.dispose();
+    },
+  );
+
+  testWidgets('chips support volt, ghost, and removable states compatibly', (
+    tester,
+  ) async {
+    var selected = 0;
+    var removed = 0;
+    await tester.pumpWidget(
+      _host(
+        Wrap(
+          children: [
+            EpChip(label: 'Punk', active: true, onTap: () => selected++),
+            EpChip(
+              label: '+ Add',
+              active: false,
+              ghost: true,
+              onTap: () => selected++,
+            ),
+            EpChip(
+              label: 'Luz',
+              active: false,
+              onTap: null,
+              onRemoved: () => removed++,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final active = tester.widget<FilterChip>(find.byType(FilterChip).first);
+    expect(active.selectedColor, Ep.volt);
+    expect(
+      tester.getSize(find.byType(EpChip).at(1)).height,
+      greaterThanOrEqualTo(48),
+    );
+    await tester.tap(find.text('+ ADD'));
+    await tester.tap(find.byIcon(Icons.close));
+    expect(selected, 1);
+    expect(removed, 1);
+  });
+
+  testWidgets('form grammar remains keyboard-sized and callback-only', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    var enabled = false;
+    var resumed = false;
+    var previewed = false;
+    var saved = false;
+    var archived = false;
+    await tester.pumpWidget(
+      _host(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SwitchRow(
+              label: 'Followed-band updates',
+              value: enabled,
+              caption: 'Send an update when a followed band publishes a gig.',
+              onChanged: (value) => enabled = value,
+            ),
+            GhostDraftRow(
+              title: 'Halloween show',
+              missing: 'finish lineup to publish',
+              onResume: () => resumed = true,
+            ),
+            StickyActionBar(
+              secondaryLabel: 'Preview',
+              onSecondary: () => previewed = true,
+              primaryLabel: 'Save changes',
+              onPrimary: () => saved = true,
+            ),
+            DangerZone(
+              label: 'Archive band',
+              consequence: 'Archiving hides this band and its gigs.',
+              onPressed: () => archived = true,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final switchData = tester
+        .getSemantics(find.byType(SwitchRow))
+        .getSemanticsData();
+    expect(switchData.flagsCollection.isToggled, Tristate.isFalse);
+    expect(
+      tester.getSize(find.byType(SwitchRow)).height,
+      greaterThanOrEqualTo(48),
+    );
+    await tester.tap(find.byType(SwitchRow));
+    await tester.tap(find.text('RESUME →'));
+    await tester.tap(find.text('PREVIEW'));
+    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.tap(find.text('ARCHIVE BAND'));
+    expect(enabled, isTrue);
+    expect(resumed, isTrue);
+    expect(previewed, isTrue);
+    expect(saved, isTrue);
+    expect(archived, isTrue);
+    semantics.dispose();
+  });
+
+  testWidgets('generic action sheet separates its destructive action', (
+    tester,
+  ) async {
+    var duplicated = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildEpTheme(),
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => FilledButton(
+              onPressed: () => showEpActionSheet(
+                context,
+                header: 'Riptide release show',
+                items: [
+                  EpActionSheetItem(
+                    label: 'Duplicate',
+                    onPressed: () => duplicated = true,
+                  ),
+                  const EpActionSheetItem(
+                    label: 'Delete',
+                    onPressed: null,
+                    destructive: true,
+                  ),
+                ],
+              ),
+              child: const Text('OPEN'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('OPEN'));
+    await tester.pumpAndSettle();
+    expect(find.byType(EpActionSheet), findsOne);
+    expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
+    expect(
+      tester.widget<Text>(find.text('Delete')).style!.color,
+      Ep.destructive,
+    );
+    await tester.tap(find.text('Duplicate'));
+    await tester.pumpAndSettle();
+    expect(duplicated, isTrue);
+    expect(find.byType(EpActionSheet), findsNothing);
+  });
+
+  testWidgets('stat tile and volt strip preserve hierarchy and actions', (
+    tester,
+  ) async {
+    var launched = false;
+    await tester.pumpWidget(
+      _host(
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const EpStatCard(
+              label: 'Followers',
+              value: '486',
+              caption: 'and counting',
+              expand: false,
+            ),
+            VoltStrip(
+              kicker: 'Next up',
+              title: 'Riptide Release Show',
+              meta: 'Tonight · Doors 8PM',
+              actionLabel: 'Door mode',
+              onAction: () => launched = true,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    expect(find.text('FOLLOWERS'), findsOne);
+    expect(find.text('486'), findsOne);
+    expect(find.text('NEXT UP'), findsOne);
+    expect(find.text('Riptide Release Show'), findsOne);
+    await tester.tap(find.text('DOOR MODE'));
+    expect(launched, isTrue);
+  });
+
+  testWidgets('navigation item uses the refreshed 66px accessible grammar', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        SizedBox(
+          width: 100,
+          child: EpNavigationItem(
+            icon: Icons.home_outlined,
+            label: 'GIGS',
+            selected: true,
+            onPressed: () {},
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.getSize(find.byType(EpNavigationItem)).height, 66);
+    final indicator = tester.widget<AnimatedContainer>(
+      find.descendant(
+        of: find.byType(EpNavigationItem),
+        matching: find.byType(AnimatedContainer),
+      ),
+    );
+    expect(indicator.constraints!.maxWidth, 24);
+    expect(indicator.constraints!.maxHeight, 2.5);
+    expect(tester.widget<Text>(find.text('GIGS')).style!.fontSize, 11);
+  });
+}
+
+Widget _host(Widget child) => MaterialApp(
+  theme: buildEpTheme(),
+  home: Scaffold(
+    body: Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: child,
+      ),
+    ),
+  ),
+);

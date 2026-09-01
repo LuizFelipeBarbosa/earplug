@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -24,7 +23,7 @@ class EpNavigationItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? Colors.white : Ep.contentSecondary;
+    final color = selected ? Ep.ink : Ep.mute;
     return Semantics(
       button: true,
       selected: selected,
@@ -37,35 +36,36 @@ class EpNavigationItem extends StatelessWidget {
           onTap: onPressed,
           focusColor: Ep.accent.withValues(alpha: .2),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 56, minWidth: 48),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    width: 32,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: selected ? Ep.brand : Colors.transparent,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
+            constraints: const BoxConstraints(minHeight: 66, minWidth: 48),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 24,
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: selected ? Ep.brand : Colors.transparent,
+                    borderRadius: BorderRadius.circular(99),
                   ),
-                  const SizedBox(height: 4),
-                  Icon(icon, size: 19, color: color),
-                  const SizedBox(height: 3),
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: .8,
-                      color: color,
-                    ),
+                ),
+                const SizedBox(height: 6),
+                Icon(icon, size: 19, color: color),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.epCaption.copyWith(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: .8,
+                    color: color,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -82,18 +82,24 @@ class _TabBarShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = math.max(MediaQuery.paddingOf(context).bottom, 22.0);
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          padding: EdgeInsets.fromLTRB(10, 8, 10, bottomPad),
           decoration: BoxDecoration(
-            color: Ep.background.withValues(alpha: .96),
+            color: Ep.tabBarBackground.withValues(alpha: .95),
             border: Border(top: BorderSide(color: borderColor)),
           ),
-          child: Row(
-            children: [for (final item in items) Expanded(child: item)],
+          padding: EdgeInsets.only(bottom: bottomPad),
+          child: SizedBox(
+            height: 66,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                children: [for (final item in items) Expanded(child: item)],
+              ),
+            ),
           ),
         ),
       ),

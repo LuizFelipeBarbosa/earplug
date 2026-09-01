@@ -57,37 +57,389 @@ class SectionLabel extends StatelessWidget {
   }
 }
 
+/// Calendar/list section heading used by both fan and band surfaces.
+class SectionBar extends StatelessWidget {
+  const SectionBar({
+    super.key,
+    required this.label,
+    this.count,
+    this.trailing,
+    this.padding = const EdgeInsets.only(top: 20, bottom: 10),
+  });
+
+  final String label;
+  final int? count;
+  final Widget? trailing;
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = count == null
+        ? label.toUpperCase()
+        : '${label.toUpperCase()} · $count';
+    return Padding(
+      padding: padding,
+      child: Row(
+        children: [
+          Container(
+            width: 22,
+            height: 3,
+            decoration: BoxDecoration(
+              color: Ep.volt,
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.epSection,
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+}
+
+/// A date-first visual anchor for event and history rows.
+class DateBlock extends StatelessWidget {
+  const DateBlock({
+    super.key,
+    required this.day,
+    required this.month,
+    this.semanticLabel,
+    this.size = 40,
+  });
+
+  final String day;
+  final String month;
+  final String? semanticLabel;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: semanticLabel ?? '${month.trim()} ${day.trim()}',
+      image: true,
+      child: ExcludeSemantics(
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Ep.raised,
+              border: Border.all(color: Ep.border),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: MediaQuery.withNoTextScaling(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      day.trim(),
+                      maxLines: 1,
+                      style: Theme.of(context).textTheme.epDisplay.copyWith(
+                        fontSize: size * .43,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      month.trim().toUpperCase(),
+                      maxLines: 1,
+                      style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                        color: Ep.volt,
+                        fontSize: math.max(7, size * .175),
+                        letterSpacing: 1.1,
+                        height: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Rounded filter/selection chip (the spec's chipStyle).
 class EpChip extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback? onTap;
+  final bool ghost;
+  final VoidCallback? onRemoved;
+  final String? semanticLabel;
 
   const EpChip({
     super.key,
     required this.label,
     required this.active,
     required this.onTap,
+    this.ghost = false,
+    this.onRemoved,
+    this.semanticLabel,
   });
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.epLabel.copyWith(
-      color: onTap == null
+    final enabled = onTap != null || onRemoved != null;
+    final textStyle = Theme.of(context).textTheme.epChipLabel.copyWith(
+      color: !enabled
           ? Ep.contentDisabled
           : active
-          ? Ep.contentPrimary
+          ? Ep.dark
+          : ghost
+          ? Ep.mute
           : Ep.contentSecondary,
-      letterSpacing: .5,
     );
+    if (ghost) {
+      return Semantics(
+        button: true,
+        enabled: enabled,
+        label: semanticLabel ?? label,
+        excludeSemantics: true,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              customBorder: const StadiumBorder(),
+              child: Center(
+                child: DashedBox(
+                  expand: false,
+                  radius: 99,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  child: Text(label.toUpperCase(), style: textStyle),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    if (onRemoved != null) {
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+        child: InputChip(
+          label: Text(label.toUpperCase(), style: textStyle),
+          selected: active,
+          onPressed: onTap,
+          onDeleted: onRemoved,
+          deleteIcon: const Icon(Icons.close, size: 16),
+          deleteIconColor: active ? Ep.dark : Ep.mute,
+          showCheckmark: false,
+          backgroundColor: Colors.transparent,
+          selectedColor: Ep.volt,
+          disabledColor: Colors.transparent,
+          side: BorderSide(color: active ? Ep.volt : Ep.border),
+          shape: const StadiumBorder(),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        ),
+      );
+    }
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
       child: FilterChip(
         label: Text(label.toUpperCase(), style: textStyle),
         selected: active,
         onSelected: onTap == null ? null : (_) => onTap!(),
+        onDeleted: onRemoved,
+        deleteIcon: const Icon(Icons.close, size: 16),
+        deleteIconColor: active ? Ep.dark : Ep.mute,
         showCheckmark: false,
-        side: BorderSide(color: active ? Ep.accent : Ep.border),
+        backgroundColor: Colors.transparent,
+        selectedColor: Ep.volt,
+        disabledColor: Colors.transparent,
+        side: BorderSide(color: active ? Ep.volt : Ep.border),
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      ),
+    );
+  }
+}
+
+enum EpStatusPillTone { success, selected, warning, neutral }
+
+/// Small, textual state marker. Color is never the only status signal.
+class StatusPill extends StatelessWidget {
+  const StatusPill({
+    super.key,
+    required this.label,
+    this.tone = EpStatusPillTone.success,
+  });
+
+  final String label;
+  final EpStatusPillTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final (background, foreground, border) = switch (tone) {
+      EpStatusPillTone.success => (
+        Ep.successTint,
+        Ep.success,
+        Ep.success.withValues(alpha: .5),
+      ),
+      EpStatusPillTone.selected => (Ep.selected, Ep.ink, Ep.accent),
+      EpStatusPillTone.warning => (Ep.warningTint, Ep.volt, Ep.volt),
+      EpStatusPillTone.neutral => (Ep.raised, Ep.contentSecondary, Ep.border),
+    };
+    return Semantics(
+      label: label,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          decoration: BoxDecoration(
+            color: background,
+            border: Border.all(color: border),
+            borderRadius: BorderRadius.circular(99),
+          ),
+          child: Text(
+            label.toUpperCase(),
+            style: Theme.of(
+              context,
+            ).textTheme.epChipLabel.copyWith(color: foreground, fontSize: 10),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The single high-energy callout a page may promote above its quiet cards.
+class VoltStrip extends StatelessWidget {
+  const VoltStrip({
+    super.key,
+    required this.kicker,
+    required this.title,
+    required this.meta,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final String kicker;
+  final String title;
+  final String meta;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Ep.volt,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              kicker.toUpperCase(),
+              style: Theme.of(
+                context,
+              ).textTheme.epSection.copyWith(color: Ep.dark, fontSize: 11),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              title,
+              style: Theme.of(
+                context,
+              ).textTheme.epPosterTitle.copyWith(color: Ep.dark),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              meta,
+              style: Theme.of(
+                context,
+              ).textTheme.epMeta.copyWith(color: Ep.dark),
+            ),
+            if (actionLabel != null) ...[
+              const SizedBox(height: 10),
+              FilledButton(
+                onPressed: onAction,
+                style: ButtonStyle(
+                  minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+                  backgroundColor: const WidgetStatePropertyAll(Ep.dark),
+                  foregroundColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.disabled)
+                        ? Ep.mute
+                        : Ep.volt,
+                  ),
+                ),
+                child: Text(actionLabel!.toUpperCase()),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact, unchromed history line with an optional action.
+class LedgerRow extends StatelessWidget {
+  const LedgerRow({
+    super.key,
+    required this.title,
+    this.details = const [],
+    this.leading,
+    this.trailing,
+    this.onTap,
+  });
+
+  final String title;
+  final List<String> details;
+  final Widget? leading;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final description = [title, ...details].join(' · ');
+    final content = Row(
+      children: [
+        if (leading != null) ...[leading!, const SizedBox(width: 8)],
+        Expanded(
+          child: Text(
+            description,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.epMeta,
+          ),
+        ),
+        if (trailing != null) ...[const SizedBox(width: 8), trailing!],
+      ],
+    );
+    return Semantics(
+      container: true,
+      button: onTap != null,
+      label: description,
+      excludeSemantics: true,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Material(
+          color: Colors.transparent,
+          child: onTap == null
+              ? Align(alignment: Alignment.centerLeft, child: content)
+              : InkWell(onTap: onTap, child: content),
+        ),
       ),
     );
   }
@@ -628,59 +980,56 @@ InputDecoration epCollapsedInputDecoration(
 class EpStatCard extends StatelessWidget {
   final String label;
   final String value;
-  final String caption;
+  final String? caption;
+  final bool expand;
 
   const EpStatCard({
     super.key,
     required this.label,
     required this.value,
-    required this.caption,
+    this.caption,
+    this.expand = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: EpCard(
-        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 12),
-        radius: 13,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epCaption.copyWith(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1,
-                color: Ep.contentSecondary,
-              ),
+    final tile = EpCard(
+      padding: const EdgeInsets.all(12),
+      radius: 14,
+      borderColor: Ep.surface,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.epChipLabel.copyWith(
+              fontSize: 9,
+              letterSpacing: 1.5,
+              color: Ep.mute,
             ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.epDisplay.copyWith(fontSize: 22),
-            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.epDisplay.copyWith(fontSize: 22),
+          ),
+          if (caption != null && caption!.trim().isNotEmpty) ...[
             const SizedBox(height: 2),
             Text(
-              caption,
+              caption!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epCaption.copyWith(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: Ep.accent,
-              ),
+              style: Theme.of(context).textTheme.epCaption,
             ),
           ],
-        ),
+        ],
       ),
     );
+    return expand ? Expanded(child: tile) : tile;
   }
 }
 

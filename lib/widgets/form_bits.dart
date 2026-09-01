@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -161,6 +163,283 @@ class TextAction extends StatelessWidget {
         ),
       ),
       child: Text(label, textAlign: TextAlign.center),
+    );
+  }
+}
+
+/// A compact setting control with an explicit plain-language explanation.
+class SwitchRow extends StatelessWidget {
+  const SwitchRow({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.onChanged,
+    this.caption,
+  });
+
+  final String label;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+  final String? caption;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onChanged != null;
+    final callback = enabled ? () => onChanged!(!value) : null;
+    return Semantics(
+      container: true,
+      button: true,
+      toggled: value,
+      enabled: enabled,
+      onTap: callback,
+      label: caption == null ? label : '$label. $caption',
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            color: Ep.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: const BorderSide(color: Ep.border),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: callback,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: Theme.of(context).textTheme.epBody.copyWith(
+                            color: enabled ? Ep.ink : Ep.contentDisabled,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      _CompactSwitch(value: value, enabled: enabled),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (caption != null && caption!.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(caption!, style: Theme.of(context).textTheme.epCaption),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactSwitch extends StatelessWidget {
+  const _CompactSwitch({required this.value, required this.enabled});
+
+  final bool value;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOut,
+      width: 30,
+      height: 18,
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: !enabled
+            ? Ep.surfaceDisabled
+            : value
+            ? Ep.brand
+            : Ep.raised,
+        border: Border.all(color: value && enabled ? Ep.brand : Ep.border),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: AnimatedAlign(
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+        alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: !enabled
+                ? Ep.mute
+                : value
+                ? Colors.white
+                : Ep.mute,
+            shape: BoxShape.circle,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Dashed presentation for an unfinished draft with one resume action.
+class GhostDraftRow extends StatelessWidget {
+  const GhostDraftRow({
+    super.key,
+    required this.title,
+    required this.missing,
+    required this.onResume,
+    this.actionLabel = 'RESUME →',
+  });
+
+  final String title;
+  final String missing;
+  final VoidCallback? onResume;
+  final String actionLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final description = 'Draft — $title · $missing';
+    return Semantics(
+      button: true,
+      enabled: onResume != null,
+      label: '$description. $actionLabel',
+      excludeSemantics: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onResume,
+          customBorder: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: DashedBox(
+            radius: 14,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 28),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(
+                        context,
+                      ).textTheme.epMeta.copyWith(color: Ep.contentSecondary),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    actionLabel,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epChipLabel.copyWith(color: Ep.accent),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom-pinned primary/secondary actions for create and edit flows.
+class StickyActionBar extends StatelessWidget {
+  const StickyActionBar({
+    super.key,
+    required this.primaryLabel,
+    required this.onPrimary,
+    this.secondaryLabel,
+    this.onSecondary,
+  });
+
+  final String primaryLabel;
+  final VoidCallback? onPrimary;
+  final String? secondaryLabel;
+  final VoidCallback? onSecondary;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Ep.tabBarBackground.withValues(alpha: .95),
+            border: const Border(top: BorderSide(color: Ep.border)),
+          ),
+          child: SafeArea(
+            top: false,
+            minimum: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                if (secondaryLabel != null) ...[
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: onSecondary,
+                      child: Text(secondaryLabel!.toUpperCase()),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(
+                  flex: secondaryLabel == null ? 1 : 2,
+                  child: FilledButton(
+                    onPressed: onPrimary,
+                    child: Text(primaryLabel.toUpperCase()),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Destructive action that stays visible and explains its consequence.
+class DangerZone extends StatelessWidget {
+  const DangerZone({
+    super.key,
+    required this.label,
+    required this.consequence,
+    required this.onPressed,
+  });
+
+  final String label;
+  final String consequence;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: onPressed,
+            style: TextButton.styleFrom(
+              foregroundColor: Ep.destructive,
+              alignment: Alignment.centerLeft,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              textStyle: Theme.of(context).textTheme.epChipLabel,
+            ),
+            child: Text(label.toUpperCase()),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            consequence,
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+        ),
+      ],
     );
   }
 }
