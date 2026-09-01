@@ -96,8 +96,14 @@ class GigDetailScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _InfoCards(gig: gig),
+                  _InfoCards(gig: gig, venue: venue, app: app),
                   const SizedBox(height: 16),
+                  SectionBar(label: 'LINEUP', count: performers.length),
+                  for (final performer in performers) ...[
+                    _LineupRow(performer: performer, app: app),
+                    const SizedBox(height: 8),
+                  ],
+                  const SectionBar(label: 'ABOUT'),
                   Text(
                     gig.desc,
                     style: epText(
@@ -106,20 +112,9 @@ class GigDetailScreen extends StatelessWidget {
                       height: 1.5,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const SectionLabel('LINEUP'),
-                  const SizedBox(height: 8),
-                  for (final performer in performers) ...[
-                    _LineupRow(performer: performer, app: app),
-                    const SizedBox(height: 8),
-                  ],
-                  const SizedBox(height: 8),
-                  const SectionLabel('VENUE'),
-                  const SizedBox(height: 8),
+                  const SectionBar(label: 'VENUE'),
                   _VenueCard(venue: venue, app: app),
-                  const SizedBox(height: 16),
-                  const SectionLabel("WHO'S GOING"),
-                  const SizedBox(height: 8),
+                  const SectionBar(label: "WHO'S GOING"),
                   _WhosGoing(gig: gig, app: app),
                 ],
               ),
@@ -148,6 +143,9 @@ class _Hero extends StatelessWidget {
   Widget build(BuildContext context) {
     final fly = app.flyer(gig.flyKey);
     final venue = app.venue(gig.venueId);
+    final presenter = gig.createdByBand == null
+        ? null
+        : app.band(gig.createdByBand!);
     final lineupLine = performers
         .map((performer) => performer.name)
         .join(' · ')
@@ -172,14 +170,33 @@ class _Hero extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.only(top: 40),
-                  child: Text(
-                    gig.title.toUpperCase(),
-                    style: epDisplay(
-                      size: 34,
-                      color: fly.fg,
-                      letterSpacing: -.5,
-                      height: .98,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (presenter != null) ...[
+                        Text(
+                          '${presenter.name.toUpperCase()} PRESENTS',
+                          style: epText(
+                            size: 11,
+                            weight: FontWeight.w900,
+                            color: fly.fg,
+                            letterSpacing: 1.8,
+                          ),
+                        ),
+                        const SizedBox(height: 9),
+                      ],
+                      Text(
+                        gig.title.toUpperCase(),
+                        maxLines: 4,
+                        overflow: TextOverflow.ellipsis,
+                        style: epDisplay(
+                          size: 34,
+                          color: fly.fg,
+                          letterSpacing: -.5,
+                          height: .98,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 Column(
@@ -300,66 +317,98 @@ class _HeroAction extends StatelessWidget {
 
 class _InfoCards extends StatelessWidget {
   final Gig gig;
+  final Venue venue;
+  final AppState app;
 
-  const _InfoCards({required this.gig});
+  const _InfoCards({required this.gig, required this.venue, required this.app});
 
   @override
   Widget build(BuildContext context) {
-    Widget cell(String label, String value, {Color? valueColor}) {
-      return Expanded(
-        child: EpCard(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: epText(
-                  size: 10,
-                  weight: FontWeight.w800,
-                  letterSpacing: 1.2,
-                  color: Ep.contentDisabled,
-                ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: epText(
-                  size: 13,
-                  weight: FontWeight.w800,
-                  color: valueColor ?? Ep.contentPrimary,
-                ),
-              ),
-            ],
+    Widget fact(IconData icon, String text) {
+      return Row(
+        children: [
+          Icon(icon, size: 18, color: Ep.accent),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.epLabel,
+            ),
           ),
+        ],
+      );
+    }
+
+    Widget pill(String label, String value, {Color? valueColor}) {
+      return Container(
+        constraints: const BoxConstraints(minHeight: 48, minWidth: 72),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: Ep.surface,
+          border: Border.all(color: Ep.border),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              label,
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.epLabel.copyWith(
+                color: valueColor ?? Ep.contentPrimary,
+              ),
+            ),
+          ],
         ),
       );
     }
 
-    return Column(
-      children: [
-        Row(
-          children: [
-            cell('DATE', gig.dateShort),
-            const SizedBox(width: 8),
-            cell('DOORS / SET', gig.time),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            cell(
-              'PRICE',
-              gig.priceLabel,
-              valueColor: gig.free ? Ep.accent : Ep.contentPrimary,
-            ),
-            const SizedBox(width: 8),
-            cell('AGE', gig.ageRequirement.label),
-          ],
-        ),
-      ],
+    final going = gig.going + (app.rsvps.contains(gig.id) ? 1 : 0);
+    return EpCard(
+      variant: EpCardVariant.raised,
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          fact(Icons.calendar_month, '${gig.dateShort} · DOORS ${gig.time}'),
+          const SizedBox(height: 11),
+          fact(
+            Icons.location_on,
+            [
+              venue.name,
+              if (venue.area.trim().isNotEmpty) venue.area,
+            ].join(' · '),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              pill(
+                'PRICE',
+                gig.priceLabel,
+                valueColor: gig.free ? Ep.accent : Ep.contentPrimary,
+              ),
+              pill('AGE', gig.ageRequirement.label),
+              StatusPill(
+                label: '$going GOING',
+                tone: EpStatusPillTone.selected,
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -402,8 +451,22 @@ class _LineupRow extends StatelessWidget {
               ],
             ),
           ),
-          if (band != null)
-            const Icon(Icons.chevron_right, color: Ep.contentSecondary),
+          if (band != null) ...[
+            const SizedBox(width: 8),
+            OutlinedButton(
+              key: ValueKey('gig-lineup-follow-${band.id}'),
+              onPressed: () => app.requestFollow(band.id),
+              style: const ButtonStyle(
+                minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+                padding: WidgetStatePropertyAll(
+                  EdgeInsets.symmetric(horizontal: 10),
+                ),
+              ),
+              child: Text(
+                app.follows.contains(band.id) ? 'FOLLOWING ✓' : 'FOLLOW',
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -581,7 +644,7 @@ class _CtaBar extends StatelessWidget {
       );
     } else {
       button = EpButton(
-        "RSVP: I'M IN",
+        gig.free ? 'RSVP — FREE' : 'RSVP — ${gig.priceLabel} AT DOOR',
         fontSize: 14,
         padding: const EdgeInsets.symmetric(vertical: 16),
         onTap: () => app.requestRsvp(gig.id),
@@ -598,33 +661,21 @@ class _CtaBar extends StatelessWidget {
           colors: [Ep.background, Ep.background, Colors.transparent],
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  gig.priceLabel,
-                  style: epDisplay(
-                    size: 17,
-                    color: gig.free ? Ep.accent : Ep.contentPrimary,
-                  ),
-                ),
-                Text(
-                  tixNote,
-                  style: epText(
-                    size: 10,
-                    weight: FontWeight.w700,
-                    letterSpacing: .5,
-                    color: Ep.contentSecondary,
-                  ),
-                ),
-              ],
+          Text(
+            tixNote,
+            textAlign: TextAlign.center,
+            style: epText(
+              size: 11,
+              weight: FontWeight.w700,
+              letterSpacing: .5,
+              color: Ep.contentSecondary,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(child: button),
+          const SizedBox(height: 7),
+          button,
         ],
       ),
     );

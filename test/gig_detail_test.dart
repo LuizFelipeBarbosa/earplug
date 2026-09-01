@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_detail.dart';
@@ -36,6 +37,7 @@ void main() {
         ),
         findsOne,
       );
+      expect(find.text('RSVP — FREE'), findsOne);
 
       final heroContent = tester.widget<Stack>(
         find.byKey(const ValueKey('gig-detail-hero-content')),
@@ -50,6 +52,30 @@ void main() {
       expect(find.text('THIS GIG HAS BEEN CANCELLED'), findsOne);
     },
   );
+
+  testWidgets('resolved presenter and lineup bands use real profile actions', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: GigDetailScreen(gigId: 'g2')),
+    );
+
+    expect(find.text('FOGHORN DIET PRESENTS'), findsOne);
+    expect(find.textContaining('IN-STORE RACKET'), findsNothing);
+
+    final follow = find.byKey(const ValueKey('gig-lineup-follow-b1'));
+    await tester.scrollUntilVisible(
+      follow,
+      240,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(follow);
+    await tester.pump();
+
+    expect(harness.app.pending?.kind, PendingKind.follow);
+    expect(harness.app.pending?.id, 'b1');
+  });
 }
 
 Gig _textOnlyGig({GigLifecycle lifecycle = GigLifecycle.published}) {
