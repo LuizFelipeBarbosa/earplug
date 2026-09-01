@@ -840,6 +840,9 @@ class _LineupField extends StatelessWidget {
                           icon: Icon(Icons.link, size: 18),
                         ),
                       PopupMenuButton<GigPerformerRole>(
+                        key: ValueKey(
+                          'gig-performer-role-target-${performer.id}',
+                        ),
                         tooltip: 'Billing role',
                         initialValue: performer.role,
                         onSelected: (role) =>
@@ -852,21 +855,27 @@ class _LineupField extends StatelessWidget {
                             ),
                         ],
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 48),
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: context.epColors.surfaceSelected,
-                              border: Border.all(
-                                color: context.epColors.accent,
+                          constraints: const BoxConstraints(
+                            minHeight: 48,
+                            minWidth: 48,
+                          ),
+                          child: Center(
+                            child: DecoratedBox(
+                              key: ValueKey(
+                                'gig-performer-role-pill-${performer.id}',
                               ),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 9,
-                                vertical: 6,
+                              decoration: BoxDecoration(
+                                color: context.epColors.surfaceSelected,
+                                border: Border.all(
+                                  color: context.epColors.accent,
+                                ),
+                                borderRadius: BorderRadius.circular(999),
                               ),
-                              child: Center(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
                                 child: Text(
                                   performer.role.name.toUpperCase(),
                                   style: epText(

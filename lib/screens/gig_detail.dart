@@ -370,8 +370,8 @@ class _Hero extends StatelessWidget {
                       )
                     : Container(
                         key: const ValueKey('gig-draft-preview-status'),
-                        constraints: const BoxConstraints(minHeight: 48),
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        constraints: const BoxConstraints(minHeight: 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: Colors.black.withValues(alpha: .72),

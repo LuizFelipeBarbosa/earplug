@@ -447,6 +447,12 @@ void main() {
       findsOne,
     );
     expect(find.byKey(const ValueKey('gig-detail-hero-content')), findsOne);
+    expect(
+      tester
+          .getSize(find.byKey(const ValueKey('gig-draft-preview-status')))
+          .height,
+      32,
+    );
     expect(find.text('CURRENT DRAFT NOISE'), findsOne);
     expect(find.text('PRIVATE DRAFT'), findsWidgets);
     expect(find.textContaining('THE FOGHORN CLUB'), findsWidgets);
@@ -473,6 +479,41 @@ void main() {
     expect(find.text('GIG DRAFT'), findsOne);
     expect(app.gfName, 'Current Draft Noise');
     expect(app.gfDesc, 'Everything entered in the editor stays visible.');
+  });
+
+  testWidgets('lineup role pills stay compact inside accessible menu targets', (
+    tester,
+  ) async {
+    final harness = await _pumpGigCreate(tester);
+    final performer = harness.app.gfPerformers.single;
+    final target = find.byKey(
+      ValueKey('gig-performer-role-target-${performer.id}'),
+    );
+    final pill = find.byKey(
+      ValueKey('gig-performer-role-pill-${performer.id}'),
+    );
+
+    await _scrollTo(tester, target);
+    expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
+    expect(tester.getSize(pill).height, lessThan(32));
+
+    await harness.app.setGigPerformerRole(
+      performer.id,
+      GigPerformerRole.support,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('SUPPORT'), findsOne);
+    final updatedPerformer = harness.app.gfPerformers.single;
+    expect(
+      tester
+          .getSize(
+            find.byKey(
+              ValueKey('gig-performer-role-pill-${updatedPerformer.id}'),
+            ),
+          )
+          .height,
+      lessThan(32),
+    );
   });
 
   testWidgets('lineup mutations save pending form edits before applying', (
