@@ -214,7 +214,7 @@ void main() {
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
-  testWidgets('a guest can open an event from its map card', (tester) async {
+  testWidgets('the whole map card opens one gig route', (tester) async {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: HomeScreen()),
@@ -225,12 +225,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('OPEN GIG →'), findsOne);
 
-    await tester.tap(find.text('OPEN GIG →'));
+    await tester.tap(find.text('BASEMENT BLOWOUT'));
     await tester.pumpAndSettle();
 
     expect(harness.app.authed, isFalse);
     expect(harness.app.current.screen, Screen.gig);
     expect(harness.app.current.param, 'g1');
+    harness.app.back();
+    expect(harness.app.current.screen, Screen.home);
+  });
+
+  testWidgets('only tapping outside the map card dismisses it', (tester) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: HomeScreen()),
+    );
+
+    await _expandClusterContaining(tester, 'gig-marker-g1');
+    await tester.tap(find.byKey(const Key('gig-marker-g1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('map-gig-card-g1')), findsOne);
+
+    final map = tester.getRect(find.byType(GigMapView));
+    await tester.tapAt(map.topLeft + const Offset(8, 8));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('map-gig-card-g1')), findsNothing);
+    expect(harness.app.current.screen, Screen.home);
   });
 
   testWidgets('co-located gigs share a marker and remain individually usable', (
@@ -275,6 +296,8 @@ void main() {
     await tester.tap(find.text('OPEN GIG →'));
     await tester.pumpAndSettle();
     expect(harness.app.current.param, 'g7');
+    harness.app.back();
+    expect(harness.app.current.screen, Screen.home);
   });
 
   testWidgets('gigs without a resolved venue stay off the map', (tester) async {

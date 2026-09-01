@@ -524,6 +524,10 @@ class _BrowseRows extends StatelessWidget {
               !tonightIds.contains(gig.id),
         )
         .toList();
+    final featuredIds = {...tonightIds, for (final gig in free) gig.id};
+    final upcoming = gigs
+        .where((gig) => !featuredIds.contains(gig.id))
+        .toList();
     final type = app.exploreResultType;
     final showEvents =
         type == ExploreResultType.all || type == ExploreResultType.events;
@@ -533,6 +537,7 @@ class _BrowseRows extends StatelessWidget {
         type == ExploreResultType.all || type == ExploreResultType.venues;
 
     return ListView(
+      key: ValueKey('explore-browse-${type.name}'),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, tabBarClearance),
       children: [
         if (showEvents) ...[
@@ -544,7 +549,7 @@ class _BrowseRows extends StatelessWidget {
             SectionBar(label: 'FREE THIS WEEK', count: free.length),
             _EventRows(gigs: free, app: app),
           ],
-          if (tonight.isEmpty && free.isEmpty)
+          if (tonight.isEmpty && free.isEmpty && upcoming.isEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 20),
               child: Text(
@@ -582,6 +587,13 @@ class _BrowseRows extends StatelessWidget {
             showAll: showAllVenues,
             onToggle: onToggleVenues,
           ),
+        ],
+        // Keep the mixed ALL directory compact near the top while still
+        // rendering every remaining event from the same filtered feed. In the
+        // EVENTS scope this naturally follows the two featured event groups.
+        if (showEvents && upcoming.isNotEmpty) ...[
+          SectionBar(label: 'UPCOMING', count: upcoming.length),
+          _EventRows(gigs: upcoming, app: app),
         ],
       ],
     );

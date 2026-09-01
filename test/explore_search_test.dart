@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show Tristate;
 
 import 'package:earplug/data/demo_repository.dart';
@@ -215,6 +216,57 @@ void main() {
     expect(find.byKey(const ValueKey('explore-event-g5')), findsNothing);
   });
 
+  testWidgets('later published gigs appear and stay live in Explore', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _LiveExploreRepository(auth: auth);
+    addTearDown(repository.close);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: ExploreScreen()),
+    );
+
+    expect(find.text('TESS'), findsNothing);
+    repository.publishTess();
+    await tester.pumpAndSettle();
+
+    expect(
+      harness.app.feed.map((gig) => gig.id),
+      contains('tess-september-23'),
+    );
+    await tester.tap(find.byKey(const ValueKey('explore-tab-events')));
+    await tester.pump();
+    final events = find.byKey(const ValueKey('explore-browse-events'));
+    for (
+      var attempt = 0;
+      attempt < 6 && find.textContaining('UPCOMING').evaluate().isEmpty;
+      attempt++
+    ) {
+      await tester.drag(events, const Offset(0, -300));
+      await tester.pump();
+    }
+    expect(find.textContaining('UPCOMING'), findsOne);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey('explore-event-tess-september-23')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('TESS'), findsOne);
+
+    harness.app.toggleGenre('noise');
+    await tester.pump();
+    expect(find.text('TESS'), findsNothing);
+    harness.app.toggleGenre('noise');
+    await tester.pump();
+    expect(
+      harness.app.feed.map((gig) => gig.id),
+      contains('tess-september-23'),
+    );
+  });
+
   testWidgets('browse scopes share one bounded directory and keep filters', (
     tester,
   ) async {
@@ -357,4 +409,54 @@ class _SingleFollowerRepository extends DemoRepository {
         continueCursor: null,
         isDone: true,
       );
+}
+
+class _LiveExploreRepository extends DemoRepository {
+  _LiveExploreRepository({required super.auth});
+
+  final StreamController<FeedSnapshot> _controller =
+      StreamController<FeedSnapshot>.broadcast();
+  List<Gig> _gigs = List<Gig>.of(DemoData.gigs);
+
+  FeedSnapshot get _snapshot => FeedSnapshot(
+    gigs: List.unmodifiable(_gigs),
+    venues: DemoData.venues,
+    bands: DemoData.bands,
+  );
+
+  @override
+  Stream<FeedSnapshot> feed() async* {
+    yield _snapshot;
+    yield* _controller.stream;
+  }
+
+  void publishTess() {
+    final startsAt = DateTime.now().add(const Duration(days: 22));
+    _gigs = [
+      ..._gigs,
+      Gig(
+        id: 'tess-september-23',
+        title: 'Tess',
+        venueId: 'v1',
+        price: 12,
+        startsAt: startsAt,
+        dateShort: Gig.dateShortFor(startsAt.millisecondsSinceEpoch),
+        dateLine: Gig.dateLineFor(startsAt.millisecondsSinceEpoch, '8PM / 9PM'),
+        time: '8PM / 9PM',
+        when: GigWhen.later,
+        flyKey: 'paper',
+        lineup: const ['b1'],
+        going: 0,
+        genres: const ['punk'],
+        desc: 'A later published show.',
+        tix: Ticketing.rsvp,
+        lifecycle: GigLifecycle.published,
+        createdByBand: 'b1',
+        discoveryListingReady: true,
+      ),
+    ];
+    _controller.add(_snapshot);
+  }
+
+  Future<void> close() => _controller.close();
 }

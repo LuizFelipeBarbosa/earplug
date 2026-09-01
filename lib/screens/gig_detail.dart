@@ -140,32 +140,6 @@ class GigDetailPresentation extends StatelessWidget {
                     venue: venue,
                     previewLabel: previewLabel,
                   ),
-                  const SizedBox(height: 16),
-                  SectionBar(label: 'LINEUP', count: performers.length),
-                  for (final performer in performers) ...[
-                    _LineupRow(
-                      performer: performer,
-                      app: app,
-                      interactive: !isPreview,
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  if (gig.desc.trim().isNotEmpty) ...[
-                    const SectionBar(label: 'ABOUT'),
-                    Text(
-                      gig.desc,
-                      style: epText(
-                        size: 13.5,
-                        color: context.epColors.contentSecondary,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
-                  const SectionBar(label: 'VENUE'),
-                  if (venueSet)
-                    _VenueCard(venue: venue, app: app, interactive: !isPreview)
-                  else
-                    const _MissingVenueCard(),
                   AnimatedSwitcher(
                     duration: const Duration(milliseconds: 260),
                     switchInCurve: Curves.easeOutCubic,
@@ -192,6 +166,32 @@ class GigDetailPresentation extends StatelessWidget {
                             key: ValueKey('gig-attendance-hidden-${gig.id}'),
                           ),
                   ),
+                  const SizedBox(height: 16),
+                  SectionBar(label: 'LINEUP', count: performers.length),
+                  for (final performer in performers) ...[
+                    _LineupRow(
+                      performer: performer,
+                      app: app,
+                      interactive: !isPreview,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  if (gig.desc.trim().isNotEmpty) ...[
+                    const SectionBar(label: 'ABOUT'),
+                    Text(
+                      gig.desc,
+                      style: epText(
+                        size: 13.5,
+                        color: context.epColors.contentSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                  const SectionBar(label: 'VENUE'),
+                  if (venueSet)
+                    _VenueCard(venue: venue, app: app, interactive: !isPreview)
+                  else
+                    const _MissingVenueCard(),
                 ],
               ),
             ),
@@ -746,10 +746,7 @@ class _WhosGoing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final going = app.rsvpCount(gig);
-    final parsedCapacity = int.tryParse(gig.cap.trim());
-    final capacity = parsedCapacity != null && parsedCapacity > 0
-        ? parsedCapacity
-        : null;
+    final capacity = gig.numericCapacity;
     final progress = capacity == null ? null : (going / capacity).clamp(0, 1);
     final spotsLabel = capacity == 1 ? 'spot' : 'spots';
 
@@ -763,6 +760,7 @@ class _WhosGoing extends StatelessWidget {
           if (capacity != null && progress != null) ...[
             const SizedBox(height: 12),
             Semantics(
+              key: ValueKey('attendance-capacity-progress-${gig.id}'),
               container: true,
               label: '$going of $capacity $spotsLabel filled',
               child: ExcludeSemantics(

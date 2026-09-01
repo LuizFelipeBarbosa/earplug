@@ -664,6 +664,10 @@ class Gig {
 
   bool get free => price == 0;
   String get priceLabel => free ? 'FREE' : '\$$price';
+  int? get numericCapacity {
+    final value = int.tryParse(cap.trim());
+    return value != null && value > 0 ? value : null;
+  }
 
   Gig copyWith({
     String? slug,

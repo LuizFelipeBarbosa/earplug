@@ -132,6 +132,13 @@ void main() {
       expect(find.text("WHO'S GOING"), findsOne);
       expect(find.text('24+ GOING'), findsOne);
       expect(find.text('24 of 80 spots filled'), findsOne);
+      final progress = find.descendant(
+        of: find.byKey(
+          const ValueKey('attendance-capacity-progress-shared-gig'),
+        ),
+        matching: find.byType(LinearProgressIndicator),
+      );
+      expect(tester.widget<LinearProgressIndicator>(progress).value, .3);
       await tester.scrollUntilVisible(
         find.text('24 of 80 spots filled'),
         240,
@@ -150,6 +157,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(harness.app.rsvpCount(repository.gig), 25);
       expect(find.text('25 of 80 spots filled'), findsOne);
+      expect(
+        tester.widget<LinearProgressIndicator>(progress).value,
+        closeTo(25 / 80, .001),
+      );
 
       await tester.tap(find.text('GOING ✓'));
       await tester.pump();

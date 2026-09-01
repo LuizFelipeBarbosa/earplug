@@ -414,25 +414,28 @@ class _GigMapViewState extends State<GigMapView> {
             left: 12,
             right: 12,
             bottom: tabBarClearance + 10,
-            child: _MapGigCard(
-              gig: g,
-              venue: selectedGroup.venue,
-              position: selectedIndex,
-              total: selectedGroup.gigs.length,
-              onPrevious: selectedIndex > 0
-                  ? () => setState(
-                      () => selected = selectedGroup!.gigs[selectedIndex - 1],
-                    )
-                  : null,
-              onNext: selectedIndex < selectedGroup.gigs.length - 1
-                  ? () => setState(
-                      () => selected = selectedGroup!.gigs[selectedIndex + 1],
-                    )
-                  : null,
-              onOpen: () {
-                setState(() => selected = null);
-                app.openGig(g.id);
-              },
+            child: TapRegion(
+              onTapOutside: (_) => setState(() => selected = null),
+              child: _MapGigCard(
+                gig: g,
+                venue: selectedGroup.venue,
+                position: selectedIndex,
+                total: selectedGroup.gigs.length,
+                onPrevious: selectedIndex > 0
+                    ? () => setState(
+                        () => selected = selectedGroup!.gigs[selectedIndex - 1],
+                      )
+                    : null,
+                onNext: selectedIndex < selectedGroup.gigs.length - 1
+                    ? () => setState(
+                        () => selected = selectedGroup!.gigs[selectedIndex + 1],
+                      )
+                    : null,
+                onOpen: () {
+                  setState(() => selected = null);
+                  app.openGig(g.id);
+                },
+              ),
             ),
           ),
       ],
@@ -462,9 +465,11 @@ class _MapGigCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return EpCard(
+      key: ValueKey('map-gig-card-${gig.id}'),
       variant: EpCardVariant.raised,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       radius: 14,
+      onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -531,12 +536,18 @@ class _CarouselButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
+    final button = IconButton(
       onPressed: onTap,
       style: const ButtonStyle(
         fixedSize: WidgetStatePropertyAll(Size.square(48)),
       ),
       icon: Icon(icon, size: 20),
+    );
+    if (onTap != null) return button;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {},
+      child: button,
     );
   }
 }
