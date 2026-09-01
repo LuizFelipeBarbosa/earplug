@@ -494,140 +494,83 @@ class _HomeLocationEditor extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final query = controller.text.trim();
+    final exactMatch = fanCityFromLocationInput(query);
+    final suggestions = focusNode.hasFocus && exactMatch == null
+        ? fanCitySuggestions(query).toList(growable: false)
+        : const <FanCity>[];
     final hasNoResults =
         focusNode.hasFocus &&
         query.isNotEmpty &&
-        fanCitySuggestions(query).isEmpty;
+        exactMatch == null &&
+        suggestions.isEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) => RawAutocomplete<FanCity>(
-            key: const Key('home-location-autocomplete'),
-            textEditingController: controller,
-            focusNode: focusNode,
-            displayStringForOption: (city) => city.autocompleteLabel,
-            optionsBuilder: (value) {
-              if (fanCityFromLocationInput(value.text) != null) {
-                return const <FanCity>[];
-              }
-              return fanCitySuggestions(value.text);
-            },
-            onSelected: onSelected,
-            fieldViewBuilder:
-                (context, fieldController, fieldFocusNode, onSubmitted) =>
-                    TextField(
-                      key: const Key('home-location-input'),
-                      controller: fieldController,
-                      focusNode: fieldFocusNode,
-                      enabled: enabled,
-                      textCapitalization: TextCapitalization.words,
-                      textInputAction: TextInputAction.done,
-                      autofillHints: const [AutofillHints.addressCity],
-                      onSubmitted: (_) => onSubmitted(),
-                      decoration: InputDecoration(
-                        hintText: 'Type a city or location',
-                        hintStyle: Theme.of(
-                          context,
-                        ).textTheme.epBody.copyWith(color: Ep.contentDisabled),
-                        prefixIcon: const Icon(
-                          Icons.location_city_outlined,
-                          color: Ep.contentSecondary,
-                          size: 20,
-                        ),
-                        suffixIcon: query.isEmpty
-                            ? null
-                            : IconButton(
-                                key: const Key('clear-home-location'),
-                                tooltip: 'Clear home location',
-                                onPressed: enabled ? onClear : null,
-                                icon: const Icon(Icons.close, size: 18),
-                              ),
-                        filled: false,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        disabledBorder: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          vertical: 15,
-                        ),
-                      ),
-                    ),
-            optionsViewBuilder: (context, choose, options) {
-              final suggestions = options.toList(growable: false);
-              return Align(
-                alignment: Alignment.topLeft,
-                child: Material(
-                  color: Ep.surfaceRaised,
-                  elevation: 12,
-                  shadowColor: Colors.black,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: const BorderSide(color: Ep.border),
+        TextField(
+          key: const Key('home-location-input'),
+          controller: controller,
+          focusNode: focusNode,
+          enabled: enabled,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.done,
+          autofillHints: const [AutofillHints.addressCity],
+          onSubmitted: (_) => focusNode.unfocus(),
+          decoration: InputDecoration(
+            hintText: 'Type a city or location',
+            hintStyle: Theme.of(
+              context,
+            ).textTheme.epBody.copyWith(color: Ep.contentDisabled),
+            prefixIcon: const Icon(
+              Icons.location_city_outlined,
+              color: Ep.contentSecondary,
+              size: 20,
+            ),
+            suffixIcon: query.isEmpty
+                ? null
+                : IconButton(
+                    key: const Key('clear-home-location'),
+                    tooltip: 'Clear home location',
+                    onPressed: enabled ? onClear : null,
+                    icon: const Icon(Icons.close, size: 18),
                   ),
-                  clipBehavior: Clip.antiAlias,
-                  child: SizedBox(
-                    width: constraints.maxWidth,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 280),
-                      child: ListView.builder(
-                        padding: EdgeInsets.zero,
-                        shrinkWrap: true,
-                        itemCount: suggestions.length,
-                        itemBuilder: (context, index) {
-                          final city = suggestions[index];
-                          final highlighted =
-                              AutocompleteHighlightedOption.of(context) ==
-                              index;
-                          return Semantics(
-                            button: true,
-                            label: 'Use ${city.autocompleteLabel}',
-                            child: Material(
-                              color: highlighted
-                                  ? Ep.surfaceDisabled
-                                  : Colors.transparent,
-                              child: InkWell(
-                                key: ValueKey(
-                                  'home-location-suggestion-${city.name}',
-                                ),
-                                onTap: () => choose(city),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 13,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.place_outlined,
-                                        size: 18,
-                                        color: Ep.contentSecondary,
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Text(
-                                          city.autocompleteLabel,
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.epBody,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            },
+            filled: false,
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 15),
           ),
         ),
+        if (suggestions.isNotEmpty)
+          DecoratedBox(
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: Ep.border)),
+            ),
+            child: Column(
+              children: [
+                for (final city in suggestions)
+                  Semantics(
+                    button: true,
+                    label: 'Use ${city.autocompleteLabel}',
+                    excludeSemantics: true,
+                    child: TextButton.icon(
+                      key: ValueKey('home-location-suggestion-${city.name}'),
+                      onPressed: () => onSelected(city),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Ep.contentPrimary,
+                        minimumSize: const Size.fromHeight(48),
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        shape: const RoundedRectangleBorder(),
+                      ),
+                      icon: const Icon(Icons.place_outlined, size: 18),
+                      label: Text(city.autocompleteLabel),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         const Divider(color: Ep.border, height: 1),
         if (hasNoResults)
           Padding(
