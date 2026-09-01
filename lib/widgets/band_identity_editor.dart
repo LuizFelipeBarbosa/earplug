@@ -260,7 +260,6 @@ class BandIdentityTextField extends StatelessWidget {
     super.key,
     this.fieldKey,
     required this.label,
-    required this.semanticLabel,
     required this.hint,
     required this.controller,
     required this.onChanged,
@@ -272,7 +271,6 @@ class BandIdentityTextField extends StatelessWidget {
 
   final String label;
   final Key? fieldKey;
-  final String semanticLabel;
   final String hint;
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
@@ -283,25 +281,21 @@ class BandIdentityTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      label: semanticLabel,
-      textField: true,
-      child: TextField(
-        key: fieldKey,
-        controller: controller,
-        enabled: enabled,
-        onChanged: onChanged,
-        minLines: minLines,
-        maxLines: maxLines,
-        style: Theme.of(context).textTheme.epDisplay.copyWith(
-          fontSize: minLines > 1 ? 18 : 21,
-          height: 1.25,
-        ),
-        decoration: epInputDecoration(hint).copyWith(
-          labelText: required ? '$label · REQUIRED' : label,
-          floatingLabelBehavior: FloatingLabelBehavior.always,
-          contentPadding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-        ),
+    return TextField(
+      key: fieldKey,
+      controller: controller,
+      enabled: enabled,
+      onChanged: onChanged,
+      minLines: minLines,
+      maxLines: maxLines,
+      style: Theme.of(context).textTheme.epDisplay.copyWith(
+        fontSize: minLines > 1 ? 18 : 21,
+        height: 1.25,
+      ),
+      decoration: epInputDecoration(hint).copyWith(
+        labelText: required ? '$label · REQUIRED' : label,
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        contentPadding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
       ),
     );
   }

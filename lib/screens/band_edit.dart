@@ -360,7 +360,6 @@ class _BandEditScreenState extends State<BandEditScreen> {
                     BandIdentityTextField(
                       fieldKey: const ValueKey('edit-band-name'),
                       label: 'BAND NAME',
-                      semanticLabel: 'Band name',
                       hint: 'Your band name',
                       controller: _name,
                       required: true,
@@ -374,7 +373,6 @@ class _BandEditScreenState extends State<BandEditScreen> {
                     BandIdentityTextField(
                       fieldKey: const ValueKey('edit-home-base'),
                       label: 'HOME BASE',
-                      semanticLabel: 'Home base',
                       hint: 'Neighborhood or city',
                       controller: _area,
                       required: true,
@@ -388,7 +386,6 @@ class _BandEditScreenState extends State<BandEditScreen> {
                     BandIdentityTextField(
                       fieldKey: const ValueKey('edit-short-bio'),
                       label: 'ABOUT',
-                      semanticLabel: 'About',
                       hint: 'Tell fans about the band',
                       controller: _bio,
                       enabled: !_saving,

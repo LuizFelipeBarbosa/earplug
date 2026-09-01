@@ -28,7 +28,7 @@ void main() {
     expect(find.byKey(const ValueKey('band-profile-image-control')), findsOne);
     expect(find.byKey(const ValueKey('band-header-image-control')), findsOne);
     expect(find.text('BAND NAME · REQUIRED'), findsOne);
-    expect(find.bySemanticsLabel('Band name'), findsOne);
+    expect(find.bySemanticsLabel('BAND NAME · REQUIRED'), findsOne);
     expect(
       tester
           .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
@@ -38,9 +38,9 @@ void main() {
     );
     expect(find.text('GENRES · REQUIRED'), findsOne);
     expect(find.text('HOME BASE · REQUIRED'), findsOne);
-    expect(find.bySemanticsLabel('Home base'), findsOne);
+    expect(find.bySemanticsLabel('HOME BASE · REQUIRED'), findsOne);
     expect(find.text('ABOUT'), findsOne);
-    expect(find.bySemanticsLabel('About'), findsOne);
+    expect(find.bySemanticsLabel('ABOUT'), findsOne);
     expect(find.text('PREVIEW'), findsOne);
     expect(find.byType(StickyActionBar), findsOne);
     expect(find.text('LINKS'), findsOne);

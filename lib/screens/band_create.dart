@@ -142,7 +142,6 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
               BandIdentityTextField(
                 fieldKey: const ValueKey('create-band-name'),
                 label: 'BAND NAME',
-                semanticLabel: 'Band name',
                 hint: 'Your band name',
                 controller: _name,
                 required: true,
@@ -155,7 +154,6 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
               BandIdentityTextField(
                 fieldKey: const ValueKey('create-home-base'),
                 label: 'HOME BASE',
-                semanticLabel: 'Home base',
                 hint: 'Neighborhood or city',
                 controller: _area,
                 required: true,
@@ -165,7 +163,6 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
               BandIdentityTextField(
                 fieldKey: const ValueKey('create-about'),
                 label: 'ABOUT',
-                semanticLabel: 'About',
                 hint: 'Tell fans about the band',
                 controller: _bio,
                 minLines: 4,
