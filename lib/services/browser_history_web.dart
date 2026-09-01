@@ -15,11 +15,6 @@ void replaceBrowserPath(String path) {
   web.window.history.replaceState(null, '', path);
 }
 
-bool requestBrowserBack() {
-  web.window.history.back();
-  return true;
-}
-
 void Function() listenForBrowserBack(BrowserBackHandler handler) {
   final listener = ((web.Event _) => handler()).toJS;
   web.window.addEventListener('popstate', listener);

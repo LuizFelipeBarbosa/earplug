@@ -1032,9 +1032,12 @@ class AppState extends ChangeNotifier {
   }
 
   void back() {
-    if (_stack.length <= 1) return;
-    if (requestBrowserBack()) return;
+    if (_stack.length <= 1) {
+      if (current.screen == Screen.gig) resetTo(Screen.home);
+      return;
+    }
     _popAppStack();
+    replaceBrowserPath(_browserPathFor(current.screen, current.param));
   }
 
   void _popAppStack() {
