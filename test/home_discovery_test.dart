@@ -32,11 +32,18 @@ void main() {
 
     final logo = tester.getRect(find.byKey(const Key('home-logo')));
     final wordmark = tester.getRect(find.byKey(const Key('home-wordmark')));
+    final viewToggle = tester.getRect(
+      find.byKey(const Key('home-view-toggle')),
+    );
     final location = tester.getRect(
       find.byKey(const Key('home-location-control')),
     );
     expect(logo.right, lessThan(wordmark.left));
-    expect(wordmark.bottom, lessThan(location.top));
+    expect(wordmark.right, lessThan(viewToggle.left));
+    expect((logo.center.dy - wordmark.center.dy).abs(), lessThan(2));
+    expect(viewToggle.bottom, lessThan(location.top));
+    expect(location.left, 16);
+    expect(location.right, 386);
 
     await tester.tap(find.text('LIST'));
     await tester.pumpAndSettle();
@@ -64,6 +71,30 @@ void main() {
     harness.app.resetTo(Screen.explore);
     harness.app.resetTo(Screen.home);
     expect(harness.app.mapMode, isFalse);
+  });
+
+  testWidgets('Home identity row and location picker fit a narrow phone', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: HomeScreen()));
+    tester.view.physicalSize = const Size(320, 700);
+    await tester.pumpAndSettle();
+
+    final logo = tester.getRect(find.byKey(const Key('home-logo')));
+    final wordmark = tester.getRect(find.byKey(const Key('home-wordmark')));
+    final viewToggle = tester.getRect(
+      find.byKey(const Key('home-view-toggle')),
+    );
+    final location = tester.getRect(
+      find.byKey(const Key('home-location-control')),
+    );
+
+    expect(logo.right, lessThan(wordmark.left));
+    expect(wordmark.right, lessThan(viewToggle.left));
+    expect(viewToggle.bottom, lessThan(location.top));
+    expect(location.left, 16);
+    expect(location.right, 304);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a single nearby result uses singular gig copy', (tester) async {

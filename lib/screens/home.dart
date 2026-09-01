@@ -47,35 +47,32 @@ class _Header extends StatelessWidget {
       child: Column(
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Padding(
-                padding: EdgeInsets.only(top: 2),
-                child: EpLogo.compact(key: ValueKey('home-logo'), height: 42),
-              ),
-              const SizedBox(width: 10),
+              const EpLogo.compact(key: ValueKey('home-logo'), height: 38),
+              const SizedBox(width: 9),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    ExcludeSemantics(
-                      child: Text(
-                        'EARPLUG',
-                        key: const ValueKey('home-wordmark'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epSectionHeading
-                            .copyWith(letterSpacing: 1.4),
-                      ),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: ExcludeSemantics(
+                    child: Text(
+                      'EARPLUG',
+                      key: const ValueKey('home-wordmark'),
+                      maxLines: 1,
+                      style: epDisplay(size: 28, letterSpacing: 1.2, height: 1),
                     ),
-                    const SizedBox(height: 5),
-                    _CityPill(app: app),
-                  ],
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
               _SegmentedToggle(app: app),
             ],
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: _CityPill(app: app),
           ),
           const SizedBox(height: 10),
           Align(
@@ -130,6 +127,7 @@ class _SegmentedToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SegmentedButton<bool>(
+      key: const ValueKey('home-view-toggle'),
       segments: const [
         ButtonSegment(value: false, label: Text('LIST')),
         ButtonSegment(value: true, label: Text('MAP')),
