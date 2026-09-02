@@ -175,11 +175,19 @@ class _CityPill extends StatelessWidget {
         foregroundColor: context.epColors.contentPrimary,
       ),
       icon: Icon(Icons.location_on, color: context.epColors.accent, size: 18),
-      label: Text(
-        '${app.locationLabel} ▾',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.epLabel,
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              app.locationLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.epLabel,
+            ),
+          ),
+          Icon(Icons.arrow_drop_down, size: 18, color: context.epColors.accent),
+        ],
       ),
     );
   }
@@ -193,100 +201,127 @@ class _FeedList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final feed = app.feed;
-    final featured = feed.firstOrNull;
-    final remaining = feed.skip(1).toList(growable: false);
-    final gigNoun = feed.length == 1 ? 'GIG' : 'GIGS';
-    return ListView(
+    final rows = <_FeedRow>[];
+
+    if (feed.isEmpty) {
+      rows.add(const _FeedEmptyRow());
+    } else {
+      rows.add(_FeedCountRow(feed.length));
+
+      final featured = feed.first;
+      rows.add(const _FeedSectionRow(label: 'FEATURED NEAR YOU', count: 1));
+      if (app.isDiscoveryBoosted(featured)) {
+        rows.add(_FeedBoostRow(featured));
+      }
+      rows.add(_FeedCardRow(featured, featured: true));
+
+      final remaining = feed.skip(1);
+      for (final section in GigWhen.values) {
+        final gigs = remaining
+            .where((gig) => gig.when == section)
+            .toList(growable: false);
+        if (gigs.isEmpty) continue;
+
+        rows.add(
+          _FeedSectionRow(
+            label: switch (section) {
+              GigWhen.tonight => 'TONIGHT',
+              GigWhen.week => 'THIS WEEK',
+              GigWhen.later => 'LATER',
+            },
+            count: gigs.length,
+          ),
+        );
+        for (final gig in gigs) {
+          rows.add(_FeedCardRow(gig));
+        }
+      }
+    }
+
+    return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
-      children: [
-        if (feed.isNotEmpty) ...[
-          Text(
-            '${feed.length} $gigNoun NEAR YOU · LOCAL ORDER',
-            style: Theme.of(context).textTheme.epLabel.copyWith(
-              letterSpacing: 1.2,
-              color: context.epColors.contentSecondary,
-            ),
-          ),
-          const SizedBox(height: 10),
-        ],
-        if (feed.isEmpty) _DiscoveryEmptyState(app: app),
-        if (featured != null) ...[
-          _FeedSection(
-            label: 'FEATURED NEAR YOU',
-            featured: featured,
-            gigs: const [],
-            app: app,
-          ),
-          for (final section in GigWhen.values)
-            _FeedSection(
-              label: switch (section) {
-                GigWhen.tonight => 'TONIGHT',
-                GigWhen.week => 'THIS WEEK',
-                GigWhen.later => 'LATER',
-              },
-              featured: null,
-              gigs: remaining
-                  .where((gig) => gig.when == section)
-                  .toList(growable: false),
-              app: app,
-            ),
-        ],
-      ],
+      itemCount: rows.length,
+      itemBuilder: (context, index) => _buildRow(context, rows[index]),
     );
+  }
+
+  Widget _buildRow(BuildContext context, _FeedRow row) {
+    return switch (row) {
+      _FeedCountRow(:final count) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(
+          '$count ${count == 1 ? 'GIG' : 'GIGS'} NEAR YOU · LOCAL ORDER',
+          style: Theme.of(context).textTheme.epLabel.copyWith(
+            letterSpacing: 1.2,
+            color: context.epColors.contentSecondary,
+          ),
+        ),
+      ),
+      _FeedEmptyRow() => _DiscoveryEmptyState(app: app),
+      _FeedSectionRow(:final label, :final count) => SectionBar(
+        label: label,
+        count: count,
+      ),
+      _FeedBoostRow(:final gig) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(
+          'DISCOVERY BOOST · COMPLETE LISTING',
+          key: ValueKey('discovery-boost-${gig.id}'),
+          style: Theme.of(context).textTheme.epMeta.copyWith(
+            color: context.epColors.accent,
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            letterSpacing: .45,
+          ),
+        ),
+      ),
+      _FeedCardRow(:final gig, :final featured) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: FanEventCard(
+          gig: gig,
+          app: app,
+          showDistance: true,
+          presentation: featured
+              ? FanEventCardPresentation.featured
+              : FanEventCardPresentation.compact,
+        ),
+      ),
+    };
   }
 }
 
-class _FeedSection extends StatelessWidget {
-  const _FeedSection({
-    required this.label,
-    required this.featured,
-    required this.gigs,
-    required this.app,
-  });
+sealed class _FeedRow {
+  const _FeedRow();
+}
+
+class _FeedCountRow extends _FeedRow {
+  const _FeedCountRow(this.count);
+
+  final int count;
+}
+
+class _FeedEmptyRow extends _FeedRow {
+  const _FeedEmptyRow();
+}
+
+class _FeedSectionRow extends _FeedRow {
+  const _FeedSectionRow({required this.label, required this.count});
 
   final String label;
-  final Gig? featured;
-  final List<Gig> gigs;
-  final AppState app;
+  final int count;
+}
 
-  @override
-  Widget build(BuildContext context) {
-    final count = gigs.length + (featured == null ? 0 : 1);
-    if (count == 0) return const SizedBox.shrink();
+class _FeedBoostRow extends _FeedRow {
+  const _FeedBoostRow(this.gig);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionBar(label: label, count: count),
-        if (featured case final gig?) ...[
-          if (app.isDiscoveryBoosted(gig)) ...[
-            Text(
-              'DISCOVERY BOOST · COMPLETE LISTING',
-              key: ValueKey('discovery-boost-${gig.id}'),
-              style: Theme.of(context).textTheme.epMeta.copyWith(
-                color: context.epColors.accent,
-                fontSize: 11,
-                fontWeight: FontWeight.w900,
-                letterSpacing: .45,
-              ),
-            ),
-            const SizedBox(height: 6),
-          ],
-          FanEventCard(
-            gig: gig,
-            app: app,
-            showDistance: true,
-            presentation: FanEventCardPresentation.featured,
-          ),
-          const SizedBox(height: 10),
-        ],
-        for (final gig in gigs) ...[
-          FanEventCard(gig: gig, app: app, showDistance: true),
-          const SizedBox(height: 10),
-        ],
-      ],
-    );
-  }
+  final Gig gig;
+}
+
+class _FeedCardRow extends _FeedRow {
+  const _FeedCardRow(this.gig, {this.featured = false});
+
+  final Gig gig;
+  final bool featured;
 }
 
 class _DiscoveryEmptyState extends StatelessWidget {

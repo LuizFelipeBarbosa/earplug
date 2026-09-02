@@ -389,23 +389,26 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    BandIdentityHeader(
-                      name: _name.text,
-                      area: _area.text,
-                      initials: band.initials,
-                      color: band.color,
-                      avatarUrl: band.profileImageUrl,
-                      bannerUrl: band.headerImageUrl,
-                      avatarBytes: _avatarPreview?.bytes,
-                      bannerBytes: _bannerPreview?.bytes,
-                      avatarBusy: _avatarUploading,
-                      bannerBusy: _bannerUploading,
-                      onAvatarTap: _saving
-                          ? null
-                          : () => _showArtworkSheet(_EditArtworkRole.avatar),
-                      onBannerTap: _saving
-                          ? null
-                          : () => _showArtworkSheet(_EditArtworkRole.banner),
+                    ListenableBuilder(
+                      listenable: Listenable.merge([_name, _area]),
+                      builder: (context, _) => BandIdentityHeader(
+                        name: _name.text,
+                        area: _area.text,
+                        initials: band.initials,
+                        color: band.color,
+                        avatarUrl: band.profileImageUrl,
+                        bannerUrl: band.headerImageUrl,
+                        avatarBytes: _avatarPreview?.bytes,
+                        bannerBytes: _bannerPreview?.bytes,
+                        avatarBusy: _avatarUploading,
+                        bannerBusy: _bannerUploading,
+                        onAvatarTap: _saving
+                            ? null
+                            : () => _showArtworkSheet(_EditArtworkRole.avatar),
+                        onBannerTap: _saving
+                            ? null
+                            : () => _showArtworkSheet(_EditArtworkRole.banner),
+                      ),
                     ),
                     const SizedBox(height: 9),
                     Text(
@@ -434,10 +437,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                       controller: _name,
                       required: true,
                       enabled: !_saving,
-                      onChanged: (value) {
-                        _draftChanged(value);
-                        setState(() {});
-                      },
+                      onChanged: _draftChanged,
                     ),
                     const SizedBox(height: 14),
                     BandIdentityTextField(
@@ -447,10 +447,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                       controller: _area,
                       required: true,
                       enabled: !_saving,
-                      onChanged: (value) {
-                        _draftChanged(value);
-                        setState(() {});
-                      },
+                      onChanged: _draftChanged,
                     ),
                     const SizedBox(height: 14),
                     BandIdentityTextField(

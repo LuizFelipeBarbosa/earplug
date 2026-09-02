@@ -14,7 +14,9 @@ import {
   MAX_UPCOMING_GIGS_PER_BAND,
   assertGigPublishable,
   bandPayloadValidator,
+  bandSummaryPayloadValidator,
   feedCutoff,
+  gigFeedPayloadValidator,
   gigPayloadValidator,
   gigPublishFieldsValidator,
   insertPublishedGig,
@@ -23,6 +25,8 @@ import {
   requireBandAdminQuery,
   slugify,
   toBandPayload,
+  toBandSummaryPayload,
+  toGigFeedPayload,
   toGigPayload,
   toVenuePayload,
   upcomingGigsForBand,
@@ -460,6 +464,90 @@ export const feed = query({
       bands,
       nextStartsAt,
     };
+  },
+});
+
+/** One `ctx.db.get` per band per call, however many gigs reference it. */
+function bandLoader(ctx: QueryCtx) {
+  const bands = new Map<Id<"bands">, Promise<Doc<"bands"> | null>>();
+  return (bandId: Id<"bands">) => {
+    let band = bands.get(bandId);
+    if (band === undefined) {
+      band = ctx.db.get(bandId);
+      bands.set(bandId, band);
+    }
+    return band;
+  };
+}
+
+/** `upcomingGigs` minus gigs whose owning band is archived — the same rows
+ * `feed` returns, with the owner reads memoised through `loadBand`. */
+async function visibleUpcomingGigs(
+  ctx: QueryCtx,
+  loadBand: ReturnType<typeof bandLoader>,
+): Promise<UpcomingGigs> {
+  const { gigs, nextStartsAt } = await upcomingGigs(ctx);
+  const visible = [];
+  for (const gig of gigs) {
+    if (gig.createdByBand) {
+      const owner = await loadBand(gig.createdByBand);
+      if (owner === null || owner.archivedAt !== undefined) continue;
+    }
+    visible.push(gig);
+  }
+  return { gigs: visible, nextStartsAt };
+}
+
+/** `feed` with band summaries instead of full band payloads and no per-gig
+ * `goingCount`, so a band's bio, past shows and banner never ride along and an
+ * RSVP anywhere leaves this result byte-for-byte unchanged. Pair it with
+ * independently evaluated `goingCounts`; clients retain its last-known counts
+ * because a gig can momentarily appear in only one of the two results. */
+export const feedV2 = query({
+  args: {},
+  returns: v.object({
+    gigs: v.array(gigFeedPayloadValidator),
+    venues: v.array(venuePayloadValidator),
+    bands: v.array(bandSummaryPayloadValidator),
+    nextStartsAt: v.union(v.number(), v.null()),
+  }),
+  handler: async (ctx) => {
+    const loadBand = bandLoader(ctx);
+    const { gigs, nextStartsAt } = await visibleUpcomingGigs(ctx, loadBand);
+    const venueIds = new Set<Id<"venues">>();
+    const bandIds = new Set<Id<"bands">>();
+    for (const gig of gigs) {
+      venueIds.add(gig.venueId);
+      for (const bandId of gig.lineup) bandIds.add(bandId);
+      if (gig.createdByBand) bandIds.add(gig.createdByBand);
+    }
+    const bands = [];
+    for (const bandId of bandIds) {
+      const band = await loadBand(bandId);
+      if (band && band.archivedAt === undefined) {
+        bands.push(await toBandSummaryPayload(ctx, band));
+      }
+    }
+    const gigPayloads = [];
+    for (const gig of gigs) gigPayloads.push(await toGigFeedPayload(ctx, gig));
+    return {
+      gigs: gigPayloads,
+      venues: await hydrateVenues(ctx, venueIds),
+      bands,
+      nextStartsAt,
+    };
+  },
+});
+
+/** The RSVP counts `feedV2` leaves out. This independently evaluates the same
+ * window, so clients merge results into last-known counts rather than assuming
+ * every emission exactly matches the current feed. */
+export const goingCounts = query({
+  args: {},
+  returns: v.array(v.object({ gigId: v.id("gigs"), goingCount: v.number() })),
+  handler: async (ctx) => {
+    const { gigs } = await visibleUpcomingGigs(ctx, bandLoader(ctx));
+    return gigs.map((gig) => ({ gigId: gig._id, goingCount: gig.goingCount }));
   },
 });
 

@@ -14,6 +14,54 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 void main() {
+  testWidgets('raster maps are ready immediately without a style repository', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildEpTheme(Brightness.light),
+        home: Scaffold(
+          body: EpMap(
+            tiles: EpMapTiles.raster,
+            options: const MapOptions(
+              initialCenter: LatLng(34.05, -118.24),
+              initialZoom: 12,
+            ),
+            layers: const [SizedBox(key: Key('raster-map-layer'))],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(TileLayer), findsOne);
+    expect(find.byType(vt.VectorTileLayer), findsNothing);
+    expect(find.byKey(const Key('raster-map-layer')), findsOne);
+    expect(find.bySemanticsLabel('Loading map'), findsNothing);
+    expect(find.text('MAP UNAVAILABLE'), findsNothing);
+    expect(
+      tester
+          .widget<AbsorbPointer>(find.byKey(const Key('map-input-blocker')))
+          .absorbing,
+      isFalse,
+    );
+
+    final tileLayer = tester.widget<TileLayer>(find.byType(TileLayer));
+    expect(
+      tileLayer.urlTemplate,
+      'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png',
+    );
+    expect(tileLayer.maxNativeZoom, 20);
+    expect(find.text('© Stadia Maps'), findsOne);
+    expect(find.text('© OpenMapTiles'), findsOne);
+    expect(find.text('© OpenStreetMap'), findsOne);
+    expect(
+      tester
+          .widgetList<InkWell>(find.byType(InkWell))
+          .where((link) => link.onTap != null),
+      hasLength(3),
+    );
+  });
+
   testWidgets('blocks taps while loading and renders linked attribution', (
     tester,
   ) async {
@@ -138,6 +186,48 @@ void main() {
     expect(controller.camera.center.latitude, closeTo(moved.latitude, .0001));
     expect(controller.camera.center.longitude, closeTo(moved.longitude, .0001));
     expect(controller.camera.zoom, closeTo(14, .01));
+  });
+
+  testWidgets('switching raster themes preserves the map camera', (
+    tester,
+  ) async {
+    final brightness = ValueNotifier(Brightness.light);
+    addTearDown(brightness.dispose);
+    final controller = MapController();
+    addTearDown(controller.dispose);
+
+    await tester.pumpWidget(
+      ValueListenableBuilder(
+        valueListenable: brightness,
+        builder: (context, value, _) => MaterialApp(
+          theme: buildEpTheme(value),
+          home: Scaffold(
+            body: EpMap(
+              tiles: EpMapTiles.raster,
+              mapController: controller,
+              options: const MapOptions(
+                initialCenter: LatLng(34.05, -118.24),
+                initialZoom: 12,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    const moved = LatLng(34.14, -118.19);
+    controller.move(moved, 14);
+    await tester.pump();
+
+    brightness.value = Brightness.dark;
+    await tester.pumpAndSettle();
+
+    expect(controller.camera.center.latitude, closeTo(moved.latitude, .0001));
+    expect(controller.camera.center.longitude, closeTo(moved.longitude, .0001));
+    expect(controller.camera.zoom, closeTo(14, .01));
+    expect(
+      tester.widget<TileLayer>(find.byType(TileLayer)).urlTemplate,
+      'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+    );
   });
 }
 

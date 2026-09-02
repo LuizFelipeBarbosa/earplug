@@ -313,7 +313,7 @@ void main() {
   testWidgets('single-band switcher uses manage language', (tester) async {
     await pumpApp(tester, home: const Scaffold(body: BandDashScreen()));
 
-    await tester.tap(find.text('FOGHORN DIET ▾'));
+    await tester.tap(find.text('FOGHORN DIET'));
     await tester.pumpAndSettle();
 
     expect(find.text('MANAGE BAND'), findsOne);
@@ -331,7 +331,7 @@ void main() {
       home: const Scaffold(body: BandDashScreen()),
     );
 
-    await tester.tap(find.text('FOGHORN DIET ▾'));
+    await tester.tap(find.text('FOGHORN DIET'));
     await tester.pumpAndSettle();
 
     expect(find.text('SWITCH BAND'), findsOne);

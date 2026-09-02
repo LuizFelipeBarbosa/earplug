@@ -282,22 +282,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 style: Theme.of(context).textTheme.epCaption,
               ),
               const SizedBox(height: 18),
-              _FanIdentityPreview(
-                name: _nameController.text,
-                scene: _sceneName(_homeLocation),
-                imageUrl: _removeAvatar ? null : profile?.avatarUrl,
-                picked: _pickedAvatar,
-                onChooseAvatar: _saving ? null : _pickAvatar,
-                onRemoveAvatar:
-                    _pickedAvatar != null ||
-                        (!_removeAvatar && profile?.avatarUrl != null)
-                    ? _saving
-                          ? null
-                          : () => setState(() {
-                              _pickedAvatar = null;
-                              _removeAvatar = true;
-                            })
-                    : null,
+              ListenableBuilder(
+                listenable: Listenable.merge([_nameController]),
+                builder: (context, _) => _FanIdentityPreview(
+                  name: _nameController.text,
+                  scene: _sceneName(_homeLocation),
+                  imageUrl: _removeAvatar ? null : profile?.avatarUrl,
+                  picked: _pickedAvatar,
+                  onChooseAvatar: _saving ? null : _pickAvatar,
+                  onRemoveAvatar:
+                      _pickedAvatar != null ||
+                          (!_removeAvatar && profile?.avatarUrl != null)
+                      ? _saving
+                            ? null
+                            : () => setState(() {
+                                _pickedAvatar = null;
+                                _removeAvatar = true;
+                              })
+                      : null,
+                ),
               ),
               const SizedBox(height: 20),
               BandIdentityTextField(
@@ -308,7 +311,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 required: true,
                 enabled: !_saving,
                 textCapitalization: TextCapitalization.words,
-                onChanged: (_) => setState(() {}),
+                onChanged: (_) {},
               ),
               const SizedBox(height: 14),
               _FanSelectionField(
@@ -342,7 +345,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 minLines: 4,
                 maxLines: 6,
                 maxLength: 280,
-                onChanged: (_) => setState(() {}),
+                onChanged: (_) {},
               ),
               const SizedBox(height: 14),
               _FanSelectionField(
@@ -852,6 +855,7 @@ class _AvatarPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final photo = picked;
+    final cacheSize = (88 * MediaQuery.devicePixelRatioOf(context)).round();
     final avatar = photo == null
         ? EpFanAvatar(name: name, imageUrl: imageUrl, size: 88, radius: 24)
         : Semantics(
@@ -865,6 +869,8 @@ class _AvatarPreview extends StatelessWidget {
                 width: 88,
                 height: 88,
                 fit: BoxFit.cover,
+                cacheWidth: cacheSize,
+                cacheHeight: cacheSize,
               ),
             ),
           );

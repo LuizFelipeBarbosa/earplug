@@ -1,6 +1,8 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/main.dart' show bandSlugFromUri, gigIdFromUri;
+import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -100,4 +102,75 @@ void main() {
     expect(app.current.screen, Screen.myGigs);
     expect(app.authed, isTrue);
   });
+
+  test('returning to a gig resubscribes to its public stream', () async {
+    final auth = FakeAuthService();
+    final repository = _NavigationRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await _flushAsyncWork();
+
+    app.openGig('g1');
+    await _flushAsyncWork();
+    expect(repository.publicGigCalls, 1);
+
+    app.openBand('b1');
+    await _flushAsyncWork();
+    app.back();
+    await _flushAsyncWork();
+
+    expect(app.current.screen, Screen.gig);
+    expect(app.current.param, 'g1');
+    expect(repository.publicGigCalls, 2);
+  });
+
+  test('revisiting Explore does not fetch another page', () async {
+    final auth = FakeAuthService();
+    final repository = _NavigationRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await _flushAsyncWork();
+
+    app.go(Screen.explore);
+    await _flushAsyncWork();
+    expect(repository.listBandsCalls, 1);
+
+    app.go(Screen.home);
+    app.go(Screen.explore);
+    await _flushAsyncWork();
+    expect(repository.listBandsCalls, 1);
+
+    app.loadMoreExploreBands();
+    await _flushAsyncWork();
+    expect(repository.listBandsCalls, 2);
+  });
+}
+
+Future<void> _flushAsyncWork() async {
+  for (var i = 0; i < 5; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
+
+class _NavigationRepository extends DemoRepository {
+  _NavigationRepository({required super.auth});
+
+  var publicGigCalls = 0;
+  var listBandsCalls = 0;
+
+  @override
+  Stream<Gig?> publicGig(String gigId) {
+    publicGigCalls++;
+    return super.publicGig(gigId);
+  }
+
+  @override
+  Future<BandPage> listBands({String? cursor, int numItems = 50}) async {
+    listBandsCalls++;
+    return BandPage(
+      items: const [],
+      continueCursor: cursor == null ? 'page-2' : null,
+      isDone: cursor != null,
+    );
+  }
 }

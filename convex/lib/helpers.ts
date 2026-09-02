@@ -591,6 +591,61 @@ export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
   };
 }
 
+/** The slim band shape `gigs:feedV2` ships: identity, avatar and readiness
+ * flags only. Derived from the full validator so the two can never disagree on
+ * a field's type. */
+export const bandSummaryPayloadValidator = bandPayloadValidator.pick(
+  "_id",
+  "slug",
+  "name",
+  "genres",
+  "area",
+  "colorHex",
+  "initials",
+  "followerCount",
+  "avatarUrl",
+  "profileComplete",
+  "discoveryProfileReady",
+);
+
+/** `toBandPayload` restricted to the summary fields, computed the same way so
+ * every value matches the full payload's — at the cost of one `_storage` read
+ * and one `storage.getUrl` per band instead of up to three of each. */
+export async function toBandSummaryPayload(ctx: QueryCtx, band: Doc<"bands">) {
+  const profileComplete = isBandProfileComplete(band);
+  const profileImageReady = await hasValidProfileImage(ctx, band);
+  const avatarStorageId = resolveArtworkStorageId(
+    band.avatarStorageId,
+    band.imageStorageId,
+  );
+  return {
+    _id: band._id,
+    slug: band.slug,
+    name: band.name,
+    genres: band.genres,
+    area: band.area,
+    colorHex: band.colorHex,
+    initials: band.initials,
+    followerCount: band.followerCount,
+    avatarUrl: avatarStorageId
+      ? await ctx.storage.getUrl(avatarStorageId)
+      : null,
+    profileComplete,
+    discoveryProfileReady:
+      profileComplete && profileImageReady && band.hasClip === true,
+  };
+}
+
+/** The gig shape `gigs:feedV2` ships: the full payload minus `goingCount`, so
+ * an RSVP anywhere no longer changes the feed's result. Counts travel through
+ * `gigs:goingCounts` instead. */
+export const gigFeedPayloadValidator = gigPayloadValidator.omit("goingCount");
+
+export async function toGigFeedPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
+  const { goingCount: _goingCount, ...payload } = await toGigPayload(ctx, gig);
+  return payload;
+}
+
 export async function toGigPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
   const performers = [];
   if (gig.performers) {

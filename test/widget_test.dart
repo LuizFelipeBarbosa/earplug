@@ -22,6 +22,8 @@ void main() {
     test('venue directory merges into one sorted, resolvable list', () async {
       final repository = _DirectoryMergeRepository(auth: FakeAuthService());
       final app = await _demoApp(repository: repository);
+      app.venues;
+      await pumpEventQueue();
       final venues = app.venues;
       final ids = venues.map((venue) => venue.id).toList();
       final names = venues.map((venue) => venue.name).toList();
@@ -38,6 +40,8 @@ void main() {
       final app = await _demoApp(repository: repository);
       final feedVenue = DemoData.venues['v1']!;
 
+      app.venues;
+      await pumpEventQueue();
       expect(app.venue('v1').name, feedVenue.name);
       expect(
         app.venues.singleWhere((venue) => venue.id == 'v1').name,
@@ -49,6 +53,8 @@ void main() {
       final repository = _FailedVenueRepository(auth: FakeAuthService());
       final app = await _demoApp(repository: repository);
 
+      app.venues;
+      await pumpEventQueue();
       expect(app.venueStatus, DataStatus.error);
       expect(app.venueError, isNotNull);
       expect(
@@ -632,6 +638,9 @@ class _FailingRsvpRepository implements EarplugRepository {
 
   @override
   Stream<FeedSnapshot> feed() => const Stream.empty();
+
+  @override
+  Stream<Map<String, int>> goingCounts() => const Stream.empty();
 
   @override
   Stream<Gig?> publicGig(String gigId) => const Stream.empty();

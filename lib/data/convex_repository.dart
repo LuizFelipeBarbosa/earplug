@@ -19,8 +19,12 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Stream<FeedSnapshot> feed() {
-    return _convexService.subscribe('gigs:feed', const {}, parseFeedSnapshot);
+    return _convexService.subscribe('gigs:feedV2', const {}, parseFeedSnapshot);
   }
+
+  @override
+  Stream<Map<String, int>> goingCounts() =>
+      _convexService.subscribe('gigs:goingCounts', const {}, parseGoingCounts);
 
   @override
   Stream<Gig?> publicGig(String ref) =>
@@ -800,8 +804,12 @@ VenueDetail? parseVenueDetail(dynamic decoded) {
 }
 
 FeedSnapshot parseFeedSnapshot(dynamic decoded) {
+  final now = DateTime.now();
   final json = _asMap(decoded);
-  final gigs = _mapList(json['gigs']).map(Gig.fromJson).toList();
+  final gigs = [
+    for (final gigJson in _mapList(json['gigs']))
+      Gig.fromJson(gigJson, now: now),
+  ];
   final nextStartsAt = json['nextStartsAt'];
   final venues = <String, Venue>{
     for (final venueJson in _mapList(json['venues']))
@@ -820,6 +828,11 @@ FeedSnapshot parseFeedSnapshot(dynamic decoded) {
         : null,
   );
 }
+
+Map<String, int> parseGoingCounts(dynamic decoded) => Map.unmodifiable({
+  for (final json in _mapList(decoded))
+    json['gigId'] as String: (json['goingCount'] as num).toInt(),
+});
 
 Interactions parseInteractions(dynamic decoded) {
   final json = _asMap(decoded);

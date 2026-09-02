@@ -84,6 +84,7 @@ void main() {
       final app = AppState(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
+      app.go(Screen.explore);
       await _flushAsyncWork();
       expect(app.exploreBandIds, ['b1', 'b2']);
       expect(app.hasMoreExploreBands, isTrue);
@@ -111,6 +112,7 @@ void main() {
       final app = AppState(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
+      app.go(Screen.explore);
       await _flushAsyncWork();
       expect(app.band('b1')?.past, hasLength(4));
 
@@ -132,6 +134,7 @@ void main() {
       final app = AppState(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
+      app.go(Screen.explore);
       await repository.firstPageStarted.future;
       app.setNbName('Refresh Youth');
       app.toggleNbGenre('punk');
@@ -178,40 +181,81 @@ void main() {
     expect(app.current.screen, Screen.home);
   });
 
-  test('feed changes invalidate cached venue details', () async {
+  test('knownVenue requests and resolves venues outside the feed', () async {
     final auth = FakeAuthService();
-    final freshGig = Gig.fromJson(
-      _gigJson(id: 'fresh-gig', title: 'Just announced'),
+    final repository = _DeferredVenueDirectoryRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await _flushAsyncWork();
+    var notifications = 0;
+    app.addListener(() => notifications++);
+
+    expect(app.knownVenue(repository.directoryVenue.id), isNull);
+    expect(repository.directoryCalls, 1);
+    expect(app.knownVenue(repository.directoryVenue.id), isNull);
+    expect(repository.directoryCalls, 1);
+
+    repository.releaseDirectory.complete();
+    await _flushAsyncWork();
+
+    expect(
+      app.knownVenue(repository.directoryVenue.id),
+      same(repository.directoryVenue),
     );
-    final repository = _RefreshingVenueRepository(
-      auth: auth,
-      freshGig: freshGig,
-    );
+    expect(notifications, greaterThan(0));
+  });
+
+  test('feed changes invalidate only affected venue details', () async {
+    final auth = FakeAuthService();
+    final repository = _RefreshingVenueRepository(auth: auth);
     final app = AppState(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
       await repository.dispose();
     });
 
-    repository.emitFeed([repository.oldGig]);
+    repository.emitFeed([repository.oldGig, repository.untouchedGig]);
     await _flushAsyncWork();
     expect(app.venueDetail('v1'), isNull);
+    expect(app.venueDetail('v2'), isNull);
     await _flushAsyncWork();
-    expect(app.venueDetail('v1')?.gigs.map((gig) => gig.id), [
-      repository.oldGig.id,
-    ]);
-    expect(repository.detailCalls, 1);
+    final cachedChangedVenue = app.venueDetail('v1');
+    final cachedUntouchedVenue = app.venueDetail('v2');
+    expect(cachedChangedVenue?.gigs.single.id, repository.oldGig.id);
+    expect(cachedUntouchedVenue?.gigs.single.id, repository.untouchedGig.id);
+    expect(repository.detailCalls, {'v1': 1, 'v2': 1});
 
-    repository.emitFeed([repository.oldGig, freshGig]);
+    repository.emitFeed([repository.oldGig, repository.untouchedGig]);
+    await _flushAsyncWork();
+    expect(app.venueDetail('v1'), same(cachedChangedVenue));
+    expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
+    expect(repository.detailCalls, {'v1': 1, 'v2': 1});
+
+    final goingOnlyChangedGig = repository.oldGig.copyWith(
+      going: repository.oldGig.going + 1,
+    );
+    repository.emitFeed([goingOnlyChangedGig, repository.untouchedGig]);
+    await _flushAsyncWork();
+    // Going now comes from goingCounts and is intentionally excluded here.
+    expect(app.venueDetail('v1'), same(cachedChangedVenue));
+    expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
+    expect(repository.detailCalls, {'v1': 1, 'v2': 1});
+
+    final lifecycleChangedGig = repository.oldGig.copyWith(
+      lifecycle: GigLifecycle.cancelled,
+    );
+    repository.emitFeed([lifecycleChangedGig, repository.untouchedGig]);
     await _flushAsyncWork();
     expect(app.venueDetail('v1'), isNull);
+    expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
     await _flushAsyncWork();
 
-    expect(app.venueDetail('v1')?.gigs.map((gig) => gig.id), [
-      repository.oldGig.id,
-      freshGig.id,
-    ]);
-    expect(repository.detailCalls, 2);
+    expect(
+      app.venueDetail('v1')?.gigs.single.lifecycle,
+      lifecycleChangedGig.lifecycle,
+    );
+    expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
+    expect(repository.detailCalls, {'v1': 2, 'v2': 1});
   });
 
   test(
@@ -368,18 +412,43 @@ class _VenueRepository extends DemoRepository {
   }
 }
 
-class _RefreshingVenueRepository extends DemoRepository {
-  _RefreshingVenueRepository({required super.auth, required this.freshGig});
+class _DeferredVenueDirectoryRepository extends DemoRepository {
+  _DeferredVenueDirectoryRepository({required super.auth});
 
-  final Gig freshGig;
+  final directoryVenue = Venue(
+    id: 'directory-only',
+    name: 'Directory Hall',
+    area: 'Richmond, SF',
+    addr: '1 Directory Way, San Francisco',
+    distSF: '3.0 mi',
+    distOak: '10.0 mi',
+    point: DemoData.venues['v1']!.point,
+  );
+  final releaseDirectory = Completer<void>();
+  var directoryCalls = 0;
+
+  @override
+  Future<List<Venue>> venues() async {
+    directoryCalls++;
+    await releaseDirectory.future;
+    return [directoryVenue];
+  }
+}
+
+class _RefreshingVenueRepository extends DemoRepository {
+  _RefreshingVenueRepository({required super.auth});
+
   final oldGig = DemoData.gigs.firstWhere((gig) => gig.venueId == 'v1');
+  final untouchedGig = DemoData.gigs.firstWhere((gig) => gig.venueId == 'v2');
   final _feedController = StreamController<FeedSnapshot>.broadcast();
-  var detailCalls = 0;
+  final Map<String, int> detailCalls = {};
+  List<Gig> _currentGigs = const [];
 
   @override
   Stream<FeedSnapshot> feed() => _feedController.stream;
 
   void emitFeed(List<Gig> gigs) {
+    _currentGigs = List<Gig>.of(gigs);
     _feedController.add(
       FeedSnapshot(gigs: gigs, venues: DemoData.venues, bands: DemoData.bands),
     );
@@ -387,10 +456,13 @@ class _RefreshingVenueRepository extends DemoRepository {
 
   @override
   Future<VenueDetail?> venueDetail(String venueId) async {
-    detailCalls++;
+    detailCalls.update(venueId, (count) => count + 1, ifAbsent: () => 1);
     return VenueDetail(
       venue: DemoData.venues[venueId]!,
-      gigs: detailCalls == 1 ? [oldGig] : [oldGig, freshGig],
+      gigs: [
+        for (final gig in _currentGigs)
+          if (gig.venueId == venueId) gig,
+      ],
       bands: const {},
       truncated: false,
     );

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -13,10 +14,12 @@ class BandVideoThumbnail extends StatefulWidget {
     super.key,
     required this.media,
     required this.fallback,
+    this.legacyFrameEnabled = !kIsWeb,
   });
 
   final BandMedia media;
   final Widget fallback;
+  final bool legacyFrameEnabled;
 
   @override
   State<BandVideoThumbnail> createState() => _BandVideoThumbnailState();
@@ -27,6 +30,7 @@ class _BandVideoThumbnailState extends State<BandVideoThumbnail> {
   bool _legacyReady = false;
 
   bool get _needsLegacyFrame =>
+      widget.legacyFrameEnabled &&
       (widget.media.thumbnailUrl == null ||
           widget.media.thumbnailUrl!.isEmpty) &&
       widget.media.url != null &&
@@ -41,7 +45,8 @@ class _BandVideoThumbnailState extends State<BandVideoThumbnail> {
   @override
   void didUpdateWidget(covariant BandVideoThumbnail oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.media.url != widget.media.url ||
+    if (oldWidget.legacyFrameEnabled != widget.legacyFrameEnabled ||
+        oldWidget.media.url != widget.media.url ||
         oldWidget.media.thumbnailUrl != widget.media.thumbnailUrl) {
       _disposeLegacyController();
       _loadLegacyFrameIfNeeded();

@@ -75,6 +75,19 @@ test("accepts a deployment with every required client invitation function", () =
   assert.deepEqual(contractProblems(url, { url, functions }), []);
 });
 
+test("reports a deployment missing gigs:feedV2", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions)
+    .map(([identifier, functionType]) =>
+      completeFunction(identifier, functionType),
+    )
+    .filter((entry) => entry.identifier !== "gigs.js:feedV2");
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "missing gigs.js:feedV2",
+  ]);
+});
+
 test("reports missing, mistyped, and wrong-deployment functions", () => {
   const problems = contractProblems(
     "https://decisive-iguana-759.convex.cloud",
@@ -102,6 +115,8 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing gigs.js:resolvePerformerInvite",
     "missing gigs.js:claimPerformerInvite",
     "missing gigs.js:resolvePublic",
+    "missing gigs.js:feedV2",
+    "missing gigs.js:goingCounts",
     "missing gigs.js:doorRoster",
     "missing gigs.js:checkInTicket",
     "missing venues.js:create",

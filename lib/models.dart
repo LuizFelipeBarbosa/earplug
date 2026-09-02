@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -580,10 +581,12 @@ class Gig {
   /// empty `/g/` link during the slug rollout.
   String get publicRef => slug.isEmpty ? id : slug;
 
-  factory Gig.fromJson(Map<String, dynamic> json) {
-    final startsAt = (json['startsAt'] as num).toInt();
+  factory Gig.fromJson(Map<String, dynamic> json, {DateTime? now}) {
+    now ??= DateTime.now();
+    final startsAtMs = (json['startsAt'] as num).toInt();
+    final startsAt = DateTime.fromMillisecondsSinceEpoch(startsAtMs);
+    final doorsAtMs = json['doorsAt'] as num?;
     final doorsTime = json['doorsTime'] as String;
-    final now = DateTime.now();
 
     return Gig(
       id: json['_id'] as String,
@@ -591,14 +594,14 @@ class Gig {
       title: json['title'] as String,
       venueId: json['venueId'] as String,
       price: (json['price'] as num).toInt(),
-      startsAt: DateTime.fromMillisecondsSinceEpoch(startsAt),
-      doorsAt: DateTime.fromMillisecondsSinceEpoch(
-        ((json['doorsAt'] as num?) ?? startsAt).toInt(),
-      ),
-      dateShort: dateShortFor(startsAt),
-      dateLine: dateLineFor(startsAt, doorsTime, now: now),
+      startsAt: startsAt,
+      doorsAt: doorsAtMs == null
+          ? startsAt
+          : DateTime.fromMillisecondsSinceEpoch(doorsAtMs.toInt()),
+      dateShort: _dateShortForDate(startsAt),
+      dateLine: _dateLineForDate(startsAt, doorsTime, now),
       time: doorsTime,
-      when: whenFor(startsAt, now: now),
+      when: _whenForDate(startsAt, now),
       flyKey: json['flyKey'] as String,
       lineup: List<String>.from(json['lineup'] as List),
       performers: [
@@ -613,7 +616,7 @@ class Gig {
             bandId: item['bandId'] as String?,
           ),
       ],
-      going: (json['goingCount'] as num).toInt(),
+      going: (json['goingCount'] as num?)?.toInt() ?? 0,
       genres: List<String>.from(json['genres'] as List),
       desc: json['desc'] as String,
       tix: Ticketing.values.byName(json['ticketing'] as String),
@@ -632,12 +635,16 @@ class Gig {
   static GigWhen whenFor(int startsAtMs, {DateTime? now}) {
     final current = now ?? DateTime.now();
     final startsAt = DateTime.fromMillisecondsSinceEpoch(startsAtMs);
+    return _whenForDate(startsAt, current);
+  }
+
+  static GigWhen _whenForDate(DateTime startsAt, DateTime now) {
     final isTonight =
-        startsAt.year == current.year &&
-        startsAt.month == current.month &&
-        startsAt.day == current.day;
+        startsAt.year == now.year &&
+        startsAt.month == now.month &&
+        startsAt.day == now.day;
     if (isTonight) return GigWhen.tonight;
-    if (startsAt.difference(current) < const Duration(days: 7)) {
+    if (startsAt.difference(now) < const Duration(days: 7)) {
       return GigWhen.week;
     }
     return GigWhen.later;
@@ -645,20 +652,33 @@ class Gig {
 
   static String dateShortFor(int startsAtMs) {
     final startsAt = DateTime.fromMillisecondsSinceEpoch(startsAtMs);
+    return _dateShortForDate(startsAt);
+  }
+
+  static String _dateShortForDate(DateTime startsAt) {
     return '${weekdayNamesUpper[startsAt.weekday - 1]} '
         '${monthNamesUpper[startsAt.month - 1]} ${startsAt.day}';
   }
 
   static String dateLineFor(int startsAtMs, String doorsTime, {DateTime? now}) {
+    final current = now ?? DateTime.now();
+    final startsAt = DateTime.fromMillisecondsSinceEpoch(startsAtMs);
+    return _dateLineForDate(startsAt, doorsTime, current);
+  }
+
+  static String _dateLineForDate(
+    DateTime startsAt,
+    String doorsTime,
+    DateTime now,
+  ) {
     final separator = doorsTime.indexOf(' / ');
     final doors = separator == -1
         ? doorsTime
         : doorsTime.substring(0, separator);
-    if (whenFor(startsAtMs, now: now) == GigWhen.tonight) {
+    if (_whenForDate(startsAt, now) == GigWhen.tonight) {
       return 'TONIGHT · DOORS $doors';
     }
 
-    final startsAt = DateTime.fromMillisecondsSinceEpoch(startsAtMs);
     return '${weekdayNamesUpper[startsAt.weekday - 1]} · DOORS $doors';
   }
 
@@ -667,6 +687,53 @@ class Gig {
   int? get numericCapacity {
     final value = int.tryParse(cap.trim());
     return value != null && value > 0 ? value : null;
+  }
+
+  /// Whether this gig has the same venue-facing listing content as [other].
+  /// Live RSVP counts and clock-derived labels do not change the listing.
+  bool sameListing(Gig other) {
+    if (id != other.id ||
+        slug != other.slug ||
+        title != other.title ||
+        venueId != other.venueId ||
+        price != other.price ||
+        startsAt != other.startsAt ||
+        doorsAt != other.doorsAt ||
+        time != other.time ||
+        flyKey != other.flyKey ||
+        !listEquals(lineup, other.lineup) ||
+        performers.length != other.performers.length ||
+        !listEquals(genres, other.genres) ||
+        desc != other.desc ||
+        tix != other.tix ||
+        externalUrl != other.externalUrl ||
+        flyerUrl != other.flyerUrl ||
+        cap != other.cap ||
+        ageRequirement != other.ageRequirement ||
+        lifecycle != other.lifecycle ||
+        createdByBand != other.createdByBand ||
+        discoveryListingReady != other.discoveryListingReady) {
+      return false;
+    }
+    for (var index = 0; index < performers.length; index++) {
+      final performer = performers[index];
+      final otherPerformer = other.performers[index];
+      if (performer.name != otherPerformer.name ||
+          performer.role != otherPerformer.role ||
+          performer.bandId != otherPerformer.bandId ||
+          performer.kind != otherPerformer.kind) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Recomputes the labels that depend on the current local calendar day.
+  Gig relabeled({required DateTime now}) {
+    final updatedWhen = _whenForDate(startsAt, now);
+    final updatedDateLine = _dateLineForDate(startsAt, time, now);
+    if (updatedWhen == when && updatedDateLine == dateLine) return this;
+    return copyWith(when: updatedWhen, dateLine: updatedDateLine);
   }
 
   Gig copyWith({
@@ -800,6 +867,7 @@ class Band {
   final List<PastGig> past;
   final bool profileComplete;
   final bool discoveryProfileReady;
+  final bool isSummary;
 
   const Band({
     required this.id,
@@ -824,6 +892,7 @@ class Band {
     this.past = const [],
     this.profileComplete = false,
     this.discoveryProfileReady = false,
+    this.isSummary = false,
   });
 
   /// The public slug when available, with the internal ID as a rollout-safe
@@ -842,7 +911,7 @@ class Band {
       color: _colorFromHex(json['colorHex'] as String),
       initials: json['initials'] as String,
       followers: (json['followerCount'] as num).toInt(),
-      bio: json['bio'] as String,
+      bio: (json['bio'] as String?) ?? '',
       linkIg: json['linkIg'] as String?,
       linkBc: json['linkBc'] as String?,
       linkYt: json['linkYt'] as String?,
@@ -854,6 +923,7 @@ class Band {
       heroUrl: json['heroUrl'] as String?,
       profileComplete: json['profileComplete'] == true,
       discoveryProfileReady: json['discoveryProfileReady'] == true,
+      isSummary: !json.containsKey('bio'),
       upcoming: const [],
       past: [
         for (final show in pastShows)
@@ -864,16 +934,50 @@ class Band {
 
   String get genreLine => genres.join(' · ');
   String get followersLabel => _compactCount(followers);
+  bool get avatarUrlResolved => _avatarUrlResolved;
   String? get profileImageUrl =>
       _avatarUrlResolved ? avatarUrl : avatarUrl ?? heroUrl;
   String? get headerImageUrl =>
       _bannerUrlResolved ? bannerUrl : bannerUrl ?? heroUrl;
+
+  /// Refreshes feed-owned summary fields while retaining full profile data.
+  Band mergeSummary(Band summary, {required List<String> upcoming}) {
+    final summaryResolvesAvatar = summary.avatarUrlResolved;
+    return Band(
+      id: id,
+      slug: summary.slug,
+      name: summary.name,
+      genres: summary.genres,
+      area: summary.area,
+      color: summary.color,
+      initials: summary.initials,
+      followers: summary.followers,
+      bio: bio,
+      linkIg: linkIg,
+      linkBc: linkBc,
+      linkYt: linkYt,
+      credits: credits,
+      avatarUrl: summaryResolvesAvatar ? summary.avatarUrl : avatarUrl,
+      bannerUrl: bannerUrl,
+      avatarUrlResolved: summaryResolvesAvatar
+          ? summary.avatarUrlResolved
+          : _avatarUrlResolved,
+      bannerUrlResolved: _bannerUrlResolved,
+      heroUrl: heroUrl,
+      upcoming: upcoming,
+      past: past,
+      profileComplete: summary.profileComplete,
+      discoveryProfileReady: summary.discoveryProfileReady,
+      isSummary: false,
+    );
+  }
 
   Band copyWith({
     String? slug,
     String? name,
     List<String>? genres,
     String? area,
+    Color? color,
     String? initials,
     int? followers,
     String? bio,
@@ -889,13 +993,14 @@ class Band {
     List<String>? upcoming,
     bool? profileComplete,
     bool? discoveryProfileReady,
+    bool? isSummary,
   }) => Band(
     id: id,
     slug: slug ?? this.slug,
     name: name ?? this.name,
     genres: genres ?? this.genres,
     area: area ?? this.area,
-    color: color,
+    color: color ?? this.color,
     initials: initials ?? this.initials,
     followers: followers ?? this.followers,
     bio: bio ?? this.bio,
@@ -912,6 +1017,7 @@ class Band {
     past: past,
     profileComplete: profileComplete ?? this.profileComplete,
     discoveryProfileReady: discoveryProfileReady ?? this.discoveryProfileReady,
+    isSummary: isSummary ?? this.isSummary,
   );
 }
 

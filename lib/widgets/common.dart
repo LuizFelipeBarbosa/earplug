@@ -1,9 +1,11 @@
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../services/image_url.dart';
 import '../theme.dart';
 
 /// Top padding for screen headers: status bar / notch plus breathing room.
@@ -18,22 +20,56 @@ class EpNetworkImage extends StatelessWidget {
   final BoxFit fit;
   final Widget fallback;
 
+  /// Requested decode dimensions in logical pixels.
+  final int? cacheWidth;
+  final int? cacheHeight;
+
   const EpNetworkImage({
     super.key,
     required this.url,
     this.fit = BoxFit.cover,
     required this.fallback,
+    this.cacheWidth,
+    this.cacheHeight,
   });
 
   @override
   Widget build(BuildContext context) {
     if (url == null || url!.isEmpty) return fallback;
+    final rawUrl = url!;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final physicalCacheWidth = !kIsWeb && cacheWidth != null
+        ? (cacheWidth! * dpr).round()
+        : null;
+    final physicalCacheHeight = !kIsWeb && cacheHeight != null
+        ? (cacheHeight! * dpr).round()
+        : null;
+    final imageUrl = kIsWeb && cacheWidth != null
+        ? displayImageUrl(
+            rawUrl,
+            width: cacheWidth!,
+            height: cacheHeight,
+            base: Uri.base,
+            devicePixelRatio: dpr,
+          )
+        : rawUrl;
     return CachedNetworkImage(
-      imageUrl: url!,
+      imageUrl: imageUrl,
       fit: fit,
       fadeInDuration: const Duration(milliseconds: 180),
+      memCacheWidth: physicalCacheWidth,
+      memCacheHeight: physicalCacheHeight,
+      maxWidthDiskCache: physicalCacheWidth,
       placeholder: (_, _) => fallback,
-      errorWidget: (_, _, _) => fallback,
+      errorWidget: (_, _, _) => imageUrl == rawUrl
+          ? fallback
+          : CachedNetworkImage(
+              imageUrl: rawUrl,
+              fit: fit,
+              fadeInDuration: const Duration(milliseconds: 180),
+              placeholder: (_, _) => fallback,
+              errorWidget: (_, _, _) => fallback,
+            ),
     );
   }
 }
@@ -664,29 +700,33 @@ class FlyerBox extends StatelessWidget {
               painter: _FlyerPatternPainter(style, patternScale),
               child: Padding(padding: padding, child: child),
             )
-          : Stack(
-              fit: StackFit.expand,
-              children: [
-                EpNetworkImage(
-                  url: imageUrl,
-                  fit: BoxFit.cover,
-                  fallback: CustomPaint(
-                    painter: _FlyerPatternPainter(style, patternScale),
-                  ),
-                ),
-                if (scrim)
-                  const DecoratedBox(
-                    key: ValueKey('flyer-image-scrim'),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Color(0xA8000000), Color(0xBD000000)],
-                      ),
+          : RepaintBoundary(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  EpNetworkImage(
+                    url: imageUrl,
+                    fit: BoxFit.cover,
+                    cacheWidth: (width ?? 448).round(),
+                    cacheHeight: height?.round(),
+                    fallback: CustomPaint(
+                      painter: _FlyerPatternPainter(style, patternScale),
                     ),
                   ),
-                Padding(padding: padding, child: child),
-              ],
+                  if (scrim)
+                    const DecoratedBox(
+                      key: ValueKey('flyer-image-scrim'),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0xA8000000), Color(0xBD000000)],
+                        ),
+                      ),
+                    ),
+                  Padding(padding: padding, child: child),
+                ],
+              ),
             ),
     );
   }
@@ -781,7 +821,12 @@ class EpProfileAvatar extends StatelessWidget {
           borderRadius: BorderRadius.circular(radius),
           child: SizedBox.square(
             dimension: size,
-            child: EpNetworkImage(url: imageUrl, fallback: fallback),
+            child: EpNetworkImage(
+              url: imageUrl,
+              cacheWidth: size.round(),
+              cacheHeight: size.round(),
+              fallback: fallback,
+            ),
           ),
         ),
       ),

@@ -391,6 +391,256 @@ describe("interactions", () => {
   });
 });
 
+describe("interactions hydration with shared venues, bands and flyers", () => {
+  const DAY = 86_400_000;
+
+  function bandFields(name: string) {
+    return {
+      name,
+      slug: name.toLowerCase(),
+      genres: ["punk"],
+      area: "Oakland",
+      colorHex: "#7B8FFF",
+      initials: name.slice(0, 2).toUpperCase(),
+      followerCount: 0,
+      bio: "",
+      pastShows: [],
+    };
+  }
+
+  function gigFields(startsAt: number) {
+    return {
+      price: 5,
+      startsAt,
+      doorsTime: "7PM / 8PM",
+      flyKey: "paper",
+      genres: ["punk"],
+      desc: "",
+      ticketing: "rsvp" as const,
+      ageRequirement: "allAges" as const,
+      cap: "No cap",
+      goingCount: 0,
+    };
+  }
+
+  test("history resolves repeated venues, lineup bands and flyers to the same values as one-off lookups", async () => {
+    const t = convexTest(schema);
+    const now = Date.now();
+    const fixture = await t.run(async (ctx) => {
+      const venueId = await ctx.db.insert("venues", {
+        name: "Shared Room",
+        area: "Oakland",
+        addr: "1 Shared Way",
+        distSF: "7 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.27,
+      });
+      const goneVenueId = await ctx.db.insert("venues", {
+        name: "Gone Room",
+        area: "Oakland",
+        addr: "2 Gone Way",
+        distSF: "7 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.27,
+      });
+      const alphaId = await ctx.db.insert("bands", bandFields("Alpha"));
+      const betaId = await ctx.db.insert("bands", bandFields("Beta"));
+      const goneBandId = await ctx.db.insert("bands", bandFields("Gamma"));
+      const flyerStorageId = await ctx.storage.store(new Blob(["flyer"]));
+      const gigs = {
+        newest: await ctx.db.insert("gigs", {
+          ...gigFields(now - DAY),
+          title: "Newest",
+          venueId,
+          flyKey: "custom",
+          flyStorageId: flyerStorageId,
+          lineup: [alphaId, betaId],
+        }),
+        middle: await ctx.db.insert("gigs", {
+          ...gigFields(now - 2 * DAY),
+          title: "Middle",
+          venueId,
+          flyKey: "custom",
+          flyStorageId: flyerStorageId,
+          lineup: [betaId, goneBandId],
+        }),
+        oldest: await ctx.db.insert("gigs", {
+          ...gigFields(now - 3 * DAY),
+          title: "Oldest",
+          venueId: goneVenueId,
+          lineup: [alphaId],
+        }),
+        upcoming: await ctx.db.insert("gigs", {
+          ...gigFields(now + DAY),
+          title: "Upcoming",
+          venueId,
+          lineup: [alphaId],
+        }),
+        removed: await ctx.db.insert("gigs", {
+          ...gigFields(now - 4 * DAY),
+          title: "Removed",
+          venueId,
+          lineup: [alphaId],
+        }),
+      };
+      return { gigs, goneVenueId, goneBandId, flyerStorageId };
+    });
+
+    const asFan = t.withIdentity({ subject: "history_fan", email: "h@x.com" });
+    await asFan.mutation(api.users.ensureUser, {});
+    for (const gigId of Object.values(fixture.gigs)) {
+      await asFan.mutation(api.interactions.toggleRsvp, { gigId, on: true });
+    }
+    const flyerUrl = await t.run(async (ctx) => {
+      await ctx.db.delete(fixture.goneVenueId);
+      await ctx.db.delete(fixture.goneBandId);
+      await ctx.db.delete(fixture.gigs.removed);
+      return await ctx.storage.getUrl(fixture.flyerStorageId);
+    });
+    expect(flyerUrl).not.toBeNull();
+
+    expect(await asFan.query(api.interactions.history, { now })).toEqual([
+      {
+        gigId: fixture.gigs.newest,
+        title: "Newest",
+        startsAt: now - DAY,
+        venueName: "Shared Room",
+        bandNames: ["Alpha", "Beta"],
+        flyKey: "custom",
+        flyerUrl,
+        status: "rsvped",
+      },
+      {
+        gigId: fixture.gigs.middle,
+        title: "Middle",
+        startsAt: now - 2 * DAY,
+        venueName: "Shared Room",
+        bandNames: ["Beta"],
+        flyKey: "custom",
+        flyerUrl,
+        status: "rsvped",
+      },
+      {
+        gigId: fixture.gigs.oldest,
+        title: "Oldest",
+        startsAt: now - 3 * DAY,
+        venueName: "",
+        bandNames: ["Alpha"],
+        flyKey: "paper",
+        flyerUrl: null,
+        status: "rsvped",
+      },
+    ]);
+  });
+
+  test("myInteractions hydrates RSVP'd and saved gigs sharing a band and a flyer", async () => {
+    const t = convexTest(schema);
+    const now = Date.now();
+    const fixture = await t.run(async (ctx) => {
+      const venueId = await ctx.db.insert("venues", {
+        name: "Shared Room",
+        area: "Oakland",
+        addr: "1 Shared Way",
+        distSF: "7 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.27,
+      });
+      const alphaId = await ctx.db.insert("bands", bandFields("Alpha"));
+      const betaId = await ctx.db.insert("bands", bandFields("Beta"));
+      const flyerStorageId = await ctx.storage.store(new Blob(["flyer"]));
+      const firstGigId = await ctx.db.insert("gigs", {
+        ...gigFields(now + DAY),
+        title: "First",
+        venueId,
+        flyKey: "custom",
+        flyStorageId: flyerStorageId,
+        lineup: [alphaId, betaId],
+      });
+      const secondGigId = await ctx.db.insert("gigs", {
+        ...gigFields(now + 2 * DAY),
+        title: "Second",
+        venueId,
+        flyKey: "custom",
+        flyStorageId: flyerStorageId,
+        lineup: [alphaId],
+      });
+      const flyerUrl = await ctx.storage.getUrl(flyerStorageId);
+      return { venueId, alphaId, betaId, firstGigId, secondGigId, flyerUrl };
+    });
+    expect(fixture.flyerUrl).not.toBeNull();
+
+    const asFan = t.withIdentity({ subject: "mine_fan", email: "m@x.com" });
+    await asFan.mutation(api.users.ensureUser, {});
+    await asFan.mutation(api.interactions.toggleRsvp, {
+      gigId: fixture.firstGigId,
+      on: true,
+    });
+    await asFan.mutation(api.interactions.toggleSave, {
+      gigId: fixture.secondGigId,
+      on: true,
+    });
+    await asFan.mutation(api.interactions.toggleSave, {
+      gigId: fixture.firstGigId,
+      on: true,
+    });
+
+    const commonPayload = {
+      venueId: fixture.venueId,
+      price: 5,
+      doorsTime: "7PM / 8PM",
+      flyKey: "custom",
+      flyerUrl: fixture.flyerUrl,
+      genres: ["punk"],
+      desc: "",
+      ticketing: "rsvp",
+      ageRequirement: "allAges",
+      externalUrl: null,
+      cap: "No cap",
+      createdByBand: null,
+      lifecycle: "published",
+      discoveryListingReady: false,
+    };
+    expect(await asFan.query(api.interactions.myInteractions, {})).toEqual({
+      rsvpGigIds: [fixture.firstGigId],
+      followBandIds: [],
+      savedGigIds: [fixture.secondGigId, fixture.firstGigId],
+      gigs: [
+        {
+          ...commonPayload,
+          _id: fixture.firstGigId,
+          slug: fixture.firstGigId,
+          title: "First",
+          startsAt: now + DAY,
+          doorsAt: now + DAY,
+          lineup: [fixture.alphaId, fixture.betaId],
+          performers: [
+            { name: "Alpha", role: "headliner", bandId: fixture.alphaId },
+            { name: "Beta", role: "support", bandId: fixture.betaId },
+          ],
+          goingCount: 1,
+        },
+        {
+          ...commonPayload,
+          _id: fixture.secondGigId,
+          slug: fixture.secondGigId,
+          title: "Second",
+          startsAt: now + 2 * DAY,
+          doorsAt: now + 2 * DAY,
+          lineup: [fixture.alphaId],
+          performers: [
+            { name: "Alpha", role: "headliner", bandId: fixture.alphaId },
+          ],
+          goingCount: 0,
+        },
+      ],
+      attendedCount: 0,
+    });
+  });
+});
+
 describe("RSVP tickets and Door Mode", () => {
   test("keeps tickets private, rejects wrong gigs, checks in idempotently, and revokes on RSVP removal", async () => {
     const t = convexTest(schema);

@@ -182,10 +182,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 hint: 'Your band name',
                 controller: _name,
                 required: true,
-                onChanged: (value) {
-                  app.setNbName(value);
-                  setState(() {});
-                },
+                onChanged: app.setNbName,
               ),
               const SizedBox(height: 14),
               BandIdentityTextField(

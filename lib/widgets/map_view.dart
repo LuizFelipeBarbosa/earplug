@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -29,15 +31,6 @@ class _Pin extends StatelessWidget {
               : context.epColors.surface,
           width: selected ? 3 : 2,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: context.epColors.brand.withValues(
-              alpha: selected ? .42 : .2,
-            ),
-            blurRadius: selected ? 12 : 6,
-            spreadRadius: selected ? 3 : 0,
-          ),
-        ],
       ),
       child: grouped
           ? Center(
@@ -136,13 +129,6 @@ class _UserPin extends StatelessWidget {
         color: context.epColors.brand,
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white, width: 3),
-        boxShadow: [
-          BoxShadow(
-            color: context.epColors.brand.withValues(alpha: .3),
-            blurRadius: 9,
-            spreadRadius: 3,
-          ),
-        ],
       ),
       child: Center(
         child: SizedBox.square(
@@ -211,12 +197,6 @@ class _VenueMarkerLayer extends StatelessWidget {
                   color: context.epColors.brand,
                   shape: BoxShape.circle,
                   border: Border.all(color: context.epColors.surface, width: 2),
-                  boxShadow: [
-                    BoxShadow(
-                      color: context.epColors.brand.withValues(alpha: .25),
-                      blurRadius: 8,
-                    ),
-                  ],
                 ),
                 alignment: Alignment.center,
                 child: Text(
@@ -279,7 +259,10 @@ class _GigMapViewState extends State<GigMapView> {
   final MapController _controller = MapController();
   Gig? selected;
   bool _mapReady = false;
-  String? _cameraSignature;
+  List<Object>? _cameraSignature;
+  List<Gig>? _lastFeed;
+  LatLng? _lastCenter;
+  List<_VenueGigGroup>? _lastGroups;
 
   @override
   void dispose() {
@@ -288,6 +271,11 @@ class _GigMapViewState extends State<GigMapView> {
   }
 
   List<_VenueGigGroup> _mapGroups(AppState app, List<Gig> gigs) {
+    final center = app.discoveryCenter;
+    if (identical(gigs, _lastFeed) && center == _lastCenter) {
+      return _lastGroups!;
+    }
+
     final gigsByVenue = <String, List<Gig>>{};
     for (final gig in gigs) {
       if (app.knownVenue(gig.venueId) == null) continue;
@@ -302,23 +290,26 @@ class _GigMapViewState extends State<GigMapView> {
         ),
     ];
     groups.sort((a, b) => a.gigs.length.compareTo(b.gigs.length));
+    _lastFeed = gigs;
+    _lastCenter = center;
+    _lastGroups = groups;
     return groups;
   }
 
   void _updateCamera(AppState app, List<_VenueGigGroup> groups) {
     final center = app.discoveryCenter;
-    final signature = <String>[
-      center.latitude.toStringAsFixed(5),
-      center.longitude.toStringAsFixed(5),
+    final cameraSignature = <Object>[
+      (center.latitude * 100000).round(),
+      (center.longitude * 100000).round(),
       for (final group in groups) ...[
         group.venue.id,
-        group.venue.point.latitude.toStringAsFixed(5),
-        group.venue.point.longitude.toStringAsFixed(5),
+        (group.venue.point.latitude * 100000).round(),
+        (group.venue.point.longitude * 100000).round(),
         for (final gig in group.gigs) gig.id,
       ],
-    ].join('|');
-    if (!_mapReady || signature == _cameraSignature) return;
-    _cameraSignature = signature;
+    ];
+    if (!_mapReady || listEquals(cameraSignature, _cameraSignature)) return;
+    _cameraSignature = cameraSignature;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_mapReady) return;

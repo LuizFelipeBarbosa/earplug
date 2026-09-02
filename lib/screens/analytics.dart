@@ -54,7 +54,13 @@ class AnalyticsScreen extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: TextButton(
         onPressed: () => showSwitcherSheet(context),
-        child: Text('${band.name.toUpperCase()} ▾'),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(band.name.toUpperCase()),
+            const Icon(Icons.arrow_drop_down, size: 18),
+          ],
+        ),
       ),
     );
   }

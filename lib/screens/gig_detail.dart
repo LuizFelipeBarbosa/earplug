@@ -399,25 +399,34 @@ class _Hero extends StatelessWidget {
 
     final bytes = flyerBytes;
     if (bytes != null) {
-      return SizedBox(
-        height: 330,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Image.memory(bytes, fit: BoxFit.cover),
-            content,
-          ],
+      return RepaintBoundary(
+        child: SizedBox(
+          height: 330,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.memory(
+                bytes,
+                fit: BoxFit.cover,
+                cacheHeight: (330 * MediaQuery.devicePixelRatioOf(context))
+                    .round(),
+              ),
+              content,
+            ],
+          ),
         ),
       );
     }
 
-    return GigFlyer(
-      gig,
-      fly,
-      height: 330,
-      radius: 0,
-      shadow: false,
-      child: content,
+    return RepaintBoundary(
+      child: GigFlyer(
+        gig,
+        fly,
+        height: 330,
+        radius: 0,
+        shadow: false,
+        child: content,
+      ),
     );
   }
 }

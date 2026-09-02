@@ -346,7 +346,7 @@ void main() {
     );
 
     expect(harness.app.discoveryLocation, DiscoveryLocation.sf);
-    await tester.tap(find.text('MISSION, SF ▾'));
+    await tester.tap(find.text('MISSION, SF'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('current-location-option')));
     await tester.pumpAndSettle();

@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -11,6 +10,7 @@ import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/band_identity_editor.dart';
+import '../widgets/brand_icons.dart';
 import '../widgets/common.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/photo_viewer.dart';
@@ -86,23 +86,39 @@ class BandProfileScreen extends StatelessWidget {
               _BandLinks(app: app, bandId: bandId),
               if (soundVideos.isNotEmpty) ...[
                 const SectionBar(label: 'THIS IS WHAT WE SOUND LIKE'),
-                GridView.count(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 168 / 104,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    for (final video in soundVideos)
-                      _ClipTile(
-                        clip: video,
-                        band: band,
-                        app: app,
-                        pinned: video.id == pinned?.id,
+                for (var index = 0; index < soundVideos.length; index += 2) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AspectRatio(
+                          aspectRatio: 168 / 104,
+                          child: _ClipTile(
+                            clip: soundVideos[index],
+                            band: band,
+                            app: app,
+                            pinned: soundVideos[index].id == pinned?.id,
+                          ),
+                        ),
                       ),
-                  ],
-                ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: index + 1 < soundVideos.length
+                            ? AspectRatio(
+                                aspectRatio: 168 / 104,
+                                child: _ClipTile(
+                                  clip: soundVideos[index + 1],
+                                  band: band,
+                                  app: app,
+                                  pinned:
+                                      soundVideos[index + 1].id == pinned?.id,
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ),
+                  if (index + 2 < soundVideos.length) const SizedBox(height: 8),
+                ],
               ],
               if (photos.isNotEmpty) ...[
                 const SectionBar(label: 'PHOTOS'),
@@ -398,19 +414,19 @@ class _BandLinks extends StatelessWidget {
     final links = [
       (
         name: 'Instagram',
-        icon: FontAwesomeIcons.instagram,
+        icon: BrandGlyph.instagram,
         value: app.linkIgFor(bandId),
         instagram: true,
       ),
       (
         name: 'Bandcamp',
-        icon: FontAwesomeIcons.bandcamp,
+        icon: BrandGlyph.bandcamp,
         value: app.linkBcFor(bandId),
         instagram: false,
       ),
       (
         name: 'YouTube',
-        icon: FontAwesomeIcons.youtube,
+        icon: BrandGlyph.youtube,
         value: app.linkYtFor(bandId),
         instagram: false,
       ),
@@ -446,7 +462,7 @@ class _BandSocialButton extends StatelessWidget {
   });
 
   final String name;
-  final FaIconData icon;
+  final BrandGlyph icon;
   final VoidCallback onPressed;
 
   @override
@@ -467,7 +483,11 @@ class _BandSocialButton extends StatelessWidget {
                 EdgeInsets.symmetric(horizontal: 14),
               ),
             ),
-            icon: FaIcon(icon, size: 18),
+            icon: BrandIcon(
+              glyph: icon,
+              size: 18,
+              color: context.epColors.accent,
+            ),
             label: Text('${name.toUpperCase()} ↗'),
           ),
         ),

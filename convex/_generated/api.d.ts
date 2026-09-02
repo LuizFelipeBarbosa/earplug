@@ -18,6 +18,7 @@ import type * as http from "../http.js";
 import type * as interactions from "../interactions.js";
 import type * as lib_clerkUser from "../lib/clerkUser.js";
 import type * as lib_discovery from "../lib/discovery.js";
+import type * as lib_docCache from "../lib/docCache.js";
 import type * as lib_helpers from "../lib/helpers.js";
 import type * as maintenance from "../maintenance.js";
 import type * as media from "../media.js";
@@ -43,6 +44,7 @@ declare const fullApi: ApiFromModules<{
   interactions: typeof interactions;
   "lib/clerkUser": typeof lib_clerkUser;
   "lib/discovery": typeof lib_discovery;
+  "lib/docCache": typeof lib_docCache;
   "lib/helpers": typeof lib_helpers;
   maintenance: typeof maintenance;
   media: typeof media;

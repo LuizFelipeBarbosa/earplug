@@ -462,13 +462,39 @@ class _ArtworkImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (bytes case final imageBytes?) {
-      return Image.memory(
-        imageBytes,
-        fit: fit,
-        errorBuilder: (_, _, _) => fallback,
-      );
-    }
-    return EpNetworkImage(url: url, fit: fit, fallback: fallback);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final logicalWidth =
+            constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? constraints.maxWidth
+            : null;
+        final logicalHeight =
+            constraints.maxHeight.isFinite && constraints.maxHeight > 0
+            ? constraints.maxHeight
+            : null;
+
+        if (bytes case final imageBytes?) {
+          final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+          return Image.memory(
+            imageBytes,
+            fit: fit,
+            cacheWidth: logicalWidth == null
+                ? null
+                : (logicalWidth * devicePixelRatio).round(),
+            cacheHeight: logicalHeight == null
+                ? null
+                : (logicalHeight * devicePixelRatio).round(),
+            errorBuilder: (_, _, _) => fallback,
+          );
+        }
+        return EpNetworkImage(
+          url: url,
+          fit: fit,
+          fallback: fallback,
+          cacheWidth: logicalWidth?.round(),
+          cacheHeight: logicalHeight?.round(),
+        );
+      },
+    );
   }
 }

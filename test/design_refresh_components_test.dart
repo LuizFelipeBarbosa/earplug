@@ -464,6 +464,7 @@ void main() {
       ),
       findsNothing,
     );
+    app.dispose();
   });
 
   testWidgets('venue hero foreground remains light in both themes', (

@@ -335,8 +335,10 @@ final class ClerkWebAuth implements AuthService {
     final session = _clerk.session;
     if (session == null) return null;
 
+    // At the ~45s refresh mark, Clerk's cache would reuse the ~60s token with only ~15s left.
+    // authRefreshDelay's 30s floor would pass expiry, so every refresh must mint a fresh token.
     final token = await session
-        .getToken(_TokenOptions(template: 'convex'))
+        .getToken(_TokenOptions(template: 'convex', skipCache: true))
         .toDart;
     return token?.toDart;
   }
@@ -588,7 +590,10 @@ extension type _SetActiveParams._(JSObject _) implements JSObject {
 
 @JS()
 extension type _TokenOptions._(JSObject _) implements JSObject {
-  external factory _TokenOptions({required String template});
+  external factory _TokenOptions({
+    required String template,
+    required bool skipCache,
+  });
 }
 
 @JS()

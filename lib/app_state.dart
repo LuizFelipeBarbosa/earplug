@@ -306,11 +306,13 @@ class AppState extends ChangeNotifier {
 
   StreamSubscription<bool>? _authSubscription;
   StreamSubscription<FeedSnapshot>? _feedSubscription;
+  StreamSubscription<Map<String, int>>? _goingCountsSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
   StreamSubscription<Gig?>? _publicGigSubscription;
   VoidCallback? _stopBrowserHistory;
   Timer? _discoveryBoundaryTimer;
+  Timer? _dayRolloverTimer;
   final Map<String, StreamSubscription<List<Gig>>>
   _followedBandGigSubscriptions = {};
   final Map<String, Object> _followedBandGigTokens = {};
@@ -326,13 +328,16 @@ class AppState extends ChangeNotifier {
   List<Gig> _allGigs = const [];
   DateTime? _nextFeedStartsAt;
   bool _hasFeedSnapshot = false;
+  bool _goingCountsSettled = false;
   Map<String, Band> _bands = {};
   Map<String, Venue> _venues = const {};
+  Map<String, int> _goingCounts = const {};
 
   /// The full curated venue table (`venues:list`), including venues no upcoming
   /// gig references. The feed only carries venues its gigs point at.
   Map<String, Venue> _venueDirectory = const {};
   DataStatus _venueStatus = DataStatus.connecting;
+  bool _venueDirectoryRequested = false;
   DataStatus get venueStatus => _venueStatus;
   String? venueError;
 
@@ -488,6 +493,7 @@ class AppState extends ChangeNotifier {
   ExploreResultType exploreResultType = ExploreResultType.all;
   List<String> exploreBandIds = [];
   bool exploreBandsLoading = false;
+  bool _exploreBandsRequested = false;
   bool _exploreBandsDone = false;
   bool _exploreBandsRefreshQueued = false;
   String? _exploreBandsCursor;
@@ -598,10 +604,12 @@ class AppState extends ChangeNotifier {
     _toastTimer?.cancel();
     _gigAutosaveTimer?.cancel();
     _discoveryBoundaryTimer?.cancel();
+    _dayRolloverTimer?.cancel();
     _stopBrowserHistory?.call();
     _stopBrowserHistory = null;
     unawaited(_authSubscription?.cancel());
     unawaited(_feedSubscription?.cancel());
+    unawaited(_goingCountsSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
     unawaited(_bandsSubscription?.cancel());
     unawaited(_publicGigSubscription?.cancel());
@@ -613,6 +621,19 @@ class AppState extends ChangeNotifier {
   void _set(void Function() assign) {
     assign();
     notifyListeners();
+  }
+
+  int _stateVersion = 0;
+
+  /// Every input mutation ends in notifyListeners() (see _set() above and
+  /// every mutation site in this class) — _stateVersion is bumped on every
+  /// notification and is the single invalidation key every derived-getter
+  /// cache below is keyed on. A future mutation that changes state without
+  /// calling notifyListeners() would silently serve stale derived data.
+  @override
+  void notifyListeners() {
+    _stateVersion++;
+    super.notifyListeners();
   }
 
   void _handleAuthChange(bool signedIn) {
@@ -700,34 +721,137 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  List<String> _mergedUpcoming(
+    List<String> feedIds,
+    List<String> existingUpcoming,
+    Set<String> droppedFeedGigIds,
+  ) {
+    final merged = List<String>.of(feedIds);
+    final seen = feedIds.toSet();
+    for (final id in existingUpcoming) {
+      if (!droppedFeedGigIds.contains(id) && seen.add(id)) merged.add(id);
+    }
+    return merged;
+  }
+
   void _subscribeToFeed() {
+    _goingCountsSettled = false;
     _feedSubscription = repository.feed().listen(
       (snapshot) {
-        if (_hasFeedSnapshot) {
-          _invalidateVenueDetails({
-            for (final gig in _allGigs) gig.venueId,
-            for (final gig in snapshot.gigs) gig.venueId,
-          });
-        } else {
+        final hadFeedSnapshot = _hasFeedSnapshot;
+        final oldGigsById = {for (final gig in _allGigs) gig.id: gig};
+        final oldGigIdsByVenue = <String, Set<String>>{};
+        for (final gig in _allGigs) {
+          oldGigIdsByVenue.putIfAbsent(gig.venueId, () => {}).add(gig.id);
+        }
+        if (!hadFeedSnapshot) {
           _hasFeedSnapshot = true;
         }
+
+        final upcomingByBand = <String, List<String>>{};
+        final newGigsById = <String, Gig>{};
+        final newGigIdsByVenue = <String, Set<String>>{};
+        for (final gig in snapshot.gigs) {
+          newGigsById[gig.id] = gig;
+          for (final bandId in gig.lineup) {
+            upcomingByBand.putIfAbsent(bandId, () => []).add(gig.id);
+          }
+          newGigIdsByVenue.putIfAbsent(gig.venueId, () => {}).add(gig.id);
+        }
+        final droppedFeedGigIds = oldGigsById.keys.toSet()
+          ..removeAll(newGigsById.keys);
+        if (hadFeedSnapshot) {
+          final changedVenueIds = <String>{};
+          for (final venueId in {
+            ...oldGigIdsByVenue.keys,
+            ...newGigIdsByVenue.keys,
+          }) {
+            final oldIds = oldGigIdsByVenue[venueId] ?? const <String>{};
+            final newIds = newGigIdsByVenue[venueId] ?? const <String>{};
+            if (!setEquals(oldIds, newIds) ||
+                newIds.any(
+                  (id) =>
+                      oldGigsById[id]?.sameListing(newGigsById[id]!) != true,
+                )) {
+              changedVenueIds.add(venueId);
+            }
+          }
+          _invalidateVenueDetails(changedVenueIds);
+        }
+
+        final updatedBands = Map<String, Band>.of(_bands);
+        for (final entry in snapshot.bands.entries) {
+          final existing = _bands[entry.key];
+          final upcoming = _mergedUpcoming(
+            upcomingByBand[entry.key] ?? const <String>[],
+            existing?.upcoming ?? const <String>[],
+            droppedFeedGigIds,
+          );
+          if (existing != null && !existing.isSummary) {
+            final incoming = entry.value;
+            final unchanged =
+                existing.name == incoming.name &&
+                existing.slug == incoming.slug &&
+                listEquals(existing.genres, incoming.genres) &&
+                existing.area == incoming.area &&
+                existing.color == incoming.color &&
+                existing.initials == incoming.initials &&
+                existing.followers == incoming.followers &&
+                existing.avatarUrl == incoming.avatarUrl &&
+                existing.avatarUrlResolved == incoming.avatarUrlResolved &&
+                existing.profileComplete == incoming.profileComplete &&
+                existing.discoveryProfileReady ==
+                    incoming.discoveryProfileReady &&
+                listEquals(existing.upcoming, upcoming);
+            updatedBands[entry.key] = unchanged
+                ? existing
+                : existing.mergeSummary(incoming, upcoming: upcoming);
+            continue;
+          }
+          updatedBands[entry.key] = listEquals(entry.value.upcoming, upcoming)
+              ? entry.value
+              : entry.value.copyWith(upcoming: upcoming);
+        }
+        for (final entry in _bands.entries) {
+          if (snapshot.bands.containsKey(entry.key)) continue;
+          final upcoming = _mergedUpcoming(
+            upcomingByBand[entry.key] ?? const <String>[],
+            entry.value.upcoming,
+            droppedFeedGigIds,
+          );
+          if (!listEquals(entry.value.upcoming, upcoming)) {
+            updatedBands[entry.key] = entry.value.copyWith(upcoming: upcoming);
+          }
+        }
+
         _allGigs = List<Gig>.of(snapshot.gigs);
-        _nextFeedStartsAt = snapshot.nextStartsAt;
-        _venues = Map<String, Venue>.of(snapshot.venues);
-        _bands = {
-          ..._bands,
-          for (final entry in snapshot.bands.entries)
-            entry.key: entry.value.copyWith(
-              upcoming: [
-                for (final gig in snapshot.gigs)
-                  if (gig.lineup.contains(entry.key)) gig.id,
-              ],
-            ),
+        final retainedGoingCountIds = <String>{
+          for (final gig in _allGigs) gig.id,
+          ..._relationshipGigs.keys,
+          ..._interactionGigs.keys,
         };
+        if (_goingCounts.keys.any(
+          (gigId) => !retainedGoingCountIds.contains(gigId),
+        )) {
+          _goingCounts = Map<String, int>.unmodifiable({
+            for (final entry in _goingCounts.entries)
+              if (retainedGoingCountIds.contains(entry.key))
+                entry.key: entry.value,
+          });
+        }
+        _nextFeedStartsAt = snapshot.nextStartsAt;
+        _syncFollowedBandGigSubscriptions();
+        _venues = Map<String, Venue>.of(snapshot.venues);
+        _bands = updatedBands;
         _normalizeCustomDateRange();
-        _dataStatus = DataStatus.ready;
+        if (_goingCountsSettled) {
+          _dataStatus = DataStatus.ready;
+        } else if (_dataStatus != DataStatus.ready) {
+          _dataStatus = DataStatus.connecting;
+        }
         dataError = null;
         _scheduleDiscoveryBoundaryRefresh();
+        _scheduleDayRollover();
         notifyListeners();
       },
       onError: (Object error) {
@@ -736,8 +860,34 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
-    unawaited(_loadExploreBandPage());
-    unawaited(_refreshVenueDirectory());
+    _goingCountsSubscription = repository.goingCounts().listen(
+      (incoming) {
+        final merged = {..._goingCounts, ...incoming};
+        final countsChanged = !mapEquals(_goingCounts, merged);
+        if (countsChanged) {
+          _goingCounts = Map<String, int>.unmodifiable(merged);
+        }
+
+        var readinessChanged = false;
+        if (!_goingCountsSettled) {
+          _goingCountsSettled = true;
+          if (_hasFeedSnapshot && _dataStatus != DataStatus.ready) {
+            _dataStatus = DataStatus.ready;
+            readinessChanged = true;
+          }
+        }
+        if (countsChanged || readinessChanged) notifyListeners();
+      },
+      onError: (Object error) {
+        logError('goingCounts', error);
+        if (_goingCountsSettled) return;
+        _goingCountsSettled = true;
+        if (_hasFeedSnapshot && _dataStatus != DataStatus.ready) {
+          _dataStatus = DataStatus.ready;
+          notifyListeners();
+        }
+      },
+    );
   }
 
   void _scheduleDiscoveryBoundaryRefresh() {
@@ -805,7 +955,42 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _scheduleDayRollover() {
+    _dayRolloverTimer?.cancel();
+    _dayRolloverTimer = null;
+    if (_disposed) return;
+
+    final now = _now();
+    final nextMidnight = DateTime(
+      now.year,
+      now.month,
+      now.day + 1,
+    ).add(const Duration(seconds: 1));
+    _dayRolloverTimer = Timer(nextMidnight.difference(now), _handleDayRollover);
+  }
+
+  void _handleDayRollover() {
+    _dayRolloverTimer = null;
+    if (_disposed) return;
+
+    final now = _now();
+    for (var index = 0; index < _allGigs.length; index++) {
+      _allGigs[index] = _allGigs[index].relabeled(now: now);
+    }
+    _relationshipGigs.updateAll((_, gig) => gig.relabeled(now: now));
+    _interactionGigs.updateAll((_, gig) => gig.relabeled(now: now));
+    _invalidateVenueDetails(_venueDetails.keys.toSet());
+    notifyListeners();
+    _scheduleDayRollover();
+  }
+
   /// One-shot directory refresh, following the `_refreshExploreBands` pattern.
+  void ensureVenueDirectory() {
+    if (_venueDirectoryRequested || _disposed) return;
+    _venueDirectoryRequested = true;
+    unawaited(_refreshVenueDirectory());
+  }
+
   Future<void> _refreshVenueDirectory() async {
     try {
       final loaded = await repository.venues();
@@ -862,11 +1047,15 @@ class AppState extends ChangeNotifier {
       final ids = exploreBandIds.toSet();
       for (final band in page.items) {
         if (ids.add(band.id)) exploreBandIds.add(band.id);
-        // Feed and membership payloads carry live relationship state that a
-        // directory page cannot improve on. Pagination only fills gaps; a
-        // duplicate id still belongs in the directory id list, but must not
-        // replace the richer cached band.
-        _bands.putIfAbsent(band.id, () => band);
+        // Directory rows promote feed summaries to full profiles while the
+        // feed remains authoritative for each band's upcoming gig ids. A full
+        // cached profile is already at least as rich as the directory row.
+        final cached = _bands[band.id];
+        if (cached == null) {
+          _bands[band.id] = band;
+        } else if (cached.isSummary) {
+          _bands[band.id] = band.copyWith(upcoming: cached.upcoming);
+        }
       }
       _exploreBandsCursor = page.continueCursor;
       _exploreBandsDone = page.isDone;
@@ -884,6 +1073,13 @@ class AppState extends ChangeNotifier {
         }
       }
     }
+  }
+
+  /// One-shot page fetch, following the `ensureVenueDirectory` pattern.
+  void ensureExploreBands() {
+    if (_exploreBandsRequested || _disposed) return;
+    _exploreBandsRequested = true;
+    unawaited(_loadExploreBandPage());
   }
 
   void loadMoreExploreBands() => unawaited(_loadExploreBandPage());
@@ -934,7 +1130,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _syncFollowedBandGigSubscriptions() {
-    if (!authed) {
+    if (!authed || _nextFeedStartsAt == null) {
       _clearFollowedBandGigSubscriptions();
       return;
     }
@@ -1064,8 +1260,12 @@ class AppState extends ChangeNotifier {
   // ========================= navigation =========================
 
   void go(Screen s, [String? param]) {
-    _set(() => _stack = [..._stack, ScreenEntry(s, param)]);
+    _set(() {
+      _stack = [..._stack, ScreenEntry(s, param)];
+      _syncPublicGigSubscriptionForCurrentScreen();
+    });
     pushBrowserPath(_browserPathFor(s, param));
+    if (current.screen == Screen.explore) ensureExploreBands();
   }
 
   void back() {
@@ -1079,14 +1279,22 @@ class AppState extends ChangeNotifier {
 
   void _popAppStack() {
     if (_disposed || _stack.length <= 1) return;
-    _set(() => _stack = _stack.sublist(0, _stack.length - 1));
+    _set(() {
+      _stack = _stack.sublist(0, _stack.length - 1);
+      _syncPublicGigSubscriptionForCurrentScreen();
+    });
     _refreshVisibleBandDashboard();
+    if (current.screen == Screen.explore) ensureExploreBands();
   }
 
   void resetTo(Screen s) {
-    _set(() => _stack = [ScreenEntry(s)]);
+    _set(() {
+      _stack = [ScreenEntry(s)];
+      _syncPublicGigSubscriptionForCurrentScreen();
+    });
     replaceBrowserPath(_browserPathFor(s, null));
     _refreshVisibleBandDashboard();
+    if (current.screen == Screen.explore) ensureExploreBands();
   }
 
   String _browserPathFor(Screen screen, String? param) => switch (screen) {
@@ -1111,6 +1319,7 @@ class AppState extends ChangeNotifier {
   void openBand(String id) {
     go(Screen.band, id);
     unawaited(loadBandProfileDetails(id));
+    if (_bands[id]?.isSummary == true) unawaited(_loadFollowBand(id));
   }
 
   void previewPublicProfile() {
@@ -2055,8 +2264,17 @@ class AppState extends ChangeNotifier {
 
   List<Gig> get allGigs => _allGigs;
 
+  int _upcomingRsvpGigsVersion = -1;
+  int? _upcomingRsvpGigsMinute;
+  List<Gig> _upcomingRsvpGigs = const [];
+
   List<Gig> get upcomingRsvpGigs {
     final now = _now();
+    final minute = now.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute;
+    if (_upcomingRsvpGigsVersion == _stateVersion &&
+        _upcomingRsvpGigsMinute == minute) {
+      return _upcomingRsvpGigs;
+    }
     final gigs = [
       for (final id in rsvps)
         if (_interactionGigs[id] ?? _cachedGig(id) case final Gig gig
@@ -2066,14 +2284,29 @@ class AppState extends ChangeNotifier {
                 gig.tix == Ticketing.rsvp)
           gig,
     ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
-    return List<Gig>.unmodifiable(gigs);
+    _upcomingRsvpGigs = List<Gig>.unmodifiable(gigs);
+    _upcomingRsvpGigsVersion = _stateVersion;
+    _upcomingRsvpGigsMinute = minute;
+    return _upcomingRsvpGigs;
   }
 
+  int _followedBandShowsVersion = -1;
+  int? _followedBandShowsMinute;
+  List<Gig> _followedBandShows = const [];
+
   List<Gig> get followedBandShows {
-    if (profile?.followedBandUpdatesEnabled == false || follows.isEmpty) {
-      return const [];
-    }
     final now = DateTime.now();
+    final minute = now.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute;
+    if (_followedBandShowsVersion == _stateVersion &&
+        _followedBandShowsMinute == minute) {
+      return _followedBandShows;
+    }
+    if (profile?.followedBandUpdatesEnabled == false || follows.isEmpty) {
+      _followedBandShows = const [];
+      _followedBandShowsVersion = _stateVersion;
+      _followedBandShowsMinute = minute;
+      return _followedBandShows;
+    }
     final gigsById = {
       for (final gig in _allGigs) gig.id: gig,
       for (final gigs in _followedBandGigs.values)
@@ -2084,21 +2317,40 @@ class AppState extends ChangeNotifier {
         if (!gig.startsAt.isBefore(now) && gig.lineup.any(follows.contains))
           gig,
     ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
-    return List<Gig>.unmodifiable(shows);
+    _followedBandShows = List<Gig>.unmodifiable(shows);
+    _followedBandShowsVersion = _stateVersion;
+    _followedBandShowsMinute = minute;
+    return _followedBandShows;
   }
+
+  int _gigIndexVersion = -1;
+  Map<String, Gig> _gigIndex = const {};
 
   Gig? _cachedGig(String id) {
     final direct = _publicGigs[id];
     if (direct != null) return direct;
-    for (final g in allGigs) {
-      if (g.id == id || g.slug == id) return g;
-    }
-    for (final gigs in _followedBandGigs.values) {
-      for (final gig in gigs) {
-        if (gig.id == id) return gig;
+
+    if (_gigIndexVersion != _stateVersion) {
+      final index = <String, Gig>{};
+      for (final gig in allGigs) {
+        index.putIfAbsent(gig.id, () => gig);
+        index.putIfAbsent(gig.slug, () => gig);
       }
+      for (final gigs in _followedBandGigs.values) {
+        for (final gig in gigs) {
+          index.putIfAbsent(gig.id, () => gig);
+        }
+      }
+      for (final entry in _interactionGigs.entries) {
+        index.putIfAbsent(entry.key, () => entry.value);
+      }
+      for (final entry in _relationshipGigs.entries) {
+        index.putIfAbsent(entry.key, () => entry.value);
+      }
+      _gigIndex = Map<String, Gig>.unmodifiable(index);
+      _gigIndexVersion = _stateVersion;
     }
-    return _interactionGigs[id] ?? _relationshipGigs[id];
+    return _gigIndex[id];
   }
 
   Gig? gig(String id) {
@@ -2125,6 +2377,29 @@ class AppState extends ChangeNotifier {
     _publicGigErrors.remove(id);
     _missingPublicGigs.remove(id);
     unawaited(_loadPublicGig(id, refresh: true));
+  }
+
+  void _cancelPublicGigSubscriptionIfHidden() {
+    if (current.screen == Screen.gig || _publicGigSubscription == null) return;
+    _publicGigGeneration++;
+    final subscription = _publicGigSubscription;
+    _publicGigSubscription = null;
+    _subscribedPublicGigId = null;
+    _publicGigLoading = false;
+    unawaited(subscription?.cancel());
+  }
+
+  void _syncPublicGigSubscriptionForCurrentScreen() {
+    final entry = current;
+    if (entry.screen != Screen.gig) {
+      _cancelPublicGigSubscriptionIfHidden();
+      return;
+    }
+    final id = entry.param;
+    if (id != null &&
+        (_subscribedPublicGigId != id || _publicGigSubscription == null)) {
+      unawaited(_loadPublicGig(id));
+    }
   }
 
   Future<void> _loadPublicGig(String id, {bool refresh = false}) async {
@@ -2378,16 +2653,29 @@ class AppState extends ChangeNotifier {
   bool isAdminOf(String id) => _bandRoles[id] == 'admin';
 
   /// Returns only a real feed or directory venue, never the display fallback.
-  Venue? knownVenue(String id) => _venues[id] ?? _venueDirectory[id];
+  Venue? knownVenue(String id) {
+    final venue = _venues[id] ?? _venueDirectory[id];
+    if (venue == null) ensureVenueDirectory();
+    return venue;
+  }
 
   Venue venue(String id) => knownVenue(id) ?? _unknownVenue;
+
+  int _venuesVersion = -1;
+  List<Venue> _cachedVenues = const [];
 
   /// Every venue the app knows: the curated table plus whatever the live feed
   /// carries. Feed rows win on id — they are realtime. Name-ordered, one entry
   /// per id; this is the only venue list any screen reads.
   List<Venue> get venues {
+    ensureVenueDirectory();
+    if (_venuesVersion == _stateVersion) return _cachedVenues;
     final merged = <String, Venue>{..._venueDirectory, ..._venues};
-    return merged.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+    final venues = merged.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+    _cachedVenues = List<Venue>.unmodifiable(venues);
+    _venuesVersion = _stateVersion;
+    return _cachedVenues;
   }
 
   static const _unknownVenue = Venue(
@@ -2428,9 +2716,16 @@ class AppState extends ChangeNotifier {
     endLongitude: venue.point.longitude,
   );
 
+  int _feedVersion = -1;
+  DateTime? _feedStartOfToday;
+  List<Gig> _cachedFeed = const [];
+
   List<Gig> get feed {
     final today = DateTime.now();
     final startOfToday = DateTime(today.year, today.month, today.day);
+    if (_feedVersion == _stateVersion && _feedStartOfToday == startOfToday) {
+      return _cachedFeed;
+    }
     final endOfTonight = DateTime(today.year, today.month, today.day + 1);
     final endOfWeek = DateTime(today.year, today.month, today.day + 8);
     final filtered = allGigs.where((gig) {
@@ -2480,23 +2775,56 @@ class AppState extends ChangeNotifier {
       return true;
     }).toList();
 
-    return orderDiscoveryGigs(
-      gigs: filtered,
-      distanceMiles: (gig) =>
-          _distanceMilesFromDiscoveryCenter(venue(gig.venueId)),
-      boostedGigIds: discoveryBoostedGigIds(
-        gigs: allGigs,
-        bands: _bands,
-        now: _now(),
+    final venueDistanceById = <String, double>{};
+    for (final gig in filtered) {
+      venueDistanceById.putIfAbsent(
+        gig.venueId,
+        () => _distanceMilesFromDiscoveryCenter(venue(gig.venueId)),
+      );
+    }
+
+    _cachedFeed = List<Gig>.unmodifiable(
+      orderDiscoveryGigs(
+        gigs: filtered,
+        distanceMiles: (gig) => venueDistanceById[gig.venueId]!,
+        boostedGigIds: discoveryBoostedGigIds(
+          gigs: allGigs,
+          bands: _bands,
+          now: _now(),
+        ),
       ),
     );
+    _feedVersion = _stateVersion;
+    _feedStartOfToday = startOfToday;
+    return _cachedFeed;
   }
 
-  bool isDiscoveryBoosted(Gig gig, {DateTime? now}) => discoveryBoostedGigIds(
-    gigs: allGigs,
-    bands: _bands,
-    now: now ?? _now(),
-  ).contains(gig.id);
+  int _discoveryBoostedGigIdsVersion = -1;
+  int? _discoveryBoostedGigIdsSecond;
+  Set<String> _cachedDiscoveryBoostedGigIds = const {};
+
+  bool isDiscoveryBoosted(Gig gig, {DateTime? now}) {
+    if (now != null) {
+      return discoveryBoostedGigIds(
+        gigs: allGigs,
+        bands: _bands,
+        now: now,
+      ).contains(gig.id);
+    }
+
+    final currentNow = _now();
+    final second =
+        currentNow.millisecondsSinceEpoch ~/ Duration.millisecondsPerSecond;
+    if (_discoveryBoostedGigIdsVersion != _stateVersion ||
+        _discoveryBoostedGigIdsSecond != second) {
+      _cachedDiscoveryBoostedGigIds = Set<String>.unmodifiable(
+        discoveryBoostedGigIds(gigs: allGigs, bands: _bands, now: currentNow),
+      );
+      _discoveryBoostedGigIdsVersion = _stateVersion;
+      _discoveryBoostedGigIdsSecond = second;
+    }
+    return _cachedDiscoveryBoostedGigIds.contains(gig.id);
+  }
 
   /// The most recent server-confirmed RSVP state, excluding local optimism.
   ///
@@ -2506,16 +2834,20 @@ class AppState extends ChangeNotifier {
   bool hasConfirmedRsvp(String gigId) =>
       _confirmedRsvps.contains(gigId) && rsvps.contains(gigId);
 
-  /// Reconciles the subscribed server total with the one local mutation that
-  /// has not appeared in the interaction subscription yet.
+  /// Reconciles the live count stream with one local mutation not yet echoed.
+  ///
+  /// [_goingCounts] is authoritative when it has covered this gig. The gig's
+  /// own count is a fallback for relationship or interaction payloads that the
+  /// counts stream has never included; feed gigs themselves carry zero here.
   int rsvpCount(Gig gig) {
     final authoritativeGig = _interactionGigs[gig.id] ?? gig;
+    final baseGoing = _goingCounts[gig.id] ?? authoritativeGig.going;
     final pending = _pendingRsvps[gig.id];
     if (pending == null ||
         pending.desired == _confirmedRsvps.contains(gig.id)) {
-      return authoritativeGig.going;
+      return baseGoing;
     }
-    final reconciled = authoritativeGig.going + (pending.desired ? 1 : -1);
+    final reconciled = baseGoing + (pending.desired ? 1 : -1);
     return reconciled < 0 ? 0 : reconciled;
   }
 
@@ -2535,7 +2867,9 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _restartFeed() async {
+    _goingCountsSettled = false;
     await _feedSubscription?.cancel();
+    await _goingCountsSubscription?.cancel();
     _subscribeToFeed();
   }
 
@@ -2543,8 +2877,17 @@ class AppState extends ChangeNotifier {
 
   Band? get myBand => band(bandId);
 
-  List<Gig> get myBandGigs =>
-      allGigs.where((g) => g.lineup.contains(bandId)).toList();
+  int _myBandGigsVersion = -1;
+  List<Gig> _cachedMyBandGigs = const [];
+
+  List<Gig> get myBandGigs {
+    if (_myBandGigsVersion == _stateVersion) return _cachedMyBandGigs;
+    _cachedMyBandGigs = List<Gig>.unmodifiable(
+      allGigs.where((gig) => gig.lineup.contains(bandId)),
+    );
+    _myBandGigsVersion = _stateVersion;
+    return _cachedMyBandGigs;
+  }
 
   String get myBandNames => myBands
       .map((id) => band(id)?.name ?? '')

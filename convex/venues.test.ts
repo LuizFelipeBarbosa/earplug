@@ -264,4 +264,159 @@ describe("venues:detail", () => {
     expect(detail?.bands).toEqual([]);
     expect(detail?.truncated).toBe(true);
   });
+
+  test("hydrates repeated owners, lineup bands and flyers to the same values as one-off lookups", async () => {
+    const t = convexTest(schema);
+    const now = Date.now();
+    const fixture = await t.run(async (ctx) => {
+      const venueId = await ctx.db.insert("venues", venueFields("Shared Room"));
+      const ownerId = await ctx.db.insert("bands", bandFields("Owner"));
+      const alphaId = await ctx.db.insert("bands", bandFields("Alpha"));
+      const betaId = await ctx.db.insert("bands", bandFields("Beta"));
+      const archivedId = await ctx.db.insert("bands", {
+        ...bandFields("Archived"),
+        archivedAt: now,
+      });
+      const flyerStorageId = await ctx.storage.store(new Blob(["flyer"]));
+      const gigs = {
+        first: await ctx.db.insert("gigs", {
+          ...gigFields(now + 1_000),
+          title: "First",
+          venueId,
+          createdByBand: ownerId,
+          flyKey: "custom",
+          flyStorageId: flyerStorageId,
+          lineup: [ownerId, alphaId],
+        }),
+        second: await ctx.db.insert("gigs", {
+          ...gigFields(now + 2_000),
+          title: "Second",
+          venueId,
+          createdByBand: ownerId,
+          flyKey: "custom",
+          flyStorageId: flyerStorageId,
+          lineup: [alphaId, betaId, archivedId],
+        }),
+        archivedOwner: await ctx.db.insert("gigs", {
+          ...gigFields(now + 3_000),
+          title: "Archived owner",
+          venueId,
+          createdByBand: archivedId,
+          lineup: [alphaId],
+        }),
+        third: await ctx.db.insert("gigs", {
+          ...gigFields(now + 4_000),
+          title: "Third",
+          venueId,
+          createdByBand: ownerId,
+          lineup: [betaId],
+          performers: [{ name: "Beta (live)", role: "headliner" as const }],
+        }),
+      };
+      const flyerUrl = await ctx.storage.getUrl(flyerStorageId);
+      return { venueId, ownerId, alphaId, betaId, archivedId, gigs, flyerUrl };
+    });
+    expect(fixture.flyerUrl).not.toBeNull();
+
+    const commonGig = {
+      venueId: fixture.venueId,
+      price: 0,
+      doorsTime: "7PM / 8PM",
+      genres: ["punk"],
+      desc: "",
+      ticketing: "rsvp",
+      ageRequirement: "allAges",
+      externalUrl: null,
+      cap: "No cap",
+      goingCount: 0,
+      createdByBand: fixture.ownerId,
+      lifecycle: "published",
+      discoveryListingReady: false,
+    };
+    const bandPayload = (bandId: string, name: string) => ({
+      _id: bandId,
+      slug: name.toLowerCase().replace(/\s+/g, "-"),
+      name,
+      genres: ["punk"],
+      area: "Bay Area",
+      colorHex: "#7B8FFF",
+      initials: name.slice(0, 2).toUpperCase(),
+      followerCount: 0,
+      heroUrl: null,
+      avatarUrl: null,
+      bannerUrl: null,
+      bio: "",
+      linkIg: null,
+      linkBc: null,
+      linkYt: null,
+      credits: null,
+      profileComplete: false,
+      discoveryProfileReady: false,
+      pastShows: [],
+    });
+
+    expect(await t.query(api.venues.detail, { venueId: fixture.venueId })).toEqual({
+      venue: {
+        _id: fixture.venueId,
+        name: "Shared Room",
+        area: "Oakland",
+        addr: "1 Test Way",
+        distSF: "7 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.27,
+      },
+      gigs: [
+        {
+          ...commonGig,
+          _id: fixture.gigs.first,
+          slug: fixture.gigs.first,
+          title: "First",
+          startsAt: now + 1_000,
+          doorsAt: now + 1_000,
+          flyKey: "custom",
+          flyerUrl: fixture.flyerUrl,
+          lineup: [fixture.ownerId, fixture.alphaId],
+          performers: [
+            { name: "Owner", role: "headliner", bandId: fixture.ownerId },
+            { name: "Alpha", role: "support", bandId: fixture.alphaId },
+          ],
+        },
+        {
+          ...commonGig,
+          _id: fixture.gigs.second,
+          slug: fixture.gigs.second,
+          title: "Second",
+          startsAt: now + 2_000,
+          doorsAt: now + 2_000,
+          flyKey: "custom",
+          flyerUrl: fixture.flyerUrl,
+          lineup: [fixture.alphaId, fixture.betaId, fixture.archivedId],
+          performers: [
+            { name: "Alpha", role: "headliner", bandId: fixture.alphaId },
+            { name: "Beta", role: "support", bandId: fixture.betaId },
+            { name: "Archived", role: "support", bandId: fixture.archivedId },
+          ],
+        },
+        {
+          ...commonGig,
+          _id: fixture.gigs.third,
+          slug: fixture.gigs.third,
+          title: "Third",
+          startsAt: now + 4_000,
+          doorsAt: now + 4_000,
+          flyKey: "paper",
+          flyerUrl: null,
+          lineup: [fixture.betaId],
+          performers: [{ name: "Beta (live)", role: "headliner" }],
+        },
+      ],
+      bands: [
+        bandPayload(fixture.ownerId, "Owner"),
+        bandPayload(fixture.alphaId, "Alpha"),
+        bandPayload(fixture.betaId, "Beta"),
+      ],
+      truncated: false,
+    });
+  });
 });

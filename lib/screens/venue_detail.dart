@@ -168,93 +168,181 @@ class _CenteredState extends StatelessWidget {
   }
 }
 
-class _VenueContent extends StatelessWidget {
+class _VenueContent extends StatefulWidget {
   const _VenueContent({required this.detail, required this.app});
 
   final VenueDetail detail;
   final AppState app;
 
   @override
-  Widget build(BuildContext context) {
-    final venue = detail.venue;
-    final gigs = [...detail.gigs]
+  State<_VenueContent> createState() => _VenueContentState();
+}
+
+class _VenueContentState extends State<_VenueContent> {
+  late List<Gig> _gigs;
+  late List<String> _performerIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _cacheRelationships();
+  }
+
+  @override
+  void didUpdateWidget(covariant _VenueContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.detail, widget.detail)) {
+      _cacheRelationships();
+    }
+  }
+
+  void _cacheRelationships() {
+    final gigs = [...widget.detail.gigs]
       ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
     final performerIds = <String>[];
     final seen = <String>{};
     for (final gig in gigs) {
       for (final bandId in gig.lineup) {
-        if (detail.bands.containsKey(bandId) && seen.add(bandId)) {
+        if (widget.detail.bands.containsKey(bandId) && seen.add(bandId)) {
           performerIds.add(bandId);
         }
       }
     }
+    _gigs = List.unmodifiable(gigs);
+    _performerIds = List.unmodifiable(performerIds);
+  }
 
-    return ListView(
+  @override
+  Widget build(BuildContext context) {
+    final rows = <_VenueContentRow>[
+      const _VenueHeroRow(),
+      const _VenueMapRow(),
+      _VenueSectionRow('UPCOMING EVENTS', _gigs.length),
+      if (_gigs.isEmpty)
+        const _VenueEmptyEventsRow()
+      else
+        for (final gig in _gigs) _VenueGigRow(gig),
+      if (widget.detail.truncated) const _VenueTruncatedRow(),
+      _VenueSectionRow('PERFORMING BANDS', _performerIds.length),
+      if (_performerIds.isEmpty)
+        const _VenueEmptyPerformersRow()
+      else
+        for (final bandId in _performerIds) _VenuePerformerRow(bandId),
+    ];
+
+    return ListView.builder(
       key: const Key('venue-detail-content'),
       padding: const EdgeInsets.only(bottom: 40),
-      children: [
-        _VenueHero(venue: venue, distance: app.distanceOf(venue)),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 14),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: VenueMiniMap(venue: venue),
-              ),
-              SectionBar(
-                label: 'UPCOMING EVENTS',
-                trailing: Text(
-                  '${gigs.length}',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-              ),
-              if (gigs.isEmpty)
-                DashedBox(
-                  child: Text(
-                    'Nothing on the calendar right now.',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.epBody.copyWith(
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
-                ),
-              for (final gig in gigs) ...[
-                FanEventCard(gig: gig, app: app),
-                const SizedBox(height: 9),
-              ],
-              if (detail.truncated) ...[
-                Text(
-                  'Showing the next 200 events.',
-                  key: const Key('venue-detail-truncated'),
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-                const SizedBox(height: 8),
-              ],
-              SectionBar(
-                label: 'PERFORMING BANDS',
-                trailing: Text(
-                  '${performerIds.length}',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-              ),
-              if (performerIds.isEmpty)
-                Text(
-                  'No performers announced yet.',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-              for (final bandId in performerIds) ...[
-                _PerformerRow(band: detail.bands[bandId]!, app: app),
-                const SizedBox(height: 7),
-              ],
-            ],
-          ),
-        ),
-      ],
+      itemCount: rows.length,
+      itemBuilder: (context, index) => _buildRow(context, rows[index]),
     );
   }
+
+  Widget _buildRow(BuildContext context, _VenueContentRow row) {
+    final detail = widget.detail;
+    final app = widget.app;
+    return switch (row) {
+      _VenueHeroRow() => _VenueHero(
+        venue: detail.venue,
+        distance: app.distanceOf(detail.venue),
+      ),
+      _VenueMapRow() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: VenueMiniMap(venue: detail.venue),
+        ),
+      ),
+      _VenueSectionRow(:final label, :final count) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: SectionBar(
+          label: label,
+          trailing: Text(
+            '$count',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+        ),
+      ),
+      _VenueEmptyEventsRow() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: DashedBox(
+          child: Text(
+            'Nothing on the calendar right now.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.epBody.copyWith(
+              color: context.epColors.contentSecondary,
+            ),
+          ),
+        ),
+      ),
+      _VenueGigRow(:final gig) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 9),
+        child: FanEventCard(gig: gig, app: app),
+      ),
+      _VenueTruncatedRow() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Text(
+          'Showing the next 200 events.',
+          key: const Key('venue-detail-truncated'),
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+      ),
+      _VenueEmptyPerformersRow() => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Text(
+          'No performers announced yet.',
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+      ),
+      _VenuePerformerRow(:final bandId) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 7),
+        child: _PerformerRow(band: detail.bands[bandId]!, app: app),
+      ),
+    };
+  }
+}
+
+sealed class _VenueContentRow {
+  const _VenueContentRow();
+}
+
+class _VenueHeroRow extends _VenueContentRow {
+  const _VenueHeroRow();
+}
+
+class _VenueMapRow extends _VenueContentRow {
+  const _VenueMapRow();
+}
+
+class _VenueSectionRow extends _VenueContentRow {
+  const _VenueSectionRow(this.label, this.count);
+
+  final String label;
+  final int count;
+}
+
+class _VenueEmptyEventsRow extends _VenueContentRow {
+  const _VenueEmptyEventsRow();
+}
+
+class _VenueGigRow extends _VenueContentRow {
+  const _VenueGigRow(this.gig);
+
+  final Gig gig;
+}
+
+class _VenueTruncatedRow extends _VenueContentRow {
+  const _VenueTruncatedRow();
+}
+
+class _VenueEmptyPerformersRow extends _VenueContentRow {
+  const _VenueEmptyPerformersRow();
+}
+
+class _VenuePerformerRow extends _VenueContentRow {
+  const _VenuePerformerRow(this.bandId);
+
+  final String bandId;
 }
 
 class _VenueHero extends StatelessWidget {

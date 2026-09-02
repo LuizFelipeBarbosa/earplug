@@ -23,6 +23,8 @@ void main() {
       tester,
       home: const Scaffold(body: ExploreScreen()),
     );
+    harness.app.go(Screen.explore);
+    await tester.pumpAndSettle();
 
     await tester.enterText(
       find.byKey(const Key('explore-search-field')),
@@ -74,6 +76,8 @@ void main() {
       tester,
       home: const Scaffold(body: ExploreScreen()),
     );
+    harness.app.go(Screen.explore);
+    await tester.pumpAndSettle();
     harness.app.setQuery('Foghorn Club');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('explore-tab-venues')));
@@ -91,12 +95,14 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     final repository = _PagedBandsRepository(auth: auth);
-    await pumpApp(
+    final harness = await pumpApp(
       tester,
       auth: auth,
       repository: repository,
       home: const Scaffold(body: ExploreScreen()),
     );
+    harness.app.go(Screen.explore);
+    await tester.pumpAndSettle();
 
     final toggle = find.byKey(const Key('explore-toggle-bands'));
     await tester.scrollUntilVisible(
