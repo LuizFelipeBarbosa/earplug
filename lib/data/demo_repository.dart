@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui' show Color;
 
+import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../app_links.dart';
@@ -35,6 +36,8 @@ class DemoRepository implements EarplugRepository {
       StreamController<FeedSnapshot>.broadcast();
   final StreamController<Interactions> _interactionsController =
       StreamController<Interactions>.broadcast();
+  final StreamController<Map<String, int>> _goingCountsController =
+      StreamController<Map<String, int>>.broadcast();
   final StreamController<List<BandMembership>> _bandsController =
       StreamController<List<BandMembership>>.broadcast();
 
@@ -79,6 +82,7 @@ class DemoRepository implements EarplugRepository {
   int _nextInviteId = 1;
   int _nextVenueId = 1;
   bool _interactionsSeeded = false;
+  Map<String, int> _lastGoingCounts = const {};
 
   /// Nothing to push: the demo data does not check identity.
   @override
@@ -107,9 +111,8 @@ class DemoRepository implements EarplugRepository {
   Stream<FeedSnapshot> feed() => _replay(_feedController, _currentFeed);
 
   @override
-  Stream<Map<String, int>> goingCounts() => feed().map(
-    (snapshot) => {for (final gig in snapshot.gigs) gig.id: gig.going},
-  );
+  Stream<Map<String, int>> goingCounts() =>
+      _replay(_goingCountsController, _currentGoingCounts);
 
   @override
   Stream<Gig?> publicGig(String ref) => Stream.value(
@@ -204,7 +207,7 @@ class DemoRepository implements EarplugRepository {
       ),
     );
     _refreshBandReadiness(bandId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
     return id;
   }
@@ -232,7 +235,7 @@ class DemoRepository implements EarplugRepository {
       _avatarByBand.remove(removed.bandId);
     }
     _refreshBandReadiness(removed.bandId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
   }
 
@@ -295,7 +298,7 @@ class DemoRepository implements EarplugRepository {
     _heroByBand[bandId] = mediaId;
     _avatarByBand[bandId] = mediaId;
     _refreshBandReadiness(bandId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
   }
 
@@ -315,7 +318,7 @@ class DemoRepository implements EarplugRepository {
     _heroByBand.remove(bandId);
     _avatarByBand.remove(bandId);
     _refreshBandReadiness(bandId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
   }
 
@@ -327,7 +330,7 @@ class DemoRepository implements EarplugRepository {
     _requireOwnedPhoto(bandId, mediaId);
     _avatarByBand[bandId] = mediaId;
     _refreshBandReadiness(bandId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
   }
 
@@ -335,7 +338,7 @@ class DemoRepository implements EarplugRepository {
   Future<void> clearBandAvatar(String bandId) async {
     _avatarByBand.remove(bandId);
     _refreshBandReadiness(bandId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
   }
 
@@ -346,14 +349,14 @@ class DemoRepository implements EarplugRepository {
   }) async {
     _requireOwnedPhoto(bandId, mediaId);
     _heroByBand[bandId] = mediaId;
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
   }
 
   @override
   Future<void> clearBandBanner(String bandId) async {
     _heroByBand.remove(bandId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
   }
 
@@ -560,7 +563,7 @@ class DemoRepository implements EarplugRepository {
       point: LatLng(latitude, longitude),
     );
     _venues[venue.id] = venue;
-    _feedController.add(_currentFeed());
+    _emitFeed();
     return VenueCreationResult(venue: venue, created: true);
   }
 
@@ -662,6 +665,7 @@ class DemoRepository implements EarplugRepository {
       _checkedInGigIds.remove(gigId);
     }
     _emitInteractionsIfSignedIn();
+    _emitGoingCounts();
   }
 
   @override
@@ -691,6 +695,7 @@ class DemoRepository implements EarplugRepository {
   Future<void> ensureRsvp(String gigId) async {
     _rsvpGigIds.add(gigId);
     _emitInteractionsIfSignedIn();
+    _emitGoingCounts();
   }
 
   @override
@@ -852,7 +857,7 @@ class DemoRepository implements EarplugRepository {
 
     _bands[id] = created;
     _memberships.add(BandMembership(band: created, role: 'admin'));
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
     return (band: created, slug: slug);
   }
@@ -876,7 +881,7 @@ class DemoRepository implements EarplugRepository {
     );
     _bands[update.bandId] = updated;
     _refreshBandReadiness(update.bandId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
   }
 
@@ -916,7 +921,7 @@ class DemoRepository implements EarplugRepository {
     _followBandIds.remove(bandId);
     _memberships.removeWhere((candidate) => candidate.band.id == bandId);
     _bands.remove(bandId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
     return BandArchiveResult(
       bandId: bandId,
@@ -1172,7 +1177,7 @@ class DemoRepository implements EarplugRepository {
     final updatedBand = band.copyWith(followers: band.followers + 1);
     _bands[band.id] = updatedBand;
     _memberships.add(BandMembership(band: updatedBand, role: 'member'));
-    _feedController.add(_currentFeed());
+    _emitFeed();
     _bandsController.add(_currentMemberships());
     return BandInviteAcceptance(
       bandId: resolved.bandId,
@@ -1474,7 +1479,7 @@ class DemoRepository implements EarplugRepository {
       publicSlug: slug,
       publishedRevision: project.revision,
     );
-    _feedController.add(_currentFeed());
+    _emitFeed();
     return gigId;
   }
 
@@ -1526,7 +1531,7 @@ class DemoRepository implements EarplugRepository {
       status: GigProjectStatus.draft,
     );
     _publishedGigs.removeWhere((gig) => gig.id == project.publicGigId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
   }
 
   @override
@@ -1537,7 +1542,7 @@ class DemoRepository implements EarplugRepository {
       status: GigProjectStatus.cancelled,
     );
     _publishedGigs.removeWhere((gig) => gig.id == project.publicGigId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
   }
 
   @override
@@ -1545,7 +1550,7 @@ class DemoRepository implements EarplugRepository {
     final project = _requireGigProject(projectId);
     _publishedGigs.removeWhere((gig) => gig.id == project.publicGigId);
     _gigProjects.remove(projectId);
-    _feedController.add(_currentFeed());
+    _emitFeed();
   }
 
   @override
@@ -1642,7 +1647,7 @@ class DemoRepository implements EarplugRepository {
             (flyKey != 'custom' || flyStorageId != null),
       ),
     );
-    _feedController.add(_currentFeed());
+    _emitFeed();
     return id;
   }
 
@@ -1687,7 +1692,7 @@ class DemoRepository implements EarplugRepository {
     _publishedGigs[index] = _publishedGigs[index].copyWith(
       discoveryListingReady: false,
     );
-    _feedController.add(_currentFeed());
+    _emitFeed();
   }
 
   GigProject _copyGigProject(
@@ -1730,6 +1735,25 @@ class DemoRepository implements EarplugRepository {
     bands: Map<String, Band>.unmodifiable(_bands),
     nextStartsAt: null,
   );
+
+  Map<String, int> _currentGoingCounts() => {
+    for (final gig in _currentFeed().gigs) gig.id: _goingFor(gig),
+  };
+
+  int _goingFor(Gig gig) =>
+      gig.going + (_auth.signedIn && _rsvpGigIds.contains(gig.id) ? 1 : 0);
+
+  void _emitFeed() {
+    _feedController.add(_currentFeed());
+    _emitGoingCounts();
+  }
+
+  void _emitGoingCounts() {
+    final counts = _currentGoingCounts();
+    if (mapEquals(_lastGoingCounts, counts)) return;
+    _lastGoingCounts = counts;
+    _goingCountsController.add(counts);
+  }
 
   void _refreshBandReadiness(String bandId) {
     final band = _bands[bandId];
@@ -1779,7 +1803,7 @@ class DemoRepository implements EarplugRepository {
             gig.copyWith(
               // Production stores the complete confirmed total on the gig.
               // Keep the demo subscription faithful to that contract.
-              going: gig.going + (_rsvpGigIds.contains(id) ? 1 : 0),
+              going: _goingFor(gig),
             ),
       ]),
       attendedCount: _attendedCount,
@@ -1800,6 +1824,7 @@ class DemoRepository implements EarplugRepository {
   void _handleSignedInChange(bool signedIn) {
     if (signedIn) _seedInteractions();
     _interactionsController.add(_currentInteractions());
+    _emitGoingCounts();
   }
 
   void _seedInteractions() {
