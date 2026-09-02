@@ -116,6 +116,65 @@ void main() {
     expect(app.band('b1'), same(band));
   });
 
+  test(
+    'feed summaries merge into full bands without clobbering them',
+    () async {
+      final auth = FakeAuthService();
+      final repository = _SubscriptionSpyRepository(auth: auth);
+      final app = AppState(repository: repository, auth: auth);
+      addTearDown(() async {
+        app.dispose();
+        await repository.close();
+      });
+      final fullBand = DemoData.bands['b1']!;
+      repository.emitFeed(bands: {fullBand.id: fullBand});
+      await _flushAsyncWork();
+
+      final summary = Band.fromJson({
+        '_id': fullBand.id,
+        'slug': 'foghorn-diet-live',
+        'name': 'Foghorn Diet Live',
+        'genres': ['garage', 'punk'],
+        'area': 'Oakland',
+        'colorHex': '#123456',
+        'initials': 'FL',
+        'followerCount': fullBand.followers + 12,
+        'avatarUrl': 'https://example.com/foghorn.jpg',
+        'profileComplete': true,
+        'discoveryProfileReady': true,
+      });
+      expect(summary.isSummary, isTrue);
+
+      repository.emitFeed(bands: {fullBand.id: summary});
+      await _flushAsyncWork();
+      final merged = app.band(fullBand.id)!;
+      expect(merged.name, summary.name);
+      expect(merged.followers, summary.followers);
+      expect(merged.color, summary.color);
+      expect(merged.bio, fullBand.bio);
+      expect(merged.past, fullBand.past);
+      expect(merged.isSummary, isFalse);
+
+      repository.emitFeed(bands: {fullBand.id: summary});
+      await _flushAsyncWork();
+      expect(app.band(fullBand.id), same(merged));
+
+      repository.emitFeed(
+        gigs: [
+          for (final gig in DemoData.gigs)
+            if (gig.id != 'g7') gig,
+        ],
+        bands: {fullBand.id: summary},
+      );
+      await _flushAsyncWork();
+      final updatedUpcoming = app.band(fullBand.id)!;
+      expect(updatedUpcoming.upcoming, ['g2']);
+      expect(updatedUpcoming.bio, fullBand.bio);
+      expect(updatedUpcoming.past, fullBand.past);
+      expect(updatedUpcoming.isSummary, isFalse);
+    },
+  );
+
   test('going counts update RSVP totals without a new feed snapshot', () async {
     final auth = FakeAuthService();
     final repository = _SubscriptionSpyRepository(auth: auth);
@@ -158,7 +217,7 @@ void main() {
 
   test('opening a summary band loads the full band exactly once', () async {
     final auth = FakeAuthService();
-    final repository = _SubscriptionSpyRepository(auth: auth);
+    final repository = _SummaryBandRepository(auth: auth);
     final app = AppState(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
@@ -251,10 +310,14 @@ class _SubscriptionSpyRepository extends DemoRepository {
   @override
   Stream<Map<String, int>> goingCounts() => _goingCountsController.stream;
 
-  void emitFeed({DateTime? nextStartsAt, Map<String, Band>? bands}) {
+  void emitFeed({
+    DateTime? nextStartsAt,
+    List<Gig>? gigs,
+    Map<String, Band>? bands,
+  }) {
     _feedController.add(
       FeedSnapshot(
-        gigs: DemoData.gigs,
+        gigs: gigs ?? DemoData.gigs,
         venues: DemoData.venues,
         bands: bands ?? DemoData.bands,
         nextStartsAt: nextStartsAt,
@@ -312,4 +375,11 @@ class _SubscriptionSpyRepository extends DemoRepository {
       if (!controller.isClosed) await controller.close();
     }
   }
+}
+
+class _SummaryBandRepository extends _SubscriptionSpyRepository {
+  _SummaryBandRepository({required super.auth});
+
+  @override
+  Stream<List<BandMembership>> myBands() => const Stream.empty();
 }

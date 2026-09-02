@@ -491,6 +491,7 @@ class AppState extends ChangeNotifier {
   ExploreResultType exploreResultType = ExploreResultType.all;
   List<String> exploreBandIds = [];
   bool exploreBandsLoading = false;
+  bool _exploreBandsRequested = false;
   bool _exploreBandsDone = false;
   bool _exploreBandsRefreshQueued = false;
   String? _exploreBandsCursor;
@@ -766,7 +767,36 @@ class AppState extends ChangeNotifier {
         for (final entry in snapshot.bands.entries) {
           final upcoming = upcomingByBand[entry.key] ?? const <String>[];
           final existing = _bands[entry.key];
-          if (existing != null && listEquals(existing.upcoming, upcoming)) {
+          if (existing != null && !existing.isSummary) {
+            final incoming = entry.value;
+            final unchanged =
+                existing.name == incoming.name &&
+                existing.slug == incoming.slug &&
+                listEquals(existing.genres, incoming.genres) &&
+                existing.area == incoming.area &&
+                existing.color == incoming.color &&
+                existing.initials == incoming.initials &&
+                existing.followers == incoming.followers &&
+                existing.avatarUrl == incoming.avatarUrl &&
+                existing.profileComplete == incoming.profileComplete &&
+                existing.discoveryProfileReady ==
+                    incoming.discoveryProfileReady &&
+                listEquals(existing.upcoming, upcoming);
+            updatedBands[entry.key] = unchanged
+                ? existing
+                : existing.copyWith(
+                    name: incoming.name,
+                    slug: incoming.slug,
+                    genres: incoming.genres,
+                    area: incoming.area,
+                    color: incoming.color,
+                    initials: incoming.initials,
+                    followers: incoming.followers,
+                    avatarUrl: incoming.avatarUrl,
+                    profileComplete: incoming.profileComplete,
+                    discoveryProfileReady: incoming.discoveryProfileReady,
+                    upcoming: upcoming,
+                  );
             continue;
           }
           updatedBands[entry.key] = listEquals(entry.value.upcoming, upcoming)
@@ -957,6 +987,13 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// One-shot page fetch, following the `ensureVenueDirectory` pattern.
+  void ensureExploreBands() {
+    if (_exploreBandsRequested || _disposed) return;
+    _exploreBandsRequested = true;
+    unawaited(_loadExploreBandPage());
+  }
+
   void loadMoreExploreBands() => unawaited(_loadExploreBandPage());
 
   void retryExploreBands() {
@@ -1137,10 +1174,10 @@ class AppState extends ChangeNotifier {
   void go(Screen s, [String? param]) {
     _set(() {
       _stack = [..._stack, ScreenEntry(s, param)];
-      _cancelPublicGigSubscriptionIfHidden();
+      _syncPublicGigSubscriptionForCurrentScreen();
     });
     pushBrowserPath(_browserPathFor(s, param));
-    if (current.screen == Screen.explore) unawaited(_loadExploreBandPage());
+    if (current.screen == Screen.explore) ensureExploreBands();
   }
 
   void back() {
@@ -1156,20 +1193,20 @@ class AppState extends ChangeNotifier {
     if (_disposed || _stack.length <= 1) return;
     _set(() {
       _stack = _stack.sublist(0, _stack.length - 1);
-      _cancelPublicGigSubscriptionIfHidden();
+      _syncPublicGigSubscriptionForCurrentScreen();
     });
     _refreshVisibleBandDashboard();
-    if (current.screen == Screen.explore) unawaited(_loadExploreBandPage());
+    if (current.screen == Screen.explore) ensureExploreBands();
   }
 
   void resetTo(Screen s) {
     _set(() {
       _stack = [ScreenEntry(s)];
-      _cancelPublicGigSubscriptionIfHidden();
+      _syncPublicGigSubscriptionForCurrentScreen();
     });
     replaceBrowserPath(_browserPathFor(s, null));
     _refreshVisibleBandDashboard();
-    if (current.screen == Screen.explore) unawaited(_loadExploreBandPage());
+    if (current.screen == Screen.explore) ensureExploreBands();
   }
 
   String _browserPathFor(Screen screen, String? param) => switch (screen) {
@@ -2264,6 +2301,19 @@ class AppState extends ChangeNotifier {
     unawaited(subscription?.cancel());
   }
 
+  void _syncPublicGigSubscriptionForCurrentScreen() {
+    final entry = current;
+    if (entry.screen != Screen.gig) {
+      _cancelPublicGigSubscriptionIfHidden();
+      return;
+    }
+    final id = entry.param;
+    if (id != null &&
+        (_subscribedPublicGigId != id || _publicGigSubscription == null)) {
+      unawaited(_loadPublicGig(id));
+    }
+  }
+
   Future<void> _loadPublicGig(String id, {bool refresh = false}) async {
     if (!refresh &&
         _subscribedPublicGigId == id &&
@@ -2515,7 +2565,11 @@ class AppState extends ChangeNotifier {
   bool isAdminOf(String id) => _bandRoles[id] == 'admin';
 
   /// Returns only a real feed or directory venue, never the display fallback.
-  Venue? knownVenue(String id) => _venues[id] ?? _venueDirectory[id];
+  Venue? knownVenue(String id) {
+    final venue = _venues[id] ?? _venueDirectory[id];
+    if (venue == null) ensureVenueDirectory();
+    return venue;
+  }
 
   Venue venue(String id) => knownVenue(id) ?? _unknownVenue;
 

@@ -181,6 +181,30 @@ void main() {
     expect(app.current.screen, Screen.home);
   });
 
+  test('knownVenue requests and resolves venues outside the feed', () async {
+    final auth = FakeAuthService();
+    final repository = _DeferredVenueDirectoryRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(app.dispose);
+    await _flushAsyncWork();
+    var notifications = 0;
+    app.addListener(() => notifications++);
+
+    expect(app.knownVenue(repository.directoryVenue.id), isNull);
+    expect(repository.directoryCalls, 1);
+    expect(app.knownVenue(repository.directoryVenue.id), isNull);
+    expect(repository.directoryCalls, 1);
+
+    repository.releaseDirectory.complete();
+    await _flushAsyncWork();
+
+    expect(
+      app.knownVenue(repository.directoryVenue.id),
+      same(repository.directoryVenue),
+    );
+    expect(notifications, greaterThan(0));
+  });
+
   test('feed changes invalidate only affected venue details', () async {
     final auth = FakeAuthService();
     final repository = _RefreshingVenueRepository(auth: auth);
@@ -385,6 +409,29 @@ class _VenueRepository extends DemoRepository {
       },
       truncated: false,
     );
+  }
+}
+
+class _DeferredVenueDirectoryRepository extends DemoRepository {
+  _DeferredVenueDirectoryRepository({required super.auth});
+
+  final directoryVenue = Venue(
+    id: 'directory-only',
+    name: 'Directory Hall',
+    area: 'Richmond, SF',
+    addr: '1 Directory Way, San Francisco',
+    distSF: '3.0 mi',
+    distOak: '10.0 mi',
+    point: DemoData.venues['v1']!.point,
+  );
+  final releaseDirectory = Completer<void>();
+  var directoryCalls = 0;
+
+  @override
+  Future<List<Venue>> venues() async {
+    directoryCalls++;
+    await releaseDirectory.future;
+    return [directoryVenue];
   }
 }
 
