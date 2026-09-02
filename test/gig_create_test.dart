@@ -387,6 +387,43 @@ void main() {
     expect(doneIndicator(), findsOne);
   });
 
+  testWidgets('venue sheet updates when the directory finishes loading', (
+    tester,
+  ) async {
+    final repository = _GatedVenueRepository(auth: FakeAuthService());
+    addTearDown(() {
+      if (!repository.venueGate.isCompleted) repository.venueGate.complete();
+    });
+    await _pumpGigCreate(tester, repository: repository);
+
+    await tester.tap(find.text('Choose a venue'));
+    await tester.pumpAndSettle();
+    expect(find.text('LATE ARRIVAL HALL'), findsNothing);
+
+    repository.venueGate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('LATE ARRIVAL HALL'), findsOne);
+  });
+
+  testWidgets('venue sheet list sizes to two venues', (tester) async {
+    final repository = _TwoVenueRepository(auth: FakeAuthService());
+    await _pumpGigCreate(tester, repository: repository);
+
+    await tester.tap(find.text('Choose a venue'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('FIRST TEST VENUE'), findsOne);
+    expect(find.text('SECOND TEST VENUE'), findsOne);
+    final venueList = find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.byType(ListView),
+    );
+    expect(venueList, findsOne);
+    final screenHeight =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    expect(tester.getSize(venueList).height, lessThan(screenHeight * .6));
+  });
+
   test(
     'new venues are created, deduplicated, refreshed, and selected',
     () async {
@@ -755,6 +792,67 @@ class _GatedFlyerRepository extends DemoRepository {
     publishedFlyStorageId = (await getGigProject(projectId)).flyStorageId;
     return super.publishGigDraft(projectId);
   }
+}
+
+class _GatedVenueRepository extends DemoRepository {
+  _GatedVenueRepository({required super.auth});
+
+  final venueGate = Completer<void>();
+
+  @override
+  Future<List<Venue>> venues() async {
+    await venueGate.future;
+    return [
+      ...await super.venues(),
+      const Venue(
+        id: 'late-venue',
+        name: 'Late Arrival Hall',
+        area: 'Oakland',
+        addr: '123 Late Street',
+        distSF: '7.0 mi',
+        distOak: '1.0 mi',
+        point: LatLng(37.8, -122.27),
+      ),
+    ];
+  }
+}
+
+class _TwoVenueRepository extends DemoRepository {
+  _TwoVenueRepository({required super.auth});
+
+  static const _venues = [
+    Venue(
+      id: 'test-venue-1',
+      name: 'First Test Venue',
+      area: 'Oakland',
+      addr: '1 First Street',
+      distSF: '7.0 mi',
+      distOak: '1.0 mi',
+      point: LatLng(37.8, -122.27),
+    ),
+    Venue(
+      id: 'test-venue-2',
+      name: 'Second Test Venue',
+      area: 'San Francisco',
+      addr: '2 Second Street',
+      distSF: '1.0 mi',
+      distOak: '7.0 mi',
+      point: LatLng(37.76, -122.42),
+    ),
+  ];
+
+  @override
+  Stream<FeedSnapshot> feed() => super.feed().map(
+    (snapshot) => FeedSnapshot(
+      gigs: const [],
+      venues: {for (final venue in _venues) venue.id: venue},
+      bands: snapshot.bands,
+      nextStartsAt: snapshot.nextStartsAt,
+    ),
+  );
+
+  @override
+  Future<List<Venue>> venues() async => _venues;
 }
 
 class _GatedDraftRepository extends DemoRepository {

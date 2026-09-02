@@ -1785,7 +1785,7 @@ class _Month extends StatelessWidget {
 
 void showVenueSheet(BuildContext context) {
   final app = context.read<AppState>();
-  final venues = app.venues;
+  app.ensureVenueDirectory();
   showEpSheet(context, (ctx) {
     return _Sheet(
       title: 'Where is it',
@@ -1802,39 +1802,43 @@ void showVenueSheet(BuildContext context) {
         constraints: BoxConstraints(
           maxHeight: MediaQuery.sizeOf(ctx).height * .6,
         ),
-        child: Selector<AppState, String?>(
-          selector: (_, app) => app.gfVenueId,
-          builder: (context, selectedVenueId, _) => ListView.builder(
-            itemCount: venues.length + 1,
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return Text(
-                  'Venues are shared records, so the address stays consistent across '
-                  "every band's listings.",
-                  style: epText(
-                    size: 11,
-                    color: context.epColors.contentDisabled,
-                    height: 1.45,
+        child: Selector<AppState, (String?, List<Venue>)>(
+          selector: (_, app) => (app.gfVenueId, app.venues),
+          builder: (context, selection, _) {
+            final (selectedVenueId, venues) = selection;
+            return ListView.builder(
+              shrinkWrap: true,
+              itemCount: venues.length + 1,
+              itemBuilder: (context, index) {
+                if (index == 0) {
+                  return Text(
+                    'Venues are shared records, so the address stays consistent across '
+                    "every band's listings.",
+                    style: epText(
+                      size: 11,
+                      color: context.epColors.contentDisabled,
+                      height: 1.45,
+                    ),
+                  );
+                }
+
+                final venue = venues[index - 1];
+                return Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: _OptionCard(
+                    title: venue.name,
+                    titleCaps: true,
+                    subtitle: '${venue.addr} · ${venue.area}',
+                    selected: selectedVenueId == venue.id,
+                    onTap: () {
+                      app.setGfVenue(venue.id);
+                      Navigator.pop(ctx);
+                    },
                   ),
                 );
-              }
-
-              final venue = venues[index - 1];
-              return Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: _OptionCard(
-                  title: venue.name,
-                  titleCaps: true,
-                  subtitle: '${venue.addr} · ${venue.area}',
-                  selected: selectedVenueId == venue.id,
-                  onTap: () {
-                    app.setGfVenue(venue.id);
-                    Navigator.pop(ctx);
-                  },
-                ),
-              );
-            },
-          ),
+              },
+            );
+          },
         ),
       ),
     );

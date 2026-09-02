@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
@@ -258,7 +259,7 @@ class _GigMapViewState extends State<GigMapView> {
   final MapController _controller = MapController();
   Gig? selected;
   bool _mapReady = false;
-  int? _cameraHash;
+  List<Object>? _cameraSignature;
   List<Gig>? _lastFeed;
   LatLng? _lastCenter;
   List<_VenueGigGroup>? _lastGroups;
@@ -297,7 +298,7 @@ class _GigMapViewState extends State<GigMapView> {
 
   void _updateCamera(AppState app, List<_VenueGigGroup> groups) {
     final center = app.discoveryCenter;
-    final cameraHash = Object.hashAll([
+    final cameraSignature = <Object>[
       (center.latitude * 100000).round(),
       (center.longitude * 100000).round(),
       for (final group in groups) ...[
@@ -306,9 +307,9 @@ class _GigMapViewState extends State<GigMapView> {
         (group.venue.point.longitude * 100000).round(),
         for (final gig in group.gigs) gig.id,
       ],
-    ]);
-    if (!_mapReady || cameraHash == _cameraHash) return;
-    _cameraHash = cameraHash;
+    ];
+    if (!_mapReady || listEquals(cameraSignature, _cameraSignature)) return;
+    _cameraSignature = cameraSignature;
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_mapReady) return;
@@ -366,7 +367,7 @@ class _GigMapViewState extends State<GigMapView> {
             onTap: (_, _) => setState(() => selected = null),
             onMapReady: () {
               _mapReady = true;
-              _cameraHash = null;
+              _cameraSignature = null;
               _updateCamera(app, groups);
             },
           ),

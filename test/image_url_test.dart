@@ -23,6 +23,23 @@ void main() {
       expect(result, contains('url=${Uri.encodeQueryComponent(convexUrl)}'));
     });
 
+    test('rewrites Convex storage URLs on earplug.app', () {
+      final result = displayImageUrl(
+        convexUrl,
+        width: 320,
+        base: Uri.parse('https://earplug.app/'),
+      );
+      final uri = Uri.parse(result);
+
+      expect(uri.origin, 'https://earplug.app');
+      expect(uri.path, '/.netlify/images');
+      expect(uri.queryParameters['url'], convexUrl);
+      expect(uri.queryParameters['w'], '320');
+      expect(uri.queryParameters['fit'], 'cover');
+      expect(uri.queryParameters['q'], '75');
+      expect(result, contains('url=${Uri.encodeQueryComponent(convexUrl)}'));
+    });
+
     test('rewrites Convex storage URLs on Netlify deploy previews', () {
       final result = displayImageUrl(
         convexUrl,
@@ -34,6 +51,17 @@ void main() {
       expect(uri.host, 'deploy-preview-7--earplug.netlify.app');
       expect(uri.path, '/.netlify/images');
       expect(uri.queryParameters['url'], convexUrl);
+    });
+
+    test('leaves Convex storage URLs unchanged on spoofed hosts', () {
+      expect(
+        displayImageUrl(
+          convexUrl,
+          width: 320,
+          base: Uri.parse('https://notearplug.app/'),
+        ),
+        convexUrl,
+      );
     });
 
     test('leaves Convex storage URLs unchanged on localhost', () {

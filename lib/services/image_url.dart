@@ -1,3 +1,5 @@
+const _imageCdnHosts = ['earplug.app', 'earplug.dev', 'netlify.app'];
+
 /// Proxies Convex-hosted files through Netlify's Image CDN for web callers so
 /// images are resized before they are downloaded and decoded.
 String displayImageUrl(
@@ -17,7 +19,9 @@ String displayImageUrl(
   }
 
   final baseHost = base.host.toLowerCase();
-  if (!baseHost.endsWith('earplug.dev') && !baseHost.endsWith('netlify.app')) {
+  if (!_imageCdnHosts.any(
+    (host) => baseHost == host || baseHost.endsWith('.$host'),
+  )) {
     return url;
   }
 
