@@ -78,4 +78,11 @@ Run each scenario 3 times and record the median. Record the device, browser, and
 | date | commit | device/browser | TTFB | FCP | first-frame | feed-ready | bytes | S1 p95 build/raster/jank | S2 | S3 | S4 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2026-09-01 | n/a | desktop Chrome | n/a | n/a | n/a | n/a | 1.15 MB brotli / 4.0 MB decoded (main.dart.js only) | n/a | n/a | n/a | n/a |
-| n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a | n/a |
+| 2026-09-02 | e7e990f | desktop Chrome | 299 ms | n/a | 2736 ms | 2914 ms | 25 requests / 1.40 MB before first frame; main.dart.js 1.09 MB wire / 896 KB local brotli -q 11; fonts 492 KB | n/a | n/a | n/a | n/a |
+
+Measured on a Netlify deploy preview with a warm CDN. The load event fired at 1770 ms. The splash was removed after the first frame, no service worker was present, fonts used immutable caching, and the Convex console was silent in release builds. Image CDN delivery was verified with a 1.88 MB band photo served as 36 KB at `w=80`.
+
+## Known follow-ups
+
+- The Flutter engine still fetches Roboto (62 KB) from fonts.gstatic as a glyph fallback — needs a glyph audit.
+- Stadia raster tiles can return 503 on the first burst for an uncached region; the client now retries with backoff and evicts errored tiles.

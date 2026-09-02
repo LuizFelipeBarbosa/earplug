@@ -38,6 +38,7 @@ import 'services/web_shell.dart';
 import 'theme.dart';
 import 'widgets/branding.dart';
 import 'widgets/common.dart';
+import 'widgets/perf_overlay.dart';
 import 'widgets/tab_bars.dart';
 
 SemanticsHandle? _webSemanticsHandle;
@@ -77,14 +78,6 @@ Future<void> main() async {
   final convexService = ConvexService();
   await convexService.init(Env.convexUrl);
   final auth = createPlatformAuthService();
-  convexService.setTokenFetcher(() async {
-    try {
-      return await auth.fetchConvexToken();
-    } catch (error) {
-      logError('fetchConvexToken', error);
-      return null;
-    }
-  });
   final repository = ConvexRepository(convexService);
   runApp(
     EarplugApp(
@@ -105,6 +98,14 @@ Future<void> main() async {
         logError('auth.initialize', error);
       }),
     );
+    convexService.setTokenFetcher(() async {
+      try {
+        return await auth.fetchConvexToken();
+      } catch (error) {
+        logError('fetchConvexToken', error);
+        return null;
+      }
+    });
   });
 }
 
@@ -268,17 +269,28 @@ class EarplugApp extends StatelessWidget {
           builder: (context, child) {
             final app = child ?? const SizedBox.shrink();
             final label = _environmentRibbon();
-            if (label == null) return app;
-            return Banner(
-              message: label,
-              location: BannerLocation.topEnd,
-              color: context.epColors.contentPrimary,
-              textStyle: epText(
-                size: 10,
-                weight: FontWeight.w800,
-                color: context.epColors.background,
-              ),
-              child: app,
+            final wrappedApp = label == null
+                ? app
+                : Banner(
+                    message: label,
+                    location: BannerLocation.topEnd,
+                    color: context.epColors.contentPrimary,
+                    textStyle: epText(
+                      size: 10,
+                      weight: FontWeight.w800,
+                      color: context.epColors.background,
+                    ),
+                    child: app,
+                  );
+            if (!PerfOverlay.enabled) return wrappedApp;
+            return Stack(
+              children: [
+                wrappedApp,
+                PerfOverlay(
+                  marks: webShell.marks,
+                  extraStats: ConvexService.debugStats,
+                ),
+              ],
             );
           },
           home: const _FeedReadyMarker(child: RootShell()),
