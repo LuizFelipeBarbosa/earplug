@@ -251,7 +251,12 @@ void main() {
       expect(tester.getSize(button).width, greaterThanOrEqualTo(48));
       expect(find.byTooltip(link.label), findsOneWidget);
       expect(find.bySemanticsLabel(link.label), findsOneWidget);
-      expect(find.byIcon(link.icon.data), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is BrandIcon && widget.glyph == link.icon,
+        ),
+        findsOneWidget,
+      );
     }
     expect(find.text('INSTAGRAM ↗'), findsOne);
     expect(find.text('BANDCAMP ↗'), findsOne);

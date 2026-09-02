@@ -1,34 +1,24 @@
 import 'package:flutter/material.dart';
 
-enum BrandGlyph {
-  instagram(IconData(0xE900)),
-  bandcamp(IconData(0xE901)),
-  youtube(IconData(0xE902));
+enum BrandGlyph { instagram, bandcamp, youtube }
 
-  const BrandGlyph(this.data);
-
-  final IconData data;
-}
-
-class BrandIcon extends Icon {
-  BrandIcon({
+class BrandIcon extends StatelessWidget {
+  const BrandIcon({
     super.key,
     required this.glyph,
-    double size = 18,
-    required Color color,
-  }) : _size = size,
-       _color = color,
-       super(glyph.data, size: size, color: color);
+    this.size = 18,
+    required this.color,
+  });
 
   final BrandGlyph glyph;
-  final double _size;
-  final Color _color;
+  final double size;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      size: Size.square(_size),
-      painter: _BrandIconPainter(glyph: glyph, color: _color),
+      size: Size.square(size),
+      painter: _BrandIconPainter(glyph: glyph, color: color),
     );
   }
 }
