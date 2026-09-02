@@ -4,6 +4,7 @@
   # pinned to match local development; bump it deliberately rather than tracking
   # whatever "stable" happens to be on the day of a build.
   command = """
+    set -e
     if [ ! -d "$HOME/flutter" ]; then
       git clone https://github.com/flutter/flutter.git --depth 1 -b 3.44.6 "$HOME/flutter"
     fi

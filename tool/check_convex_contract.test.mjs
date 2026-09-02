@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   contractProblems,
   deploymentNameFromUrl,
+  functionSpecArgs,
   requiredClientFields,
   requiredClientFunctions,
 } from "./check_convex_contract.mjs";
@@ -50,6 +51,19 @@ test("extracts a Convex deployment name from its configured URL", () => {
     () => deploymentNameFromUrl("https://example.com"),
     /Invalid Convex deployment URL/,
   );
+});
+
+test("lets a CI deploy key select its own deployment", () => {
+  assert.deepEqual(functionSpecArgs("decisive-iguana-759", undefined), [
+    "convex",
+    "function-spec",
+    "--deployment",
+    "decisive-iguana-759",
+  ]);
+  assert.deepEqual(functionSpecArgs("decisive-iguana-759", "prod:key"), [
+    "convex",
+    "function-spec",
+  ]);
 });
 
 test("accepts a deployment with every required client invitation function", () => {

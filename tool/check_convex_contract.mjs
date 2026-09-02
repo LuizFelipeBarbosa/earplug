@@ -60,6 +60,12 @@ export function deploymentNameFromUrl(value) {
   return deploymentName;
 }
 
+export function functionSpecArgs(deploymentName, deployKey) {
+  const args = ["convex", "function-spec"];
+  if (!deployKey) args.push("--deployment", deploymentName);
+  return args;
+}
+
 function returnObjectFields(validator) {
   if (validator?.type !== "union") return validator?.value;
   if (!Array.isArray(validator.value)) return undefined;
@@ -139,7 +145,7 @@ function checkDeployment(environmentName) {
   const executable = process.platform === "win32" ? "npx.cmd" : "npx";
   const result = spawnSync(
     executable,
-    ["convex", "function-spec", "--deployment", deploymentName],
+    functionSpecArgs(deploymentName, process.env.CONVEX_DEPLOY_KEY),
     {
       cwd: repositoryRoot,
       encoding: "utf8",
