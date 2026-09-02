@@ -2,10 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_vector_tiles/flutter_map_vector_tiles.dart' as vt;
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../env.dart';
+import '../services/map_tile_client.dart';
 import '../services/stadia_map_style_repository.dart';
 import '../theme.dart';
 
@@ -32,11 +34,24 @@ class EpMap extends StatefulWidget {
 }
 
 class _EpMapState extends State<EpMap> {
+  late final http.Client _mapTileClient;
   StadiaMapStyleRepository? _repository;
   vt.Style? _style;
   Brightness? _styleBrightness;
   Brightness? _requestedBrightness;
   Object? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _mapTileClient = createMapTileClient();
+  }
+
+  @override
+  void dispose() {
+    _mapTileClient.close();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -106,6 +121,14 @@ class _EpMapState extends State<EpMap> {
         retinaMode: RetinaMode.isHighDensity(context),
         userAgentPackageName: 'dev.earplug',
         maxNativeZoom: 20,
+        tileProvider: NetworkTileProvider(httpClient: _mapTileClient),
+        evictErrorTileStrategy: EvictErrorTileStrategy.notVisibleRespectMargin,
+        keepBuffer: 1,
+        panBuffer: 0,
+        errorTileCallback: kDebugMode
+            ? (tile, error, _) =>
+                  debugPrint('Map tile ${tile.coordinates} failed: $error')
+            : null,
       );
       attributions = const [
         (text: '© Stadia Maps', url: 'https://stadiamaps.com/'),
