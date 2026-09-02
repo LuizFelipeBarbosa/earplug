@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -381,37 +379,34 @@ class StickyActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: context.epColors.tabBarBackground.withValues(alpha: .95),
-            border: Border(top: BorderSide(color: context.epColors.border)),
-          ),
-          child: SafeArea(
-            top: false,
-            minimum: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                if (secondaryLabel != null) ...[
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: onSecondary,
-                      child: Text(secondaryLabel!.toUpperCase()),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                ],
+    return RepaintBoundary(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: context.epColors.tabBarBackground,
+          border: Border(top: BorderSide(color: context.epColors.border)),
+        ),
+        child: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              if (secondaryLabel != null) ...[
                 Expanded(
-                  flex: secondaryLabel == null ? 1 : 2,
-                  child: FilledButton(
-                    onPressed: onPrimary,
-                    child: Text(primaryLabel.toUpperCase()),
+                  child: OutlinedButton(
+                    onPressed: onSecondary,
+                    child: Text(secondaryLabel!.toUpperCase()),
                   ),
                 ),
+                const SizedBox(width: 10),
               ],
-            ),
+              Expanded(
+                flex: secondaryLabel == null ? 1 : 2,
+                child: FilledButton(
+                  onPressed: onPrimary,
+                  child: Text(primaryLabel.toUpperCase()),
+                ),
+              ),
+            ],
           ),
         ),
       ),

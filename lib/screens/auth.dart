@@ -589,10 +589,43 @@ class _PressHerePulse extends StatefulWidget {
 
 class _PressHerePulseState extends State<_PressHerePulse>
     with SingleTickerProviderStateMixin {
-  late final _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1200),
-  )..repeat(reverse: true);
+  late final AnimationController _controller;
+  bool _pulseStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _controller.stop();
+      _controller.value = 1;
+      return;
+    }
+    if (_pulseStarted) return;
+
+    _pulseStarted = true;
+    _controller.value = 1;
+    unawaited(_runPulse());
+  }
+
+  Future<void> _runPulse() async {
+    try {
+      for (var cycle = 0; cycle < 3; cycle++) {
+        await _controller.reverse().orCancel;
+        await _controller.forward().orCancel;
+      }
+    } on TickerCanceled {
+      // Disposing the widget or enabling reduced motion cancels the pulse.
+    }
+  }
 
   @override
   void dispose() {

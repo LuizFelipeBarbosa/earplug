@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -94,22 +92,19 @@ class _TabBarShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.paddingOf(context).bottom;
     final textScale = MediaQuery.textScalerOf(context).scale(1);
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          decoration: BoxDecoration(
-            color: context.epColors.tabBarBackground.withValues(alpha: .95),
-            border: Border(top: BorderSide(color: borderColor)),
-          ),
-          padding: EdgeInsets.only(bottom: bottomPad),
-          child: SizedBox(
-            height: 66 + (textScale - 1).clamp(0, 1) * 14,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              child: Row(
-                children: [for (final item in items) Expanded(child: item)],
-              ),
+    return RepaintBoundary(
+      child: Container(
+        decoration: BoxDecoration(
+          color: context.epColors.tabBarBackground,
+          border: Border(top: BorderSide(color: borderColor)),
+        ),
+        padding: EdgeInsets.only(bottom: bottomPad),
+        child: SizedBox(
+          height: 66 + (textScale - 1).clamp(0, 1) * 14,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              children: [for (final item in items) Expanded(child: item)],
             ),
           ),
         ),
