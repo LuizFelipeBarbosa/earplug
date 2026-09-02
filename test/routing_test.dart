@@ -9,22 +9,22 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('route parsing distinguishes gigs, bands, and reserved roots', () {
     expect(
-      gigIdFromUri(Uri.parse('https://earplug.dev/g/same-night')),
+      gigIdFromUri(Uri.parse('https://earplug.app/g/same-night')),
       'same-night',
     );
     expect(
-      bandSlugFromUri(Uri.parse('https://earplug.dev/static-bloom')),
+      bandSlugFromUri(Uri.parse('https://earplug.app/static-bloom')),
       'static-bloom',
     );
     expect(
-      bandSlugFromUri(Uri.parse('https://earplug.dev/g/same-night')),
+      bandSlugFromUri(Uri.parse('https://earplug.app/g/same-night')),
       isNull,
     );
     expect(
-      bandSlugFromUri(Uri.parse('https://earplug.dev/join/token')),
+      bandSlugFromUri(Uri.parse('https://earplug.app/join/token')),
       isNull,
     );
-    expect(bandSlugFromUri(Uri.parse('https://earplug.dev/check-in')), isNull);
+    expect(bandSlugFromUri(Uri.parse('https://earplug.app/check-in')), isNull);
   });
 
   test(
