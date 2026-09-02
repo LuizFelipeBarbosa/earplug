@@ -71,6 +71,7 @@ void main() {
           child: BandVideoThumbnail(
             media: _media(),
             fallback: const ColoredBox(color: Colors.red),
+            legacyFrameEnabled: true,
           ),
         ),
       ),

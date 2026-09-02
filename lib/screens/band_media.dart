@@ -36,126 +36,201 @@ class BandMediaScreen extends StatelessWidget {
 
     void explainAdminGate() => app.say(_adminGateMessage);
 
+    final listRows = <_MediaListRow>[
+      _MediaWidgetRow(
+        Text(
+          'Upload clips and gallery photos, then choose what fans see first.',
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+      ),
+      const _MediaWidgetRow(SizedBox(height: 14)),
+      _MediaWidgetRow(
+        _UploadActions(
+          enabled: isAdmin,
+          onVideo: isAdmin
+              ? () => media.pickAndUploadVideo(bandId)
+              : explainAdminGate,
+          onPhotos: isAdmin
+              ? () => media.pickAndUploadPhotos(bandId)
+              : explainAdminGate,
+        ),
+      ),
+      if (uploads.isNotEmpty) ...[
+        _MediaWidgetRow(SectionBar(label: 'Uploads', count: uploads.length)),
+        for (final upload in uploads) _MediaUploadRow(upload),
+      ],
+      if (loadError != null) ...[
+        const _MediaWidgetRow(SizedBox(height: 18)),
+        _MediaWidgetRow(
+          _LoadFailure(
+            message: loadError,
+            onRetry: () => media.refresh(bandId),
+          ),
+        ),
+      ] else if (loading) ...[
+        const _MediaWidgetRow(SizedBox(height: 18)),
+        const _MediaWidgetRow(_LoadingMedia()),
+      ],
+      _MediaWidgetRow(
+        SectionBar(label: 'This is what we sound like', count: videos.length),
+      ),
+      _MediaWidgetRow(
+        Text(
+          'The featured clip plays first on the public profile. Use each clip menu to feature, reorder, or remove it.',
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+      ),
+      const _MediaWidgetRow(SizedBox(height: 10)),
+      if (!loading && videos.isEmpty)
+        _MediaWidgetRow(
+          _EmptyMediaState(
+            icon: Icons.videocam_outlined,
+            title: 'NO VIDEOS YET',
+            message: 'Upload a music clip to give fans a clear first listen.',
+            actionLabel: isAdmin ? 'UPLOAD A MUSIC CLIP' : null,
+            onAction: isAdmin ? () => media.pickAndUploadVideo(bandId) : null,
+          ),
+        )
+      else
+        for (final (index, video) in videos.indexed)
+          _MediaVideoRow(video, index),
+      _MediaWidgetRow(
+        SectionBar(label: 'Gallery photos', count: photos.length),
+      ),
+      _MediaWidgetRow(
+        Text(
+          'These photos appear in the public gallery in the order shown.',
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+      ),
+      const _MediaWidgetRow(SizedBox(height: 10)),
+    ];
+
     return ColoredBox(
       color: context.epColors.background,
       child: Column(
         children: [
           _MediaHeader(itemCount: items.length, onBack: app.back),
           Expanded(
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                16,
-                16,
-                16,
-                40 + MediaQuery.paddingOf(context).bottom,
-              ),
-              children: [
-                Text(
-                  'Upload clips and gallery photos, then choose what fans see first.',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-                const SizedBox(height: 14),
-                _UploadActions(
-                  enabled: isAdmin,
-                  onVideo: isAdmin
-                      ? () => media.pickAndUploadVideo(bandId)
-                      : explainAdminGate,
-                  onPhotos: isAdmin
-                      ? () => media.pickAndUploadPhotos(bandId)
-                      : explainAdminGate,
-                ),
-                if (uploads.isNotEmpty) ...[
-                  SectionBar(label: 'Uploads', count: uploads.length),
-                  for (final upload in uploads) ...[
-                    _UploadTile(upload: upload, media: media),
-                    const SizedBox(height: 8),
-                  ],
-                ],
-                if (loadError != null) ...[
-                  const SizedBox(height: 18),
-                  _LoadFailure(
-                    message: loadError,
-                    onRetry: () => media.refresh(bandId),
-                  ),
-                ] else if (loading) ...[
-                  const SizedBox(height: 18),
-                  const _LoadingMedia(),
-                ],
-                SectionBar(
-                  label: 'This is what we sound like',
-                  count: videos.length,
-                ),
-                Text(
-                  'The featured clip plays first on the public profile. Use each clip menu to feature, reorder, or remove it.',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-                const SizedBox(height: 10),
-                if (!loading && videos.isEmpty)
-                  _EmptyMediaState(
-                    icon: Icons.videocam_outlined,
-                    title: 'NO VIDEOS YET',
-                    message:
-                        'Upload a music clip to give fans a clear first listen.',
-                    actionLabel: isAdmin ? 'UPLOAD A MUSIC CLIP' : null,
-                    onAction: isAdmin
-                        ? () => media.pickAndUploadVideo(bandId)
-                        : null,
-                  )
-                else
-                  for (final (index, video) in videos.indexed) ...[
-                    _VideoManageCard(
-                      item: video,
-                      position: index,
-                      total: videos.length,
-                      isAdmin: isAdmin,
-                      onManage: () => _showMediaActions(
-                        context,
-                        media: media,
-                        bandId: bandId,
-                        item: video,
-                        position: index,
-                        total: videos.length,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth - 32 < 350 ? 2 : 3;
+                final bottomPadding = 40 + MediaQuery.paddingOf(context).bottom;
+                return CustomScrollView(
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate((context, index) {
+                          final row = listRows[index];
+                          return switch (row) {
+                            _MediaWidgetRow(:final child) => child,
+                            _MediaUploadRow(:final upload) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _UploadTile(upload: upload, media: media),
+                            ),
+                            _MediaVideoRow(:final video, :final position) =>
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 9),
+                                child: _VideoManageCard(
+                                  item: video,
+                                  position: position,
+                                  total: videos.length,
+                                  isAdmin: isAdmin,
+                                  onManage: () => _showMediaActions(
+                                    context,
+                                    media: media,
+                                    bandId: bandId,
+                                    item: video,
+                                    position: position,
+                                    total: videos.length,
+                                  ),
+                                ),
+                              ),
+                          };
+                        }, childCount: listRows.length),
                       ),
                     ),
-                    const SizedBox(height: 9),
+                    if (!loading && photos.isEmpty)
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding),
+                        sliver: SliverToBoxAdapter(
+                          child: _EmptyMediaState(
+                            icon: Icons.photo_library_outlined,
+                            title: 'NO GALLERY PHOTOS YET',
+                            message:
+                                'Add show, rehearsal, or behind-the-scenes photos for fans.',
+                            actionLabel: isAdmin ? 'UPLOAD PHOTOS' : null,
+                            onAction: isAdmin
+                                ? () => media.pickAndUploadPhotos(bandId)
+                                : null,
+                          ),
+                        ),
+                      )
+                    else if (photos.isNotEmpty)
+                      SliverPadding(
+                        padding: EdgeInsets.fromLTRB(16, 0, 16, bottomPadding),
+                        sliver: SliverGrid.builder(
+                          itemCount: photos.length,
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: columns,
+                                mainAxisSpacing: 9,
+                                crossAxisSpacing: 9,
+                                childAspectRatio: .78,
+                              ),
+                          itemBuilder: (context, index) => _PhotoManageTile(
+                            item: photos[index],
+                            position: index,
+                            total: photos.length,
+                            isAdmin: isAdmin,
+                            onManage: () => _showMediaActions(
+                              context,
+                              media: media,
+                              bandId: bandId,
+                              item: photos[index],
+                              position: index,
+                              total: photos.length,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      SliverToBoxAdapter(
+                        child: SizedBox(height: bottomPadding),
+                      ),
                   ],
-                SectionBar(label: 'Gallery photos', count: photos.length),
-                Text(
-                  'These photos appear in the public gallery in the order shown.',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-                const SizedBox(height: 10),
-                if (!loading && photos.isEmpty)
-                  _EmptyMediaState(
-                    icon: Icons.photo_library_outlined,
-                    title: 'NO GALLERY PHOTOS YET',
-                    message:
-                        'Add show, rehearsal, or behind-the-scenes photos for fans.',
-                    actionLabel: isAdmin ? 'UPLOAD PHOTOS' : null,
-                    onAction: isAdmin
-                        ? () => media.pickAndUploadPhotos(bandId)
-                        : null,
-                  )
-                else
-                  _PhotoGrid(
-                    photos: photos,
-                    isAdmin: isAdmin,
-                    onManage: (photo, position) => _showMediaActions(
-                      context,
-                      media: media,
-                      bandId: bandId,
-                      item: photo,
-                      position: position,
-                      total: photos.length,
-                    ),
-                  ),
-              ],
+                );
+              },
             ),
           ),
         ],
       ),
     );
   }
+}
+
+sealed class _MediaListRow {
+  const _MediaListRow();
+}
+
+class _MediaWidgetRow extends _MediaListRow {
+  const _MediaWidgetRow(this.child);
+
+  final Widget child;
+}
+
+class _MediaUploadRow extends _MediaListRow {
+  const _MediaUploadRow(this.upload);
+
+  final MediaUpload upload;
+}
+
+class _MediaVideoRow extends _MediaListRow {
+  const _MediaVideoRow(this.video, this.position);
+
+  final BandMedia video;
+  final int position;
 }
 
 class _MediaHeader extends StatelessWidget {
@@ -331,7 +406,13 @@ class _UploadTile extends StatelessWidget {
                   width: 54,
                   height: 54,
                   child: upload.preview != null
-                      ? Image.memory(upload.preview!, fit: BoxFit.cover)
+                      ? Image.memory(
+                          upload.preview!,
+                          fit: BoxFit.cover,
+                          cacheWidth:
+                              (54 * MediaQuery.devicePixelRatioOf(context))
+                                  .round(),
+                        )
                       : ColoredBox(
                           color: context.epColors.surfaceRaised,
                           child: Center(
@@ -517,45 +598,6 @@ class _VideoManageCard extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-class _PhotoGrid extends StatelessWidget {
-  const _PhotoGrid({
-    required this.photos,
-    required this.isAdmin,
-    required this.onManage,
-  });
-
-  final List<BandMedia> photos;
-  final bool isAdmin;
-  final void Function(BandMedia photo, int position) onManage;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth < 350 ? 2 : 3;
-        return GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: photos.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: 9,
-            crossAxisSpacing: 9,
-            childAspectRatio: .78,
-          ),
-          itemBuilder: (context, index) => _PhotoManageTile(
-            item: photos[index],
-            position: index,
-            total: photos.length,
-            isAdmin: isAdmin,
-            onManage: () => onManage(photos[index], index),
-          ),
-        );
-      },
     );
   }
 }

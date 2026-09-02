@@ -20,6 +20,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: ExploreScreen()),
+      beforePump: (app) => app.loadMoreExploreBands(),
     );
 
     expect(harness.app.exploreResultType.name, 'all');
@@ -57,6 +58,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: ExploreScreen()),
+      beforePump: (app) => app.loadMoreExploreBands(),
     );
 
     await tester.enterText(
@@ -67,6 +69,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(harness.app.query, 'Foghorn');
+    await tester.scrollUntilVisible(
+      find.text('FOGHORN DIET'),
+      200,
+      scrollable: _allResultsScrollable(),
+    );
     expect(find.text('FOGHORN DIET'), findsOne);
 
     await tester.tap(find.byKey(const Key('explore-search-clear')));
@@ -112,9 +119,15 @@ void main() {
       auth: auth,
       repository: _SingleFollowerRepository(auth: auth),
       home: const Scaffold(body: ExploreScreen()),
+      beforePump: (app) => app.loadMoreExploreBands(),
     );
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('explore-toggle-bands')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.textContaining('1 fan'), findsOne);
     expect(find.textContaining('1 fans'), findsNothing);
   });
@@ -323,6 +336,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: ExploreScreen()),
+      beforePump: (app) => app.loadMoreExploreBands(),
     );
 
     final bandsToggle = find.byKey(const Key('explore-toggle-bands'));

@@ -86,23 +86,39 @@ class BandProfileScreen extends StatelessWidget {
               _BandLinks(app: app, bandId: bandId),
               if (soundVideos.isNotEmpty) ...[
                 const SectionBar(label: 'THIS IS WHAT WE SOUND LIKE'),
-                GridView.count(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 168 / 104,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    for (final video in soundVideos)
-                      _ClipTile(
-                        clip: video,
-                        band: band,
-                        app: app,
-                        pinned: video.id == pinned?.id,
+                for (var index = 0; index < soundVideos.length; index += 2) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: AspectRatio(
+                          aspectRatio: 168 / 104,
+                          child: _ClipTile(
+                            clip: soundVideos[index],
+                            band: band,
+                            app: app,
+                            pinned: soundVideos[index].id == pinned?.id,
+                          ),
+                        ),
                       ),
-                  ],
-                ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: index + 1 < soundVideos.length
+                            ? AspectRatio(
+                                aspectRatio: 168 / 104,
+                                child: _ClipTile(
+                                  clip: soundVideos[index + 1],
+                                  band: band,
+                                  app: app,
+                                  pinned:
+                                      soundVideos[index + 1].id == pinned?.id,
+                                ),
+                              )
+                            : const SizedBox.shrink(),
+                      ),
+                    ],
+                  ),
+                  if (index + 2 < soundVideos.length) const SizedBox(height: 8),
+                ],
               ],
               if (photos.isNotEmpty) ...[
                 const SectionBar(label: 'PHOTOS'),
