@@ -640,6 +640,9 @@ class _FailingRsvpRepository implements EarplugRepository {
   Stream<FeedSnapshot> feed() => const Stream.empty();
 
   @override
+  Stream<Map<String, int>> goingCounts() => const Stream.empty();
+
+  @override
   Stream<Gig?> publicGig(String gigId) => const Stream.empty();
 
   @override

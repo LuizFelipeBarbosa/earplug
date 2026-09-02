@@ -306,6 +306,7 @@ class AppState extends ChangeNotifier {
 
   StreamSubscription<bool>? _authSubscription;
   StreamSubscription<FeedSnapshot>? _feedSubscription;
+  StreamSubscription<Map<String, int>>? _goingCountsSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
   StreamSubscription<Gig?>? _publicGigSubscription;
@@ -328,6 +329,7 @@ class AppState extends ChangeNotifier {
   bool _hasFeedSnapshot = false;
   Map<String, Band> _bands = {};
   Map<String, Venue> _venues = const {};
+  Map<String, int> _goingCounts = const {};
 
   /// The full curated venue table (`venues:list`), including venues no upcoming
   /// gig references. The feed only carries venues its gigs point at.
@@ -603,6 +605,7 @@ class AppState extends ChangeNotifier {
     _stopBrowserHistory = null;
     unawaited(_authSubscription?.cancel());
     unawaited(_feedSubscription?.cancel());
+    unawaited(_goingCountsSubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
     unawaited(_bandsSubscription?.cancel());
     unawaited(_publicGigSubscription?.cancel());
@@ -718,13 +721,11 @@ class AppState extends ChangeNotifier {
     _feedSubscription = repository.feed().listen(
       (snapshot) {
         final hadFeedSnapshot = _hasFeedSnapshot;
-        final oldVenueSignatures =
-            <String, Set<(String, int, int, GigLifecycle)>>{};
+        final oldVenueSignatures = <String, Set<(String, int, GigLifecycle)>>{};
         if (hadFeedSnapshot) {
           for (final gig in _allGigs) {
             oldVenueSignatures.putIfAbsent(gig.venueId, () => {}).add((
               gig.id,
-              gig.going,
               gig.startsAt.millisecondsSinceEpoch,
               gig.lifecycle,
             ));
@@ -734,15 +735,13 @@ class AppState extends ChangeNotifier {
         }
 
         final upcomingByBand = <String, List<String>>{};
-        final newVenueSignatures =
-            <String, Set<(String, int, int, GigLifecycle)>>{};
+        final newVenueSignatures = <String, Set<(String, int, GigLifecycle)>>{};
         for (final gig in snapshot.gigs) {
           for (final bandId in gig.lineup) {
             upcomingByBand.putIfAbsent(bandId, () => []).add(gig.id);
           }
           newVenueSignatures.putIfAbsent(gig.venueId, () => {}).add((
             gig.id,
-            gig.going,
             gig.startsAt.millisecondsSinceEpoch,
             gig.lifecycle,
           ));
@@ -799,6 +798,11 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       },
     );
+    _goingCountsSubscription = repository.goingCounts().listen((goingCounts) {
+      if (mapEquals(_goingCounts, goingCounts)) return;
+      _goingCounts = Map<String, int>.unmodifiable(goingCounts);
+      notifyListeners();
+    }, onError: (Object error) => logError('goingCounts', error));
   }
 
   void _scheduleDiscoveryBoundaryRefresh() {
@@ -1190,6 +1194,7 @@ class AppState extends ChangeNotifier {
   void openBand(String id) {
     go(Screen.band, id);
     unawaited(loadBandProfileDetails(id));
+    if (_bands[id]?.isSummary == true) unawaited(_loadFollowBand(id));
   }
 
   void previewPublicProfile() {
@@ -2691,12 +2696,13 @@ class AppState extends ChangeNotifier {
   /// has not appeared in the interaction subscription yet.
   int rsvpCount(Gig gig) {
     final authoritativeGig = _interactionGigs[gig.id] ?? gig;
+    final baseGoing = _goingCounts[gig.id] ?? authoritativeGig.going;
     final pending = _pendingRsvps[gig.id];
     if (pending == null ||
         pending.desired == _confirmedRsvps.contains(gig.id)) {
-      return authoritativeGig.going;
+      return baseGoing;
     }
-    final reconciled = authoritativeGig.going + (pending.desired ? 1 : -1);
+    final reconciled = baseGoing + (pending.desired ? 1 : -1);
     return reconciled < 0 ? 0 : reconciled;
   }
 
@@ -2717,6 +2723,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _restartFeed() async {
     await _feedSubscription?.cancel();
+    await _goingCountsSubscription?.cancel();
     _subscribeToFeed();
   }
 

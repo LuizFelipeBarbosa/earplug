@@ -207,16 +207,29 @@ void main() {
     expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
     expect(repository.detailCalls, {'v1': 1, 'v2': 1});
 
-    final changedGig = repository.oldGig.copyWith(
+    final goingOnlyChangedGig = repository.oldGig.copyWith(
       going: repository.oldGig.going + 1,
     );
-    repository.emitFeed([changedGig, repository.untouchedGig]);
+    repository.emitFeed([goingOnlyChangedGig, repository.untouchedGig]);
+    await _flushAsyncWork();
+    // Going now comes from goingCounts and is intentionally excluded here.
+    expect(app.venueDetail('v1'), same(cachedChangedVenue));
+    expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
+    expect(repository.detailCalls, {'v1': 1, 'v2': 1});
+
+    final lifecycleChangedGig = repository.oldGig.copyWith(
+      lifecycle: GigLifecycle.cancelled,
+    );
+    repository.emitFeed([lifecycleChangedGig, repository.untouchedGig]);
     await _flushAsyncWork();
     expect(app.venueDetail('v1'), isNull);
     expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
     await _flushAsyncWork();
 
-    expect(app.venueDetail('v1')?.gigs.single.going, changedGig.going);
+    expect(
+      app.venueDetail('v1')?.gigs.single.lifecycle,
+      lifecycleChangedGig.lifecycle,
+    );
     expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
     expect(repository.detailCalls, {'v1': 2, 'v2': 1});
   });

@@ -445,6 +445,7 @@ abstract class EarplugRepository {
   Future<UserProfile?> me();
 
   Stream<FeedSnapshot> feed();
+  Stream<Map<String, int>> goingCounts();
   Stream<Gig?> publicGig(String ref);
   Stream<List<Gig>> upcomingGigsForBand(String bandId);
   Stream<Interactions> myInteractions();

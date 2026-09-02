@@ -107,6 +107,11 @@ class DemoRepository implements EarplugRepository {
   Stream<FeedSnapshot> feed() => _replay(_feedController, _currentFeed);
 
   @override
+  Stream<Map<String, int>> goingCounts() => feed().map(
+    (snapshot) => {for (final gig in snapshot.gigs) gig.id: gig.going},
+  );
+
+  @override
   Stream<Gig?> publicGig(String ref) => Stream.value(
     [
       ...DemoData.gigs,

@@ -116,6 +116,68 @@ void main() {
     expect(app.band('b1'), same(band));
   });
 
+  test('going counts update RSVP totals without a new feed snapshot', () async {
+    final auth = FakeAuthService();
+    final repository = _SubscriptionSpyRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(() async {
+      app.dispose();
+      await repository.close();
+    });
+
+    repository.emitFeed();
+    await _flushAsyncWork();
+    final gig = app.feed.first;
+    final updatedCount = gig.going + 7;
+
+    repository.emitGoingCounts({gig.id: updatedCount});
+    await _flushAsyncWork();
+
+    expect(app.rsvpCount(gig), updatedCount);
+  });
+
+  test('equal going count updates notify listeners only once', () async {
+    final auth = FakeAuthService();
+    final repository = _SubscriptionSpyRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(() async {
+      app.dispose();
+      await repository.close();
+    });
+    await _flushAsyncWork();
+    var notifications = 0;
+    app.addListener(() => notifications++);
+
+    repository.emitGoingCounts(const {'g1': 12});
+    await _flushAsyncWork();
+    repository.emitGoingCounts(const {'g1': 12});
+    await _flushAsyncWork();
+
+    expect(notifications, 1);
+  });
+
+  test('opening a summary band loads the full band exactly once', () async {
+    final auth = FakeAuthService();
+    final repository = _SubscriptionSpyRepository(auth: auth);
+    final app = AppState(repository: repository, auth: auth);
+    addTearDown(() async {
+      app.dispose();
+      await repository.close();
+    });
+    final fullBand = DemoData.bands['b1']!;
+    final summaryBand = fullBand.copyWith(isSummary: true);
+    repository.bandValue = fullBand;
+    repository.emitFeed(bands: {summaryBand.id: summaryBand});
+    await _flushAsyncWork();
+
+    app.openBand(summaryBand.id);
+    app.openBand(summaryBand.id);
+    await _flushAsyncWork();
+
+    expect(repository.bandCalls, 1);
+    expect(app.band(summaryBand.id)?.isSummary, isFalse);
+  });
+
   test(
     'leaving a gig cancels its stream but keeps the fetched gig cached',
     () async {
@@ -172,26 +234,42 @@ class _SubscriptionSpyRepository extends DemoRepository {
   _SubscriptionSpyRepository({required super.auth});
 
   final _feedController = StreamController<FeedSnapshot>.broadcast();
+  final _goingCountsController = StreamController<Map<String, int>>.broadcast();
   final List<StreamController<List<Gig>>> _upcomingControllers = [];
   final List<StreamController<Gig?>> _publicGigControllers = [];
   final List<String> upcomingBandIds = [];
   var activeUpcomingSubscriptions = 0;
   var publicGigCalls = 0;
   var publicGigCancellations = 0;
+  var bandCalls = 0;
   Gig? publicGigValue;
+  Band? bandValue;
 
   @override
   Stream<FeedSnapshot> feed() => _feedController.stream;
 
-  void emitFeed({DateTime? nextStartsAt}) {
+  @override
+  Stream<Map<String, int>> goingCounts() => _goingCountsController.stream;
+
+  void emitFeed({DateTime? nextStartsAt, Map<String, Band>? bands}) {
     _feedController.add(
       FeedSnapshot(
         gigs: DemoData.gigs,
         venues: DemoData.venues,
-        bands: DemoData.bands,
+        bands: bands ?? DemoData.bands,
         nextStartsAt: nextStartsAt,
       ),
     );
+  }
+
+  void emitGoingCounts(Map<String, int> goingCounts) {
+    _goingCountsController.add(goingCounts);
+  }
+
+  @override
+  Future<Band?> band(String bandId) async {
+    bandCalls++;
+    return bandValue ?? super.band(bandId);
   }
 
   @override
@@ -226,6 +304,7 @@ class _SubscriptionSpyRepository extends DemoRepository {
 
   Future<void> close() async {
     await _feedController.close();
+    await _goingCountsController.close();
     for (final controller in _upcomingControllers) {
       if (!controller.isClosed) await controller.close();
     }
