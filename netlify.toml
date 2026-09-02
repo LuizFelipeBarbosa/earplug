@@ -62,15 +62,16 @@
   to = "/index.html"
   status = 200
 
+# Unlike hashed build assets, these filenames persist across changes, so use a shorter revalidated cache.
 [[headers]]
   for = "/assets/assets/fonts/*"
   [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+    Cache-Control = "public, max-age=604800"
 
 [[headers]]
   for = "/assets/assets/images/*"
   [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+    Cache-Control = "public, max-age=604800"
 
 [[headers]]
   for = "/icons/*"

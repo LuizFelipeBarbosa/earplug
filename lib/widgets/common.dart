@@ -36,6 +36,7 @@ class EpNetworkImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (url == null || url!.isEmpty) return fallback;
+    final rawUrl = url!;
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final physicalCacheWidth = !kIsWeb && cacheWidth != null
         ? (cacheWidth! * dpr).round()
@@ -45,13 +46,13 @@ class EpNetworkImage extends StatelessWidget {
         : null;
     final imageUrl = kIsWeb && cacheWidth != null
         ? displayImageUrl(
-            url!,
+            rawUrl,
             width: cacheWidth!,
             height: cacheHeight,
             base: Uri.base,
             devicePixelRatio: dpr,
           )
-        : url!;
+        : rawUrl;
     return CachedNetworkImage(
       imageUrl: imageUrl,
       fit: fit,
@@ -60,7 +61,15 @@ class EpNetworkImage extends StatelessWidget {
       memCacheHeight: physicalCacheHeight,
       maxWidthDiskCache: physicalCacheWidth,
       placeholder: (_, _) => fallback,
-      errorWidget: (_, _, _) => fallback,
+      errorWidget: (_, _, _) => imageUrl == rawUrl
+          ? fallback
+          : CachedNetworkImage(
+              imageUrl: rawUrl,
+              fit: fit,
+              fadeInDuration: const Duration(milliseconds: 180),
+              placeholder: (_, _) => fallback,
+              errorWidget: (_, _, _) => fallback,
+            ),
     );
   }
 }
