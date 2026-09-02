@@ -335,6 +335,8 @@ final class ClerkWebAuth implements AuthService {
     final session = _clerk.session;
     if (session == null) return null;
 
+    // At the ~45s refresh mark, Clerk's cache would reuse the ~60s token with only ~15s left.
+    // authRefreshDelay's 30s floor would pass expiry, so every refresh must mint a fresh token.
     final token = await session
         .getToken(_TokenOptions(template: 'convex', skipCache: true))
         .toDart;

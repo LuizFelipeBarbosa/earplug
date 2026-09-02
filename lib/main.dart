@@ -45,12 +45,41 @@ SemanticsHandle? _webSemanticsHandle;
 final _lightTheme = buildEpTheme(Brightness.light);
 final _darkTheme = buildEpTheme(Brightness.dark);
 
+bool shouldEnableWebSemantics({
+  required String? queryValue,
+  required bool stored,
+}) {
+  if (queryValue == '1') return true;
+  if (queryValue == '0') return false;
+  return stored;
+}
+
+void _removeSplashAfterFirstFrame() {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    webShell.removeSplash();
+    webShell.mark('ep:first-frame');
+  });
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (kIsWeb && Uri.base.queryParameters['a11y'] == '1') {
-    // Eager semantics keeps a permanent DOM tree alive. Without this opt-in,
-    // screen-reader users can still use Flutter's accessibility affordance.
-    _webSemanticsHandle ??= SemanticsBinding.instance.ensureSemantics();
+  if (kIsWeb) {
+    final queryValue = Uri.base.queryParameters['a11y'];
+    final enableSemantics = shouldEnableWebSemantics(
+      queryValue: queryValue,
+      stored: webShell.readA11yPreference(),
+    );
+    // Eager semantics keeps a permanent DOM tree alive, so this remains opt-in
+    // for performance. Flutter's accessibility placeholder still works without
+    // it; see docs/performance.md for the persistent URL preference.
+    if (enableSemantics) {
+      _webSemanticsHandle ??= SemanticsBinding.instance.ensureSemantics();
+    }
+    if (queryValue == '1') {
+      webShell.writeA11yPreference(true);
+    } else if (queryValue == '0') {
+      webShell.writeA11yPreference(false);
+    }
   }
   final appearance = await AppearanceController.load();
   final joinToken = joinTokenFromUri(Uri.base);
@@ -67,11 +96,13 @@ Future<void> main() async {
         initialBandSlug: bandSlug,
       ),
     );
+    _removeSplashAfterFirstFrame();
     return;
   }
   final configError = Env.configurationError;
   if (configError != null) {
     runApp(_ConfigErrorApp(message: configError, appearance: appearance));
+    _removeSplashAfterFirstFrame();
     return;
   }
 
@@ -90,9 +121,8 @@ Future<void> main() async {
       initialBandSlug: bandSlug,
     ),
   );
+  _removeSplashAfterFirstFrame();
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    webShell.removeSplash();
-    webShell.mark('ep:first-frame');
     unawaited(
       auth.initialize().catchError((Object error) {
         logError('auth.initialize', error);
@@ -103,7 +133,7 @@ Future<void> main() async {
         return await auth.fetchConvexToken();
       } catch (error) {
         logError('fetchConvexToken', error);
-        return null;
+        rethrow;
       }
     });
   });

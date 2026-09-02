@@ -11,4 +11,10 @@ class _StubWebShell implements WebShell {
 
   @override
   List<({String name, double ms})> marks() => const [];
+
+  @override
+  bool readA11yPreference() => false;
+
+  @override
+  void writeA11yPreference(bool enabled) {}
 }

@@ -8,6 +8,12 @@ abstract class WebShell {
   void mark(String name);
 
   List<({String name, double ms})> marks();
+
+  /// Returns whether eager web semantics were enabled in this browser.
+  bool readA11yPreference();
+
+  /// Persists or clears the browser preference for eager web semantics.
+  void writeA11yPreference(bool enabled);
 }
 
 final WebShell webShell = createWebShell();

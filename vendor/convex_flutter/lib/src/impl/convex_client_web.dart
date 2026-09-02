@@ -85,6 +85,9 @@ class WebConvexClient implements IConvexClient {
   /// Timer that refreshes the auth token before it expires
   Timer? _authRefreshTimer;
 
+  /// Consecutive failed auth refresh attempts
+  int _authRefreshFailures = 0;
+
   /// Pending requests waiting for responses (query, mutation, action)
   final Map<int, Completer<String>> _pendingRequests = {};
 
@@ -245,24 +248,31 @@ class WebConvexClient implements IConvexClient {
     }.toJS;
   }
 
-  /// Registers browser signals that reset reconnect backoff.
+  /// Registers browser signals that reset reconnect backoff and retry promptly.
   void _setupBrowserEventListeners() {
     if (_onlineListener != null || _visibilityChangeListener != null) return;
 
-    void resetReconnectAttempts(String signal) {
+    void onConnectivityRestored(String signal) {
       if (_isDisposed) return;
       _reconnectAttempts = 0;
       _log(
         () => '=== [WebConvexClient] Reconnect backoff reset after $signal ===',
       );
+
+      final reconnectTimer = _reconnectTimer;
+      if (reconnectTimer == null || !reconnectTimer.isActive) return;
+      reconnectTimer.cancel();
+      _reconnectTimer = null;
+      _log(() => '=== [WebConvexClient] Reconnecting now after $signal ===');
+      _connect();
     }
 
     final onlineListener = ((web.Event _) {
-      resetReconnectAttempts('online');
+      onConnectivityRestored('online');
     }).toJS;
     final visibilityChangeListener = ((web.Event _) {
       if (web.document.visibilityState == 'visible') {
-        resetReconnectAttempts('visibilitychange');
+        onConnectivityRestored('visibilitychange');
       }
     }).toJS;
 
@@ -611,14 +621,34 @@ class WebConvexClient implements IConvexClient {
   Future<void> _refreshAuthToken() async {
     final fetcher = _tokenFetcher;
     if (fetcher == null || _isDisposed) return;
+
+    String? token;
     try {
-      final token = await fetcher();
-      if (_isDisposed || _tokenFetcher != fetcher) return;
-      await setAuth(token: token);
-      _onAuthChange?.call(token != null);
+      token = await fetcher();
     } catch (e) {
       debugPrint('ERROR: [WebConvexClient] Token refresh failed: $e');
+      if (_isDisposed || _tokenFetcher != fetcher) return;
+      _scheduleAuthRefreshRetry(fetcher);
+      return;
     }
+
+    if (_isDisposed || _tokenFetcher != fetcher) return;
+    _authRefreshFailures = 0;
+    await setAuth(token: token);
+    _onAuthChange?.call(token != null);
+  }
+
+  void _scheduleAuthRefreshRetry(Future<String?> Function() fetcher) {
+    if (_isDisposed || _tokenFetcher != fetcher) return;
+
+    _authRefreshFailures += 1;
+    _authRefreshTimer?.cancel();
+    final jitterFactor = 0.8 + (_reconnectRandom.nextDouble() * 0.4);
+    final delay = reconnectDelay(
+      _authRefreshFailures,
+      jitterFactor: jitterFactor,
+    );
+    _authRefreshTimer = Timer(delay, _refreshAuthToken);
   }
 
   /// Schedules a refresh shortly before the JWT expires.
@@ -889,7 +919,32 @@ class WebConvexClient implements IConvexClient {
     _tokenFetcher = tokenFetcher;
     _onAuthChange = onAuthChange;
 
-    final token = await tokenFetcher();
+    String? token;
+    try {
+      token = await tokenFetcher();
+    } catch (e) {
+      debugPrint('ERROR: [WebConvexClient] Initial token fetch failed: $e');
+      if (!_isDisposed && _tokenFetcher == tokenFetcher) {
+        _scheduleAuthRefreshRetry(tokenFetcher);
+      }
+      return _WebAuthHandle(
+        isAuth: _currentAuthToken != null,
+        onDispose: () async {
+          await clearAuth();
+        },
+      );
+    }
+
+    if (_isDisposed || _tokenFetcher != tokenFetcher) {
+      return _WebAuthHandle(
+        isAuth: _currentAuthToken != null,
+        onDispose: () async {
+          await clearAuth();
+        },
+      );
+    }
+
+    _authRefreshFailures = 0;
     await setAuth(token: token);
     onAuthChange?.call(token != null);
 
@@ -906,6 +961,7 @@ class WebConvexClient implements IConvexClient {
     _tokenFetcher = null;
     _onAuthChange = null;
     _authRefreshTimer?.cancel();
+    _authRefreshFailures = 0;
     await setAuth(token: null);
   }
 
@@ -999,6 +1055,7 @@ class WebConvexClient implements IConvexClient {
     // Cancel timers
     _reconnectTimer?.cancel();
     _authRefreshTimer?.cancel();
+    _authRefreshFailures = 0;
     _tokenFetcher = null;
 
     // Close WebSocket

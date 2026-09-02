@@ -73,6 +73,12 @@ Run each scenario 3 times and record the median. Record the device, browser, and
 - Size every network image explicitly
 - Keep Clerk off the first-frame path
 
+## Accessibility
+
+Eager Flutter semantics are opt-in on web because keeping the semantics DOM tree alive has a persistent runtime cost. Open the app with `?a11y=1` to enable eager semantics and save that choice for the current browser, or use `?a11y=0` to disable it and clear the saved preference. The preference is stored in localStorage under `ep:a11y` and applies to later visits without an `a11y` query parameter.
+
+Without this switch, screen-reader users can still use Flutter's built-in **Enable accessibility** placeholder button to activate accessibility for the current session.
+
 ## Results table
 
 | date | commit | device/browser | TTFB | FCP | first-frame | feed-ready | bytes | S1 p95 build/raster/jank | S2 | S3 | S4 |
