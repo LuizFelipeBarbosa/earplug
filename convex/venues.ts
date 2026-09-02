@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { docCache } from "./lib/docCache";
 import {
   bandPayloadValidator,
   feedCutoff,
@@ -169,11 +170,14 @@ export const detail = query({
       )
       .order("asc")
       .take(MAX_VENUE_GIGS * 4 + 1);
+    // A venue's gigs are mostly created by a few bands that also play them,
+    // so owner and lineup reads share one memo across both loops below.
+    const cache = docCache(ctx);
     const visible = [];
     for (const gig of rows) {
       if ((gig.lifecycle ?? "published") !== "published") continue;
       if (gig.createdByBand) {
-        const owner = await ctx.db.get(gig.createdByBand);
+        const owner = await cache.get(gig.createdByBand);
         if (!owner || owner.archivedAt !== undefined) continue;
       }
       visible.push(gig);
@@ -189,7 +193,7 @@ export const detail = query({
 
     const bands = [];
     for (const bandId of bandIds) {
-      const band = await ctx.db.get(bandId);
+      const band = await cache.get(bandId);
       if (band && band.archivedAt === undefined) {
         bands.push(await toBandPayload(ctx, band));
       }
