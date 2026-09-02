@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
+import 'package:convex_flutter/src/impl/auth_refresh.dart';
 import 'package:convex_flutter/src/impl/convex_client_interface.dart';
 import 'package:convex_flutter/src/impl/protocol_value.dart';
 import 'package:convex_flutter/src/rust/lib.dart'
@@ -13,6 +14,14 @@ import 'package:convex_flutter/src/connection_status.dart';
 import 'package:convex_flutter/src/convex_config.dart';
 import 'package:convex_flutter/src/app_lifecycle_event.dart';
 import 'package:convex_flutter/src/app_lifecycle_observer.dart';
+
+const bool _traceProtocol = false;
+
+void _log(String Function() message) {
+  if (kDebugMode) {
+    debugPrint(message());
+  }
+}
 
 /// Web (pure Dart) implementation of Convex client.
 ///
@@ -85,14 +94,17 @@ class WebConvexClient implements IConvexClient {
   /// Reconnection attempt counter
   int _reconnectAttempts = 0;
 
-  /// Maximum reconnection attempts
-  static const int _maxReconnectAttempts = 10;
-
-  /// Base reconnection delay
-  static const Duration _baseReconnectDelay = Duration(seconds: 1);
-
   /// Timer for reconnection
   Timer? _reconnectTimer;
+
+  /// Random source for reconnect jitter
+  final math.Random _reconnectRandom = math.Random();
+
+  /// Global browser listener for restored network connectivity
+  web.EventListener? _onlineListener;
+
+  /// Global browser listener for the page becoming visible
+  web.EventListener? _visibilityChangeListener;
 
   /// Whether client is disposed
   bool _isDisposed = false;
@@ -107,7 +119,7 @@ class WebConvexClient implements IConvexClient {
   /// - Event listener registration
   /// - Lifecycle observer setup
   static Future<WebConvexClient> create(ConvexConfig config) async {
-    debugPrint('=== [WebConvexClient] Creating web client ===');
+    _log(() => '=== [WebConvexClient] Creating web client ===');
 
     final client = WebConvexClient._(config);
 
@@ -120,16 +132,18 @@ class WebConvexClient implements IConvexClient {
       onLifecycleChange: (event) {
         client._lifecycleController.add(event);
         // Do NOT trigger reconnection on web - let WebSocket manage itself
-        debugPrint(
-          '=== [WebConvexClient] Lifecycle event: ${event.name} (no action on web) ===',
+        _log(
+          () =>
+              '=== [WebConvexClient] Lifecycle event: ${event.name} (no action on web) ===',
         );
       },
     );
+    client._setupBrowserEventListeners();
 
     // Establish WebSocket connection
     await client._connect();
 
-    debugPrint('=== [WebConvexClient] Client created successfully ===');
+    _log(() => '=== [WebConvexClient] Client created successfully ===');
     return client;
   }
 
@@ -137,7 +151,7 @@ class WebConvexClient implements IConvexClient {
   Future<void> _connect() async {
     if (_isDisposed) return;
 
-    debugPrint('=== [WebConvexClient] Connecting to Convex ===');
+    _log(() => '=== [WebConvexClient] Connecting to Convex ===');
 
     try {
       // Convert HTTPS to WSS URL with correct Convex sync endpoint
@@ -145,7 +159,7 @@ class WebConvexClient implements IConvexClient {
       final wsUrl = config.deploymentUrl.replaceFirst('https', 'wss');
       final fullUrl = '$wsUrl/api/sync';
 
-      debugPrint('=== [WebConvexClient] WebSocket URL: $fullUrl ===');
+      _log(() => '=== [WebConvexClient] WebSocket URL: $fullUrl ===');
 
       // Update state to connecting
       _updateConnectionState(WebSocketConnectionState.connecting);
@@ -156,7 +170,7 @@ class WebConvexClient implements IConvexClient {
       // Setup event listeners
       _setupWebSocketListeners();
 
-      debugPrint('=== [WebConvexClient] WebSocket connection initiated ===');
+      _log(() => '=== [WebConvexClient] WebSocket connection initiated ===');
     } catch (e) {
       debugPrint('ERROR: [WebConvexClient] Connection failed: $e');
       _scheduleReconnect();
@@ -170,7 +184,7 @@ class WebConvexClient implements IConvexClient {
 
     // Connection opened
     ws.onopen = (web.Event event) {
-      debugPrint('=== [WebConvexClient] WebSocket opened ===');
+      _log(() => '=== [WebConvexClient] WebSocket opened ===');
       _reconnectAttempts = 0; // Reset reconnection counter
       // Server-side session state is fresh on every connection
       _querySetVersion = 0;
@@ -197,9 +211,10 @@ class WebConvexClient implements IConvexClient {
       final code = event.code;
       final reason = event.reason;
       final wasClean = event.wasClean;
-      debugPrint('=== [WebConvexClient] WebSocket closed ===');
-      debugPrint(
-        '=== [WebConvexClient] Close code: $code, reason: "$reason", wasClean: $wasClean ===',
+      _log(() => '=== [WebConvexClient] WebSocket closed ===');
+      _log(
+        () =>
+            '=== [WebConvexClient] Close code: $code, reason: "$reason", wasClean: $wasClean ===',
       );
       _updateConnectionState(WebSocketConnectionState.connecting);
 
@@ -225,22 +240,69 @@ class WebConvexClient implements IConvexClient {
       if (dataString != null) {
         _handleMessage(dataString);
       } else {
-        debugPrint('WARNING: [WebConvexClient] Received non-string message');
+        _log(() => 'WARNING: [WebConvexClient] Received non-string message');
       }
     }.toJS;
+  }
+
+  /// Registers browser signals that reset reconnect backoff.
+  void _setupBrowserEventListeners() {
+    if (_onlineListener != null || _visibilityChangeListener != null) return;
+
+    void resetReconnectAttempts(String signal) {
+      if (_isDisposed) return;
+      _reconnectAttempts = 0;
+      _log(
+        () => '=== [WebConvexClient] Reconnect backoff reset after $signal ===',
+      );
+    }
+
+    final onlineListener = ((web.Event _) {
+      resetReconnectAttempts('online');
+    }).toJS;
+    final visibilityChangeListener = ((web.Event _) {
+      if (web.document.visibilityState == 'visible') {
+        resetReconnectAttempts('visibilitychange');
+      }
+    }).toJS;
+
+    _onlineListener = onlineListener;
+    _visibilityChangeListener = visibilityChangeListener;
+    web.window.addEventListener('online', onlineListener);
+    web.document.addEventListener('visibilitychange', visibilityChangeListener);
+  }
+
+  /// Removes the global browser listeners registered for reconnect backoff.
+  void _removeBrowserEventListeners() {
+    final onlineListener = _onlineListener;
+    if (onlineListener != null) {
+      web.window.removeEventListener('online', onlineListener);
+      _onlineListener = null;
+    }
+
+    final visibilityChangeListener = _visibilityChangeListener;
+    if (visibilityChangeListener != null) {
+      web.document.removeEventListener(
+        'visibilitychange',
+        visibilityChangeListener,
+      );
+      _visibilityChangeListener = null;
+    }
   }
 
   /// Handles incoming WebSocket messages.
   void _handleMessage(String data) {
     try {
-      debugPrint('=== [WebConvexClient] RAW MESSAGE: $data ===');
+      if (_traceProtocol) {
+        _log(() => '=== [WebConvexClient] RAW MESSAGE: $data ===');
+      }
 
       final message = jsonDecode(data) as Map<String, dynamic>;
       final type = message['type'] as String?;
       final id = message['id'] as String?;
 
-      debugPrint(
-        '=== [WebConvexClient] Received message type: $type, id: $id ===',
+      _log(
+        () => '=== [WebConvexClient] Received message type: $type, id: $id ===',
       );
 
       switch (type) {
@@ -271,10 +333,12 @@ class WebConvexClient implements IConvexClient {
           break;
 
         default:
-          debugPrint('WARNING: [WebConvexClient] Unknown message type: $type');
+          _log(() => 'WARNING: [WebConvexClient] Unknown message type: $type');
       }
     } catch (e) {
-      debugPrint('ERROR: [WebConvexClient] Failed to parse message: $e');
+      debugPrint(
+        'ERROR: [WebConvexClient] Failed to parse message (${e.runtimeType})',
+      );
     }
   }
 
@@ -364,7 +428,7 @@ class WebConvexClient implements IConvexClient {
         'eventType': 'Pong', // Required field
         'event': null, // Required field (can be null)
       });
-      debugPrint('=== [WebConvexClient] Sent Pong ===');
+      _log(() => '=== [WebConvexClient] Sent Pong ===');
     } catch (e) {
       debugPrint('ERROR: [WebConvexClient] Failed to send Pong: $e');
     }
@@ -384,7 +448,7 @@ class WebConvexClient implements IConvexClient {
         'lastCloseReason': null, // Required field
         'clientTs': DateTime.now().millisecondsSinceEpoch, // Required field
       });
-      debugPrint('=== [WebConvexClient] Sent Connect handshake ===');
+      _log(() => '=== [WebConvexClient] Sent Connect handshake ===');
     } catch (e) {
       debugPrint('ERROR: [WebConvexClient] Failed to send Connect: $e');
     }
@@ -428,36 +492,36 @@ class WebConvexClient implements IConvexClient {
   /// Updates connection state and emits to stream.
   void _updateConnectionState(WebSocketConnectionState newState) {
     if (_currentConnectionState != newState) {
-      debugPrint(
-        '=== [WebConvexClient] State transition: ${_currentConnectionState.name} → ${newState.name} ===',
+      _log(
+        () =>
+            '=== [WebConvexClient] State transition: ${_currentConnectionState.name} → ${newState.name} ===',
       );
       _currentConnectionState = newState;
       _connectionStateController.add(newState);
     }
   }
 
-  /// Schedules a reconnection attempt with exponential backoff.
+  /// Schedules a reconnection attempt with exponential backoff and jitter.
   void _scheduleReconnect() {
     if (_isDisposed) return;
 
     _reconnectTimer?.cancel();
 
-    if (_reconnectAttempts >= _maxReconnectAttempts) {
-      debugPrint('ERROR: [WebConvexClient] Max reconnection attempts reached');
-      return;
-    }
+    final attempt = _reconnectAttempts;
+    final jitterFactor = 0.8 + (_reconnectRandom.nextDouble() * 0.4);
+    final delay = reconnectDelay(attempt, jitterFactor: jitterFactor);
+    final attemptNumber = attempt + 1;
+    _reconnectAttempts = attemptNumber;
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s (max)
-    final delay = _baseReconnectDelay * (1 << _reconnectAttempts.clamp(0, 5));
-    _reconnectAttempts++;
-
-    debugPrint(
-      '=== [WebConvexClient] Scheduling reconnect attempt $_reconnectAttempts in ${delay.inSeconds}s ===',
+    _log(
+      () =>
+          '=== [WebConvexClient] Scheduling reconnect attempt $attemptNumber in ${delay.inMilliseconds}ms ===',
     );
 
     _reconnectTimer = Timer(delay, () {
-      debugPrint(
-        '=== [WebConvexClient] Executing reconnect attempt $_reconnectAttempts ===',
+      _log(
+        () =>
+            '=== [WebConvexClient] Executing reconnect attempt $attemptNumber ===',
       );
       _connect();
     });
@@ -476,11 +540,14 @@ class WebConvexClient implements IConvexClient {
     }
 
     final messageJson = jsonEncode(message);
-    debugPrint('=== [WebConvexClient] SENDING: $messageJson ===');
+    if (_traceProtocol) {
+      _log(() => '=== [WebConvexClient] SENDING: $messageJson ===');
+    }
     ws.send(messageJson.toJS);
 
-    debugPrint(
-      '=== [WebConvexClient] Sent message: ${message['type']} (id: ${message['id']}) ===',
+    _log(
+      () =>
+          '=== [WebConvexClient] Sent message: ${message['type']} (id: ${message['id']}) ===',
     );
   }
 
@@ -499,8 +566,9 @@ class WebConvexClient implements IConvexClient {
         } else
           'tokenType': 'None',
       });
-      debugPrint(
-        '=== [WebConvexClient] Authenticate sent (${token != null ? 'User' : 'None'}) ===',
+      _log(
+        () =>
+            '=== [WebConvexClient] Authenticate sent (${token != null ? 'User' : 'None'}) ===',
       );
     } catch (e) {
       debugPrint('ERROR: [WebConvexClient] Failed to send auth: $e');
@@ -530,8 +598,9 @@ class WebConvexClient implements IConvexClient {
         'newVersion': _querySetVersion,
         'modifications': modifications,
       });
-      debugPrint(
-        '=== [WebConvexClient] Replayed ${modifications.length} subscriptions ===',
+      _log(
+        () =>
+            '=== [WebConvexClient] Replayed ${modifications.length} subscriptions ===',
       );
     } catch (e) {
       debugPrint('ERROR: [WebConvexClient] Failed to replay subscriptions: $e');
@@ -558,10 +627,8 @@ class WebConvexClient implements IConvexClient {
     if (_tokenFetcher == null) return;
     final expiry = _jwtExpiry(token);
     if (expiry == null) return;
-    final delay =
-        expiry.difference(DateTime.now()) - const Duration(seconds: 60);
     _authRefreshTimer = Timer(
-      delay.isNegative ? const Duration(seconds: 10) : delay,
+      authRefreshDelay(expiry: expiry, now: DateTime.now()),
       _refreshAuthToken,
     );
   }
@@ -746,8 +813,9 @@ class WebConvexClient implements IConvexClient {
         ],
       });
 
-      debugPrint(
-        '=== [WebConvexClient] Subscription created: queryId=$queryId ===',
+      _log(
+        () =>
+            '=== [WebConvexClient] Subscription created: queryId=$queryId ===',
       );
 
       // Return handle for cancellation
@@ -767,7 +835,7 @@ class WebConvexClient implements IConvexClient {
     final subscription = _subscriptions.remove(queryIdStr);
     if (subscription == null) return;
 
-    debugPrint('=== [WebConvexClient] Unsubscribing: queryId=$queryIdStr ===');
+    _log(() => '=== [WebConvexClient] Unsubscribing: queryId=$queryIdStr ===');
 
     try {
       final queryId = int.tryParse(queryIdStr);
@@ -885,7 +953,7 @@ class WebConvexClient implements IConvexClient {
 
   @override
   Future<bool> reconnect() async {
-    debugPrint('=== [WebConvexClient] Manual reconnect requested ===');
+    _log(() => '=== [WebConvexClient] Manual reconnect requested ===');
 
     // Close existing connection if any
     _ws?.close();
@@ -923,8 +991,10 @@ class WebConvexClient implements IConvexClient {
   void dispose() {
     if (_isDisposed) return;
 
-    debugPrint('=== [WebConvexClient] Disposing client ===');
+    _log(() => '=== [WebConvexClient] Disposing client ===');
     _isDisposed = true;
+
+    _removeBrowserEventListeners();
 
     // Cancel timers
     _reconnectTimer?.cancel();
@@ -947,7 +1017,7 @@ class WebConvexClient implements IConvexClient {
     _pendingRequests.clear();
     _subscriptions.clear();
 
-    debugPrint('=== [WebConvexClient] Client disposed ===');
+    _log(() => '=== [WebConvexClient] Client disposed ===');
   }
 }
 
