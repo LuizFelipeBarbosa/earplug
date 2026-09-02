@@ -135,7 +135,16 @@ class ConvexService {
       entry.cancelTimer = null;
     }
 
-    if (entry.handle == null && !entry.isStarting) {
+    if (entry.errored && (entry.handle != null || entry.isStarting)) {
+      entry.handle?.cancel();
+      entry
+        ..handle = null
+        ..errored = false
+        ..lastRaw = null
+        ..lastDecoded = null
+        ..hasDecodedValue = false;
+      _startSubscription(entry);
+    } else if (entry.handle == null && !entry.isStarting) {
       _startSubscription(entry);
     }
 
@@ -188,7 +197,11 @@ class ConvexService {
           },
           onError: (message, value) {
             if (generation != entry.generation) return;
-            _markErrored(entry);
+            entry
+              ..errored = true
+              ..lastRaw = null
+              ..lastDecoded = null
+              ..hasDecodedValue = false;
             final detail = value == null ? message : '$message: $value';
             _addErrorToListeners(entry, Exception(detail));
           },
@@ -211,19 +224,8 @@ class ConvexService {
     }
   }
 
-  void _markErrored(_SharedSubscription entry) {
-    final handle = entry.handle;
-    entry.generation++;
-    entry
-      ..handle = null
-      ..isStarting = false
-      ..lastRaw = null
-      ..lastDecoded = null
-      ..hasDecodedValue = false;
-    handle?.cancel();
-  }
-
   void _handleUpdate(_SharedSubscription entry, String raw) {
+    entry.errored = false;
     final isDuplicate = entry.lastRaw != null && raw == entry.lastRaw;
     _recordTransition(raw.length, isDuplicate: isDuplicate);
     if (isDuplicate) return;
@@ -312,6 +314,7 @@ class _SharedSubscription {
   String? lastRaw;
   Object? lastDecoded;
   bool hasDecodedValue = false;
+  bool errored = false;
   bool isStarting = false;
   int listenerCount = 0;
   int generation = 0;
