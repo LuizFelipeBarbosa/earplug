@@ -730,3 +730,200 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(mine[0].band.initials).toBe("SB");
   });
 });
+
+describe("gigs:feedV2 and gigs:goingCounts", () => {
+  const SUMMARY_KEYS = [
+    "_id",
+    "slug",
+    "name",
+    "genres",
+    "area",
+    "colorHex",
+    "initials",
+    "followerCount",
+    "avatarUrl",
+    "profileComplete",
+    "discoveryProfileReady",
+  ].sort();
+
+  /** An admin with two bands (the second one discovery-ready) and one
+   * published gig for each. */
+  async function setupFeed() {
+    const t = convexTest(schema);
+    const asAdmin = t.withIdentity({ subject: "user_admin", email: "a@x.com" });
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Feed Band",
+      genres: ["punk"],
+      bio: "",
+      area: "Bay Area",
+      inviteHandles: [],
+    });
+    const { bandId: readyBandId } = await asAdmin.mutation(
+      api.bands.createBand,
+      {
+        name: "Ready Band",
+        genres: ["noise"],
+        bio: "Fully set up.",
+        area: "Bay Area",
+        inviteHandles: [],
+      },
+    );
+    const venueId = await t.run(async (ctx) => {
+      const avatarStorageId = await ctx.storage.store(
+        new Blob([new Uint8Array([1, 2, 3])]),
+      );
+      await ctx.db.patch(readyBandId, { avatarStorageId, hasClip: true });
+      return ctx.db.insert("venues", {
+        name: "Feed Hall",
+        area: "Oakland",
+        addr: "1 Feed Way",
+        distSF: "8 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.27,
+      });
+    });
+    const gigArgs = {
+      venueId,
+      startsAt: Date.now() + 86_400_000,
+      doorsTime: "8PM / 9PM",
+      price: 10,
+      flyKey: "riso" as const,
+      ticketing: "rsvp" as const,
+      ageRequirement: "allAges" as const,
+      cap: "No cap",
+    };
+    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+      ...gigArgs,
+      bandId,
+      title: "Feed Show",
+    });
+    const { gigId: readyGigId } = await asAdmin.mutation(api.gigs.publishGig, {
+      ...gigArgs,
+      bandId: readyBandId,
+      title: "Ready Show",
+      startsAt: gigArgs.startsAt + 86_400_000,
+    });
+    return { t, asAdmin, bandId, readyBandId, venueId, gigId, readyGigId };
+  }
+
+  test("ships feed's gigs without goingCount and bands as summaries only", async () => {
+    const t = convexTest(schema);
+    await t.mutation(internal.seed.seedDemo, {});
+
+    const feed = await t.query(api.gigs.feed, {});
+    const feedV2 = await t.query(api.gigs.feedV2, {});
+
+    expect(feedV2.gigs.length).toBe(feed.gigs.length);
+    expect(feedV2.bands.length).toBe(feed.bands.length);
+    expect(feedV2.venues).toEqual(feed.venues);
+    expect(feedV2.nextStartsAt).toBe(feed.nextStartsAt);
+    feed.gigs.forEach(({ goingCount: _goingCount, ...rest }, index) => {
+      expect(feedV2.gigs[index]).toEqual(rest);
+    });
+    for (const band of feedV2.bands) {
+      expect(Object.keys(band).sort()).toEqual(SUMMARY_KEYS);
+    }
+
+    const counts = await t.query(api.gigs.goingCounts, {});
+    expect(counts).toEqual(
+      feed.gigs.map((gig) => ({ gigId: gig._id, goingCount: gig.goingCount })),
+    );
+  });
+
+  test("an RSVP changes goingCounts but leaves feedV2 byte-for-byte unchanged", async () => {
+    const { t, asAdmin, gigId } = await setupFeed();
+    const before = await t.query(api.gigs.feedV2, {});
+    const countsBefore = await t.query(api.gigs.goingCounts, {});
+
+    await asAdmin.mutation(api.interactions.toggleRsvp, { gigId });
+
+    const after = await t.query(api.gigs.feedV2, {});
+    const countsAfter = await t.query(api.gigs.goingCounts, {});
+
+    expect(after).toEqual(before);
+    expect(countsAfter).not.toEqual(countsBefore);
+    const countFor = (counts: typeof countsBefore) =>
+      counts.find((row) => row.gigId === gigId)!.goingCount;
+    expect(countFor(countsBefore)).toBe(0);
+    expect(countFor(countsAfter)).toBe(1);
+    expect(countsAfter.filter((row) => row.gigId !== gigId)).toEqual(
+      countsBefore.filter((row) => row.gigId !== gigId),
+    );
+  });
+
+  test("excludes an archived owner's gigs and band exactly like feed", async () => {
+    const { t, bandId, gigId, readyGigId } = await setupFeed();
+    await t.run(async (ctx) => {
+      await ctx.db.patch(bandId, { archivedAt: Date.now() });
+    });
+
+    const feed = await t.query(api.gigs.feed, {});
+    const feedV2 = await t.query(api.gigs.feedV2, {});
+    const counts = await t.query(api.gigs.goingCounts, {});
+
+    expect(feed.gigs.map((gig) => gig._id)).toEqual([readyGigId]);
+    expect(feedV2.gigs.map((gig) => gig._id)).toEqual([readyGigId]);
+    expect(counts.map((row) => row.gigId)).toEqual([readyGigId]);
+    expect(feedV2.bands.some((band) => band._id === bandId)).toBe(false);
+    expect(feedV2.gigs.some((gig) => gig._id === gigId)).toBe(false);
+  });
+
+  test("reports the same nextStartsAt as feed past the bounded window", async () => {
+    const { t, bandId, venueId } = await setupFeed();
+    const firstStartsAt = Date.now() + 10 * 86_400_000;
+    await t.run(async (ctx) => {
+      for (let index = 0; index <= MAX_FEED_GIGS; index++) {
+        await ctx.db.insert("gigs", {
+          title: `Gig ${index}`,
+          venueId,
+          price: 0,
+          startsAt: firstStartsAt + index * 60_000,
+          doorsTime: "7PM / 8PM",
+          flyKey: "paper",
+          lineup: [bandId],
+          genres: ["punk"],
+          desc: "",
+          ticketing: "rsvp",
+          cap: "No cap",
+          goingCount: 0,
+        });
+      }
+    });
+
+    const feed = await t.query(api.gigs.feed, {});
+    const feedV2 = await t.query(api.gigs.feedV2, {});
+    const counts = await t.query(api.gigs.goingCounts, {});
+
+    expect(feedV2.gigs).toHaveLength(MAX_FEED_GIGS);
+    expect(feedV2.nextStartsAt).toBe(feed.nextStartsAt);
+    // The two setup gigs come first, so the window ends two rows early.
+    expect(feedV2.nextStartsAt).toBe(firstStartsAt + (MAX_FEED_GIGS - 2) * 60_000);
+    expect(counts.map((row) => row.gigId)).toEqual(
+      feedV2.gigs.map((gig) => gig._id),
+    );
+  });
+
+  test("band summaries carry the same readiness flags and avatar as feed", async () => {
+    const { t, bandId, readyBandId } = await setupFeed();
+    const feed = await t.query(api.gigs.feed, {});
+    const feedV2 = await t.query(api.gigs.feedV2, {});
+
+    for (const full of feed.bands) {
+      const summary = feedV2.bands.find((band) => band._id === full._id)!;
+      expect(summary.profileComplete).toBe(full.profileComplete);
+      expect(summary.discoveryProfileReady).toBe(full.discoveryProfileReady);
+      expect(summary.avatarUrl).toBe(full.avatarUrl);
+      expect(summary.initials).toBe(full.initials);
+      expect(summary.colorHex).toBe(full.colorHex);
+    }
+    const plain = feedV2.bands.find((band) => band._id === bandId)!;
+    const ready = feedV2.bands.find((band) => band._id === readyBandId)!;
+    expect(plain.discoveryProfileReady).toBe(false);
+    expect(plain.avatarUrl).toBeNull();
+    expect(ready.profileComplete).toBe(true);
+    expect(ready.discoveryProfileReady).toBe(true);
+    expect(ready.avatarUrl).toEqual(expect.any(String));
+  });
+});
