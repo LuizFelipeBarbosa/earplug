@@ -6,10 +6,10 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/band_identity_editor.dart';
+import 'package:earplug/widgets/brand_icons.dart';
 import 'package:earplug/widgets/video_thumbnail.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 import 'support/harness.dart';
 
@@ -231,17 +231,17 @@ void main() {
       (
         key: const ValueKey('band-social-instagram'),
         label: 'Open Instagram',
-        icon: FontAwesomeIcons.instagram,
+        icon: BrandGlyph.instagram,
       ),
       (
         key: const ValueKey('band-social-bandcamp'),
         label: 'Open Bandcamp',
-        icon: FontAwesomeIcons.bandcamp,
+        icon: BrandGlyph.bandcamp,
       ),
       (
         key: const ValueKey('band-social-youtube'),
         label: 'Open YouTube',
-        icon: FontAwesomeIcons.youtube,
+        icon: BrandGlyph.youtube,
       ),
     ];
     for (final link in links) {

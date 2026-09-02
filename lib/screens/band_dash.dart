@@ -54,9 +54,17 @@ class BandDashScreen extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '${band.name.toUpperCase()} ▾',
-                            style: epDisplay(size: 16, height: 1),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  band.name.toUpperCase(),
+                                  style: epDisplay(size: 16, height: 1),
+                                ),
+                              ),
+                              const Icon(Icons.arrow_drop_down, size: 18),
+                            ],
                           ),
                           const SizedBox(height: 3),
                           Text(

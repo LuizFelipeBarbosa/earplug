@@ -175,11 +175,19 @@ class _CityPill extends StatelessWidget {
         foregroundColor: context.epColors.contentPrimary,
       ),
       icon: Icon(Icons.location_on, color: context.epColors.accent, size: 18),
-      label: Text(
-        '${app.locationLabel} ▾',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.epLabel,
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              app.locationLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.epLabel,
+            ),
+          ),
+          Icon(Icons.arrow_drop_down, size: 18, color: context.epColors.accent),
+        ],
       ),
     );
   }

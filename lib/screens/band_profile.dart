@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -11,6 +10,7 @@ import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/band_identity_editor.dart';
+import '../widgets/brand_icons.dart';
 import '../widgets/common.dart';
 import '../widgets/fan_event_card.dart';
 import '../widgets/photo_viewer.dart';
@@ -398,19 +398,19 @@ class _BandLinks extends StatelessWidget {
     final links = [
       (
         name: 'Instagram',
-        icon: FontAwesomeIcons.instagram,
+        icon: BrandGlyph.instagram,
         value: app.linkIgFor(bandId),
         instagram: true,
       ),
       (
         name: 'Bandcamp',
-        icon: FontAwesomeIcons.bandcamp,
+        icon: BrandGlyph.bandcamp,
         value: app.linkBcFor(bandId),
         instagram: false,
       ),
       (
         name: 'YouTube',
-        icon: FontAwesomeIcons.youtube,
+        icon: BrandGlyph.youtube,
         value: app.linkYtFor(bandId),
         instagram: false,
       ),
@@ -446,7 +446,7 @@ class _BandSocialButton extends StatelessWidget {
   });
 
   final String name;
-  final FaIconData icon;
+  final BrandGlyph icon;
   final VoidCallback onPressed;
 
   @override
@@ -467,7 +467,11 @@ class _BandSocialButton extends StatelessWidget {
                 EdgeInsets.symmetric(horizontal: 14),
               ),
             ),
-            icon: FaIcon(icon, size: 18),
+            icon: BrandIcon(
+              glyph: icon,
+              size: 18,
+              color: context.epColors.accent,
+            ),
             label: Text('${name.toUpperCase()} ↗'),
           ),
         ),

@@ -315,7 +315,7 @@ TextTheme _epTextTheme(EpPalette palette) {
     bodyMedium: TextStyle(
       fontFamily: 'Archivo',
       fontSize: 14,
-      fontWeight: FontWeight.w500,
+      fontWeight: FontWeight.w600,
       color: palette.contentPrimary,
       height: 1.45,
     ),
@@ -398,6 +398,7 @@ ThemeData buildEpTheme([Brightness brightness = Brightness.dark]) {
   return ThemeData(
     brightness: brightness,
     useMaterial3: true,
+    fontFamily: 'Archivo',
     scaffoldBackgroundColor: palette.background,
     canvasColor: palette.background,
     disabledColor: palette.contentDisabled,
