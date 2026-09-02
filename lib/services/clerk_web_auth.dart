@@ -89,6 +89,7 @@ final class ClerkWebAuth implements AuthService {
     try {
       await _clerk.load().toDart;
       _lastSignedIn = _clerk.user != null;
+      if (_lastSignedIn) _signedInController.add(true);
       _clerk.addListener(((JSAny? _) => _emitSignedInIfChanged()).toJS);
     } catch (error) {
       throw AuthException(_messageFor(error));
@@ -335,7 +336,7 @@ final class ClerkWebAuth implements AuthService {
     if (session == null) return null;
 
     final token = await session
-        .getToken(_TokenOptions(template: 'convex'))
+        .getToken(_TokenOptions(template: 'convex', skipCache: true))
         .toDart;
     return token?.toDart;
   }
@@ -587,7 +588,10 @@ extension type _SetActiveParams._(JSObject _) implements JSObject {
 
 @JS()
 extension type _TokenOptions._(JSObject _) implements JSObject {
-  external factory _TokenOptions({required String template});
+  external factory _TokenOptions({
+    required String template,
+    required bool skipCache,
+  });
 }
 
 @JS()

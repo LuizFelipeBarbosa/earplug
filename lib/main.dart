@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -8,6 +10,7 @@ import 'band_media_state.dart';
 import 'data/convex_repository.dart';
 import 'data/repository.dart';
 import 'env.dart';
+import 'errors.dart';
 import 'screens/analytics.dart';
 import 'screens/auth.dart';
 import 'screens/band_create.dart';
@@ -31,19 +34,21 @@ import 'services/auth_service.dart';
 import 'services/auth_service_factory.dart';
 import 'services/convex_service.dart';
 import 'services/stadia_map_style_repository.dart';
+import 'services/web_shell.dart';
 import 'theme.dart';
 import 'widgets/branding.dart';
 import 'widgets/common.dart';
 import 'widgets/tab_bars.dart';
 
 SemanticsHandle? _webSemanticsHandle;
+final _lightTheme = buildEpTheme(Brightness.light);
+final _darkTheme = buildEpTheme(Brightness.dark);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Flutter web otherwise waits for an accessibility request before building
-  // its semantic DOM. Keeping one handle alive makes the app keyboard- and
-  // screen-reader-discoverable from the first rendered frame.
-  if (kIsWeb) {
+  if (kIsWeb && Uri.base.queryParameters['a11y'] == '1') {
+    // Eager semantics keeps a permanent DOM tree alive. Without this opt-in,
+    // screen-reader users can still use Flutter's accessibility affordance.
     _webSemanticsHandle ??= SemanticsBinding.instance.ensureSemantics();
   }
   final appearance = await AppearanceController.load();
@@ -72,8 +77,14 @@ Future<void> main() async {
   final convexService = ConvexService();
   await convexService.init(Env.convexUrl);
   final auth = createPlatformAuthService();
-  await auth.initialize();
-  convexService.setTokenFetcher(auth.fetchConvexToken);
+  convexService.setTokenFetcher(() async {
+    try {
+      return await auth.fetchConvexToken();
+    } catch (error) {
+      logError('fetchConvexToken', error);
+      return null;
+    }
+  });
   final repository = ConvexRepository(convexService);
   runApp(
     EarplugApp(
@@ -86,6 +97,15 @@ Future<void> main() async {
       initialBandSlug: bandSlug,
     ),
   );
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    webShell.removeSplash();
+    webShell.mark('ep:first-frame');
+    unawaited(
+      auth.initialize().catchError((Object error) {
+        logError('auth.initialize', error);
+      }),
+    );
+  });
 }
 
 String? _routeValueFromUri(Uri uri, String route) {
@@ -141,8 +161,8 @@ class _ConfigErrorApp extends StatelessWidget {
       listenable: appearance,
       builder: (context, _) => MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: buildEpTheme(Brightness.light),
-        darkTheme: buildEpTheme(Brightness.dark),
+        theme: _lightTheme,
+        darkTheme: _darkTheme,
         themeMode: appearance.mode,
         home: Builder(
           builder: (context) => ColoredBox(
@@ -237,10 +257,12 @@ class EarplugApp extends StatelessWidget {
         builder: (_, appearance, _) => MaterialApp(
           title: 'EarPlug',
           debugShowCheckedModeBanner: false,
-          theme: buildEpTheme(Brightness.light),
-          darkTheme: buildEpTheme(Brightness.dark),
+          theme: _lightTheme,
+          darkTheme: _darkTheme,
           themeMode: appearance.mode,
-          themeAnimationDuration: const Duration(milliseconds: 180),
+          themeAnimationDuration: kIsWeb
+              ? Duration.zero
+              : const Duration(milliseconds: 180),
           // A corner ribbon on everything that is not production, so which
           // dataset you are looking at is never a guess.
           builder: (context, child) {
@@ -259,11 +281,55 @@ class EarplugApp extends StatelessWidget {
               child: app,
             );
           },
-          home: const RootShell(),
+          home: const _FeedReadyMarker(child: RootShell()),
         ),
       ),
     );
   }
+}
+
+class _FeedReadyMarker extends StatefulWidget {
+  const _FeedReadyMarker({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_FeedReadyMarker> createState() => _FeedReadyMarkerState();
+}
+
+class _FeedReadyMarkerState extends State<_FeedReadyMarker> {
+  AppState? _app;
+  bool _marked = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final app = context.read<AppState>();
+    if (identical(app, _app)) return;
+
+    _app?.removeListener(_markWhenReady);
+    _app = app;
+    if (_marked) return;
+    app.addListener(_markWhenReady);
+    _markWhenReady();
+  }
+
+  void _markWhenReady() {
+    final app = _app;
+    if (_marked || app?.dataStatus != DataStatus.ready) return;
+    _marked = true;
+    app?.removeListener(_markWhenReady);
+    webShell.mark('ep:feed-ready');
+  }
+
+  @override
+  void dispose() {
+    _app?.removeListener(_markWhenReady);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// Null in production, so the live app carries no ribbon.
@@ -285,10 +351,21 @@ class RootShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final entry = app.current;
+    final (dataStatus, screen, param, canGoBack, dataError) = context
+        .select<AppState, (DataStatus, Screen, String?, bool, String?)>((app) {
+          final current = app.current;
+          return (
+            app.dataStatus,
+            current.screen,
+            current.param,
+            app.canGoBack,
+            app.dataError,
+          );
+        });
+    final app = context.read<AppState>();
+    final entry = ScreenEntry(screen, param);
 
-    final body = switch (app.dataStatus) {
+    final body = switch (dataStatus) {
       DataStatus.connecting => ColoredBox(
         color: context.epColors.background,
         child: const Center(child: EpLogo.full(width: 190)),
@@ -302,7 +379,7 @@ class RootShell extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  app.dataError ?? "Couldn't load the feed.",
+                  dataError ?? "Couldn't load the feed.",
                   textAlign: TextAlign.center,
                   style: epText(
                     size: 14,
@@ -323,17 +400,11 @@ class RootShell extends StatelessWidget {
       DataStatus.ready => Stack(
         children: [
           Positioned.fill(child: _screenFor(entry)),
-          if (_fanTabScreens.contains(entry.screen))
+          if (_fanTabScreens.contains(screen))
             const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-          if (_bandTabScreens.contains(entry.screen))
+          if (_bandTabScreens.contains(screen))
             const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
-          if (app.toast.isNotEmpty)
-            Positioned(
-              left: 20,
-              right: 20,
-              bottom: 104,
-              child: _Toast(message: app.toast),
-            ),
+          const _ToastLayer(),
         ],
       ),
     };
@@ -341,7 +412,7 @@ class RootShell extends StatelessWidget {
     // On phones this fills the window; on wide screens (web/desktop) the app
     // renders as a centered phone-width column on a dark backdrop.
     return PopScope(
-      canPop: !app.canGoBack,
+      canPop: !canGoBack,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) app.back();
       },
@@ -358,27 +429,43 @@ class RootShell extends StatelessWidget {
   }
 
   Widget _screenFor(ScreenEntry entry) {
+    final key = ValueKey('${entry.screen.name}-${entry.param}');
     return switch (entry.screen) {
-      Screen.home => const HomeScreen(),
-      Screen.gig => GigDetailScreen(gigId: entry.param!),
-      Screen.band => BandProfileScreen(bandId: entry.param!),
-      Screen.bandPreview => BandProfileScreen(bandId: entry.param!),
-      Screen.bandJoin => const BandJoinScreen(),
-      Screen.gigInvite => const GigInviteScreen(),
-      Screen.venue => VenueDetailScreen(venueId: entry.param!),
-      Screen.explore => const ExploreScreen(),
-      Screen.myGigs => const MyGigsScreen(),
-      Screen.editProfile => const EditProfileScreen(),
-      Screen.settings => const SettingsScreen(),
-      Screen.auth => const AuthScreen(),
-      Screen.bandCreate => const BandCreateScreen(),
-      Screen.bandDash => const BandDashScreen(),
-      Screen.bandEdit => const BandEditScreen(),
-      Screen.bandMedia => BandMediaScreen(bandId: entry.param!),
-      Screen.gigMgr => const GigManagerScreen(),
-      Screen.gigCreate => const GigCreateScreen(),
-      Screen.analytics => const AnalyticsScreen(),
+      Screen.home => HomeScreen(key: key),
+      Screen.gig => GigDetailScreen(key: key, gigId: entry.param!),
+      Screen.band => BandProfileScreen(key: key, bandId: entry.param!),
+      Screen.bandPreview => BandProfileScreen(key: key, bandId: entry.param!),
+      Screen.bandJoin => BandJoinScreen(key: key),
+      Screen.gigInvite => GigInviteScreen(key: key),
+      Screen.venue => VenueDetailScreen(key: key, venueId: entry.param!),
+      Screen.explore => ExploreScreen(key: key),
+      Screen.myGigs => MyGigsScreen(key: key),
+      Screen.editProfile => EditProfileScreen(key: key),
+      Screen.settings => SettingsScreen(key: key),
+      Screen.auth => AuthScreen(key: key),
+      Screen.bandCreate => BandCreateScreen(key: key),
+      Screen.bandDash => BandDashScreen(key: key),
+      Screen.bandEdit => BandEditScreen(key: key),
+      Screen.bandMedia => BandMediaScreen(key: key, bandId: entry.param!),
+      Screen.gigMgr => GigManagerScreen(key: key),
+      Screen.gigCreate => GigCreateScreen(key: key),
+      Screen.analytics => AnalyticsScreen(key: key),
     };
+  }
+}
+
+class _ToastLayer extends StatelessWidget {
+  const _ToastLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    final toast = context.select<AppState, String>((app) => app.toast);
+    return Positioned(
+      left: 20,
+      right: 20,
+      bottom: 104,
+      child: toast.isEmpty ? const SizedBox.shrink() : _Toast(message: toast),
+    );
   }
 }
 
