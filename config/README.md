@@ -27,9 +27,9 @@ Nothing secret belongs in this directory. `CLERK_SECRET_KEY` lives in the
 Convex deployment environment and is read by no client code.
 
 The optional `STADIA_MAPS_API_KEY` is also intentionally absent. Supply its
-scoped value separately with `--dart-define` for Netlify previews and native
-builds. Production web uses domain authentication and localhost is keyless;
-see [`../docs/environments.md`](../docs/environments.md).
+scoped value separately with `--dart-define` for Netlify-hosted web builds and
+native builds. Localhost remains keyless; see
+[`../docs/environments.md`](../docs/environments.md).
 
 The four `*_SIGN_IN_ENABLED` values are product policy, not credentials. Both
 environments currently enable Email and Google while disabling Phone and
