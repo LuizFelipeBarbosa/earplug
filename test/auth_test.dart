@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart' show FeedSnapshot;
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/auth.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -646,21 +647,40 @@ class _GatedAvatarRepository extends DemoRepository {
 class _OutsideFeedFollowRepository extends DemoRepository {
   _OutsideFeedFollowRepository({required super.auth});
 
+  final DateTime _outsideFeedStartsAt = DateTime.now().add(
+    const Duration(days: 365),
+  );
+
+  // AppState subscribes to followed-band gigs only when nextStartsAt is non-null.
+  @override
+  Stream<FeedSnapshot> feed() => super.feed().map(
+    (snapshot) => FeedSnapshot(
+      gigs: snapshot.gigs,
+      venues: snapshot.venues,
+      bands: snapshot.bands,
+      nextStartsAt: _outsideFeedStartsAt,
+    ),
+  );
+
   @override
   Stream<List<Gig>> upcomingGigsForBand(String bandId) {
     if (bandId != 'b2') return Stream.value(const []);
-    final startsAt = DateTime.now().add(const Duration(days: 365));
     return Stream.value([
       Gig(
         id: 'outside-feed',
         title: 'Beyond the Feed',
         venueId: 'v1',
         price: 0,
-        startsAt: startsAt,
-        dateShort: Gig.dateShortFor(startsAt.millisecondsSinceEpoch),
-        dateLine: Gig.dateLineFor(startsAt.millisecondsSinceEpoch, '8PM / 9PM'),
+        startsAt: _outsideFeedStartsAt,
+        dateShort: Gig.dateShortFor(
+          _outsideFeedStartsAt.millisecondsSinceEpoch,
+        ),
+        dateLine: Gig.dateLineFor(
+          _outsideFeedStartsAt.millisecondsSinceEpoch,
+          '8PM / 9PM',
+        ),
         time: '8PM / 9PM',
-        when: Gig.whenFor(startsAt.millisecondsSinceEpoch),
+        when: Gig.whenFor(_outsideFeedStartsAt.millisecondsSinceEpoch),
         flyKey: 'paper',
         lineup: const ['b2'],
         going: 0,
