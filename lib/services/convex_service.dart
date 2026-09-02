@@ -133,9 +133,10 @@ class ConvexService {
     if (wasEmpty) {
       entry.cancelTimer?.cancel();
       entry.cancelTimer = null;
-      if (entry.handle == null && !entry.isStarting) {
-        _startSubscription(entry);
-      }
+    }
+
+    if (entry.handle == null && !entry.isStarting) {
+      _startSubscription(entry);
     }
 
     if (entry.hasDecodedValue) {
@@ -187,6 +188,7 @@ class ConvexService {
           },
           onError: (message, value) {
             if (generation != entry.generation) return;
+            _markErrored(entry);
             final detail = value == null ? message : '$message: $value';
             _addErrorToListeners(entry, Exception(detail));
           },
@@ -207,6 +209,18 @@ class ConvexService {
         _addErrorToListeners(entry, error, stackTrace);
       }
     }
+  }
+
+  void _markErrored(_SharedSubscription entry) {
+    final handle = entry.handle;
+    entry.generation++;
+    entry
+      ..handle = null
+      ..isStarting = false
+      ..lastRaw = null
+      ..lastDecoded = null
+      ..hasDecodedValue = false;
+    handle?.cancel();
   }
 
   void _handleUpdate(_SharedSubscription entry, String raw) {

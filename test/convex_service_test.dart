@@ -283,6 +283,115 @@ void main() {
       });
     });
 
+    test('restarts after an error when a listener quickly re-subscribes', () {
+      fakeAsync((async) {
+        final transport = _FakeConvexTransport();
+        final service = _initializedService(transport, async);
+        final firstErrors = <Object>[];
+        final first = service
+            .subscribe<int>(
+              'messages:list',
+              const <String, dynamic>{},
+              _parseValue,
+            )
+            .listen((_) {}, onError: firstErrors.add);
+        addTearDown(first.cancel);
+        async.flushMicrotasks();
+
+        transport
+          ..sendUpdate(0, '{"value":1}')
+          ..sendError(0, 'subscription failed', 'details');
+        async.flushMicrotasks();
+
+        expect(
+          firstErrors.single.toString(),
+          'Exception: subscription failed: details',
+        );
+        expect(transport.cancelCalls, 1);
+        unawaited(first.cancel());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 200));
+
+        final values = <int>[];
+        final second = service
+            .subscribe<int>(
+              'messages:list',
+              const <String, dynamic>{},
+              _parseValue,
+            )
+            .listen(values.add);
+        addTearDown(second.cancel);
+        async.flushMicrotasks();
+
+        expect(transport.subscribeCalls, 2);
+        expect(values, isEmpty);
+        transport.sendUpdate(1, '{"value":2}');
+        async.flushMicrotasks();
+        expect(values, <int>[2]);
+
+        _cancelAndExpire(async, <StreamSubscription<Object?>>[second]);
+      });
+    });
+
+    test('restarts once while another listener remains attached', () {
+      fakeAsync((async) {
+        final transport = _FakeConvexTransport();
+        final service = _initializedService(transport, async);
+        final firstErrors = <Object>[];
+        final secondErrors = <Object>[];
+        final secondValues = <int>[];
+        final first = service
+            .subscribe<int>(
+              'messages:list',
+              const <String, dynamic>{},
+              _parseValue,
+            )
+            .listen((_) {}, onError: firstErrors.add);
+        final second = service
+            .subscribe<int>(
+              'messages:list',
+              const <String, dynamic>{},
+              _parseValue,
+            )
+            .listen(secondValues.add, onError: secondErrors.add);
+        addTearDown(first.cancel);
+        addTearDown(second.cancel);
+        async.flushMicrotasks();
+
+        transport.sendError(0, 'subscription failed', null);
+        async.flushMicrotasks();
+
+        expect(firstErrors.single.toString(), 'Exception: subscription failed');
+        expect(
+          secondErrors.single.toString(),
+          'Exception: subscription failed',
+        );
+        expect(transport.cancelCalls, 1);
+        unawaited(first.cancel());
+        async.flushMicrotasks();
+        async.elapse(const Duration(milliseconds: 200));
+
+        final thirdValues = <int>[];
+        final third = service
+            .subscribe<int>(
+              'messages:list',
+              const <String, dynamic>{},
+              _parseValue,
+            )
+            .listen(thirdValues.add);
+        addTearDown(third.cancel);
+        async.flushMicrotasks();
+
+        expect(transport.subscribeCalls, 2);
+        transport.sendUpdate(1, '{"value":3}');
+        async.flushMicrotasks();
+        expect(secondValues, <int>[3]);
+        expect(thirdValues, <int>[3]);
+
+        _cancelAndExpire(async, <StreamSubscription<Object?>>[second, third]);
+      });
+    });
+
     test('replays a decoded JSON null value', () {
       fakeAsync((async) {
         final transport = _FakeConvexTransport();
