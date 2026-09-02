@@ -15,6 +15,8 @@ export const requiredClientFunctions = Object.freeze({
   "gigs.js:resolvePerformerInvite": "Query",
   "gigs.js:claimPerformerInvite": "Mutation",
   "gigs.js:resolvePublic": "Query",
+  "gigs.js:feedV2": "Query",
+  "gigs.js:goingCounts": "Query",
   "gigs.js:doorRoster": "Query",
   "gigs.js:checkInTicket": "Mutation",
   "venues.js:create": "Mutation",
@@ -44,6 +46,7 @@ export const requiredClientFields = Object.freeze([
   ["bands.js:archive", "return", "alreadyArchived", false],
   ["bands.js:archiveStatus", "return", "bandId", false],
   ["bands.js:archiveStatus", "return", "archivedAt", false],
+  ["gigs.js:feedV2", "return", "bands", false],
 ]);
 
 export function deploymentNameFromUrl(value) {

@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.16)
+# EarPlug Convex function contract (FROZEN — v1.17)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -179,6 +179,22 @@ would call an unavailable mutation. Release builds also verify both profile
 setup mutations against the exact configured Convex deployment before the
 client is published.
 
+**v1.17 — stable feed payloads under RSVP churn.** Added `gigs:feedV2` and
+`gigs:goingCounts`, which read the exact same upcoming-gig window and bounds as
+`gigs:feed`: the same six-hour grace cutoff, ascending order, 200-row cap,
+`nextStartsAt` sentinel, and archived-band-owner exclusion. `feedV2` returns
+`GigFeedPayload[]` (`GigPayload` minus `goingCount`) and
+`BandSummaryPayload[]` (identity, avatar, and readiness only; no bio, links, or
+`pastShows`) instead of full `BandPayload[]`; `goingCounts` returns
+`{ gigId, goingCount }[]` for the same gigs in the same order. This split makes
+an RSVP anywhere leave `feedV2` byte-for-byte unchanged. `gigs:feed` is
+unchanged and remains served for the previously published client. Phase 3 of
+this branch will subscribe to `feedV2` plus `goingCounts` in place of `feed`,
+and to `gigs:forBand` for a followed band only while
+`feedV2.nextStartsAt` is non-null, once the bounded feed window is exhausted.
+That conditional subscription supersedes v1.12's statement that the client
+subscribes to `gigs:forBand` unconditionally for every followed band.
+
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
 (UTC). Auth = Clerk JWT (template `convex`) attached by the client; queries that
@@ -188,6 +204,22 @@ the client subscribes before sign-in); the explicitly band-private
 `bands:discoveryReadiness`, and `bandInvites:manage` queries are the exceptions
 and throw unless the caller has their required band role.
 **All mutations throw when unauthenticated**.
+
+## Reconciliation
+
+Verified against the current source as of v1.17; these deployed, client-required contract surfaces were previously undocumented:
+
+- `gigs:resolvePublic({ ref: string }) -> GigPayload | null` — public; trims `ref`, rejects more than 200 characters, tries a slug through `by_slug` before normalizing a raw gig id, and applies `gigs:getPublic`'s published/cancelled lifecycle and `ownedByActiveBand` rule.
+- `gigs:doorRoster({ projectId }) -> { total: number, checkedIn: number, truncated: boolean }` — `requireProjectAdminQuery`; counts at most 501 `gigRsvps` for the project's public RSVP gig, reports `truncated` past 500, and otherwise returns zeros.
+- `gigs:checkInTicket({ projectId, payload: string }) -> { status: "checkedIn"|"alreadyCheckedIn", fanName, checkedInAt } | { status: "invalid" } | { status: "wrongGig" }` — `requireProjectAdmin`; validates a `TICKET_PREFIX`-prefixed 64-hex-character token through `gigRsvps.by_ticketToken`, then patches `checkedInAt` and `checkedInBy` once.
+- `interactions:ticketForGig({ gigId }) -> { payload: string, checkedInAt: number|null }` — authenticated; requires an RSVP, mints or reuses its `ticketToken`, and returns it with `TICKET_PREFIX`.
+- `venues:create({ bandId, name, area, addr, lat, lng }) -> { venue: VenuePayload, created: boolean }` — `requireBandAdmin(bandId)`; trims and length-validates text, range-validates coordinates, then deduplicates by normalized address before normalized name.
+- `bands:setBandAvatar` / `bands:clearBandAvatar` / `bands:setBandBanner` / `bands:clearBandBanner` — `{ bandId, mediaId }` for set or `{ bandId }` for clear, returning `null`; admin-only, setting or clearing the band's avatar/banner storage id from its existing photo without deleting the blob.
+- `bands:archive({ bandId }) -> { bandId, archivedAt: number, alreadyArchived: boolean }` — admin-only soft-delete tombstone; first use sets `archivedAt`/`archivedBy` and schedules future published-gig cancellation plus follow/invite/performer-invite cleanup, while retries schedule the same cleanup as repair.
+- `bands:archiveStatus({ bandId }) -> { bandId, archivedAt: number|null }` — admin-only and deliberately readable after archiving so the original admin can verify the outcome while public and management reads hide the band.
+- `media:moveWithinKind({ mediaId, direction: "earlier"|"later" }) -> null` — admin-only for the media's band; swaps order with the adjacent same-kind sibling, unlike the mixed-kind `media:moveMedia`, and is a no-op at either end.
+- `BandPayload.avatarUrl` / `BandPayload.bannerUrl` — `toBandPayload` resolves `avatarStorageId`/`bannerStorageId`, each falling back to legacy `imageStorageId`, then null.
+- `MediaPayload.thumbnailUrl` / `MediaPayload.isAvatar` / `MediaPayload.isBanner` — `toMediaPayload` resolves the thumbnail alongside `url` and marks whether the row's blob is the band's current avatar or banner.
 
 ## Payload shapes
 
@@ -211,6 +243,9 @@ and throw unless the caller has their required band role.
   "goingCount": 43, "createdByBand": null,
   "discoveryListingReady": false }
 
+// GigFeedPayload — exactly GigPayload with goingCount removed; no other field
+// or nullability changes
+
 // VenuePayload
 { "_id": "...", "name": "...", "area": "...", "addr": "...",
   "distSF": "0.8 mi", "distOak": "6.3 mi", "lat": 37.75, "lng": -122.41 }
@@ -220,10 +255,23 @@ and throw unless the caller has their required band role.
   "colorHex": "#7B8FFF", "initials": "FD", "followerCount": 486, "bio": "...",
   // resolves via imageStorageId when set and live; null otherwise
   "heroUrl": null,
+  // resolves via avatarStorageId, falling back to legacy imageStorageId; null otherwise
+  "avatarUrl": null,
+  // resolves via bannerStorageId, falling back to legacy imageStorageId; null otherwise
+  "bannerUrl": null,
   "linkIg": "@foghorndiet", "linkBc": "foghorndiet.bandcamp.com",
   "linkYt": "youtube.com/@foghorndiet", "credits": "Recorded by Mara",
   "profileComplete": true, "discoveryProfileReady": false,
   "pastShows": [{ "title": "...", "meta": "JUL 12" }] }
+
+// BandSummaryPayload — gigs:feedV2's slim band shape: identity, avatar and
+// readiness flags only; no bio, links or pastShows ride along with the feed
+{ "_id": "...", "slug": "...", "name": "...", "genres": ["garage"],
+  "area": "...", "colorHex": "#7B8FFF", "initials": "FD",
+  "followerCount": 486,
+  // resolves via avatarStorageId, falling back to legacy imageStorageId; null otherwise
+  "avatarUrl": null,
+  "profileComplete": true, "discoveryProfileReady": false }
 
 // BandProfileDetails — public; only this profile-specific read joins members
 { "credits": "Recorded by Mara", "linkIg": "@foghorndiet",
@@ -259,11 +307,16 @@ and throw unless the caller has their required band role.
 // MediaPayload
 { "_id": "...", "bandId": "...", "kind": "video|photo",
   // null means the client renders its placeholder tile
-  "url": null, "title": "...", "caption": null, "contentType": null,
+  "url": null,
+  // resolved alongside url; null when no live thumbnail is stored
+  "thumbnailUrl": null,
+  "title": "...", "caption": null, "contentType": null,
   "sizeBytes": null,
   // views has no server write path: display-only legacy data; nothing increments it
   // views/lengthSec are null unless kind is video and the value is set
   "views": null, "lengthSec": null, "pinned": false, "order": 0,
+  // mark whether this row's blob is the band's current avatar or banner
+  "isAvatar": false, "isBanner": false,
   "isHero": false }
 
 // UserPayload
@@ -344,7 +397,9 @@ and throw unless the caller has their required band role.
 | Function                        | Args                 | Returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ★ `gigs:feed`                   | `{}`                 | `{ gigs: GigPayload[], venues: VenuePayload[], bands: BandPayload[], nextStartsAt: number\|null }` — all gigs with `startsAt >= now - 6h`, ascending, plus every venue/band they reference. Public. Bounded to the 200 nearest upcoming gigs; `nextStartsAt` is the first omitted timestamp or `null`.                                                                                                                                                                                                                                                                                                              |
-| ★ `gigs:forBand`                | `{ bandId }`         | `GigPayload[]` — the band's next 200 upcoming/grace-window gigs, ascending. Reads `gigBands.by_band_startsAt`, so unrelated discovery gigs cannot crowd the band out of the result. The client subscribes once per followed band.                                                                                                                                                                                                                                                                                                                                                                                   |
+| `gigs:feedV2`                   | `{}`                 | `{ gigs: GigFeedPayload[], venues: VenuePayload[], bands: BandSummaryPayload[], nextStartsAt: number\|null }` — the same window, bounds, sentinel, and archived-band-owner exclusion as `gigs:feed`. The split makes an RSVP anywhere leave this result byte-for-byte unchanged; pair with `gigs:goingCounts` for the omitted counts. Public. Not yet subscribed to by a released client (v1.17); the client on this branch will move to it.                                                                                                                                                                   |
+| `gigs:goingCounts`              | `{}`                 | `Array<{ gigId, goingCount }>` — the `goingCount` values `feedV2` omits, for the same gigs in the same order as `feedV2.gigs`. Public. Subscribing separately keeps RSVP churn off the feed payload.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ★ `gigs:forBand`                | `{ bandId }`         | `GigPayload[]` — the band's next 200 upcoming/grace-window gigs, ascending. Reads `gigBands.by_band_startsAt`, so unrelated discovery gigs cannot crowd the band out of the result. In v1.17, the branch client subscribes for a followed band only while `feedV2.nextStartsAt` is non-null, once the bounded feed window has been exhausted.                                                                                                                                                                                                                                                                       |
 | `gigs:pastForBand`              | `{ bandId }`         | `{ gigs: GigPayload[], venues: VenuePayload[] }` — the band's 200 most recent past gigs, **descending**, plus the venues they reference. Public. Reads `gigBands.by_band_startsAt`, so other bands cannot crowd its history out of the window.                                                                                                                                                                                                                                                                                                                                                                      |
 | `gigs:getPublic`                | `{ gigId }`          | `GigPayload \| null` — returns published and cancelled public pages; unpublished, deleted, or unknown ids return null.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `gigs:manageForBand`            | `{ bandId }`         | `GigProjectPayload[]` — admin-only draft/published/cancelled projects, newest first; deleted projects are omitted.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
