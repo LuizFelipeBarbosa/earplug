@@ -358,6 +358,13 @@ describe("users:updateProfile", () => {
       locationPersonalizationEnabled: true,
       followedBandUpdatesEnabled: false,
     });
+    await asSam.mutation(api.users.updateProfile, {
+      ...validProfile,
+      homeLocation: "berkeley",
+    });
+    expect((await asSam.query(api.users.me, {}))?.homeLocation).toBe(
+      "berkeley",
+    );
   });
 
   test("stores blank bio and undisclosed location as absent and emits null", async () => {
@@ -420,7 +427,7 @@ describe("users:updateProfile", () => {
     await expect(
       asSam.mutation(api.users.updateProfile, {
         ...validProfile,
-        homeLocation: "berkeley" as "oak",
+        homeLocation: "losAngeles" as "oak",
       }),
     ).rejects.toThrow();
   });
@@ -607,7 +614,7 @@ describe("users:updateFanOnboarding", () => {
 
     await expect(
       asSam.mutation(api.users.updateFanOnboarding, {
-        preferredCity: "berkeley" as "sf",
+        preferredCity: "losAngeles" as "sf",
       }),
     ).rejects.toThrow();
     await expect(

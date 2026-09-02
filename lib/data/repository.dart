@@ -463,8 +463,19 @@ abstract class EarplugRepository {
   Future<void> deleteBandMedia(String mediaId);
   Future<void> pinBandMedia(String mediaId);
   Future<void> moveBandMedia(String mediaId, String direction);
+  Future<void> moveMediaWithinKind(String mediaId, String direction);
   Future<void> setBandPhoto({required String bandId, required String mediaId});
   Future<void> clearBandPhoto(String bandId);
+  Future<void> setBandAvatar({
+    required String bandId,
+    required String mediaId,
+  }) => setBandPhoto(bandId: bandId, mediaId: mediaId);
+  Future<void> clearBandAvatar(String bandId) => clearBandPhoto(bandId);
+  Future<void> setBandBanner({
+    required String bandId,
+    required String mediaId,
+  }) => setBandPhoto(bandId: bandId, mediaId: mediaId);
+  Future<void> clearBandBanner(String bandId) => clearBandPhoto(bandId);
   Future<List<FanHistoryItem>> history();
   Future<BandHistory> bandHistory(String bandId);
   Future<BandRecap> bandRecap(String bandId);
@@ -484,7 +495,7 @@ abstract class EarplugRepository {
   Future<List<Band>> searchBands(String q);
   Future<BandPage> listBands({String? cursor, int numItems = 50});
 
-  Future<void> toggleRsvp(String gigId);
+  Future<void> toggleRsvp(String gigId, {bool? on});
   Future<void> toggleFollow(String bandId);
   Future<void> toggleSave(String gigId);
   Future<RsvpTicket> ticketForGig(String gigId);

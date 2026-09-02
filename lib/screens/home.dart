@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../models.dart';
 import '../theme.dart';
 import '../widgets/branding.dart';
 import '../widgets/common.dart';
@@ -39,43 +40,62 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-      decoration: const BoxDecoration(
-        color: Ep.background,
-        border: Border(bottom: BorderSide(color: Ep.border)),
+      decoration: BoxDecoration(
+        color: context.epColors.background,
+        border: Border(bottom: BorderSide(color: context.epColors.border)),
       ),
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const EpLogo.compact(height: 42),
+              const EpLogo.compact(key: ValueKey('home-logo'), height: 38),
+              const SizedBox(width: 9),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: ExcludeSemantics(
+                    child: Text(
+                      'EARPLUG',
+                      key: const ValueKey('home-wordmark'),
+                      maxLines: 1,
+                      style: epDisplay(size: 28, letterSpacing: 1.2, height: 1),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               _SegmentedToggle(app: app),
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(child: _CityPill(app: app)),
-              const SizedBox(width: 8),
-              EpChip(
-                label: app.activeFilterCount == 0
-                    ? 'FILTERS'
-                    : 'FILTERS · ${app.activeFilterCount}',
-                active:
-                    app.fGenres.isNotEmpty ||
-                    app.fVenueId != null ||
-                    app.fMaxDistanceMiles != null ||
-                    app.fPrice == PriceFilter.paid ||
-                    app.fDate == DateFilter.custom,
-                onTap: () => showDiscoveryFiltersSheet(context),
-              ),
-            ],
+          SizedBox(
+            width: double.infinity,
+            child: _CityPill(app: app),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [for (final chip in _shortcutChips(app)) chip],
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                EpChip(
+                  label: app.activeFilterCount == 0
+                      ? 'FILTERS'
+                      : 'FILTERS · ${app.activeFilterCount}',
+                  active:
+                      app.fGenres.isNotEmpty ||
+                      app.fVenueId != null ||
+                      app.fMaxDistanceMiles != null ||
+                      app.fPrice == PriceFilter.paid ||
+                      app.fDate == DateFilter.custom,
+                  onTap: () => showDiscoveryFiltersSheet(context),
+                ),
+                for (final chip in _shortcutChips(app)) chip,
+              ],
+            ),
           ),
         ],
       ),
@@ -107,6 +127,7 @@ class _SegmentedToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SegmentedButton<bool>(
+      key: const ValueKey('home-view-toggle'),
       segments: const [
         ButtonSegment(value: false, label: Text('LIST')),
         ButtonSegment(value: true, label: Text('MAP')),
@@ -115,24 +136,24 @@ class _SegmentedToggle extends StatelessWidget {
       showSelectedIcon: false,
       onSelectionChanged: (selection) => app.setMapMode(selection.single),
       style: ButtonStyle(
-        minimumSize: const WidgetStatePropertyAll(Size(56, 48)),
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(horizontal: 10),
-        ),
+        minimumSize: WidgetStatePropertyAll(Size(56, 48)),
+        padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 10)),
         textStyle: WidgetStatePropertyAll(
           Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .8),
         ),
         backgroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? Ep.surfaceSelected
-              : Ep.surface,
+              ? context.epColors.surfaceSelected
+              : context.epColors.surface,
         ),
         foregroundColor: WidgetStateProperty.resolveWith(
           (states) => states.contains(WidgetState.selected)
-              ? Ep.contentPrimary
-              : Ep.contentSecondary,
+              ? context.epColors.contentPrimary
+              : context.epColors.contentSecondary,
         ),
-        side: const WidgetStatePropertyAll(BorderSide(color: Ep.border)),
+        side: WidgetStatePropertyAll(
+          BorderSide(color: context.epColors.border),
+        ),
       ),
     );
   }
@@ -146,13 +167,14 @@ class _CityPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return OutlinedButton.icon(
+      key: const ValueKey('home-location-control'),
       onPressed: () => showDiscoveryLocationSheet(context),
       style: OutlinedButton.styleFrom(
         alignment: Alignment.centerLeft,
         padding: const EdgeInsets.symmetric(horizontal: 11),
-        foregroundColor: Ep.contentPrimary,
+        foregroundColor: context.epColors.contentPrimary,
       ),
-      icon: const Icon(Icons.location_on, color: Ep.accent, size: 18),
+      icon: Icon(Icons.location_on, color: context.epColors.accent, size: 18),
       label: Text(
         '${app.locationLabel} ▾',
         maxLines: 1,
@@ -171,22 +193,95 @@ class _FeedList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final feed = app.feed;
+    final featured = feed.firstOrNull;
+    final remaining = feed.skip(1).toList(growable: false);
+    final gigNoun = feed.length == 1 ? 'GIG' : 'GIGS';
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
       children: [
         if (feed.isNotEmpty) ...[
           Text(
-            '${feed.length} GIGS NEAR YOU · LOCAL ORDER',
+            '${feed.length} $gigNoun NEAR YOU · LOCAL ORDER',
             style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1.2,
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
             ),
           ),
           const SizedBox(height: 10),
         ],
         if (feed.isEmpty) _DiscoveryEmptyState(app: app),
-        for (final g in feed) ...[
-          FanEventCard(gig: g, app: app, showDistance: true),
+        if (featured != null) ...[
+          _FeedSection(
+            label: 'FEATURED NEAR YOU',
+            featured: featured,
+            gigs: const [],
+            app: app,
+          ),
+          for (final section in GigWhen.values)
+            _FeedSection(
+              label: switch (section) {
+                GigWhen.tonight => 'TONIGHT',
+                GigWhen.week => 'THIS WEEK',
+                GigWhen.later => 'LATER',
+              },
+              featured: null,
+              gigs: remaining
+                  .where((gig) => gig.when == section)
+                  .toList(growable: false),
+              app: app,
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _FeedSection extends StatelessWidget {
+  const _FeedSection({
+    required this.label,
+    required this.featured,
+    required this.gigs,
+    required this.app,
+  });
+
+  final String label;
+  final Gig? featured;
+  final List<Gig> gigs;
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = gigs.length + (featured == null ? 0 : 1);
+    if (count == 0) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionBar(label: label, count: count),
+        if (featured case final gig?) ...[
+          if (app.isDiscoveryBoosted(gig)) ...[
+            Text(
+              'DISCOVERY BOOST · COMPLETE LISTING',
+              key: ValueKey('discovery-boost-${gig.id}'),
+              style: Theme.of(context).textTheme.epMeta.copyWith(
+                color: context.epColors.accent,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                letterSpacing: .45,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          FanEventCard(
+            gig: gig,
+            app: app,
+            showDistance: true,
+            presentation: FanEventCardPresentation.featured,
+          ),
+          const SizedBox(height: 10),
+        ],
+        for (final gig in gigs) ...[
+          FanEventCard(gig: gig, app: app, showDistance: true),
           const SizedBox(height: 10),
         ],
       ],
@@ -215,7 +310,7 @@ class _DiscoveryEmptyState extends StatelessWidget {
             '0 GIGS NEAR YOU · LOCAL ORDER',
             style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1,
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
             ),
           ),
           const SizedBox(height: 10),
@@ -224,9 +319,9 @@ class _DiscoveryEmptyState extends StatelessWidget {
                 ? 'No upcoming gigs yet.\nWhen a band books one, it shows up here.'
                 : 'Nothing matches those filters.\nLoosen them up and see what is out there.',
             textAlign: TextAlign.center,
-            style: Theme.of(
-              context,
-            ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+            style: Theme.of(context).textTheme.epBody.copyWith(
+              color: context.epColors.contentSecondary,
+            ),
           ),
           if (!noGigs) ...[
             const SizedBox(height: 14),
@@ -331,10 +426,8 @@ class _RecoveryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = ButtonStyle(
-      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-      padding: const WidgetStatePropertyAll(
-        EdgeInsets.symmetric(horizontal: 11),
-      ),
+      minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+      padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 11)),
       textStyle: WidgetStatePropertyAll(
         Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .4),
       ),

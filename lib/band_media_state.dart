@@ -54,6 +54,7 @@ class BandMediaController extends ChangeNotifier {
   final Map<String, Object> _loadTokens = {};
   final Map<String, String> _loadErrors = {};
   final Map<String, List<MediaUpload>> _uploads = {};
+  int _uploadSequence = 0;
 
   List<BandMedia> mediaFor(String bandId) {
     final cached = _mediaCache[bandId];
@@ -202,7 +203,7 @@ class BandMediaController extends ChangeNotifier {
     PickedMedia media,
   ) async {
     final upload = MediaUpload(
-      id: '$bandId-${DateTime.now().microsecondsSinceEpoch}',
+      id: '$bandId-${kind.name}-${_uploadSequence++}-${DateTime.now().microsecondsSinceEpoch}',
       bandId: bandId,
       kind: kind,
       filename: media.filename,
@@ -318,6 +319,26 @@ class BandMediaController extends ChangeNotifier {
     await _mutate(bandId, () => repository.moveBandMedia(mediaId, direction));
   }
 
+  /// Moves an item to the adjacent position fans can actually see within
+  /// its video or photo section, via a single server-side mutation (the
+  /// server, not the client, is responsible for crossing any hidden
+  /// interleaved positions of the other kind).
+  Future<void> moveWithinKind(
+    String bandId,
+    String mediaId,
+    String direction,
+  ) async {
+    final wireDirection = direction == 'up' ? 'earlier' : 'later';
+    try {
+      await repository.moveMediaWithinKind(mediaId, wireDirection);
+      await refresh(bandId);
+    } catch (error) {
+      logError('band media mutation', error);
+      say(genericErrorMessage);
+      await refresh(bandId);
+    }
+  }
+
   Future<void> remove(String bandId, String mediaId) async {
     await _mutate(bandId, () => repository.deleteBandMedia(mediaId));
   }
@@ -325,12 +346,43 @@ class BandMediaController extends ChangeNotifier {
   Future<void> setHero(String bandId, String mediaId) async {
     await _mutate(
       bandId,
-      () => repository.setBandPhoto(bandId: bandId, mediaId: mediaId),
+      () => repository.setBandBanner(bandId: bandId, mediaId: mediaId),
     );
   }
 
   Future<void> clearHero(String bandId) async {
-    await _mutate(bandId, () => repository.clearBandPhoto(bandId));
+    await _mutate(bandId, () => repository.clearBandBanner(bandId));
+  }
+
+  Future<bool> setAvatar(String bandId, String mediaId) => _mutateResult(
+    bandId,
+    () => repository.setBandAvatar(bandId: bandId, mediaId: mediaId),
+  );
+
+  Future<bool> setBanner(String bandId, String mediaId) => _mutateResult(
+    bandId,
+    () => repository.setBandBanner(bandId: bandId, mediaId: mediaId),
+  );
+
+  Future<bool> clearAvatar(String bandId) =>
+      _mutateResult(bandId, () => repository.clearBandAvatar(bandId));
+
+  Future<bool> clearBanner(String bandId) =>
+      _mutateResult(bandId, () => repository.clearBandBanner(bandId));
+
+  Future<bool> _mutateResult(
+    String bandId,
+    Future<void> Function() mutation,
+  ) async {
+    try {
+      await mutation();
+      await refresh(bandId);
+      return true;
+    } catch (error) {
+      logError('band media mutation', error);
+      say(genericErrorMessage);
+      return false;
+    }
   }
 
   Future<void> _mutate(String bandId, Future<void> Function() mutation) async {

@@ -8,50 +8,74 @@ import '../theme.dart';
 import 'common.dart';
 import 'ep_sheet.dart';
 
-class _SheetShell extends StatelessWidget {
-  final String title;
-  final List<Widget> children;
+/// Shared visual chrome for bottom sheets presented by [showEpSheet].
+class EpSheetShell extends StatelessWidget {
+  const EpSheetShell({
+    super.key,
+    required this.padding,
+    required this.backgroundColor,
+    required this.borderColor,
+    required this.topRadius,
+    required this.handleColor,
+    required this.handleBottomSpacing,
+    required this.header,
+    required this.children,
+    this.heightFactor,
+    this.maxHeightFactor,
+    this.scrollable = false,
+    this.mainAxisSize = MainAxisSize.max,
+  }) : assert(heightFactor == null || maxHeightFactor == null);
 
-  const _SheetShell({required this.title, required this.children});
+  final EdgeInsetsGeometry padding;
+  final Color backgroundColor;
+  final Color borderColor;
+  final double topRadius;
+  final Color handleColor;
+  final double handleBottomSpacing;
+  final Widget header;
+  final List<Widget> children;
+  final double? heightFactor;
+  final double? maxHeightFactor;
+  final bool scrollable;
+  final MainAxisSize mainAxisSize;
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.sizeOf(context).height;
+    final content = Column(
+      mainAxisSize: mainAxisSize,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Center(
+          child: Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: handleColor,
+              borderRadius: BorderRadius.circular(99),
+            ),
+          ),
+        ),
+        SizedBox(height: handleBottomSpacing),
+        header,
+        ...children,
+      ],
+    );
+
     return SafeArea(
       top: false,
       child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * .88,
+        height: heightFactor == null ? null : screenHeight * heightFactor!,
+        constraints: maxHeightFactor == null
+            ? null
+            : BoxConstraints(maxHeight: screenHeight * maxHeightFactor!),
+        padding: padding,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
+          border: Border(top: BorderSide(color: borderColor)),
         ),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-        decoration: const BoxDecoration(
-          color: Ep.surfaceRaised,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border(top: BorderSide(color: Ep.border)),
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Center(
-                child: Container(
-                  width: 36,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Ep.contentDisabled,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                title.toUpperCase(),
-                style: Theme.of(context).textTheme.epSectionHeading,
-              ),
-              ...children,
-            ],
-          ),
-        ),
+        child: scrollable ? SingleChildScrollView(child: content) : content,
       ),
     );
   }
@@ -89,6 +113,117 @@ class _SheetOption extends StatelessWidget {
   }
 }
 
+/// Callback-only description of an overflow-sheet action.
+class EpActionSheetItem {
+  const EpActionSheetItem({
+    required this.label,
+    required this.onPressed,
+    this.icon,
+    this.destructive = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData? icon;
+  final bool destructive;
+}
+
+/// Generic action-sheet presentation. Domain rules stay with the caller.
+class EpActionSheet extends StatelessWidget {
+  const EpActionSheet({super.key, required this.header, required this.items});
+
+  final String header;
+  final List<EpActionSheetItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final firstDestructive = items.indexWhere((item) => item.destructive);
+    return EpSheetShell(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+      backgroundColor: context.epColors.raised,
+      borderColor: context.epColors.border,
+      topRadius: 16,
+      handleColor: context.epColors.mute,
+      handleBottomSpacing: 14,
+      mainAxisSize: MainAxisSize.min,
+      header: Text(
+        header.toUpperCase(),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.epSection.copyWith(
+          color: context.epColors.mute,
+          fontSize: 11,
+        ),
+      ),
+      children: [
+        const SizedBox(height: 8),
+        for (var index = 0; index < items.length; index++) ...[
+          if (index == firstDestructive) Divider(height: 17),
+          _ActionSheetRow(item: items[index]),
+        ],
+      ],
+    );
+  }
+}
+
+class _ActionSheetRow extends StatelessWidget {
+  const _ActionSheetRow({required this.item});
+
+  final EpActionSheetItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = item.destructive
+        ? context.epColors.destructive
+        : context.epColors.ink;
+    return Semantics(
+      button: true,
+      enabled: item.onPressed != null,
+      label: item.label,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: item.onPressed == null
+            ? null
+            : () {
+                Navigator.of(context).pop();
+                item.onPressed!();
+              },
+        borderRadius: BorderRadius.circular(10),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Row(
+            children: [
+              if (item.icon != null) ...[
+                Icon(item.icon, size: 19, color: color),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                child: Text(
+                  item.label,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epLabel.copyWith(color: color),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> showEpActionSheet(
+  BuildContext context, {
+  required String header,
+  required List<EpActionSheetItem> items,
+}) {
+  return showEpSheet(
+    context,
+    (_) => EpActionSheet(header: header, items: items),
+  );
+}
+
 // ============================ city picker ============================
 
 void showCitySheet(BuildContext context) {
@@ -107,15 +242,27 @@ void showCitySheet(BuildContext context) {
       );
     }
 
-    return _SheetShell(
-      title: 'Where are you?',
+    return EpSheetShell(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+      backgroundColor: ctx.epColors.surfaceRaised,
+      borderColor: ctx.epColors.border,
+      topRadius: 20,
+      handleColor: ctx.epColors.contentDisabled,
+      handleBottomSpacing: 10,
+      maxHeightFactor: .88,
+      scrollable: true,
+      mainAxisSize: MainAxisSize.min,
+      header: Text(
+        'WHERE ARE YOU?',
+        style: Theme.of(ctx).textTheme.epSectionHeading,
+      ),
       children: [
         const SizedBox(height: 6),
         Text(
           "Pick a scene. Everything's within BART distance anyway.",
           style: Theme.of(
             ctx,
-          ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+          ).textTheme.epBody.copyWith(color: context.epColors.contentSecondary),
         ),
         option('San Francisco', 'Mission & around', 'sf'),
         option('Oakland', 'Temescal & around', 'oak'),
@@ -139,8 +286,20 @@ void showSwitcherSheet(BuildContext context) {
     final displayName = profileName == null || profileName.isEmpty
         ? 'You'
         : profileName;
-    return _SheetShell(
-      title: bandEntryLabel(app.myBands.length),
+    return EpSheetShell(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+      backgroundColor: ctx.epColors.surfaceRaised,
+      borderColor: ctx.epColors.border,
+      topRadius: 20,
+      handleColor: ctx.epColors.contentDisabled,
+      handleBottomSpacing: 10,
+      maxHeightFactor: .88,
+      scrollable: true,
+      mainAxisSize: MainAxisSize.min,
+      header: Text(
+        bandEntryLabel(app.myBands.length).toUpperCase(),
+        style: Theme.of(ctx).textTheme.epSectionHeading,
+      ),
       children: [
         _SheetOption(
           onTap: () {
@@ -205,7 +364,7 @@ void showSwitcherSheet(BuildContext context) {
               Navigator.pop(ctx);
               app.startBandCreate();
             },
-            icon: const Icon(Icons.add),
+            icon: Icon(Icons.add),
             label: Text(
               app.myBands.isEmpty ? 'START A BAND' : 'START ANOTHER BAND',
             ),
@@ -241,7 +400,7 @@ Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
     barrierColor: Colors.black.withValues(alpha: .72),
     builder: (ctx) {
       return Dialog(
-        backgroundColor: Ep.contentPrimary,
+        backgroundColor: context.epColors.contentPrimary,
         insetPadding: const EdgeInsets.all(30),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         child: Padding(
@@ -252,7 +411,11 @@ Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
               Text(
                 gig.title.toUpperCase(),
                 textAlign: TextAlign.center,
-                style: epDisplay(size: 14, color: Ep.background, height: 1.2),
+                style: epDisplay(
+                  size: 14,
+                  color: context.epColors.background,
+                  height: 1.2,
+                ),
               ),
               const SizedBox(height: 12),
               Container(
@@ -263,10 +426,8 @@ Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
                   version: QrVersions.auto,
                   size: 180,
                   backgroundColor: Colors.white,
-                  eyeStyle: const QrEyeStyle(color: Ep.background),
-                  dataModuleStyle: const QrDataModuleStyle(
-                    color: Ep.background,
-                  ),
+                  eyeStyle: const QrEyeStyle(color: Colors.black),
+                  dataModuleStyle: const QrDataModuleStyle(color: Colors.black),
                 ),
               ),
               const SizedBox(height: 12),
@@ -277,7 +438,7 @@ Future<void> showQrDialog(BuildContext context, Gig gig, Venue venue) async {
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,
-                ).textTheme.epCaption.copyWith(color: Ep.surface),
+                ).textTheme.epCaption.copyWith(color: context.epColors.surface),
               ),
             ],
           ),

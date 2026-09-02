@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../services/appearance_controller.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
@@ -16,6 +17,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   var _deleting = false;
   String? _deleteError;
 
+  Future<void> _setAppearance(
+    AppearanceController appearance,
+    ThemeMode mode,
+  ) async {
+    final saved = await appearance.setMode(mode);
+    if (!mounted || saved) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          "Couldn't save appearance. It will reset when EarPlug restarts.",
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmDelete(AppState app) async {
     var confirmation = '';
     final confirmed = await showDialog<bool>(
@@ -26,7 +42,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           builder: (context, setDialogState) {
             final matches = confirmation == 'DELETE';
             return AlertDialog(
-              title: const Text('DELETE ACCOUNT?'),
+              title: Text('DELETE ACCOUNT?'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -44,7 +60,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     textCapitalization: TextCapitalization.characters,
                     onChanged: (value) =>
                         setDialogState(() => confirmation = value),
-                    decoration: epInputDecoration('DELETE'),
+                    decoration: epInputDecoration(context, 'DELETE'),
                   ),
                 ],
               ),
@@ -52,18 +68,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 TextButton(
                   key: const Key('cancel-delete-account'),
                   onPressed: () => Navigator.pop(dialogContext, false),
-                  child: const Text('CANCEL'),
+                  child: Text('CANCEL'),
                 ),
                 FilledButton(
                   key: const Key('confirm-delete-account'),
                   onPressed: matches
                       ? () => Navigator.pop(dialogContext, true)
                       : null,
-                  style: const ButtonStyle(
-                    backgroundColor: WidgetStatePropertyAll(Ep.destructive),
+                  style: ButtonStyle(
+                    backgroundColor: WidgetStatePropertyAll(
+                      context.epColors.destructive,
+                    ),
                     foregroundColor: WidgetStatePropertyAll(Colors.white),
                   ),
-                  child: const Text('DELETE ACCOUNT'),
+                  child: Text('DELETE ACCOUNT'),
                 ),
               ],
             );
@@ -89,6 +107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    final appearance = context.watch<AppearanceController>();
     return ListView(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 32),
       children: [
@@ -108,6 +127,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         const SizedBox(height: 20),
+        const SectionLabel('APPEARANCE'),
+        const SizedBox(height: 8),
+        SegmentedButton<ThemeMode>(
+          key: const Key('appearance-mode'),
+          segments: const [
+            ButtonSegment(value: ThemeMode.system, label: Text('SYSTEM')),
+            ButtonSegment(value: ThemeMode.light, label: Text('LIGHT')),
+            ButtonSegment(value: ThemeMode.dark, label: Text('DARK')),
+          ],
+          selected: {appearance.mode},
+          showSelectedIcon: false,
+          onSelectionChanged: _deleting
+              ? null
+              : (selection) => _setAppearance(appearance, selection.single),
+          style: const ButtonStyle(
+            minimumSize: WidgetStatePropertyAll(Size(0, 48)),
+          ),
+        ),
+        const SizedBox(height: 20),
         const SectionLabel('PRIVACY'),
         const SizedBox(height: 8),
         EpCard(
@@ -116,7 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.all(14),
           child: Row(
             children: [
-              const Icon(Icons.lock_outline, color: Ep.accent),
+              Icon(Icons.lock_outline, color: context.epColors.accent),
               const SizedBox(width: 11),
               Expanded(
                 child: Column(
@@ -134,7 +172,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Ep.contentSecondary),
+              Icon(
+                Icons.chevron_right,
+                color: context.epColors.contentSecondary,
+              ),
             ],
           ),
         ),
@@ -145,8 +186,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           OutlinedButton.icon(
             key: const Key('replay-profile-tutorial'),
             onPressed: _deleting ? null : app.replayProfileTutorial,
-            icon: const Icon(Icons.replay),
-            label: const Text('REPLAY PROFILE TUTORIAL'),
+            icon: Icon(Icons.replay),
+            label: Text('REPLAY PROFILE TUTORIAL'),
           ),
         ],
         const SizedBox(height: 18),
@@ -156,26 +197,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           key: const Key('settings-sign-out'),
           onPressed: _deleting ? null : app.signOut,
           style: ButtonStyle(
-            foregroundColor: const WidgetStatePropertyAll(Ep.destructive),
+            foregroundColor: WidgetStatePropertyAll(
+              context.epColors.destructive,
+            ),
             side: WidgetStateProperty.resolveWith(
               (states) => BorderSide(
                 color: states.contains(WidgetState.disabled)
-                    ? Ep.contentDisabled
-                    : Ep.destructive,
+                    ? context.epColors.contentDisabled
+                    : context.epColors.destructive,
                 width: 1.5,
               ),
             ),
           ),
-          icon: const Icon(Icons.logout),
-          label: const Text('SIGN OUT'),
+          icon: Icon(Icons.logout),
+          label: Text('SIGN OUT'),
         ),
         const SizedBox(height: 28),
         Container(
           key: const Key('account-danger-zone'),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Ep.destructive.withValues(alpha: .08),
-            border: Border.all(color: Ep.destructive),
+            color: context.epColors.destructive.withValues(alpha: .08),
+            border: Border.all(color: context.epColors.destructive),
             borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
@@ -183,9 +226,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               Text(
                 'DANGER ZONE',
-                style: Theme.of(
-                  context,
-                ).textTheme.epLabel.copyWith(color: Ep.destructive),
+                style: Theme.of(context).textTheme.epLabel.copyWith(
+                  color: context.epColors.destructive,
+                ),
               ),
               const SizedBox(height: 5),
               Text(
@@ -196,8 +239,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               FilledButton(
                 key: const Key('delete-account'),
                 onPressed: _deleting ? null : () => _confirmDelete(app),
-                style: const ButtonStyle(
-                  backgroundColor: WidgetStatePropertyAll(Ep.destructive),
+                style: ButtonStyle(
+                  backgroundColor: WidgetStatePropertyAll(
+                    context.epColors.destructive,
+                  ),
                   foregroundColor: WidgetStatePropertyAll(Colors.white),
                 ),
                 child: Text(_deleting ? 'DELETING…' : 'DELETE ACCOUNT'),
@@ -209,9 +254,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Text(
                     error,
                     key: const Key('delete-account-error'),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.epBody.copyWith(color: Ep.destructive),
+                    style: Theme.of(context).textTheme.epBody.copyWith(
+                      color: context.epColors.destructive,
+                    ),
                   ),
                 ),
               ],

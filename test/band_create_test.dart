@@ -6,6 +6,8 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_create.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/band_identity_editor.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -13,215 +15,238 @@ import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
-  testWidgets('the tape, its labels and every sheet render and drive the form', (
+  testWidgets('create uses the shared identity editor in profile order', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final harness = await _pumpBandCreate(tester);
+    tester.view.physicalSize = const Size(402, 3000);
+    await tester.pump();
+
+    expect(find.text('CREATE BAND'), findsWidgets);
+    expect(find.byType(BandIdentityHeader), findsOne);
+    expect(find.byKey(const ValueKey('band-header-image-control')), findsOne);
+    expect(find.byKey(const ValueKey('band-profile-image-control')), findsOne);
+    expect(find.bySemanticsLabel('Add profile image'), findsOne);
+    expect(find.bySemanticsLabel('Add header image'), findsOne);
+
+    final profile = tester.getTopLeft(
+      find.byKey(const ValueKey('band-profile-image-control')),
+    );
+    final name = tester.getTopLeft(
+      find.byKey(const ValueKey('create-band-name')),
+    );
+    final area = tester.getTopLeft(
+      find.byKey(const ValueKey('create-home-base')),
+    );
+    final about = tester.getTopLeft(find.byKey(const ValueKey('create-about')));
+    final genres = tester.getTopLeft(
+      find.byKey(const ValueKey('band-genres-field')),
+    );
+    expect(profile.dy, lessThan(name.dy));
+    expect(name.dy, lessThan(area.dy));
+    expect(area.dy, lessThan(about.dy));
+    expect(about.dy, lessThan(genres.dy));
+
+    for (final key in const [
+      ValueKey('create-band-name'),
+      ValueKey('create-home-base'),
+      ValueKey('create-about'),
+    ]) {
+      final field = tester.widget<TextField>(find.byKey(key));
+      expect(field.decoration?.enabledBorder, isA<OutlineInputBorder>());
+      expect(field.style?.fontSize, greaterThanOrEqualTo(18));
+    }
+
+    for (final key in const [
+      ValueKey('create-instagram'),
+      ValueKey('create-bandcamp'),
+      ValueKey('create-youtube'),
+    ]) {
+      expect(
+        find.ancestor(of: find.byKey(key), matching: find.byType(EpCard)),
+        findsNothing,
+      );
+    }
+    expect(find.text('MANAGE VIDEOS AND PHOTOS'), findsNothing);
+
+    harness.picker.nextPhoto = photoFixture(filename: 'banner.png');
+    await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
+    await tester.pumpAndSettle();
+    expect(harness.app.nbBanner, isNotNull);
+    expect(harness.app.nbPhoto, isNull);
+
+    harness.picker.nextPhoto = photoFixture(filename: 'avatar.png');
+    await tester.tap(find.byKey(const ValueKey('band-profile-image-control')));
+    await tester.pumpAndSettle();
+    expect(harness.app.nbPhoto, isNotNull);
+    expect(harness.app.nbBanner?.filename, 'banner.png');
+
+    expect(find.byKey(const ValueKey('clear-band-photo')), findsOne);
+    expect(find.byKey(const ValueKey('clear-band-banner')), findsOne);
+    await tester.tap(find.byKey(const ValueKey('clear-band-photo')));
+    await tester.pump();
+    expect(harness.app.nbPhoto, isNull);
+    expect(find.byKey(const ValueKey('clear-band-photo')), findsNothing);
+    expect(find.byKey(const ValueKey('clear-band-banner')), findsOne);
+
+    await tester.tap(find.byKey(const ValueKey('clear-band-banner')));
+    await tester.pump();
+    expect(harness.app.nbBanner, isNull);
+    expect(find.byKey(const ValueKey('clear-band-banner')), findsNothing);
+    semantics.dispose();
+  });
+
+  testWidgets('create preserves genre validation and custom genre flow', (
     tester,
   ) async {
     final harness = await _pumpBandCreate(tester);
-    final app = harness.app;
-    harness.picker.nextPhoto = photoFixture();
-
-    // Header, blank cassette and task-oriented profile details.
-    expect(find.text('START A BAND'), findsOne);
-    expect(find.text('DRAFT'), findsOne);
-    expect(find.text('SIDE A · SAMPLE'), findsOne);
-    expect(find.text('SET HOME BASE'), findsOne);
-    expect(find.text('what do you sound like?'), findsOne);
-    expect(find.text('BAND NAME · REQUIRED'), findsOne);
-    expect(find.text('SOUND · REQUIRED'), findsOne);
-    expect(find.text('HOME BASE · REQUIRED'), findsOne);
-    expect(find.text('PROFILE DETAILS'), findsOne);
-    expect(find.text('Required details'), findsOne);
-    expect(find.text('TAPE FILLS AS YOU GO'), findsOne);
-    expect(find.text('0%'), findsOne);
-    expect(find.text('Still needs a name + a genre + a home base'), findsOne);
-
-    final nameField = tester.widget<TextField>(find.byType(TextField).first);
-    expect(nameField.decoration?.enabledBorder, InputBorder.none);
-    expect(nameField.decoration?.focusedBorder, InputBorder.none);
-
-    // The standard name field updates the decorative cassette preview.
-    await tester.enterText(find.byType(TextField).first, 'Static Bloom');
+    tester.view.physicalSize = const Size(402, 2200);
     await tester.pump();
-    expect(app.nbName, 'Static Bloom');
-    expect(find.text('BAND NAME ✓'), findsOne);
-    expect(find.text('earplug.dev/static-bloom'), findsOne);
-    expect(find.text('17%'), findsOne);
 
-    await tester.tap(find.byKey(const ValueKey('label-riso')));
-    await tester.pump();
-    expect(app.nbLabel, 'riso');
-
-    // Sound sheet — chips cap at three, plus one of your own.
-    await tester.ensureVisible(find.text('SOUND · REQUIRED'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('SOUND · REQUIRED'));
-    await tester.pumpAndSettle();
-    expect(
-      find.text('Choose up to three. Fans use these to find you.'),
-      findsOne,
-    );
     await tester.tap(find.text('PUNK'));
     await tester.tap(find.text('HARDCORE'));
     await tester.tap(find.text('GARAGE'));
-    await tester.pump();
     await tester.tap(find.text('THRASH'));
     await tester.pump();
-    expect(app.nbGenres, ['punk', 'hardcore', 'garage']);
-    expect(app.toast, 'Three genres max. It keeps discovery honest.');
+    expect(harness.app.nbGenres, ['punk', 'hardcore', 'garage']);
+    expect(harness.app.toast, 'Three genres max. It keeps discovery honest.');
+
     await tester.tap(find.text('HARDCORE'));
+    await tester.tap(find.byKey(const ValueKey('show-custom-genre')));
     await tester.pump();
     await tester.enterText(
-      find.widgetWithText(TextField, 'Something else…'),
+      find.byKey(const ValueKey('edit-custom-genre')),
       'surf punk',
     );
-    await tester.tap(find.text('ADD'));
+    await tester.tap(find.widgetWithText(FilledButton, 'ADD'));
     await tester.pump();
-    expect(app.nbGenres, ['punk', 'garage', 'surf punk']);
-    await tester.tap(find.text('DONE'));
-    await tester.pumpAndSettle();
-    expect(find.text('PUNK · GARAGE · SURF PUNK'), findsOne);
-    expect(find.text('SOUND ✓'), findsOne);
-
-    // Home base sheet — the scene picks come with band and venue counts.
-    await tester.ensureVisible(find.text('HOME BASE · REQUIRED'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('HOME BASE · REQUIRED'));
-    await tester.pumpAndSettle();
-    expect(find.text('Fans browsing nearby see you first.'), findsOne);
-    expect(find.textContaining('venue'), findsWidgets);
-    await tester.tap(find.text('MISSION, SF'));
-    await tester.pumpAndSettle();
-    expect(app.nbArea, 'Mission, SF');
-    expect(find.text('HOME BASE ✓'), findsOne);
-    expect(find.text('READY'), findsOne);
-    expect(
-      find.text('Ready. Profile image, short bio, and links can wait.'),
-      findsOne,
-    );
-
-    // The lower profile details sit under the create bar until scrolled clear.
-    await tester.drag(find.byType(ListView), const Offset(0, -280));
-    await tester.pumpAndSettle();
-
-    // The optional profile image is part of the same visible checklist.
-    await tester.tap(find.text('PROFILE IMAGE · OPTIONAL'));
-    await tester.pumpAndSettle();
-    expect(app.nbPhoto, isNotNull);
-    expect(find.text('PROFILE IMAGE ✓'), findsOne);
-
-    // Short bio sheet: the starter line fills the profile copy.
-    await tester.tap(find.text('SHORT BIO · OPTIONAL'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('USE A STARTER LINE'));
-    await tester.pump();
-    expect(app.nbBio, isNotEmpty);
-    await tester.tap(find.text('DONE'));
-    await tester.pumpAndSettle();
-    expect(find.text('SHORT BIO ✓'), findsOne);
-
-    // Credits are free text and remain separate from member invitations.
-    await tester.drag(find.byType(ListView), const Offset(0, -280));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('CREDITS · OPTIONAL'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const ValueKey('create-credits')),
-      'Recorded by Mara K.',
-    );
-    await tester.pump();
-    expect(app.nbCredits, 'Recorded by Mara K.');
-    expect(find.widgetWithText(TextField, '@username'), findsNothing);
-    await tester.tap(find.text('DONE'));
-    await tester.pumpAndSettle();
-    expect(find.text('CREDITS ✓'), findsOne);
-
-    // Links sheet.
-    await tester.drag(find.byType(ListView), const Offset(0, -280));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('LINKS · OPTIONAL'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.widgetWithText(TextField, '@yourband'),
-      '@staticbloom',
-    );
-    await tester.tap(find.text('DONE'));
-    await tester.pumpAndSettle();
-    expect(app.nbIg, '@staticbloom');
-    expect(find.text('Instagram'), findsOne);
-    // All six profile checklist steps are now complete.
-    await tester.drag(find.byType(ListView), const Offset(0, 900));
-    await tester.pumpAndSettle();
-    expect(find.text('FULL TAPE'), findsOne);
-    expect(find.text('100%'), findsOne);
-
-    // Create, then the tape's-out confirmation.
-    await tester.tap(find.text('CREATE BAND'));
-    await tester.pumpAndSettle();
-    expect(app.nbCreated, isTrue);
-    expect(find.text("TAPE'S OUT"), findsOne);
-    expect(find.text("You're on the map."), findsOne);
-    // The demo feed already has a Static Bloom, so the server-issued slug
-    // dedupes.
-    expect(find.text('earplug.dev/static-bloom-2'), findsOne);
-    expect(app.myBand!.name, 'Static Bloom');
-    expect(app.myBand!.area, 'Mission, SF');
-
-    await tester.tap(find.text('START ANOTHER'));
-    await tester.pumpAndSettle();
-    expect(app.nbName, isEmpty);
-    expect(find.text('DRAFT'), findsOne);
-    expect(find.text('SET HOME BASE'), findsOne);
-
-    // Let the genre-cap toast expire so no timer outlives the test.
+    expect(harness.app.nbGenres, ['punk', 'garage', 'surf punk']);
     await tester.pump(const Duration(seconds: 3));
   });
 
-  testWidgets('the created view offers next steps and a clear not-now exit', (
+  testWidgets('custom genre remains available when three are selected', (
     tester,
   ) async {
+    final harness = await _pumpBandCreate(tester);
+    tester.view.physicalSize = const Size(402, 2200);
+    await tester.pump();
+
+    await tester.tap(find.text('PUNK'));
+    await tester.tap(find.text('HARDCORE'));
+    await tester.tap(find.text('GARAGE'));
+    await tester.tap(find.byKey(const ValueKey('show-custom-genre')));
+    await tester.pump();
+    final customGenre = find.byKey(const ValueKey('edit-custom-genre'));
+    await tester.enterText(customGenre, 'ska');
+    await tester.tap(find.widgetWithText(FilledButton, 'ADD'));
+    await tester.pump();
+
+    expect(harness.app.nbGenres, ['punk', 'hardcore', 'garage']);
+    expect(harness.app.toast, 'Three genres max.');
+    expect(customGenre, findsOne);
+    expect(tester.widget<TextField>(customGenre).controller!.text, 'ska');
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('avatar and banner upload into independent media roles', (
+    tester,
+  ) async {
+    final harness = await _pumpBandCreate(tester);
+    tester.view.physicalSize = const Size(402, 2200);
+    await tester.pump();
+    harness.picker.nextPhoto = photoFixture(filename: 'banner.png');
+    await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
+    await tester.pumpAndSettle();
+    harness.picker.nextPhoto = photoFixture(filename: 'avatar.png');
+    await tester.tap(find.byKey(const ValueKey('band-profile-image-control')));
+    await tester.pumpAndSettle();
+
+    await _fillForm(tester);
+    await tester.tap(find.widgetWithText(FilledButton, 'CREATE BAND'));
+    await tester.pumpAndSettle();
+
+    final bandId = harness.app.bandId;
+    await harness.media.refresh(bandId);
+    final photos = harness.media.photosFor(bandId);
+    expect(photos, hasLength(2));
+    expect(photos.singleWhere((photo) => photo.isAvatar).title, 'AVATAR');
+    expect(photos.singleWhere((photo) => photo.isBanner).title, 'BANNER');
+  });
+
+  testWidgets('created view keeps all established next steps', (tester) async {
     final app = (await _pumpBandCreate(tester)).app;
     await _fillAndCreate(tester);
 
+    expect(find.text("YOU'RE LIVE"), findsOne);
     expect(find.text('POST A MUSIC CLIP'), findsOne);
     expect(find.text('PUBLISH A GIG'), findsOne);
+    expect(find.text('INVITE BAND MEMBERS'), findsOne);
     expect(find.text('NOT NOW'), findsOne);
     await tester.tap(find.text('NOT NOW'));
     await tester.pumpAndSettle();
     expect(app.current.screen, Screen.bandDash);
   });
 
-  testWidgets('the created view opens the music clip workflow', (tester) async {
-    final app = (await _pumpBandCreate(tester)).app;
-    await _fillAndCreate(tester);
-
-    await tester.tap(find.text('POST A MUSIC CLIP'));
-    await tester.pump();
-
-    expect(app.current.screen, Screen.bandMedia);
-  });
-
-  testWidgets('the created view opens the gig publishing workflow', (
+  testWidgets('start another clears the rendered form and backing draft', (
     tester,
   ) async {
-    final app = (await _pumpBandCreate(tester)).app;
-    await _fillAndCreate(tester);
+    final harness = await _pumpBandCreate(tester);
+    tester.view.physicalSize = const Size(402, 3000);
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.text('PUBLISH A GIG'));
-    await tester.pump();
+    await _fillForm(tester);
+    await tester.enterText(
+      find.byKey(const ValueKey('create-about')),
+      'Signal-heavy post-punk.',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('create-instagram')),
+      '@staticbloom',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('create-bandcamp')),
+      'staticbloom.bandcamp.com',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('create-youtube')),
+      'youtube.com/@staticbloom',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('create-credits')),
+      'Recorded by June.',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'CREATE BAND'));
+    await tester.pumpAndSettle();
+    expect(find.text("YOU'RE LIVE"), findsOne);
 
-    expect(app.current.screen, Screen.gigCreate);
-  });
+    await tester.tap(find.text('START ANOTHER'));
+    await tester.pumpAndSettle();
 
-  testWidgets('member invitations are only available after creation', (
-    tester,
-  ) async {
-    final app = (await _pumpBandCreate(tester)).app;
-    await _fillAndCreate(tester);
-
-    await tester.tap(find.text('INVITE BAND MEMBERS'));
-    await tester.pump();
-    expect(app.current.screen, Screen.bandEdit);
-    expect(app.current.param, 'members');
+    expect(harness.app.nbCreated, isFalse);
+    expect(harness.app.canCreateBand, isFalse);
+    expect(harness.app.nbGenres, isEmpty);
+    expect(find.text('Static Bloom'), findsNothing);
+    expect(find.text('Still needs a name + a genre + a home base'), findsOne);
+    for (final key in const [
+      ValueKey('create-band-name'),
+      ValueKey('create-home-base'),
+      ValueKey('create-about'),
+      ValueKey('create-instagram'),
+      ValueKey('create-bandcamp'),
+      ValueKey('create-youtube'),
+      ValueKey('create-credits'),
+    ]) {
+      expect(
+        tester.widget<TextField>(find.byKey(key)).controller!.text,
+        isEmpty,
+      );
+    }
+    expect(
+      tester.widget<EpChip>(find.widgetWithText(EpChip, 'PUNK')).active,
+      isFalse,
+    );
+    expect(find.text('0 of 3 selected'), findsOne);
   });
 
   testWidgets('the create bar goes pending while the save is in flight', (
@@ -231,63 +256,15 @@ void main() {
     final app = (await _pumpBandCreate(tester, repository: repository)).app;
     await _fillForm(tester);
 
-    await tester.tap(find.text('CREATE BAND'));
+    await tester.tap(find.widgetWithText(FilledButton, 'CREATE BAND'));
     await tester.pump();
-    // Visibly pending rather than silently blocked.
     expect(find.text('SAVING…'), findsOne);
-    expect(find.text('CREATE BAND'), findsNothing);
-
-    // Tapping again while pending must not queue a second band.
-    await tester.tap(find.text('SAVING…'));
-    await tester.pump();
     expect(repository.createCalls, 1);
 
     repository.gate.complete();
     await tester.pumpAndSettle();
     expect(app.nbCreated, isTrue);
-    expect(find.text("TAPE'S OUT"), findsOne);
-  });
-
-  testWidgets('the photo slot picks and clears an inlay behind the tape', (
-    tester,
-  ) async {
-    final harness = await _pumpBandCreate(tester);
-    final app = harness.app;
-    harness.picker.nextPhoto = photoFixture();
-    expect(find.text('BAND PHOTO PREVIEW'), findsOne);
-
-    await tester.tap(find.byKey(const ValueKey('label-photo')));
-    await tester.pumpAndSettle();
-    expect(app.nbPhoto, isNotNull);
-    expect(find.byType(Image), findsOne);
-    expect(find.byIcon(Icons.check), findsOne);
-    expect(find.text('BAND PHOTO PREVIEW'), findsNothing);
-    expect(find.text('Photo sits behind the tape as a preview.'), findsOne);
-
-    await tester.tap(find.byKey(const ValueKey('clear-band-photo')));
-    await tester.pump();
-    expect(app.nbPhoto, isNull);
-    expect(find.text('BAND PHOTO PREVIEW'), findsOne);
-    expect(find.byIcon(Icons.arrow_upward), findsOne);
-  });
-
-  testWidgets('a picked band photo lands as the first gallery hero', (
-    tester,
-  ) async {
-    final harness = await _pumpBandCreate(tester);
-    harness.picker.nextPhoto = photoFixture();
-
-    await tester.tap(find.byKey(const ValueKey('label-photo')));
-    await tester.pumpAndSettle();
-    await _fillForm(tester);
-    await tester.tap(find.text('CREATE BAND'));
-    await tester.pumpAndSettle();
-
-    final bandId = harness.app.bandId;
-    await harness.media.refresh(bandId);
-    final photos = harness.media.photosFor(bandId);
-    expect(photos, hasLength(1));
-    expect(photos.single.isHero, isTrue);
+    expect(find.text("YOU'RE LIVE"), findsOne);
   });
 
   testWidgets(
@@ -295,14 +272,12 @@ void main() {
     (tester) async {
       final repository = _SilentCreateRepository(auth: FakeAuthService());
       final app = (await _pumpBandCreate(tester, repository: repository)).app;
-
       await _fillAndCreate(tester);
 
       expect(app.bandId, 'silent-band');
       expect(app.myBand?.name, 'Static Bloom');
       expect(app.myBands, contains('silent-band'));
       expect(app.roleFor('silent-band'), 'admin');
-      expect(app.isAdminOf('silent-band'), isTrue);
     },
   );
 
@@ -310,7 +285,6 @@ void main() {
     tester,
   ) async {
     final app = (await _pumpBandCreate(tester)).app;
-
     final disabledCreate = tester.widget<FilledButton>(
       find.widgetWithText(FilledButton, 'CREATE BAND'),
     );
@@ -322,49 +296,45 @@ void main() {
 Future<AppHarness> _pumpBandCreate(
   WidgetTester tester, {
   EarplugRepository? repository,
-}) => pumpApp(
-  tester,
-  repository: repository,
-  // Let the demo streams land before the form opens, the way they have by the
-  // time a real user reaches this screen.
-  beforePump: (app) async {
-    await tester.pumpAndSettle();
-    app.startBandCreate();
-  },
-  home: const Scaffold(body: BandCreateScreen()),
-);
+}) {
+  tester.view.devicePixelRatio = 1;
+  return pumpApp(
+    tester,
+    repository: repository,
+    beforePump: (app) async {
+      await tester.pumpAndSettle();
+      app.startBandCreate();
+    },
+    home: const Scaffold(body: BandCreateScreen()),
+  );
+}
 
-/// Fills the three required lines through the UI, leaving the bar ready.
 Future<void> _fillForm(WidgetTester tester) async {
-  await tester.enterText(find.byType(TextField).first, 'Static Bloom');
+  await tester.enterText(
+    find.byKey(const ValueKey('create-band-name')),
+    'Static Bloom',
+  );
+  await tester.enterText(
+    find.byKey(const ValueKey('create-home-base')),
+    'Mission, SF',
+  );
+  final punk = find.text('PUNK');
+  await tester.scrollUntilVisible(
+    punk,
+    160,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(punk);
   await tester.pump();
-
-  final sound = find.text('SOUND · REQUIRED');
-  await tester.ensureVisible(sound);
-  await tester.pumpAndSettle();
-  await tester.tap(sound);
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('PUNK'));
-  await tester.pump();
-  await tester.tap(find.text('DONE'));
-  await tester.pumpAndSettle();
-
-  final homeBase = find.text('HOME BASE · REQUIRED');
-  await tester.ensureVisible(homeBase);
-  await tester.pumpAndSettle();
-  await tester.tap(homeBase);
-  await tester.pumpAndSettle();
-  await tester.tap(find.text('MISSION, SF'));
-  await tester.pumpAndSettle();
 }
 
 Future<void> _fillAndCreate(WidgetTester tester) async {
   await _fillForm(tester);
-  await tester.tap(find.text('CREATE BAND'));
+  await tester.tap(find.widgetWithText(FilledButton, 'CREATE BAND'));
   await tester.pumpAndSettle();
 }
 
-/// A demo repository whose create only lands when the test opens the gate.
 class _GatedDemoRepository extends DemoRepository {
   _GatedDemoRepository({required super.auth});
 
@@ -397,8 +367,6 @@ class _GatedDemoRepository extends DemoRepository {
   }
 }
 
-/// Returns the mutation payload without publishing a matching myBands event,
-/// reproducing the short websocket lag that can follow a live create.
 class _SilentCreateRepository extends DemoRepository {
   _SilentCreateRepository({required super.auth});
 

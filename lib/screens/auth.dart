@@ -12,10 +12,6 @@ import '../widgets/branding.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
 
-// Door-stamp accent palette from the Sign In v3 design.
-const _stampAccent = Ep.accent;
-const _stampInk = Ep.accent;
-const _errorColor = Ep.destructive;
 // The stamp's fixed tilt, used everywhere the door stamp is drawn.
 const _stampAngle = -9 * math.pi / 180;
 const _stepPadding = EdgeInsets.fromLTRB(22, 24, 22, 30);
@@ -124,11 +120,11 @@ class _AuthScreenState extends State<AuthScreen> {
     }
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: RadialGradient(
           center: Alignment.topCenter,
           radius: 1.1,
-          colors: [Ep.surfaceRaised, Ep.background],
+          colors: [context.epColors.surfaceRaised, context.epColors.background],
           stops: [0, .68],
         ),
       ),
@@ -146,7 +142,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     size: 9,
                     weight: FontWeight.w900,
                     letterSpacing: 1.9,
-                    color: Ep.contentDisabled,
+                    color: context.epColors.contentDisabled,
                   ),
                 ),
               ],
@@ -232,7 +228,7 @@ class _DoorStepState extends State<_DoorStep> {
                   'Browse freely. Create an account when you RSVP, save a show, or start a band. It takes about ten seconds.',
                   style: epText(
                     size: 11.5,
-                    color: Ep.contentSecondary,
+                    color: context.epColors.contentSecondary,
                     height: 1.5,
                   ),
                 ),
@@ -327,7 +323,7 @@ class _DoorStepState extends State<_DoorStep> {
           autocorrect: false,
           textCapitalization: TextCapitalization.none,
           style: epText(size: 14),
-          decoration: epInputDecoration('you@example.com'),
+          decoration: epInputDecoration(context, 'you@example.com'),
           onSubmitted: (_) {
             if (_stage == _EntryStage.email) _sendEmailCode();
           },
@@ -340,7 +336,7 @@ class _DoorStepState extends State<_DoorStep> {
           autofillHints: const [AutofillHints.telephoneNumber],
           autocorrect: false,
           style: epText(size: 14),
-          decoration: epInputDecoration('+1 555 555 0100'),
+          decoration: epInputDecoration(context, '+1 555 555 0100'),
           onSubmitted: (_) {
             if (_stage == _EntryStage.phone) _sendPhoneCode();
           },
@@ -394,6 +390,7 @@ class _DoorStepState extends State<_DoorStep> {
           ],
           style: epText(size: 18, weight: FontWeight.w800, letterSpacing: 5),
           decoration: epInputDecoration(
+            context,
             '6-digit code',
           ).copyWith(counterText: ''),
           maxLength: 6,
@@ -415,7 +412,7 @@ class _DoorStepState extends State<_DoorStep> {
         TextAction(
           'RESEND CODE',
           onTap: _loading ? null : resend,
-          color: Ep.accent,
+          color: context.epColors.accent,
         ),
       ],
     );
@@ -569,11 +566,11 @@ class _StampWell extends StatelessWidget {
         height: 198,
         child: Center(
           child: stamped
-              ? const _StampThud(
+              ? _StampThud(
                   child: _DoorStamp(
                     size: 158,
-                    borderColor: _stampAccent,
-                    inkColor: _stampAccent,
+                    borderColor: context.epColors.accent,
+                    inkColor: context.epColors.accent,
                   ),
                 )
               : const _PressHerePulse(),
@@ -626,7 +623,7 @@ class _PressHerePulseState extends State<_PressHerePulse>
             'pick a method below',
             style: epText(
               size: 9.5,
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
               letterSpacing: .6,
             ),
           ),
@@ -793,7 +790,7 @@ class _InlineError extends StatelessWidget {
       style: epText(
         size: 11.5,
         weight: FontWeight.w700,
-        color: _errorColor,
+        color: context.epColors.destructive,
         height: 1.35,
       ),
     );
@@ -821,14 +818,18 @@ class _CompletingStep extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             const SizedBox(height: 16),
-            const Text('FINISHING SIGN-IN'),
+            Text('FINISHING SIGN-IN'),
           ] else ...[
-            const Icon(Icons.error_outline, color: _errorColor, size: 32),
+            Icon(
+              Icons.error_outline,
+              color: context.epColors.destructive,
+              size: 32,
+            ),
             const SizedBox(height: 12),
             Text(
               error!,
               textAlign: TextAlign.center,
-              style: epText(size: 12, color: _errorColor),
+              style: epText(size: 12, color: context.epColors.destructive),
             ),
             const SizedBox(height: 16),
             EpButton('TRY AGAIN', onTap: onRetry),
@@ -853,10 +854,10 @@ class _ThroughStep extends StatelessWidget {
           children: [
             Transform.rotate(
               angle: _stampAngle,
-              child: const _DoorStamp(
+              child: _DoorStamp(
                 size: 150,
-                borderColor: _stampAccent,
-                inkColor: _stampInk,
+                borderColor: context.epColors.accent,
+                inkColor: context.epColors.accent,
               ),
             ),
             const SizedBox(height: 14),

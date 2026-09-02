@@ -1,6 +1,12 @@
+import 'package:earplug/app_state.dart';
+import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
+import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/band_identity_editor.dart';
+import 'package:earplug/widgets/video_thumbnail.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -8,6 +14,36 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'support/harness.dart';
 
 void main() {
+  test('resolved artwork roles do not resurrect cleared legacy artwork', () {
+    final legacyPayload = <String, dynamic>{
+      '_id': 'band-1',
+      'slug': 'band-1',
+      'name': 'Band One',
+      'genres': <String>['punk'],
+      'area': 'Oakland',
+      'colorHex': '#1435F0',
+      'initials': 'BO',
+      'followerCount': 1,
+      'bio': '',
+      'heroUrl': 'https://example.com/legacy.jpg',
+      'profileComplete': true,
+      'discoveryProfileReady': false,
+      'pastShows': <dynamic>[],
+    };
+
+    final legacy = Band.fromJson(legacyPayload);
+    expect(legacy.profileImageUrl, legacy.heroUrl);
+    expect(legacy.headerImageUrl, legacy.heroUrl);
+
+    final roleAware = Band.fromJson({
+      ...legacyPayload,
+      'avatarUrl': null,
+      'bannerUrl': 'https://example.com/banner.jpg',
+    });
+    expect(roleAware.profileImageUrl, isNull);
+    expect(roleAware.headerImageUrl, 'https://example.com/banner.jpg');
+  });
+
   test('Instagram links normalize handles and scheme-less profile URLs', () {
     expect(
       bandLinkUri('@foghorn.diet', instagram: true).toString(),
@@ -30,16 +66,89 @@ void main() {
     );
   });
 
-  testWidgets('profile renders the pinned video and clip grid', (tester) async {
+  testWidgets('profile renders every video in one thumbnail section', (
+    tester,
+  ) async {
     await _pumpProfile(tester);
-    final pinned = DemoData.b1Media.singleWhere((media) => media.pinned);
-    final clip = DemoData.b1Media.firstWhere(
-      (media) => media.isVideo && !media.pinned,
+    final videos = DemoData.b1Media.where((media) => media.isVideo).toList();
+
+    expect(find.text('THIS IS WHAT WE SOUND LIKE'), findsOne);
+    expect(find.text('CLIPS'), findsNothing);
+    expect(find.text('PINNED'), findsOne);
+    for (final video in videos) {
+      expect(find.text(video.title), findsOne);
+    }
+    expect(find.byType(BandVideoThumbnail), findsNWidgets(videos.length));
+  });
+
+  testWidgets('profile banner is scrimmed, upright, and editable by admins', (
+    tester,
+  ) async {
+    final harness = await _pumpProfile(tester);
+
+    final scrim = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('band-profile-banner-scrim')),
+    );
+    final gradient = (scrim.decoration as BoxDecoration).gradient!;
+    expect(gradient, isA<LinearGradient>());
+    expect(
+      (gradient as LinearGradient).colors.every((color) => color.a >= .58),
+      isTrue,
+    );
+    expect(find.byKey(const ValueKey('band-profile-avatar-frame')), findsOne);
+    expect(find.byType(BandIdentityHeader), findsOne);
+    expect(find.text('486 followers'), findsOne);
+    expect(find.text('PROFILE COMPLETE'), findsNothing);
+    final edit = find.byKey(const ValueKey('edit-band-profile-banner'));
+    expect(edit, findsOne);
+
+    await tester.tap(edit);
+    await tester.pump();
+    expect(harness.app.current.screen, Screen.bandEdit);
+  });
+
+  testWidgets('profile banner edit is hidden for a non-active managed band', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _MultiBandRepository(auth: auth),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+    expect(harness.app.isAdminOf('b1'), isTrue);
+
+    harness.app.switchToBand('b2');
+    await tester.pumpAndSettle();
+
+    expect(harness.app.bandId, 'b2');
+    expect(
+      find.byKey(const ValueKey('edit-band-profile-banner')),
+      findsNothing,
+    );
+  });
+
+  testWidgets('member preview is public-profile read-only', (tester) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _MemberRepository(auth: auth),
+      beforePump: (app) => app.go(Screen.bandPreview, 'b1'),
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
-    expect(find.text(pinned.title), findsOne);
-    expect(find.text(clip.title), findsOne);
-    expect(find.text('CLIPS'), findsOne);
+    expect(find.text('PUBLIC PROFILE PREVIEW'), findsOne);
+    expect(find.text('Edit profile'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('edit-band-profile-banner')),
+      findsNothing,
+    );
+    expect(find.text('Return to band dashboard'), findsOne);
+
+    harness.app.openBandEditor();
+    expect(harness.app.current.screen, Screen.bandPreview);
   });
 
   testWidgets('profile renders all demo photo tiles', (tester) async {
@@ -50,7 +159,8 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('PHOTOS'), findsOne);
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -120));
+    await tester.pumpAndSettle();
     for (final photo in DemoData.b1Media.where(
       (media) => media.kind == MediaKind.photo,
     )) {
@@ -137,14 +247,15 @@ void main() {
     for (final link in links) {
       final button = find.byKey(link.key);
       expect(button, findsOneWidget);
-      expect(tester.getSize(button), const Size.square(48));
+      expect(tester.getSize(button).height, 48);
+      expect(tester.getSize(button).width, greaterThanOrEqualTo(48));
       expect(find.byTooltip(link.label), findsOneWidget);
       expect(find.bySemanticsLabel(link.label), findsOneWidget);
       expect(find.byIcon(link.icon.data), findsOneWidget);
     }
-    expect(find.text('INSTAGRAM ↗'), findsNothing);
-    expect(find.text('BANDCAMP ↗'), findsNothing);
-    expect(find.text('YOUTUBE ↗'), findsNothing);
+    expect(find.text('INSTAGRAM ↗'), findsOne);
+    expect(find.text('BANDCAMP ↗'), findsOne);
+    expect(find.text('YOUTUBE ↗'), findsOne);
     semantics.dispose();
   });
 
@@ -183,13 +294,18 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
 
-    expect(tester.getSize(instagram), const Size.square(48));
-    expect(tester.getSize(bandcamp), const Size.square(48));
-    expect(tester.getSize(youtube), const Size.square(48));
-    expect(tester.getTopLeft(instagram).dy, tester.getTopLeft(bandcamp).dy);
+    for (final link in [instagram, bandcamp, youtube]) {
+      final size = tester.getSize(link);
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(size.width, lessThanOrEqualTo(138));
+    }
+    expect(
+      tester.getTopLeft(bandcamp).dy,
+      greaterThan(tester.getTopLeft(instagram).dy),
+    );
     expect(
       tester.getTopLeft(youtube).dy,
-      greaterThan(tester.getTopLeft(instagram).dy),
+      greaterThan(tester.getTopLeft(bandcamp).dy),
     );
   });
 }
@@ -198,3 +314,22 @@ Future<AppHarness> _pumpProfile(WidgetTester tester) => pumpApp(
   tester,
   home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
 );
+
+class _MemberRepository extends DemoRepository {
+  _MemberRepository({required super.auth});
+
+  @override
+  Stream<List<BandMembership>> myBands() => Stream.value([
+    BandMembership(band: DemoData.bands['b1']!, role: 'member'),
+  ]);
+}
+
+class _MultiBandRepository extends DemoRepository {
+  _MultiBandRepository({required super.auth});
+
+  @override
+  Stream<List<BandMembership>> myBands() => Stream.value([
+    BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
+    BandMembership(band: DemoData.bands['b2']!, role: 'admin'),
+  ]);
+}

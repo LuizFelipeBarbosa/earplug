@@ -18,6 +18,9 @@ abstract final class Env {
   static const String googleServerClientId = String.fromEnvironment(
     'GOOGLE_SERVER_CLIENT_ID',
   );
+  static const String stadiaMapsApiKey = String.fromEnvironment(
+    'STADIA_MAPS_API_KEY',
+  );
   static const bool emailSignInEnabled = bool.fromEnvironment(
     'EMAIL_SIGN_IN_ENABLED',
   );

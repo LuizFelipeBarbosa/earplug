@@ -9,6 +9,7 @@ import 'package:earplug/screens/home.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +28,22 @@ void main() {
     expect(harness.app.mapMode, isTrue);
     expect(find.byType(GigMapView), findsOne);
     expect(find.text('PUNK'), findsNothing);
+    expect(find.text('EARPLUG'), findsOne);
+
+    final logo = tester.getRect(find.byKey(const Key('home-logo')));
+    final wordmark = tester.getRect(find.byKey(const Key('home-wordmark')));
+    final viewToggle = tester.getRect(
+      find.byKey(const Key('home-view-toggle')),
+    );
+    final location = tester.getRect(
+      find.byKey(const Key('home-location-control')),
+    );
+    expect(logo.right, lessThan(wordmark.left));
+    expect(wordmark.right, lessThan(viewToggle.left));
+    expect((logo.center.dy - wordmark.center.dy).abs(), lessThan(2));
+    expect(viewToggle.bottom, lessThan(location.top));
+    expect(location.left, 16);
+    expect(location.right, 386);
 
     await tester.tap(find.text('LIST'));
     await tester.pumpAndSettle();
@@ -34,10 +51,64 @@ void main() {
     expect(harness.app.mapMode, isFalse);
     expect(find.byType(GigMapView), findsNothing);
     expect(find.text('7 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
+    final cards = tester.widgetList<FanEventCard>(find.byType(FanEventCard));
+    final featured = cards.first;
+    expect(featured.gig.id, harness.app.feed.first.id);
+    expect(featured.presentation, FanEventCardPresentation.featured);
+    expect(
+      cards
+          .skip(1)
+          .every(
+            (card) => card.presentation == FanEventCardPresentation.compact,
+          ),
+      isTrue,
+    );
+    expect(
+      find.byKey(ValueKey('fan-event-${harness.app.feed.first.id}')),
+      findsOne,
+    );
 
     harness.app.resetTo(Screen.explore);
     harness.app.resetTo(Screen.home);
     expect(harness.app.mapMode, isFalse);
+  });
+
+  testWidgets('Home identity row and location picker fit a narrow phone', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: HomeScreen()));
+    tester.view.physicalSize = const Size(320, 700);
+    await tester.pumpAndSettle();
+
+    final logo = tester.getRect(find.byKey(const Key('home-logo')));
+    final wordmark = tester.getRect(find.byKey(const Key('home-wordmark')));
+    final viewToggle = tester.getRect(
+      find.byKey(const Key('home-view-toggle')),
+    );
+    final location = tester.getRect(
+      find.byKey(const Key('home-location-control')),
+    );
+
+    expect(logo.right, lessThan(wordmark.left));
+    expect(wordmark.right, lessThan(viewToggle.left));
+    expect(viewToggle.bottom, lessThan(location.top));
+    expect(location.left, 16);
+    expect(location.right, 304);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a single nearby result uses singular gig copy', (tester) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _SingleGigRepository(auth: auth),
+      home: const Scaffold(body: HomeScreen()),
+      beforePump: (app) => app.setMapMode(false),
+    );
+
+    expect(find.text('1 GIG NEAR YOU · LOCAL ORDER'), findsOne);
+    expect(find.text('1 GIGS NEAR YOU · LOCAL ORDER'), findsNothing);
   });
 
   testWidgets('map markers use the same multi-genre filtered feed', (
@@ -63,6 +134,7 @@ void main() {
     tester,
   ) async {
     await pumpApp(tester, home: const Scaffold(body: HomeScreen()));
+    await _expandClusterContaining(tester, 'venue-marker-v1');
 
     final button = find.byKey(const ValueKey('map-marker-button-v1'));
     expect(tester.getSize(button), const Size.square(48));
@@ -94,7 +166,10 @@ void main() {
     final pinDecoration = decorations.firstWhere(
       (decoration) => decoration.shape == BoxShape.circle,
     );
-    expect(pinDecoration.border, Border.all(color: Ep.accent, width: 3.5));
+    expect(
+      pinDecoration.border,
+      Border.all(color: Ep.contentPrimary, width: 2),
+    );
   });
 
   testWidgets('active complete listings carry the transparent boost label', (
@@ -139,22 +214,44 @@ void main() {
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
-  testWidgets('a guest can open an event from its map card', (tester) async {
+  testWidgets('the whole map card opens one gig route', (tester) async {
     final harness = await pumpApp(
       tester,
       home: const Scaffold(body: HomeScreen()),
     );
 
+    await _expandClusterContaining(tester, 'gig-marker-g1');
     await tester.tap(find.byKey(const Key('gig-marker-g1')));
     await tester.pumpAndSettle();
     expect(find.text('OPEN GIG →'), findsOne);
 
-    await tester.tap(find.text('OPEN GIG →'));
+    await tester.tap(find.text('BASEMENT BLOWOUT'));
     await tester.pumpAndSettle();
 
     expect(harness.app.authed, isFalse);
     expect(harness.app.current.screen, Screen.gig);
     expect(harness.app.current.param, 'g1');
+    harness.app.back();
+    expect(harness.app.current.screen, Screen.home);
+  });
+
+  testWidgets('only tapping outside the map card dismisses it', (tester) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: HomeScreen()),
+    );
+
+    await _expandClusterContaining(tester, 'gig-marker-g1');
+    await tester.tap(find.byKey(const Key('gig-marker-g1')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('map-gig-card-g1')), findsOne);
+
+    final map = tester.getRect(find.byType(GigMapView));
+    await tester.tapAt(map.topLeft + const Offset(8, 8));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byKey(const ValueKey('map-gig-card-g1')), findsNothing);
+    expect(harness.app.current.screen, Screen.home);
   });
 
   testWidgets('co-located gigs share a marker and remain individually usable', (
@@ -165,6 +262,15 @@ void main() {
       home: const Scaffold(body: HomeScreen()),
     );
 
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics &&
+            (widget.properties.label?.endsWith(' venues') ?? false),
+      ),
+      findsWidgets,
+    );
+    await _expandClusterContaining(tester, 'venue-marker-v1');
     expect(find.byKey(const Key('venue-marker-v1')), findsOne);
     expect(find.byKey(const Key('gig-marker-g2')), findsNothing);
     expect(find.byKey(const Key('gig-marker-g7')), findsNothing);
@@ -190,6 +296,8 @@ void main() {
     await tester.tap(find.text('OPEN GIG →'));
     await tester.pumpAndSettle();
     expect(harness.app.current.param, 'g7');
+    harness.app.back();
+    expect(harness.app.current.screen, Screen.home);
   });
 
   testWidgets('gigs without a resolved venue stay off the map', (tester) async {
@@ -275,6 +383,25 @@ void main() {
   });
 }
 
+Future<void> _expandClusterContaining(
+  WidgetTester tester,
+  String memberKey,
+) async {
+  final marker = find.byKey(Key(memberKey));
+  for (var attempt = 0; attempt < 4 && marker.evaluate().isEmpty; attempt++) {
+    final cluster = find.byWidgetPredicate((widget) {
+      final key = widget.key;
+      return key is ValueKey<String> &&
+          key.value.startsWith('venue-cluster-') &&
+          key.value.contains(memberKey);
+    });
+    expect(cluster, findsWidgets);
+    await tester.tap(cluster.first);
+    await tester.pumpAndSettle();
+  }
+  expect(marker, findsOne);
+}
+
 class _SuccessfulLocationService implements LocationService {
   const _SuccessfulLocationService();
 
@@ -309,6 +436,19 @@ class _MissingVenueRepository extends DemoRepository {
 
   @override
   Future<List<Venue>> venues() async => const [];
+}
+
+class _SingleGigRepository extends DemoRepository {
+  _SingleGigRepository({required super.auth});
+
+  @override
+  Stream<FeedSnapshot> feed() => Stream.value(
+    FeedSnapshot(
+      gigs: [DemoData.gigs.first],
+      venues: DemoData.venues,
+      bands: DemoData.bands,
+    ),
+  );
 }
 
 class _BoostRepository extends DemoRepository {

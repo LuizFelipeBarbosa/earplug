@@ -69,7 +69,7 @@ void main() {
         'createdAt': 1234,
         'avatarUrl': 'https://example.com/avatar.jpg',
         'bio': 'Always by the speakers.',
-        'homeLocation': 'oak',
+        'homeLocation': 'berkeley',
         'locationPersonalizationEnabled': true,
         'followedBandUpdatesEnabled': false,
         'profileTutorialCompleted': true,
@@ -77,11 +77,34 @@ void main() {
 
       expect(profile.avatarUrl, 'https://example.com/avatar.jpg');
       expect(profile.bio, 'Always by the speakers.');
-      expect(profile.homeLocation, FanCity.oak);
+      expect(profile.homeLocation, FanCity.berkeley);
       expect(profile.locationPersonalizationEnabled, isTrue);
       expect(profile.followedBandUpdatesEnabled, isFalse);
       expect(profile.profileTutorialAvailable, isTrue);
       expect(profile.profileTutorialCompleted, isTrue);
+    });
+  });
+
+  group('fan home location search', () {
+    test('matches city names and common region formats case-insensitively', () {
+      expect(fanCityFromLocationInput('berkeley'), FanCity.berkeley);
+      expect(fanCityFromLocationInput('BERKELEY, CA'), FanCity.berkeley);
+      expect(
+        fanCityFromLocationInput('San Mateo, California'),
+        FanCity.sanMateo,
+      );
+      expect(fanCityFromLocationInput('sf'), FanCity.sf);
+      expect(fanCityFromLocationInput('unknown'), isNull);
+    });
+
+    test('suggests only supported locations', () {
+      expect(fanCitySuggestions('san').toList(), [
+        FanCity.sf,
+        FanCity.sanMateo,
+        FanCity.sanJose,
+        FanCity.sanRafael,
+      ]);
+      expect(fanCitySuggestions('los angeles'), isEmpty);
     });
   });
 

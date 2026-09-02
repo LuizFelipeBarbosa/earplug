@@ -672,6 +672,9 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<void> moveBandMedia(String mediaId, String direction) async {}
 
   @override
+  Future<void> moveMediaWithinKind(String mediaId, String direction) async {}
+
+  @override
   Future<void> setBandPhoto({
     required String bandId,
     required String mediaId,
@@ -679,6 +682,24 @@ class _FailingRsvpRepository implements EarplugRepository {
 
   @override
   Future<void> clearBandPhoto(String bandId) async {}
+
+  @override
+  Future<void> setBandAvatar({
+    required String bandId,
+    required String mediaId,
+  }) async {}
+
+  @override
+  Future<void> clearBandAvatar(String bandId) async {}
+
+  @override
+  Future<void> setBandBanner({
+    required String bandId,
+    required String mediaId,
+  }) async {}
+
+  @override
+  Future<void> clearBandBanner(String bandId) async {}
 
   @override
   Future<List<FanHistoryItem>> history() async => const [];
@@ -719,7 +740,7 @@ class _FailingRsvpRepository implements EarplugRepository {
       const BandPage(items: [], continueCursor: null, isDone: true);
 
   @override
-  Future<void> toggleRsvp(String gigId) =>
+  Future<void> toggleRsvp(String gigId, {bool? on}) =>
       Future<void>.error(StateError('RSVP failed'));
 
   @override

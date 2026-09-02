@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../genres.dart';
+import '../band_media_state.dart';
 import '../models.dart';
+import '../services/media_picker.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
+import '../widgets/band_identity_editor.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/sheets.dart';
+
+enum _EditArtworkRole { avatar, banner }
 
 class BandEditScreen extends StatefulWidget {
   const BandEditScreen({super.key});
@@ -39,8 +44,14 @@ class _BandEditScreenState extends State<BandEditScreen> {
   bool _bandcampDirty = false;
   bool _youtubeDirty = false;
   bool _creditsDirty = false;
+  bool _addingCustomGenre = false;
   bool _saving = false;
   bool _saved = false;
+  bool _avatarUploading = false;
+  bool _bannerUploading = false;
+  PickedMedia? _avatarPreview;
+  PickedMedia? _bannerPreview;
+  String? _artworkError;
   String? _error;
 
   @override
@@ -159,8 +170,121 @@ class _BandEditScreenState extends State<BandEditScreen> {
     setState(() {
       _genres.add(genre);
       _customGenre.clear();
+      _addingCustomGenre = false;
       _saved = false;
       _error = null;
+    });
+  }
+
+  Future<void> _changeArtwork(_EditArtworkRole role) async {
+    final app = context.read<AppState>();
+    final media = context.read<BandMediaController>();
+    final band = app.myBand;
+    if (band == null || !app.isAdminOf(band.id)) return;
+
+    final PickedMedia? picked;
+    try {
+      picked = await media.pickFlyerArt();
+    } on MediaPickException catch (error) {
+      app.say(error.message);
+      return;
+    }
+    if (!mounted || picked == null) return;
+
+    setState(() {
+      _artworkError = null;
+      if (role == _EditArtworkRole.avatar) {
+        _avatarPreview = picked;
+        _avatarUploading = true;
+      } else {
+        _bannerPreview = picked;
+        _bannerUploading = true;
+      }
+    });
+
+    final mediaId = await media.uploadHeldPhoto(band.id, picked);
+    final assigned =
+        mediaId != null &&
+        (role == _EditArtworkRole.avatar
+            ? await media.setAvatar(band.id, mediaId)
+            : await media.setBanner(band.id, mediaId));
+    if (!mounted) return;
+    setState(() {
+      if (role == _EditArtworkRole.avatar) {
+        _avatarUploading = false;
+        if (!assigned) _avatarPreview = null;
+      } else {
+        _bannerUploading = false;
+        if (!assigned) _bannerPreview = null;
+      }
+      if (!assigned) {
+        _artworkError =
+            'The ${role == _EditArtworkRole.avatar ? 'profile' : 'header'} image could not be saved. Choose it again here; the failed upload remains available in Media.';
+      }
+    });
+  }
+
+  void _showArtworkSheet(_EditArtworkRole role) {
+    final app = context.read<AppState>();
+    final band = app.myBand;
+    if (band == null || !app.isAdminOf(band.id)) return;
+
+    final hasArtwork = role == _EditArtworkRole.avatar
+        ? band.profileImageUrl != null || _avatarPreview != null
+        : band.headerImageUrl != null || _bannerPreview != null;
+    showEpActionSheet(
+      context,
+      header: role == _EditArtworkRole.avatar
+          ? 'Profile image'
+          : 'Header image',
+      items: [
+        EpActionSheetItem(
+          label: 'REPLACE',
+          icon: Icons.photo_library_outlined,
+          onPressed: () => _changeArtwork(role),
+        ),
+        if (hasArtwork)
+          EpActionSheetItem(
+            label: 'USE INITIALS INSTEAD',
+            icon: Icons.delete_outline,
+            destructive: true,
+            onPressed: () => _clearArtwork(role),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _clearArtwork(_EditArtworkRole role) async {
+    final app = context.read<AppState>();
+    final media = context.read<BandMediaController>();
+    final band = app.myBand;
+    if (band == null || !app.isAdminOf(band.id)) return;
+
+    setState(() {
+      _artworkError = null;
+      if (role == _EditArtworkRole.avatar) {
+        _avatarUploading = true;
+      } else {
+        _bannerUploading = true;
+      }
+    });
+
+    final cleared = role == _EditArtworkRole.avatar
+        ? await media.clearAvatar(band.id)
+        : await media.clearBanner(band.id);
+    if (!mounted) return;
+    setState(() {
+      if (role == _EditArtworkRole.avatar) {
+        _avatarUploading = false;
+        if (cleared) _avatarPreview = null;
+      } else {
+        _bannerUploading = false;
+        if (cleared) _bannerPreview = null;
+      }
+      if (!cleared) {
+        _artworkError =
+            'The ${role == _EditArtworkRole.avatar ? 'profile' : 'header'} image could not be removed. Try again.';
+      }
     });
   }
 
@@ -172,10 +296,12 @@ class _BandEditScreenState extends State<BandEditScreen> {
         _saved = false;
         _error = 'Band name, sound, and home base are required.';
       });
+      _revealFeedback();
       return;
     }
     if (_genres.length > 3) {
       setState(() => _error = 'Choose no more than three genres.');
+      _revealFeedback();
       return;
     }
 
@@ -200,14 +326,27 @@ class _BandEditScreenState extends State<BandEditScreen> {
       );
       if (!mounted) return;
       setState(() => _saved = true);
+      _revealFeedback();
     } on Object {
       if (!mounted) return;
       setState(() {
         _error = 'Changes could not be saved. Check your connection and retry.';
       });
+      _revealFeedback();
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  void _revealFeedback() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
@@ -218,276 +357,304 @@ class _BandEditScreenState extends State<BandEditScreen> {
       return const SizedBox.shrink();
     }
 
-    return ListView(
-      controller: _scrollController,
-      padding: EdgeInsets.fromLTRB(
-        16,
-        headerTopPad(context),
-        16,
-        tabBarClearance + 24,
-      ),
+    return Stack(
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'EDIT PROFILE',
-              style: Theme.of(context).textTheme.epPageHeading,
+        Positioned.fill(
+          child: ListView(
+            controller: _scrollController,
+            padding: EdgeInsets.fromLTRB(
+              16,
+              headerTopPad(context),
+              16,
+              tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
             ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton(
-                onPressed: app.previewPublicProfile,
-                child: const Text('PREVIEW PUBLIC PROFILE'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Text(
-          'Update the public details fans use to recognize and discover your band.',
-          style: epText(size: 12, color: Ep.contentSecondary, height: 1.4),
-        ),
-        const SizedBox(height: 18),
-        KeyedSubtree(
-          key: _requiredKey,
-          child: _EditorSection(
-            title: 'Required details',
-            description: 'These details keep your profile useful in discovery.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Semantics(
-                  label: 'Band name',
-                  textField: true,
-                  child: TextField(
-                    key: const ValueKey('edit-band-name'),
-                    controller: _name,
-                    onChanged: _draftChanged,
-                    style: epText(size: 13),
-                    decoration: epInputDecoration('Band name'),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const _FieldLabel('Sound / genres'),
-                const SizedBox(height: 7),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    for (final genre in {...kGenres, ..._genres})
-                      EpChip(
-                        label: genre,
-                        active: _genres.contains(genre),
-                        onTap: () => _toggleGenre(genre),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        key: const ValueKey('edit-custom-genre'),
-                        controller: _customGenre,
-                        onSubmitted: (_) => _addCustomGenre(),
-                        style: epText(size: 12.5),
-                        decoration: epInputDecoration('Another genre'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _addCustomGenre,
-                      child: const Text('ADD'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${_genres.length} of 3 selected',
-                  style: epText(size: 10.5, color: Ep.contentDisabled),
-                ),
-                const SizedBox(height: 14),
-                Semantics(
-                  label: 'Home base',
-                  textField: true,
-                  child: TextField(
-                    key: const ValueKey('edit-home-base'),
-                    controller: _area,
-                    onChanged: _draftChanged,
-                    style: epText(size: 13),
-                    decoration: epInputDecoration('Neighborhood or city'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        _EditorSection(
-          title: 'Optional details',
-          description: 'Add these now or come back whenever you are ready.',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
-                  BandAvatar(band, size: 58, radius: 12, fontSize: 20),
-                  const SizedBox(width: 12),
                   Expanded(
-                    child: TextAction(
-                      'CHANGE PROFILE IMAGE',
-                      onTap: app.openBandMedia,
-                      padding: EdgeInsets.zero,
+                    child: Text(
+                      'EDIT BAND',
+                      style: Theme.of(context).textTheme.epPageHeading,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 14),
-              Semantics(
-                label: 'Short bio',
-                textField: true,
-                child: TextField(
-                  key: const ValueKey('edit-short-bio'),
-                  controller: _bio,
-                  onChanged: _draftChanged,
-                  minLines: 3,
-                  maxLines: 6,
-                  style: epText(size: 13, height: 1.45),
-                  decoration: epInputDecoration('Tell fans about the band'),
-                ),
+              Text(
+                'Shape the profile fans see without leaving the editor guessing what is editable.',
+                style: Theme.of(context).textTheme.epCaption,
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 18),
               KeyedSubtree(
-                key: _linksKey,
+                key: _requiredKey,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _FieldLabel('Links'),
-                    const SizedBox(height: 7),
-                    TextField(
-                      key: const ValueKey('edit-instagram'),
-                      controller: _instagram,
-                      onChanged: (value) {
-                        _instagramDirty = true;
-                        _draftChanged(value);
-                      },
-                      style: epText(size: 12.5),
-                      decoration: epInputDecoration('Instagram'),
+                    BandIdentityHeader(
+                      name: _name.text,
+                      area: _area.text,
+                      initials: band.initials,
+                      color: band.color,
+                      avatarUrl: band.profileImageUrl,
+                      bannerUrl: band.headerImageUrl,
+                      avatarBytes: _avatarPreview?.bytes,
+                      bannerBytes: _bannerPreview?.bytes,
+                      avatarBusy: _avatarUploading,
+                      bannerBusy: _bannerUploading,
+                      onAvatarTap: _saving
+                          ? null
+                          : () => _showArtworkSheet(_EditArtworkRole.avatar),
+                      onBannerTap: _saving
+                          ? null
+                          : () => _showArtworkSheet(_EditArtworkRole.banner),
                     ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      key: const ValueKey('edit-bandcamp'),
-                      controller: _bandcamp,
-                      onChanged: (value) {
-                        _bandcampDirty = true;
-                        _draftChanged(value);
-                      },
-                      style: epText(size: 12.5),
-                      decoration: epInputDecoration('Bandcamp'),
+                    const SizedBox(height: 9),
+                    Text(
+                      'Profile image and header image are separate. Changing one will not replace the other.',
+                      style: Theme.of(context).textTheme.epCaption,
                     ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      key: const ValueKey('edit-youtube'),
-                      controller: _youtube,
+                    if (_artworkError case final error?) ...[
+                      const SizedBox(height: 8),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          error,
+                          key: const ValueKey('band-artwork-error'),
+                          style: epText(
+                            size: 11,
+                            color: context.epColors.warning,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    BandIdentityTextField(
+                      fieldKey: const ValueKey('edit-band-name'),
+                      label: 'BAND NAME',
+                      hint: 'Your band name',
+                      controller: _name,
+                      required: true,
+                      enabled: !_saving,
                       onChanged: (value) {
-                        _youtubeDirty = true;
                         _draftChanged(value);
+                        setState(() {});
                       },
-                      style: epText(size: 12.5),
-                      decoration: epInputDecoration('YouTube or video'),
+                    ),
+                    const SizedBox(height: 14),
+                    BandIdentityTextField(
+                      fieldKey: const ValueKey('edit-home-base'),
+                      label: 'HOME BASE',
+                      hint: 'Neighborhood or city',
+                      controller: _area,
+                      required: true,
+                      enabled: !_saving,
+                      onChanged: (value) {
+                        _draftChanged(value);
+                        setState(() {});
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    BandIdentityTextField(
+                      fieldKey: const ValueKey('edit-short-bio'),
+                      label: 'ABOUT',
+                      hint: 'Tell fans about the band',
+                      controller: _bio,
+                      enabled: !_saving,
+                      minLines: 4,
+                      maxLines: 7,
+                      onChanged: _draftChanged,
+                    ),
+                    const SizedBox(height: 14),
+                    BandGenreEditor(
+                      genres: _genres,
+                      onToggle: _toggleGenre,
+                      customController: _customGenre,
+                      addingCustomGenre: _addingCustomGenre,
+                      onShowCustomGenre: () => setState(() {
+                        _addingCustomGenre = true;
+                        _error = null;
+                      }),
+                      onAddCustomGenre: _addCustomGenre,
+                      enabled: !_saving,
+                    ),
+                    const SizedBox(height: 14),
+                    _MediaManagementRow(
+                      onTap: _saving ? null : app.openBandMedia,
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 14),
-              Semantics(
-                label: 'Credits',
-                textField: true,
-                child: TextField(
-                  key: const ValueKey('edit-credits'),
-                  controller: _credits,
-                  onChanged: (value) {
-                    _creditsDirty = true;
-                    _draftChanged(value);
-                  },
-                  minLines: 3,
-                  maxLines: 6,
-                  style: epText(size: 13, height: 1.45),
-                  decoration: epInputDecoration(
-                    'Producers, artists, labels, and collaborators',
+              KeyedSubtree(
+                key: _linksKey,
+                child: _EditorSection(
+                  title: 'Links',
+                  description:
+                      'Add the places where fans can listen, watch, and follow.',
+                  boxed: false,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextField(
+                        key: const ValueKey('edit-instagram'),
+                        controller: _instagram,
+                        enabled: !_saving,
+                        onChanged: (value) {
+                          _instagramDirty = true;
+                          _draftChanged(value);
+                        },
+                        style: Theme.of(context).textTheme.epBody,
+                        decoration: _bandInput(
+                          context,
+                          'INSTAGRAM',
+                          'Instagram',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const ValueKey('edit-bandcamp'),
+                        controller: _bandcamp,
+                        enabled: !_saving,
+                        onChanged: (value) {
+                          _bandcampDirty = true;
+                          _draftChanged(value);
+                        },
+                        style: Theme.of(context).textTheme.epBody,
+                        decoration: _bandInput(context, 'BANDCAMP', 'Bandcamp'),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        key: const ValueKey('edit-youtube'),
+                        controller: _youtube,
+                        enabled: !_saving,
+                        onChanged: (value) {
+                          _youtubeDirty = true;
+                          _draftChanged(value);
+                        },
+                        style: Theme.of(context).textTheme.epBody,
+                        decoration: _bandInput(
+                          context,
+                          'YOUTUBE OR VIDEO',
+                          'YouTube or video',
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: app.openBandMedia,
-                icon: const Icon(Icons.play_circle_outline),
-                label: const Text('MANAGE MUSIC AND MEDIA'),
+              _EditorSection(
+                title: 'Credits',
+                description:
+                    'Acknowledge producers, artists, labels, and collaborators.',
+                child: Semantics(
+                  label: 'Credits',
+                  textField: true,
+                  child: TextField(
+                    key: const ValueKey('edit-credits'),
+                    controller: _credits,
+                    enabled: !_saving,
+                    onChanged: (value) {
+                      _creditsDirty = true;
+                      _draftChanged(value);
+                    },
+                    minLines: 3,
+                    maxLines: 6,
+                    style: Theme.of(context).textTheme.epBody,
+                    decoration: _bandInput(
+                      context,
+                      'CREDITS',
+                      'Who helped make the work',
+                    ),
+                  ),
+                ),
               ),
+              KeyedSubtree(
+                key: _membersKey,
+                child: const _BandMembersSection(),
+              ),
+              if (_error case final error?) ...[
+                const SizedBox(height: 16),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    error,
+                    key: const ValueKey('profile-save-error'),
+                    style: Theme.of(context).textTheme.epBody.copyWith(
+                      color: context.epColors.warning,
+                    ),
+                  ),
+                ),
+              ] else if (_saved) ...[
+                const SizedBox(height: 16),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    'Changes saved.',
+                    key: const ValueKey('profile-save-success'),
+                    style: Theme.of(context).textTheme.epBody.copyWith(
+                      color: context.epColors.success,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              _ArchiveBandAction(band: band),
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        KeyedSubtree(key: _membersKey, child: const _BandMembersSection()),
-        const SizedBox(height: 16),
-        if (_error case final error?) ...[
-          Text(
-            error,
-            key: const ValueKey('profile-save-error'),
-            style: epText(size: 11.5, color: Ep.warning, height: 1.4),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 66,
+          child: StickyActionBar(
+            key: const ValueKey('save-band-profile'),
+            secondaryLabel: 'PREVIEW',
+            onSecondary: _saving ? null : app.previewPublicProfile,
+            primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
+            onPrimary: _saving ? null : _save,
           ),
-          const SizedBox(height: 8),
-        ] else if (_saved) ...[
-          Text(
-            'Changes saved.',
-            key: const ValueKey('profile-save-success'),
-            style: epText(size: 11.5, color: Ep.accent),
-          ),
-          const SizedBox(height: 8),
-        ],
-        EpButton(
-          _saving ? 'SAVING…' : 'SAVE CHANGES',
-          kind: _saving ? EpButtonKind.disabled : EpButtonKind.filled,
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          onTap: _saving ? null : _save,
         ),
-        const SizedBox(height: 24),
-        _ArchiveBandAction(band: band),
       ],
     );
   }
 }
+
+InputDecoration _bandInput(BuildContext context, String label, String hint) =>
+    epInputDecoration(context, hint).copyWith(
+      labelText: label,
+      floatingLabelBehavior: FloatingLabelBehavior.always,
+    );
 
 class _EditorSection extends StatelessWidget {
   const _EditorSection({
     required this.title,
     required this.description,
     required this.child,
+    this.count,
+    this.boxed = true,
   });
 
   final String title;
   final String description;
   final Widget child;
+  final int? count;
+  final bool boxed;
 
   @override
   Widget build(BuildContext context) {
-    return EpCard(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(title, style: epDisplay(size: 15)),
-          const SizedBox(height: 3),
-          Text(
-            description,
-            style: epText(size: 10.5, color: Ep.contentSecondary, height: 1.4),
-          ),
-          const SizedBox(height: 14),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionBar(label: title, count: count),
+        Text(description, style: Theme.of(context).textTheme.epCaption),
+        const SizedBox(height: 14),
+        if (boxed)
+          EpCard(
+            variant: EpCardVariant.raised,
+            padding: const EdgeInsets.all(15),
+            child: child,
+          )
+        else
           child,
-        ],
-      ),
+      ],
     );
   }
 }
@@ -501,11 +668,71 @@ class _FieldLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       label,
-      style: epText(
-        size: 10,
-        weight: FontWeight.w900,
+      style: Theme.of(context).textTheme.epLabel.copyWith(
+        fontSize: 11,
+        fontWeight: FontWeight.w900,
         letterSpacing: .8,
-        color: Ep.contentSecondary,
+        color: context.epColors.contentSecondary,
+      ),
+    );
+  }
+}
+
+class _MediaManagementRow extends StatelessWidget {
+  const _MediaManagementRow({required this.onTap});
+
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: 'Manage videos and photos',
+      excludeSemantics: true,
+      child: Material(
+        color: context.epColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(11),
+          side: BorderSide(color: context.epColors.border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.play_arrow_rounded,
+                    color: onTap == null
+                        ? context.epColors.contentDisabled
+                        : context.epColors.volt,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'MANAGE VIDEOS AND PHOTOS',
+                      style: Theme.of(context).textTheme.epLabel.copyWith(
+                        color: onTap == null
+                            ? context.epColors.contentDisabled
+                            : context.epColors.contentPrimary,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right,
+                    color: onTap == null
+                        ? context.epColors.contentDisabled
+                        : context.epColors.mute,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -566,34 +793,37 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
 
     return _EditorSection(
       title: 'Band members',
+      count: members.length,
       description:
           'Share one secure link. It can be used by multiple members for seven days.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _FieldLabel('Accepted members'),
+          const _FieldLabel('ACCEPTED MEMBERS'),
           const SizedBox(height: 7),
           if (members.isEmpty)
             Text(
               'No additional members have joined yet.',
-              style: epText(size: 11.5, color: Ep.contentSecondary),
+              style: epText(
+                size: 11.5,
+                color: context.epColors.contentSecondary,
+              ),
             )
           else
-            for (final member in members)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 7),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.check_circle_outline,
-                      size: 17,
-                      color: Ep.accent,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text(member, style: epText(size: 12.5))),
-                  ],
-                ),
-              ),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                for (final member in members)
+                  EpChip(
+                    key: ValueKey('accepted-member-$member'),
+                    label: member,
+                    active: false,
+                    onTap: null,
+                    semanticLabel: '$member, accepted member',
+                  ),
+              ],
+            ),
           const SizedBox(height: 10),
           if (loading && invite == null)
             const Center(child: CircularProgressIndicator())
@@ -603,7 +833,10 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                 invite.revoked
                     ? 'The previous invitation was revoked.'
                     : 'The previous invitation expired.',
-                style: epText(size: 11, color: Ep.contentSecondary),
+                style: epText(
+                  size: 11,
+                  color: context.epColors.contentSecondary,
+                ),
               ),
             if (invite != null) const SizedBox(height: 8),
             EpButton(
@@ -633,16 +866,16 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                   Text(
                     'ACTIVE · EXPIRES ${_expiryLabel(invite.expiresAt)}',
                     style: epText(
-                      size: 9.5,
+                      size: 11,
                       weight: FontWeight.w800,
-                      color: Ep.accent,
+                      color: context.epColors.accent,
                     ),
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 8),
-            FilledButton.icon(
+            OutlinedButton.icon(
               onPressed: _working
                   ? null
                   : () => copyForUser(
@@ -650,8 +883,8 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                       invite.url,
                       successMessage: 'Invitation link copied.',
                     ),
-              icon: const Icon(Icons.copy, size: 17),
-              label: const Text('COPY INVITATION LINK'),
+              icon: Icon(Icons.copy, size: 17),
+              label: Text('COPY INVITATION LINK'),
             ),
             const SizedBox(height: 6),
             Row(
@@ -663,7 +896,7 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                         : () => _run(() async {
                             await app.rotateBandInvitation();
                           }),
-                    child: const Text('ROTATE LINK'),
+                    child: Text('ROTATE LINK'),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -672,7 +905,7 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
                     onPressed: _working
                         ? null
                         : () => _run(app.revokeBandInvitation),
-                    child: const Text('REVOKE LINK'),
+                    child: Text('REVOKE LINK'),
                   ),
                 ),
               ],
@@ -687,7 +920,7 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
             Text(
               error,
               key: const ValueKey('invite-management-error'),
-              style: epText(size: 11, color: Ep.warning),
+              style: epText(size: 11, color: context.epColors.warning),
             ),
           ],
         ],
@@ -703,12 +936,12 @@ class _ArchiveBandAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
+    return DangerZone(
       key: const Key('archive-band'),
+      label: 'Archive band',
+      consequence:
+          'Archiving removes this band from public pages and management, revokes invitations, and cancels future gigs it owns. You cannot restore the band in EarPlug. Historical and shared records remain.',
       onPressed: () => _confirmArchive(context),
-      style: OutlinedButton.styleFrom(foregroundColor: Ep.destructive),
-      icon: const Icon(Icons.archive_outlined),
-      label: const Text('ARCHIVE BAND'),
     );
   }
 
@@ -743,13 +976,13 @@ class _ArchiveBandDialogState extends State<_ArchiveBandDialog> {
   Widget build(BuildContext context) {
     final matches = _controller.text.trim() == widget.band.name;
     return AlertDialog(
-      title: const Text('ARCHIVE BAND?'),
+      title: Text('ARCHIVE BAND?'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text(
-            'This removes the band from public pages and management, revokes invitations, and cancels future gigs it owns. Historical and shared records are preserved.',
+          Text(
+            'This removes the band from public pages and management, revokes invitations, and cancels future gigs it owns. You cannot restore the band in EarPlug. Historical and shared records are preserved.',
           ),
           const SizedBox(height: 14),
           Text('Type ${widget.band.name} to confirm.'),
@@ -759,17 +992,21 @@ class _ArchiveBandDialogState extends State<_ArchiveBandDialog> {
             controller: _controller,
             enabled: !_working,
             onChanged: (_) => setState(() {}),
-            decoration: epInputDecoration(widget.band.name),
+            decoration: epInputDecoration(context, widget.band.name),
           ),
         ],
       ),
       actions: [
         TextButton(
           onPressed: _working ? null : () => Navigator.pop(context),
-          child: const Text('KEEP BAND'),
+          child: Text('KEEP BAND'),
         ),
         FilledButton(
           onPressed: !matches || _working ? null : _archive,
+          style: FilledButton.styleFrom(
+            backgroundColor: context.epColors.destructive,
+            foregroundColor: context.epColors.dark,
+          ),
           child: Text(_working ? 'ARCHIVING…' : 'ARCHIVE BAND'),
         ),
       ],

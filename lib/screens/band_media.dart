@@ -1,4 +1,4 @@
-import 'dart:math' as math;
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -11,75 +11,36 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/sheets.dart';
 import '../widgets/video_thumbnail.dart';
 
 const _adminGateMessage = 'Only band admins can post media.';
-
-/// Retry/discard sit inline in a tight failed-upload row, so they get less
-/// breathing room than a TextAction under a form step.
 const _uploadActionPadding = EdgeInsets.symmetric(vertical: 3);
 
 class BandMediaScreen extends StatelessWidget {
-  final String bandId;
-
   const BandMediaScreen({super.key, required this.bandId});
+
+  final String bandId;
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final media = context.watch<BandMediaController>();
     final items = media.mediaFor(bandId);
-    final uploads = media.uploadsFor(bandId);
+    final videos = media.videosFor(bandId);
     final photos = media.photosFor(bandId);
+    final uploads = media.uploadsFor(bandId);
     final loadError = media.loadErrorFor(bandId);
+    final loading = media.isLoading(bandId) && items.isEmpty;
     final isAdmin = app.isAdminOf(bandId);
-    final gatedVideoUpload = isAdmin
-        ? () => media.pickAndUploadVideo(bandId)
-        : () => app.say(_adminGateMessage);
+
+    void explainAdminGate() => app.say(_adminGateMessage);
 
     return ColoredBox(
-      color: Ep.background,
+      color: context.epColors.background,
       child: Column(
         children: [
-          Container(
-            padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Ep.border)),
-            ),
-            child: Row(
-              children: [
-                CircleIconButton(onTap: app.back),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'BAND MEDIA',
-                    style: epText(
-                      size: 12,
-                      weight: FontWeight.w800,
-                      letterSpacing: 1.4,
-                      color: Ep.contentSecondary,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Ep.surface,
-                    border: Border.all(color: Ep.border),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: Text(
-                    '${items.length} ITEMS',
-                    style: Theme.of(context).textTheme.epCaption,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          _MediaHeader(itemCount: items.length, onBack: app.back),
           Expanded(
             child: ListView(
               padding: EdgeInsets.fromLTRB(
@@ -89,114 +50,105 @@ class BandMediaScreen extends StatelessWidget {
                 40 + MediaQuery.paddingOf(context).bottom,
               ),
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _UploadSlot(
-                        icon: Icons.videocam_outlined,
-                        label: '+ MUSIC CLIP',
-                        sub: 'MP4 · 25 MB MAX',
-                        enabled: isAdmin,
-                        onTap: gatedVideoUpload,
-                      ),
-                    ),
-                    const SizedBox(width: 9),
-                    Expanded(
-                      child: _UploadSlot(
-                        icon: Icons.add_photo_alternate_outlined,
-                        label: '+ PHOTOS',
-                        sub: 'UP TO 10 · 8 MB EACH',
-                        enabled: isAdmin,
-                        onTap: isAdmin
-                            ? () => media.pickAndUploadPhotos(bandId)
-                            : () => app.say(_adminGateMessage),
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Upload clips and gallery photos, then choose what fans see first.',
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+                const SizedBox(height: 14),
+                _UploadActions(
+                  enabled: isAdmin,
+                  onVideo: isAdmin
+                      ? () => media.pickAndUploadVideo(bandId)
+                      : explainAdminGate,
+                  onPhotos: isAdmin
+                      ? () => media.pickAndUploadPhotos(bandId)
+                      : explainAdminGate,
                 ),
                 if (uploads.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  const SectionLabel('UPLOADING'),
-                  const SizedBox(height: 8),
+                  SectionBar(label: 'Uploads', count: uploads.length),
                   for (final upload in uploads) ...[
                     _UploadTile(upload: upload, media: media),
                     const SizedBox(height: 8),
                   ],
                 ],
-                const SizedBox(height: 18),
-                const SectionLabel('BAND PHOTO'),
-                const SizedBox(height: 8),
-                _HeroStrip(
-                  photos: photos,
-                  isAdmin: isAdmin,
-                  onTap: isAdmin
-                      ? () => _showHeroSheet(context, media, bandId)
-                      : () => app.say(_adminGateMessage),
-                ),
-                const SizedBox(height: 18),
-                const SectionLabel('ORDER · PINNED MUSIC CLIP PLAYS FIRST'),
-                const SizedBox(height: 8),
-                for (final item in items) ...[
-                  _MediaRow(
-                    item: item,
-                    isAdmin: isAdmin,
-                    media: media,
-                    bandId: bandId,
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                if (items.isEmpty && uploads.isEmpty) ...[
-                  const SizedBox(height: 4),
-                  DashedBox(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 34,
-                    ),
-                    child: Column(
-                      children: [
-                        const PlayTriangle(size: 18, color: Ep.contentDisabled),
-                        const SizedBox(height: 12),
-                        Text('NOTHING POSTED YET', style: epDisplay(size: 15)),
-                        const SizedBox(height: 7),
-                        Text(
-                          'Start with one music clip and a couple of photos. '
-                          'Fans hear the pinned clip first.',
-                          textAlign: TextAlign.center,
-                          style: epText(
-                            size: 11.5,
-                            color: Ep.contentDisabled,
-                            height: 1.45,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        EpButton(
-                          '+ POST YOUR FIRST MUSIC CLIP',
-                          onTap: gatedVideoUpload,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
                 if (loadError != null) ...[
-                  const SizedBox(height: 16),
-                  EpCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          loadError,
-                          style: epText(
-                            size: 11.5,
-                            color: Ep.contentSecondary,
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        EpButton('RETRY', onTap: () => media.refresh(bandId)),
-                      ],
+                  const SizedBox(height: 18),
+                  _LoadFailure(
+                    message: loadError,
+                    onRetry: () => media.refresh(bandId),
+                  ),
+                ] else if (loading) ...[
+                  const SizedBox(height: 18),
+                  const _LoadingMedia(),
+                ],
+                SectionBar(
+                  label: 'This is what we sound like',
+                  count: videos.length,
+                ),
+                Text(
+                  'The featured clip plays first on the public profile. Use each clip menu to feature, reorder, or remove it.',
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+                const SizedBox(height: 10),
+                if (!loading && videos.isEmpty)
+                  _EmptyMediaState(
+                    icon: Icons.videocam_outlined,
+                    title: 'NO VIDEOS YET',
+                    message:
+                        'Upload a music clip to give fans a clear first listen.',
+                    actionLabel: isAdmin ? 'UPLOAD A MUSIC CLIP' : null,
+                    onAction: isAdmin
+                        ? () => media.pickAndUploadVideo(bandId)
+                        : null,
+                  )
+                else
+                  for (final (index, video) in videos.indexed) ...[
+                    _VideoManageCard(
+                      item: video,
+                      position: index,
+                      total: videos.length,
+                      isAdmin: isAdmin,
+                      onManage: () => _showMediaActions(
+                        context,
+                        media: media,
+                        bandId: bandId,
+                        item: video,
+                        position: index,
+                        total: videos.length,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                  ],
+                SectionBar(label: 'Gallery photos', count: photos.length),
+                Text(
+                  'These photos appear in the public gallery in the order shown.',
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+                const SizedBox(height: 10),
+                if (!loading && photos.isEmpty)
+                  _EmptyMediaState(
+                    icon: Icons.photo_library_outlined,
+                    title: 'NO GALLERY PHOTOS YET',
+                    message:
+                        'Add show, rehearsal, or behind-the-scenes photos for fans.',
+                    actionLabel: isAdmin ? 'UPLOAD PHOTOS' : null,
+                    onAction: isAdmin
+                        ? () => media.pickAndUploadPhotos(bandId)
+                        : null,
+                  )
+                else
+                  _PhotoGrid(
+                    photos: photos,
+                    isAdmin: isAdmin,
+                    onManage: (photo, position) => _showMediaActions(
+                      context,
+                      media: media,
+                      bandId: bandId,
+                      item: photo,
+                      position: position,
+                      total: photos.length,
                     ),
                   ),
-                ],
               ],
             ),
           ),
@@ -206,44 +158,147 @@ class BandMediaScreen extends StatelessWidget {
   }
 }
 
-class _UploadSlot extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String sub;
-  final bool enabled;
-  final VoidCallback onTap;
+class _MediaHeader extends StatelessWidget {
+  const _MediaHeader({required this.itemCount, required this.onBack});
 
-  const _UploadSlot({
+  final int itemCount;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 12),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: context.epColors.border)),
+      ),
+      child: Row(
+        children: [
+          CircleIconButton(onTap: onBack),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'BAND MEDIA',
+              style: Theme.of(context).textTheme.epPageHeading,
+            ),
+          ),
+          const SizedBox(width: 8),
+          StatusPill(
+            label: '$itemCount ${itemCount == 1 ? 'item' : 'items'}',
+            tone: EpStatusPillTone.neutral,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UploadActions extends StatelessWidget {
+  const _UploadActions({
+    required this.enabled,
+    required this.onVideo,
+    required this.onPhotos,
+  });
+
+  final bool enabled;
+  final VoidCallback onVideo;
+  final VoidCallback onPhotos;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 330 || scale > 1.3;
+        final video = _UploadAction(
+          icon: Icons.videocam_outlined,
+          label: 'UPLOAD VIDEO',
+          detail: 'MP4 · 25 MB MAX',
+          enabled: enabled,
+          onTap: onVideo,
+        );
+        final photos = _UploadAction(
+          icon: Icons.add_photo_alternate_outlined,
+          label: 'UPLOAD PHOTOS',
+          detail: 'UP TO 10 · 8 MB EACH',
+          enabled: enabled,
+          onTap: onPhotos,
+        );
+        if (stacked) {
+          return Column(children: [video, const SizedBox(height: 9), photos]);
+        }
+        return Row(
+          children: [
+            Expanded(child: video),
+            const SizedBox(width: 9),
+            Expanded(child: photos),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _UploadAction extends StatelessWidget {
+  const _UploadAction({
     required this.icon,
     required this.label,
-    required this.sub,
+    required this.detail,
     required this.enabled,
     required this.onTap,
   });
 
+  final IconData icon;
+  final String label;
+  final String detail;
+  final bool enabled;
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
+    final color = enabled
+        ? context.epColors.contentPrimary
+        : context.epColors.contentDisabled;
     return EpCard(
-      variant: enabled ? EpCardVariant.standard : EpCardVariant.disabled,
+      variant: enabled ? EpCardVariant.raised : EpCardVariant.disabled,
       onTap: onTap,
-      padding: const EdgeInsets.symmetric(vertical: 22),
-      child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 15),
+      child: Row(
         children: [
-          Icon(icon, size: 23, color: enabled ? Ep.accent : Ep.contentDisabled),
-          const SizedBox(height: 7),
-          Text(
-            label,
-            style: epText(size: 12, weight: FontWeight.w900, letterSpacing: .7),
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: enabled
+                  ? context.epColors.selected
+                  : context.epColors.surfaceDisabled,
+              borderRadius: BorderRadius.circular(11),
+            ),
+            child: Icon(
+              icon,
+              color: enabled
+                  ? context.epColors.accent
+                  : context.epColors.contentDisabled,
+            ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            sub,
-            textAlign: TextAlign.center,
-            style: epText(
-              size: 9,
-              weight: FontWeight.w800,
-              letterSpacing: .5,
-              color: enabled ? Ep.contentSecondary : Ep.contentDisabled,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epLabel.copyWith(color: color),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  detail,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epMeta.copyWith(color: color),
+                ),
+              ],
             ),
           ),
         ],
@@ -253,34 +308,36 @@ class _UploadSlot extends StatelessWidget {
 }
 
 class _UploadTile extends StatelessWidget {
+  const _UploadTile({required this.upload, required this.media});
+
   final MediaUpload upload;
   final BandMediaController media;
-
-  const _UploadTile({required this.upload, required this.media});
 
   @override
   Widget build(BuildContext context) {
     final failed = upload.phase == MediaUploadPhase.failed;
     return EpCard(
-      borderColor: failed ? Ep.destructive : Ep.accent,
+      borderColor: failed
+          ? context.epColors.destructive
+          : context.epColors.accent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: BorderRadius.circular(8),
                 child: SizedBox(
-                  width: 52,
-                  height: 52,
+                  width: 54,
+                  height: 54,
                   child: upload.preview != null
                       ? Image.memory(upload.preview!, fit: BoxFit.cover)
                       : ColoredBox(
-                          color: Ep.surfaceRaised,
+                          color: context.epColors.surfaceRaised,
                           child: Center(
-                            child: const PlayTriangle(
+                            child: PlayTriangle(
                               size: 11,
-                              color: Ep.contentPrimary,
+                              color: context.epColors.contentPrimary,
                             ),
                           ),
                         ),
@@ -295,52 +352,46 @@ class _UploadTile extends StatelessWidget {
                       upload.filename,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: epText(size: 12.5, weight: FontWeight.w800),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.epBody.copyWith(fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(height: 4),
-                    if (failed)
-                      Text(
-                        upload.error ?? 'Upload failed.',
-                        style: epText(
-                          size: 10.5,
-                          color: Ep.destructive,
-                          height: 1.35,
-                        ),
-                      )
-                    else
-                      Text(
-                        _phaseLabel(upload.phase),
-                        style: epText(
-                          size: 10,
-                          weight: FontWeight.w900,
-                          letterSpacing: .8,
-                          color: Ep.accent,
-                        ),
-                      ),
+                    const SizedBox(height: 5),
+                    StatusPill(
+                      label: failed
+                          ? 'Upload failed'
+                          : _phaseLabel(upload.phase),
+                      tone: failed
+                          ? EpStatusPillTone.warning
+                          : EpStatusPillTone.selected,
+                    ),
                   ],
                 ),
               ),
             ],
           ),
           if (failed) ...[
-            const SizedBox(height: 11),
+            const SizedBox(height: 10),
+            Text(
+              upload.error ?? 'Upload failed.',
+              style: Theme.of(context).textTheme.epCaption.copyWith(
+                color: context.epColors.destructive,
+              ),
+            ),
+            const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextAction(
                   'RETRY',
-                  color: Ep.accent,
-                  size: 10.5,
-                  letterSpacing: .7,
+                  color: context.epColors.accent,
                   padding: _uploadActionPadding,
                   onTap: () => media.retryUpload(upload.id),
                 ),
                 const SizedBox(width: 18),
                 TextAction(
                   'DISCARD',
-                  color: Ep.contentSecondary,
-                  size: 10.5,
-                  letterSpacing: .7,
+                  color: context.epColors.contentSecondary,
                   padding: _uploadActionPadding,
                   onTap: () => media.dismissUpload(upload.id),
                 ),
@@ -349,428 +400,479 @@ class _UploadTile extends StatelessWidget {
           ] else ...[
             const SizedBox(height: 11),
             LinearProgressIndicator(
-              minHeight: 2,
-              color: Ep.brand,
-              backgroundColor: Ep.surfaceDisabled,
+              minHeight: 3,
+              color: context.epColors.accent,
+              backgroundColor: context.epColors.surfaceDisabled,
             ),
           ],
         ],
       ),
     );
   }
-
-  String _phaseLabel(MediaUploadPhase phase) => switch (phase) {
-    MediaUploadPhase.preparing => 'PREPARING…',
-    MediaUploadPhase.uploading => 'UPLOADING…',
-    MediaUploadPhase.saving => 'SAVING…',
-    MediaUploadPhase.done => 'DONE',
-    MediaUploadPhase.failed => 'UPLOAD FAILED',
-  };
 }
 
-class _HeroStrip extends StatelessWidget {
-  final List<BandMedia> photos;
-  final bool isAdmin;
-  final VoidCallback onTap;
-
-  const _HeroStrip({
-    required this.photos,
+class _VideoManageCard extends StatelessWidget {
+  const _VideoManageCard({
+    required this.item,
+    required this.position,
+    required this.total,
     required this.isAdmin,
-    required this.onTap,
+    required this.onManage,
   });
+
+  final BandMedia item;
+  final int position;
+  final int total;
+  final bool isAdmin;
+  final VoidCallback onManage;
 
   @override
   Widget build(BuildContext context) {
-    BandMedia? hero;
-    for (final photo in photos) {
-      if (photo.isHero) {
-        hero = photo;
-        break;
-      }
-    }
-
-    final child = hero == null
-        ? DashedBox(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+    final processing = item.url == null || item.url!.isEmpty;
+    final details = [
+      'CLIP ${position + 1} OF $total',
+      if (item.lenLabel.isNotEmpty) item.lenLabel,
+      if (item.viewsLabel.isNotEmpty) item.viewsLabel,
+    ];
+    return EpCard(
+      key: ValueKey('video-media-${item.id}'),
+      variant: item.pinned ? EpCardVariant.selected : EpCardVariant.raised,
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(9),
+            child: SizedBox(
+              width: 118,
+              height: 78,
+              child: Stack(
+                fit: StackFit.expand,
                 children: [
-                  Icon(
-                    Icons.add_photo_alternate_outlined,
-                    size: 25,
-                    color: Ep.contentDisabled,
+                  BandVideoThumbnail(
+                    media: item,
+                    fallback: ColoredBox(color: context.epColors.surfaceRaised),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'SET A BAND PHOTO',
-                    style: epText(
-                      size: 12,
-                      weight: FontWeight.w900,
-                      letterSpacing: .7,
+                  const DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.transparent, Colors.black54],
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 5),
-                  Text(
-                    'Replaces the initials tile everywhere.',
-                    style: epText(size: 10.5, color: Ep.contentDisabled),
+                  const Center(
+                    child: PlayTriangle(size: 11, color: Colors.white),
                   ),
                 ],
               ),
             ),
-          )
-        : ClipRRect(
-            borderRadius: BorderRadius.circular(13),
-            child: Stack(
-              fit: StackFit.expand,
+          ),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _PhotoSurface(item: hero, placeholderLabel: 'PHOTO SET'),
-                Positioned(
-                  right: 10,
-                  bottom: 10,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Ep.background.withValues(alpha: .82),
-                      border: Border.all(color: Ep.border),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: Text(
-                      'CHANGE',
-                      style: epText(
-                        size: 9.5,
-                        weight: FontWeight.w900,
-                        letterSpacing: .7,
-                      ),
-                    ),
-                  ),
+                Text(
+                  item.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epBody.copyWith(fontWeight: FontWeight.w800),
                 ),
-              ],
-            ),
-          );
-
-    return EpCard(
-      variant: isAdmin ? EpCardVariant.standard : EpCardVariant.disabled,
-      padding: EdgeInsets.zero,
-      onTap: onTap,
-      child: AspectRatio(aspectRatio: 16 / 9, child: child),
-    );
-  }
-}
-
-class _MediaRow extends StatelessWidget {
-  final BandMedia item;
-  final bool isAdmin;
-  final BandMediaController media;
-  final String bandId;
-
-  const _MediaRow({
-    required this.item,
-    required this.isAdmin,
-    required this.media,
-    required this.bandId,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return EpCard(
-      variant: item.pinned ? EpCardVariant.selected : EpCardVariant.standard,
-      padding: const EdgeInsets.all(9),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: SizedBox(
-                  width: 52,
-                  height: 48,
-                  child: item.isVideo
-                      ? Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            BandVideoThumbnail(
-                              media: item,
-                              fallback: const ColoredBox(
-                                color: Ep.surfaceRaised,
-                              ),
-                            ),
-                            Center(
-                              child: PlayTriangle(
-                                size: 9,
-                                color: Ep.contentPrimary,
-                              ),
-                            ),
-                            if (item.lenLabel.isNotEmpty)
-                              Positioned(
-                                right: 3,
-                                bottom: 3,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 3,
-                                    vertical: 1,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: .68),
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                  child: Text(
-                                    item.lenLabel,
-                                    style: epText(
-                                      size: 7.5,
-                                      weight: FontWeight.w900,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        )
-                      : _PhotoSurface(item: item),
-                ),
-              ),
-              const SizedBox(width: 9),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 5,
+                  runSpacing: 5,
                   children: [
-                    Text(
-                      item.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.epBody.copyWith(fontWeight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      item.isVideo ? 'MUSIC CLIP · ${item.lenLabel}' : 'PHOTO',
-                      style: Theme.of(context).textTheme.epCaption,
+                    if (item.pinned)
+                      const StatusPill(
+                        label: 'Featured first',
+                        tone: EpStatusPillTone.selected,
+                      ),
+                    StatusPill(
+                      label: processing ? 'Processing' : 'Ready',
+                      tone: processing
+                          ? EpStatusPillTone.warning
+                          : EpStatusPillTone.success,
                     ),
                   ],
                 ),
-              ),
-            ],
-          ),
-          if (isAdmin) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 4,
-              runSpacing: 4,
-              children: [
-                if (item.isVideo)
-                  _PinButton(
-                    pinned: item.pinned,
-                    onTap: () => media.pin(bandId, item.id),
-                  ),
-                _GlyphButton.arrow(
-                  glyph: '↑',
-                  tooltip: 'Move up',
-                  onTap: () => media.move(bandId, item.id, 'up'),
-                ),
-                _GlyphButton.arrow(
-                  glyph: '↓',
-                  tooltip: 'Move down',
-                  onTap: () => media.move(bandId, item.id, 'down'),
-                ),
-                _GlyphButton.delete(
-                  key: ValueKey('delete-${item.id}'),
-                  onTap: () => _showDeleteSheet(context, media, bandId, item),
+                const SizedBox(height: 6),
+                Text(
+                  details.join(' · '),
+                  style: Theme.of(context).textTheme.epMeta,
                 ),
               ],
             ),
-          ],
+          ),
+          if (isAdmin)
+            IconButton(
+              key: ValueKey('media-actions-${item.id}'),
+              tooltip: 'Manage ${item.title}',
+              onPressed: onManage,
+              icon: Icon(Icons.more_horiz),
+            ),
         ],
       ),
     );
   }
 }
 
-class _PinButton extends StatelessWidget {
-  final bool pinned;
-  final VoidCallback onTap;
+class _PhotoGrid extends StatelessWidget {
+  const _PhotoGrid({
+    required this.photos,
+    required this.isAdmin,
+    required this.onManage,
+  });
 
-  const _PinButton({required this.pinned, required this.onTap});
+  final List<BandMedia> photos;
+  final bool isAdmin;
+  final void Function(BandMedia photo, int position) onManage;
 
   @override
   Widget build(BuildContext context) {
-    return pinned
-        ? Semantics(
-            button: true,
-            enabled: false,
-            hint: 'This is the featured clip. Pin another clip to replace it.',
-            child: const FilledButton(onPressed: null, child: Text('PINNED ★')),
-          )
-        : OutlinedButton(onPressed: onTap, child: const Text('PIN'));
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth < 350 ? 2 : 3;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: photos.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            mainAxisSpacing: 9,
+            crossAxisSpacing: 9,
+            childAspectRatio: .78,
+          ),
+          itemBuilder: (context, index) => _PhotoManageTile(
+            item: photos[index],
+            position: index,
+            total: photos.length,
+            isAdmin: isAdmin,
+            onManage: () => onManage(photos[index], index),
+          ),
+        );
+      },
+    );
   }
 }
 
-/// Square icon-ish control in the admin row of a media tile: reorder arrows
-/// and the delete cross.
-class _GlyphButton extends StatelessWidget {
-  final String glyph;
-  final String tooltip;
-  final VoidCallback onTap;
-
-  const _GlyphButton.arrow({
-    required this.glyph,
-    required this.tooltip,
-    required this.onTap,
+class _PhotoManageTile extends StatelessWidget {
+  const _PhotoManageTile({
+    required this.item,
+    required this.position,
+    required this.total,
+    required this.isAdmin,
+    required this.onManage,
   });
 
-  const _GlyphButton.delete({super.key, required this.onTap})
-    : glyph = '\u2715',
-      tooltip = 'Delete';
+  final BandMedia item;
+  final int position;
+  final int total;
+  final bool isAdmin;
+  final VoidCallback onManage;
 
   @override
   Widget build(BuildContext context) {
-    return IconButton.outlined(
-      onPressed: onTap,
-      tooltip: tooltip,
-      icon: Text(
-        glyph,
-        style: Theme.of(context).textTheme.epLabel.copyWith(
-          color: tooltip == 'Delete' ? Ep.destructive : Ep.contentSecondary,
-        ),
+    final processing = item.url == null || item.url!.isEmpty;
+    return EpCard(
+      key: ValueKey('photo-media-${item.id}'),
+      variant: EpCardVariant.raised,
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(13),
+                  ),
+                  child: _PhotoSurface(
+                    item: item,
+                    placeholderLabel: 'PHOTO ${position + 1}',
+                  ),
+                ),
+                if (processing)
+                  const Positioned(
+                    left: 7,
+                    top: 7,
+                    child: StatusPill(
+                      label: 'Processing',
+                      tone: EpStatusPillTone.warning,
+                    ),
+                  ),
+                if (isAdmin)
+                  Positioned(
+                    right: 3,
+                    top: 3,
+                    child: IconButton.filled(
+                      key: ValueKey('media-actions-${item.id}'),
+                      tooltip: 'Manage ${item.title}',
+                      onPressed: onManage,
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.black.withValues(alpha: .72),
+                        foregroundColor: Colors.white,
+                      ),
+                      icon: Icon(Icons.more_horiz),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(9, 8, 9, 9),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.epCaption.copyWith(
+                    color: context.epColors.contentPrimary,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'PHOTO ${position + 1} OF $total',
+                  style: Theme.of(context).textTheme.epMeta,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _PhotoSurface extends StatelessWidget {
+  const _PhotoSurface({required this.item, this.placeholderLabel});
+
   final BandMedia item;
   final String? placeholderLabel;
-
-  const _PhotoSurface({required this.item, this.placeholderLabel});
 
   @override
   Widget build(BuildContext context) {
     final placeholder = ColoredBox(
-      color: Ep.surface,
-      child: placeholderLabel == null
-          ? const SizedBox.expand()
-          : Center(
-              child: Text(
+      color: context.epColors.surface,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.photo_outlined, color: context.epColors.contentDisabled),
+            if (placeholderLabel != null) ...[
+              const SizedBox(height: 6),
+              Text(
                 placeholderLabel!,
                 textAlign: TextAlign.center,
-                style: epText(
-                  size: 9.5,
-                  weight: FontWeight.w900,
-                  letterSpacing: .7,
-                  color: Ep.contentDisabled,
-                ),
+                style: Theme.of(context).textTheme.epMeta,
               ),
-            ),
+            ],
+          ],
+        ),
+      ),
     );
-    final url = item.url;
-    if (url == null) return placeholder;
-
-    return EpNetworkImage(url: url, fit: BoxFit.cover, fallback: placeholder);
+    return EpNetworkImage(
+      url: item.url,
+      fit: BoxFit.cover,
+      fallback: placeholder,
+    );
   }
 }
 
-class _MediaSheet extends StatelessWidget {
-  final String title;
-  final Widget child;
+class _EmptyMediaState extends StatelessWidget {
+  const _EmptyMediaState({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
 
-  const _MediaSheet({required this.title, required this.child});
+  final IconData icon;
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      decoration: const BoxDecoration(
-        color: Ep.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
+    return DashedBox(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(title.toUpperCase(), style: epDisplay(size: 15)),
-                ),
-                IconButton(
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
+          Icon(icon, color: context.epColors.contentDisabled),
+          const SizedBox(height: 10),
+          Text(title, style: Theme.of(context).textTheme.epSectionHeading),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+          if (actionLabel != null) ...[
+            const SizedBox(height: 12),
+            TextAction(
+              actionLabel!,
+              onTap: onAction,
+              color: context.epColors.accent,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-            child: child,
-          ),
+          ],
         ],
       ),
     );
   }
 }
 
-void _showHeroSheet(
-  BuildContext context,
-  BandMediaController media,
-  String bandId,
-) {
-  showEpSheet(
-    context,
-    (sheetContext) => _MediaSheet(
-      title: 'Choose band photo',
-      child: SizedBox(
-        height: math.min(MediaQuery.sizeOf(sheetContext).height * .58, 460),
-        child: Column(
-          children: [
-            Expanded(
-              child: GridView.builder(
-                itemCount: media.photosFor(bandId).length,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                ),
-                itemBuilder: (context, index) {
-                  final photo = media.photosFor(bandId)[index];
-                  return Material(
-                    color: Ep.surface,
-                    borderRadius: BorderRadius.circular(9),
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: () async {
-                        await media.setHero(bandId, photo.id);
-                        if (!context.mounted) return;
-                        Navigator.pop(context);
-                      },
-                      child: _PhotoSurface(
-                        item: photo,
-                        placeholderLabel: photo.title,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 14),
-            EpButton(
-              'USE INITIALS INSTEAD',
-              kind: EpButtonKind.ghost,
-              onTap: () async {
-                await media.clearHero(bandId);
-                if (!sheetContext.mounted) return;
-                Navigator.pop(sheetContext);
-              },
-            ),
-          ],
-        ),
+class _LoadingMedia extends StatelessWidget {
+  const _LoadingMedia();
+
+  @override
+  Widget build(BuildContext context) {
+    return EpCard(
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 12),
+          Text('LOADING MEDIA…', style: Theme.of(context).textTheme.epLabel),
+        ],
       ),
+    );
+  }
+}
+
+class _LoadFailure extends StatelessWidget {
+  const _LoadFailure({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return EpCard(
+      borderColor: context.epColors.warning,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const StatusPill(
+            label: 'Media unavailable',
+            tone: EpStatusPillTone.warning,
+          ),
+          const SizedBox(height: 9),
+          Text(message, style: Theme.of(context).textTheme.epCaption),
+          const SizedBox(height: 10),
+          TextAction('RETRY', onTap: onRetry, color: context.epColors.accent),
+        ],
+      ),
+    );
+  }
+}
+
+void _showMediaActions(
+  BuildContext context, {
+  required BandMediaController media,
+  required String bandId,
+  required BandMedia item,
+  required int position,
+  required int total,
+}) {
+  final kindLabel = item.isVideo ? 'video' : 'photo';
+  unawaited(
+    showEpActionSheet(
+      context,
+      header: item.title,
+      items: [
+        if (item.isVideo && !item.pinned)
+          EpActionSheetItem(
+            label: 'Feature first',
+            icon: Icons.push_pin_outlined,
+            onPressed: () => unawaited(media.pin(bandId, item.id)),
+          ),
+        if (position > 0)
+          EpActionSheetItem(
+            label: 'Move earlier',
+            icon: Icons.arrow_upward,
+            onPressed: () =>
+                unawaited(media.moveWithinKind(bandId, item.id, 'up')),
+          ),
+        if (position < total - 1)
+          EpActionSheetItem(
+            label: 'Move later',
+            icon: Icons.arrow_downward,
+            onPressed: () =>
+                unawaited(media.moveWithinKind(bandId, item.id, 'down')),
+          ),
+        EpActionSheetItem(
+          label: 'Remove $kindLabel…',
+          icon: Icons.delete_outline,
+          destructive: true,
+          onPressed: () => _showDeleteSheet(context, media, bandId, item),
+        ),
+      ],
     ),
   );
+}
+
+class _ConfirmRemoveSheet extends StatelessWidget {
+  const _ConfirmRemoveSheet({required this.item, required this.onDelete});
+
+  final BandMedia item;
+  final Future<void> Function() onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return EpSheetShell(
+      padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+      backgroundColor: context.epColors.raised,
+      borderColor: context.epColors.border,
+      topRadius: 16,
+      handleColor: context.epColors.mute,
+      handleBottomSpacing: 14,
+      mainAxisSize: MainAxisSize.min,
+      header: Text(
+        'REMOVE ${item.isVideo ? 'VIDEO' : 'PHOTO'}?',
+        style: Theme.of(context).textTheme.epSectionHeading,
+      ),
+      children: [
+        const SizedBox(height: 8),
+        Text(
+          item.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+        const SizedBox(height: 16),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: context.epColors.destructive,
+          ),
+          onPressed: () async {
+            await onDelete();
+            if (!context.mounted) return;
+            Navigator.pop(context);
+          },
+          child: Text('DELETE'),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text('KEEP'),
+        ),
+      ],
+    );
+  }
 }
 
 void _showDeleteSheet(
@@ -781,36 +883,17 @@ void _showDeleteSheet(
 ) {
   showEpSheet(
     context,
-    (sheetContext) => _MediaSheet(
-      title: 'Delete media?',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            item.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: epText(size: 12, color: Ep.contentSecondary, height: 1.4),
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            style: OutlinedButton.styleFrom(foregroundColor: Ep.destructive),
-            onPressed: () async {
-              await media.remove(bandId, item.id);
-              if (!sheetContext.mounted) return;
-              Navigator.pop(sheetContext);
-            },
-            child: const Text('DELETE'),
-          ),
-          const SizedBox(height: 9),
-          EpButton(
-            'KEEP',
-            kind: EpButtonKind.ghost,
-            onTap: () => Navigator.pop(sheetContext),
-          ),
-        ],
-      ),
+    (_) => _ConfirmRemoveSheet(
+      item: item,
+      onDelete: () => media.remove(bandId, item.id),
     ),
   );
 }
+
+String _phaseLabel(MediaUploadPhase phase) => switch (phase) {
+  MediaUploadPhase.preparing => 'Preparing',
+  MediaUploadPhase.uploading => 'Uploading',
+  MediaUploadPhase.saving => 'Saving',
+  MediaUploadPhase.done => 'Done',
+  MediaUploadPhase.failed => 'Upload failed',
+};

@@ -18,7 +18,8 @@
       fi
     fi
     flutter build web --release \
-      --dart-define-from-file="config/${EARPLUG_ENV:-dev}.json"
+      --dart-define-from-file="config/${EARPLUG_ENV:-dev}.json" \
+      --dart-define=STADIA_MAPS_API_KEY="${STADIA_MAPS_API_KEY:-}"
   """
 
 [build.environment]
@@ -36,12 +37,13 @@
   # Every key here is public by design, so finding its value in the repo or the
   # built main.dart.js is expected: browsers connect straight to CONVEX_URL,
   # Clerk publishable keys are client-side credentials, CONVEX_DEPLOYMENT is the
-  # deployment name already visible inside CONVEX_URL, and the Clerk issuer
-  # domain is decodable from the publishable key. Scoped to these keys on
+  # deployment name already visible inside CONVEX_URL, the Clerk issuer domain
+  # is decodable from the publishable key, and the optional Stadia key is a
+  # scoped client credential for preview/branch builds. Scoped to these keys on
   # purpose -- do NOT switch this to SECRETS_SCAN_OMIT_PATHS = "build/web/**",
   # which would stop scanning the entire published artifact and hide a real
   # leak (notably CLERK_SECRET_KEY, which the Clerk extension also injects).
-  SECRETS_SCAN_OMIT_KEYS = "CONVEX_URL,CLERK_PUBLISHABLE_KEY,CONVEX_DEPLOYMENT,CLERK_JWT_ISSUER_DOMAIN"
+  SECRETS_SCAN_OMIT_KEYS = "CONVEX_URL,CLERK_PUBLISHABLE_KEY,CONVEX_DEPLOYMENT,CLERK_JWT_ISSUER_DOMAIN,STADIA_MAPS_API_KEY"
 
 [context.production.environment]
   EARPLUG_ENV = "prod"

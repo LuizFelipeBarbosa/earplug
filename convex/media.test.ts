@@ -284,7 +284,7 @@ describe("media mutations", () => {
     ).rejects.toThrow("Not an admin");
   });
 
-  test("pinMedia, moveMedia, and generateUploadUrl reject members and unauthenticated callers", async () => {
+  test("media actions reject members and unauthenticated callers", async () => {
     const { t, asAdmin, bandId } = await setupBand();
     const storageId = await t.run(async (ctx) =>
       ctx.storage.store(new Blob([new Uint8Array([1, 2, 3])])),
@@ -322,6 +322,12 @@ describe("media mutations", () => {
       }),
     ).rejects.toThrow("Not an admin");
     await expect(
+      asMember.mutation(api.media.moveWithinKind, {
+        mediaId,
+        direction: "earlier",
+      }),
+    ).rejects.toThrow("Not an admin");
+    await expect(
       asMember.mutation(api.media.generateUploadUrl, { bandId }),
     ).rejects.toThrow("Not an admin");
 
@@ -330,6 +336,12 @@ describe("media mutations", () => {
     );
     await expect(
       t.mutation(api.media.moveMedia, { mediaId, direction: "up" }),
+    ).rejects.toThrow("Not signed in");
+    await expect(
+      t.mutation(api.media.moveWithinKind, {
+        mediaId,
+        direction: "earlier",
+      }),
     ).rejects.toThrow("Not signed in");
     await expect(
       t.mutation(api.media.generateUploadUrl, { bandId }),
@@ -576,6 +588,100 @@ describe("media mutations", () => {
       ids.lastPhoto,
     ]);
     expect(media.map((row) => row.order)).toEqual([0, 1, 2]);
+  });
+
+  test("moveWithinKind swaps same-kind neighbors and no-ops at the edge", async () => {
+    const { t, asAdmin, bandId } = await setupBand();
+    const [photoStorage1, videoStorage1, photoStorage2, videoStorage2] =
+      await t.run(async (ctx) => [
+        await ctx.storage.store(new Blob([new Uint8Array([1])])),
+        await ctx.storage.store(new Blob([new Uint8Array([2])])),
+        await ctx.storage.store(new Blob([new Uint8Array([3])])),
+        await ctx.storage.store(new Blob([new Uint8Array([4])])),
+      ]);
+    const ids = await t.run(async (ctx) => ({
+      firstPhoto: await ctx.db.insert("bandMedia", {
+        bandId,
+        kind: "photo",
+        storageId: photoStorage1,
+        title: "First photo",
+        order: 0,
+        pinned: false,
+      }),
+      firstVideo: await ctx.db.insert("bandMedia", {
+        bandId,
+        kind: "video",
+        storageId: videoStorage1,
+        title: "First video",
+        order: 1,
+        pinned: true,
+      }),
+      secondPhoto: await ctx.db.insert("bandMedia", {
+        bandId,
+        kind: "photo",
+        storageId: photoStorage2,
+        title: "Second photo",
+        order: 2,
+        pinned: false,
+      }),
+      secondVideo: await ctx.db.insert("bandMedia", {
+        bandId,
+        kind: "video",
+        storageId: videoStorage2,
+        title: "Second video",
+        order: 3,
+        pinned: false,
+      }),
+    }));
+
+    await asAdmin.mutation(api.media.moveWithinKind, {
+      mediaId: ids.secondPhoto,
+      direction: "earlier",
+    });
+    let orders = await t.run(async (ctx) => ({
+      firstPhoto: (await ctx.db.get(ids.firstPhoto))?.order,
+      firstVideo: (await ctx.db.get(ids.firstVideo))?.order,
+      secondPhoto: (await ctx.db.get(ids.secondPhoto))?.order,
+      secondVideo: (await ctx.db.get(ids.secondVideo))?.order,
+    }));
+    expect(orders).toEqual({
+      firstPhoto: 2,
+      firstVideo: 1,
+      secondPhoto: 0,
+      secondVideo: 3,
+    });
+
+    await asAdmin.mutation(api.media.moveWithinKind, {
+      mediaId: ids.secondPhoto,
+      direction: "later",
+    });
+    orders = await t.run(async (ctx) => ({
+      firstPhoto: (await ctx.db.get(ids.firstPhoto))?.order,
+      firstVideo: (await ctx.db.get(ids.firstVideo))?.order,
+      secondPhoto: (await ctx.db.get(ids.secondPhoto))?.order,
+      secondVideo: (await ctx.db.get(ids.secondVideo))?.order,
+    }));
+    expect(orders).toEqual({
+      firstPhoto: 0,
+      firstVideo: 1,
+      secondPhoto: 2,
+      secondVideo: 3,
+    });
+
+    await expect(
+      asAdmin.mutation(api.media.moveWithinKind, {
+        mediaId: ids.firstPhoto,
+        direction: "earlier",
+      }),
+    ).resolves.toBeNull();
+    expect(
+      await t.run(async (ctx) => ({
+        firstPhoto: (await ctx.db.get(ids.firstPhoto))?.order,
+        firstVideo: (await ctx.db.get(ids.firstVideo))?.order,
+        secondPhoto: (await ctx.db.get(ids.secondPhoto))?.order,
+        secondVideo: (await ctx.db.get(ids.secondVideo))?.order,
+      })),
+    ).toEqual(orders);
   });
 
   test("deleteMedia preserves the blob and repacks the remaining media", async () => {
@@ -900,6 +1006,49 @@ describe("media reads and validation", () => {
     const afterDelete = await t.query(api.media.forBand, { bandId });
     expect(afterDelete[1].url).toBeNull();
     expect(afterDelete.map((row) => row.isHero)).toEqual([true, false, false]);
+  });
+
+  test("forBand keeps legacy isHero aligned with avatar, not banner", async () => {
+    const { t, asAdmin, bandId } = await setupBand();
+    const [avatarStorageId, bannerStorageId] = await t.run(async (ctx) => [
+      await ctx.storage.store(new Blob([new Uint8Array([1])])),
+      await ctx.storage.store(new Blob([new Uint8Array([2])])),
+    ]);
+    const avatar = await asAdmin.mutation(api.media.addMedia, {
+      bandId,
+      kind: "photo",
+      storageId: avatarStorageId,
+      title: "Avatar",
+    });
+    const banner = await asAdmin.mutation(api.media.addMedia, {
+      bandId,
+      kind: "photo",
+      storageId: bannerStorageId,
+      title: "Banner",
+    });
+    await asAdmin.mutation(api.bands.setBandAvatar, {
+      bandId,
+      mediaId: avatar.mediaId,
+    });
+    await asAdmin.mutation(api.bands.setBandBanner, {
+      bandId,
+      mediaId: banner.mediaId,
+    });
+
+    expect(await t.query(api.media.forBand, { bandId })).toMatchObject([
+      {
+        _id: avatar.mediaId,
+        isHero: true,
+        isAvatar: true,
+        isBanner: false,
+      },
+      {
+        _id: banner.mediaId,
+        isHero: false,
+        isAvatar: false,
+        isBanner: true,
+      },
+    ]);
   });
 });
 

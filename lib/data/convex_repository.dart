@@ -121,6 +121,14 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<void> moveMediaWithinKind(String mediaId, String direction) async {
+    await _convexService.mutation('media:moveWithinKind', {
+      'mediaId': mediaId,
+      'direction': direction,
+    });
+  }
+
+  @override
   Future<void> setBandPhoto({
     required String bandId,
     required String mediaId,
@@ -134,6 +142,38 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<void> clearBandPhoto(String bandId) async {
     await _convexService.mutation('bands:clearBandPhoto', {'bandId': bandId});
+  }
+
+  @override
+  Future<void> setBandAvatar({
+    required String bandId,
+    required String mediaId,
+  }) async {
+    await _convexService.mutation('bands:setBandAvatar', {
+      'bandId': bandId,
+      'mediaId': mediaId,
+    });
+  }
+
+  @override
+  Future<void> clearBandAvatar(String bandId) async {
+    await _convexService.mutation('bands:clearBandAvatar', {'bandId': bandId});
+  }
+
+  @override
+  Future<void> setBandBanner({
+    required String bandId,
+    required String mediaId,
+  }) async {
+    await _convexService.mutation('bands:setBandBanner', {
+      'bandId': bandId,
+      'mediaId': mediaId,
+    });
+  }
+
+  @override
+  Future<void> clearBandBanner(String bandId) async {
+    await _convexService.mutation('bands:clearBandBanner', {'bandId': bandId});
   }
 
   @override
@@ -244,8 +284,11 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<void> toggleRsvp(String gigId) async {
-    await _convexService.mutation('interactions:toggleRsvp', {'gigId': gigId});
+  Future<void> toggleRsvp(String gigId, {bool? on}) async {
+    await _convexService.mutation('interactions:toggleRsvp', {
+      'gigId': gigId,
+      'on': ?on,
+    });
   }
 
   @override

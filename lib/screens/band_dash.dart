@@ -7,6 +7,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/sheets.dart';
+import 'door_mode.dart';
 
 class BandDashScreen extends StatelessWidget {
   const BandDashScreen({super.key});
@@ -22,6 +23,10 @@ class BandDashScreen extends StatelessWidget {
     final media = context.watch<BandMediaController>();
     final clips = media.videosFor(band.id);
     final isAdmin = app.isAdminOf(band.id);
+    final readiness = isAdmin ? app.discoveryReadinessFor(band.id) : null;
+    final doorLaunch = next == null || !isAdmin
+        ? null
+        : _doorLaunchFor(context, app, next, readiness);
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -57,10 +62,10 @@ class BandDashScreen extends StatelessWidget {
                           Text(
                             'MANAGING · ${app.roleFor(band.id).toUpperCase()}',
                             style: epText(
-                              size: 10,
+                              size: 11,
                               weight: FontWeight.w800,
                               letterSpacing: 1,
-                              color: Ep.accent,
+                              color: context.epColors.accent,
                             ),
                           ),
                           if (band.profileComplete) ...[
@@ -78,37 +83,35 @@ class BandDashScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            OutlinedButton(
-              onPressed: app.toFanView,
-              child: const Text('DISCOVER'),
-            ),
+            OutlinedButton(onPressed: app.toFanView, child: Text('DISCOVER')),
           ],
         ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            if (isAdmin) ...[
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: app.openBandEditor,
-                  child: const Text('Edit profile'),
-                ),
-              ),
-              const SizedBox(width: 8),
-            ],
-            Expanded(
-              child: OutlinedButton(
-                onPressed: app.previewPublicProfile,
-                child: const Text('Preview public profile'),
-              ),
+        if (next != null) ...[
+          const SizedBox(height: 14),
+          VoltStrip(
+            kicker: 'NEXT UP · ${next.dateShort}',
+            title: next.title,
+            meta:
+                '${app.venue(next.venueId).name} · ${next.time} · ${app.rsvpCount(next)} RSVPs · counting live',
+            actionLabel: doorLaunch == null ? null : 'DOOR MODE',
+            onAction: doorLaunch == null
+                ? null
+                : () => showDoorMode(context, doorLaunch),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              key: const Key('band-next-public-gig'),
+              onPressed: () => app.openGig(next.id),
+              child: Text('VIEW PUBLIC GIG →'),
             ),
-          ],
-        ),
+          ),
+        ],
         const SizedBox(height: 14),
         Row(
           children: [
             EpStatCard(
-              label: 'FOLLOWERS',
+              label: 'FANS',
               value: band.followersLabel,
               caption: band.followers == 0
                   ? 'just the band so far'
@@ -134,27 +137,72 @@ class BandDashScreen extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        _DashboardActions(
+        const SizedBox(height: 20),
+        const SectionBar(label: 'CONSOLE'),
+        const SizedBox(height: 10),
+        _CommandGrid(
           openMedia: app.openBandMedia,
           publishGig: isAdmin ? app.startGigCreate : null,
+          editProfile: isAdmin ? app.openBandEditor : null,
           openAnalytics: () => app.resetTo(Screen.analytics),
         ),
-        if (next != null) ...[
-          const SizedBox(height: 14),
-          const SectionLabel('NEXT UP', blue: true),
-          const SizedBox(height: 8),
-          _NextUpCard(gig: next, app: app),
-        ],
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const Key('band-public-profile'),
+            onPressed: app.previewPublicProfile,
+            child: Text(
+              isAdmin ? 'PREVIEW PUBLIC PROFILE →' : 'VIEW PUBLIC PROFILE →',
+            ),
+          ),
+        ),
         if (isAdmin) ...[
           const SizedBox(height: 14),
-          _SetupChecklist(app: app, bandId: band.id),
-          const SizedBox(height: 14),
           _DiscoveryReadinessCard(app: app, bandId: band.id),
+          const SizedBox(height: 20),
+          _SetupChecklist(app: app, bandId: band.id),
         ],
       ],
     );
   }
+}
+
+DoorModeLaunch? _doorLaunchFor(
+  BuildContext context,
+  AppState app,
+  Gig next,
+  BandDiscoveryReadiness? readiness,
+) {
+  if (next.tix != Ticketing.rsvp) return null;
+
+  String? projectId;
+  final readinessShows = [readiness?.relevantShow, readiness?.nextEligibleShow];
+  for (final show in readinessShows) {
+    if (show?.gigId == next.id && show!.projectId.trim().isNotEmpty) {
+      projectId = show.projectId;
+      break;
+    }
+  }
+  if (projectId == null) {
+    for (final project in app.managedGigProjects) {
+      if (project.publicGigId == next.id && project.id.trim().isNotEmpty) {
+        projectId = project.id;
+        break;
+      }
+    }
+  }
+  if (projectId == null) return null;
+
+  final doorsTime = next.doorsAt == null
+      ? next.time.split('/').first.trim()
+      : TimeOfDay.fromDateTime(next.doorsAt!.toLocal()).format(context);
+  return DoorModeLaunch(
+    projectId: projectId,
+    gigTitle: next.title,
+    venueName: app.venue(next.venueId).name,
+    doorsTime: doorsTime,
+  );
 }
 
 class _DiscoveryReadinessCard extends StatelessWidget {
@@ -170,7 +218,7 @@ class _DiscoveryReadinessCard extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const SectionLabel('DISCOVERY READINESS', blue: true),
+          const SectionBar(label: 'DISCOVERY READINESS'),
           const SizedBox(height: 8),
           if (app.discoveryReadinessLoadingFor(bandId))
             const Center(child: CircularProgressIndicator())
@@ -179,7 +227,7 @@ class _DiscoveryReadinessCard extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: TextButton(
                 onPressed: () => app.refreshBandDiscoveryReadiness(bandId),
-                child: const Text('Retry discovery readiness'),
+                child: Text('Retry discovery readiness'),
               ),
             ),
         ],
@@ -244,9 +292,7 @@ class _DiscoveryReadinessCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: SectionLabel('DISCOVERY READINESS', blue: true),
-              ),
+              const Expanded(child: SectionBar(label: 'DISCOVERY READINESS')),
               Text(
                 '${readiness.completedCount} of 6 complete',
                 style: Theme.of(context).textTheme.epCaption,
@@ -258,6 +304,8 @@ class _DiscoveryReadinessCard extends StatelessWidget {
             'Complete listings can move ahead within nearby same-day results.',
             style: Theme.of(context).textTheme.epCaption,
           ),
+          const SizedBox(height: 10),
+          _ReadinessSegments(steps: readiness.steps),
           const SizedBox(height: 6),
           for (final task in tasks) _DiscoveryTaskRow(task: task),
           if (show != null && window != null) ...[
@@ -272,7 +320,9 @@ class _DiscoveryReadinessCard extends StatelessWidget {
               '– ${Gig.dateShortFor(window.closesAt.millisecondsSinceEpoch)}'
               '${window.active ? ' · ACTIVE NOW' : ''}',
               style: Theme.of(context).textTheme.epCaption.copyWith(
-                color: window.active ? Ep.success : Ep.contentSecondary,
+                color: window.active
+                    ? context.epColors.success
+                    : context.epColors.contentSecondary,
               ),
             ),
           ],
@@ -298,6 +348,38 @@ class _DiscoveryTask {
   final VoidCallback onTap;
 }
 
+class _ReadinessSegments extends StatelessWidget {
+  const _ReadinessSegments({required this.steps});
+
+  final List<bool> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label:
+          '${steps.where((step) => step).length} of 6 discovery checks complete',
+      excludeSemantics: true,
+      child: Row(
+        children: [
+          for (var index = 0; index < steps.length; index++) ...[
+            Expanded(
+              child: Container(
+                key: ValueKey('discovery-segment-$index'),
+                height: 6,
+                decoration: BoxDecoration(
+                  color: steps[index] ? Ep.brand : context.epColors.raised,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            if (index < steps.length - 1) const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _DiscoveryTaskRow extends StatelessWidget {
   const _DiscoveryTaskRow({required this.task});
 
@@ -308,25 +390,32 @@ class _DiscoveryTaskRow extends StatelessWidget {
     return InkWell(
       key: ValueKey('band-discovery-${task.id}'),
       onTap: task.onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
-        child: Row(
-          children: [
-            Icon(
-              task.complete ? Icons.check_circle : Icons.radio_button_unchecked,
-              size: 16,
-              color: task.complete ? Ep.success : Ep.accent,
-            ),
-            const SizedBox(width: 9),
-            Expanded(
-              child: Text(
-                task.label,
-                style: Theme.of(context).textTheme.epBody,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 9),
+          child: Row(
+            children: [
+              Icon(
+                task.complete
+                    ? Icons.check_circle
+                    : Icons.radio_button_unchecked,
+                size: 16,
+                color: task.complete
+                    ? context.epColors.success
+                    : context.epColors.accent,
               ),
-            ),
-            const SizedBox(width: 6),
-            Text(task.action, style: Theme.of(context).textTheme.epCaption),
-          ],
+              const SizedBox(width: 9),
+              Expanded(
+                child: Text(
+                  task.label,
+                  style: Theme.of(context).textTheme.epBody,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(task.action, style: Theme.of(context).textTheme.epCaption),
+            ],
+          ),
         ),
       ),
     );
@@ -390,10 +479,11 @@ class _SetupChecklist extends StatelessWidget {
           ];
 
     return Column(
+      key: const Key('band-setup-checklist'),
       children: [
         Row(
           children: [
-            const Expanded(child: SectionLabel('SETUP CHECKLIST')),
+            const Expanded(child: SectionBar(label: 'SETUP CHECKLIST')),
             const SizedBox(width: 8),
             if (status != null)
               Text(
@@ -412,7 +502,7 @@ class _SetupChecklist extends StatelessWidget {
                     alignment: Alignment.centerLeft,
                     child: TextButton(
                       onPressed: () => app.refreshBandSetupStatus(bandId),
-                      child: const Text('Retry setup checklist'),
+                      child: Text('Retry setup checklist'),
                     ),
                   ),
           )
@@ -450,9 +540,10 @@ class _BandTaskRow extends StatelessWidget {
         key: ValueKey('band-setup-${task.id}'),
         onTap: task.onTap,
         child: Container(
+          constraints: const BoxConstraints(minHeight: 48),
           padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: Ep.border)),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: context.epColors.border)),
           ),
           child: Row(
             children: [
@@ -461,7 +552,9 @@ class _BandTaskRow extends StatelessWidget {
                     ? Icons.check_circle
                     : Icons.radio_button_unchecked,
                 size: 16,
-                color: task.complete ? Ep.success : Ep.accent,
+                color: task.complete
+                    ? context.epColors.success
+                    : context.epColors.accent,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -470,7 +563,10 @@ class _BandTaskRow extends StatelessWidget {
                   style: Theme.of(context).textTheme.epBody,
                 ),
               ),
-              const Icon(Icons.chevron_right, color: Ep.contentSecondary),
+              Icon(
+                Icons.chevron_right,
+                color: context.epColors.contentSecondary,
+              ),
             ],
           ),
         ),
@@ -479,118 +575,111 @@ class _BandTaskRow extends StatelessWidget {
   }
 }
 
-class _ActionButton extends StatelessWidget {
-  final String label;
-  final bool filled;
-  final VoidCallback onTap;
-
-  const _ActionButton({
-    required this.label,
-    this.filled = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return filled
-        ? FilledButton(onPressed: onTap, child: Text(label))
-        : OutlinedButton(onPressed: onTap, child: Text(label));
-  }
-}
-
-class _DashboardActions extends StatelessWidget {
+class _CommandGrid extends StatelessWidget {
   final VoidCallback openMedia;
   final VoidCallback? publishGig;
+  final VoidCallback? editProfile;
   final VoidCallback openAnalytics;
 
-  const _DashboardActions({
+  const _CommandGrid({
     required this.openMedia,
     required this.publishGig,
+    required this.editProfile,
     required this.openAnalytics,
   });
 
   @override
   Widget build(BuildContext context) {
     final actions = [
-      _ActionButton(label: '▶ ADD MEDIA', onTap: openMedia),
       if (publishGig != null)
-        _ActionButton(label: '+ PUBLISH GIG', filled: true, onTap: publishGig!),
-      _ActionButton(label: '▦ ANALYTICS', onTap: openAnalytics),
+        _Command(
+          label: 'PUBLISH GIG',
+          icon: Icons.add,
+          onTap: publishGig!,
+          primary: true,
+        ),
+      _Command(label: 'ADD MEDIA', icon: Icons.play_arrow, onTap: openMedia),
+      _Command(label: 'ANALYTICS', icon: Icons.bar_chart, onTap: openAnalytics),
+      if (editProfile != null)
+        _Command(label: 'EDIT PROFILE', icon: Icons.edit, onTap: editProfile!),
     ];
 
-    if (MediaQuery.textScalerOf(context).scale(1) > 1.25) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var index = 0; index < actions.length; index++) ...[
-            actions[index],
-            if (index < actions.length - 1) const SizedBox(height: 8),
-          ],
-        ],
-      );
-    }
-
-    return Row(
-      children: [
-        for (var index = 0; index < actions.length; index++) ...[
-          Expanded(child: actions[index]),
-          if (index < actions.length - 1) const SizedBox(width: 8),
-        ],
-      ],
+    final singleColumn =
+        MediaQuery.sizeOf(context).width < 340 ||
+        MediaQuery.textScalerOf(context).scale(1) > 1.35;
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: singleColumn ? 1 : 2,
+        childAspectRatio: singleColumn ? 4.5 : 2.35,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
+      itemCount: actions.length,
+      itemBuilder: (_, index) => _CommandTile(command: actions[index]),
     );
   }
 }
 
-class _NextUpCard extends StatelessWidget {
-  final Gig gig;
-  final AppState app;
+class _Command {
+  const _Command({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    this.primary = false,
+  });
 
-  const _NextUpCard({required this.gig, required this.app});
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool primary;
+}
+
+class _CommandTile extends StatelessWidget {
+  const _CommandTile({required this.command});
+
+  final _Command command;
 
   @override
   Widget build(BuildContext context) {
-    return EpCard(
-      padding: const EdgeInsets.all(12),
-      radius: 13,
-      onTap: () => app.openGig(gig.id),
-      child: Row(
-        children: [
-          GigFlyer(
-            gig,
-            app.flyer(gig.flyKey),
-            width: 46,
-            height: 60,
-            radius: 5,
-            shadow: false,
+    final foreground = command.primary ? Colors.white : context.epColors.ink;
+    return Semantics(
+      button: true,
+      label: command.label,
+      excludeSemantics: true,
+      child: Material(
+        color: command.primary ? Ep.brand : context.epColors.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: command.primary ? Ep.brand : context.epColors.border,
           ),
-          const SizedBox(width: 12),
-          Expanded(
+        ),
+        child: InkWell(
+          key: ValueKey(
+            'band-command-${command.label.toLowerCase().replaceAll(' ', '-')}',
+          ),
+          onTap: command.onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
             child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Icon(command.icon, color: foreground, size: 22),
+                const SizedBox(height: 7),
                 Text(
-                  gig.title.toUpperCase(),
-                  style: epText(size: 13.5, weight: FontWeight.w800),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${gig.dateShort} · ${app.venue(gig.venueId).name}',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${app.rsvpCount(gig)} RSVPs · counting live',
-                  style: epText(
-                    size: 11,
-                    weight: FontWeight.w800,
-                    color: Ep.accent,
-                  ),
+                  command.label,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epLabel.copyWith(color: foreground),
                 ),
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, color: Ep.contentSecondary),
-        ],
+        ),
       ),
     );
   }

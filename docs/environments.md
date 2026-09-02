@@ -54,8 +54,10 @@ look for:
 ```sh
 flutter run                        --dart-define-from-file=config/dev.json
 flutter build web       --release  --dart-define-from-file=config/prod.json
-flutter build ipa       --release  --dart-define-from-file=config/prod.json
-flutter build appbundle --release  --dart-define-from-file=config/prod.json
+flutter build ipa       --release  --dart-define-from-file=config/prod.json \
+  --dart-define=STADIA_MAPS_API_KEY="$STADIA_MAPS_API_KEY"
+flutter build appbundle --release  --dart-define-from-file=config/prod.json \
+  --dart-define=STADIA_MAPS_API_KEY="$STADIA_MAPS_API_KEY"
 ```
 
 Deploy and verify the production backend before building a client that calls
@@ -81,7 +83,35 @@ backend separately before triggering the production build; Netlify then uses
 the already-deployed backend. Development builds do not deploy and can be
 checked against the shared development deployment manually with
 `npm run check:release-contract -- dev`. `EARPLUG_ENV` remains the only Netlify
-environment variable consumed by the web client itself.
+environment selector consumed by the web client itself. Netlify intentionally
+forwards the optional `STADIA_MAPS_API_KEY` Dart define, baking it into preview
+and production web bundles. Netlify supplies the same scoped key to Production,
+Deploy Previews and Branch Deploys; every hosted origin that uses it must be
+allowed by the Stadia property. Local web development on `localhost` or
+`127.0.0.1` is intentionally keyless. The native commands above likewise bake
+a scoped key into the shipped bundle; omitting it leaves the app usable and
+gives each map a recoverable configuration error.
+
+## Stadia Maps authentication and caching
+
+The client reads `STADIA_MAPS_API_KEY` only as a compile-time Dart define. Any
+value passed via `--dart-define` is extractable from the shipped bundle, so this
+key is not a secret in the credential sense. It is a scoped, revocable,
+monitored client credential comparable to `CLERK_PUBLISHABLE_KEY`; true secrets
+such as `CLERK_SECRET_KEY` and `CLERK_WEBHOOK_SECRET` never reach client code.
+Use a scoped and rotatable client key for hosted web builds and a separately
+scoped key for native releases. Never put a real value in `.env.example`,
+`config/*.json`, or source control.
+
+Because the key itself provides no meaningful confidentiality, it **MUST** be
+domain/referrer-restricted in the Stadia dashboard for every hosted origin
+allowed to use it, in addition to being scoped and rotatable. Register
+`earplug.dev` in the Stadia property before production release. Domain and
+referrer restrictions rely on browser `Origin` and `Referer` headers; verify
+those headers on the Netlify preview before promoting the release. The app
+caches only visited vector tiles, capped at 50 MB with a seven-day TTL. This is
+below Stadia's 100 MB per-device ceiling, but still requires an active plan that
+permits caching. No region download or public OSM fallback is configured.
 
 ## Sign-in capabilities
 

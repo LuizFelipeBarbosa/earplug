@@ -1,75 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_marker_cluster/flutter_map_marker_cluster.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import 'common.dart';
-
-/// invert(1) hue-rotate(200deg) saturate(.35) brightness(.85) contrast(1.05)
-/// — the design's CSS tile filter, composed into one color matrix.
-const _darkTileMatrix = <double>[
-  0.0182, -0.9245, 0.0139, 0, 221.2125, //
-  -0.2373, -0.5397, -0.1155, 0, 221.2125, //
-  -0.3367, -0.7718, 0.2159, 0, 221.2125, //
-  0, 0, 0, 1, 0,
-];
-
-Widget _darkTiles() {
-  return ColorFiltered(
-    colorFilter: const ColorFilter.matrix(_darkTileMatrix),
-    child: TileLayer(
-      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-      userAgentPackageName: 'app.earplug.earplug',
-    ),
-  );
-}
-
-Widget _attribution(BuildContext context) {
-  return Positioned(
-    right: 4,
-    bottom: 2,
-    child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-      color: Colors.black.withValues(alpha: .7),
-      child: Text(
-        '© OpenStreetMap contributors',
-        style: Theme.of(
-          context,
-        ).textTheme.epCaption.copyWith(fontSize: 9, color: Colors.white),
-      ),
-    ),
-  );
-}
+import 'ep_map.dart';
 
 class _Pin extends StatelessWidget {
-  final bool free;
   final int count;
   final bool emphasized;
+  final bool selected;
 
-  const _Pin({required this.free, this.count = 1, this.emphasized = false});
+  const _Pin({this.count = 1, this.emphasized = false, this.selected = false});
 
   @override
   Widget build(BuildContext context) {
     final grouped = count > 1;
     return Container(
       decoration: BoxDecoration(
-        color: grouped ? Colors.black : (free ? Ep.brand : Colors.black),
+        color: context.epColors.brand,
         shape: BoxShape.circle,
         border: Border.all(
-          color: emphasized
-              ? Ep.accent
-              : grouped || !free
-              ? Ep.brand
-              : Colors.white,
-          width: emphasized ? 3.5 : 2.5,
+          color: selected || emphasized
+              ? context.epColors.contentPrimary
+              : context.epColors.surface,
+          width: selected ? 3 : 2,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: .6),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: context.epColors.brand.withValues(
+              alpha: selected ? .42 : .2,
+            ),
+            blurRadius: selected ? 12 : 6,
+            spreadRadius: selected ? 3 : 0,
           ),
         ],
       ),
@@ -92,15 +58,15 @@ class _MapPinButton extends StatefulWidget {
     super.key,
     required this.alignment,
     required this.dimension,
-    required this.free,
     required this.count,
+    required this.selected,
     required this.onTap,
   });
 
   final Alignment alignment;
   final double dimension;
-  final bool free;
   final int count;
+  final bool selected;
   final VoidCallback onTap;
 
   @override
@@ -149,9 +115,9 @@ class _MapPinButtonState extends State<_MapPinButton> {
             width: widget.dimension,
             height: widget.dimension,
             child: _Pin(
-              free: widget.free,
               count: widget.count,
               emphasized: emphasized,
+              selected: widget.selected,
             ),
           ),
         ),
@@ -167,22 +133,25 @@ class _UserPin extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Ep.accent,
+        color: context.epColors.brand,
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white, width: 3),
         boxShadow: [
           BoxShadow(
-            color: Ep.brand.withValues(alpha: .45),
-            blurRadius: 12,
-            spreadRadius: 5,
+            color: context.epColors.brand.withValues(alpha: .3),
+            blurRadius: 9,
+            spreadRadius: 3,
           ),
         ],
       ),
-      child: const Center(
+      child: Center(
         child: SizedBox.square(
           dimension: 6,
           child: DecoratedBox(
-            decoration: BoxDecoration(color: Ep.brand, shape: BoxShape.circle),
+            decoration: BoxDecoration(
+              color: context.epColors.contentPrimary,
+              shape: BoxShape.circle,
+            ),
           ),
         ),
       ),
@@ -195,6 +164,105 @@ class _VenueGigGroup {
 
   final Venue venue;
   final List<Gig> gigs;
+}
+
+class _VenueMarkerLayer extends StatelessWidget {
+  const _VenueMarkerLayer({
+    required this.groups,
+    required this.selectedGig,
+    required this.onSelect,
+  });
+
+  final List<_VenueGigGroup> groups;
+  final Gig? selectedGig;
+  final ValueChanged<Gig> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return MarkerClusterLayerWidget(
+      options: MarkerClusterLayerOptions(
+        markers: [for (final group in groups) _venueMarker(group)],
+        maxClusterRadius: 44,
+        size: const Size.square(48),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(50),
+        disableClusteringAtZoom: 15,
+        maxZoom: 18,
+        zoomToBoundsOnClick: true,
+        spiderfyCluster: true,
+        showPolygon: false,
+        centerMarkerOnClick: false,
+        markerChildBehavior: true,
+        builder: (context, markers) {
+          final memberKeys =
+              markers
+                  .map((marker) => (marker.child.key as ValueKey<String>).value)
+                  .toList()
+                ..sort();
+          return Semantics(
+            key: ValueKey('venue-cluster-${memberKeys.join('-')}'),
+            button: true,
+            label: '${markers.length} venues',
+            child: Center(
+              child: Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: context.epColors.brand,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: context.epColors.surface, width: 2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: context.epColors.brand.withValues(alpha: .25),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '${markers.length}',
+                  style: Theme.of(context).textTheme.epLabel.copyWith(
+                    fontSize: 10,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Marker _venueMarker(_VenueGigGroup group) {
+    final selected = group.gigs.any((gig) => gig.id == selectedGig?.id);
+    return Marker(
+      point: group.venue.point,
+      width: 48,
+      height: 48,
+      alignment: Alignment.center,
+      child: Semantics(
+        key: Key(
+          group.gigs.length == 1
+              ? 'gig-marker-${group.gigs.single.id}'
+              : 'venue-marker-${group.venue.id}',
+        ),
+        button: true,
+        selected: selected,
+        label: group.gigs.length == 1
+            ? '${group.venue.name}, 1 gig'
+            : '${group.venue.name}, ${group.gigs.length} gigs',
+        child: _MapPinButton(
+          key: ValueKey('map-marker-button-${group.venue.id}'),
+          alignment: Alignment.center,
+          dimension: selected ? 24 : (group.gigs.length == 1 ? 16 : 26),
+          count: group.gigs.length,
+          selected: selected,
+          onTap: () => onSelect(group.gigs.first),
+        ),
+      ),
+    );
+  }
 }
 
 /// Full-screen gig map with tappable pins and a bottom gig card.
@@ -233,8 +301,6 @@ class _GigMapViewState extends State<GigMapView> {
           gigs: entry.value..sort((a, b) => a.startsAt.compareTo(b.startsAt)),
         ),
     ];
-    // Paint denser venue groups last so their larger count marker remains
-    // usable when nearby 48px touch targets overlap at a wide map zoom.
     groups.sort((a, b) => a.gigs.length.compareTo(b.gigs.length));
     return groups;
   }
@@ -294,23 +360,16 @@ class _GigMapViewState extends State<GigMapView> {
     if (selected != null && selectedGroup == null) {
       selected = null;
     }
-    final groupsByLatitude = [
-      ...groups,
-    ]..sort((a, b) => b.venue.point.latitude.compareTo(a.venue.point.latitude));
-    final markersAbovePoint = <String>{
-      for (var index = 0; index < groupsByLatitude.length; index += 2)
-        groupsByLatitude[index].venue.id,
-    };
     _updateCamera(app, groups);
 
     return Stack(
       children: [
-        FlutterMap(
+        EpMap(
           mapController: _controller,
           options: MapOptions(
             initialCenter: app.discoveryCenter,
             initialZoom: 13,
-            backgroundColor: Ep.background,
+            backgroundColor: context.epColors.background,
             interactionOptions: const InteractionOptions(
               flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
             ),
@@ -321,8 +380,7 @@ class _GigMapViewState extends State<GigMapView> {
               _updateCamera(app, groups);
             },
           ),
-          children: [
-            _darkTiles(),
+          layers: [
             MarkerLayer(
               markers: [
                 if (app.currentPosition case final position?)
@@ -330,67 +388,54 @@ class _GigMapViewState extends State<GigMapView> {
                     Marker(
                       key: const Key('current-location-marker'),
                       point: position,
-                      width: 24,
-                      height: 24,
-                      child: const _UserPin(),
+                      width: 48,
+                      height: 48,
+                      alignment: Alignment.center,
+                      child: const Center(
+                        child: SizedBox.square(
+                          dimension: 18,
+                          child: _UserPin(),
+                        ),
+                      ),
                     ),
-                for (final group in groups)
-                  Marker(
-                    key: Key(
-                      group.gigs.length == 1
-                          ? 'gig-marker-${group.gigs.single.id}'
-                          : 'venue-marker-${group.venue.id}',
-                    ),
-                    point: group.venue.point,
-                    width: 48,
-                    height: 48,
-                    alignment: markersAbovePoint.contains(group.venue.id)
-                        ? Alignment.topCenter
-                        : Alignment.bottomCenter,
-                    child: _MapPinButton(
-                      key: ValueKey('map-marker-button-${group.venue.id}'),
-                      alignment: markersAbovePoint.contains(group.venue.id)
-                          ? Alignment.bottomCenter
-                          : Alignment.topCenter,
-                      dimension: group.gigs.length == 1 ? 18 : 26,
-                      free: group.gigs.length == 1
-                          ? group.gigs.single.free
-                          : false,
-                      count: group.gigs.length,
-                      onTap: () => setState(() => selected = group.gigs.first),
-                    ),
-                  ),
               ],
+            ),
+            _VenueMarkerLayer(
+              groups: groups,
+              selectedGig: selected,
+              onSelect: (gig) => setState(() => selected = gig),
             ),
           ],
         ),
-        _attribution(context),
         if (gigs.isEmpty && widget.emptyState != null)
-          Positioned(left: 18, right: 18, top: 18, child: widget.emptyState!),
+          Positioned(left: 18, right: 18, top: 34, child: widget.emptyState!),
         if (selected case final Gig g when selectedGroup != null)
           Positioned(
             left: 12,
             right: 12,
             bottom: tabBarClearance + 10,
-            child: _MapGigCard(
-              gig: g,
-              venue: selectedGroup.venue,
-              position: selectedIndex,
-              total: selectedGroup.gigs.length,
-              onPrevious: selectedIndex > 0
-                  ? () => setState(
-                      () => selected = selectedGroup!.gigs[selectedIndex - 1],
-                    )
-                  : null,
-              onNext: selectedIndex < selectedGroup.gigs.length - 1
-                  ? () => setState(
-                      () => selected = selectedGroup!.gigs[selectedIndex + 1],
-                    )
-                  : null,
-              onOpen: () {
-                setState(() => selected = null);
-                app.openGig(g.id);
-              },
+            child: TapRegion(
+              onTapOutside: (_) => setState(() => selected = null),
+              child: _MapGigCard(
+                gig: g,
+                venue: selectedGroup.venue,
+                position: selectedIndex,
+                total: selectedGroup.gigs.length,
+                onPrevious: selectedIndex > 0
+                    ? () => setState(
+                        () => selected = selectedGroup!.gigs[selectedIndex - 1],
+                      )
+                    : null,
+                onNext: selectedIndex < selectedGroup.gigs.length - 1
+                    ? () => setState(
+                        () => selected = selectedGroup!.gigs[selectedIndex + 1],
+                      )
+                    : null,
+                onOpen: () {
+                  setState(() => selected = null);
+                  app.openGig(g.id);
+                },
+              ),
             ),
           ),
       ],
@@ -420,9 +465,11 @@ class _MapGigCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return EpCard(
+      key: ValueKey('map-gig-card-${gig.id}'),
       variant: EpCardVariant.raised,
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       radius: 14,
+      onTap: onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -472,7 +519,7 @@ class _MapGigCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               PriceBadge(gig),
-              FilledButton(onPressed: onOpen, child: const Text('OPEN GIG →')),
+              FilledButton(onPressed: onOpen, child: Text('OPEN GIG →')),
             ],
           ),
         ],
@@ -489,12 +536,18 @@ class _CarouselButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
+    final button = IconButton(
       onPressed: onTap,
       style: const ButtonStyle(
         fixedSize: WidgetStatePropertyAll(Size.square(48)),
       ),
       icon: Icon(icon, size: 20),
+    );
+    if (onTap != null) return button;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {},
+      child: button,
     );
   }
 }
@@ -509,32 +562,29 @@ class VenueMiniMap extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       height: 132,
-      child: Stack(
-        children: [
-          FlutterMap(
-            options: MapOptions(
-              initialCenter: venue.point,
-              initialZoom: 15,
-              backgroundColor: Ep.background,
-              interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.none,
-              ),
-            ),
-            children: [
-              _darkTiles(),
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    point: venue.point,
-                    width: 18,
-                    height: 18,
-                    child: const _Pin(free: true),
-                  ),
-                ],
+      child: EpMap(
+        options: MapOptions(
+          initialCenter: venue.point,
+          initialZoom: 15,
+          backgroundColor: context.epColors.background,
+          interactionOptions: const InteractionOptions(
+            flags: InteractiveFlag.none,
+          ),
+        ),
+        layers: [
+          MarkerLayer(
+            markers: [
+              Marker(
+                point: venue.point,
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                child: const Center(
+                  child: SizedBox.square(dimension: 16, child: _Pin()),
+                ),
               ),
             ],
           ),
-          _attribution(context),
         ],
       ),
     );

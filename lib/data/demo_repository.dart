@@ -51,6 +51,7 @@ class DemoRepository implements EarplugRepository {
   final Set<String> _checkedInGigIds = {};
   final Set<String> _userGenres = {};
   final Map<String, String> _heroByBand = {};
+  final Map<String, String> _avatarByBand = {};
   final Set<String> _previewedBands = {};
   final Map<String, BandInvite> _bandInvites = {};
   final Map<String, Set<String>> _acceptedMemberNames = {};
@@ -154,6 +155,8 @@ class DemoRepository implements EarplugRepository {
           pinned: item.pinned,
           order: item.order,
           isHero: _heroByBand[bandId] == item.id,
+          isAvatar: _avatarByBand[bandId] == item.id,
+          isBanner: _heroByBand[bandId] == item.id,
         ),
     ];
   }
@@ -220,6 +223,9 @@ class DemoRepository implements EarplugRepository {
     if (_heroByBand[removed.bandId] == mediaId) {
       _heroByBand.remove(removed.bandId);
     }
+    if (_avatarByBand[removed.bandId] == mediaId) {
+      _avatarByBand.remove(removed.bandId);
+    }
     _refreshBandReadiness(removed.bandId);
     _feedController.add(_currentFeed());
     _bandsController.add(_currentMemberships());
@@ -272,10 +278,23 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<void> moveMediaWithinKind(String mediaId, String direction) =>
+      moveBandMedia(mediaId, direction == 'earlier' ? 'up' : 'down');
+
+  @override
   Future<void> setBandPhoto({
     required String bandId,
     required String mediaId,
   }) async {
+    _requireOwnedPhoto(bandId, mediaId);
+    _heroByBand[bandId] = mediaId;
+    _avatarByBand[bandId] = mediaId;
+    _refreshBandReadiness(bandId);
+    _feedController.add(_currentFeed());
+    _bandsController.add(_currentMemberships());
+  }
+
+  void _requireOwnedPhoto(String bandId, String mediaId) {
     final media = _mediaListContaining(mediaId);
     final targetIndex = media?.indexWhere((item) => item.id == mediaId) ?? -1;
     final target = targetIndex == -1 ? null : media![targetIndex];
@@ -284,16 +303,51 @@ class DemoRepository implements EarplugRepository {
         target.bandId != bandId) {
       throw StateError('Band photo must be a photo owned by the same band.');
     }
-    _heroByBand[bandId] = mediaId;
+  }
+
+  @override
+  Future<void> clearBandPhoto(String bandId) async {
+    _heroByBand.remove(bandId);
+    _avatarByBand.remove(bandId);
     _refreshBandReadiness(bandId);
     _feedController.add(_currentFeed());
     _bandsController.add(_currentMemberships());
   }
 
   @override
-  Future<void> clearBandPhoto(String bandId) async {
-    _heroByBand.remove(bandId);
+  Future<void> setBandAvatar({
+    required String bandId,
+    required String mediaId,
+  }) async {
+    _requireOwnedPhoto(bandId, mediaId);
+    _avatarByBand[bandId] = mediaId;
     _refreshBandReadiness(bandId);
+    _feedController.add(_currentFeed());
+    _bandsController.add(_currentMemberships());
+  }
+
+  @override
+  Future<void> clearBandAvatar(String bandId) async {
+    _avatarByBand.remove(bandId);
+    _refreshBandReadiness(bandId);
+    _feedController.add(_currentFeed());
+    _bandsController.add(_currentMemberships());
+  }
+
+  @override
+  Future<void> setBandBanner({
+    required String bandId,
+    required String mediaId,
+  }) async {
+    _requireOwnedPhoto(bandId, mediaId);
+    _heroByBand[bandId] = mediaId;
+    _feedController.add(_currentFeed());
+    _bandsController.add(_currentMemberships());
+  }
+
+  @override
+  Future<void> clearBandBanner(String bandId) async {
+    _heroByBand.remove(bandId);
     _feedController.add(_currentFeed());
     _bandsController.add(_currentMemberships());
   }
@@ -593,8 +647,11 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
-  Future<void> toggleRsvp(String gigId) async {
-    _toggle(_rsvpGigIds, gigId);
+  Future<void> toggleRsvp(String gigId, {bool? on}) async {
+    final wasOn = _rsvpGigIds.contains(gigId);
+    final goingNow = on ?? !wasOn;
+    if (goingNow == wasOn) return;
+    goingNow ? _rsvpGigIds.add(gigId) : _rsvpGigIds.remove(gigId);
     if (!_rsvpGigIds.contains(gigId)) {
       _ticketsByGigId.remove(gigId);
       _checkedInGigIds.remove(gigId);
@@ -887,7 +944,7 @@ class DemoRepository implements EarplugRepository {
           band.genres.length <= 3 &&
           band.area.trim().isNotEmpty &&
           band.bio.trim().isNotEmpty,
-      profileImageAdded: _heroByBand.containsKey(bandId),
+      profileImageAdded: _avatarByBand.containsKey(bandId),
       musicAdded:
           media.any((item) => item.kind == MediaKind.video) ||
           (band?.linkBc?.trim().isNotEmpty ?? false) ||
@@ -984,7 +1041,7 @@ class DemoRepository implements EarplugRepository {
     final opensAt = eligibleShow?.startsAt.subtract(const Duration(days: 7));
     final closesAt = eligibleShow?.startsAt.add(const Duration(hours: 6));
     final profileComplete = band?.profileComplete ?? false;
-    final profileImageReady = _heroByBand.containsKey(bandId);
+    final profileImageReady = _avatarByBand.containsKey(bandId);
     final clipReady = media.any((item) => item.kind == MediaKind.video);
     return BandDiscoveryReadiness(
       profileComplete: profileComplete,
@@ -1683,7 +1740,7 @@ class DemoRepository implements EarplugRepository {
       profileComplete: profileComplete,
       discoveryProfileReady:
           profileComplete &&
-          _heroByBand.containsKey(bandId) &&
+          _avatarByBand.containsKey(bandId) &&
           (_mediaLists[bandId] ?? const <BandMedia>[]).any(
             (item) => item.kind == MediaKind.video,
           ),
@@ -1712,7 +1769,13 @@ class DemoRepository implements EarplugRepository {
       followBandIds: Set<String>.unmodifiable(_followBandIds),
       savedGigIds: Set<String>.unmodifiable(_savedGigIds),
       gigs: List<Gig>.unmodifiable([
-        for (final id in {..._rsvpGigIds, ..._savedGigIds}) ?gigsById[id],
+        for (final id in {..._rsvpGigIds, ..._savedGigIds})
+          if (gigsById[id] case final gig?)
+            gig.copyWith(
+              // Production stores the complete confirmed total on the gig.
+              // Keep the demo subscription faithful to that contract.
+              going: gig.going + (_rsvpGigIds.contains(id) ? 1 : 0),
+            ),
       ]),
       attendedCount: _attendedCount,
     );

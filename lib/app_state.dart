@@ -54,7 +54,15 @@ enum DateFilter { all, tonight, week, custom }
 
 enum PriceFilter { any, free, paid }
 
-enum DiscoveryLocation { sf, oak, current }
+enum DiscoveryLocation { sf, oak, home, current }
+
+DiscoveryLocation discoveryLocationForFanCity(FanCity city) => switch (city) {
+  FanCity.sf => DiscoveryLocation.sf,
+  FanCity.oak => DiscoveryLocation.oak,
+  _ => DiscoveryLocation.home,
+};
+
+enum _BandArtworkRole { avatar, banner }
 
 class DiscoveryFilters {
   const DiscoveryFilters({
@@ -410,6 +418,8 @@ class AppState extends ChangeNotifier {
 
   // ---- fan data
   Set<String> rsvps = {};
+  Set<String> _confirmedRsvps = {};
+  final Map<String, ({bool desired, Object operation})> _pendingRsvps = {};
   Set<String> follows = {};
   Set<String> saved = {};
   int attended = 0;
@@ -448,8 +458,10 @@ class AppState extends ChangeNotifier {
 
   // ---- home filters
   bool mapMode = true;
-  String city = 'sf'; // 'sf' | 'oak'
+  String city = 'sf';
   DiscoveryLocation discoveryLocation = DiscoveryLocation.sf;
+  FanCity? _discoveryHomeCity;
+  FanCity? get discoveryHomeCity => _discoveryHomeCity;
   LatLng? currentPosition;
   bool locating = false;
   LocationFailure? locationFailure;
@@ -465,6 +477,10 @@ class AppState extends ChangeNotifier {
   PriceFilter get fPrice => filters.price;
   String? get fVenueId => filters.venueId;
   double? get fMaxDistanceMiles => filters.maxDistanceMiles;
+  bool get canFilterByDistance =>
+      (discoveryLocation == DiscoveryLocation.current &&
+          currentPosition != null) ||
+      discoveryLocation == DiscoveryLocation.home;
   int get activeFilterCount => filters.activeCount;
 
   // ---- explore
@@ -505,9 +521,19 @@ class AppState extends ChangeNotifier {
   String nbBc = '';
   String nbYt = '';
   String nbLabel = 'cream';
+
+  /// Kept as `nbPhoto` for compatibility with the existing creation recovery
+  /// path; it is now the avatar/profile image only.
   PickedMedia? nbPhoto;
   String? nbPhotoError;
   bool nbPhotoUploading = false;
+  PickedMedia? nbBanner;
+  String? nbBannerError;
+  bool nbBannerUploading = false;
+  bool _nbPhotoUploaded = false;
+  bool _nbBannerUploaded = false;
+  String? _nbPhotoMediaId;
+  String? _nbBannerMediaId;
   bool nbCreated = false;
 
   /// Set once the band lands; later saves update this record instead of
@@ -659,12 +685,12 @@ class AppState extends ChangeNotifier {
         preferredCity = loadedProfile?.fanOnboarding?.preferredCity;
       }
       if (preferredCity != null) {
-        _applyDiscoveryCity(preferredCity.name);
+        _applyFanCity(preferredCity);
         if (loadedProfile?.locationPersonalizationEnabled == true) {
           _appliedHomePersonalization = preferredCity;
         }
       } else if (_appliedHomePersonalization != null) {
-        _applyDiscoveryCity('sf');
+        _applyFanCity(FanCity.sf);
       }
       notifyListeners();
       return true;
@@ -882,7 +908,18 @@ class AppState extends ChangeNotifier {
   }
 
   void _cacheInteractions(Interactions interactions) {
-    rsvps = Set<String>.of(interactions.rsvpGigIds);
+    _confirmedRsvps = Set<String>.of(interactions.rsvpGigIds);
+    final nextRsvps = Set<String>.of(_confirmedRsvps);
+    for (final entry in _pendingRsvps.entries.toList()) {
+      if (nextRsvps.contains(entry.key) == entry.value.desired) {
+        _pendingRsvps.remove(entry.key);
+      } else if (entry.value.desired) {
+        nextRsvps.add(entry.key);
+      } else {
+        nextRsvps.remove(entry.key);
+      }
+    }
+    rsvps = nextRsvps;
     follows = Set<String>.of(interactions.followBandIds);
     saved = Set<String>.of(interactions.savedGigIds);
     _interactionGigs
@@ -1191,6 +1228,8 @@ class AppState extends ChangeNotifier {
     authed = false;
     _clearMemberships();
     rsvps = {};
+    _confirmedRsvps = {};
+    _pendingRsvps.clear();
     follows = {};
     saved = {};
     attended = 0;
@@ -1214,6 +1253,7 @@ class AppState extends ChangeNotifier {
     _locationRequestGeneration++;
     city = 'sf';
     discoveryLocation = DiscoveryLocation.sf;
+    _discoveryHomeCity = null;
     currentPosition = null;
     locating = false;
     locationFailure = null;
@@ -1344,7 +1384,27 @@ class AppState extends ChangeNotifier {
   }
 
   void toggleRsvp(String id) {
-    final nowGoing = _toggleOptimistically(rsvps, id, repository.toggleRsvp);
+    final wasGoing = rsvps.contains(id);
+    final nowGoing = !wasGoing;
+    final operation = Object();
+    _pendingRsvps[id] = (desired: nowGoing, operation: operation);
+    nowGoing ? rsvps.add(id) : rsvps.remove(id);
+    notifyListeners();
+    unawaited(
+      repository
+          .toggleRsvp(id, on: nowGoing)
+          .then((_) {
+            if (!identical(_pendingRsvps[id]?.operation, operation)) return;
+            _pendingRsvps.remove(id);
+          })
+          .catchError((Object error) {
+            logError('toggle $id', error);
+            if (!identical(_pendingRsvps[id]?.operation, operation)) return;
+            _pendingRsvps.remove(id);
+            wasGoing ? rsvps.add(id) : rsvps.remove(id);
+            say(genericErrorMessage);
+          }),
+    );
     say(nowGoing ? "You're on the list. QR is in Profile." : 'RSVP removed.');
   }
 
@@ -1454,10 +1514,10 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addAll(savedGenres);
     if (locationPersonalizationEnabled && homeLocation != null) {
-      _applyDiscoveryCity(homeLocation.name);
+      _applyFanCity(homeLocation);
       _appliedHomePersonalization = homeLocation;
     } else if (_appliedHomePersonalization != null) {
-      _applyDiscoveryCity('sf');
+      _applyFanCity(FanCity.sf);
     }
     notifyListeners();
     return true;
@@ -1590,13 +1650,14 @@ class AppState extends ChangeNotifier {
     final previousDiscoveryState = (
       city: city,
       location: discoveryLocation,
+      homeCity: _discoveryHomeCity,
       position: currentPosition,
       locating: locating,
       failure: locationFailure,
       filters: filters,
     );
 
-    _applyDiscoveryCity(preferredCity.name);
+    _applyFanCity(preferredCity);
     _setLocalFanOnboarding(
       FanOnboarding(
         preferredCity: preferredCity,
@@ -1604,11 +1665,7 @@ class AppState extends ChangeNotifier {
         collapsed: previous.collapsed,
       ),
     );
-    say(
-      preferredCity == FanCity.oak
-          ? 'Browsing Oakland shows.'
-          : 'Browsing San Francisco shows.',
-    );
+    say('Browsing ${preferredCity.label} shows.');
 
     unawaited(
       repository.updateFanOnboarding(preferredCity: preferredCity).catchError((
@@ -1620,6 +1677,7 @@ class AppState extends ChangeNotifier {
           _locationRequestGeneration++;
           city = previousDiscoveryState.city;
           discoveryLocation = previousDiscoveryState.location;
+          _discoveryHomeCity = previousDiscoveryState.homeCity;
           currentPosition = previousDiscoveryState.position;
           locating = previousDiscoveryState.locating;
           locationFailure = previousDiscoveryState.failure;
@@ -1737,6 +1795,21 @@ class AppState extends ChangeNotifier {
     discoveryLocation = c == 'oak'
         ? DiscoveryLocation.oak
         : DiscoveryLocation.sf;
+    _discoveryHomeCity = null;
+    currentPosition = null;
+    locating = false;
+    locationFailure = null;
+    filters = filters.copyWith(maxDistanceMiles: null);
+  }
+
+  void _applyFanCity(FanCity selectedCity) {
+    _appliedHomePersonalization = null;
+    _locationRequestGeneration++;
+    city = selectedCity.name;
+    discoveryLocation = discoveryLocationForFanCity(selectedCity);
+    _discoveryHomeCity = discoveryLocation == DiscoveryLocation.home
+        ? selectedCity
+        : null;
     currentPosition = null;
     locating = false;
     locationFailure = null;
@@ -1748,6 +1821,7 @@ class AppState extends ChangeNotifier {
     _locationRequestGeneration++;
     currentPosition = position;
     discoveryLocation = DiscoveryLocation.current;
+    _discoveryHomeCity = null;
     locating = false;
     locationFailure = null;
   });
@@ -1771,6 +1845,7 @@ class AppState extends ChangeNotifier {
           _appliedHomePersonalization = null;
           currentPosition = LatLng(location.latitude, location.longitude);
           discoveryLocation = DiscoveryLocation.current;
+          _discoveryHomeCity = null;
           locationFailure = null;
           say('Showing gigs near your current location.');
           return true;
@@ -1808,6 +1883,8 @@ class AppState extends ChangeNotifier {
 
   String get locationLabel => switch (discoveryLocation) {
     DiscoveryLocation.current => 'CURRENT LOCATION',
+    DiscoveryLocation.home =>
+      '${(_discoveryHomeCity ?? FanCity.sf).label.toUpperCase()} SCENE',
     DiscoveryLocation.oak => 'TEMESCAL, OAK',
     DiscoveryLocation.sf => 'MISSION, SF',
   };
@@ -1815,6 +1892,7 @@ class AppState extends ChangeNotifier {
   LatLng get discoveryCenter => switch (discoveryLocation) {
     DiscoveryLocation.current =>
       currentPosition ?? const LatLng(37.7599, -122.4148),
+    DiscoveryLocation.home => (_discoveryHomeCity ?? FanCity.sf).center,
     DiscoveryLocation.oak => const LatLng(37.8378, -122.2628),
     DiscoveryLocation.sf => const LatLng(37.7599, -122.4148),
   };
@@ -1957,9 +2035,6 @@ class AppState extends ChangeNotifier {
       _set(() => filters = filters.copyWith(venueId: venueId));
 
   void setDistanceFilter(double? miles) => _set(() {
-    final canFilterByDistance =
-        discoveryLocation == DiscoveryLocation.current &&
-        currentPosition != null;
     filters = filters.copyWith(
       maxDistanceMiles: canFilterByDistance ? miles : null,
     );
@@ -1984,7 +2059,11 @@ class AppState extends ChangeNotifier {
     final now = _now();
     final gigs = [
       for (final id in rsvps)
-        if (_cachedGig(id) case final Gig gig when !gig.startsAt.isBefore(now))
+        if (_interactionGigs[id] ?? _cachedGig(id) case final Gig gig
+            when gig.startsAt.isAfter(now) &&
+                (gig.lifecycle == GigLifecycle.published ||
+                    gig.lifecycle == GigLifecycle.cancelled) &&
+                gig.tix == Ticketing.rsvp)
           gig,
     ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
     return List<Gig>.unmodifiable(gigs);
@@ -2393,7 +2472,9 @@ class AppState extends ChangeNotifier {
         if (gig.venueId != venueId) return false;
       }
       if (filters.maxDistanceMiles case final double maxMiles) {
-        final distance = distanceMilesFromCurrent(venue(gig.venueId));
+        final distance = discoveryLocation == DiscoveryLocation.home
+            ? _distanceMilesFromDiscoveryCenter(venue(gig.venueId))
+            : distanceMilesFromCurrent(venue(gig.venueId));
         if (distance != null && distance > maxMiles) return false;
       }
       return true;
@@ -2417,8 +2498,26 @@ class AppState extends ChangeNotifier {
     now: now ?? _now(),
   ).contains(gig.id);
 
-  /// RSVP count shown to bands: base demo count plus this user's RSVP.
-  int rsvpCount(Gig g) => g.going + (rsvps.contains(g.id) ? 1 : 0);
+  /// The most recent server-confirmed RSVP state, excluding local optimism.
+  ///
+  /// Requiring the local state too hides confirmed-only UI immediately when a
+  /// removal is pending, while an add stays gated until its subscription
+  /// confirmation arrives.
+  bool hasConfirmedRsvp(String gigId) =>
+      _confirmedRsvps.contains(gigId) && rsvps.contains(gigId);
+
+  /// Reconciles the subscribed server total with the one local mutation that
+  /// has not appeared in the interaction subscription yet.
+  int rsvpCount(Gig gig) {
+    final authoritativeGig = _interactionGigs[gig.id] ?? gig;
+    final pending = _pendingRsvps[gig.id];
+    if (pending == null ||
+        pending.desired == _confirmedRsvps.contains(gig.id)) {
+      return authoritativeGig.going;
+    }
+    final reconciled = authoritativeGig.going + (pending.desired ? 1 : -1);
+    return reconciled < 0 ? 0 : reconciled;
+  }
 
   String bioFor(String id) => band(id)?.bio ?? '';
 
@@ -2741,6 +2840,15 @@ class AppState extends ChangeNotifier {
     try {
       final accepted = await repository.acceptBandInvite(token);
       bandId = accepted.bandId;
+      if (!myBands.contains(accepted.bandId)) {
+        myBands = [...myBands, accepted.bandId];
+      }
+      if (accepted.membershipCreated) {
+        _bandRoles[accepted.bandId] = 'member';
+      }
+      if (!_bands.containsKey(accepted.bandId)) {
+        unawaited(_loadFollowBand(accepted.bandId));
+      }
       joinInviteAccepted = true;
       _restartMemberships();
       unawaited(loadBandProfileDetails(accepted.bandId, refresh: true));
@@ -2863,6 +2971,13 @@ class AppState extends ChangeNotifier {
     nbPhoto = null;
     nbPhotoError = null;
     nbPhotoUploading = false;
+    nbBanner = null;
+    nbBannerError = null;
+    nbBannerUploading = false;
+    _nbPhotoUploaded = false;
+    _nbBannerUploaded = false;
+    _nbPhotoMediaId = null;
+    _nbBannerMediaId = null;
     nbCreated = false;
     _nbBandId = null;
     _nbCreatedSlug = null;
@@ -2874,11 +2989,8 @@ class AppState extends ChangeNotifier {
 
   void setNbCredits(String v) => _set(() => nbCredits = v);
 
-  void setNbArea(String v) {
-    final area = v.trim();
-    if (area.isEmpty) return;
-    _set(() => nbArea = area);
-  }
+  void setNbArea(String v) =>
+      _set(() => nbArea = v.trim().isEmpty ? null : v.trim());
 
   void setNbIg(String v) => _set(() => nbIg = v);
 
@@ -2888,7 +3000,19 @@ class AppState extends ChangeNotifier {
 
   void setNbLabel(String key) => _set(() => nbLabel = key);
 
-  void setNbPhoto(PickedMedia? photo) => _set(() => nbPhoto = photo);
+  void setNbPhoto(PickedMedia? photo) => _set(() {
+    nbPhoto = photo;
+    nbPhotoError = null;
+    _nbPhotoUploaded = false;
+    _nbPhotoMediaId = null;
+  });
+
+  void setNbBanner(PickedMedia? photo) => _set(() {
+    nbBanner = photo;
+    nbBannerError = null;
+    _nbBannerUploaded = false;
+    _nbBannerMediaId = null;
+  });
 
   void toggleNbGenre(String g) {
     if (nbGenres.contains(g)) {
@@ -2902,15 +3026,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addNbGenre(String raw) {
+  bool addNbGenre(String raw) {
     final g = raw.trim().toLowerCase();
-    if (g.isEmpty) return;
-    if (nbGenres.contains(g)) return;
+    if (g.isEmpty) return false;
+    if (nbGenres.contains(g)) return false;
     if (nbGenres.length >= 3) {
       say('Three genres max.');
-      return;
+      return false;
     }
     _set(() => nbGenres.add(g));
+    return true;
   }
 
   bool get canCreateBand =>
@@ -2923,13 +3048,14 @@ class AppState extends ChangeNotifier {
     if (nbArea == null) 'a home base',
   ];
 
-  /// How full the tape winds: the six setup checklist lines, equally weighted.
+  /// How full the tape winds: the seven setup checklist lines, equally weighted.
   double get nbCompletion {
     final done = [
       nbName.trim().isNotEmpty,
       nbGenres.isNotEmpty,
       nbArea != null,
       nbPhoto != null,
+      nbBanner != null,
       nbBio.trim().isNotEmpty,
       nbIg.trim().isNotEmpty ||
           nbBc.trim().isNotEmpty ||
@@ -3040,10 +3166,14 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }
 
-    final photo = nbPhoto;
     final media = _media;
-    if (photo != null && media != null) {
-      unawaited(_uploadBandPhoto(bandId, photo));
+    if (media != null) {
+      if (nbPhoto case final photo? when !_nbPhotoUploaded) {
+        unawaited(_uploadBandArtwork(photo, _BandArtworkRole.avatar));
+      }
+      if (nbBanner case final banner? when !_nbBannerUploaded) {
+        unawaited(_uploadBandArtwork(banner, _BandArtworkRole.banner));
+      }
     }
     nbCreated = true;
     notifyListeners();
@@ -3052,34 +3182,76 @@ class AppState extends ChangeNotifier {
     _refreshExploreBands();
   }
 
-  Future<void> _uploadBandPhoto(String bandId, PickedMedia photo) async {
+  Future<void> _uploadBandArtwork(
+    PickedMedia photo,
+    _BandArtworkRole role,
+  ) async {
     final media = _media;
-    if (media == null) return;
+    final targetBandId = _nbBandId;
+    if (media == null || targetBandId == null) return;
 
-    nbPhotoUploading = true;
-    nbPhotoError = null;
+    if (role == _BandArtworkRole.avatar) {
+      nbPhotoUploading = true;
+      nbPhotoError = null;
+    } else {
+      nbBannerUploading = true;
+      nbBannerError = null;
+    }
     notifyListeners();
 
-    final mediaId = await media.uploadHeldPhoto(bandId, photo);
+    final pending = role == _BandArtworkRole.avatar
+        ? _nbPhotoMediaId
+        : _nbBannerMediaId;
+    final mediaId = pending ?? await media.uploadHeldPhoto(targetBandId, photo);
     if (mediaId == null) {
-      nbPhotoUploading = false;
-      nbPhotoError = 'upload failed';
+      if (role == _BandArtworkRole.avatar) {
+        nbPhotoUploading = false;
+        nbPhotoError = 'upload failed';
+      } else {
+        nbBannerUploading = false;
+        nbBannerError = 'upload failed';
+      }
       notifyListeners();
-      say("Band's up. The photo didn't upload. Add it from Media.");
+      say(
+        "Band's up. The ${role == _BandArtworkRole.avatar ? 'profile' : 'header'} image didn't upload. Retry it here.",
+      );
       return;
     }
+    if (role == _BandArtworkRole.avatar) {
+      _nbPhotoMediaId = mediaId;
+    } else {
+      _nbBannerMediaId = mediaId;
+    }
 
-    await media.setHero(bandId, mediaId);
-    nbPhotoUploading = false;
+    final assigned = role == _BandArtworkRole.avatar
+        ? await media.setAvatar(targetBandId, mediaId)
+        : await media.setBanner(targetBandId, mediaId);
+    if (role == _BandArtworkRole.avatar) {
+      nbPhotoUploading = false;
+      _nbPhotoUploaded = assigned;
+      nbPhotoError = assigned ? null : 'assignment failed';
+      if (assigned) _nbPhotoMediaId = null;
+    } else {
+      nbBannerUploading = false;
+      _nbBannerUploaded = assigned;
+      nbBannerError = assigned ? null : 'assignment failed';
+      if (assigned) _nbBannerMediaId = null;
+    }
     notifyListeners();
-    unawaited(refreshBandSetupStatus(bandId));
-    unawaited(refreshBandDiscoveryReadiness(bandId));
+    unawaited(refreshBandSetupStatus(targetBandId));
+    unawaited(refreshBandDiscoveryReadiness(targetBandId));
   }
 
   Future<void> retryNbPhoto() async {
     final photo = nbPhoto;
     if (photo == null) return;
-    await _uploadBandPhoto(bandId, photo);
+    await _uploadBandArtwork(photo, _BandArtworkRole.avatar);
+  }
+
+  Future<void> retryNbBanner() async {
+    final photo = nbBanner;
+    if (photo == null) return;
+    await _uploadBandArtwork(photo, _BandArtworkRole.banner);
   }
 
   /// "Keep editing" — back to the tape with everything still filled in.

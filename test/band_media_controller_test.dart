@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
+import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/services/media_upload_service.dart';
@@ -177,6 +178,7 @@ void main() {
         'bm5',
       ]);
 
+      expect(await harness.controller.setAvatar(bandId, 'bm6'), isTrue);
       await harness.controller.setHero(bandId, 'bm7');
       expect(
         harness.controller
@@ -185,12 +187,40 @@ void main() {
             .id,
         'bm7',
       );
+      expect(
+        harness.controller
+            .photosFor(bandId)
+            .singleWhere((media) => media.isAvatar)
+            .id,
+        'bm6',
+      );
       await harness.controller.clearHero(bandId);
       expect(
         harness.controller.photosFor(bandId).any((media) => media.isHero),
         isFalse,
       );
+      expect(
+        harness.controller.photosFor(bandId).any((media) => media.isAvatar),
+        isTrue,
+      );
+      expect(await harness.controller.clearAvatar(bandId), isTrue);
       expect(harness.said, isEmpty);
+    });
+
+    test('section ordering crosses globally interposed media', () async {
+      final repository = _GlobalOrderDemoRepository(auth: FakeAuthService());
+      final harness = _makeController(repository: repository);
+      const bandId = 'b1';
+      await harness.controller.refresh(bandId);
+
+      await harness.controller.moveWithinKind(bandId, 'video-1', 'down');
+
+      expect(repository.moveCalls, 1);
+      expect(harness.controller.videosFor(bandId).map((item) => item.id), [
+        'video-2',
+        'video-1',
+      ]);
+      expect(harness.controller.photosFor(bandId).single.id, 'photo-1');
     });
 
     test('clearForSignOut clears caches and uploads and notifies', () async {
@@ -260,3 +290,54 @@ _makeController({EarplugRepository? repository, MediaUploadService? uploader}) {
   addTearDown(controller.dispose);
   return (controller: controller, picker: picker, said: said);
 }
+
+class _GlobalOrderDemoRepository extends DemoRepository {
+  _GlobalOrderDemoRepository({required super.auth});
+
+  var moveCalls = 0;
+  final _items = <BandMedia>[
+    _media('video-1', MediaKind.video, 0),
+    _media('photo-1', MediaKind.photo, 1),
+    _media('video-2', MediaKind.video, 2),
+  ];
+
+  @override
+  Future<List<BandMedia>> mediaFor(String bandId) async {
+    return List<BandMedia>.of(_items)
+      ..sort((a, b) => a.order.compareTo(b.order));
+  }
+
+  @override
+  Future<void> moveMediaWithinKind(String mediaId, String direction) async {
+    moveCalls++;
+    _items.sort((a, b) => a.order.compareTo(b.order));
+    final target = _items.firstWhere((item) => item.id == mediaId);
+    final sameKind = _items.where((item) => item.kind == target.kind).toList();
+    final index = sameKind.indexWhere((item) => item.id == mediaId);
+    final neighborIndex = direction == 'earlier' ? index - 1 : index + 1;
+    if (neighborIndex < 0 || neighborIndex >= sameKind.length) return;
+    final neighbor = sameKind[neighborIndex];
+    final targetOrder = target.order;
+    final neighborOrder = neighbor.order;
+    _items[_items.indexWhere((item) => item.id == target.id)] = target.copyWith(
+      order: neighborOrder,
+    );
+    _items[_items.indexWhere((item) => item.id == neighbor.id)] = neighbor
+        .copyWith(order: targetOrder);
+  }
+}
+
+BandMedia _media(String id, MediaKind kind, int order) => BandMedia(
+  id: id,
+  bandId: 'b1',
+  kind: kind,
+  url: null,
+  title: id,
+  caption: null,
+  sizeBytes: null,
+  views: null,
+  lengthSec: null,
+  pinned: id == 'video-1',
+  order: order,
+  isHero: false,
+);

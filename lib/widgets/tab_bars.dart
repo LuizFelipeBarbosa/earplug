@@ -1,4 +1,3 @@
-import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -11,6 +10,7 @@ import 'sheets.dart';
 class EpNavigationItem extends StatelessWidget {
   final IconData icon;
   final String label;
+  final String? compactLabel;
   final bool selected;
   final VoidCallback onPressed;
 
@@ -18,13 +18,14 @@ class EpNavigationItem extends StatelessWidget {
     super.key,
     required this.icon,
     required this.label,
+    this.compactLabel,
     required this.selected,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? Colors.white : Ep.contentSecondary;
+    final color = selected ? context.epColors.ink : context.epColors.mute;
     return Semantics(
       button: true,
       selected: selected,
@@ -35,37 +36,46 @@ class EpNavigationItem extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           onTap: onPressed,
-          focusColor: Ep.accent.withValues(alpha: .2),
+          focusColor: context.epColors.accent.withValues(alpha: .2),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 56, minWidth: 48),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    width: 32,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: selected ? Ep.brand : Colors.transparent,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
+            constraints: const BoxConstraints(minHeight: 66, minWidth: 48),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  width: 24,
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: selected ? Ep.brand : Colors.transparent,
+                    borderRadius: BorderRadius.circular(99),
                   ),
-                  const SizedBox(height: 4),
-                  Icon(icon, size: 19, color: color),
-                  const SizedBox(height: 3),
-                  Text(
-                    label,
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: .8,
-                      color: color,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 6),
+                Icon(icon, size: 19, color: color),
+                const SizedBox(height: 4),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final visualLabel =
+                        compactLabel != null && constraints.maxWidth < 82
+                        ? compactLabel!
+                        : label;
+                    return Text(
+                      visualLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.epCaption.copyWith(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: .8,
+                        color: color,
+                      ),
+                    );
+                  },
+                ),
+              ],
             ),
           ),
         ),
@@ -82,18 +92,25 @@ class _TabBarShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomPad = math.max(MediaQuery.paddingOf(context).bottom, 22.0);
+    final bottomPad = MediaQuery.paddingOf(context).bottom;
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
         child: Container(
-          padding: EdgeInsets.fromLTRB(10, 8, 10, bottomPad),
           decoration: BoxDecoration(
-            color: Ep.background.withValues(alpha: .96),
+            color: context.epColors.tabBarBackground.withValues(alpha: .95),
             border: Border(top: BorderSide(color: borderColor)),
           ),
-          child: Row(
-            children: [for (final item in items) Expanded(child: item)],
+          padding: EdgeInsets.only(bottom: bottomPad),
+          child: SizedBox(
+            height: 66 + (textScale - 1).clamp(0, 1) * 14,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Row(
+                children: [for (final item in items) Expanded(child: item)],
+              ),
+            ),
           ),
         ),
       ),
@@ -108,10 +125,11 @@ class FanTabBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final scr = app.current.screen;
-    final membershipsLoading = app.authed && !app.membershipsLoaded;
-    final bandCount = app.membershipsLoaded ? app.myBands.length : 0;
+    final bandCount = app.authed ? app.myBands.length : 0;
+    final membershipsLoading =
+        app.authed && !app.membershipsLoaded && bandCount == 0;
     return _TabBarShell(
-      borderColor: Ep.border,
+      borderColor: context.epColors.border,
       items: [
         EpNavigationItem(
           icon: Icons.home_outlined,
@@ -135,7 +153,10 @@ class FanTabBar extends StatelessWidget {
           icon: Icons.groups_outlined,
           label: membershipsLoading
               ? 'BANDS'
-              : bandEntryLabel(bandCount).toUpperCase(),
+              : bandCount == 0
+              ? 'CREATE BAND'
+              : 'SWITCH BAND',
+          compactLabel: 'BAND',
           selected: false,
           onPressed: () {
             if (!app.authed) {
@@ -144,8 +165,6 @@ class FanTabBar extends StatelessWidget {
               return;
             } else if (bandCount == 0) {
               app.requestStartBand();
-            } else if (bandCount == 1) {
-              app.switchToBand(app.myBands.single);
             } else {
               showSwitcherSheet(context);
             }
@@ -164,7 +183,7 @@ class BandTabBar extends StatelessWidget {
     final app = context.watch<AppState>();
     final scr = app.current.screen;
     return _TabBarShell(
-      borderColor: Ep.border,
+      borderColor: context.epColors.border,
       items: [
         EpNavigationItem(
           icon: Icons.grid_view_rounded,

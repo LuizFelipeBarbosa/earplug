@@ -37,17 +37,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('fan-setup-expanded')), findsOne);
-    await tester.tap(find.byKey(const Key('fan-city-oak')));
+    await _tapVisible(tester, find.byKey(const Key('fan-city-oak')));
     await tester.pump();
     expect(first.app.city, 'oak');
     expect(repository.onboarding?.preferredCity, FanCity.oak);
 
-    await tester.tap(find.byKey(const Key('fan-genres-open')));
+    await _tapVisible(tester, find.byKey(const Key('fan-genres-open')));
     await tester.pump();
     expect(repository.onboarding?.genreChoice, FanGenreChoice.open);
     expect(repository.genres, isEmpty);
 
-    await tester.tap(find.byKey(const Key('fan-setup-not-now')));
+    await _tapVisible(tester, find.byKey(const Key('fan-setup-not-now')));
     await tester.pump();
     expect(first.app.fanOnboarding?.collapsed, isTrue);
     expect(repository.onboarding?.collapsed, isTrue);
@@ -64,7 +64,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('fan-setup-collapsed')), findsOne);
 
-    await tester.tap(find.byKey(const Key('fan-setup-collapsed')));
+    await _tapVisible(tester, find.byKey(const Key('fan-setup-collapsed')));
     await tester.pump();
     expect(find.byKey(const Key('fan-setup-expanded')), findsOne);
     expect(repository.onboarding?.collapsed, isFalse);
@@ -92,48 +92,50 @@ void main() {
     expect(find.byKey(const Key('fan-setup-collapsed')), findsNothing);
   });
 
-  testWidgets('zero-band entry starts band creation', (tester) async {
+  testWidgets('zero-band navigation starts creation without profile entries', (
+    tester,
+  ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final harness = await pumpApp(
       tester,
       auth: auth,
       repository: _MembershipRepository(auth: auth, count: 0),
-      home: const Scaffold(body: MyGigsScreen()),
+      home: const Scaffold(
+        body: MyGigsScreen(),
+        bottomNavigationBar: FanTabBar(),
+      ),
     );
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('band-entry')),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('START A BAND'), findsOne);
-    await tester.tap(find.byKey(const Key('band-entry')));
+    expect(find.byKey(const Key('band-entry')), findsNothing);
+    expect(find.byKey(const Key('create-band-from-profile')), findsNothing);
+    expect(find.text('PLAY IN A BAND?'), findsNothing);
+    expect(find.text('CREATE BAND'), findsOne);
+    await tester.tap(find.text('CREATE BAND'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandCreate);
   });
 
-  testWidgets(
-    'public navigation offers Start a band and preserves the intent',
-    (tester) async {
-      final auth = FakeAuthService();
-      final harness = await pumpApp(
-        tester,
-        auth: auth,
-        home: const Scaffold(
-          body: SizedBox.shrink(),
-          bottomNavigationBar: FanTabBar(),
-        ),
-      );
+  testWidgets('public navigation offers Create Band and preserves the intent', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      home: const Scaffold(
+        body: SizedBox.shrink(),
+        bottomNavigationBar: FanTabBar(),
+      ),
+    );
 
-      expect(find.text('START A BAND'), findsOne);
-      await tester.tap(find.text('START A BAND'));
-      await tester.pump();
+    expect(find.text('CREATE BAND'), findsOne);
+    await tester.tap(find.text('CREATE BAND'));
+    await tester.pump();
 
-      expect(harness.app.current.screen, Screen.auth);
-      expect(harness.app.pending?.kind, PendingKind.band);
-    },
-  );
+    expect(harness.app.current.screen, Screen.auth);
+    expect(harness.app.pending?.kind, PendingKind.band);
+  });
 
   testWidgets('band navigation waits for authenticated memberships', (
     tester,
@@ -167,9 +169,12 @@ void main() {
 
     expect(harness.app.membershipsLoaded, isTrue);
     expect(harness.app.myBands, ['b1']);
+    expect(find.text('SWITCH BAND'), findsOne);
+    await tester.tap(find.text('SWITCH BAND'));
+    await tester.pumpAndSettle();
     expect(find.text('MANAGE BAND'), findsOne);
-    await tester.tap(find.text('MANAGE BAND'));
-    await tester.pump();
+    await tester.tap(find.text('FOGHORN DIET'));
+    await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandDash);
     expect(harness.app.bandId, 'b1');
 
@@ -177,7 +182,7 @@ void main() {
     await tester.pump();
     expect(harness.app.myBands, isEmpty);
     expect(harness.app.membershipsLoaded, isFalse);
-    expect(find.text('START A BAND'), findsOne);
+    expect(find.text('CREATE BAND'), findsOne);
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -218,49 +223,57 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
-  testWidgets('one-band entry opens its dashboard', (tester) async {
+  testWidgets('one-band navigation opens the existing selector', (
+    tester,
+  ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final harness = await pumpApp(
       tester,
       auth: auth,
       repository: _MembershipRepository(auth: auth, count: 1),
-      home: const Scaffold(body: MyGigsScreen()),
+      home: const Scaffold(
+        body: MyGigsScreen(),
+        bottomNavigationBar: FanTabBar(),
+      ),
     );
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('band-entry')),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
+    expect(find.text('SWITCH BAND'), findsOne);
+    await tester.tap(find.text('SWITCH BAND'));
+    await tester.pumpAndSettle();
     expect(find.text('MANAGE BAND'), findsOne);
-    await tester.tap(find.byKey(const Key('band-entry')));
-    await tester.pump();
+    expect(find.text('Personal account'), findsOne);
+    await tester.tap(find.text('FOGHORN DIET'));
+    await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandDash);
     expect(harness.app.bandId, 'b1');
   });
 
-  testWidgets('multi-band entry opens the switcher', (tester) async {
+  testWidgets('multi-band navigation opens the switcher', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     await pumpApp(
       tester,
       auth: auth,
       repository: _MembershipRepository(auth: auth, count: 2),
-      home: const Scaffold(body: MyGigsScreen()),
+      home: const Scaffold(
+        body: MyGigsScreen(),
+        bottomNavigationBar: FanTabBar(),
+      ),
     );
 
-    await tester.scrollUntilVisible(
-      find.byKey(const Key('band-entry')),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
     expect(find.text('SWITCH BAND'), findsOne);
-    await tester.tap(find.byKey(const Key('band-entry')));
+    await tester.tap(find.text('SWITCH BAND'));
     await tester.pumpAndSettle();
     expect(find.text('SWITCH BAND'), findsWidgets);
     expect(find.text('PIGEON COURT'), findsWidgets);
   });
+}
+
+Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
 }
 
 class _ProfileRepository extends DemoRepository {

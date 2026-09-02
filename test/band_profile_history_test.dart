@@ -32,11 +32,14 @@ void main() {
     );
     expect(find.text('PAST GIGS · 2 PLAYED', skipOffstage: false), findsOne);
     expect(
-      find.text('Riptide Release Show · The Foghorn Club', skipOffstage: false),
+      find.textContaining(
+        'Riptide Release Show · The Foghorn Club',
+        skipOffstage: false,
+      ),
       findsOne,
     );
     expect(
-      find.text('Basement Blowout · Casa Quake', skipOffstage: false),
+      find.textContaining('Basement Blowout · Casa Quake', skipOffstage: false),
       findsOne,
     );
     expect(
@@ -59,11 +62,11 @@ void main() {
     expect(find.text('PAST GIGS · 4 PLAYED', skipOffstage: false), findsOne);
     for (final show in DemoData.bands['b1']!.past) {
       await tester.scrollUntilVisible(
-        find.text(show.title),
+        find.textContaining(show.title),
         250,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.text(show.title, skipOffstage: false), findsOne);
+      expect(find.textContaining(show.title, skipOffstage: false), findsOne);
     }
   });
 
@@ -78,6 +81,7 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
+    await _scrollToPastGigs(tester);
     expect(find.text('No past shows yet.', skipOffstage: false), findsOne);
     expect(find.text('PAST GIGS', skipOffstage: false), findsOne);
     expect(find.text('RETRY', skipOffstage: false), findsNothing);
@@ -102,6 +106,7 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
+    await _scrollToPastGigs(tester);
     expect(
       find.text("Couldn't load past shows.", skipOffstage: false),
       findsOne,
@@ -120,12 +125,12 @@ void main() {
 
     expect(repository.calls, 2);
     await tester.scrollUntilVisible(
-      find.text('Basement Blowout · Casa Quake'),
+      find.textContaining('Basement Blowout · Casa Quake'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
     expect(
-      find.text('Basement Blowout · Casa Quake', skipOffstage: false),
+      find.textContaining('Basement Blowout · Casa Quake', skipOffstage: false),
       findsOne,
     );
     expect(
@@ -149,12 +154,22 @@ void main() {
     );
     await tester.pump();
 
+    await _scrollToPastGigs(tester);
     expect(find.text('Loading past shows…', skipOffstage: false), findsOne);
 
     gate.complete();
     await tester.pumpAndSettle();
     expect(find.text('No past shows yet.', skipOffstage: false), findsOne);
   });
+}
+
+Future<void> _scrollToPastGigs(WidgetTester tester) async {
+  await tester.scrollUntilVisible(
+    find.text('PAST GIGS'),
+    250,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await tester.pump();
 }
 
 class _HistoryRepository extends DemoRepository {

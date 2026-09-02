@@ -161,8 +161,22 @@ export const deleteMedia = mutation({
     const media = await mediaForAdmin(ctx, args.mediaId);
 
     const band = await ctx.db.get(media.bandId);
-    if (band?.imageStorageId === media.storageId) {
-      await ctx.db.patch(band._id, { imageStorageId: undefined });
+    if (band) {
+      const patch: {
+        imageStorageId?: undefined;
+        avatarStorageId?: null;
+        bannerStorageId?: null;
+      } = {};
+      if (band.imageStorageId === media.storageId) {
+        patch.imageStorageId = undefined;
+      }
+      if (band.avatarStorageId === media.storageId) {
+        patch.avatarStorageId = null;
+      }
+      if (band.bannerStorageId === media.storageId) {
+        patch.bannerStorageId = null;
+      }
+      if (Object.keys(patch).length > 0) await ctx.db.patch(band._id, patch);
     }
     // Physical blob deletion belongs exclusively to sweepOrphanBlobs so shared or missing blobs cannot wedge row deletion.
     await ctx.db.delete(media._id);
@@ -247,6 +261,35 @@ export const moveMedia = mutation({
   },
 });
 
+export const moveWithinKind = mutation({
+  args: {
+    mediaId: v.id("bandMedia"),
+    direction: v.union(v.literal("earlier"), v.literal("later")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const media = await mediaForAdmin(ctx, args.mediaId);
+    const siblings = await ctx.db
+      .query("bandMedia")
+      .withIndex("by_band_kind_order", (q) =>
+        q.eq("bandId", media.bandId).eq("kind", media.kind),
+      )
+      .order("asc")
+      .take(MAX_MEDIA_PER_BAND);
+    const index = siblings.findIndex((sibling) => sibling._id === args.mediaId);
+    if (index === -1) {
+      throw new Error("Media not found among band's ordered media");
+    }
+    const neighborIndex =
+      args.direction === "earlier" ? index - 1 : index + 1;
+    if (neighborIndex < 0 || neighborIndex >= siblings.length) return null;
+    const neighbor = siblings[neighborIndex];
+    await ctx.db.patch(media._id, { order: neighbor.order });
+    await ctx.db.patch(neighbor._id, { order: media.order });
+    return null;
+  },
+});
+
 export const forBand = query({
   args: { bandId: v.id("bands") },
   returns: v.array(mediaPayloadValidator),
@@ -264,7 +307,11 @@ export const forBand = query({
         ? await ctx.storage.getUrl(media.thumbnailStorageId)
         : null;
       payloads.push(
-        toMediaPayload(media, url, thumbnailUrl, band?.imageStorageId),
+        toMediaPayload(media, url, thumbnailUrl, {
+          legacyStorageId: band?.imageStorageId,
+          avatarStorageId: band?.avatarStorageId,
+          bannerStorageId: band?.bannerStorageId,
+        }),
       );
     }
     return payloads;
@@ -344,6 +391,8 @@ export const sweepOrphanBlobs = internalMutation({
       if (band.imageStorageId !== undefined) {
         referenced.add(band.imageStorageId);
       }
+      if (band.avatarStorageId) referenced.add(band.avatarStorageId);
+      if (band.bannerStorageId) referenced.add(band.bannerStorageId);
     }
     for (const gig of gigs) {
       if (gig.flyStorageId !== undefined) referenced.add(gig.flyStorageId);

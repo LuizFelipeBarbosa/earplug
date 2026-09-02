@@ -3,10 +3,12 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../genres.dart';
+import '../models.dart';
 import '../services/location_service.dart';
 import '../theme.dart';
 import 'common.dart';
 import 'ep_sheet.dart';
+import 'sheets.dart';
 
 void showDiscoveryLocationSheet(BuildContext context) {
   showEpSheet(
@@ -17,11 +19,17 @@ void showDiscoveryLocationSheet(BuildContext context) {
   );
 }
 
-void showDiscoveryFiltersSheet(BuildContext context) {
+void showDiscoveryFiltersSheet(
+  BuildContext context, {
+  bool labelConfirmationAsApply = false,
+}) {
   showEpSheet(
     context,
     (context) => Consumer<AppState>(
-      builder: (context, app, _) => _FiltersSheet(app: app),
+      builder: (context, app, _) => _FiltersSheet(
+        app: app,
+        labelConfirmationAsApply: labelConfirmationAsApply,
+      ),
     ),
   );
 }
@@ -35,55 +43,37 @@ class _SheetFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final height = MediaQuery.sizeOf(context).height * .88;
-    return SafeArea(
-      top: false,
-      child: Container(
-        height: height,
-        padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-        decoration: const BoxDecoration(
-          color: Ep.surfaceRaised,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border(top: BorderSide(color: Ep.border)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Ep.contentDisabled,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
+    return EpSheetShell(
+      heightFactor: .88,
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+      backgroundColor: context.epColors.surfaceRaised,
+      borderColor: context.epColors.border,
+      topRadius: 20,
+      handleColor: context.epColors.contentDisabled,
+      handleBottomSpacing: 12,
+      header: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: Theme.of(context).textTheme.epSectionHeading,
             ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.epSectionHeading,
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Close',
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Expanded(child: child),
-            if (footer case final Widget footer) ...[
-              const SizedBox(height: 12),
-              footer,
-            ],
-          ],
-        ),
+          ),
+          IconButton(
+            tooltip: 'Close',
+            onPressed: () => Navigator.pop(context),
+            icon: Icon(Icons.close),
+          ),
+        ],
       ),
+      children: [
+        const SizedBox(height: 4),
+        Expanded(child: child),
+        if (footer case final Widget footer) ...[
+          const SizedBox(height: 12),
+          footer,
+        ],
+      ],
     );
   }
 }
@@ -101,9 +91,9 @@ class _LocationSheet extends StatelessWidget {
         children: [
           Text(
             'Use your position once, or pick a scene manually.',
-            style: Theme.of(
-              context,
-            ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+            style: Theme.of(context).textTheme.epBody.copyWith(
+              color: context.epColors.contentSecondary,
+            ),
           ),
           const SizedBox(height: 10),
           _OptionTile(
@@ -118,7 +108,11 @@ class _LocationSheet extends StatelessWidget {
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.my_location, color: Ep.accent, size: 20),
+                : Icon(
+                    Icons.my_location,
+                    color: context.epColors.accent,
+                    size: 20,
+                  ),
             onTap: app.locating
                 ? null
                 : () async {
@@ -130,11 +124,25 @@ class _LocationSheet extends StatelessWidget {
             const SizedBox(height: 8),
             _LocationFailureMessage(failure: failure, app: app),
           ],
+          if (app.profile?.homeLocation case final homeCity?)
+            if (discoveryLocationForFanCity(homeCity) == DiscoveryLocation.home)
+              _OptionTile(
+                title: homeCity.label,
+                subtitle: 'Saved home location',
+                selected: app.discoveryLocation == DiscoveryLocation.home,
+                leading: Icon(Icons.home_outlined, size: 20),
+                onTap: () {
+                  if (app.discoveryLocation != DiscoveryLocation.home) {
+                    app.selectFanCity(homeCity);
+                  }
+                  Navigator.pop(context);
+                },
+              ),
           _OptionTile(
             title: 'Mission, SF',
             subtitle: 'San Francisco',
             selected: app.discoveryLocation == DiscoveryLocation.sf,
-            leading: const Icon(Icons.location_on_outlined, size: 20),
+            leading: Icon(Icons.location_on_outlined, size: 20),
             onTap: () {
               app.setCity('sf');
               Navigator.pop(context);
@@ -144,7 +152,7 @@ class _LocationSheet extends StatelessWidget {
             title: 'Temescal, OAK',
             subtitle: 'Oakland',
             selected: app.discoveryLocation == DiscoveryLocation.oak,
-            leading: const Icon(Icons.location_on_outlined, size: 20),
+            leading: Icon(Icons.location_on_outlined, size: 20),
             onTap: () {
               app.setCity('oak');
               Navigator.pop(context);
@@ -185,7 +193,7 @@ class _LocationFailureMessage extends StatelessWidget {
 
     return EpCard(
       padding: const EdgeInsets.all(12),
-      borderColor: Ep.warning,
+      borderColor: context.epColors.warning,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -207,15 +215,22 @@ class _LocationFailureMessage extends StatelessWidget {
 }
 
 class _FiltersSheet extends StatelessWidget {
-  const _FiltersSheet({required this.app});
+  const _FiltersSheet({
+    required this.app,
+    required this.labelConfirmationAsApply,
+  });
 
   final AppState app;
+  final bool labelConfirmationAsApply;
 
   @override
   Widget build(BuildContext context) {
     return _SheetFrame(
       title: 'FILTERS',
-      footer: _ResultsButton(count: app.feed.length),
+      footer: _ResultsButton(
+        count: app.feed.length,
+        labelAsApply: labelConfirmationAsApply,
+      ),
       child: ListView(
         children: [
           Row(
@@ -286,12 +301,11 @@ class _FiltersSheet extends StatelessWidget {
           const _Divider(),
           const _FilterHeading('DISTANCE'),
           const SizedBox(height: 5),
-          Text(
-            app.discoveryLocation == DiscoveryLocation.current
-                ? 'Measured from your current location.'
-                : 'Choose Current location to filter by distance.',
-            style: Theme.of(context).textTheme.epCaption,
-          ),
+          Text(switch (app.discoveryLocation) {
+            DiscoveryLocation.current => 'Measured from your current location.',
+            DiscoveryLocation.home => 'Measured from your saved home location.',
+            _ => 'Choose Current location to filter by distance.',
+          }, style: Theme.of(context).textTheme.epCaption),
           const SizedBox(height: 9),
           Wrap(
             spacing: 7,
@@ -300,7 +314,7 @@ class _FiltersSheet extends StatelessWidget {
               _ChoiceChip(
                 label: 'Any',
                 selected: app.fMaxDistanceMiles == null,
-                onTap: app.discoveryLocation == DiscoveryLocation.current
+                onTap: app.canFilterByDistance
                     ? () => app.setDistanceFilter(null)
                     : null,
               ),
@@ -308,7 +322,7 @@ class _FiltersSheet extends StatelessWidget {
                 _ChoiceChip(
                   label: '${miles.toInt()} MI',
                   selected: app.fMaxDistanceMiles == miles,
-                  onTap: app.discoveryLocation == DiscoveryLocation.current
+                  onTap: app.canFilterByDistance
                       ? () => app.setDistanceFilter(miles)
                       : null,
                 ),
@@ -362,7 +376,7 @@ class _FiltersSheet extends StatelessWidget {
             onPressed: app.activeFilterCount == 0
                 ? null
                 : app.clearDiscoveryFilters,
-            child: const Text('CLEAR ALL'),
+            child: Text('CLEAR ALL'),
           ),
         ],
       ),
@@ -395,9 +409,10 @@ class _FiltersSheet extends StatelessWidget {
       saveText: 'USE DATES',
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
-          colorScheme: Theme.of(
-            context,
-          ).colorScheme.copyWith(primary: Ep.brand, surface: Ep.surfaceRaised),
+          colorScheme: Theme.of(context).colorScheme.copyWith(
+            primary: Ep.brand,
+            surface: context.epColors.surfaceRaised,
+          ),
         ),
         child: child!,
       ),
@@ -407,9 +422,10 @@ class _FiltersSheet extends StatelessWidget {
 }
 
 class _ResultsButton extends StatelessWidget {
-  const _ResultsButton({required this.count});
+  const _ResultsButton({required this.count, required this.labelAsApply});
 
   final int count;
+  final bool labelAsApply;
 
   @override
   Widget build(BuildContext context) {
@@ -417,7 +433,8 @@ class _ResultsButton extends StatelessWidget {
       key: const Key('show-filter-results'),
       onPressed: () => Navigator.pop(context),
       child: Text(
-        'SHOW $count ${count == 1 ? 'RESULT' : 'RESULTS'}',
+        '${labelAsApply ? 'APPLY FILTERS · ' : 'SHOW '}'
+        '$count ${count == 1 ? 'RESULT' : 'RESULTS'}',
         style: Theme.of(context).textTheme.epLabel.copyWith(letterSpacing: .8),
       ),
     );
@@ -467,8 +484,8 @@ class _OptionTile extends StatelessWidget {
                     style: Theme.of(context).textTheme.epBody.copyWith(
                       fontWeight: FontWeight.w700,
                       color: onTap == null
-                          ? Ep.contentDisabled
-                          : Ep.contentPrimary,
+                          ? context.epColors.contentDisabled
+                          : context.epColors.contentPrimary,
                     ),
                   ),
                   if (subtitle != null) ...[
@@ -477,8 +494,8 @@ class _OptionTile extends StatelessWidget {
                       subtitle!,
                       style: Theme.of(context).textTheme.epCaption.copyWith(
                         color: onTap == null
-                            ? Ep.contentDisabled
-                            : Ep.contentSecondary,
+                            ? context.epColors.contentDisabled
+                            : context.epColors.contentSecondary,
                       ),
                     ),
                   ],
@@ -486,7 +503,11 @@ class _OptionTile extends StatelessWidget {
               ),
             ),
             if (selected)
-              const Icon(Icons.check_circle, color: Ep.accent, size: 19),
+              Icon(
+                Icons.check_circle,
+                color: context.epColors.accent,
+                size: 19,
+              ),
           ],
         ),
       ),
@@ -522,7 +543,7 @@ class _FilterHeading extends StatelessWidget {
       label,
       style: Theme.of(context).textTheme.epLabel.copyWith(
         letterSpacing: 1,
-        color: Ep.contentSecondary,
+        color: context.epColors.contentSecondary,
       ),
     );
   }
@@ -553,7 +574,7 @@ class _Divider extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 18),
-      child: const Divider(height: 1),
+      child: Divider(height: 1),
     );
   }
 }

@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 
 import '../app_links.dart';
 import '../app_state.dart';
+import '../date_names.dart';
 import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import 'common.dart';
+
+enum FanEventCardPresentation { compact, featured }
 
 /// The full event summary used throughout the fan experience.
 ///
@@ -18,12 +21,14 @@ class FanEventCard extends StatelessWidget {
     required this.app,
     this.showDistance = false,
     this.trailingAction,
+    this.presentation = FanEventCardPresentation.compact,
   });
 
   final Gig gig;
   final AppState app;
   final bool showDistance;
   final Widget? trailingAction;
+  final FanEventCardPresentation presentation;
 
   @override
   Widget build(BuildContext context) {
@@ -32,145 +37,236 @@ class FanEventCard extends StatelessWidget {
       for (final bandId in gig.lineup)
         if (app.band(bandId) case final Band band) band.name,
     ];
+    final presenter = gig.createdByBand == null
+        ? null
+        : app.band(gig.createdByBand!);
 
+    if (presentation == FanEventCardPresentation.featured) {
+      return _buildFeatured(context, venue, lineup, presenter);
+    }
+    return _buildCompact(context, venue, lineup);
+  }
+
+  Widget _buildCompact(BuildContext context, Venue venue, List<String> lineup) {
     return EpCard(
       key: ValueKey('fan-event-${gig.id}'),
       padding: const EdgeInsets.all(11),
       radius: 14,
       onTap: () => app.openGig(gig.id),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DateBlock(
+                day: gig.startsAt.day.toString().padLeft(2, '0'),
+                month: monthNamesUpper[gig.startsAt.month - 1],
+                semanticLabel: gig.dateShort,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (app.isDiscoveryBoosted(gig)) ...[
+                      Text(
+                        'DISCOVERY BOOST · COMPLETE LISTING',
+                        key: ValueKey('discovery-boost-${gig.id}'),
+                        style: Theme.of(context).textTheme.epMeta.copyWith(
+                          color: context.epColors.accent,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .45,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                    ],
+                    Text(
+                      gig.title.toUpperCase(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.epPosterTitle.copyWith(
+                        fontSize: 17,
+                        height: 1.12,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      '${gig.dateShort} · DOORS ${_doorsTime(gig.time)}',
+                      style: Theme.of(context).textTheme.epMeta.copyWith(
+                        color: context.epColors.accent,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      [
+                        venue.name,
+                        if (venue.area.trim().isNotEmpty) venue.area,
+                        if (showDistance) app.distanceOf(venue),
+                      ].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.epMeta,
+                    ),
+                    if (lineup.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        lineup.join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.epCaption,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          Wrap(
+            spacing: 7,
+            runSpacing: 6,
+            children: [
+              PriceBadge(gig),
+              _AgeBadge(gig.ageRequirement.label),
+              if (gig.lifecycle == GigLifecycle.cancelled)
+                const StatusPill(
+                  label: 'Cancelled',
+                  tone: EpStatusPillTone.warning,
+                )
+              else
+                StatusPill(
+                  label: '${app.rsvpCount(gig)} GOING',
+                  tone: EpStatusPillTone.selected,
+                ),
+            ],
+          ),
+          _EventActions(gig: gig, app: app, trailingAction: trailingAction),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatured(
+    BuildContext context,
+    Venue venue,
+    List<String> lineup,
+    Band? presenter,
+  ) {
+    final flyer = app.flyer(gig.flyKey);
+    final hasCustomFlyerImage =
+        gig.flyKey == 'custom' && (gig.flyerUrl?.isNotEmpty ?? false);
+    final flyerTextShadows = hasCustomFlyerImage
+        ? const [Shadow(color: Colors.black54, blurRadius: 8)]
+        : null;
+    return EpCard(
+      key: ValueKey('fan-event-${gig.id}'),
+      padding: EdgeInsets.zero,
+      radius: 14,
+      onTap: () => app.openGig(gig.id),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           GigFlyer(
             gig,
-            app.flyer(gig.flyKey),
-            width: 72,
-            height: 96,
-            radius: 6,
+            flyer,
+            height: 220,
+            radius: 0,
             shadow: false,
-            padding: const EdgeInsets.all(7),
+            scrim: true,
+            padding: const EdgeInsets.all(18),
             child: MediaQuery.withNoTextScaling(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  if (presenter != null)
+                    Text(
+                      '${presenter.name.toUpperCase()} PRESENTS',
+                      style: epText(
+                        size: 11,
+                        weight: FontWeight.w900,
+                        color: flyer.fg,
+                        letterSpacing: 1.8,
+                      ).copyWith(shadows: flyerTextShadows),
+                    ),
+                  const Spacer(),
                   Text(
                     gig.title.toUpperCase(),
-                    maxLines: 4,
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: epDisplay(
-                      size: 9,
-                      height: 1.08,
-                      color: app.flyer(gig.flyKey).fg,
-                    ),
+                      size: 34,
+                      color: flyer.fg,
+                      height: 1.03,
+                    ).copyWith(shadows: flyerTextShadows),
                   ),
-                  Text(
-                    gig.dateShort,
-                    style: epText(
-                      size: 7,
-                      weight: FontWeight.w900,
-                      color: app.flyer(gig.flyKey).fg.withValues(alpha: .8),
+                  if (lineup.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      lineup.join(' + ').toUpperCase(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: epText(
+                        size: 11,
+                        weight: FontWeight.w900,
+                        color: flyer.fg,
+                        letterSpacing: .8,
+                      ).copyWith(shadows: flyerTextShadows),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
+          Container(
+            color: context.epColors.selected,
+            padding: const EdgeInsets.fromLTRB(13, 12, 13, 8),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (app.isDiscoveryBoosted(gig)) ...[
-                  Text(
-                    'DISCOVERY BOOST · COMPLETE LISTING',
-                    key: ValueKey('discovery-boost-${gig.id}'),
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      color: Ep.accent,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: .45,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                ],
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        gig.title.toUpperCase(),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epSectionHeading
-                            .copyWith(fontSize: 14, height: 1.12),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    PriceBadge(gig),
-                  ],
-                ),
-                const SizedBox(height: 3),
                 Text(
                   '${gig.dateShort} · DOORS ${_doorsTime(gig.time)}',
                   style: Theme.of(
                     context,
-                  ).textTheme.epLabel.copyWith(color: Ep.accent),
+                  ).textTheme.epLabel.copyWith(color: context.epColors.volt),
                 ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '${venue.name}${showDistance ? ' · ${app.distanceOf(venue)}' : ''}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.epCaption.copyWith(
-                          color: Ep.contentSecondary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    _AgeBadge(gig.ageRequirement.label),
-                  ],
+                const SizedBox(height: 3),
+                Text(
+                  [
+                    venue.name,
+                    if (venue.area.trim().isNotEmpty) venue.area,
+                    if (showDistance) app.distanceOf(venue),
+                  ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.epMeta.copyWith(color: context.epColors.ink),
                 ),
-                if (lineup.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    lineup.join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.epCaption,
-                  ),
-                ],
-                const SizedBox(height: 5),
+                const SizedBox(height: 8),
                 Wrap(
-                  key: ValueKey('event-actions-${gig.id}'),
-                  alignment: WrapAlignment.end,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  spacing: 2,
-                  runSpacing: 2,
+                  spacing: 7,
+                  runSpacing: 6,
                   children: [
-                    _IconAction(
-                      key: ValueKey('save-${gig.id}'),
-                      tooltip: app.saved.contains(gig.id)
-                          ? 'Remove saved event'
-                          : 'Save event',
-                      icon: app.saved.contains(gig.id)
-                          ? Icons.bookmark
-                          : Icons.bookmark_border,
-                      active: app.saved.contains(gig.id),
-                      onTap: () => app.requestSave(gig.id),
-                    ),
-                    _IconAction(
-                      key: ValueKey('share-${gig.id}'),
-                      tooltip: 'Share event',
-                      icon: Icons.ios_share,
-                      onTap: () => _share(context, gig),
-                    ),
-                    _TicketAction(gig: gig, app: app),
-                    ?trailingAction,
+                    PriceBadge(gig),
+                    _AgeBadge(gig.ageRequirement.label),
+                    if (gig.lifecycle == GigLifecycle.cancelled)
+                      const StatusPill(
+                        label: 'Cancelled',
+                        tone: EpStatusPillTone.warning,
+                      )
+                    else
+                      StatusPill(
+                        label: '${app.rsvpCount(gig)} GOING',
+                        tone: EpStatusPillTone.selected,
+                      ),
                   ],
+                ),
+                _EventActions(
+                  gig: gig,
+                  app: app,
+                  trailingAction: trailingAction,
                 ),
               ],
             ),
@@ -209,20 +305,59 @@ class _AgeBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        border: Border.all(color: Ep.border),
+        border: Border.all(color: context.epColors.border),
         borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         label.toUpperCase(),
-        style: Theme.of(context).textTheme.epCaption.copyWith(
-          fontSize: 9,
-          fontWeight: FontWeight.w800,
-          letterSpacing: .5,
-          color: Ep.contentSecondary,
+        style: Theme.of(context).textTheme.epChipLabel.copyWith(
+          fontSize: 11,
+          color: context.epColors.contentSecondary,
         ),
       ),
+    );
+  }
+}
+
+class _EventActions extends StatelessWidget {
+  const _EventActions({
+    required this.gig,
+    required this.app,
+    required this.trailingAction,
+  });
+
+  final Gig gig;
+  final AppState app;
+  final Widget? trailingAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final cancelled = gig.lifecycle == GigLifecycle.cancelled;
+    return Wrap(
+      key: ValueKey('event-actions-${gig.id}'),
+      alignment: WrapAlignment.end,
+      children: [
+        _IconAction(
+          key: ValueKey('save-${gig.id}'),
+          tooltip: app.saved.contains(gig.id)
+              ? 'Remove saved event'
+              : 'Save event',
+          icon: app.saved.contains(gig.id)
+              ? Icons.bookmark
+              : Icons.bookmark_border,
+          active: app.saved.contains(gig.id),
+          onTap: () => app.requestSave(gig.id),
+        ),
+        _IconAction(
+          key: ValueKey('share-${gig.id}'),
+          tooltip: 'Share event',
+          icon: Icons.ios_share,
+          onTap: () => _share(context, gig),
+        ),
+        if (!cancelled) ...[_TicketAction(gig: gig, app: app), ?trailingAction],
+      ],
     );
   }
 }
@@ -247,9 +382,9 @@ class _IconAction extends StatelessWidget {
       tooltip: tooltip,
       onPressed: onTap,
       style: ButtonStyle(
-        fixedSize: const WidgetStatePropertyAll(Size.square(48)),
+        fixedSize: WidgetStatePropertyAll(Size.square(48)),
         foregroundColor: WidgetStatePropertyAll(
-          active ? Ep.accent : Ep.contentSecondary,
+          active ? context.epColors.accent : context.epColors.contentSecondary,
         ),
       ),
       icon: Icon(icon, size: 19),
@@ -272,26 +407,21 @@ class _TicketAction extends StatelessWidget {
         ? () => _openTickets(context, app, gig)
         : () => going ? app.toggleRsvp(gig.id) : app.requestRsvp(gig.id);
     final style = ButtonStyle(
-      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-      padding: const WidgetStatePropertyAll(
-        EdgeInsets.symmetric(horizontal: 8),
-      ),
+      minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+      padding: WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 11)),
       textStyle: WidgetStatePropertyAll(
-        Theme.of(context).textTheme.epLabel.copyWith(
-          fontSize: external ? 9 : 10,
-          letterSpacing: .4,
-        ),
+        Theme.of(context).textTheme.epChipLabel.copyWith(fontSize: 11),
       ),
     );
-    if (!external && !going) {
-      return FilledButton(
+    if (going) {
+      return OutlinedButton(
         key: ValueKey('ticket-action-${gig.id}'),
         onPressed: onPressed,
         style: style,
         child: Text(label),
       );
     }
-    return OutlinedButton(
+    return FilledButton(
       key: ValueKey('ticket-action-${gig.id}'),
       onPressed: onPressed,
       style: style,

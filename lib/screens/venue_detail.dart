@@ -59,9 +59,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-      decoration: const BoxDecoration(
-        color: Ep.background,
-        border: Border(bottom: BorderSide(color: Ep.border)),
+      decoration: BoxDecoration(
+        color: context.epColors.background,
+        border: Border(bottom: BorderSide(color: context.epColors.border)),
       ),
       child: Row(
         children: [
@@ -71,7 +71,7 @@ class _Header extends StatelessWidget {
             'VENUE',
             style: Theme.of(context).textTheme.epLabel.copyWith(
               letterSpacing: 1.4,
-              color: Ep.contentSecondary,
+              color: context.epColors.contentSecondary,
             ),
           ),
         ],
@@ -153,9 +153,9 @@ class _CenteredState extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+              style: Theme.of(context).textTheme.epBody.copyWith(
+                color: context.epColors.contentSecondary,
+              ),
             ),
             if (action != null) ...[
               const SizedBox(height: 16),
@@ -191,62 +191,141 @@ class _VenueContent extends StatelessWidget {
 
     return ListView(
       key: const Key('venue-detail-content'),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
+      padding: const EdgeInsets.only(bottom: 40),
       children: [
-        Text(
-          venue.name.toUpperCase(),
-          style: Theme.of(context).textTheme.epPageHeading,
+        _VenueHero(venue: venue, distance: app.distanceOf(venue)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: VenueMiniMap(venue: venue),
+              ),
+              SectionBar(
+                label: 'UPCOMING EVENTS',
+                trailing: Text(
+                  '${gigs.length}',
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+              ),
+              if (gigs.isEmpty)
+                DashedBox(
+                  child: Text(
+                    'Nothing on the calendar right now.',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.epBody.copyWith(
+                      color: context.epColors.contentSecondary,
+                    ),
+                  ),
+                ),
+              for (final gig in gigs) ...[
+                FanEventCard(gig: gig, app: app),
+                const SizedBox(height: 9),
+              ],
+              if (detail.truncated) ...[
+                Text(
+                  'Showing the next 200 events.',
+                  key: const Key('venue-detail-truncated'),
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+                const SizedBox(height: 8),
+              ],
+              SectionBar(
+                label: 'PERFORMING BANDS',
+                trailing: Text(
+                  '${performerIds.length}',
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+              ),
+              if (performerIds.isEmpty)
+                Text(
+                  'No performers announced yet.',
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+              for (final bandId in performerIds) ...[
+                _PerformerRow(band: detail.bands[bandId]!, app: app),
+                const SizedBox(height: 7),
+              ],
+            ],
+          ),
         ),
-        const SizedBox(height: 7),
-        Text(venue.addr, style: Theme.of(context).textTheme.epBody),
-        const SizedBox(height: 3),
-        Text(
-          '${venue.area} · ${app.distanceOf(venue)}',
-          key: const Key('venue-detail-distance'),
-          style: Theme.of(context).textTheme.epCaption,
-        ),
-        const SizedBox(height: 14),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: VenueMiniMap(venue: venue),
-        ),
-        const SizedBox(height: 18),
-        const SectionLabel('UPCOMING EVENTS', blue: true),
-        const SizedBox(height: 8),
-        if (gigs.isEmpty)
-          DashedBox(
-            child: Text(
-              'Nothing on the calendar right now.',
-              textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.epBody.copyWith(color: Ep.contentSecondary),
+      ],
+    );
+  }
+}
+
+class _VenueHero extends StatelessWidget {
+  const _VenueHero({required this.venue, required this.distance});
+
+  final Venue venue;
+  final String distance;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          key: const Key('venue-detail-hero'),
+          constraints: const BoxConstraints(minHeight: 150),
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 28),
+          decoration: BoxDecoration(
+            color: Ep.brand,
+            border: Border(
+              bottom: BorderSide(color: context.epColors.accent, width: 2),
             ),
           ),
-        for (final gig in gigs) ...[
-          FanEventCard(gig: gig, app: app),
-          const SizedBox(height: 9),
-        ],
-        if (detail.truncated) ...[
-          Text(
-            'Showing the next 200 events.',
-            key: const Key('venue-detail-truncated'),
-            style: Theme.of(context).textTheme.epCaption,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              Text(
+                [
+                  'VENUE',
+                  if (venue.area.trim().isNotEmpty) venue.area.toUpperCase(),
+                ].join(' · '),
+                style: Theme.of(
+                  context,
+                ).textTheme.epSection.copyWith(color: Ep.ink),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                venue.name.toUpperCase(),
+                style: Theme.of(
+                  context,
+                ).textTheme.epPosterTitle.copyWith(color: Ep.ink),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-        ],
-        const SizedBox(height: 10),
-        const SectionLabel('PERFORMING BANDS'),
-        const SizedBox(height: 8),
-        if (performerIds.isEmpty)
-          Text(
-            'No performers announced yet.',
-            style: Theme.of(context).textTheme.epCaption,
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          child: Transform.translate(
+            offset: const Offset(0, -12),
+            child: EpCard(
+              variant: EpCardVariant.raised,
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(venue.addr, style: Theme.of(context).textTheme.epBody),
+                  const SizedBox(height: 5),
+                  Text(
+                    [
+                      if (venue.area.trim().isNotEmpty) venue.area,
+                      distance,
+                    ].join(' · '),
+                    key: const Key('venue-detail-distance'),
+                    style: Theme.of(context).textTheme.epCaption,
+                  ),
+                ],
+              ),
+            ),
           ),
-        for (final bandId in performerIds) ...[
-          _PerformerRow(band: detail.bands[bandId]!, app: app),
-          const SizedBox(height: 7),
-        ],
+        ),
       ],
     );
   }
@@ -283,7 +362,11 @@ class _PerformerRow extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, size: 18, color: Ep.contentSecondary),
+          Icon(
+            Icons.chevron_right,
+            size: 18,
+            color: context.epColors.contentSecondary,
+          ),
         ],
       ),
     );

@@ -37,7 +37,7 @@ void main() {
     expect(find.byKey(const ValueKey('band-social-bandcamp')), findsOneWidget);
     expect(find.byKey(const ValueKey('band-social-youtube')), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('CREDITS'),
+      find.text('Recorded by Jo Rivera at Room Tone.'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
@@ -161,9 +161,20 @@ void main() {
     expect(find.text('Edit profile'), findsNothing);
   });
 
-  testWidgets('public profile badge follows derived profile completion', (
+  testWidgets('press hero keeps follow as the sole primary profile action', (
     tester,
   ) async {
+    await pumpApp(
+      tester,
+      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
+    );
+
+    expect(find.byKey(const ValueKey('band-profile-hero-b1')), findsOne);
+    expect(find.textContaining('FOLLOW ·'), findsOne);
+    expect(find.byType(FilledButton), findsOne);
+  });
+
+  testWidgets('public profile keeps completion state private', (tester) async {
     final auth = FakeAuthService();
     await pumpApp(
       tester,
@@ -175,7 +186,8 @@ void main() {
       ),
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
-    expect(find.byKey(const Key('profile-complete-badge')), findsOne);
+    expect(find.byKey(const Key('profile-complete-badge')), findsNothing);
+    expect(find.text('486 followers'), findsOne);
 
     await tester.pumpWidget(const SizedBox.shrink());
     final incompleteAuth = FakeAuthService();

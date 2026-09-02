@@ -211,6 +211,8 @@ export const bandPayloadValidator = v.object({
   initials: v.string(),
   followerCount: v.number(),
   heroUrl: v.union(v.string(), v.null()),
+  avatarUrl: v.union(v.string(), v.null()),
+  bannerUrl: v.union(v.string(), v.null()),
   bio: v.string(),
   linkIg: v.union(v.string(), v.null()),
   linkBc: v.union(v.string(), v.null()),
@@ -494,6 +496,8 @@ export const mediaPayloadValidator = v.object({
   order: v.number(),
   /** True when this row's blob is also the band's profile photo. */
   isHero: v.boolean(),
+  isAvatar: v.boolean(),
+  isBanner: v.boolean(),
 });
 
 export const userPayloadValidator = v.object({
@@ -520,6 +524,15 @@ export const userPayloadValidator = v.object({
   ),
 });
 
+function resolveArtworkStorageId(
+  overrideStorageId: Id<"_storage"> | null | undefined,
+  legacyStorageId: Id<"_storage"> | undefined,
+): Id<"_storage"> | undefined {
+  return overrideStorageId === undefined
+    ? legacyStorageId
+    : overrideStorageId ?? undefined;
+}
+
 // `?? null` on the optional fields is the payload contract (explicit nulls,
 // never absent keys), not a defensive default — the rest are required by the
 // schema, so a missing one is a bug worth failing on.
@@ -530,6 +543,24 @@ export const userPayloadValidator = v.object({
 export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
   const profileComplete = isBandProfileComplete(band);
   const profileImageReady = await hasValidProfileImage(ctx, band);
+  const avatarStorageId = resolveArtworkStorageId(
+    band.avatarStorageId,
+    band.imageStorageId,
+  );
+  const bannerStorageId = resolveArtworkStorageId(
+    band.bannerStorageId,
+    band.imageStorageId,
+  );
+  const artworkUrls = new Map<Id<"_storage">, string | null>();
+  for (const storageId of [
+    band.imageStorageId,
+    avatarStorageId,
+    bannerStorageId,
+  ]) {
+    if (storageId && !artworkUrls.has(storageId)) {
+      artworkUrls.set(storageId, await ctx.storage.getUrl(storageId));
+    }
+  }
   return {
     _id: band._id,
     slug: band.slug,
@@ -540,7 +571,13 @@ export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
     initials: band.initials,
     followerCount: band.followerCount,
     heroUrl: band.imageStorageId
-      ? await ctx.storage.getUrl(band.imageStorageId)
+      ? (artworkUrls.get(band.imageStorageId) ?? null)
+      : null,
+    avatarUrl: avatarStorageId
+      ? (artworkUrls.get(avatarStorageId) ?? null)
+      : null,
+    bannerUrl: bannerStorageId
+      ? (artworkUrls.get(bannerStorageId) ?? null)
       : null,
     bio: band.bio ?? "",
     linkIg: band.linkIg ?? null,
@@ -615,8 +652,20 @@ export function toMediaPayload(
   media: Doc<"bandMedia">,
   url: string | null,
   thumbnailUrl: string | null,
-  heroStorageId: Id<"_storage"> | undefined,
+  artwork: {
+    legacyStorageId: Id<"_storage"> | undefined;
+    avatarStorageId: Id<"_storage"> | null | undefined;
+    bannerStorageId: Id<"_storage"> | null | undefined;
+  },
 ) {
+  const avatarStorageId = resolveArtworkStorageId(
+    artwork.avatarStorageId,
+    artwork.legacyStorageId,
+  );
+  const bannerStorageId = resolveArtworkStorageId(
+    artwork.bannerStorageId,
+    artwork.legacyStorageId,
+  );
   return {
     _id: media._id,
     bandId: media.bandId,
@@ -631,7 +680,11 @@ export function toMediaPayload(
     lengthSec: media.lengthSec ?? null,
     pinned: media.pinned,
     order: media.order,
-    isHero: heroStorageId !== undefined && heroStorageId === media.storageId,
+    // `isHero` is the legacy name for the band's profile photo. Keep it as an
+    // alias of the avatar role for old clients; banners use `isBanner` only.
+    isHero: avatarStorageId !== undefined && avatarStorageId === media.storageId,
+    isAvatar: avatarStorageId !== undefined && avatarStorageId === media.storageId,
+    isBanner: bannerStorageId !== undefined && bannerStorageId === media.storageId,
   };
 }
 
@@ -754,8 +807,12 @@ export async function hasValidProfileImage(
   ctx: QueryCtx | MutationCtx,
   band: Doc<"bands">,
 ): Promise<boolean> {
-  if (band.imageStorageId === undefined) return false;
-  const upload = await ctx.db.system.get("_storage", band.imageStorageId);
+  const avatarStorageId = resolveArtworkStorageId(
+    band.avatarStorageId,
+    band.imageStorageId,
+  );
+  if (avatarStorageId === undefined) return false;
+  const upload = await ctx.db.system.get("_storage", avatarStorageId);
   if (!upload) return false;
   try {
     assertUploadAcceptable(

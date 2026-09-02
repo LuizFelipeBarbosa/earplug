@@ -135,6 +135,130 @@ void main() {
       },
     );
 
+    test('home distance filters use the saved fan city', () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final app = AppState(
+        repository: DemoRepository(auth: auth),
+        auth: auth,
+      );
+      addTearDown(app.dispose);
+      await pumpEventQueue();
+
+      final saved = await app.saveFanProfile(
+        name: 'Fan',
+        bio: null,
+        homeLocation: FanCity.berkeley,
+        genres: const [],
+        locationPersonalizationEnabled: true,
+        followedBandUpdatesEnabled: true,
+      );
+
+      expect(saved, isTrue);
+      expect(app.discoveryLocation, DiscoveryLocation.home);
+      expect(app.discoveryCenter, FanCity.berkeley.center);
+      expect(app.distanceOf(DemoData.venues['v2']!), '3.7 mi');
+      expect(app.distanceOf(DemoData.venues['v1']!), '11.4 mi');
+
+      app.setDistanceFilter(5);
+
+      expect(app.feed.map((gig) => gig.id), contains('g3'));
+      expect(app.feed.map((gig) => gig.id), isNot(contains('g2')));
+
+      app.setDistanceFilter(12);
+
+      expect(app.feed.map((gig) => gig.id), contains('g2'));
+    });
+
+    test('saved home city remains available after switching away', () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final app = AppState(
+        repository: DemoRepository(auth: auth),
+        auth: auth,
+      );
+      addTearDown(app.dispose);
+      await pumpEventQueue();
+
+      final saved = await app.saveFanProfile(
+        name: 'Fan',
+        bio: null,
+        homeLocation: FanCity.berkeley,
+        genres: const [],
+        locationPersonalizationEnabled: true,
+        followedBandUpdatesEnabled: true,
+      );
+
+      expect(saved, isTrue);
+      app.setCity('sf');
+
+      expect(app.profile?.homeLocation, FanCity.berkeley);
+      expect(app.discoveryLocation, DiscoveryLocation.sf);
+
+      app.selectFanCity(FanCity.berkeley);
+
+      expect(app.discoveryLocation, DiscoveryLocation.home);
+      expect(app.discoveryCenter, FanCity.berkeley.center);
+    });
+
+    test('saved home city with a dedicated tile uses that location', () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final app = AppState(
+        repository: DemoRepository(auth: auth),
+        auth: auth,
+      );
+      addTearDown(app.dispose);
+      await pumpEventQueue();
+
+      final saved = await app.saveFanProfile(
+        name: 'Fan',
+        bio: null,
+        homeLocation: FanCity.sf,
+        genres: const [],
+        locationPersonalizationEnabled: true,
+        followedBandUpdatesEnabled: true,
+      );
+
+      expect(saved, isTrue);
+      expect(discoveryLocationForFanCity(FanCity.sf), DiscoveryLocation.sf);
+
+      app.selectFanCity(FanCity.sf);
+
+      expect(app.discoveryLocation, DiscoveryLocation.sf);
+    });
+
+    test('saved home city without a dedicated tile uses home', () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final app = AppState(
+        repository: DemoRepository(auth: auth),
+        auth: auth,
+      );
+      addTearDown(app.dispose);
+      await pumpEventQueue();
+
+      final saved = await app.saveFanProfile(
+        name: 'Fan',
+        bio: null,
+        homeLocation: FanCity.berkeley,
+        genres: const [],
+        locationPersonalizationEnabled: true,
+        followedBandUpdatesEnabled: true,
+      );
+
+      expect(saved, isTrue);
+      expect(
+        discoveryLocationForFanCity(FanCity.berkeley),
+        DiscoveryLocation.home,
+      );
+
+      app.selectFanCity(FanCity.berkeley);
+
+      expect(app.discoveryLocation, DiscoveryLocation.home);
+      expect(app.discoveryHomeCity, FanCity.berkeley);
+    });
+
     test('all advanced filters combine in one result set', () async {
       final venue = DemoData.venues['v1']!;
       final show = DemoData.gigs[1];

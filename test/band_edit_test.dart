@@ -5,9 +5,13 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_edit.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/band_identity_editor.dart';
+import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -16,31 +20,237 @@ void main() {
   ) async {
     final semantics = tester.ensureSemantics();
     await pumpApp(tester, home: const Scaffold(body: BandEditScreen()));
+    tester.view.physicalSize = const Size(402, 5000);
+    await tester.pumpAndSettle();
 
-    expect(find.text('EDIT PROFILE'), findsOne);
-    expect(find.text('Required details'), findsOne);
-    // The remaining match is the field hint, not a duplicate heading.
-    expect(find.text('Band name'), findsOne);
-    expect(find.bySemanticsLabel('Band name'), findsOne);
-    expect(find.text('Sound / genres'), findsOne);
-    expect(find.text('Home base'), findsNothing);
-    expect(find.bySemanticsLabel('Home base'), findsOne);
-    expect(find.text('PREVIEW PUBLIC PROFILE'), findsOne);
-    await _scrollTo(tester, 'Optional details');
-    expect(find.text('Short bio'), findsNothing);
-    expect(find.bySemanticsLabel('Short bio'), findsOne);
-    expect(find.text('Links'), findsOne);
-    expect(find.text('Credits'), findsNothing);
+    expect(find.text('EDIT BAND'), findsOne);
+    expect(find.byType(BandIdentityHeader), findsOne);
+    expect(find.byKey(const ValueKey('band-profile-image-control')), findsOne);
+    expect(find.byKey(const ValueKey('band-header-image-control')), findsOne);
+    expect(find.text('BAND NAME · REQUIRED'), findsOne);
+    expect(find.bySemanticsLabel('BAND NAME · REQUIRED'), findsOne);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
+          .style
+          ?.fontSize,
+      21,
+    );
+    expect(find.text('GENRES · REQUIRED'), findsOne);
+    expect(find.text('HOME BASE · REQUIRED'), findsOne);
+    expect(find.bySemanticsLabel('HOME BASE · REQUIRED'), findsOne);
+    expect(find.text('ABOUT'), findsOne);
+    expect(find.bySemanticsLabel('ABOUT'), findsOne);
+    expect(find.text('PREVIEW'), findsOne);
+    expect(find.byType(StickyActionBar), findsOne);
+    expect(find.text('LINKS'), findsOne);
+    expect(find.text('CREDITS'), findsWidgets);
     expect(find.bySemanticsLabel('Credits'), findsOne);
-    expect(find.text('Music and clips'), findsNothing);
-    await _scrollTo(tester, 'Band members');
-    expect(find.text('Band members'), findsOne);
-    expect(find.text('Accepted members'), findsOne);
+    expect(find.text('MANAGE VIDEOS AND PHOTOS'), findsOne);
+    expect(find.textContaining('BAND MEMBERS'), findsOne);
+    expect(find.text('ACCEPTED MEMBERS'), findsOne);
     expect(find.text('Invitation link'), findsNothing);
     expect(find.text('Sleeve notes'), findsNothing);
     expect(find.text('Home taping'), findsNothing);
     expect(find.text('PREVIEW AS FAN'), findsNothing);
+
+    for (final key in const [
+      ValueKey('edit-instagram'),
+      ValueKey('edit-bandcamp'),
+      ValueKey('edit-youtube'),
+    ]) {
+      expect(
+        find.ancestor(of: find.byKey(key), matching: find.byType(EpCard)),
+        findsNothing,
+      );
+    }
     semantics.dispose();
+  });
+
+  testWidgets('custom genres use a ghost add flow without a band bio limit', (
+    tester,
+  ) async {
+    await pumpApp(tester, home: const Scaffold(body: BandEditScreen()));
+    tester.view.physicalSize = const Size(402, 1800);
+    await tester.pumpAndSettle();
+
+    final addChip = tester.widget<EpChip>(
+      find.byKey(const ValueKey('show-custom-genre')),
+    );
+    expect(addChip.ghost, isTrue);
+    expect(find.byKey(const ValueKey('edit-custom-genre')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('show-custom-genre')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey('edit-custom-genre')),
+      'doom jazz',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'ADD'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('DOOM JAZZ'), findsOne);
+    expect(find.byKey(const ValueKey('edit-custom-genre')), findsNothing);
+    await _scrollToKey(tester, const ValueKey('edit-short-bio'));
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('edit-short-bio')))
+          .maxLength,
+      isNull,
+    );
+  });
+
+  testWidgets(
+    'profile and header images edit independently without losing the draft',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: BandEditScreen()),
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('edit-band-name')),
+        'Unsaved New Name',
+      );
+
+      harness.picker.nextPhoto = photoFixture(filename: 'new_banner.png');
+      await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
+      await tester.pumpAndSettle();
+      expect(find.text('REPLACE'), findsOne);
+      expect(find.text('USE INITIALS INSTEAD'), findsNothing);
+      await tester.tap(find.text('REPLACE'));
+      await tester.pumpAndSettle();
+      harness.picker.nextPhoto = photoFixture(filename: 'new_avatar.png');
+      await tester.tap(
+        find.byKey(const ValueKey('band-profile-image-control')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('REPLACE'), findsOne);
+      expect(find.text('USE INITIALS INSTEAD'), findsNothing);
+      await tester.tap(find.text('REPLACE'));
+      await tester.pumpAndSettle();
+
+      final photos = harness.media.photosFor('b1');
+      expect(photos.singleWhere((photo) => photo.isBanner).title, 'NEW BANNER');
+      expect(photos.singleWhere((photo) => photo.isAvatar).title, 'NEW AVATAR');
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
+            .controller!
+            .text,
+        'Unsaved New Name',
+      );
+      expect(harness.app.myBand!.name, 'Foghorn Diet');
+    },
+  );
+
+  testWidgets('artwork sheet removes an assigned profile image', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ArtworkAuditRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandEditScreen()),
+    );
+
+    harness.picker.nextPhoto = photoFixture(filename: 'new_avatar.png');
+    final avatar = find.byKey(const ValueKey('band-profile-image-control'));
+    await tester.tap(avatar);
+    await tester.pumpAndSettle();
+    expect(find.text('REPLACE'), findsOne);
+    expect(find.text('USE INITIALS INSTEAD'), findsNothing);
+
+    await tester.tap(find.text('REPLACE'));
+    await tester.pumpAndSettle();
+    await tester.tap(avatar);
+    await tester.pumpAndSettle();
+    expect(find.text('REPLACE'), findsOne);
+    expect(find.text('USE INITIALS INSTEAD'), findsOne);
+
+    await tester.tap(find.text('USE INITIALS INSTEAD'));
+    await tester.pumpAndSettle();
+    expect(repository.clearAvatarCalls, 1);
+    expect(harness.app.myBand!.profileImageUrl, isNull);
+    expect(find.text('FD'), findsOne);
+  });
+
+  testWidgets('failed avatar replacement restores the saved artwork', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _FailingAvatarRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandEditScreen()),
+    );
+
+    harness.picker.nextPhoto = photoFixture(filename: 'failed_avatar.png');
+    final avatar = find.byKey(const ValueKey('band-profile-image-control'));
+    await tester.tap(avatar);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('REPLACE'));
+    await tester.pumpAndSettle();
+
+    final avatarFrame = find.byKey(const ValueKey('band-profile-avatar-frame'));
+    expect(
+      find.descendant(of: avatarFrame, matching: find.byType(Image)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: avatarFrame, matching: find.text('FD')),
+      findsOne,
+    );
+    expect(find.textContaining('profile image could not be saved'), findsOne);
+  });
+
+  testWidgets(
+    'accepted members are read-only and archive copy is irreversible',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: BandEditScreen()),
+      );
+      harness.app.openBandEditor(section: 'members');
+      await tester.pumpAndSettle();
+
+      final member = tester.widget<EpChip>(
+        find.byKey(const ValueKey('accepted-member-Band admin')),
+      );
+      expect(member.onTap, isNull);
+      expect(member.onRemoved, isNull);
+
+      await _scrollTo(tester, 'ARCHIVE BAND');
+      expect(find.byType(DangerZone), findsOne);
+      expect(find.textContaining('cannot restore'), findsOne);
+      expect(
+        find.textContaining('Historical and shared records remain'),
+        findsOne,
+      );
+    },
+  );
+
+  testWidgets('editor remains usable at two-times text scale', (tester) async {
+    await pumpApp(
+      tester,
+      home: const MediaQuery(
+        data: MediaQueryData(
+          size: Size(402, 900),
+          textScaler: TextScaler.linear(2),
+        ),
+        child: Scaffold(body: BandEditScreen()),
+      ),
+    );
+
+    for (var page = 0; page < 8; page++) {
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -600));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    }
+    expect(find.byType(StickyActionBar), findsOne);
   });
 
   testWidgets('profile changes remain local until one explicit atomic save', (
@@ -63,6 +273,7 @@ void main() {
       find.byKey(const ValueKey('edit-short-bio')),
       'A concise new bio.',
     );
+    await _scrollToKey(tester, const ValueKey('edit-instagram'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-instagram')),
       '@newrhythm',
@@ -75,6 +286,7 @@ void main() {
       find.byKey(const ValueKey('edit-youtube')),
       'youtube.com/@newrhythm',
     );
+    await _scrollToKey(tester, const ValueKey('edit-credits'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-credits')),
       'Recorded by Mara K.',
@@ -186,7 +398,7 @@ void main() {
       );
       await _scrollTo(tester, 'SAVE CHANGES');
       await tester.tap(find.text('SAVE CHANGES'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(
         find.text('Band name, sound, and home base are required.'),
@@ -246,8 +458,8 @@ void main() {
     harness.app.openBandEditor(section: 'members');
     await tester.pumpAndSettle();
 
-    expect(find.text('Band members'), findsOne);
-    expect(find.text('Band admin'), findsOne);
+    expect(find.textContaining('BAND MEMBERS'), findsOne);
+    expect(find.text('BAND ADMIN'), findsOne);
     await tester.tap(find.text('CREATE INVITATION LINK'));
     await tester.pumpAndSettle();
     final first = harness.app.inviteFor(harness.app.bandId)!;
@@ -313,7 +525,7 @@ void main() {
         home: const Scaffold(body: BandEditScreen()),
       );
       await _scrollTo(tester, 'ARCHIVE BAND');
-      await tester.tap(find.byKey(const Key('archive-band')));
+      await tester.tap(find.text('ARCHIVE BAND'));
       await tester.pumpAndSettle();
 
       final confirm = find.byKey(const Key('archive-band-confirmation'));
@@ -371,20 +583,19 @@ void main() {
 }
 
 Future<void> _scrollTo(WidgetTester tester, String text) async {
-  await tester.scrollUntilVisible(
-    find.text(text),
-    260,
-    scrollable: find.byType(Scrollable).first,
-  );
-  await tester.pumpAndSettle();
+  await _scrollToFinder(tester, find.text(text));
 }
 
 Future<void> _scrollToKey(WidgetTester tester, Key key) async {
-  await tester.scrollUntilVisible(
-    find.byKey(key),
-    260,
-    scrollable: find.byType(Scrollable).first,
-  );
+  await _scrollToFinder(tester, find.byKey(key));
+}
+
+Future<void> _scrollToFinder(WidgetTester tester, Finder target) async {
+  for (var attempt = 0; attempt < 20 && target.evaluate().isEmpty; attempt++) {
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pump();
+  }
+  await tester.ensureVisible(target);
   await tester.pumpAndSettle();
 }
 
@@ -400,6 +611,28 @@ class _ControlledProfileRepository extends DemoRepository {
     if (updateCalls == 1) await firstSave.future;
     await super.updateBandProfile(update);
   }
+}
+
+class _ArtworkAuditRepository extends DemoRepository {
+  _ArtworkAuditRepository({required super.auth});
+
+  int clearAvatarCalls = 0;
+
+  @override
+  Future<void> clearBandAvatar(String bandId) {
+    clearAvatarCalls++;
+    return super.clearBandAvatar(bandId);
+  }
+}
+
+class _FailingAvatarRepository extends DemoRepository {
+  _FailingAvatarRepository({required super.auth});
+
+  @override
+  Future<void> setBandAvatar({
+    required String bandId,
+    required String mediaId,
+  }) async => throw StateError('avatar assignment failed');
 }
 
 class _DelayedDetailsRepository extends DemoRepository {

@@ -24,6 +24,15 @@ function completeFunction(identifier, functionType) {
     } else if (surface === "arrayReturn") {
       entry.returns ??= { type: "array", value: { type: "object", value: {} } };
       entry.returns.value.value[fieldName] = field;
+    } else if (identifier === "bands.js:bySlug") {
+      entry.returns ??= {
+        type: "union",
+        value: [
+          { type: "object", value: {} },
+          { type: "null" },
+        ],
+      };
+      entry.returns.value[0].value[fieldName] = field;
     } else {
       entry.returns ??= { type: "object", value: {} };
       entry.returns.value[fieldName] = field;
@@ -85,8 +94,13 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing bands.js:bySlug",
     "missing bands.js:archive",
     "missing bands.js:archiveStatus",
+    "missing bands.js:setBandAvatar",
+    "missing bands.js:clearBandAvatar",
+    "missing bands.js:setBandBanner",
+    "missing bands.js:clearBandBanner",
     "missing media.js:addMedia",
     "missing media.js:forBand",
+    "missing media.js:moveWithinKind",
     "missing interactions.js:ticketForGig",
   ]);
 });
@@ -103,5 +117,20 @@ test("reports missing client fields on otherwise present functions", () => {
 
   assert.deepEqual(contractProblems(url, { url, functions }), [
     "media.js:forBand is missing arrayReturn.thumbnailUrl",
+  ]);
+});
+
+test("reports missing client fields on nullable union returns", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const bySlug = functions.find(
+    (entry) => entry.identifier === "bands.js:bySlug",
+  );
+  delete bySlug.returns.value[0].value.avatarUrl;
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "bands.js:bySlug is missing return.avatarUrl",
   ]);
 });

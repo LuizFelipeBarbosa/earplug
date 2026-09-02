@@ -196,6 +196,23 @@ void main() {
       expect(app.profile?.locationPersonalizationEnabled, isFalse);
       expect(app.city, 'sf');
 
+      expect(
+        await app.saveFanProfile(
+          name: 'Sam Reyes',
+          bio: 'Always by the speakers.',
+          homeLocation: FanCity.berkeley,
+          genres: const ['punk', 'noise'],
+          locationPersonalizationEnabled: true,
+          followedBandUpdatesEnabled: true,
+        ),
+        isTrue,
+      );
+      expect(app.discoveryLocation, DiscoveryLocation.home);
+      expect(app.discoveryHomeCity, FanCity.berkeley);
+      expect(app.locationLabel, 'BERKELEY SCENE');
+      app.setDistanceFilter(10);
+      expect(app.fMaxDistanceMiles, 10);
+
       repository.failProfileSave = true;
       expect(
         await app.saveFanProfile(

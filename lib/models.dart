@@ -95,7 +95,117 @@ class DoorCheckInResult {
       );
 }
 
-enum FanCity { sf, oak }
+enum FanCity {
+  sf,
+  oak,
+  berkeley,
+  alameda,
+  emeryville,
+  richmond,
+  dalyCity,
+  sanMateo,
+  paloAlto,
+  sanJose,
+  hayward,
+  fremont,
+  walnutCreek,
+  sanRafael,
+}
+
+extension FanCityDetails on FanCity {
+  String get label => switch (this) {
+    FanCity.sf => 'San Francisco',
+    FanCity.oak => 'Oakland',
+    FanCity.berkeley => 'Berkeley',
+    FanCity.alameda => 'Alameda',
+    FanCity.emeryville => 'Emeryville',
+    FanCity.richmond => 'Richmond',
+    FanCity.dalyCity => 'Daly City',
+    FanCity.sanMateo => 'San Mateo',
+    FanCity.paloAlto => 'Palo Alto',
+    FanCity.sanJose => 'San Jose',
+    FanCity.hayward => 'Hayward',
+    FanCity.fremont => 'Fremont',
+    FanCity.walnutCreek => 'Walnut Creek',
+    FanCity.sanRafael => 'San Rafael',
+  };
+
+  LatLng get center => switch (this) {
+    FanCity.sf => const LatLng(37.7749, -122.4194),
+    FanCity.oak => const LatLng(37.8044, -122.2712),
+    FanCity.berkeley => const LatLng(37.8715, -122.2730),
+    FanCity.alameda => const LatLng(37.7652, -122.2416),
+    FanCity.emeryville => const LatLng(37.8313, -122.2852),
+    FanCity.richmond => const LatLng(37.9358, -122.3477),
+    FanCity.dalyCity => const LatLng(37.6879, -122.4702),
+    FanCity.sanMateo => const LatLng(37.5630, -122.3255),
+    FanCity.paloAlto => const LatLng(37.4419, -122.1430),
+    FanCity.sanJose => const LatLng(37.3382, -121.8863),
+    FanCity.hayward => const LatLng(37.6688, -122.0808),
+    FanCity.fremont => const LatLng(37.5485, -121.9886),
+    FanCity.walnutCreek => const LatLng(37.9101, -122.0652),
+    FanCity.sanRafael => const LatLng(37.9735, -122.5311),
+  };
+
+  String get autocompleteLabel => '$label, CA';
+
+  Iterable<String> get _locationSearchValues => [
+    label,
+    '$label, CA',
+    '$label, California',
+    ...switch (this) {
+      FanCity.sf => const ['SF', 'San Fran'],
+      FanCity.sanJose => const ['SJ'],
+      _ => const <String>[],
+    },
+  ];
+
+  bool matchesLocationQuery(String query) {
+    final normalizedQuery = _normalizeLocationInput(query);
+    if (normalizedQuery.isEmpty) return false;
+    final queryTerms = normalizedQuery.split(' ');
+    return _locationSearchValues.any((value) {
+      final normalizedValue = _normalizeLocationInput(value);
+      return queryTerms.every(normalizedValue.contains);
+    });
+  }
+
+  bool matchesExactLocation(String input) {
+    final normalizedInput = _normalizeLocationInput(input);
+    return normalizedInput.isNotEmpty &&
+        _locationSearchValues.any(
+          (value) => _normalizeLocationInput(value) == normalizedInput,
+        );
+  }
+}
+
+String _normalizeLocationInput(String input) => input
+    .toLowerCase()
+    .replaceAll(RegExp('[^a-z0-9]+'), ' ')
+    .trim()
+    .replaceAll(RegExp(r'\s+'), ' ');
+
+FanCity? fanCityFromLocationInput(String input) {
+  for (final city in FanCity.values) {
+    if (city.matchesExactLocation(input)) return city;
+  }
+  return null;
+}
+
+Iterable<FanCity> fanCitySuggestions(String query) sync* {
+  if (query.trim().isEmpty) return;
+  for (final city in FanCity.values) {
+    if (city.matchesLocationQuery(query)) yield city;
+  }
+}
+
+FanCity? _fanCityFromWire(Object? value) {
+  if (value is! String) return null;
+  for (final city in FanCity.values) {
+    if (city.name == value) return city;
+  }
+  return null;
+}
 
 enum FanGenreChoice { pending, selected, open }
 
@@ -111,10 +221,7 @@ class FanOnboarding {
   });
 
   factory FanOnboarding.fromJson(Map<String, dynamic> json) => FanOnboarding(
-    preferredCity: switch (json['preferredCity']) {
-      final String value => FanCity.values.byName(value),
-      _ => null,
-    },
+    preferredCity: _fanCityFromWire(json['preferredCity']),
     genreChoice: FanGenreChoice.values.byName(json['genreChoice'] as String),
     collapsed: json['collapsed'] as bool,
   );
@@ -161,11 +268,7 @@ class UserProfile {
     ),
     avatarUrl: json['avatarUrl'] is String ? json['avatarUrl'] as String : null,
     bio: json['bio'] is String ? json['bio'] as String : null,
-    homeLocation: switch (json['homeLocation']) {
-      'sf' => FanCity.sf,
-      'oak' => FanCity.oak,
-      _ => null,
-    },
+    homeLocation: _fanCityFromWire(json['homeLocation']),
     locationPersonalizationEnabled:
         json['locationPersonalizationEnabled'] is bool
         ? json['locationPersonalizationEnabled'] as bool
@@ -561,6 +664,10 @@ class Gig {
 
   bool get free => price == 0;
   String get priceLabel => free ? 'FREE' : '\$$price';
+  int? get numericCapacity {
+    final value = int.tryParse(cap.trim());
+    return value != null && value > 0 ? value : null;
+  }
 
   Gig copyWith({
     String? slug,
@@ -682,6 +789,12 @@ class Band {
   final String? linkBc;
   final String? linkYt;
   final String? credits;
+  final String? avatarUrl;
+  final String? bannerUrl;
+  final bool _avatarUrlResolved;
+  final bool _bannerUrlResolved;
+
+  /// Legacy shared artwork URL retained for older/demo payloads.
   final String? heroUrl;
   final List<String> upcoming; // gig ids
   final List<PastGig> past;
@@ -702,6 +815,10 @@ class Band {
     this.linkBc,
     this.linkYt,
     this.credits,
+    this.avatarUrl,
+    this.bannerUrl,
+    this._avatarUrlResolved = false,
+    this._bannerUrlResolved = false,
     this.heroUrl,
     this.upcoming = const [],
     this.past = const [],
@@ -730,6 +847,10 @@ class Band {
       linkBc: json['linkBc'] as String?,
       linkYt: json['linkYt'] as String?,
       credits: json['credits'] as String?,
+      avatarUrl: json['avatarUrl'] as String?,
+      bannerUrl: json['bannerUrl'] as String?,
+      avatarUrlResolved: json.containsKey('avatarUrl'),
+      bannerUrlResolved: json.containsKey('bannerUrl'),
       heroUrl: json['heroUrl'] as String?,
       profileComplete: json['profileComplete'] == true,
       discoveryProfileReady: json['discoveryProfileReady'] == true,
@@ -743,6 +864,10 @@ class Band {
 
   String get genreLine => genres.join(' · ');
   String get followersLabel => _compactCount(followers);
+  String? get profileImageUrl =>
+      _avatarUrlResolved ? avatarUrl : avatarUrl ?? heroUrl;
+  String? get headerImageUrl =>
+      _bannerUrlResolved ? bannerUrl : bannerUrl ?? heroUrl;
 
   Band copyWith({
     String? slug,
@@ -756,6 +881,10 @@ class Band {
     String? linkBc,
     String? linkYt,
     String? credits,
+    String? avatarUrl,
+    String? bannerUrl,
+    bool? avatarUrlResolved,
+    bool? bannerUrlResolved,
     String? heroUrl,
     List<String>? upcoming,
     bool? profileComplete,
@@ -774,6 +903,10 @@ class Band {
     linkBc: linkBc ?? this.linkBc,
     linkYt: linkYt ?? this.linkYt,
     credits: credits ?? this.credits,
+    avatarUrl: avatarUrl ?? this.avatarUrl,
+    bannerUrl: bannerUrl ?? this.bannerUrl,
+    avatarUrlResolved: avatarUrlResolved ?? _avatarUrlResolved,
+    bannerUrlResolved: bannerUrlResolved ?? _bannerUrlResolved,
     heroUrl: heroUrl ?? this.heroUrl,
     upcoming: upcoming ?? this.upcoming,
     past: past,
@@ -1132,6 +1265,8 @@ class BandMedia {
   final bool pinned;
   final int order;
   final bool isHero;
+  final bool isAvatar;
+  final bool isBanner;
 
   const BandMedia({
     required this.id,
@@ -1147,6 +1282,8 @@ class BandMedia {
     required this.pinned,
     required this.order,
     required this.isHero,
+    this.isAvatar = false,
+    this.isBanner = false,
   });
 
   factory BandMedia.fromJson(Map<String, dynamic> json) => BandMedia(
@@ -1163,6 +1300,8 @@ class BandMedia {
     pinned: json['pinned'] as bool,
     order: (json['order'] as num).toInt(),
     isHero: json['isHero'] as bool,
+    isAvatar: json['isAvatar'] as bool? ?? false,
+    isBanner: json['isBanner'] as bool? ?? json['isHero'] as bool,
   );
 
   bool get isVideo => kind == MediaKind.video;
@@ -1190,6 +1329,8 @@ class BandMedia {
     pinned: pinned ?? this.pinned,
     order: order ?? this.order,
     isHero: isHero,
+    isAvatar: isAvatar,
+    isBanner: isBanner,
   );
 }
 
