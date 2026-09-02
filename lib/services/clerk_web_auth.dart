@@ -89,6 +89,7 @@ final class ClerkWebAuth implements AuthService {
     try {
       await _clerk.load().toDart;
       _lastSignedIn = _clerk.user != null;
+      if (_lastSignedIn) _signedInController.add(true);
       _clerk.addListener(((JSAny? _) => _emitSignedInIfChanged()).toJS);
     } catch (error) {
       throw AuthException(_messageFor(error));

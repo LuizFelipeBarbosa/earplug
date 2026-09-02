@@ -137,7 +137,7 @@ void main() {
       expect(app.gfPublished, isTrue);
       expect(find.text('PUBLISHED'), findsOne);
       expect(find.text("IT'S LIVE."), findsOne);
-      expect(find.text('earplug.dev/g/riptide-release'), findsOne);
+      expect(find.text('earplug.app/g/riptide-release'), findsOne);
       expect(app.allGigs.last.title, 'Riptide Release');
       expect(app.allGigs.last.flyKey, 'riso');
 

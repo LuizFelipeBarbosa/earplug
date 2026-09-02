@@ -15,7 +15,7 @@ venue and all 275 RSVPs unreadable by any query. Added `gigs:pastForBand` and
 **v1.3 — share links.** Every band carries a `slug`, derived from its name by
 `uniqueSlug` and deliberately frozen across renames so a shared link keeps
 resolving. `bands:createBand` returns it next to the id and `bands:bySlug`
-resolves it back to a band (`earplug.dev/<slug>`). `bands:updateProfile` covers
+resolves it back to a band (`earplug.app/<slug>`). `bands:updateProfile` covers
 the whole profile, not just bio and links. All of this reached the backend
 before v1.2 and was never recorded here.
 

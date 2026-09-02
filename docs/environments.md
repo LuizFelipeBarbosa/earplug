@@ -22,7 +22,7 @@ from misconfiguration.
 | | development | production |
 |---|---|---|
 | Convex | `brilliant-cardinal-773` | `decisive-iguana-759` |
-| Clerk issuer | `premium-sheep-24.clerk.accounts.dev` | `clerk.earplug.dev` |
+| Clerk issuer | `premium-sheep-24.clerk.accounts.dev` | `clerk.earplug.app` |
 | Publishable key | `pk_test_…` | `pk_live_…` |
 | Config file | `config/dev.json` | `config/prod.json` |
 
@@ -106,7 +106,7 @@ scoped key for native releases. Never put a real value in `.env.example`,
 Because the key itself provides no meaningful confidentiality, it **MUST** be
 domain/referrer-restricted in the Stadia dashboard for every hosted origin
 allowed to use it, in addition to being scoped and rotatable. Register
-`earplug.dev` in the Stadia property before production release. Domain and
+`earplug.app` in the Stadia property before production release. Domain and
 referrer restrictions rely on browser `Origin` and `Referer` headers; verify
 those headers on the Netlify preview before promoting the release. The app
 caches only visited vector tiles, capped at 50 MB with a seven-day TTL. This is

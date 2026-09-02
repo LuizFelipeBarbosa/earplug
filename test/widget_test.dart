@@ -129,12 +129,12 @@ void main() {
 
     test('gig URL and custom flyer overlay handle edge cases', () async {
       final app = await _demoApp();
-      expect(app.gigUrl, 'earplug.dev/g/your-gig');
+      expect(app.gigUrl, 'earplug.app/g/your-gig');
 
       app.setGfName('!!!');
-      expect(app.gigUrl, 'earplug.dev/g/your-gig');
+      expect(app.gigUrl, 'earplug.app/g/your-gig');
       app.setGfName('Riptide Release');
-      expect(app.gigUrl, 'earplug.dev/g/riptide-release');
+      expect(app.gigUrl, 'earplug.app/g/riptide-release');
 
       app.setGfFly('custom');
       app.toggleGfOverlay();

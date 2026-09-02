@@ -30,7 +30,7 @@ void main() {
             builder: (context) => TextButton(
               onPressed: () => copyForUser(
                 context,
-                'https://earplug.dev/g/test',
+                'https://earplug.app/g/test',
                 successMessage: 'Link copied.',
               ),
               child: const Text('COPY'),
@@ -71,7 +71,7 @@ void main() {
           body: Builder(
             builder: (context) => TextButton(
               onPressed: () =>
-                  copyForUser(context, 'https://earplug.dev/static-bloom'),
+                  copyForUser(context, 'https://earplug.app/static-bloom'),
               child: const Text('COPY'),
             ),
           ),
@@ -82,7 +82,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('COPY THIS LINK'), findsOne);
     expect(
-      find.widgetWithText(SelectableText, 'https://earplug.dev/static-bloom'),
+      find.widgetWithText(SelectableText, 'https://earplug.app/static-bloom'),
       findsOne,
     );
   });
