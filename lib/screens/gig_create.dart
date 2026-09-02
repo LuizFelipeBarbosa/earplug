@@ -321,33 +321,66 @@ class _CustomArtSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final art = app.gfFlyerArt;
-    final persistedUrl = app.gfFlyerUrl;
-    final slot = ColoredBox(
-      color: base,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (art != null)
-            Image.memory(art.bytes, fit: BoxFit.cover)
-          else if (persistedUrl != null)
-            Image.network(
-              persistedUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => _ArtPlaceholder(base: base),
-            )
-          else
-            _ArtPlaceholder(base: base),
-          if (app.gfFlyerUploading)
-            const Align(
-              alignment: Alignment.bottomCenter,
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
-        ],
-      ),
+    final flyer = context
+        .select<
+          AppState,
+          ({PickedMedia? art, String? persistedUrl, bool uploading})
+        >(
+          (app) => (
+            art: app.gfFlyerArt,
+            persistedUrl: app.gfFlyerUrl,
+            uploading: app.gfFlyerUploading,
+          ),
+        );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final logicalWidth =
+            constraints.maxWidth.isFinite && constraints.maxWidth > 0
+            ? constraints.maxWidth
+            : null;
+        final logicalHeight =
+            constraints.maxHeight.isFinite && constraints.maxHeight > 0
+            ? constraints.maxHeight
+            : null;
+        final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
+
+        return ColoredBox(
+          color: base,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (flyer.art case final art?)
+                Image.memory(
+                  art.bytes,
+                  fit: BoxFit.cover,
+                  cacheWidth: logicalWidth == null
+                      ? null
+                      : (logicalWidth * devicePixelRatio).round(),
+                  cacheHeight: logicalHeight == null
+                      ? null
+                      : (logicalHeight * devicePixelRatio).round(),
+                )
+              else if (flyer.persistedUrl case final persistedUrl?)
+                EpNetworkImage(
+                  url: persistedUrl,
+                  fit: BoxFit.cover,
+                  fallback: _ArtPlaceholder(base: base),
+                  cacheWidth: logicalWidth?.round(),
+                  cacheHeight: logicalHeight?.round(),
+                )
+              else
+                _ArtPlaceholder(base: base),
+              if (flyer.uploading)
+                const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+            ],
+          ),
+        );
+      },
     );
-    return slot;
   }
 }
 
@@ -1641,7 +1674,9 @@ class _Month extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
+    final selectedDate = context.select<AppState, DateTime?>(
+      (app) => app.gfDate,
+    );
     // The grid starts on Sunday; Dart weekdays run Mon(1)..Sun(7).
     final lead = first.weekday % 7;
     final days = DateTime(first.year, first.month + 1, 0).day;
@@ -1652,7 +1687,7 @@ class _Month extends StatelessWidget {
       if (day < 1 || day > days) return const SizedBox(height: 48);
       final date = DateTime(first.year, first.month, day);
       final past = date.isBefore(today);
-      final selected = date == app.gfDate;
+      final selected = date == selectedDate;
 
       return Semantics(
         // Keyed by the whole date, not the day number: four months are on
@@ -1679,7 +1714,7 @@ class _Month extends StatelessWidget {
           ),
           child: InkWell(
             key: ValueKey('day-${date.year}-${date.month}-${date.day}'),
-            onTap: past ? null : () => app.setGfDate(date),
+            onTap: past ? null : () => context.read<AppState>().setGfDate(date),
             borderRadius: BorderRadius.circular(8),
             child: SizedBox(
               height: 48,
@@ -1750,6 +1785,7 @@ class _Month extends StatelessWidget {
 
 void showVenueSheet(BuildContext context) {
   final app = context.read<AppState>();
+  final venues = app.venues;
   showEpSheet(context, (ctx) {
     return _Sheet(
       title: 'Where is it',
@@ -1766,35 +1802,39 @@ void showVenueSheet(BuildContext context) {
         constraints: BoxConstraints(
           maxHeight: MediaQuery.sizeOf(ctx).height * .6,
         ),
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            Text(
-              'Venues are shared records, so the address stays consistent across '
-              "every band's listings.",
-              style: epText(
-                size: 11,
-                color: context.epColors.contentDisabled,
-                height: 1.45,
-              ),
-            ),
-            for (final venue in app.venues)
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: Consumer<AppState>(
-                  builder: (_, watched, _) => _OptionCard(
-                    title: venue.name,
-                    titleCaps: true,
-                    subtitle: '${venue.addr} · ${venue.area}',
-                    selected: watched.gfVenueId == venue.id,
-                    onTap: () {
-                      watched.setGfVenue(venue.id);
-                      Navigator.pop(ctx);
-                    },
+        child: Selector<AppState, String?>(
+          selector: (_, app) => app.gfVenueId,
+          builder: (context, selectedVenueId, _) => ListView.builder(
+            itemCount: venues.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Text(
+                  'Venues are shared records, so the address stays consistent across '
+                  "every band's listings.",
+                  style: epText(
+                    size: 11,
+                    color: context.epColors.contentDisabled,
+                    height: 1.45,
                   ),
+                );
+              }
+
+              final venue = venues[index - 1];
+              return Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: _OptionCard(
+                  title: venue.name,
+                  titleCaps: true,
+                  subtitle: '${venue.addr} · ${venue.area}',
+                  selected: selectedVenueId == venue.id,
+                  onTap: () {
+                    app.setGfVenue(venue.id);
+                    Navigator.pop(ctx);
+                  },
                 ),
-              ),
-          ],
+              );
+            },
+          ),
         ),
       ),
     );
