@@ -501,7 +501,8 @@ async function visibleUpcomingGigs(
 /** `feed` with band summaries instead of full band payloads and no per-gig
  * `goingCount`, so a band's bio, past shows and banner never ride along and an
  * RSVP anywhere leaves this result byte-for-byte unchanged. Pair it with
- * `goingCounts`, which covers exactly the same gigs. */
+ * independently evaluated `goingCounts`; clients retain its last-known counts
+ * because a gig can momentarily appear in only one of the two results. */
 export const feedV2 = query({
   args: {},
   returns: v.object({
@@ -538,8 +539,9 @@ export const feedV2 = query({
   },
 });
 
-/** The RSVP counts `feedV2` leaves out, for the same gigs in the same order.
- * Subscribing to this separately keeps count churn off the feed payload. */
+/** The RSVP counts `feedV2` leaves out. This independently evaluates the same
+ * window, so clients merge results into last-known counts rather than assuming
+ * every emission exactly matches the current feed. */
 export const goingCounts = query({
   args: {},
   returns: v.array(v.object({ gigId: v.id("gigs"), goingCount: v.number() })),

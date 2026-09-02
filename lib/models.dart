@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -688,6 +689,53 @@ class Gig {
     return value != null && value > 0 ? value : null;
   }
 
+  /// Whether this gig has the same venue-facing listing content as [other].
+  /// Live RSVP counts and clock-derived labels do not change the listing.
+  bool sameListing(Gig other) {
+    if (id != other.id ||
+        slug != other.slug ||
+        title != other.title ||
+        venueId != other.venueId ||
+        price != other.price ||
+        startsAt != other.startsAt ||
+        doorsAt != other.doorsAt ||
+        time != other.time ||
+        flyKey != other.flyKey ||
+        !listEquals(lineup, other.lineup) ||
+        performers.length != other.performers.length ||
+        !listEquals(genres, other.genres) ||
+        desc != other.desc ||
+        tix != other.tix ||
+        externalUrl != other.externalUrl ||
+        flyerUrl != other.flyerUrl ||
+        cap != other.cap ||
+        ageRequirement != other.ageRequirement ||
+        lifecycle != other.lifecycle ||
+        createdByBand != other.createdByBand ||
+        discoveryListingReady != other.discoveryListingReady) {
+      return false;
+    }
+    for (var index = 0; index < performers.length; index++) {
+      final performer = performers[index];
+      final otherPerformer = other.performers[index];
+      if (performer.name != otherPerformer.name ||
+          performer.role != otherPerformer.role ||
+          performer.bandId != otherPerformer.bandId ||
+          performer.kind != otherPerformer.kind) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Recomputes the labels that depend on the current local calendar day.
+  Gig relabeled({required DateTime now}) {
+    final updatedWhen = _whenForDate(startsAt, now);
+    final updatedDateLine = _dateLineForDate(startsAt, time, now);
+    if (updatedWhen == when && updatedDateLine == dateLine) return this;
+    return copyWith(when: updatedWhen, dateLine: updatedDateLine);
+  }
+
   Gig copyWith({
     String? slug,
     String? title,
@@ -886,10 +934,43 @@ class Band {
 
   String get genreLine => genres.join(' · ');
   String get followersLabel => _compactCount(followers);
+  bool get avatarUrlResolved => _avatarUrlResolved;
   String? get profileImageUrl =>
       _avatarUrlResolved ? avatarUrl : avatarUrl ?? heroUrl;
   String? get headerImageUrl =>
       _bannerUrlResolved ? bannerUrl : bannerUrl ?? heroUrl;
+
+  /// Refreshes feed-owned summary fields while retaining full profile data.
+  Band mergeSummary(Band summary, {required List<String> upcoming}) {
+    final summaryResolvesAvatar = summary.avatarUrlResolved;
+    return Band(
+      id: id,
+      slug: summary.slug,
+      name: summary.name,
+      genres: summary.genres,
+      area: summary.area,
+      color: summary.color,
+      initials: summary.initials,
+      followers: summary.followers,
+      bio: bio,
+      linkIg: linkIg,
+      linkBc: linkBc,
+      linkYt: linkYt,
+      credits: credits,
+      avatarUrl: summaryResolvesAvatar ? summary.avatarUrl : avatarUrl,
+      bannerUrl: bannerUrl,
+      avatarUrlResolved: summaryResolvesAvatar
+          ? summary.avatarUrlResolved
+          : _avatarUrlResolved,
+      bannerUrlResolved: _bannerUrlResolved,
+      heroUrl: heroUrl,
+      upcoming: upcoming,
+      past: past,
+      profileComplete: summary.profileComplete,
+      discoveryProfileReady: summary.discoveryProfileReady,
+      isSummary: false,
+    );
+  }
 
   Band copyWith({
     String? slug,

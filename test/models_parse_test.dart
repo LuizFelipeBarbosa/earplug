@@ -107,6 +107,24 @@ void main() {
 
       expect(gig.going, 0);
     });
+
+    test('relabels clock-derived fields after midnight without churn', () {
+      final startsAt = DateTime(2026, 7, 28, 23, 30);
+      final gig = Gig.fromJson(
+        _gigJson(startsAt),
+        now: DateTime(2026, 7, 28, 23),
+      );
+      expect(gig.when, GigWhen.tonight);
+      expect(gig.dateLine, 'TONIGHT · DOORS 7PM');
+
+      final nextDay = DateTime(2026, 7, 29, 0, 30);
+      final relabeled = gig.relabeled(now: nextDay);
+      expect(relabeled.when, GigWhen.week);
+      expect(relabeled.dateLine, 'TUE · DOORS 7PM');
+      expect(relabeled.dateLine, isNot(gig.dateLine));
+
+      expect(relabeled.relabeled(now: nextDay), same(relabeled));
+    });
   });
 
   group('Band.fromJson', () {

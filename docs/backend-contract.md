@@ -180,17 +180,21 @@ setup mutations against the exact configured Convex deployment before the
 client is published.
 
 **v1.17 — stable feed payloads under RSVP churn.** Added `gigs:feedV2` and
-`gigs:goingCounts`, which read the exact same upcoming-gig window and bounds as
+`gigs:goingCounts`, which read the same upcoming-gig window and bounds as
 `gigs:feed`: the same six-hour grace cutoff, ascending order, 200-row cap,
-`nextStartsAt` sentinel, and archived-band-owner exclusion. `feedV2` returns
-`GigFeedPayload[]` (`GigPayload` minus `goingCount`) and
-`BandSummaryPayload[]` (identity, avatar, and readiness only; no bio, links, or
-`pastShows`) instead of full `BandPayload[]`; `goingCounts` returns
-`{ gigId, goingCount }[]` for the same gigs in the same order. This split makes
-an RSVP anywhere leave `feedV2` byte-for-byte unchanged. `gigs:feed` is
-unchanged and remains served for the previously published client. Phase 3 of
-this branch will subscribe to `feedV2` plus `goingCounts` in place of `feed`,
-and to `gigs:forBand` for a followed band only while
+`nextStartsAt` sentinel, and archived-band-owner exclusion. Convex evaluates
+the two subscriptions independently, so a gig can momentarily appear in one
+result and not yet the other. `feedV2` returns `GigFeedPayload[]` (`GigPayload`
+minus `goingCount`) and `BandSummaryPayload[]` (identity, avatar, and readiness
+only; no bio, links, or `pastShows`) instead of full `BandPayload[]`;
+`goingCounts` returns `{ gigId, goingCount }[]`. The client merges each counts
+emission into its last-known-count map rather than replacing that map, and it
+waits for the first result from both subscriptions (or a `goingCounts` error)
+before marking data ready and rendering. This split makes an RSVP anywhere
+leave `feedV2` byte-for-byte unchanged. `gigs:feed` is unchanged and remains
+served for the previously published client. The branch client subscribes to
+`feedV2` plus `goingCounts` in place of `feed`, and to `gigs:forBand` for a
+followed band only while
 `feedV2.nextStartsAt` is non-null, once the bounded feed window is exhausted.
 That conditional subscription supersedes v1.12's statement that the client
 subscribes to `gigs:forBand` unconditionally for every followed band.
@@ -398,7 +402,7 @@ Verified against the current source as of v1.17; these deployed, client-required
 | ------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | ★ `gigs:feed`                   | `{}`                 | `{ gigs: GigPayload[], venues: VenuePayload[], bands: BandPayload[], nextStartsAt: number\|null }` — all gigs with `startsAt >= now - 6h`, ascending, plus every venue/band they reference. Public. Bounded to the 200 nearest upcoming gigs; `nextStartsAt` is the first omitted timestamp or `null`.                                                                                                                                                                                                                                                                                                              |
 | `gigs:feedV2`                   | `{}`                 | `{ gigs: GigFeedPayload[], venues: VenuePayload[], bands: BandSummaryPayload[], nextStartsAt: number\|null }` — the same window, bounds, sentinel, and archived-band-owner exclusion as `gigs:feed`. The split makes an RSVP anywhere leave this result byte-for-byte unchanged; pair with `gigs:goingCounts` for the omitted counts. Public. Not yet subscribed to by a released client (v1.17); the client on this branch will move to it.                                                                                                                                                                   |
-| `gigs:goingCounts`              | `{}`                 | `Array<{ gigId, goingCount }>` — the `goingCount` values `feedV2` omits, for the same gigs in the same order as `feedV2.gigs`. Public. Subscribing separately keeps RSVP churn off the feed payload.                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `gigs:goingCounts`              | `{}`                 | `Array<{ gigId, goingCount }>` — the `goingCount` values `feedV2` omits. It reads the same window, but Convex evaluates the subscriptions independently, so a gig may momentarily occur in only one result. The client merges emissions into a last-known-count map (never replacing it wholesale) and waits for the first `feedV2` result plus the first counts result, or a counts error, before marking data ready and rendering. Public. Subscribing separately keeps RSVP churn off the feed payload.                                                                                                                                                                                         |
 | ★ `gigs:forBand`                | `{ bandId }`         | `GigPayload[]` — the band's next 200 upcoming/grace-window gigs, ascending. Reads `gigBands.by_band_startsAt`, so unrelated discovery gigs cannot crowd the band out of the result. In v1.17, the branch client subscribes for a followed band only while `feedV2.nextStartsAt` is non-null, once the bounded feed window has been exhausted.                                                                                                                                                                                                                                                                       |
 | `gigs:pastForBand`              | `{ bandId }`         | `{ gigs: GigPayload[], venues: VenuePayload[] }` — the band's 200 most recent past gigs, **descending**, plus the venues they reference. Public. Reads `gigBands.by_band_startsAt`, so other bands cannot crowd its history out of the window.                                                                                                                                                                                                                                                                                                                                                                      |
 | `gigs:getPublic`                | `{ gigId }`          | `GigPayload \| null` — returns published and cancelled public pages; unpublished, deleted, or unknown ids return null.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
