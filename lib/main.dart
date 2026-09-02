@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -8,6 +10,7 @@ import 'band_media_state.dart';
 import 'data/convex_repository.dart';
 import 'data/repository.dart';
 import 'env.dart';
+import 'errors.dart';
 import 'screens/analytics.dart';
 import 'screens/auth.dart';
 import 'screens/band_create.dart';
@@ -72,8 +75,6 @@ Future<void> main() async {
   final convexService = ConvexService();
   await convexService.init(Env.convexUrl);
   final auth = createPlatformAuthService();
-  await auth.initialize();
-  convexService.setTokenFetcher(auth.fetchConvexToken);
   final repository = ConvexRepository(convexService);
   runApp(
     EarplugApp(
@@ -86,6 +87,21 @@ Future<void> main() async {
       initialBandSlug: bandSlug,
     ),
   );
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(
+      auth.initialize().catchError((Object error) {
+        logError('auth.initialize', error);
+      }),
+    );
+    convexService.setTokenFetcher(() async {
+      try {
+        return await auth.fetchConvexToken();
+      } catch (error) {
+        logError('fetchConvexToken', error);
+        return null;
+      }
+    });
+  });
 }
 
 String? _routeValueFromUri(Uri uri, String route) {

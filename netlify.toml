@@ -55,6 +55,20 @@
 [context.branch-deploy.environment]
   EARPLUG_ENV = "dev"
 
+# Keep links and bookmarks from the former production domain working after the
+# domain is attached to this site as an alias.
+[[redirects]]
+  from = "https://earplug.dev/*"
+  to = "https://earplug.app/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.earplug.dev/*"
+  to = "https://earplug.app/:splat"
+  status = 301
+  force = true
+
 # Flutter web uses path-based URLs, so a hard refresh on any route must still
 # serve index.html instead of 404ing.
 [[redirects]]

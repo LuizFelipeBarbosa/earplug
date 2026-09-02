@@ -51,7 +51,7 @@ production context sets `EARPLUG_ENV=prod` and performs these steps in order:
 2. `npm run check:release-contract -- prod` verifies that the deployed Convex
    API matches what the client requires.
 3. Flutter builds the web client with `config/prod.json`.
-4. Netlify publishes `build/web` to `earplug.dev`.
+4. Netlify publishes `build/web` to `earplug.app`.
 
 Do not manually deploy production as part of the routine branch workflow. If a
 production build fails, the previous website remains published. Convex deploys

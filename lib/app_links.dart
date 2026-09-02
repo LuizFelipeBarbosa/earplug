@@ -1,5 +1,5 @@
-const publicWebOrigin = 'https://earplug.dev';
-const publicWebHost = 'earplug.dev';
+const publicWebOrigin = 'https://earplug.app';
+const publicWebHost = 'earplug.app';
 
 String publicWebUrl(String path) =>
     '$publicWebOrigin/${_trimLeadingSlash(path)}';

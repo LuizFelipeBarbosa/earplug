@@ -195,7 +195,7 @@ export const myBands = query({
   },
 });
 
-/** Resolves a shared profile link (earplug.dev/<slug>) to its band. `slug` is a
+/** Resolves a shared profile link (earplug.app/<slug>) to its band. `slug` is a
  * required schema column and `uniqueSlug` is the only thing that issues one, so
  * every band — including the migrated rows, which were backfilled before the
  * column was tightened — is reachable here. */

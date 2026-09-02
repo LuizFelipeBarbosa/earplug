@@ -1,6 +1,6 @@
 {
   "CONVEX_URL": "https://decisive-iguana-759.convex.cloud",
-  "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZWFycGx1Zy5kZXYk",
+  "CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuZWFycGx1Zy5hcHAk",
   "EMAIL_SIGN_IN_ENABLED": true,
   "PHONE_SIGN_IN_ENABLED": false,
   "GOOGLE_SIGN_IN_ENABLED": true,

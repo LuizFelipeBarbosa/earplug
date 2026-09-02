@@ -35,7 +35,7 @@ import {
 } from "./schema";
 import { performerLineupReady, venuePosterReady } from "./lib/discovery";
 
-const PUBLIC_WEB_ORIGIN = "https://earplug.dev";
+const PUBLIC_WEB_ORIGIN = "https://earplug.app";
 
 const MAX_PERFORMERS = 20;
 const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
