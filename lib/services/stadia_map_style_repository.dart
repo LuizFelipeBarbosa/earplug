@@ -91,7 +91,9 @@ class StadiaMapStyleRepository {
     final opposite = brightness == Brightness.dark
         ? Brightness.light
         : Brightness.dark;
-    unawaited(load(opposite).catchError((Object _) => style));
+    if (!kIsWeb) {
+      unawaited(load(opposite).catchError((Object _) => style));
+    }
     return style;
   }
 
