@@ -28,6 +28,22 @@ void main() {
       expect(harness.controller.loadErrorFor(bandId), isNull);
     });
 
+    test('media splits are memoized until the source list changes', () async {
+      final harness = _makeController();
+      const bandId = 'b1';
+      await harness.controller.refresh(bandId);
+
+      final videos = harness.controller.videosFor(bandId);
+      final photos = harness.controller.photosFor(bandId);
+      expect(harness.controller.videosFor(bandId), same(videos));
+      expect(harness.controller.photosFor(bandId), same(photos));
+
+      await harness.controller.pin(bandId, 'bm2');
+
+      expect(harness.controller.videosFor(bandId), isNot(same(videos)));
+      expect(harness.controller.photosFor(bandId), isNot(same(photos)));
+    });
+
     test('video upload advances phases, lands, and auto-pins', () async {
       final harness = _makeController();
       const bandId = 'fresh-band';

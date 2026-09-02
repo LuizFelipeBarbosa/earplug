@@ -84,6 +84,7 @@ void main() {
       final app = AppState(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
+      app.go(Screen.explore);
       await _flushAsyncWork();
       expect(app.exploreBandIds, ['b1', 'b2']);
       expect(app.hasMoreExploreBands, isTrue);
@@ -111,6 +112,7 @@ void main() {
       final app = AppState(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
+      app.go(Screen.explore);
       await _flushAsyncWork();
       expect(app.band('b1')?.past, hasLength(4));
 
@@ -132,6 +134,7 @@ void main() {
       final app = AppState(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
+      app.go(Screen.explore);
       await repository.firstPageStarted.future;
       app.setNbName('Refresh Youth');
       app.toggleNbGenre('punk');
@@ -178,40 +181,44 @@ void main() {
     expect(app.current.screen, Screen.home);
   });
 
-  test('feed changes invalidate cached venue details', () async {
+  test('feed changes invalidate only affected venue details', () async {
     final auth = FakeAuthService();
-    final freshGig = Gig.fromJson(
-      _gigJson(id: 'fresh-gig', title: 'Just announced'),
-    );
-    final repository = _RefreshingVenueRepository(
-      auth: auth,
-      freshGig: freshGig,
-    );
+    final repository = _RefreshingVenueRepository(auth: auth);
     final app = AppState(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
       await repository.dispose();
     });
 
-    repository.emitFeed([repository.oldGig]);
+    repository.emitFeed([repository.oldGig, repository.untouchedGig]);
     await _flushAsyncWork();
     expect(app.venueDetail('v1'), isNull);
+    expect(app.venueDetail('v2'), isNull);
     await _flushAsyncWork();
-    expect(app.venueDetail('v1')?.gigs.map((gig) => gig.id), [
-      repository.oldGig.id,
-    ]);
-    expect(repository.detailCalls, 1);
+    final cachedChangedVenue = app.venueDetail('v1');
+    final cachedUntouchedVenue = app.venueDetail('v2');
+    expect(cachedChangedVenue?.gigs.single.id, repository.oldGig.id);
+    expect(cachedUntouchedVenue?.gigs.single.id, repository.untouchedGig.id);
+    expect(repository.detailCalls, {'v1': 1, 'v2': 1});
 
-    repository.emitFeed([repository.oldGig, freshGig]);
+    repository.emitFeed([repository.oldGig, repository.untouchedGig]);
+    await _flushAsyncWork();
+    expect(app.venueDetail('v1'), same(cachedChangedVenue));
+    expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
+    expect(repository.detailCalls, {'v1': 1, 'v2': 1});
+
+    final changedGig = repository.oldGig.copyWith(
+      going: repository.oldGig.going + 1,
+    );
+    repository.emitFeed([changedGig, repository.untouchedGig]);
     await _flushAsyncWork();
     expect(app.venueDetail('v1'), isNull);
+    expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
     await _flushAsyncWork();
 
-    expect(app.venueDetail('v1')?.gigs.map((gig) => gig.id), [
-      repository.oldGig.id,
-      freshGig.id,
-    ]);
-    expect(repository.detailCalls, 2);
+    expect(app.venueDetail('v1')?.gigs.single.going, changedGig.going);
+    expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
+    expect(repository.detailCalls, {'v1': 2, 'v2': 1});
   });
 
   test(
@@ -369,17 +376,19 @@ class _VenueRepository extends DemoRepository {
 }
 
 class _RefreshingVenueRepository extends DemoRepository {
-  _RefreshingVenueRepository({required super.auth, required this.freshGig});
+  _RefreshingVenueRepository({required super.auth});
 
-  final Gig freshGig;
   final oldGig = DemoData.gigs.firstWhere((gig) => gig.venueId == 'v1');
+  final untouchedGig = DemoData.gigs.firstWhere((gig) => gig.venueId == 'v2');
   final _feedController = StreamController<FeedSnapshot>.broadcast();
-  var detailCalls = 0;
+  final Map<String, int> detailCalls = {};
+  List<Gig> _currentGigs = const [];
 
   @override
   Stream<FeedSnapshot> feed() => _feedController.stream;
 
   void emitFeed(List<Gig> gigs) {
+    _currentGigs = List<Gig>.of(gigs);
     _feedController.add(
       FeedSnapshot(gigs: gigs, venues: DemoData.venues, bands: DemoData.bands),
     );
@@ -387,10 +396,13 @@ class _RefreshingVenueRepository extends DemoRepository {
 
   @override
   Future<VenueDetail?> venueDetail(String venueId) async {
-    detailCalls++;
+    detailCalls.update(venueId, (count) => count + 1, ifAbsent: () => 1);
     return VenueDetail(
       venue: DemoData.venues[venueId]!,
-      gigs: detailCalls == 1 ? [oldGig] : [oldGig, freshGig],
+      gigs: [
+        for (final gig in _currentGigs)
+          if (gig.venueId == venueId) gig,
+      ],
       bands: const {},
       truncated: false,
     );

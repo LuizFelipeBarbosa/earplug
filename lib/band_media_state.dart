@@ -50,6 +50,11 @@ class BandMediaController extends ChangeNotifier {
   final MediaUploadService _uploader;
 
   final Map<String, List<BandMedia>> _mediaCache = {};
+  final Map<
+    String,
+    ({List<BandMedia> source, List<BandMedia> videos, List<BandMedia> photos})
+  >
+  _splitCache = {};
   final Set<String> _mediaLoads = {};
   final Map<String, Object> _loadTokens = {};
   final Map<String, String> _loadErrors = {};
@@ -67,19 +72,37 @@ class BandMediaController extends ChangeNotifier {
   }
 
   List<BandMedia> videosFor(String bandId) {
-    final videos = mediaFor(
-      bandId,
-    ).where((media) => media.kind == MediaKind.video).toList();
-    videos.sort((a, b) => a.order.compareTo(b.order));
-    return videos;
+    return _splitMediaFor(bandId).videos;
   }
 
   List<BandMedia> photosFor(String bandId) {
-    final photos = mediaFor(
-      bandId,
-    ).where((media) => media.kind == MediaKind.photo).toList();
+    return _splitMediaFor(bandId).photos;
+  }
+
+  ({List<BandMedia> source, List<BandMedia> videos, List<BandMedia> photos})
+  _splitMediaFor(String bandId) {
+    final source = mediaFor(bandId);
+    final cached = _splitCache[bandId];
+    if (cached != null && identical(cached.source, source)) return cached;
+
+    final videos = <BandMedia>[];
+    final photos = <BandMedia>[];
+    for (final media in source) {
+      if (media.kind == MediaKind.video) {
+        videos.add(media);
+      } else {
+        photos.add(media);
+      }
+    }
+    videos.sort((a, b) => a.order.compareTo(b.order));
     photos.sort((a, b) => a.order.compareTo(b.order));
-    return photos;
+    final split = (
+      source: source,
+      videos: List<BandMedia>.unmodifiable(videos),
+      photos: List<BandMedia>.unmodifiable(photos),
+    );
+    _splitCache[bandId] = split;
+    return split;
   }
 
   BandMedia? pinnedVideoFor(String bandId) {
@@ -397,6 +420,7 @@ class BandMediaController extends ChangeNotifier {
 
   void clearForSignOut() {
     _mediaCache.clear();
+    _splitCache.clear();
     _mediaLoads.clear();
     _loadTokens.clear();
     _loadErrors.clear();
