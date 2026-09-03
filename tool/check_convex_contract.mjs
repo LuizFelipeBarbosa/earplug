@@ -60,8 +60,7 @@ export const requiredClientFields = Object.freeze([
   ["bands.js:archiveStatus", "return", "bandId", false],
   ["bands.js:archiveStatus", "return", "archivedAt", false],
   ["gigs.js:feedV2", "return", "bands", false],
-  ["venues.js:detail", "return", "approxLocation", false],
-  ["venues.js:detail", "return", "venueType", false],
+  ["venues.js:list", "arrayReturn", "venueType", false],
   ["venues.js:list", "arrayReturn", "approxLocation", false],
 ]);
 
