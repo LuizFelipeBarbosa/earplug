@@ -518,7 +518,7 @@ class _BandRow extends StatelessWidget {
   }
 }
 
-class _BrowseRows extends StatelessWidget {
+class _BrowseRows extends StatefulWidget {
   final AppState app;
   final bool showAllBands;
   final bool showAllVenues;
@@ -534,8 +534,38 @@ class _BrowseRows extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final gigs = app.feed;
+  State<_BrowseRows> createState() => _BrowseRowsState();
+}
+
+class _BrowseRowsState extends State<_BrowseRows> {
+  ({
+    List<Gig> gigs,
+    ExploreResultType type,
+    List<Venue>? venues,
+    bool showAllVenues,
+  })?
+  _rowsInputs;
+  List<_BrowseRow> _rows = const [];
+
+  /// Partitions the feed into rows once per feed instance and scope. The
+  /// venue list is only read (and so only requested) when the scope shows it.
+  List<_BrowseRow> _browseRows(AppState app) {
+    final type = app.exploreResultType;
+    final showEvents =
+        type == ExploreResultType.all || type == ExploreResultType.events;
+    final showBands =
+        type == ExploreResultType.all || type == ExploreResultType.bands;
+    final showVenues =
+        type == ExploreResultType.all || type == ExploreResultType.venues;
+    final inputs = (
+      gigs: app.feed,
+      type: type,
+      venues: showVenues ? app.venues : null,
+      showAllVenues: widget.showAllVenues,
+    );
+    if (inputs == _rowsInputs) return _rows;
+
+    final gigs = inputs.gigs;
     final tonight = gigs.where((gig) => gig.when == GigWhen.tonight).toList();
     final tonightIds = tonight.map((gig) => gig.id).toSet();
     final free = gigs
@@ -550,13 +580,6 @@ class _BrowseRows extends StatelessWidget {
     final upcoming = gigs
         .where((gig) => !featuredIds.contains(gig.id))
         .toList();
-    final type = app.exploreResultType;
-    final showEvents =
-        type == ExploreResultType.all || type == ExploreResultType.events;
-    final showBands =
-        type == ExploreResultType.all || type == ExploreResultType.bands;
-    final showVenues =
-        type == ExploreResultType.all || type == ExploreResultType.venues;
     final rows = <_BrowseRow>[];
 
     if (showEvents) {
@@ -581,15 +604,14 @@ class _BrowseRows extends StatelessWidget {
       rows.add(const _BrowseBandsRow());
     }
 
-    if (showVenues) {
+    if (inputs.venues case final venues?) {
       rows.add(const _BrowseSpacerRow(10));
       rows.add(const _BrowseVenueHeadingRow());
       rows.add(const _BrowseSpacerRow(8));
-      final venues = app.venues;
       if (venues.isEmpty) {
         rows.add(const _BrowseVenueStateRow());
       } else {
-        final visibleVenues = showAllVenues ? venues : venues.take(3);
+        final visibleVenues = inputs.showAllVenues ? venues : venues.take(3);
         for (final venue in visibleVenues) {
           rows.add(_BrowseVenueRow(venue));
         }
@@ -605,9 +627,17 @@ class _BrowseRows extends StatelessWidget {
         rows.add(_BrowseEventRow(gig));
       }
     }
+    _rowsInputs = inputs;
+    _rows = rows;
+    return rows;
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    final rows = _browseRows(app);
     return ListView.builder(
-      key: ValueKey('explore-browse-${type.name}'),
+      key: ValueKey('explore-browse-${app.exploreResultType.name}'),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, tabBarClearance),
       itemCount: rows.length,
       itemBuilder: (context, index) => _buildRow(context, rows[index]),
@@ -615,6 +645,7 @@ class _BrowseRows extends StatelessWidget {
   }
 
   Widget _buildRow(BuildContext context, _BrowseRow row) {
+    final app = widget.app;
     return switch (row) {
       _BrowseSectionRow(:final label, :final count) => SectionBar(
         label: label,
@@ -635,9 +666,11 @@ class _BrowseRows extends StatelessWidget {
       _BrowseSpacerRow(:final height) => SizedBox(height: height),
       _BrowseVenueHeadingRow() => _SectionHeading(
         label: 'VENUES',
-        actionLabel: showAllVenues ? 'SEE LESS VENUES' : 'SEE ALL VENUES',
+        actionLabel: widget.showAllVenues
+            ? 'SEE LESS VENUES'
+            : 'SEE ALL VENUES',
         actionKey: const Key('explore-toggle-venues'),
-        onAction: onToggleVenues,
+        onAction: widget.onToggleVenues,
       ),
       _BrowseVenueRow(:final venue) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
@@ -648,6 +681,8 @@ class _BrowseRows extends StatelessWidget {
   }
 
   Widget _buildBandsBlock() {
+    final app = widget.app;
+    final showAllBands = widget.showAllBands;
     final bandIds = showAllBands
         ? app.exploreBandIds
         : app.exploreBandIds.take(3);
@@ -658,7 +693,7 @@ class _BrowseRows extends StatelessWidget {
           label: 'BANDS ON EARPLUG',
           actionLabel: showAllBands ? 'SEE LESS BANDS' : 'SEE ALL BANDS',
           actionKey: const Key('explore-toggle-bands'),
-          onAction: onToggleBands,
+          onAction: widget.onToggleBands,
         ),
         const SizedBox(height: 8),
         Column(
@@ -678,6 +713,7 @@ class _BrowseRows extends StatelessWidget {
   }
 
   Widget _buildVenueState(BuildContext context) {
+    final app = widget.app;
     if (app.venueStatus == DataStatus.connecting) {
       return Text(
         'Loading venues…',

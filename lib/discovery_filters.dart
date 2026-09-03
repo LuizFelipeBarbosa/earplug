@@ -2,6 +2,7 @@
 /// distance choices, plus where discovery is centred.
 library;
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart' show DateTimeRange;
 
 import 'models.dart';
@@ -65,4 +66,24 @@ class DiscoveryFilters {
       (price == PriceFilter.any ? 0 : 1) +
       (venueId == null ? 0 : 1) +
       (maxDistanceMiles == null ? 0 : 1);
+
+  @override
+  bool operator ==(Object other) =>
+      other is DiscoveryFilters &&
+      other.date == date &&
+      other.dateRange == dateRange &&
+      setEquals(other.genres, genres) &&
+      other.price == price &&
+      other.venueId == venueId &&
+      other.maxDistanceMiles == maxDistanceMiles;
+
+  @override
+  int get hashCode => Object.hash(
+    date,
+    dateRange,
+    Object.hashAllUnordered(genres),
+    price,
+    venueId,
+    maxDistanceMiles,
+  );
 }

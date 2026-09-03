@@ -8,8 +8,10 @@ mixin _DiscoveryState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   set _appliedHomePersonalization(FanCity? value);
   Map<String, Band> get _bands;
+  set _bands(Map<String, Band> value);
   List<Gig> get _allGigs;
   List<Gig> get allGigs;
+  Map<String, Venue> get _venueDirectory;
   Venue venue(String id);
 
   // ---- home filters
@@ -58,18 +60,20 @@ mixin _DiscoveryState on _AppStateCore {
       final page = await repository.listBands(cursor: _exploreBandsCursor);
       if (_disposed) return;
       final ids = exploreBandIds.toSet();
+      final bands = Map.of(_bands);
       for (final band in page.items) {
         if (ids.add(band.id)) exploreBandIds.add(band.id);
         // Directory rows promote feed summaries to full profiles while the
         // feed remains authoritative for each band's upcoming gig ids. A full
         // cached profile is already at least as rich as the directory row.
-        final cached = _bands[band.id];
+        final cached = bands[band.id];
         if (cached == null) {
-          _bands[band.id] = band;
+          bands[band.id] = band;
         } else if (cached.isSummary) {
-          _bands[band.id] = band.copyWith(upcoming: cached.upcoming);
+          bands[band.id] = band.copyWith(upcoming: cached.upcoming);
         }
       }
+      _bands = bands;
       _exploreBandsCursor = page.continueCursor;
       _exploreBandsDone = page.isDone;
     } catch (error) {
@@ -418,16 +422,39 @@ mixin _DiscoveryState on _AppStateCore {
     endLongitude: venue.point.longitude,
   );
 
-  int _feedVersion = -1;
-  DateTime? _feedStartOfToday;
+  ({
+    List<Gig> gigs,
+    DiscoveryFilters filters,
+    DateTime startOfToday,
+    DiscoveryLocation location,
+    LatLng? position,
+    FanCity? homeCity,
+    Map<String, Venue> feedVenues,
+    Map<String, Venue> venueDirectory,
+    Set<String> boostedGigIds,
+  })?
+  _feedInputs;
   List<Gig> _cachedFeed = const [];
 
+  /// The filtered, distance-ordered discovery feed. Recomputed only when one
+  /// of its inputs changes: the collections compare by identity (they are
+  /// replaced, never mutated), the filters by value.
   List<Gig> get feed {
     final today = DateTime.now();
     final startOfToday = DateTime(today.year, today.month, today.day);
-    if (_feedVersion == _stateVersion && _feedStartOfToday == startOfToday) {
-      return _cachedFeed;
-    }
+    final inputs = (
+      gigs: allGigs,
+      filters: filters,
+      startOfToday: startOfToday,
+      location: discoveryLocation,
+      position: currentPosition,
+      homeCity: _discoveryHomeCity,
+      feedVenues: _venues,
+      venueDirectory: _venueDirectory,
+      boostedGigIds: _discoveryBoostedGigIds,
+    );
+    if (inputs == _feedInputs) return _cachedFeed;
+
     final endOfTonight = DateTime(today.year, today.month, today.day + 1);
     final endOfWeek = DateTime(today.year, today.month, today.day + 8);
     final filtered = allGigs.where((gig) {
@@ -489,21 +516,41 @@ mixin _DiscoveryState on _AppStateCore {
       orderDiscoveryGigs(
         gigs: filtered,
         distanceMiles: (gig) => venueDistanceById[gig.venueId]!,
-        boostedGigIds: discoveryBoostedGigIds(
-          gigs: allGigs,
-          bands: _bands,
-          now: _now(),
-        ),
+        boostedGigIds: inputs.boostedGigIds,
       ),
     );
-    _feedVersion = _stateVersion;
-    _feedStartOfToday = startOfToday;
+    _feedInputs = inputs;
     return _cachedFeed;
   }
 
-  int _discoveryBoostedGigIdsVersion = -1;
-  int? _discoveryBoostedGigIdsSecond;
+  ({List<Gig> gigs, Map<String, Band> bands, int second})?
+  _discoveryBoostedGigIdsInputs;
   Set<String> _cachedDiscoveryBoostedGigIds = const {};
+
+  /// The gigs inside their discovery boost window right now, re-evaluated at
+  /// most once a second. Keeps its instance while membership is unchanged so
+  /// [feed] can key on it by identity.
+  Set<String> get _discoveryBoostedGigIds {
+    final now = _now();
+    final inputs = (
+      gigs: allGigs,
+      bands: _bands,
+      second: now.millisecondsSinceEpoch ~/ Duration.millisecondsPerSecond,
+    );
+    if (inputs == _discoveryBoostedGigIdsInputs) {
+      return _cachedDiscoveryBoostedGigIds;
+    }
+    final boosted = discoveryBoostedGigIds(
+      gigs: inputs.gigs,
+      bands: inputs.bands,
+      now: now,
+    );
+    if (!setEquals(boosted, _cachedDiscoveryBoostedGigIds)) {
+      _cachedDiscoveryBoostedGigIds = Set<String>.unmodifiable(boosted);
+    }
+    _discoveryBoostedGigIdsInputs = inputs;
+    return _cachedDiscoveryBoostedGigIds;
+  }
 
   bool isDiscoveryBoosted(Gig gig, {DateTime? now}) {
     if (now != null) {
@@ -513,18 +560,6 @@ mixin _DiscoveryState on _AppStateCore {
         now: now,
       ).contains(gig.id);
     }
-
-    final currentNow = _now();
-    final second =
-        currentNow.millisecondsSinceEpoch ~/ Duration.millisecondsPerSecond;
-    if (_discoveryBoostedGigIdsVersion != _stateVersion ||
-        _discoveryBoostedGigIdsSecond != second) {
-      _cachedDiscoveryBoostedGigIds = Set<String>.unmodifiable(
-        discoveryBoostedGigIds(gigs: allGigs, bands: _bands, now: currentNow),
-      );
-      _discoveryBoostedGigIdsVersion = _stateVersion;
-      _discoveryBoostedGigIdsSecond = second;
-    }
-    return _cachedDiscoveryBoostedGigIds.contains(gig.id);
+    return _discoveryBoostedGigIds.contains(gig.id);
   }
 }

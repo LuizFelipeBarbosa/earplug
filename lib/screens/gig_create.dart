@@ -112,11 +112,31 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    if (app.gfPublished) {
+    final app = context.read<AppState>();
+    final form = context
+        .select<
+          AppState,
+          ({
+            bool published,
+            bool previewing,
+            bool editingPublished,
+            String saveState,
+            int performerCount,
+          })
+        >(
+          (app) => (
+            published: app.gfPublished,
+            previewing: app.gfPreviewing,
+            editingPublished:
+                app.gfProject?.status == GigProjectStatus.published,
+            saveState: app.gfSaveState,
+            performerCount: app.gfPerformers.length,
+          ),
+        );
+    if (form.published) {
       return const GigPublishedView(poster: _Poster(width: 212, height: 280));
     }
-    if (app.gfPreviewing) return const GigDraftPreview();
+    if (form.previewing) return const GigDraftPreview();
 
     return Stack(
       children: [
@@ -141,18 +161,16 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          app.gfProject?.status == GigProjectStatus.published
-                              ? 'EDIT GIG'
-                              : 'GIG DRAFT',
+                          form.editingPublished ? 'EDIT GIG' : 'GIG DRAFT',
                           style: epDisplay(size: 16),
                         ),
                         Text(
-                          app.gfSaveState,
+                          form.saveState,
                           style: epText(
                             size: 11,
                             weight: FontWeight.w800,
                             letterSpacing: .8,
-                            color: app.gfSaveState == 'SAVE FAILED'
+                            color: form.saveState == 'SAVE FAILED'
                                 ? context.epColors.warning
                                 : context.epColors.contentDisabled,
                           ),
@@ -174,7 +192,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                   _NameCard(controller: _cardName, focusNode: _cardFocus),
                   const SizedBox(height: 18),
                   const _SlotGrid(),
-                  SectionBar(label: 'Lineup', count: app.gfPerformers.length),
+                  SectionBar(label: 'Lineup', count: form.performerCount),
                   const _LineupField(),
                   const SectionBar(label: 'Poster'),
                   const _FlyerStudio(),
@@ -199,13 +217,21 @@ class _FlyerStudio extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
+    final app = context.read<AppState>();
+    final flyer = context
+        .select<AppState, ({bool custom, bool hasArt, bool showOverlay})>(
+          (app) => (
+            custom: app.gfCustomFlyer,
+            hasArt: app.gfFlyerArt != null || app.gfFlyerUrl != null,
+            showOverlay: app.gfShowOverlay,
+          ),
+        );
     return Column(
       children: [
         const _Poster(),
         const SizedBox(height: 12),
         const _SwatchRow(),
-        if (app.gfCustomFlyer) ...[
+        if (flyer.custom) ...[
           const SizedBox(height: 8),
           Wrap(
             alignment: WrapAlignment.center,
@@ -215,13 +241,9 @@ class _FlyerStudio extends StatelessWidget {
               TextButton.icon(
                 onPressed: () => _pickGigFlyerArt(context),
                 icon: Icon(Icons.add_photo_alternate_outlined),
-                label: Text(
-                  app.gfFlyerArt == null && app.gfFlyerUrl == null
-                      ? 'ADD FLYER ART'
-                      : 'CHANGE ART',
-                ),
+                label: Text(flyer.hasArt ? 'CHANGE ART' : 'ADD FLYER ART'),
               ),
-              if (app.gfFlyerArt != null || app.gfFlyerUrl != null)
+              if (flyer.hasArt)
                 TextButton.icon(
                   key: const ValueKey('clear-flyer-art'),
                   onPressed: () => app.setGfFlyerArt(null),
@@ -237,8 +259,8 @@ class _FlyerStudio extends StatelessWidget {
         SizedBox(
           width: 250,
           child: Text(
-            app.gfCustomFlyer
-                ? (app.gfShowOverlay
+            flyer.custom
+                ? (flyer.showOverlay
                       ? 'Your flyer art previews with listing details on top.'
                       : 'Overlay off. Your art stays clean, and details still appear below.')
                 : 'Use the fields below; the poster previews changes live.',
@@ -265,8 +287,15 @@ class _Poster extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final fly = app.flyer(app.gfFly);
+    final poster = context
+        .select<AppState, ({String fly, bool custom, bool showOverlay})>(
+          (app) => (
+            fly: app.gfFly,
+            custom: app.gfCustomFlyer,
+            showOverlay: app.gfShowOverlay,
+          ),
+        );
+    final fly = context.read<AppState>().flyer(poster.fly);
 
     return Container(
       width: width,
@@ -285,12 +314,12 @@ class _Poster extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (app.gfCustomFlyer)
+          if (poster.custom)
             _CustomArtSlot(base: fly.base)
           else
             FlyerBox(style: fly, radius: 0, shadow: false),
           // Readability overlay for uploaded artwork.
-          if (app.gfCustomFlyer && app.gfShowOverlay)
+          if (poster.custom && poster.showOverlay)
             IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -308,7 +337,7 @@ class _Poster extends StatelessWidget {
                 ),
               ),
             ),
-          if (app.gfShowOverlay) _PosterOverlay(ink: fly.fg),
+          if (poster.showOverlay) _PosterOverlay(ink: fly.fg),
         ],
       ),
     );
@@ -436,8 +465,17 @@ class _PosterOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
+    final details = context.select<AppState, _PosterDetails>(
+      (app) => (
+        name: app.gfName,
+        date: app.gfDate,
+        dateLabel: app.gfDateLabel,
+        doorsLabel: app.gfDoorsLabel,
+        venue: app.gfVenueId == null ? null : app.venue(app.gfVenueId!),
+        price: app.gfPrice,
+      ),
+    );
+    final venue = details.venue;
     final titleStyle = epDisplay(
       size: 23,
       color: ink,
@@ -452,9 +490,9 @@ class _PosterOverlay extends StatelessWidget {
         children: [
           Flexible(
             child: Text(
-              app.gfName.trim().isEmpty
+              details.name.trim().isEmpty
                   ? 'YOUR GIG NAME'
-                  : app.gfName.toUpperCase(),
+                  : details.name.toUpperCase(),
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
               style: titleStyle,
@@ -465,10 +503,10 @@ class _PosterOverlay extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               _PosterLine(
-                label: app.gfDate == null
+                label: details.date == null
                     ? '+ DATE & DOORS'
-                    : '${app.gfDateLabel.toUpperCase()} · DOORS ${app.gfDoorsLabel}',
-                unset: app.gfDate == null,
+                    : '${details.dateLabel.toUpperCase()} · DOORS ${details.doorsLabel}',
+                unset: details.date == null,
                 ink: ink,
               ),
               const SizedBox(height: 7),
@@ -481,9 +519,9 @@ class _PosterOverlay extends StatelessWidget {
               ),
               const SizedBox(height: 7),
               _PosterLine(
-                label: app.gfPrice == 'FREE'
+                label: details.price == 'FREE'
                     ? 'FREE'
-                    : '${app.gfPrice} AT THE DOOR',
+                    : '${details.price} AT THE DOOR',
                 unset: false,
                 ink: ink,
               ),
@@ -494,6 +532,16 @@ class _PosterOverlay extends StatelessWidget {
     );
   }
 }
+
+/// The listing details the poster overlay prints.
+typedef _PosterDetails = ({
+  String name,
+  DateTime? date,
+  String dateLabel,
+  String doorsLabel,
+  Venue? venue,
+  String price,
+});
 
 /// One detail printed on the flyer — dashed and dimmed until it is filled in.
 class _PosterLine extends StatelessWidget {
@@ -535,14 +583,17 @@ class _SwatchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
+    final app = context.read<AppState>();
+    final press = context.select<AppState, ({String fly, bool custom})>(
+      (app) => (fly: app.gfFly, custom: app.gfCustomFlyer),
+    );
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         for (final key in flyerPicks) ...[
           Swatch(
             key: ValueKey('press-$key'),
-            selected: app.gfFly == key,
+            selected: press.fly == key,
             onTap: () => app.setGfFly(key),
             child: ClipOval(
               child: FlyerBox(
@@ -557,7 +608,7 @@ class _SwatchRow extends StatelessWidget {
         ],
         Swatch(
           key: const ValueKey('press-custom'),
-          selected: app.gfCustomFlyer,
+          selected: press.custom,
           dashed: true,
           onTap: () => app.setGfFly('custom'),
           child: Center(
@@ -579,8 +630,8 @@ class _OverlayToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final on = app.gfShowOverlay;
+    final app = context.read<AppState>();
+    final on = context.select<AppState, bool>((app) => app.gfShowOverlay);
     return EpCard(
       variant: on ? EpCardVariant.selected : EpCardVariant.standard,
       padding: EdgeInsets.zero,
@@ -608,8 +659,10 @@ class _NameCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final filled = app.gfName.trim().isNotEmpty;
+    final app = context.read<AppState>();
+    final filled = context.select<AppState, bool>(
+      (app) => app.gfName.trim().isNotEmpty,
+    );
     return EpCard(
       variant: EpCardVariant.raised,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
@@ -645,21 +698,35 @@ class _SlotGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
+    final slot = context.select<AppState, _SlotValues>(
+      (app) => (
+        venue: app.gfVenueId == null ? null : app.venue(app.gfVenueId!),
+        date: app.gfDate,
+        dateLabel: app.gfDateLabel,
+        doorsLabel: app.gfDoorsLabel,
+        startLabel: app.gfStartLabel,
+        price: app.gfPrice,
+        tix: app.gfTix,
+        cap: app.gfCap,
+        ext: app.gfExt,
+        validExternalUrl: app.validExternalTicketUrl,
+        age: app.gfAgeRequirement,
+      ),
+    );
+    final venue = slot.venue;
     final slots = <Widget>[
       SlotCard(
         key: const ValueKey('gig-slot-date'),
         tag: 'DATE',
-        value: app.gfDate == null ? 'REQUIRED' : app.gfDateLabel.toUpperCase(),
-        sub: app.gfDate == null ? 'Choose a date' : 'Calendar date for doors',
-        state: app.gfDate == null ? SlotState.needed : SlotState.done,
+        value: slot.date == null ? 'REQUIRED' : slot.dateLabel.toUpperCase(),
+        sub: slot.date == null ? 'Choose a date' : 'Calendar date for doors',
+        state: slot.date == null ? SlotState.needed : SlotState.done,
         onTap: () => showWhenSheet(context),
       ),
       SlotCard(
         key: const ValueKey('gig-slot-times'),
         tag: 'TIMES',
-        value: 'Doors ${app.gfDoorsLabel} · Start ${app.gfStartLabel}',
+        value: 'Doors ${slot.doorsLabel} · Start ${slot.startLabel}',
         sub: 'A start earlier than doors is treated as after midnight',
         state: SlotState.done,
         onTap: () => showWhenSheet(context),
@@ -675,22 +742,21 @@ class _SlotGrid extends StatelessWidget {
       SlotCard(
         key: const ValueKey('gig-slot-cover'),
         tag: 'COVER',
-        value: app.gfPrice,
-        sub: app.gfPrice == 'FREE' ? 'No cover' : 'At the door',
+        value: slot.price,
+        sub: slot.price == 'FREE' ? 'No cover' : 'At the door',
         state: SlotState.done,
         onTap: () => showPriceSheet(context),
       ),
       SlotCard(
         key: const ValueKey('gig-slot-access'),
         tag: 'ACCESS',
-        value: app.gfTix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
-        sub: switch (app.gfTix) {
-          Ticketing.rsvp when app.gfCap == 'No cap' => 'No RSVP cap',
-          Ticketing.rsvp => 'RSVP cap ${app.gfCap}',
-          Ticketing.external =>
-            app.gfExt.isEmpty ? 'Add ticket URL' : app.gfExt,
+        value: slot.tix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
+        sub: switch (slot.tix) {
+          Ticketing.rsvp when slot.cap == 'No cap' => 'No RSVP cap',
+          Ticketing.rsvp => 'RSVP cap ${slot.cap}',
+          Ticketing.external => slot.ext.isEmpty ? 'Add ticket URL' : slot.ext,
         },
-        state: app.gfTix == Ticketing.external && !app.validExternalTicketUrl
+        state: slot.tix == Ticketing.external && !slot.validExternalUrl
             ? SlotState.needed
             : SlotState.done,
         onTap: () => showTicketsSheet(context),
@@ -698,7 +764,7 @@ class _SlotGrid extends StatelessWidget {
       SlotCard(
         key: const ValueKey('gig-slot-audience'),
         tag: 'AUDIENCE',
-        value: app.gfAgeRequirement.label,
+        value: slot.age.label,
         sub: 'Age requirement',
         state: SlotState.done,
         onTap: () => showAgeSheet(context),
@@ -725,13 +791,30 @@ class _SlotGrid extends StatelessWidget {
   }
 }
 
+/// What the slot grid prints for each card.
+typedef _SlotValues = ({
+  Venue? venue,
+  DateTime? date,
+  String dateLabel,
+  String doorsLabel,
+  String startLabel,
+  String price,
+  Ticketing tix,
+  String cap,
+  String ext,
+  bool validExternalUrl,
+  AgeRequirement age,
+});
+
 class _LineupField extends StatelessWidget {
   const _LineupField();
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final performers = app.gfPerformers;
+    final app = context.read<AppState>();
+    final performers = context.select<AppState, List<GigPerformer>>(
+      (app) => app.gfPerformers,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -1231,8 +1314,20 @@ class _PublishBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final missing = app.gigMissing;
+    final app = context.read<AppState>();
+    final publish = context
+        .select<
+          AppState,
+          ({String missingLabel, bool editingPublished, bool canPublish})
+        >(
+          (app) => (
+            missingLabel: app.gigMissing.join(' + '),
+            editingPublished:
+                app.gfProject?.status == GigProjectStatus.published,
+            canPublish: app.canPublishGig,
+          ),
+        );
+    final missingLabel = publish.missingLabel;
     return ColoredBox(
       color: context.epColors.tabBarBackground.withValues(alpha: .95),
       child: Column(
@@ -1243,15 +1338,15 @@ class _PublishBar extends StatelessWidget {
             child: Semantics(
               liveRegion: true,
               child: Text(
-                missing.isEmpty
+                missingLabel.isEmpty
                     ? 'Ready. Fans nearby see it as soon as you publish.'
-                    : 'Still needs ${missing.join(' + ')}',
+                    : 'Still needs $missingLabel',
                 textAlign: TextAlign.center,
                 style: epText(
                   size: 11,
                   weight: FontWeight.w700,
                   letterSpacing: .3,
-                  color: missing.isEmpty
+                  color: missingLabel.isEmpty
                       ? context.epColors.success
                       : context.epColors.contentSecondary,
                 ),
@@ -1261,10 +1356,10 @@ class _PublishBar extends StatelessWidget {
           StickyActionBar(
             secondaryLabel: 'Preview',
             onSecondary: app.previewGigDraft,
-            primaryLabel: app.gfProject?.status == GigProjectStatus.published
+            primaryLabel: publish.editingPublished
                 ? 'Publish updates'
                 : 'Publish gig',
-            onPrimary: app.canPublishGig ? app.publishGig : null,
+            onPrimary: publish.canPublish ? app.publishGig : null,
           ),
         ],
       ),

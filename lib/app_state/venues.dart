@@ -7,7 +7,9 @@ mixin _VenueState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   String get bandId;
   Map<String, Band> get _bands;
+  set _bands(Map<String, Band> value);
   Map<String, Gig> get _relationshipGigs;
+  set _relationshipGigs(Map<String, Gig> value);
   void setGfVenue(String v);
 
   /// The full curated venue table (`venues:list`), including venues no upcoming
@@ -129,19 +131,22 @@ mixin _VenueState on _AppStateCore {
       _missingVenueDetails.remove(id);
       _venueDetails[id] = detail;
       _venueDirectory = {..._venueDirectory, detail.venue.id: detail.venue};
-      for (final gig in detail.gigs) {
-        _relationshipGigs[gig.id] = gig;
-      }
+      _relationshipGigs = {
+        ..._relationshipGigs,
+        for (final gig in detail.gigs) gig.id: gig,
+      };
+      final bands = Map.of(_bands);
       for (final entry in detail.bands.entries) {
         final relatedGigIds = [
           for (final gig in detail.gigs)
             if (gig.lineup.contains(entry.key)) gig.id,
         ];
-        final existingUpcoming = _bands[entry.key]?.upcoming ?? const [];
-        _bands[entry.key] = entry.value.copyWith(
+        final existingUpcoming = bands[entry.key]?.upcoming ?? const [];
+        bands[entry.key] = entry.value.copyWith(
           upcoming: {...existingUpcoming, ...relatedGigIds}.toList(),
         );
       }
+      _bands = bands;
     } catch (error) {
       logError('venueDetail', error);
       if (_disposed || !identical(_venueDetailTokens[id], token)) return;
@@ -163,7 +168,8 @@ mixin _VenueState on _AppStateCore {
 
   Venue venue(String id) => knownVenue(id) ?? _unknownVenue;
 
-  int _venuesVersion = -1;
+  ({Map<String, Venue> directory, Map<String, Venue> feedVenues})?
+  _venuesInputs;
   List<Venue> _cachedVenues = const [];
 
   /// Every venue the app knows: the curated table plus whatever the live feed
@@ -171,12 +177,13 @@ mixin _VenueState on _AppStateCore {
   /// per id; this is the only venue list any screen reads.
   List<Venue> get venues {
     ensureVenueDirectory();
-    if (_venuesVersion == _stateVersion) return _cachedVenues;
-    final merged = <String, Venue>{..._venueDirectory, ..._venues};
+    final inputs = (directory: _venueDirectory, feedVenues: _venues);
+    if (inputs == _venuesInputs) return _cachedVenues;
+    final merged = <String, Venue>{...inputs.directory, ...inputs.feedVenues};
     final venues = merged.values.toList()
       ..sort((a, b) => a.name.compareTo(b.name));
     _cachedVenues = List<Venue>.unmodifiable(venues);
-    _venuesVersion = _stateVersion;
+    _venuesInputs = inputs;
     return _cachedVenues;
   }
 

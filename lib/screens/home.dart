@@ -15,16 +15,16 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
+    final mapMode = context.select<AppState, bool>((app) => app.mapMode);
     return Column(
       children: [
-        _Header(app: app),
+        const _Header(),
         Expanded(
-          child: app.mapMode
-              ? GigMapView(
-                  emptyState: _DiscoveryEmptyState(app: app, compact: true),
+          child: mapMode
+              ? const GigMapView(
+                  emptyState: _DiscoveryEmptyState(compact: true),
                 )
-              : _FeedList(app: app),
+              : const _FeedList(),
         ),
       ],
     );
@@ -32,12 +32,14 @@ class HomeScreen extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  final AppState app;
-
-  const _Header({required this.app});
+  const _Header();
 
   @override
   Widget build(BuildContext context) {
+    final app = context.read<AppState>();
+    final filters = context.select<AppState, DiscoveryFilters>(
+      (app) => app.filters,
+    );
     return ScreenHeader(
       child: Column(
         children: [
@@ -61,14 +63,11 @@ class _Header extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _SegmentedToggle(app: app),
+              const _SegmentedToggle(),
             ],
           ),
           const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: _CityPill(app: app),
-          ),
+          const SizedBox(width: double.infinity, child: _CityPill()),
           const SizedBox(height: 10),
           Align(
             alignment: Alignment.centerLeft,
@@ -77,18 +76,18 @@ class _Header extends StatelessWidget {
               runSpacing: 6,
               children: [
                 EpChip(
-                  label: app.activeFilterCount == 0
+                  label: filters.activeCount == 0
                       ? 'FILTERS'
-                      : 'FILTERS · ${app.activeFilterCount}',
+                      : 'FILTERS · ${filters.activeCount}',
                   active:
-                      app.fGenres.isNotEmpty ||
-                      app.fVenueId != null ||
-                      app.fMaxDistanceMiles != null ||
-                      app.fPrice == PriceFilter.paid ||
-                      app.fDate == DateFilter.custom,
+                      filters.genres.isNotEmpty ||
+                      filters.venueId != null ||
+                      filters.maxDistanceMiles != null ||
+                      filters.price == PriceFilter.paid ||
+                      filters.date == DateFilter.custom,
                   onTap: () => showDiscoveryFiltersSheet(context),
                 ),
-                for (final chip in _shortcutChips(app)) chip,
+                for (final chip in _shortcutChips(app, filters)) chip,
               ],
             ),
           ),
@@ -97,37 +96,41 @@ class _Header extends StatelessWidget {
     );
   }
 
-  List<Widget> _shortcutChips(AppState app) {
+  List<Widget> _shortcutChips(AppState app, DiscoveryFilters filters) {
     return [
       EpChip(
         label: 'TONIGHT',
-        active: app.fDate == DateFilter.tonight,
+        active: filters.date == DateFilter.tonight,
         onTap: () => app.toggleDateFilter(DateFilter.tonight),
       ),
       EpChip(
         label: 'THIS WEEK',
-        active: app.fDate == DateFilter.week,
+        active: filters.date == DateFilter.week,
         onTap: () => app.toggleDateFilter(DateFilter.week),
       ),
-      EpChip(label: 'FREE', active: app.fFree, onTap: app.toggleFree),
+      EpChip(
+        label: 'FREE',
+        active: filters.price == PriceFilter.free,
+        onTap: app.toggleFree,
+      ),
     ];
   }
 }
 
 class _SegmentedToggle extends StatelessWidget {
-  final AppState app;
-
-  const _SegmentedToggle({required this.app});
+  const _SegmentedToggle();
 
   @override
   Widget build(BuildContext context) {
+    final app = context.read<AppState>();
+    final mapMode = context.select<AppState, bool>((app) => app.mapMode);
     return SegmentedButton<bool>(
       key: const ValueKey('home-view-toggle'),
       segments: const [
         ButtonSegment(value: false, label: Text('LIST')),
         ButtonSegment(value: true, label: Text('MAP')),
       ],
-      selected: {app.mapMode},
+      selected: {mapMode},
       showSelectedIcon: false,
       onSelectionChanged: (selection) => app.setMapMode(selection.single),
       style: ButtonStyle(
@@ -155,12 +158,13 @@ class _SegmentedToggle extends StatelessWidget {
 }
 
 class _CityPill extends StatelessWidget {
-  final AppState app;
-
-  const _CityPill({required this.app});
+  const _CityPill();
 
   @override
   Widget build(BuildContext context) {
+    final locationLabel = context.select<AppState, String>(
+      (app) => app.locationLabel,
+    );
     return OutlinedButton.icon(
       key: const ValueKey('home-location-control'),
       onPressed: () => showDiscoveryLocationSheet(context),
@@ -175,7 +179,7 @@ class _CityPill extends StatelessWidget {
         children: [
           Flexible(
             child: Text(
-              app.locationLabel,
+              locationLabel,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.epLabel,
@@ -188,16 +192,29 @@ class _CityPill extends StatelessWidget {
   }
 }
 
-class _FeedList extends StatelessWidget {
-  final AppState app;
-
-  const _FeedList({required this.app});
+class _FeedList extends StatefulWidget {
+  const _FeedList();
 
   @override
-  Widget build(BuildContext context) {
-    final feed = app.feed;
-    final rows = <_FeedRow>[];
+  State<_FeedList> createState() => _FeedListState();
+}
 
+class _FeedListState extends State<_FeedList> {
+  ({List<Gig> feed, bool featuredBoosted})? _rowsInputs;
+  List<_FeedRow> _rows = const [];
+
+  /// Partitions the feed into rows once per feed instance. The list itself
+  /// rebuilds on every AppState notification because its cards read live
+  /// RSVP and going-count state off [app].
+  List<_FeedRow> _feedRows(AppState app) {
+    final feed = app.feed;
+    final inputs = (
+      feed: feed,
+      featuredBoosted: feed.isNotEmpty && app.isDiscoveryBoosted(feed.first),
+    );
+    if (inputs == _rowsInputs) return _rows;
+
+    final rows = <_FeedRow>[];
     if (feed.isEmpty) {
       rows.add(const _FeedEmptyRow());
     } else {
@@ -205,7 +222,7 @@ class _FeedList extends StatelessWidget {
 
       final featured = feed.first;
       rows.add(const _FeedSectionRow(label: 'FEATURED NEAR YOU', count: 1));
-      if (app.isDiscoveryBoosted(featured)) {
+      if (inputs.featuredBoosted) {
         rows.add(_FeedBoostRow(featured));
       }
       rows.add(_FeedCardRow(featured, featured: true));
@@ -232,15 +249,23 @@ class _FeedList extends StatelessWidget {
         }
       }
     }
+    _rowsInputs = inputs;
+    _rows = rows;
+    return rows;
+  }
 
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final rows = _feedRows(app);
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, tabBarClearance),
       itemCount: rows.length,
-      itemBuilder: (context, index) => _buildRow(context, rows[index]),
+      itemBuilder: (context, index) => _buildRow(context, rows[index], app),
     );
   }
 
-  Widget _buildRow(BuildContext context, _FeedRow row) {
+  Widget _buildRow(BuildContext context, _FeedRow row, AppState app) {
     return switch (row) {
       _FeedCountRow(:final count) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
@@ -252,7 +277,7 @@ class _FeedList extends StatelessWidget {
           ),
         ),
       ),
-      _FeedEmptyRow() => _DiscoveryEmptyState(app: app),
+      _FeedEmptyRow() => const _DiscoveryEmptyState(),
       _FeedSectionRow(:final label, :final count) => SectionBar(
         label: label,
         count: count,
@@ -320,14 +345,17 @@ class _FeedCardRow extends _FeedRow {
 }
 
 class _DiscoveryEmptyState extends StatelessWidget {
-  const _DiscoveryEmptyState({required this.app, this.compact = false});
+  const _DiscoveryEmptyState({this.compact = false});
 
-  final AppState app;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final noGigs = app.allGigs.isEmpty;
+    final app = context.read<AppState>();
+    final (:noGigs, :filters) = context
+        .select<AppState, ({bool noGigs, DiscoveryFilters filters})>(
+          (app) => (noGigs: app.allGigs.isEmpty, filters: app.filters),
+        );
     return DashedBox(
       padding: EdgeInsets.symmetric(
         horizontal: compact ? 16 : 20,
@@ -359,7 +387,7 @@ class _DiscoveryEmptyState extends StatelessWidget {
               alignment: WrapAlignment.center,
               spacing: 7,
               runSpacing: 7,
-              children: _recoveryActions(app),
+              children: _recoveryActions(app, filters),
             ),
           ],
         ],
@@ -367,9 +395,9 @@ class _DiscoveryEmptyState extends StatelessWidget {
     );
   }
 
-  List<Widget> _recoveryActions(AppState app) {
+  List<Widget> _recoveryActions(AppState app, DiscoveryFilters filters) {
     final actions = <Widget>[];
-    switch (app.fDate) {
+    switch (filters.date) {
       case DateFilter.tonight:
         actions.add(
           _RecoveryButton(
@@ -395,7 +423,7 @@ class _DiscoveryEmptyState extends StatelessWidget {
         break;
     }
 
-    if (app.fMaxDistanceMiles case final double distance) {
+    if (filters.maxDistanceMiles case final double distance) {
       final nextDistance = distance < 10
           ? 10.0
           : distance < 25
@@ -410,12 +438,12 @@ class _DiscoveryEmptyState extends StatelessWidget {
         ),
       );
     }
-    if (app.fGenres.isNotEmpty) {
+    if (filters.genres.isNotEmpty) {
       actions.add(
         _RecoveryButton(label: 'CLEAR GENRES', onTap: app.clearGenreFilters),
       );
     }
-    if (app.fPrice != PriceFilter.any) {
+    if (filters.price != PriceFilter.any) {
       actions.add(
         _RecoveryButton(
           label: 'ANY PRICE',
@@ -423,7 +451,7 @@ class _DiscoveryEmptyState extends StatelessWidget {
         ),
       );
     }
-    if (app.fVenueId != null) {
+    if (filters.venueId != null) {
       actions.add(
         _RecoveryButton(
           label: 'ANY VENUE',

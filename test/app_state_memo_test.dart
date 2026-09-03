@@ -25,11 +25,137 @@ void main() {
     expect(filtered.map((gig) => gig.id), unorderedEquals(['g1', 'g5']));
     expect(filtered.every((gig) => gig.free), isTrue);
 
-    final filteredIds = filtered.map((gig) => gig.id).toList();
     app.say('Unrelated notification');
-    final refreshed = app.feed;
-    expect(refreshed, isNot(same(filtered)));
-    expect(refreshed.map((gig) => gig.id), filteredIds);
+    expect(app.feed, same(filtered));
+  });
+
+  test('unrelated notifications keep every derived collection', () async {
+    final app = await _createApp();
+
+    final feed = app.feed;
+    final venues = app.venues;
+    final upcomingRsvps = app.upcomingRsvpGigs;
+    final followedShows = app.followedBandShows;
+    final bandGigs = app.myBandGigs;
+    final boosted = [for (final gig in feed) app.isDiscoveryBoosted(gig)];
+
+    app.say('Unrelated notification');
+    app.setMapMode(false);
+
+    expect(app.feed, same(feed));
+    expect(app.venues, same(venues));
+    expect(app.upcomingRsvpGigs, same(upcomingRsvps));
+    expect(app.followedBandShows, same(followedShows));
+    expect(app.myBandGigs, same(bandGigs));
+    expect([for (final gig in feed) app.isDiscoveryBoosted(gig)], boosted);
+  });
+
+  test('moving the discovery centre refreshes the feed', () async {
+    final app = await _createApp();
+
+    final before = app.feed;
+    app.setCity('oak');
+    final after = app.feed;
+    expect(after, isNot(same(before)));
+    expect(
+      after.map((gig) => gig.id),
+      unorderedEquals(before.map((g) => g.id)),
+    );
+    expect(app.feed, same(after));
+  });
+
+  test('toggling an RSVP refreshes upcoming RSVP gigs', () async {
+    final app = await _createApp();
+
+    final before = app.upcomingRsvpGigs;
+    app.toggleRsvp('g2');
+    final after = app.upcomingRsvpGigs;
+    expect(after, isNot(same(before)));
+    expect(after.map((gig) => gig.id), contains('g2'));
+    expect(app.upcomingRsvpGigs, same(after));
+  });
+
+  test('following a band refreshes followed-band shows', () async {
+    final app = await _createApp();
+
+    final before = app.followedBandShows;
+    final wasFollowing = app.follows.contains('b1');
+    app.toggleFollow('b1');
+    final after = app.followedBandShows;
+    expect(after, isNot(same(before)));
+    expect(after.any((gig) => gig.lineup.contains('b1')), !wasFollowing);
+    expect(app.followedBandShows, same(after));
+  });
+
+  test('a going-count tick keeps the feed instance', () async {
+    final auth = FakeAuthService();
+    final repository = _SubscriptionSpyRepository(auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
+    addTearDown(() async {
+      app.dispose();
+      await repository.close();
+    });
+
+    repository.emitFeed();
+    await flushAsyncWork();
+    final feed = app.feed;
+    final gig = feed.first;
+
+    repository.emitGoingCounts({gig.id: gig.going + 7});
+    await flushAsyncWork();
+
+    expect(app.feed, same(feed));
+    expect(app.rsvpCount(gig), gig.going + 7);
+  });
+
+  test(
+    'a new feed snapshot refreshes the feed, gig index and band gigs',
+    () async {
+      final auth = FakeAuthService();
+      final repository = _SubscriptionSpyRepository(auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
+      addTearDown(() async {
+        app.dispose();
+        await repository.close();
+      });
+
+      repository.emitFeed();
+      await flushAsyncWork();
+      final feed = app.feed;
+      final bandGigs = app.myBandGigs;
+      expect(app.gig('g1')?.title, DemoData.gigs.first.title);
+
+      repository.emitFeed(
+        gigs: [
+          for (final gig in DemoData.gigs)
+            gig.id == 'g1' ? gig.copyWith(title: 'Renamed') : gig,
+        ],
+      );
+      await flushAsyncWork();
+
+      expect(app.feed, isNot(same(feed)));
+      expect(app.myBandGigs, isNot(same(bandGigs)));
+      expect(app.gig('g1')?.title, 'Renamed');
+    },
+  );
+
+  test('loading the venue directory refreshes the venue list', () async {
+    final auth = FakeAuthService();
+    final repository = _SubscriptionSpyRepository(auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
+    addTearDown(() async {
+      app.dispose();
+      await repository.close();
+    });
+
+    repository.emitFeed();
+    await flushAsyncWork();
+    final beforeDirectory = app.venues;
+    await flushAsyncWork();
+
+    final withDirectory = app.venues;
+    expect(withDirectory, isNot(same(beforeDirectory)));
+    expect(app.venues, same(withDirectory));
   });
 
   test('derived collection getters reuse their cached instances', () async {

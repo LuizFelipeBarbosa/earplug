@@ -42,8 +42,13 @@ part 'app_state/venues.dart';
 enum DataStatus { connecting, ready, error }
 
 /// What every domain of [AppState] can rely on: the injected services, the
-/// disposal flag, the toast, and the one [notifyListeners] override that keys
-/// every derived-getter cache.
+/// disposal flag, and the toast.
+///
+/// Derived-getter caches (the feed, the venue list, the gig index, …) are
+/// keyed on the identity of the collections they read, so every collection a
+/// cache reads — gigs, bands, venues, the interaction and relationship gig
+/// maps — is replaced with a new instance when it changes, never mutated in
+/// place. An in-place write would leave a cache serving stale derived data.
 mixin _AppStateCore on ChangeNotifier {
   EarplugRepository get repository;
   AuthService get auth;
@@ -102,19 +107,6 @@ mixin _AppStateCore on ChangeNotifier {
   void _set(void Function() assign) {
     assign();
     notifyListeners();
-  }
-
-  int _stateVersion = 0;
-
-  /// Every input mutation ends in notifyListeners() (see _set() above and
-  /// every mutation site in this class) — _stateVersion is bumped on every
-  /// notification and is the single invalidation key every derived-getter
-  /// cache below is keyed on. A future mutation that changes state without
-  /// calling notifyListeners() would silently serve stale derived data.
-  @override
-  void notifyListeners() {
-    _stateVersion++;
-    super.notifyListeners();
   }
 }
 
@@ -304,7 +296,7 @@ class AppState extends ChangeNotifier
     _appliedHomePersonalization = null;
     _loadingFollowBands.clear();
     _clearFollowedBandGigSubscriptions();
-    _interactionGigs.clear();
+    _interactionGigs = const {};
     _locationRequestGeneration++;
     discoveryLocation = DiscoveryLocation.sf;
     _discoveryHomeCity = null;

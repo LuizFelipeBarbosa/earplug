@@ -17,8 +17,11 @@ mixin _FanState on _AppStateCore {
   abstract LocationFailure? locationFailure;
   abstract DiscoveryFilters filters;
   Map<String, Band> get _bands;
+  set _bands(Map<String, Band> value);
   List<Gig> get _allGigs;
   Map<String, int> get _goingCounts;
+  Map<String, Gig> get _gigIndex;
+  Map<String, Gig> get _publicGigs;
   Band? band(String id);
   void needAuth(PendingAuth p);
   void openMyGigsTab();
@@ -27,9 +30,11 @@ mixin _FanState on _AppStateCore {
   final Map<String, StreamSubscription<List<Gig>>>
   _followedBandGigSubscriptions = {};
   final Map<String, Object> _followedBandGigTokens = {};
-  final Map<String, List<Gig>> _followedBandGigs = {};
 
-  final Map<String, Gig> _interactionGigs = {};
+  // Replaced, never mutated in place: the gig index and the derived gig lists
+  // key on the identity of these maps (see the _AppStateCore doc comment).
+  Map<String, List<Gig>> _followedBandGigs = const {};
+  Map<String, Gig> _interactionGigs = const {};
 
   // ---- fan data
   Set<String> rsvps = {};
@@ -84,9 +89,7 @@ mixin _FanState on _AppStateCore {
     rsvps = nextRsvps;
     follows = Set<String>.of(interactions.followBandIds);
     saved = Set<String>.of(interactions.savedGigIds);
-    _interactionGigs
-      ..clear()
-      ..addEntries(interactions.gigs.map((gig) => MapEntry(gig.id, gig)));
+    _interactionGigs = {for (final gig in interactions.gigs) gig.id: gig};
     attended = interactions.attendedCount;
     _syncFollowedBandGigSubscriptions();
     for (final bandId in follows) {
@@ -104,9 +107,12 @@ mixin _FanState on _AppStateCore {
     final removedBandIds = _followedBandGigSubscriptions.keys
         .where((bandId) => !follows.contains(bandId))
         .toList();
+    if (removedBandIds.isNotEmpty) {
+      _followedBandGigs = Map.of(_followedBandGigs)
+        ..removeWhere((bandId, _) => removedBandIds.contains(bandId));
+    }
     for (final bandId in removedBandIds) {
       _followedBandGigTokens.remove(bandId);
-      _followedBandGigs.remove(bandId);
       unawaited(_followedBandGigSubscriptions.remove(bandId)?.cancel());
     }
 
@@ -123,7 +129,10 @@ mixin _FanState on _AppStateCore {
                   !identical(_followedBandGigTokens[bandId], token)) {
                 return;
               }
-              _followedBandGigs[bandId] = List<Gig>.of(gigs);
+              _followedBandGigs = {
+                ..._followedBandGigs,
+                bandId: List<Gig>.of(gigs),
+              };
               notifyListeners();
             },
             onError: (Object error) =>
@@ -134,7 +143,7 @@ mixin _FanState on _AppStateCore {
 
   void _clearFollowedBandGigSubscriptions() {
     _followedBandGigTokens.clear();
-    _followedBandGigs.clear();
+    _followedBandGigs = const {};
     for (final subscription in _followedBandGigSubscriptions.values) {
       unawaited(subscription.cancel());
     }
@@ -147,12 +156,15 @@ mixin _FanState on _AppStateCore {
     try {
       final loaded = await repository.band(bandId);
       if (loaded == null || _disposed) return;
-      _bands[bandId] = loaded.copyWith(
-        upcoming: [
-          for (final gig in _allGigs)
-            if (gig.lineup.contains(bandId)) gig.id,
-        ],
-      );
+      _bands = {
+        ..._bands,
+        bandId: loaded.copyWith(
+          upcoming: [
+            for (final gig in _allGigs)
+              if (gig.lineup.contains(bandId)) gig.id,
+          ],
+        ),
+      };
       notifyListeners();
     } catch (error) {
       logError('followBand $bandId', error);
@@ -577,15 +589,28 @@ mixin _FanState on _AppStateCore {
     );
   }
 
-  int _upcomingRsvpGigsVersion = -1;
-  int? _upcomingRsvpGigsMinute;
+  ({
+    Map<String, Gig> interactionGigs,
+    Map<String, Gig> publicGigs,
+    Map<String, Gig> gigIndex,
+    int minute,
+  })?
+  _upcomingRsvpGigsInputs;
+  // [rsvps] is flipped in place by the optimistic toggles, so the cache holds
+  // a snapshot and compares it by value.
+  Set<String> _upcomingRsvpGigsRsvps = const {};
   List<Gig> _upcomingRsvpGigs = const [];
 
   List<Gig> get upcomingRsvpGigs {
     final now = _now();
-    final minute = now.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute;
-    if (_upcomingRsvpGigsVersion == _stateVersion &&
-        _upcomingRsvpGigsMinute == minute) {
+    final inputs = (
+      interactionGigs: _interactionGigs,
+      publicGigs: _publicGigs,
+      gigIndex: _gigIndex,
+      minute: now.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute,
+    );
+    if (inputs == _upcomingRsvpGigsInputs &&
+        setEquals(rsvps, _upcomingRsvpGigsRsvps)) {
       return _upcomingRsvpGigs;
     }
     final gigs = [
@@ -598,31 +623,44 @@ mixin _FanState on _AppStateCore {
           gig,
     ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
     _upcomingRsvpGigs = List<Gig>.unmodifiable(gigs);
-    _upcomingRsvpGigsVersion = _stateVersion;
-    _upcomingRsvpGigsMinute = minute;
+    _upcomingRsvpGigsInputs = inputs;
+    _upcomingRsvpGigsRsvps = Set<String>.of(rsvps);
     return _upcomingRsvpGigs;
   }
 
-  int _followedBandShowsVersion = -1;
-  int? _followedBandShowsMinute;
+  ({
+    bool updatesDisabled,
+    List<Gig> gigs,
+    Map<String, List<Gig>> followedBandGigs,
+    int minute,
+  })?
+  _followedBandShowsInputs;
+  // [follows] is flipped in place by the optimistic toggles, so the cache
+  // holds a snapshot and compares it by value.
+  Set<String> _followedBandShowsFollows = const {};
   List<Gig> _followedBandShows = const [];
 
   List<Gig> get followedBandShows {
     final now = DateTime.now();
-    final minute = now.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute;
-    if (_followedBandShowsVersion == _stateVersion &&
-        _followedBandShowsMinute == minute) {
+    final inputs = (
+      updatesDisabled: profile?.followedBandUpdatesEnabled == false,
+      gigs: _allGigs,
+      followedBandGigs: _followedBandGigs,
+      minute: now.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute,
+    );
+    if (inputs == _followedBandShowsInputs &&
+        setEquals(follows, _followedBandShowsFollows)) {
       return _followedBandShows;
     }
-    if (profile?.followedBandUpdatesEnabled == false || follows.isEmpty) {
+    _followedBandShowsInputs = inputs;
+    _followedBandShowsFollows = Set<String>.of(follows);
+    if (inputs.updatesDisabled || follows.isEmpty) {
       _followedBandShows = const [];
-      _followedBandShowsVersion = _stateVersion;
-      _followedBandShowsMinute = minute;
       return _followedBandShows;
     }
     final gigsById = {
-      for (final gig in _allGigs) gig.id: gig,
-      for (final gigs in _followedBandGigs.values)
+      for (final gig in inputs.gigs) gig.id: gig,
+      for (final gigs in inputs.followedBandGigs.values)
         for (final gig in gigs) gig.id: gig,
     };
     final shows = [
@@ -631,8 +669,6 @@ mixin _FanState on _AppStateCore {
           gig,
     ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
     _followedBandShows = List<Gig>.unmodifiable(shows);
-    _followedBandShowsVersion = _stateVersion;
-    _followedBandShowsMinute = minute;
     return _followedBandShows;
   }
 

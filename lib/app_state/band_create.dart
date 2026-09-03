@@ -9,6 +9,7 @@ mixin _BandCreateState on _AppStateCore {
   abstract String bandId;
   abstract List<String> myBands;
   Map<String, Band> get _bands;
+  set _bands(Map<String, Band> value);
   Map<String, String> get _bandRoles;
   List<String> get exploreBandIds;
   List<Venue> get venues;
@@ -238,7 +239,7 @@ mixin _BandCreateState on _AppStateCore {
         );
         final band = created.band;
         bandId = band.id;
-        _bands[band.id] = band;
+        _bands = {..._bands, band.id: band};
         _bandRoles[band.id] = 'admin';
         if (!myBands.contains(band.id)) myBands = [...myBands, band.id];
         _nbBandId = band.id;

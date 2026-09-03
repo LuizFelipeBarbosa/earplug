@@ -15,6 +15,7 @@ mixin _CatalogState on _AppStateCore {
   Map<String, VenueDetail> get _venueDetails;
   Map<String, List<Gig>> get _followedBandGigs;
   Map<String, Gig> get _interactionGigs;
+  set _interactionGigs(Map<String, Gig> value);
   bool isAdminOf(String id);
   Future<void> refreshBandDiscoveryReadiness(String id);
   Future<void> loadBandProfileDetails(String id, {bool refresh = false});
@@ -29,18 +30,20 @@ mixin _CatalogState on _AppStateCore {
 
   String? dataError;
 
+  // Replaced, never mutated in place: the derived-getter caches key on the
+  // identity of these collections (see the _AppStateCore doc comment).
   List<Gig> _allGigs = const [];
   @override
   DateTime? _nextFeedStartsAt;
   bool _hasFeedSnapshot = false;
   bool _goingCountsSettled = false;
-  Map<String, Band> _bands = {};
+  Map<String, Band> _bands = const {};
   @override
   Map<String, Venue> _venues = const {};
   Map<String, int> _goingCounts = const {};
 
-  final Map<String, Gig> _relationshipGigs = {};
-  final Map<String, Gig> _publicGigs = {};
+  Map<String, Gig> _relationshipGigs = const {};
+  Map<String, Gig> _publicGigs = const {};
   final Map<String, String> _publicGigErrors = {};
   final Set<String> _missingPublicGigs = {};
   String? _subscribedPublicGigId;
@@ -304,11 +307,15 @@ mixin _CatalogState on _AppStateCore {
     if (_disposed) return;
 
     final now = _now();
-    for (var index = 0; index < _allGigs.length; index++) {
-      _allGigs[index] = _allGigs[index].relabeled(now: now);
-    }
-    _relationshipGigs.updateAll((_, gig) => gig.relabeled(now: now));
-    _interactionGigs.updateAll((_, gig) => gig.relabeled(now: now));
+    _allGigs = [for (final gig in _allGigs) gig.relabeled(now: now)];
+    _relationshipGigs = {
+      for (final entry in _relationshipGigs.entries)
+        entry.key: entry.value.relabeled(now: now),
+    };
+    _interactionGigs = {
+      for (final entry in _interactionGigs.entries)
+        entry.key: entry.value.relabeled(now: now),
+    };
     _invalidateVenueDetails(_venueDetails.keys.toSet());
     notifyListeners();
     _scheduleDayRollover();
@@ -318,36 +325,50 @@ mixin _CatalogState on _AppStateCore {
 
   List<Gig> get allGigs => _allGigs;
 
-  int _gigIndexVersion = -1;
-  Map<String, Gig> _gigIndex = const {};
+  ({
+    List<Gig> gigs,
+    Map<String, List<Gig>> followedBandGigs,
+    Map<String, Gig> interactionGigs,
+    Map<String, Gig> relationshipGigs,
+  })?
+  _gigIndexInputs;
+  Map<String, Gig> _cachedGigIndex = const {};
+
+  /// Every gig the app holds outside the public-gig stream, by id (and by
+  /// slug for feed gigs). Rebuilt only when one of its source collections is
+  /// replaced.
+  Map<String, Gig> get _gigIndex {
+    final inputs = (
+      gigs: allGigs,
+      followedBandGigs: _followedBandGigs,
+      interactionGigs: _interactionGigs,
+      relationshipGigs: _relationshipGigs,
+    );
+    if (inputs == _gigIndexInputs) return _cachedGigIndex;
+
+    final index = <String, Gig>{};
+    for (final gig in inputs.gigs) {
+      index.putIfAbsent(gig.id, () => gig);
+      index.putIfAbsent(gig.slug, () => gig);
+    }
+    for (final gigs in inputs.followedBandGigs.values) {
+      for (final gig in gigs) {
+        index.putIfAbsent(gig.id, () => gig);
+      }
+    }
+    for (final entry in inputs.interactionGigs.entries) {
+      index.putIfAbsent(entry.key, () => entry.value);
+    }
+    for (final entry in inputs.relationshipGigs.entries) {
+      index.putIfAbsent(entry.key, () => entry.value);
+    }
+    _cachedGigIndex = Map<String, Gig>.unmodifiable(index);
+    _gigIndexInputs = inputs;
+    return _cachedGigIndex;
+  }
 
   @override
-  Gig? _cachedGig(String id) {
-    final direct = _publicGigs[id];
-    if (direct != null) return direct;
-
-    if (_gigIndexVersion != _stateVersion) {
-      final index = <String, Gig>{};
-      for (final gig in allGigs) {
-        index.putIfAbsent(gig.id, () => gig);
-        index.putIfAbsent(gig.slug, () => gig);
-      }
-      for (final gigs in _followedBandGigs.values) {
-        for (final gig in gigs) {
-          index.putIfAbsent(gig.id, () => gig);
-        }
-      }
-      for (final entry in _interactionGigs.entries) {
-        index.putIfAbsent(entry.key, () => entry.value);
-      }
-      for (final entry in _relationshipGigs.entries) {
-        index.putIfAbsent(entry.key, () => entry.value);
-      }
-      _gigIndex = Map<String, Gig>.unmodifiable(index);
-      _gigIndexVersion = _stateVersion;
-    }
-    return _gigIndex[id];
-  }
+  Gig? _cachedGig(String id) => _publicGigs[id] ?? _gigIndex[id];
 
   Gig? gig(String id) {
     final direct = _publicGigs[id];
@@ -419,13 +440,16 @@ mixin _CatalogState on _AppStateCore {
             _publicGigLoading = false;
             _publicGigErrors.remove(id);
             if (gig == null) {
-              _publicGigs.remove(id);
+              _publicGigs = Map.of(_publicGigs)..remove(id);
               _missingPublicGigs.add(id);
             } else {
               _missingPublicGigs.remove(id);
-              _publicGigs[id] = gig;
-              _publicGigs[gig.id] = gig;
-              _publicGigs[gig.publicRef] = gig;
+              _publicGigs = {
+                ..._publicGigs,
+                id: gig,
+                gig.id: gig,
+                gig.publicRef: gig,
+              };
               if (current.screen == Screen.gig &&
                   current.param == id &&
                   id != gig.publicRef) {
@@ -464,7 +488,7 @@ mixin _CatalogState on _AppStateCore {
         _missingPublicBands.add(slug);
         return;
       }
-      _bands[loaded.id] = loaded;
+      _bands = {..._bands, loaded.id: loaded};
       if (current.screen == Screen.band && current.param == slug) {
         _stack = [
           ..._stack.take(_stack.length - 1),

@@ -10,6 +10,7 @@ mixin _BandConsoleState on _AppStateCore {
   set _bandsSubscription(StreamSubscription<List<BandMembership>>? value);
   set _stack(List<ScreenEntry> value);
   Map<String, Band> get _bands;
+  set _bands(Map<String, Band> value);
   List<Gig> get allGigs;
   set managedGigsBandId(String? value);
   Band? band(String id);
@@ -76,13 +77,15 @@ mixin _BandConsoleState on _AppStateCore {
     } else if (bandId.isEmpty) {
       bandId = myBands.first;
     }
+    final bands = Map.of(_bands);
     for (final membership in memberships) {
       final band = membership.band;
       _bandRoles[band.id] = membership.role;
-      _bands[band.id] = band.copyWith(
-        upcoming: _bands[band.id]?.upcoming ?? const [],
+      bands[band.id] = band.copyWith(
+        upcoming: bands[band.id]?.upcoming ?? const [],
       );
     }
+    _bands = bands;
     _scheduleDiscoveryBoundaryRefresh();
     notifyListeners();
   }
@@ -234,15 +237,16 @@ mixin _BandConsoleState on _AppStateCore {
 
   Band? get myBand => band(bandId);
 
-  int _myBandGigsVersion = -1;
+  ({List<Gig> gigs, String bandId})? _myBandGigsInputs;
   List<Gig> _cachedMyBandGigs = const [];
 
   List<Gig> get myBandGigs {
-    if (_myBandGigsVersion == _stateVersion) return _cachedMyBandGigs;
+    final inputs = (gigs: allGigs, bandId: bandId);
+    if (inputs == _myBandGigsInputs) return _cachedMyBandGigs;
     _cachedMyBandGigs = List<Gig>.unmodifiable(
-      allGigs.where((gig) => gig.lineup.contains(bandId)),
+      inputs.gigs.where((gig) => gig.lineup.contains(inputs.bandId)),
     );
-    _myBandGigsVersion = _stateVersion;
+    _myBandGigsInputs = inputs;
     return _cachedMyBandGigs;
   }
 
@@ -373,21 +377,24 @@ mixin _BandConsoleState on _AppStateCore {
           normalized.genres.every((genre) => genre.trim().isNotEmpty) &&
           normalized.area.isNotEmpty &&
           normalized.bio.isNotEmpty;
-      _bands[update.bandId] = existing.copyWith(
-        name: normalized.name,
-        initials: bandInitialsFor(normalized.name),
-        genres: normalized.genres,
-        area: normalized.area,
-        bio: normalized.bio,
-        linkIg: normalized.linkIg,
-        linkBc: normalized.linkBc,
-        linkYt: normalized.linkYt,
-        credits: normalized.credits,
-        profileComplete: profileComplete,
-        discoveryProfileReady: profileComplete
-            ? existing.discoveryProfileReady
-            : false,
-      );
+      _bands = {
+        ..._bands,
+        update.bandId: existing.copyWith(
+          name: normalized.name,
+          initials: bandInitialsFor(normalized.name),
+          genres: normalized.genres,
+          area: normalized.area,
+          bio: normalized.bio,
+          linkIg: normalized.linkIg,
+          linkBc: normalized.linkBc,
+          linkYt: normalized.linkYt,
+          credits: normalized.credits,
+          profileComplete: profileComplete,
+          discoveryProfileReady: profileComplete
+              ? existing.discoveryProfileReady
+              : false,
+        ),
+      };
     }
     final currentDetails = _bandProfileDetails[update.bandId];
     _bandProfileDetails[update.bandId] = BandProfileDetails(
@@ -481,7 +488,7 @@ mixin _BandConsoleState on _AppStateCore {
     myBands = myBands.where((candidate) => candidate != id).toList();
     _bandRoles.remove(id);
     _bandInvites.remove(id);
-    _bands.remove(id);
+    _bands = Map.of(_bands)..remove(id);
     bandId = myBands.firstOrNull ?? '';
     managedGigsBandId = null;
     _stack = const [ScreenEntry(Screen.myGigs)];
