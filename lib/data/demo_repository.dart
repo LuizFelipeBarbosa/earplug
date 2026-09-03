@@ -23,6 +23,38 @@ class DemoRepository implements EarplugRepository {
   DemoRepository({required this._auth}) {
     _bands = Map<String, Band>.of(DemoData.bands);
     _venues = Map<String, Venue>.of(DemoData.venues);
+    _venuePrivateDetails = Map<String, VenuePrivateDetails>.of(
+      DemoData.venuePrivateDetails,
+    );
+    _organizations = Map<String, Organization>.of(DemoData.organizations);
+    _organizationMemberships = [
+      OrganizationMembership(
+        organization: _organizations['org1']!,
+        role: OrganizationRole.owner,
+      ),
+    ];
+    _organizationMembers = {
+      'org1': Map<String, OrganizationMember>.of(DemoData.organizationMembers),
+    };
+    _organizationPrivateDetails = {
+      'org1': const OrganizationPrivateDetails(
+        legalName: 'The Foghorn Club LLC',
+        businessEmail: 'hello@foghorn.example',
+        contactName: 'Earplug Fan',
+        phone: '415-555-0142',
+      ),
+    };
+    _organizationApplications = {
+      DemoData.submittedOrganizationApplication.id:
+          DemoData.submittedOrganizationApplication,
+    };
+    _applicationApplicants = {
+      DemoData.submittedOrganizationApplication.id: (
+        userId: 'applicant-sam',
+        name: 'Sam Reyes',
+        email: 'sam@example.com',
+      ),
+    };
     _memberships = [BandMembership(band: _bands['b1']!, role: 'admin')];
     _mediaLists = {
       'b1': List<BandMedia>.of(DemoData.b1Media),
@@ -42,9 +74,21 @@ class DemoRepository implements EarplugRepository {
       StreamController<Map<String, int>>.broadcast();
   final StreamController<List<BandMembership>> _bandsController =
       StreamController<List<BandMembership>>.broadcast();
+  final StreamController<List<OrganizationMembership>>
+  _organizationsController =
+      StreamController<List<OrganizationMembership>>.broadcast();
 
   late final Map<String, Band> _bands;
   late final Map<String, Venue> _venues;
+  late final Map<String, VenuePrivateDetails> _venuePrivateDetails;
+  late final Map<String, Organization> _organizations;
+  late final List<OrganizationMembership> _organizationMemberships;
+  late final Map<String, Map<String, OrganizationMember>> _organizationMembers;
+  late final Map<String, OrganizationPrivateDetails>
+  _organizationPrivateDetails;
+  late final Map<String, OrganizationApplication> _organizationApplications;
+  late final Map<String, ({String userId, String name, String email})>
+  _applicationApplicants;
   late final List<BandMembership> _memberships;
   late final Map<String, List<BandMedia>> _mediaLists;
   final List<Gig> _publishedGigs = [];
@@ -59,6 +103,11 @@ class DemoRepository implements EarplugRepository {
   final Map<String, String> _avatarByBand = {};
   final Set<String> _previewedBands = {};
   final Map<String, BandInvite> _bandInvites = {};
+  final Map<String, OrganizationInvite> _organizationInvites = {};
+  final Map<String, String> _venueDescriptions = {};
+  final Map<String, VenueType> _venueTypes = {};
+  final Map<String, int> _venuePublicCapacities = {};
+  final Map<String, List<String>> _venuePhotoStorageIds = {};
   final Map<String, Set<String>> _acceptedMemberNames = {};
   final Map<String, DateTime> _archivedBands = {};
   FanOnboarding _fanOnboarding = const FanOnboarding(
@@ -83,8 +132,14 @@ class DemoRepository implements EarplugRepository {
   int _nextMediaId = 1;
   int _nextInviteId = 1;
   int _nextVenueId = 1;
+  int _nextOrganizationId = 1;
+  int _nextOrganizationApplicationId = 1;
+  int _nextOrganizationInviteId = 1;
   bool _interactionsSeeded = false;
   Map<String, int> _lastGoingCounts = const {};
+  String? _myOrganizationApplicationId;
+
+  bool platformAdmin = false;
 
   /// Nothing to push: the demo data does not check identity.
   @override
@@ -573,6 +628,777 @@ class DemoRepository implements EarplugRepository {
       bands: bands,
       truncated: false,
     );
+  }
+
+  @override
+  Future<OrganizationApplication?> myOrganizationApplication() async {
+    final applicationId = _myOrganizationApplicationId;
+    return applicationId == null
+        ? null
+        : _organizationApplications[applicationId];
+  }
+
+  @override
+  Future<({String applicationId, int revision})>
+  saveOrganizationApplicationDraft({
+    String? applicationId,
+    int? expectedRevision,
+    required String orgName,
+    required OrganizationType orgType,
+    String? website,
+    required String contactName,
+    required String businessEmail,
+    String? phone,
+    ApplicationVenueDraft? venue,
+  }) async {
+    final existing = applicationId == null
+        ? null
+        : _organizationApplications[applicationId];
+    if (existing != null && existing.revision != expectedRevision) {
+      throw StateError('Application changed elsewhere');
+    }
+    if (existing == null && applicationId != null) {
+      throw StateError('Application changed elsewhere');
+    }
+
+    final now = DateTime.now();
+    final id =
+        applicationId ?? 'demo-application-${_nextOrganizationApplicationId++}';
+    final application = OrganizationApplication(
+      id: id,
+      status: existing?.status == OrganizationApplicationStatus.needsInfo
+          ? OrganizationApplicationStatus.needsInfo
+          : OrganizationApplicationStatus.draft,
+      orgName: orgName,
+      orgType: orgType,
+      website: website,
+      contactName: contactName,
+      businessEmail: businessEmail,
+      phone: phone,
+      venue: venue,
+      documents: existing?.documents ?? const [],
+      reviewNote: existing?.reviewNote,
+      decidedAt: existing?.decidedAt,
+      resultingOrganizationId: existing?.resultingOrganizationId,
+      resultingVenueId: existing?.resultingVenueId,
+      revision: (existing?.revision ?? 0) + 1,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    );
+    _organizationApplications[id] = application;
+    _myOrganizationApplicationId = id;
+    _applicationApplicants.putIfAbsent(
+      id,
+      () => (
+        userId: DemoData.demoUserId,
+        name: _userName ?? _auth.displayName ?? 'Earplug Fan',
+        email: '',
+      ),
+    );
+    return (applicationId: id, revision: application.revision);
+  }
+
+  @override
+  Future<int> submitOrganizationApplication({
+    required String applicationId,
+    required int expectedRevision,
+  }) async {
+    final application = _requireOrganizationApplication(applicationId);
+    _checkApplicationRevision(application, expectedRevision);
+    final updated = _copyOrganizationApplication(
+      application,
+      status: OrganizationApplicationStatus.submitted,
+      revision: application.revision + 1,
+      updatedAt: DateTime.now(),
+    );
+    _organizationApplications[applicationId] = updated;
+    return updated.revision;
+  }
+
+  @override
+  Future<void> withdrawOrganizationApplication(String applicationId) async {
+    final application = _requireOrganizationApplication(applicationId);
+    _organizationApplications[applicationId] = _copyOrganizationApplication(
+      application,
+      status: OrganizationApplicationStatus.withdrawn,
+      revision: application.revision + 1,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<String> generateApplicationDocumentUploadUrl() async =>
+      'demo://organization-application-upload';
+
+  @override
+  Future<int> attachApplicationDocument({
+    required String applicationId,
+    required String storageId,
+  }) async {
+    final application = _requireOrganizationApplication(applicationId);
+    final documents = [
+      ...application.documents.where(
+        (document) => document.storageId != storageId,
+      ),
+      ApplicationDocument(
+        storageId: storageId,
+        url: 'demo://organization-application-document/$storageId',
+      ),
+    ];
+    final updated = _copyOrganizationApplication(
+      application,
+      documents: documents,
+      revision: application.revision + 1,
+      updatedAt: DateTime.now(),
+    );
+    _organizationApplications[applicationId] = updated;
+    return updated.revision;
+  }
+
+  @override
+  Future<int> removeApplicationDocument({
+    required String applicationId,
+    required String storageId,
+  }) async {
+    final application = _requireOrganizationApplication(applicationId);
+    final updated = _copyOrganizationApplication(
+      application,
+      documents: application.documents
+          .where((document) => document.storageId != storageId)
+          .toList(),
+      revision: application.revision + 1,
+      updatedAt: DateTime.now(),
+    );
+    _organizationApplications[applicationId] = updated;
+    return updated.revision;
+  }
+
+  @override
+  Future<OrganizationApplication?> organizationApplication(
+    String applicationId,
+  ) async => _organizationApplications[applicationId];
+
+  @override
+  Future<AdminApplicationPage> applicationsForReview({
+    OrganizationApplicationStatus? status,
+    String? cursor,
+    int numItems = 25,
+  }) async {
+    final rows = <AdminApplicationRow>[];
+    for (final application in _organizationApplications.values) {
+      if (status != null && application.status != status) continue;
+      if (application.status == OrganizationApplicationStatus.draft) continue;
+      final applicant = _applicationApplicants[application.id];
+      rows.add(
+        AdminApplicationRow(
+          application: application,
+          applicantUserId: applicant?.userId ?? '',
+          applicantName: applicant?.name ?? '',
+          applicantEmail: applicant?.email ?? '',
+        ),
+      );
+    }
+    rows.sort(
+      (left, right) =>
+          right.application.createdAt.compareTo(left.application.createdAt),
+    );
+    final start = (int.tryParse(cursor ?? '') ?? 0).clamp(0, rows.length);
+    final end = (start + numItems).clamp(start, rows.length);
+    return AdminApplicationPage(
+      items: rows.sublist(start, end),
+      continueCursor: end.toString(),
+      isDone: end == rows.length,
+    );
+  }
+
+  @override
+  Future<
+    ({
+      OrganizationApplicationStatus status,
+      String? organizationId,
+      String? venueId,
+    })
+  >
+  decideOrganizationApplication({
+    required String applicationId,
+    required ApplicationDecision decision,
+    String? note,
+  }) async {
+    if (!platformAdmin) throw StateError('Platform admin access required.');
+    final application = _requireOrganizationApplication(applicationId);
+    final status = switch (decision) {
+      ApplicationDecision.underReview =>
+        OrganizationApplicationStatus.underReview,
+      ApplicationDecision.needsInfo => OrganizationApplicationStatus.needsInfo,
+      ApplicationDecision.approved => OrganizationApplicationStatus.approved,
+      ApplicationDecision.rejected => OrganizationApplicationStatus.rejected,
+    };
+
+    String? organizationId = application.resultingOrganizationId;
+    String? venueId = application.resultingVenueId;
+    if (decision == ApplicationDecision.approved && organizationId == null) {
+      organizationId = 'demo-organization-${_nextOrganizationId++}';
+      final organization = Organization(
+        id: organizationId,
+        slug: _uniqueOrganizationSlug(application.orgName),
+        name: application.orgName,
+        orgType: application.orgType,
+        status: OrganizationStatus.verified,
+        verified: true,
+        website: application.website,
+        photoUrls: const [],
+        createdAt: DateTime.now(),
+      );
+      _organizations[organizationId] = organization;
+      _organizationPrivateDetails[organizationId] = OrganizationPrivateDetails(
+        businessEmail: application.businessEmail,
+        contactName: application.contactName,
+        phone: application.phone,
+      );
+
+      final venueDraft = application.venue;
+      if (venueDraft != null) {
+        venueId = 'demo-venue-${_nextVenueId++}';
+        final approx = ApproxLocation(
+          centroid: venueDraft.point,
+          label: venueDraft.area,
+        );
+        _venues[venueId] = Venue(
+          id: venueId,
+          name: venueDraft.name,
+          area: approx.label,
+          addr: approx.label,
+          point: approx.centroid,
+          slug: _uniqueVenueSlug(venueDraft.name),
+          approx: approx,
+          neighborhood: venueDraft.neighborhood,
+          city: venueDraft.city,
+          disclosure: AddressDisclosure.onTicket,
+          verified: true,
+          managedByOrganizationId: organizationId,
+          supportsApproxLocation: true,
+        );
+        _venuePrivateDetails[venueId] = VenuePrivateDetails(
+          venueId: venueId,
+          addr: venueDraft.addr,
+          point: venueDraft.point,
+          capacity: venueDraft.capacity,
+        );
+        if (venueDraft.venueType case final type?) {
+          _venueTypes[venueId] = type;
+        }
+      }
+
+      if (_myOrganizationApplicationId == applicationId) {
+        _organizationMemberships.add(
+          OrganizationMembership(
+            organization: organization,
+            role: OrganizationRole.owner,
+          ),
+        );
+        _organizationMembers[organizationId] = {
+          DemoData.demoUserId: OrganizationMember(
+            userId: DemoData.demoUserId,
+            name: _userName ?? _auth.displayName ?? 'Earplug Fan',
+            email: '',
+            role: OrganizationRole.owner,
+            createdAt: DateTime.now(),
+          ),
+        };
+      }
+      _emitOrganizations();
+      _emitFeed();
+    }
+
+    final decidedAt = switch (decision) {
+      ApplicationDecision.approved ||
+      ApplicationDecision.rejected => DateTime.now(),
+      _ => null,
+    };
+    final updated = _copyOrganizationApplication(
+      application,
+      status: status,
+      reviewNote: note,
+      decidedAt: decidedAt,
+      resultingOrganizationId: organizationId,
+      resultingVenueId: venueId,
+      revision: application.revision + 1,
+      updatedAt: DateTime.now(),
+    );
+    _organizationApplications[applicationId] = updated;
+    return (status: status, organizationId: organizationId, venueId: venueId);
+  }
+
+  @override
+  Stream<List<OrganizationMembership>> myOrganizations() =>
+      _replay(_organizationsController, _currentOrganizationMemberships);
+
+  @override
+  Future<Organization?> organizationBySlug(String slug) async => _organizations
+      .values
+      .where((organization) => organization.slug == slug)
+      .firstOrNull;
+
+  @override
+  Future<Organization?> organization(String organizationId) async =>
+      _organizations[organizationId];
+
+  @override
+  Future<OrganizationDashboard> organizationDashboard(
+    String organizationId,
+  ) async {
+    final organization = _requireOrganization(organizationId);
+    final membership = _organizationMemberships
+        .where((item) => item.organization.id == organizationId)
+        .firstOrNull;
+    return OrganizationDashboard(
+      organization: organization,
+      role: membership?.role,
+      viaPlatformAdmin: platformAdmin,
+      verification: OrganizationVerification(
+        verified: organization.verified,
+        stripeDetailsSubmitted: organization.verified,
+        stripeChargesEnabled: organization.verified,
+        stripePayoutsEnabled: organization.verified,
+        profileComplete: organization.name.isNotEmpty,
+        teamInvited: (_organizationMembers[organizationId]?.length ?? 0) > 1,
+      ),
+      venues: [
+        for (final venue in _venues.values)
+          if (venue.managedByOrganizationId == organizationId) venue,
+      ],
+      memberCount: _organizationMembers[organizationId]?.length ?? 0,
+      privateDetails: _organizationPrivateDetails[organizationId],
+    );
+  }
+
+  @override
+  Future<void> updateOrganizationProfile({
+    required String organizationId,
+    String? name,
+    String? description,
+    String? website,
+  }) async {
+    final organization = _requireOrganization(organizationId);
+    final updated = _copyOrganization(
+      organization,
+      name: name,
+      description: description,
+      website: website,
+    );
+    _organizations[organizationId] = updated;
+    _replaceOrganizationInMemberships(updated);
+    _emitOrganizations();
+  }
+
+  @override
+  Future<void> updateOrganizationPrivateDetails({
+    required String organizationId,
+    String? legalName,
+    String? businessEmail,
+    String? contactName,
+    String? phone,
+  }) async {
+    _requireOrganization(organizationId);
+    final current = _organizationPrivateDetails[organizationId];
+    _organizationPrivateDetails[organizationId] = OrganizationPrivateDetails(
+      legalName: legalName ?? current?.legalName,
+      businessEmail: businessEmail ?? current?.businessEmail ?? '',
+      contactName: contactName ?? current?.contactName ?? '',
+      phone: phone ?? current?.phone,
+    );
+  }
+
+  @override
+  Future<String> generateOrganizationPhotoUploadUrl(
+    String organizationId,
+  ) async {
+    _requireOrganization(organizationId);
+    return 'demo://organization-photo-upload/$organizationId';
+  }
+
+  @override
+  Future<void> setOrganizationPhotos({
+    required String organizationId,
+    required List<String> storageIds,
+  }) async {
+    final organization = _requireOrganization(organizationId);
+    final updated = _copyOrganization(
+      organization,
+      photoUrls: [
+        for (final storageId in storageIds)
+          'demo://organization-photo/$storageId',
+      ],
+    );
+    _organizations[organizationId] = updated;
+    _replaceOrganizationInMemberships(updated);
+    _emitOrganizations();
+  }
+
+  @override
+  Future<void> deactivateOrganization(String organizationId) async {
+    final organization = _requireOrganization(organizationId);
+    final updated = _copyOrganization(
+      organization,
+      status: OrganizationStatus.suspended,
+      verified: false,
+    );
+    _organizations[organizationId] = updated;
+    _replaceOrganizationInMemberships(updated);
+    _emitOrganizations();
+  }
+
+  @override
+  Future<List<OrganizationMember>> organizationMembers(
+    String organizationId,
+  ) async {
+    _requireOrganization(organizationId);
+    return _organizationMembers[organizationId]?.values.toList() ?? const [];
+  }
+
+  @override
+  Future<void> setOrganizationMemberRole({
+    required String organizationId,
+    required String userId,
+    required OrganizationRole role,
+  }) async {
+    final members = _organizationMembers[organizationId];
+    final member = members?[userId];
+    if (member == null) throw StateError('Organization member not found.');
+    members![userId] = OrganizationMember(
+      userId: member.userId,
+      name: member.name,
+      email: member.email,
+      role: role,
+      createdAt: member.createdAt,
+    );
+    if (userId == DemoData.demoUserId) {
+      final index = _organizationMemberships.indexWhere(
+        (membership) => membership.organization.id == organizationId,
+      );
+      if (index != -1) {
+        _organizationMemberships[index] = OrganizationMembership(
+          organization: _organizationMemberships[index].organization,
+          role: role,
+        );
+      }
+    }
+    _emitOrganizations();
+  }
+
+  @override
+  Future<void> removeOrganizationMember({
+    required String organizationId,
+    required String userId,
+  }) async {
+    _organizationMembers[organizationId]?.remove(userId);
+    if (userId == DemoData.demoUserId) {
+      _organizationMemberships.removeWhere(
+        (membership) => membership.organization.id == organizationId,
+      );
+    }
+    _emitOrganizations();
+  }
+
+  @override
+  Future<OrganizationInvite?> organizationInvite(String organizationId) async =>
+      _organizationInvites[organizationId];
+
+  OrganizationInvite _newOrganizationInvite(
+    String organizationId,
+    OrganizationRole role,
+  ) {
+    _requireOrganization(organizationId);
+    final invite = OrganizationInvite(
+      organizationId: organizationId,
+      token: 'demo-organization-invite-${_nextOrganizationInviteId++}',
+      role: role,
+      expiresAt: DateTime.now().add(const Duration(days: 7)),
+      revoked: false,
+      expired: false,
+    );
+    _organizationInvites[organizationId] = invite;
+    return invite;
+  }
+
+  @override
+  Future<OrganizationInvite> createOrganizationInvite({
+    required String organizationId,
+    required OrganizationRole role,
+  }) async {
+    final current = _organizationInvites[organizationId];
+    if (current != null &&
+        current.role == role &&
+        !current.revoked &&
+        !current.expired &&
+        current.expiresAt.isAfter(DateTime.now())) {
+      return current;
+    }
+    return _newOrganizationInvite(organizationId, role);
+  }
+
+  @override
+  Future<OrganizationInvite> rotateOrganizationInvite(
+    String organizationId,
+  ) async => _newOrganizationInvite(
+    organizationId,
+    _organizationInvites[organizationId]?.role ?? OrganizationRole.manager,
+  );
+
+  @override
+  Future<void> revokeOrganizationInvite(String organizationId) async {
+    final invite = _organizationInvites[organizationId];
+    if (invite == null) return;
+    _organizationInvites[organizationId] = OrganizationInvite(
+      organizationId: invite.organizationId,
+      token: invite.token,
+      role: invite.role,
+      expiresAt: invite.expiresAt,
+      revoked: true,
+      expired: invite.expired,
+    );
+  }
+
+  @override
+  Future<OrganizationInviteResolution?> resolveOrganizationInvite(
+    String token,
+  ) async {
+    final invite = _organizationInvites.values
+        .where((candidate) => candidate.token == token)
+        .firstOrNull;
+    if (invite == null ||
+        invite.revoked ||
+        invite.expired ||
+        !invite.expiresAt.isAfter(DateTime.now())) {
+      return null;
+    }
+    final organization = _organizations[invite.organizationId];
+    if (organization == null) return null;
+    return OrganizationInviteResolution(
+      organizationId: organization.id,
+      organizationName: organization.name,
+      role: invite.role,
+    );
+  }
+
+  @override
+  Future<OrganizationInviteAcceptance> acceptOrganizationInvite(
+    String token,
+  ) async {
+    if (!_auth.signedIn) throw StateError('Not signed in.');
+    final resolution = await resolveOrganizationInvite(token);
+    if (resolution == null) {
+      throw StateError('Invitation is no longer active.');
+    }
+    final alreadyMember = _organizationMemberships.any(
+      (membership) => membership.organization.id == resolution.organizationId,
+    );
+    if (alreadyMember) {
+      _emitOrganizations();
+      return OrganizationInviteAcceptance(
+        organizationId: resolution.organizationId,
+        membershipCreated: false,
+      );
+    }
+
+    final organization = _requireOrganization(resolution.organizationId);
+    _organizationMemberships.add(
+      OrganizationMembership(organization: organization, role: resolution.role),
+    );
+    _organizationMembers.putIfAbsent(
+      organization.id,
+      () => {},
+    )[DemoData.demoUserId] = OrganizationMember(
+      userId: DemoData.demoUserId,
+      name: _userName ?? _auth.displayName ?? 'Earplug Fan',
+      email: '',
+      role: resolution.role,
+      createdAt: DateTime.now(),
+    );
+    _emitOrganizations();
+    return OrganizationInviteAcceptance(
+      organizationId: organization.id,
+      membershipCreated: true,
+    );
+  }
+
+  @override
+  Future<Venue?> resolveVenue(String ref) async => _venues.values
+      .where((venue) => venue.id == ref || venue.slug == ref)
+      .firstOrNull;
+
+  @override
+  Future<VenuePrivateDetails?> venuePrivateDetails(String venueId) async =>
+      _venuePrivateDetails[venueId];
+
+  @override
+  Future<void> updateVenueProfile({
+    required String venueId,
+    String? name,
+    String? description,
+    VenueType? venueType,
+    int? capacityPublic,
+    String? neighborhood,
+    String? city,
+  }) async {
+    final venue = _requireVenue(venueId);
+    _venues[venueId] = Venue(
+      id: venue.id,
+      name: name ?? venue.name,
+      area: venue.area,
+      addr: venue.addr,
+      point: venue.point,
+      slug: venue.slug,
+      approx: venue.approx,
+      neighborhood: neighborhood ?? venue.neighborhood,
+      city: city ?? venue.city,
+      disclosure: venue.disclosure,
+      verified: venue.verified,
+      managedByOrganizationId: venue.managedByOrganizationId,
+      exactAddress: venue.exactAddress,
+      supportsApproxLocation: venue.supportsApproxLocation,
+    );
+    if (description != null) _venueDescriptions[venueId] = description;
+    if (venueType != null) _venueTypes[venueId] = venueType;
+    if (capacityPublic != null) {
+      _venuePublicCapacities[venueId] = capacityPublic;
+    }
+    _emitFeed();
+  }
+
+  @override
+  Future<void> updateVenuePrivateDetails({
+    required String venueId,
+    required String addr,
+    required LatLng point,
+    String? loadInNotes,
+    int? capacity,
+  }) async {
+    final venue = _requireVenue(venueId);
+    _venuePrivateDetails[venueId] = VenuePrivateDetails(
+      venueId: venueId,
+      addr: addr,
+      point: point,
+      loadInNotes: loadInNotes,
+      capacity: capacity,
+    );
+    if (venue.disclosure == AddressDisclosure.public) {
+      _venues[venueId] = Venue(
+        id: venue.id,
+        name: venue.name,
+        area: venue.area,
+        addr: addr,
+        point: point,
+        slug: venue.slug,
+        approx: venue.approx,
+        neighborhood: venue.neighborhood,
+        city: venue.city,
+        disclosure: venue.disclosure,
+        verified: venue.verified,
+        managedByOrganizationId: venue.managedByOrganizationId,
+        exactAddress: addr,
+        supportsApproxLocation: venue.supportsApproxLocation,
+      );
+      _emitFeed();
+    }
+  }
+
+  @override
+  Future<void> setVenueAddressDisclosure({
+    required String venueId,
+    required AddressDisclosure disclosure,
+  }) async {
+    final venue = _requireVenue(venueId);
+    final privateDetails = _venuePrivateDetails[venueId];
+    final discloseExact =
+        disclosure == AddressDisclosure.public && privateDetails != null;
+    _venues[venueId] = Venue(
+      id: venue.id,
+      name: venue.name,
+      area: discloseExact ? venue.area : venue.approx.label,
+      addr: discloseExact ? privateDetails.addr : venue.approx.label,
+      point: discloseExact ? privateDetails.point : venue.approx.centroid,
+      slug: venue.slug,
+      approx: venue.approx,
+      neighborhood: venue.neighborhood,
+      city: venue.city,
+      disclosure: disclosure,
+      verified: venue.verified,
+      managedByOrganizationId: venue.managedByOrganizationId,
+      exactAddress: discloseExact ? privateDetails.addr : null,
+      supportsApproxLocation: true,
+    );
+    _emitFeed();
+  }
+
+  @override
+  Future<String> generateVenuePhotoUploadUrl(String venueId) async {
+    _requireVenue(venueId);
+    return 'demo://venue-photo-upload/$venueId';
+  }
+
+  @override
+  Future<void> setVenuePhotos({
+    required String venueId,
+    required List<String> storageIds,
+  }) async {
+    _requireVenue(venueId);
+    _venuePhotoStorageIds[venueId] = List<String>.of(storageIds);
+  }
+
+  @override
+  Future<bool> isPlatformAdmin() async => platformAdmin;
+
+  @override
+  Future<AdminOverview> adminOverview() async => AdminOverview(
+    submitted: _organizationApplications.values
+        .where(
+          (application) =>
+              application.status == OrganizationApplicationStatus.submitted,
+        )
+        .length,
+    underReview: _organizationApplications.values
+        .where(
+          (application) =>
+              application.status == OrganizationApplicationStatus.underReview,
+        )
+        .length,
+    needsInfo: _organizationApplications.values
+        .where(
+          (application) =>
+              application.status == OrganizationApplicationStatus.needsInfo,
+        )
+        .length,
+    verifiedOrganizations: _organizations.values
+        .where(
+          (organization) => organization.status == OrganizationStatus.verified,
+        )
+        .length,
+    suspendedOrganizations: _organizations.values
+        .where(
+          (organization) => organization.status == OrganizationStatus.suspended,
+        )
+        .length,
+    capped: false,
+  );
+
+  @override
+  Future<void> setOrganizationSuspended({
+    required String organizationId,
+    required bool suspended,
+    String? note,
+  }) async {
+    final organization = _requireOrganization(organizationId);
+    final updated = _copyOrganization(
+      organization,
+      status: suspended
+          ? OrganizationStatus.suspended
+          : OrganizationStatus.verified,
+      verified: !suspended,
+    );
+    _organizations[organizationId] = updated;
+    _replaceOrganizationInMemberships(updated);
+    _emitOrganizations();
   }
 
   @override
@@ -1733,6 +2559,131 @@ class DemoRepository implements EarplugRepository {
 
   List<BandMembership> _currentMemberships() =>
       List<BandMembership>.unmodifiable(_memberships);
+
+  List<OrganizationMembership> _currentOrganizationMemberships() =>
+      List<OrganizationMembership>.unmodifiable(_organizationMemberships);
+
+  void _emitOrganizations() {
+    _organizationsController.add(_currentOrganizationMemberships());
+  }
+
+  OrganizationApplication _requireOrganizationApplication(
+    String applicationId,
+  ) {
+    final application = _organizationApplications[applicationId];
+    if (application == null) throw StateError('Application not found.');
+    return application;
+  }
+
+  void _checkApplicationRevision(
+    OrganizationApplication application,
+    int expectedRevision,
+  ) {
+    if (application.revision != expectedRevision) {
+      throw StateError('Application changed elsewhere');
+    }
+  }
+
+  OrganizationApplication _copyOrganizationApplication(
+    OrganizationApplication application, {
+    OrganizationApplicationStatus? status,
+    List<ApplicationDocument>? documents,
+    String? reviewNote,
+    DateTime? decidedAt,
+    String? resultingOrganizationId,
+    String? resultingVenueId,
+    int? revision,
+    DateTime? updatedAt,
+  }) => OrganizationApplication(
+    id: application.id,
+    status: status ?? application.status,
+    orgName: application.orgName,
+    orgType: application.orgType,
+    website: application.website,
+    contactName: application.contactName,
+    businessEmail: application.businessEmail,
+    phone: application.phone,
+    venue: application.venue,
+    documents: documents ?? application.documents,
+    reviewNote: reviewNote ?? application.reviewNote,
+    decidedAt: decidedAt ?? application.decidedAt,
+    resultingOrganizationId:
+        resultingOrganizationId ?? application.resultingOrganizationId,
+    resultingVenueId: resultingVenueId ?? application.resultingVenueId,
+    revision: revision ?? application.revision,
+    createdAt: application.createdAt,
+    updatedAt: updatedAt ?? application.updatedAt,
+  );
+
+  Organization _requireOrganization(String organizationId) {
+    final organization = _organizations[organizationId];
+    if (organization == null) throw StateError('Organization not found.');
+    return organization;
+  }
+
+  Venue _requireVenue(String venueId) {
+    final venue = _venues[venueId];
+    if (venue == null) throw StateError('Venue not found.');
+    return venue;
+  }
+
+  Organization _copyOrganization(
+    Organization organization, {
+    String? name,
+    String? description,
+    String? website,
+    List<String>? photoUrls,
+    OrganizationStatus? status,
+    bool? verified,
+  }) => Organization(
+    id: organization.id,
+    slug: organization.slug,
+    name: name ?? organization.name,
+    orgType: organization.orgType,
+    status: status ?? organization.status,
+    verified: verified ?? organization.verified,
+    description: description ?? organization.description,
+    website: website ?? organization.website,
+    photoUrls: photoUrls ?? organization.photoUrls,
+    createdAt: organization.createdAt,
+  );
+
+  void _replaceOrganizationInMemberships(Organization organization) {
+    for (var index = 0; index < _organizationMemberships.length; index++) {
+      final membership = _organizationMemberships[index];
+      if (membership.organization.id == organization.id) {
+        _organizationMemberships[index] = OrganizationMembership(
+          organization: organization,
+          role: membership.role,
+        );
+      }
+    }
+  }
+
+  String _uniqueOrganizationSlug(String name) {
+    var base = _slugify(name);
+    if (base.isEmpty) base = 'organization';
+    final taken = {
+      for (final organization in _organizations.values) organization.slug,
+    };
+    for (var suffix = 1; ; suffix++) {
+      final candidate = suffix == 1 ? base : '$base-$suffix';
+      if (!taken.contains(candidate)) return candidate;
+    }
+  }
+
+  String _uniqueVenueSlug(String name) {
+    var base = _slugify(name);
+    if (base.isEmpty) base = 'venue';
+    final taken = {
+      for (final venue in _venues.values)
+        if (venue.slug != null) venue.slug,
+    };
+    for (var suffix = 1; ; suffix++) {
+      final candidate = suffix == 1 ? base : '$base-$suffix';
+      if (!taken.contains(candidate)) return candidate;
+    }
+  }
 
   Stream<T> _replay<T>(
     StreamController<T> controller,

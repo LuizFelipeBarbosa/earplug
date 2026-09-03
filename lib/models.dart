@@ -5,12 +5,118 @@ import 'package:latlong2/latlong.dart';
 import 'app_links.dart';
 import 'date_names.dart';
 
+String _marketplaceString(Object? value) => value is String ? value : '';
+
+String? _marketplaceOptionalString(Object? value) =>
+    value is String ? value : null;
+
+int _marketplaceInt(Object? value) => value is num ? value.toInt() : 0;
+
+int? _marketplaceOptionalInt(Object? value) =>
+    value is num ? value.toInt() : null;
+
+DateTime _marketplaceDate(Object? value) =>
+    DateTime.fromMillisecondsSinceEpoch(value is num ? value.toInt() : 0);
+
+DateTime? _marketplaceOptionalDate(Object? value) =>
+    value is num ? DateTime.fromMillisecondsSinceEpoch(value.toInt()) : null;
+
+Map<String, dynamic> _marketplaceMap(Object? value) {
+  if (value is! Map) return const {};
+  return {
+    for (final entry in value.entries)
+      if (entry.key is String) entry.key as String: entry.value,
+  };
+}
+
+List<Map<String, dynamic>> _marketplaceMapList(Object? value) => [
+  if (value is List)
+    for (final item in value)
+      if (item is Map) _marketplaceMap(item),
+];
+
+List<String> _marketplaceStringList(Object? value) => [
+  if (value is List)
+    for (final item in value)
+      if (item is String) item,
+];
+
+LatLng _marketplacePoint(
+  Map<String, dynamic> json, {
+  LatLng fallback = const LatLng(0, 0),
+}) => LatLng(
+  json['lat'] is num ? (json['lat'] as num).toDouble() : fallback.latitude,
+  json['lng'] is num ? (json['lng'] as num).toDouble() : fallback.longitude,
+);
+
+enum AddressDisclosure {
+  onTicket('onTicket'),
+  public('public');
+
+  const AddressDisclosure(this.wireValue);
+
+  final String wireValue;
+
+  static AddressDisclosure fromWire(Object? value) => value == 'onTicket'
+      ? AddressDisclosure.onTicket
+      : AddressDisclosure.public;
+}
+
+enum LocationPrecision { exact, approximate }
+
+enum VenueType {
+  bar('bar'),
+  club('club'),
+  hall('hall'),
+  house('house'),
+  outdoor('outdoor'),
+  other('other');
+
+  const VenueType(this.wireValue);
+
+  final String wireValue;
+
+  static VenueType fromWire(Object? value) => switch (value) {
+    'bar' => VenueType.bar,
+    'club' => VenueType.club,
+    'hall' => VenueType.hall,
+    'house' => VenueType.house,
+    'outdoor' => VenueType.outdoor,
+    _ => VenueType.other,
+  };
+}
+
+class ApproxLocation {
+  const ApproxLocation({required this.centroid, required this.label});
+
+  final LatLng centroid;
+  final String label;
+
+  factory ApproxLocation.fromJson(
+    Map<String, dynamic> json, {
+    LatLng fallbackPoint = const LatLng(0, 0),
+    String fallbackLabel = '',
+  }) => ApproxLocation(
+    centroid: _marketplacePoint(json, fallback: fallbackPoint),
+    label: json['label'] is String ? json['label'] as String : fallbackLabel,
+  );
+}
+
 class Venue {
   final String id;
   final String name;
   final String area;
   final String addr;
   final LatLng point;
+  final String? slug;
+  final ApproxLocation? _approx;
+  final String? neighborhood;
+  final String? city;
+  final AddressDisclosure disclosure;
+  final bool verified;
+  final String? managedByOrganizationId;
+  final String? exactAddress;
+  final bool supportsApproxLocation;
 
   const Venue({
     required this.id,
@@ -18,18 +124,660 @@ class Venue {
     required this.area,
     required this.addr,
     required this.point,
+    this.slug,
+    ApproxLocation? approx,
+    this.neighborhood,
+    this.city,
+    this.disclosure = AddressDisclosure.public,
+    this.verified = false,
+    this.managedByOrganizationId,
+    String? exactAddress,
+    this.supportsApproxLocation = false,
+  }) : // `approx` is the public constructor argument for the private override.
+       // ignore: prefer_initializing_formals
+       _approx = approx,
+       exactAddress = exactAddress ?? (supportsApproxLocation ? null : addr);
+
+  ApproxLocation get approx =>
+      _approx ?? ApproxLocation(centroid: point, label: area);
+
+  LocationPrecision get precision => exactAddress != null
+      ? LocationPrecision.exact
+      : LocationPrecision.approximate;
+
+  LatLng? get exactPoint => exactAddress != null ? point : null;
+
+  factory Venue.fromJson(Map<String, dynamic> json) {
+    final area = _marketplaceString(json['area']);
+    final addr = _marketplaceString(json['addr']);
+    final disclosedPoint = _marketplacePoint(json);
+    if (!json.containsKey('approxLocation')) {
+      return Venue(
+        id: _marketplaceString(json['_id']),
+        name: _marketplaceString(json['name']),
+        area: area,
+        addr: addr,
+        point: disclosedPoint,
+      );
+    }
+
+    final approx = ApproxLocation.fromJson(
+      _marketplaceMap(json['approxLocation']),
+      fallbackPoint: disclosedPoint,
+      fallbackLabel: area,
+    );
+    final exactAddress = _marketplaceOptionalString(json['exactAddr']);
+    return Venue(
+      id: _marketplaceString(json['_id']),
+      name: _marketplaceString(json['name']),
+      area: area,
+      addr: addr.isEmpty ? exactAddress ?? approx.label : addr,
+      point: exactAddress == null ? approx.centroid : disclosedPoint,
+      slug: _marketplaceOptionalString(json['slug']),
+      approx: approx,
+      neighborhood: _marketplaceOptionalString(json['neighborhood']),
+      city: _marketplaceOptionalString(json['city']),
+      disclosure: AddressDisclosure.fromWire(json['addressDisclosure']),
+      verified: json['verified'] == true,
+      managedByOrganizationId: _marketplaceOptionalString(
+        json['managedByOrganizationId'],
+      ),
+      exactAddress: exactAddress,
+      supportsApproxLocation: true,
+    );
+  }
+}
+
+class VenuePrivateDetails {
+  const VenuePrivateDetails({
+    required this.venueId,
+    required this.addr,
+    required this.point,
+    this.loadInNotes,
+    this.capacity,
   });
 
-  factory Venue.fromJson(Map<String, dynamic> json) => Venue(
-    id: json['_id'] as String,
-    name: json['name'] as String,
-    area: json['area'] as String,
-    addr: json['addr'] as String,
-    point: LatLng(
-      (json['lat'] as num).toDouble(),
-      (json['lng'] as num).toDouble(),
-    ),
-  );
+  final String venueId;
+  final String addr;
+  final LatLng point;
+  final String? loadInNotes;
+  final int? capacity;
+
+  factory VenuePrivateDetails.fromJson(Map<String, dynamic> json) =>
+      VenuePrivateDetails(
+        venueId: _marketplaceString(json['venueId']),
+        addr: _marketplaceString(json['addr']),
+        point: _marketplacePoint(json),
+        loadInNotes: _marketplaceOptionalString(json['loadInNotes']),
+        capacity: _marketplaceOptionalInt(json['capacity']),
+      );
+}
+
+enum OrganizationRole {
+  owner('owner'),
+  manager('manager'),
+  finance('finance'),
+  door('door');
+
+  const OrganizationRole(this.wireValue);
+
+  final String wireValue;
+
+  static OrganizationRole fromWire(Object? value) => switch (value) {
+    'owner' => OrganizationRole.owner,
+    'manager' => OrganizationRole.manager,
+    'finance' => OrganizationRole.finance,
+    _ => OrganizationRole.door,
+  };
+}
+
+enum OrganizationType {
+  venueOperator('venueOperator'),
+  promoter('promoter'),
+  studentOrg('studentOrg'),
+  other('other');
+
+  const OrganizationType(this.wireValue);
+
+  final String wireValue;
+
+  static OrganizationType fromWire(Object? value) => switch (value) {
+    'venueOperator' => OrganizationType.venueOperator,
+    'promoter' => OrganizationType.promoter,
+    'studentOrg' => OrganizationType.studentOrg,
+    _ => OrganizationType.other,
+  };
+}
+
+enum OrganizationStatus {
+  pending('pending'),
+  verified('verified'),
+  suspended('suspended');
+
+  const OrganizationStatus(this.wireValue);
+
+  final String wireValue;
+
+  static OrganizationStatus fromWire(Object? value) => switch (value) {
+    'verified' => OrganizationStatus.verified,
+    'suspended' => OrganizationStatus.suspended,
+    _ => OrganizationStatus.pending,
+  };
+}
+
+class Organization {
+  const Organization({
+    required this.id,
+    required this.slug,
+    required this.name,
+    required this.orgType,
+    required this.status,
+    required this.verified,
+    this.description,
+    this.website,
+    required this.photoUrls,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String slug;
+  final String name;
+  final OrganizationType orgType;
+  final OrganizationStatus status;
+  final bool verified;
+  final String? description;
+  final String? website;
+  final List<String> photoUrls;
+  final DateTime createdAt;
+
+  factory Organization.fromJson(Map<String, dynamic> json) {
+    final status = OrganizationStatus.fromWire(json['status']);
+    return Organization(
+      id: _marketplaceString(json['_id']),
+      slug: _marketplaceString(json['slug']),
+      name: _marketplaceString(json['name']),
+      orgType: OrganizationType.fromWire(json['orgType']),
+      status: status,
+      verified: json['verified'] is bool
+          ? json['verified'] as bool
+          : status == OrganizationStatus.verified,
+      description: _marketplaceOptionalString(json['description']),
+      website: _marketplaceOptionalString(json['website']),
+      photoUrls: _marketplaceStringList(json['photoUrls']),
+      createdAt: _marketplaceDate(json['createdAt']),
+    );
+  }
+}
+
+class OrganizationMembership {
+  const OrganizationMembership({
+    required this.organization,
+    required this.role,
+  });
+
+  final Organization organization;
+  final OrganizationRole role;
+
+  factory OrganizationMembership.fromJson(Map<String, dynamic> json) =>
+      OrganizationMembership(
+        organization: Organization.fromJson(
+          _marketplaceMap(json['organization']),
+        ),
+        role: OrganizationRole.fromWire(json['role']),
+      );
+}
+
+class OrganizationVerification {
+  const OrganizationVerification({
+    required this.verified,
+    required this.stripeDetailsSubmitted,
+    required this.stripeChargesEnabled,
+    required this.stripePayoutsEnabled,
+    required this.profileComplete,
+    required this.teamInvited,
+  });
+
+  final bool verified;
+  final bool stripeDetailsSubmitted;
+  final bool stripeChargesEnabled;
+  final bool stripePayoutsEnabled;
+  final bool profileComplete;
+  final bool teamInvited;
+
+  factory OrganizationVerification.fromJson(Map<String, dynamic> json) =>
+      OrganizationVerification(
+        verified: json['verified'] == true,
+        stripeDetailsSubmitted: json['stripeDetailsSubmitted'] == true,
+        stripeChargesEnabled: json['stripeChargesEnabled'] == true,
+        stripePayoutsEnabled: json['stripePayoutsEnabled'] == true,
+        profileComplete: json['profileComplete'] == true,
+        teamInvited: json['teamInvited'] == true,
+      );
+}
+
+class OrganizationPrivateDetails {
+  const OrganizationPrivateDetails({
+    this.legalName,
+    required this.businessEmail,
+    required this.contactName,
+    this.phone,
+  });
+
+  final String? legalName;
+  final String businessEmail;
+  final String contactName;
+  final String? phone;
+
+  factory OrganizationPrivateDetails.fromJson(Map<String, dynamic> json) =>
+      OrganizationPrivateDetails(
+        legalName: _marketplaceOptionalString(json['legalName']),
+        businessEmail: _marketplaceString(json['businessEmail']),
+        contactName: _marketplaceString(json['contactName']),
+        phone: _marketplaceOptionalString(json['phone']),
+      );
+}
+
+class OrganizationDashboard {
+  const OrganizationDashboard({
+    required this.organization,
+    required this.role,
+    required this.viaPlatformAdmin,
+    required this.verification,
+    required this.venues,
+    required this.memberCount,
+    required this.privateDetails,
+  });
+
+  final Organization organization;
+  final OrganizationRole? role;
+  final bool viaPlatformAdmin;
+  final OrganizationVerification verification;
+  final List<Venue> venues;
+  final int memberCount;
+  final OrganizationPrivateDetails? privateDetails;
+
+  factory OrganizationDashboard.fromJson(Map<String, dynamic> json) =>
+      OrganizationDashboard(
+        organization: Organization.fromJson(
+          _marketplaceMap(json['organization']),
+        ),
+        role: json['role'] is String
+            ? OrganizationRole.fromWire(json['role'])
+            : null,
+        viaPlatformAdmin: json['viaPlatformAdmin'] == true,
+        verification: OrganizationVerification.fromJson(
+          _marketplaceMap(json['verification']),
+        ),
+        venues: [
+          for (final venue in _marketplaceMapList(json['venues']))
+            Venue.fromJson(venue),
+        ],
+        memberCount: _marketplaceInt(json['memberCount']),
+        privateDetails: json['privateDetails'] is Map
+            ? OrganizationPrivateDetails.fromJson(
+                _marketplaceMap(json['privateDetails']),
+              )
+            : null,
+      );
+}
+
+class OrganizationMember {
+  const OrganizationMember({
+    required this.userId,
+    required this.name,
+    this.email,
+    required this.role,
+    required this.createdAt,
+  });
+
+  final String userId;
+  final String name;
+  final String? email;
+  final OrganizationRole role;
+  final DateTime createdAt;
+
+  factory OrganizationMember.fromJson(Map<String, dynamic> json) =>
+      OrganizationMember(
+        userId: _marketplaceString(json['userId']),
+        name: _marketplaceString(json['name']),
+        email: _marketplaceOptionalString(json['email']),
+        role: OrganizationRole.fromWire(json['role']),
+        createdAt: _marketplaceDate(json['createdAt']),
+      );
+}
+
+class OrganizationInvite {
+  const OrganizationInvite({
+    required this.organizationId,
+    required this.token,
+    required this.role,
+    required this.expiresAt,
+    required this.revoked,
+    required this.expired,
+  });
+
+  final String organizationId;
+  final String token;
+  final OrganizationRole role;
+  final DateTime expiresAt;
+  final bool revoked;
+  final bool expired;
+
+  factory OrganizationInvite.fromJson(Map<String, dynamic> json) =>
+      OrganizationInvite(
+        organizationId: _marketplaceString(json['organizationId']),
+        token: _marketplaceString(json['token']),
+        role: OrganizationRole.fromWire(json['role']),
+        expiresAt: _marketplaceDate(json['expiresAt']),
+        revoked: json['revoked'] == true,
+        expired: json['expired'] == true,
+      );
+}
+
+class OrganizationInviteResolution {
+  const OrganizationInviteResolution({
+    required this.organizationId,
+    required this.organizationName,
+    required this.role,
+  });
+
+  final String organizationId;
+  final String organizationName;
+  final OrganizationRole role;
+
+  factory OrganizationInviteResolution.fromJson(Map<String, dynamic> json) =>
+      OrganizationInviteResolution(
+        organizationId: _marketplaceString(json['organizationId']),
+        organizationName: _marketplaceString(json['organizationName']),
+        role: OrganizationRole.fromWire(json['role']),
+      );
+}
+
+class OrganizationInviteAcceptance {
+  const OrganizationInviteAcceptance({
+    required this.organizationId,
+    required this.membershipCreated,
+  });
+
+  final String organizationId;
+  final bool membershipCreated;
+
+  factory OrganizationInviteAcceptance.fromJson(Map<String, dynamic> json) =>
+      OrganizationInviteAcceptance(
+        organizationId: _marketplaceString(json['organizationId']),
+        membershipCreated: json['membershipCreated'] == true,
+      );
+}
+
+enum OrganizationApplicationStatus {
+  draft('draft'),
+  submitted('submitted'),
+  underReview('under_review'),
+  needsInfo('needs_info'),
+  approved('approved'),
+  rejected('rejected'),
+  withdrawn('withdrawn');
+
+  const OrganizationApplicationStatus(this.wireValue);
+
+  final String wireValue;
+
+  static OrganizationApplicationStatus fromWire(Object? value) =>
+      switch (value) {
+        'submitted' => OrganizationApplicationStatus.submitted,
+        'under_review' => OrganizationApplicationStatus.underReview,
+        'needs_info' => OrganizationApplicationStatus.needsInfo,
+        'approved' => OrganizationApplicationStatus.approved,
+        'rejected' => OrganizationApplicationStatus.rejected,
+        'withdrawn' => OrganizationApplicationStatus.withdrawn,
+        _ => OrganizationApplicationStatus.draft,
+      };
+}
+
+enum ApplicationDecision {
+  underReview('under_review'),
+  needsInfo('needs_info'),
+  approved('approved'),
+  rejected('rejected');
+
+  const ApplicationDecision(this.wireValue);
+
+  final String wireValue;
+
+  static ApplicationDecision fromWire(Object? value) => switch (value) {
+    'needs_info' => ApplicationDecision.needsInfo,
+    'approved' => ApplicationDecision.approved,
+    'rejected' => ApplicationDecision.rejected,
+    _ => ApplicationDecision.underReview,
+  };
+}
+
+class ApplicationVenueDraft {
+  const ApplicationVenueDraft({
+    required this.name,
+    required this.addr,
+    required this.point,
+    required this.area,
+    this.neighborhood,
+    this.city,
+    this.capacity,
+    this.venueType,
+  });
+
+  final String name;
+  final String addr;
+  final LatLng point;
+  final String area;
+  final String? neighborhood;
+  final String? city;
+  final int? capacity;
+  final VenueType? venueType;
+
+  factory ApplicationVenueDraft.fromJson(Map<String, dynamic> json) =>
+      ApplicationVenueDraft(
+        name: _marketplaceString(json['name']),
+        addr: _marketplaceString(json['addr']),
+        point: _marketplacePoint(json),
+        area: _marketplaceString(json['area']),
+        neighborhood: _marketplaceOptionalString(json['neighborhood']),
+        city: _marketplaceOptionalString(json['city']),
+        capacity: _marketplaceOptionalInt(json['capacity']),
+        venueType: json['venueType'] is String
+            ? VenueType.fromWire(json['venueType'])
+            : null,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'addr': addr,
+    'lat': point.latitude,
+    'lng': point.longitude,
+    'area': area,
+    if (neighborhood != null) 'neighborhood': neighborhood,
+    if (city != null) 'city': city,
+    if (capacity != null) 'capacity': capacity,
+    if (venueType != null) 'venueType': venueType!.wireValue,
+  };
+}
+
+class ApplicationDocument {
+  const ApplicationDocument({
+    required this.storageId,
+    this.url,
+    this.contentType,
+    this.sizeBytes,
+  });
+
+  final String storageId;
+  final String? url;
+  final String? contentType;
+  final int? sizeBytes;
+
+  factory ApplicationDocument.fromJson(Map<String, dynamic> json) =>
+      ApplicationDocument(
+        storageId: _marketplaceString(json['storageId']),
+        url: _marketplaceOptionalString(json['url']),
+        contentType: _marketplaceOptionalString(json['contentType']),
+        sizeBytes: _marketplaceOptionalInt(json['sizeBytes']),
+      );
+}
+
+class OrganizationApplication {
+  const OrganizationApplication({
+    required this.id,
+    required this.status,
+    required this.orgName,
+    required this.orgType,
+    this.website,
+    required this.contactName,
+    required this.businessEmail,
+    this.phone,
+    this.venue,
+    required this.documents,
+    this.reviewNote,
+    this.decidedAt,
+    this.resultingOrganizationId,
+    this.resultingVenueId,
+    required this.revision,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final OrganizationApplicationStatus status;
+  final String orgName;
+  final OrganizationType orgType;
+  final String? website;
+  final String contactName;
+  final String businessEmail;
+  final String? phone;
+  final ApplicationVenueDraft? venue;
+  final List<ApplicationDocument> documents;
+  final String? reviewNote;
+  final DateTime? decidedAt;
+  final String? resultingOrganizationId;
+  final String? resultingVenueId;
+  final int revision;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory OrganizationApplication.fromJson(Map<String, dynamic> json) {
+    final documentJson = json['documents'] ?? json['verificationDocuments'];
+    return OrganizationApplication(
+      id: _marketplaceString(json['_id']),
+      status: OrganizationApplicationStatus.fromWire(json['status']),
+      orgName: _marketplaceString(json['orgName']),
+      orgType: OrganizationType.fromWire(json['orgType']),
+      website: _marketplaceOptionalString(json['website']),
+      contactName: _marketplaceString(json['contactName']),
+      businessEmail: _marketplaceString(json['businessEmail']),
+      phone: _marketplaceOptionalString(json['phone']),
+      venue: json['venue'] is Map
+          ? ApplicationVenueDraft.fromJson(_marketplaceMap(json['venue']))
+          : null,
+      documents: [
+        for (final document in _marketplaceMapList(documentJson))
+          ApplicationDocument.fromJson(document),
+      ],
+      reviewNote: _marketplaceOptionalString(json['reviewNote']),
+      decidedAt: _marketplaceOptionalDate(json['decidedAt']),
+      resultingOrganizationId: _marketplaceOptionalString(
+        json['resultingOrganizationId'],
+      ),
+      resultingVenueId: _marketplaceOptionalString(json['resultingVenueId']),
+      revision: _marketplaceInt(json['revision']),
+      createdAt: _marketplaceDate(json['createdAt']),
+      updatedAt: _marketplaceDate(json['updatedAt']),
+    );
+  }
+
+  bool get editable =>
+      status == OrganizationApplicationStatus.draft ||
+      status == OrganizationApplicationStatus.needsInfo;
+}
+
+class AdminApplicationRow {
+  const AdminApplicationRow({
+    required this.application,
+    required this.applicantUserId,
+    required this.applicantName,
+    required this.applicantEmail,
+  });
+
+  final OrganizationApplication application;
+  final String applicantUserId;
+  final String applicantName;
+  final String applicantEmail;
+
+  factory AdminApplicationRow.fromJson(Map<String, dynamic> json) {
+    final applicant = _marketplaceMap(json['applicant']);
+    return AdminApplicationRow(
+      application: OrganizationApplication.fromJson(
+        _marketplaceMap(json['application']),
+      ),
+      applicantUserId: _marketplaceString(
+        json['applicantUserId'] ?? applicant['userId'],
+      ),
+      applicantName: _marketplaceString(
+        json['applicantName'] ?? applicant['name'],
+      ),
+      applicantEmail: _marketplaceString(
+        json['applicantEmail'] ?? applicant['email'],
+      ),
+    );
+  }
+}
+
+class AdminApplicationPage {
+  const AdminApplicationPage({
+    required this.items,
+    required this.continueCursor,
+    required this.isDone,
+  });
+
+  final List<AdminApplicationRow> items;
+  final String? continueCursor;
+  final bool isDone;
+
+  factory AdminApplicationPage.fromJson(Map<String, dynamic> json) =>
+      AdminApplicationPage(
+        items: [
+          for (final row in _marketplaceMapList(json['page'] ?? json['items']))
+            AdminApplicationRow.fromJson(row),
+        ],
+        continueCursor: _marketplaceOptionalString(json['continueCursor']),
+        isDone: json['isDone'] == true,
+      );
+}
+
+class AdminOverview {
+  const AdminOverview({
+    required this.submitted,
+    required this.underReview,
+    required this.needsInfo,
+    required this.verifiedOrganizations,
+    required this.suspendedOrganizations,
+    required this.capped,
+  });
+
+  final int submitted;
+  final int underReview;
+  final int needsInfo;
+  final int verifiedOrganizations;
+  final int suspendedOrganizations;
+  final bool capped;
+
+  factory AdminOverview.fromJson(Map<String, dynamic> json) {
+    final counts = _marketplaceMap(json['counts']);
+    return AdminOverview(
+      submitted: _marketplaceInt(counts['submittedApplications']),
+      underReview: _marketplaceInt(counts['underReviewApplications']),
+      needsInfo: _marketplaceInt(counts['needsInfoApplications']),
+      verifiedOrganizations: _marketplaceInt(counts['verifiedOrganizations']),
+      suspendedOrganizations: _marketplaceInt(counts['suspendedOrganizations']),
+      capped: json['capped'] == true,
+    );
+  }
 }
 
 class VenueCreationResult {

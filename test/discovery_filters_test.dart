@@ -158,7 +158,8 @@ void main() {
       expect(app.discoveryLocation, DiscoveryLocation.home);
       expect(app.discoveryCenter, FanCity.berkeley.center);
       expect(app.distanceOf(DemoData.venues['v2']!), '3.7 mi');
-      expect(app.distanceOf(DemoData.venues['v1']!), '11.4 mi');
+      // v1 is a private-location venue; its public point is the neighborhood centroid.
+      expect(app.distanceOf(DemoData.venues['v1']!), '10.9 mi');
 
       app.setDistanceFilter(5);
 

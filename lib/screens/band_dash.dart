@@ -6,6 +6,7 @@ import '../band_media_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/readiness_segments.dart';
 import '../widgets/sheets.dart';
 import 'door_mode.dart';
 
@@ -313,7 +314,7 @@ class _DiscoveryReadinessCard extends StatelessWidget {
             style: Theme.of(context).textTheme.epCaption,
           ),
           const SizedBox(height: 10),
-          _ReadinessSegments(steps: readiness.steps),
+          ReadinessSegments(steps: readiness.steps),
           const SizedBox(height: 6),
           for (final task in tasks) _DiscoveryTaskRow(task: task),
           if (show != null && window != null) ...[
@@ -354,38 +355,6 @@ class _DiscoveryTask {
   final String action;
   final bool complete;
   final VoidCallback onTap;
-}
-
-class _ReadinessSegments extends StatelessWidget {
-  const _ReadinessSegments({required this.steps});
-
-  final List<bool> steps;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label:
-          '${steps.where((step) => step).length} of 6 discovery checks complete',
-      excludeSemantics: true,
-      child: Row(
-        children: [
-          for (var index = 0; index < steps.length; index++) ...[
-            Expanded(
-              child: Container(
-                key: ValueKey('discovery-segment-$index'),
-                height: 6,
-                decoration: BoxDecoration(
-                  color: steps[index] ? Ep.brand : context.epColors.raised,
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            if (index < steps.length - 1) const SizedBox(width: 6),
-          ],
-        ],
-      ),
-    );
-  }
 }
 
 class _DiscoveryTaskRow extends StatelessWidget {

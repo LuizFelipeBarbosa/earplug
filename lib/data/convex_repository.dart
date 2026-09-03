@@ -1,3 +1,5 @@
+import 'package:latlong2/latlong.dart';
+
 import '../models.dart';
 import '../services/convex_service.dart';
 import 'repository.dart';
@@ -233,6 +235,460 @@ class ConvexRepository implements EarplugRepository {
       'venueId': venueId,
     });
     return parseVenueDetail(result);
+  }
+
+  @override
+  Future<OrganizationApplication?> myOrganizationApplication() async {
+    final json = _asMap(
+      await _convexService.query('organizationApplications:mine'),
+    );
+    return json.isEmpty ? null : OrganizationApplication.fromJson(json);
+  }
+
+  @override
+  Future<({String applicationId, int revision})>
+  saveOrganizationApplicationDraft({
+    String? applicationId,
+    int? expectedRevision,
+    required String orgName,
+    required OrganizationType orgType,
+    String? website,
+    required String contactName,
+    required String businessEmail,
+    String? phone,
+    ApplicationVenueDraft? venue,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('organizationApplications:saveDraft', {
+        'applicationId': ?applicationId,
+        'expectedRevision': ?expectedRevision,
+        'orgName': orgName,
+        'orgType': orgType.wireValue,
+        'website': ?website,
+        'contactName': contactName,
+        'businessEmail': businessEmail,
+        'phone': ?phone,
+        'venue': ?venue?.toJson(),
+      }),
+    );
+    return (
+      applicationId: result['applicationId'] as String,
+      revision: (result['revision'] as num).toInt(),
+    );
+  }
+
+  @override
+  Future<int> submitOrganizationApplication({
+    required String applicationId,
+    required int expectedRevision,
+  }) async => _revisionFrom(
+    await _convexService.mutation('organizationApplications:submit', {
+      'applicationId': applicationId,
+      'expectedRevision': expectedRevision,
+    }),
+  );
+
+  @override
+  Future<void> withdrawOrganizationApplication(String applicationId) async {
+    await _convexService.mutation('organizationApplications:withdraw', {
+      'applicationId': applicationId,
+    });
+  }
+
+  @override
+  Future<String> generateApplicationDocumentUploadUrl() async {
+    final result = await _convexService.mutation(
+      'organizationApplications:generateDocumentUploadUrl',
+    );
+    return result as String;
+  }
+
+  @override
+  Future<int> attachApplicationDocument({
+    required String applicationId,
+    required String storageId,
+  }) async => _revisionFrom(
+    await _convexService.mutation('organizationApplications:attachDocument', {
+      'applicationId': applicationId,
+      'storageId': storageId,
+    }),
+  );
+
+  @override
+  Future<int> removeApplicationDocument({
+    required String applicationId,
+    required String storageId,
+  }) async => _revisionFrom(
+    await _convexService.mutation('organizationApplications:removeDocument', {
+      'applicationId': applicationId,
+      'storageId': storageId,
+    }),
+  );
+
+  @override
+  Future<OrganizationApplication?> organizationApplication(
+    String applicationId,
+  ) async {
+    final json = _asMap(
+      await _convexService.query('organizationApplications:get', {
+        'applicationId': applicationId,
+      }),
+    );
+    return json.isEmpty ? null : OrganizationApplication.fromJson(json);
+  }
+
+  @override
+  Future<AdminApplicationPage> applicationsForReview({
+    OrganizationApplicationStatus? status,
+    String? cursor,
+    int numItems = 25,
+  }) async {
+    final result = await _convexService.query(
+      'organizationApplications:listForReview',
+      {
+        'status': ?status?.wireValue,
+        'paginationOpts': {'numItems': numItems, 'cursor': cursor},
+      },
+    );
+    return AdminApplicationPage.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<
+    ({
+      OrganizationApplicationStatus status,
+      String? organizationId,
+      String? venueId,
+    })
+  >
+  decideOrganizationApplication({
+    required String applicationId,
+    required ApplicationDecision decision,
+    String? note,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('organizationApplications:decide', {
+        'applicationId': applicationId,
+        'decision': decision.wireValue,
+        'note': ?note,
+      }),
+    );
+    return (
+      status: OrganizationApplicationStatus.fromWire(result['status']),
+      organizationId: result['organizationId'] as String?,
+      venueId: result['venueId'] as String?,
+    );
+  }
+
+  @override
+  Stream<List<OrganizationMembership>> myOrganizations() =>
+      _convexService.subscribe(
+        'organizations:mine',
+        const {},
+        (decoded) => [
+          for (final membershipJson in _mapList(decoded))
+            OrganizationMembership.fromJson(membershipJson),
+        ],
+      );
+
+  @override
+  Future<Organization?> organizationBySlug(String slug) async {
+    final json = _asMap(
+      await _convexService.query('organizations:bySlug', {'slug': slug}),
+    );
+    return json.isEmpty ? null : Organization.fromJson(json);
+  }
+
+  @override
+  Future<Organization?> organization(String organizationId) async {
+    final json = _asMap(
+      await _convexService.query('organizations:get', {
+        'organizationId': organizationId,
+      }),
+    );
+    return json.isEmpty ? null : Organization.fromJson(json);
+  }
+
+  @override
+  Future<OrganizationDashboard> organizationDashboard(
+    String organizationId,
+  ) async => OrganizationDashboard.fromJson(
+    _asMap(
+      await _convexService.query('organizations:dashboard', {
+        'organizationId': organizationId,
+      }),
+    ),
+  );
+
+  @override
+  Future<void> updateOrganizationProfile({
+    required String organizationId,
+    String? name,
+    String? description,
+    String? website,
+  }) async {
+    await _convexService.mutation('organizations:updateProfile', {
+      'organizationId': organizationId,
+      'name': ?name,
+      'description': ?description,
+      'website': ?website,
+    });
+  }
+
+  @override
+  Future<void> updateOrganizationPrivateDetails({
+    required String organizationId,
+    String? legalName,
+    String? businessEmail,
+    String? contactName,
+    String? phone,
+  }) async {
+    await _convexService.mutation('organizations:updatePrivateDetails', {
+      'organizationId': organizationId,
+      'legalName': ?legalName,
+      'businessEmail': ?businessEmail,
+      'contactName': ?contactName,
+      'phone': ?phone,
+    });
+  }
+
+  @override
+  Future<String> generateOrganizationPhotoUploadUrl(
+    String organizationId,
+  ) async {
+    final result = await _convexService.mutation(
+      'organizations:generatePhotoUploadUrl',
+      {'organizationId': organizationId},
+    );
+    return result as String;
+  }
+
+  @override
+  Future<void> setOrganizationPhotos({
+    required String organizationId,
+    required List<String> storageIds,
+  }) async {
+    await _convexService.mutation('organizations:setPhotos', {
+      'organizationId': organizationId,
+      'storageIds': storageIds,
+    });
+  }
+
+  @override
+  Future<void> deactivateOrganization(String organizationId) async {
+    await _convexService.mutation('organizations:deactivate', {
+      'organizationId': organizationId,
+    });
+  }
+
+  @override
+  Future<List<OrganizationMember>> organizationMembers(
+    String organizationId,
+  ) async {
+    final result = await _convexService.query('organizationMembers:list', {
+      'organizationId': organizationId,
+    });
+    return [
+      for (final json in _mapList(result)) OrganizationMember.fromJson(json),
+    ];
+  }
+
+  @override
+  Future<void> setOrganizationMemberRole({
+    required String organizationId,
+    required String userId,
+    required OrganizationRole role,
+  }) async {
+    await _convexService.mutation('organizationMembers:setRole', {
+      'organizationId': organizationId,
+      'userId': userId,
+      'role': role.wireValue,
+    });
+  }
+
+  @override
+  Future<void> removeOrganizationMember({
+    required String organizationId,
+    required String userId,
+  }) async {
+    await _convexService.mutation('organizationMembers:remove', {
+      'organizationId': organizationId,
+      'userId': userId,
+    });
+  }
+
+  @override
+  Future<OrganizationInvite?> organizationInvite(String organizationId) async {
+    final json = _asMap(
+      await _convexService.query('organizationMembers:manageInvite', {
+        'organizationId': organizationId,
+      }),
+    );
+    return json.isEmpty ? null : OrganizationInvite.fromJson(json);
+  }
+
+  @override
+  Future<OrganizationInvite> createOrganizationInvite({
+    required String organizationId,
+    required OrganizationRole role,
+  }) async => OrganizationInvite.fromJson(
+    _asMap(
+      await _convexService.mutation('organizationMembers:createInvite', {
+        'organizationId': organizationId,
+        'role': role.wireValue,
+      }),
+    ),
+  );
+
+  @override
+  Future<OrganizationInvite> rotateOrganizationInvite(
+    String organizationId,
+  ) async => OrganizationInvite.fromJson(
+    _asMap(
+      await _convexService.mutation('organizationMembers:rotateInvite', {
+        'organizationId': organizationId,
+      }),
+    ),
+  );
+
+  @override
+  Future<void> revokeOrganizationInvite(String organizationId) async {
+    await _convexService.mutation('organizationMembers:revokeInvite', {
+      'organizationId': organizationId,
+    });
+  }
+
+  @override
+  Future<OrganizationInviteResolution?> resolveOrganizationInvite(
+    String token,
+  ) async {
+    final json = _asMap(
+      await _convexService.query('organizationMembers:resolveInvite', {
+        'token': token,
+      }),
+    );
+    return json.isEmpty ? null : OrganizationInviteResolution.fromJson(json);
+  }
+
+  @override
+  Future<OrganizationInviteAcceptance> acceptOrganizationInvite(
+    String token,
+  ) async => OrganizationInviteAcceptance.fromJson(
+    _asMap(
+      await _convexService.mutation('organizationMembers:acceptInvite', {
+        'token': token,
+      }),
+    ),
+  );
+
+  @override
+  Future<Venue?> resolveVenue(String ref) async {
+    final json = _asMap(
+      await _convexService.query('venues:resolvePublic', {'ref': ref}),
+    );
+    return json.isEmpty ? null : Venue.fromJson(json);
+  }
+
+  @override
+  Future<VenuePrivateDetails?> venuePrivateDetails(String venueId) async {
+    final json = _asMap(
+      await _convexService.query('venues:privateDetail', {'venueId': venueId}),
+    );
+    return json.isEmpty ? null : VenuePrivateDetails.fromJson(json);
+  }
+
+  @override
+  Future<void> updateVenueProfile({
+    required String venueId,
+    String? name,
+    String? description,
+    VenueType? venueType,
+    int? capacityPublic,
+    String? neighborhood,
+    String? city,
+  }) async {
+    await _convexService.mutation('venues:updateProfile', {
+      'venueId': venueId,
+      'name': ?name,
+      'description': ?description,
+      'venueType': ?venueType?.wireValue,
+      'capacityPublic': ?capacityPublic,
+      'neighborhood': ?neighborhood,
+      'city': ?city,
+    });
+  }
+
+  @override
+  Future<void> updateVenuePrivateDetails({
+    required String venueId,
+    required String addr,
+    required LatLng point,
+    String? loadInNotes,
+    int? capacity,
+  }) async {
+    await _convexService.mutation('venues:updatePrivateDetails', {
+      'venueId': venueId,
+      'addr': addr,
+      'lat': point.latitude,
+      'lng': point.longitude,
+      'loadInNotes': ?loadInNotes,
+      'capacity': ?capacity,
+    });
+  }
+
+  @override
+  Future<void> setVenueAddressDisclosure({
+    required String venueId,
+    required AddressDisclosure disclosure,
+  }) async {
+    await _convexService.mutation('venues:setAddressDisclosure', {
+      'venueId': venueId,
+      'addressDisclosure': disclosure.wireValue,
+    });
+  }
+
+  @override
+  Future<String> generateVenuePhotoUploadUrl(String venueId) async {
+    final result = await _convexService.mutation(
+      'venues:generatePhotoUploadUrl',
+      {'venueId': venueId},
+    );
+    return result as String;
+  }
+
+  @override
+  Future<void> setVenuePhotos({
+    required String venueId,
+    required List<String> storageIds,
+  }) async {
+    await _convexService.mutation('venues:setPhotos', {
+      'venueId': venueId,
+      'storageIds': storageIds,
+    });
+  }
+
+  @override
+  Future<bool> isPlatformAdmin() async {
+    final result = _asMap(await _convexService.query('admin:me'));
+    return result['isPlatformAdmin'] == true;
+  }
+
+  @override
+  Future<AdminOverview> adminOverview() async => AdminOverview.fromJson(
+    _asMap(await _convexService.query('admin:overview')),
+  );
+
+  @override
+  Future<void> setOrganizationSuspended({
+    required String organizationId,
+    required bool suspended,
+    String? note,
+  }) async {
+    await _convexService.mutation('admin:suspendOrganization', {
+      'organizationId': organizationId,
+      'suspended': suspended,
+      'note': ?note,
+    });
   }
 
   @override
@@ -803,4 +1259,10 @@ List<Map<String, dynamic>> _mapList(dynamic value) {
   return [
     for (final item in value as List) Map<String, dynamic>.from(item as Map),
   ];
+}
+
+int _revisionFrom(dynamic value) {
+  if (value is num) return value.toInt();
+  final revision = _asMap(value)['revision'];
+  return revision is num ? revision.toInt() : 0;
 }
