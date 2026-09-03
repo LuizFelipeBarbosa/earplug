@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/recap_fixtures.dart';
 
 void main() {
   testWidgets('headline stats render', (tester) async {
@@ -291,6 +292,127 @@ void main() {
 
     expect(find.byKey(const Key('analytics-best-show')), findsOne);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('list sections preview their highest-priority five rows', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: ManyShowsRecapRepository(auth: auth),
+      home: const Scaffold(body: AnalyticsScreen()),
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('analytics-turnout-see-all')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final turnoutCard = find.byKey(const Key('analytics-turnout'));
+    final turnoutTexts = tester
+        .widgetList<Text>(
+          find.descendant(
+            of: turnoutCard,
+            matching: find.byType(Text, skipOffstage: false),
+          ),
+        )
+        .map((text) => text.data)
+        .whereType<String>();
+    final renderedTitles = <String>[
+      for (final text in turnoutTexts)
+        if (text.startsWith('Show ')) text,
+    ];
+    expect(renderedTitles, const [
+      'Show 12',
+      'Show 11',
+      'Show 10',
+      'Show 09',
+      'Show 08',
+    ]);
+    expect(
+      find.descendant(of: turnoutCard, matching: find.text('Show 07')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: turnoutCard, matching: find.text('SEE ALL 12')),
+      findsOne,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('analytics-lead-time')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final leadTimeTexts = tester.widgetList<Text>(
+      find.descendant(
+        of: find.byKey(const Key('analytics-lead-time')),
+        matching: find.byType(Text, skipOffstage: false),
+      ),
+    );
+    expect(
+      leadTimeTexts.any((text) => (text.data ?? '').startsWith('SEE ALL')),
+      isFalse,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('analytics-rooms-see-all')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final roomsCard = find.byKey(const Key('analytics-rooms'));
+    final roomBars = tester.widgetList<EpBar>(
+      find.descendant(of: roomsCard, matching: find.byType(EpBar)),
+    );
+    expect(roomBars.map((bar) => bar.label), const [
+      'Venue 08',
+      'Venue 07',
+      'Venue 06',
+      'Venue 05',
+      'Venue 04',
+    ]);
+    expect(
+      find.descendant(of: roomsCard, matching: find.text('SEE ALL 8')),
+      findsOne,
+    );
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('analytics-best-nights-see-all')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('SEE ALL 7'), findsOne);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('analytics-repeat-fans')),
+      250,
+      scrollable: find.byType(Scrollable).first,
+    );
+    final repeatFanTexts = tester.widgetList<Text>(
+      find.descendant(
+        of: find.byKey(const Key('analytics-repeat-fans')),
+        matching: find.byType(Text, skipOffstage: false),
+      ),
+    );
+    expect(
+      repeatFanTexts.any((text) => (text.data ?? '').startsWith('SEE ALL')),
+      isFalse,
+    );
+  });
+
+  testWidgets('demo recap does not render see-all actions', (tester) async {
+    await pumpApp(tester, home: const Scaffold(body: AnalyticsScreen()));
+    tester.view.physicalSize = const Size(402, 5000);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('SEE ALL'), findsNothing);
+  });
+
+  test('forty-show fixture represents the backend recap limit', () async {
+    final repository = FortyShowsRecapRepository(auth: FakeAuthService());
+
+    expect((await repository.bandRecap('band')).shows, hasLength(40));
   });
 }
 
