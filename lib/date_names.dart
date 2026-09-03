@@ -48,3 +48,10 @@ String timeLabel(TimeOfDay t) {
       : ':${t.minute.toString().padLeft(2, '0')}';
   return '$hour$minutes${t.hour < 12 ? 'AM' : 'PM'}';
 }
+
+/// "Sat Aug 15".
+String dateLabel(DateTime d) =>
+    '${weekdayNames[d.weekday - 1]} ${monthNames[d.month - 1]} ${d.day}';
+
+/// "Aug 2026".
+String monthLabel(DateTime d) => '${monthNames[d.month - 1]} ${d.year}';
