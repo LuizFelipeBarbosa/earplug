@@ -1,38 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:provider/provider.dart';
 
-import '../app_state.dart';
-import '../models.dart';
 import '../theme.dart';
-import 'common.dart';
 import 'ep_map.dart';
-import 'ep_sheet.dart';
 import 'form_bits.dart';
-import 'sheets.dart';
-
-/// Creates (or resolves to an existing) venue from the editor's fields —
-/// the shape of [AppState.createVenue].
-typedef VenueLocationSubmit =
-    Future<VenueCreationResult> Function({
-      required String name,
-      required String area,
-      required String address,
-      required LatLng point,
-    });
-
-/// Opens the new-venue sheet wired to the current [AppState].
-void showNewVenueSheet(BuildContext context) {
-  final app = context.read<AppState>();
-  showEpSheet(
-    context,
-    (_) => EpFormSheet(
-      title: 'New venue',
-      child: _NewVenueSheetBody(onSubmit: app.createVenue, onSaved: app.say),
-    ),
-  );
-}
 
 class VenueLocationDraft {
   const VenueLocationDraft({
@@ -200,85 +172,6 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
               ],
             ),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-class _NewVenueSheetBody extends StatefulWidget {
-  const _NewVenueSheetBody({required this.onSubmit, required this.onSaved});
-
-  final VenueLocationSubmit onSubmit;
-  final ValueChanged<String> onSaved;
-
-  @override
-  State<_NewVenueSheetBody> createState() => _NewVenueSheetBodyState();
-}
-
-class _NewVenueSheetBodyState extends State<_NewVenueSheetBody> {
-  VenueLocationDraft _draft = const VenueLocationDraft();
-  bool _saving = false;
-  String? _error;
-
-  Future<void> _save() async {
-    final draft = _draft;
-    if (!draft.isComplete) {
-      setState(
-        () => _error = 'Name, street address, area, and map pin are required.',
-      );
-      return;
-    }
-
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      final result = await widget.onSubmit(
-        name: draft.name,
-        area: draft.area,
-        address: draft.address,
-        point: draft.pin!,
-      );
-      if (!mounted) return;
-      Navigator.pop(context);
-      widget.onSaved(
-        result.created
-            ? 'Venue created and selected.'
-            : 'Existing venue selected.',
-      );
-    } catch (_) {
-      if (mounted) {
-        setState(
-          () => _error =
-              'Venue could not be created. Check the details and retry.',
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        VenueLocationEditor(
-          initial: _draft,
-          onChanged: (draft) => setState(() => _draft = draft),
-        ),
-        if (_error case final error?) ...[
-          const SizedBox(height: 8),
-          Text(error, style: epText(size: 11, color: context.epColors.warning)),
-        ],
-        const SizedBox(height: 12),
-        EpButton(
-          _saving ? 'CREATING…' : 'CREATE & SELECT VENUE',
-          kind: _saving ? EpButtonKind.disabled : EpButtonKind.filled,
-          onTap: _saving ? null : _save,
         ),
       ],
     );

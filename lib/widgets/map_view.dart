@@ -473,6 +473,7 @@ class _MapGigCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final areaLabel = venue.exactAddress == null ? 'Approx. area' : venue.area;
     return EpCard(
       key: ValueKey('map-gig-card-${gig.id}'),
       variant: EpCardVariant.raised,
@@ -520,7 +521,7 @@ class _MapGigCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            '${venue.name} · ${venue.area} · ${gig.dateLine}',
+            '${venue.name} · $areaLabel · ${gig.dateLine}',
             style: Theme.of(context).textTheme.epCaption,
           ),
           const SizedBox(height: 10),
