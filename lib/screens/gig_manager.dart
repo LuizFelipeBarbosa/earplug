@@ -11,8 +11,44 @@ import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 import 'door_mode.dart';
 
-class GigManagerScreen extends StatelessWidget {
+class GigManagerScreen extends StatefulWidget {
   const GigManagerScreen({super.key});
+
+  @override
+  State<GigManagerScreen> createState() => _GigManagerScreenState();
+}
+
+class _GigManagerScreenState extends State<GigManagerScreen> {
+  List<GigProject>? _partitionedProjects;
+  List<GigProject> _drafts = const [];
+  List<GigProject> _published = const [];
+  List<GigProject> _cancelled = const [];
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final app = context.read<AppState>();
+    if (app.isAdminOf(app.bandId)) app.ensureManagedGigs();
+  }
+
+  /// Splits the projects by status once per list instance; unrelated
+  /// AppState notifications rebuild this screen with the same list.
+  void _partition(List<GigProject> projects) {
+    if (identical(projects, _partitionedProjects)) return;
+    _drafts = [
+      for (final project in projects)
+        if (project.status == GigProjectStatus.draft) project,
+    ];
+    _published = [
+      for (final project in projects)
+        if (project.status == GigProjectStatus.published) project,
+    ];
+    _cancelled = [
+      for (final project in projects)
+        if (project.status == GigProjectStatus.cancelled) project,
+    ];
+    _partitionedProjects = projects;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,17 +65,7 @@ class GigManagerScreen extends StatelessWidget {
         ),
       );
     }
-    app.ensureManagedGigs();
-    final projects = app.managedGigProjects;
-    final drafts = projects
-        .where((project) => project.status == GigProjectStatus.draft)
-        .toList();
-    final published = projects
-        .where((project) => project.status == GigProjectStatus.published)
-        .toList();
-    final cancelled = projects
-        .where((project) => project.status == GigProjectStatus.cancelled)
-        .toList();
+    _partition(app.managedGigProjects);
 
     return RefreshIndicator(
       onRefresh: app.refreshManagedGigs,
@@ -70,17 +96,17 @@ class GigManagerScreen extends StatelessWidget {
             const LinearProgressIndicator(),
           ],
           const SizedBox(height: 20),
-          _DraftSection(projects: drafts),
+          _DraftSection(projects: _drafts),
           const SizedBox(height: 20),
           _ProjectSection(
             title: 'PUBLISHED',
-            projects: published,
+            projects: _published,
             empty: 'No live gigs yet.',
           ),
           const SizedBox(height: 20),
           _ProjectSection(
             title: 'CANCELLED',
-            projects: cancelled,
+            projects: _cancelled,
             empty: 'No cancelled gigs.',
           ),
           const SizedBox(height: 20),
@@ -113,13 +139,10 @@ class _ProjectSection extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         if (projects.isEmpty)
-          DashedBox(
+          EmptyNote(
+            message: empty,
             padding: const EdgeInsets.all(18),
-            child: Text(
-              empty,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.epCaption,
-            ),
+            style: Theme.of(context).textTheme.epCaption,
           )
         else
           for (var index = 0; index < projects.length; index++) ...[

@@ -8,23 +8,20 @@ import {
   mutation,
   query,
 } from "./_generated/server";
+import { DocCache, docCache } from "./lib/docCache";
 import {
   MAX_FEED_GIGS,
   MAX_PAST_GIGS,
   MAX_UPCOMING_GIGS_PER_BAND,
   assertGigPublishable,
-  bandPayloadValidator,
   bandSummaryPayloadValidator,
   feedCutoff,
   gigFeedPayloadValidator,
   gigPayloadValidator,
-  gigPublishFieldsValidator,
-  insertPublishedGig,
+  knownFlyKeyValidator,
   pastGigsForBand,
-  requireBandAdmin,
-  requireBandAdminQuery,
+  requireBandRole,
   slugify,
-  toBandPayload,
   toBandSummaryPayload,
   toGigFeedPayload,
   toGigPayload,
@@ -145,24 +142,15 @@ async function toProjectPayload(
   };
 }
 
+/** Loads a live project and throws unless the caller administers its band.
+ * Serves queries and mutations alike. */
 async function requireProjectAdmin(
-  ctx: MutationCtx,
-  projectId: Id<"gigProjects">,
-) {
-  const project = await ctx.db.get(projectId);
-  if (!project) throw new Error("Gig draft not found");
-  await requireBandAdmin(ctx, project.bandId);
-  assertActiveProject(project);
-  return project;
-}
-
-async function requireProjectAdminQuery(
   ctx: QueryCtx,
   projectId: Id<"gigProjects">,
 ) {
   const project = await ctx.db.get(projectId);
   if (!project) throw new Error("Gig draft not found");
-  await requireBandAdminQuery(ctx, project.bandId);
+  await requireBandRole(ctx, project.bandId, { role: "admin" });
   assertActiveProject(project);
   return project;
 }
@@ -233,7 +221,7 @@ async function publicLineup(ctx: MutationCtx, projectId: Id<"gigProjects">) {
   };
 }
 
-export async function uniqueGigSlug(ctx: MutationCtx, title: string) {
+async function uniqueGigSlug(ctx: MutationCtx, title: string) {
   const generated = slugify(title);
   const base = generated === "band" ? "gig" : generated;
   for (let suffix = 1; ; suffix++) {
@@ -428,69 +416,17 @@ async function ownedByActiveBand(ctx: QueryCtx, gig: Doc<"gigs">) {
   return owner !== null && owner.archivedAt === undefined;
 }
 
-export const feed = query({
-  args: {},
-  returns: v.object({
-    gigs: v.array(gigPayloadValidator),
-    venues: v.array(venuePayloadValidator),
-    bands: v.array(bandPayloadValidator),
-    nextStartsAt: v.union(v.number(), v.null()),
-  }),
-  handler: async (ctx) => {
-    const { gigs, nextStartsAt } = await upcomingGigs(ctx);
-    const venueIds = new Set<Id<"venues">>();
-    const bandIds = new Set<Id<"bands">>();
-    const publicGigs = [];
-    for (const gig of gigs) {
-      if (!(await ownedByActiveBand(ctx, gig))) continue;
-      publicGigs.push(gig);
-      venueIds.add(gig.venueId);
-      for (const bandId of gig.lineup) bandIds.add(bandId);
-      if (gig.createdByBand) bandIds.add(gig.createdByBand);
-    }
-    const bands = [];
-    for (const bandId of bandIds) {
-      const band = await ctx.db.get(bandId);
-      if (band && band.archivedAt === undefined) {
-        bands.push(await toBandPayload(ctx, band));
-      }
-    }
-    const gigPayloads = [];
-    for (const gig of publicGigs)
-      gigPayloads.push(await toGigPayload(ctx, gig));
-    return {
-      gigs: gigPayloads,
-      venues: await hydrateVenues(ctx, venueIds),
-      bands,
-      nextStartsAt,
-    };
-  },
-});
-
-/** One `ctx.db.get` per band per call, however many gigs reference it. */
-function bandLoader(ctx: QueryCtx) {
-  const bands = new Map<Id<"bands">, Promise<Doc<"bands"> | null>>();
-  return (bandId: Id<"bands">) => {
-    let band = bands.get(bandId);
-    if (band === undefined) {
-      band = ctx.db.get(bandId);
-      bands.set(bandId, band);
-    }
-    return band;
-  };
-}
-
-/** `upcomingGigs` minus gigs whose owning band is archived — the same rows
- * `feed` returns, with the owner reads memoised through `loadBand`. */
+/** `upcomingGigs` minus gigs whose owning band is archived, with the owner
+ * reads memoised through `cache` so the caller's band hydration reuses them. */
 async function visibleUpcomingGigs(
   ctx: QueryCtx,
-  loadBand: ReturnType<typeof bandLoader>,
+  cache: DocCache,
 ): Promise<UpcomingGigs> {
   const { gigs, nextStartsAt } = await upcomingGigs(ctx);
   const visible = [];
   for (const gig of gigs) {
     if (gig.createdByBand) {
-      const owner = await loadBand(gig.createdByBand);
+      const owner = await cache.get(gig.createdByBand);
       if (owner === null || owner.archivedAt !== undefined) continue;
     }
     visible.push(gig);
@@ -498,11 +434,11 @@ async function visibleUpcomingGigs(
   return { gigs: visible, nextStartsAt };
 }
 
-/** `feed` with band summaries instead of full band payloads and no per-gig
- * `goingCount`, so a band's bio, past shows and banner never ride along and an
- * RSVP anywhere leaves this result byte-for-byte unchanged. Pair it with
- * independently evaluated `goingCounts`; clients retain its last-known counts
- * because a gig can momentarily appear in only one of the two results. */
+/** The discovery feed: band summaries instead of full band payloads and no
+ * per-gig `goingCount`, so a band's bio, past shows and banner never ride
+ * along and an RSVP anywhere leaves this result byte-for-byte unchanged. Pair
+ * it with independently evaluated `goingCounts`; clients retain its last-known
+ * counts because a gig can momentarily appear in only one of the two results. */
 export const feedV2 = query({
   args: {},
   returns: v.object({
@@ -512,8 +448,8 @@ export const feedV2 = query({
     nextStartsAt: v.union(v.number(), v.null()),
   }),
   handler: async (ctx) => {
-    const loadBand = bandLoader(ctx);
-    const { gigs, nextStartsAt } = await visibleUpcomingGigs(ctx, loadBand);
+    const cache = docCache(ctx);
+    const { gigs, nextStartsAt } = await visibleUpcomingGigs(ctx, cache);
     const venueIds = new Set<Id<"venues">>();
     const bandIds = new Set<Id<"bands">>();
     for (const gig of gigs) {
@@ -523,13 +459,15 @@ export const feedV2 = query({
     }
     const bands = [];
     for (const bandId of bandIds) {
-      const band = await loadBand(bandId);
+      const band = await cache.get(bandId);
       if (band && band.archivedAt === undefined) {
         bands.push(await toBandSummaryPayload(ctx, band));
       }
     }
     const gigPayloads = [];
-    for (const gig of gigs) gigPayloads.push(await toGigFeedPayload(ctx, gig));
+    for (const gig of gigs) {
+      gigPayloads.push(await toGigFeedPayload(ctx, gig, cache));
+    }
     return {
       gigs: gigPayloads,
       venues: await hydrateVenues(ctx, venueIds),
@@ -546,27 +484,15 @@ export const goingCounts = query({
   args: {},
   returns: v.array(v.object({ gigId: v.id("gigs"), goingCount: v.number() })),
   handler: async (ctx) => {
-    const { gigs } = await visibleUpcomingGigs(ctx, bandLoader(ctx));
+    const { gigs } = await visibleUpcomingGigs(ctx, docCache(ctx));
     return gigs.map((gig) => ({ gigId: gig._id, goingCount: gig.goingCount }));
   },
 });
 
-/** Direct public-page lookup. Cancelled gigs remain resolvable so an old share
- * link explains what happened; unpublished and deleted gigs stay private. */
-export const getPublic = query({
-  args: { gigId: v.id("gigs") },
-  returns: v.union(gigPayloadValidator, v.null()),
-  handler: async (ctx, args) => {
-    const gig = await ctx.db.get(args.gigId);
-    if (!gig || !["published", "cancelled"].includes(lifecycle(gig)))
-      return null;
-    if (!(await ownedByActiveBand(ctx, gig))) return null;
-    return await toGigPayload(ctx, gig);
-  },
-});
-
 /** Canonical public-page resolver. String validation keeps malformed slugs and
- * ids out of Convex's argument validator and turns them into a normal miss. */
+ * ids out of Convex's argument validator and turns them into a normal miss.
+ * Cancelled gigs remain resolvable so an old share link explains what
+ * happened; unpublished and deleted gigs stay private. */
 export const resolvePublic = query({
   args: { ref: v.string() },
   returns: v.union(gigPayloadValidator, v.null()),
@@ -585,7 +511,7 @@ export const resolvePublic = query({
       return null;
     }
     if (!(await ownedByActiveBand(ctx, gig))) return null;
-    return await toGigPayload(ctx, gig);
+    return await toGigPayload(ctx, gig, docCache(ctx));
   },
 });
 
@@ -601,9 +527,10 @@ export const forBand = query({
       MAX_UPCOMING_GIGS_PER_BAND * 2,
     );
     const out = [];
+    const cache = docCache(ctx);
     for (const gig of rows) {
       if (lifecycle(gig) === "published")
-        out.push(await toGigPayload(ctx, gig));
+        out.push(await toGigPayload(ctx, gig, cache));
       if (out.length === MAX_UPCOMING_GIGS_PER_BAND) break;
     }
     return out;
@@ -624,9 +551,10 @@ export const pastForBand = query({
     const rows = await pastGigsForBand(ctx, args.bandId, MAX_PAST_GIGS * 2);
     const gigs = [];
     const venueIds = new Set<Id<"venues">>();
+    const cache = docCache(ctx);
     for (const gig of rows) {
       if (lifecycle(gig) !== "published") continue;
-      gigs.push(await toGigPayload(ctx, gig));
+      gigs.push(await toGigPayload(ctx, gig, cache));
       venueIds.add(gig.venueId);
       if (gigs.length === MAX_PAST_GIGS) break;
     }
@@ -634,39 +562,11 @@ export const pastForBand = query({
   },
 });
 
-/** Compatibility endpoint for released clients. New clients use projects. */
-export const publishGig = mutation({
-  args: gigPublishFieldsValidator.fields,
-  returns: v.object({ gigId: v.id("gigs"), slug: v.string() }),
-  handler: async (ctx, args) => {
-    await requireBandAdmin(ctx, args.bandId);
-    const { band } = await assertGigPublishable(ctx, args);
-    const gigId = await insertPublishedGig(ctx, args, band);
-    const gig = await ctx.db.get(gigId);
-    if (gig) {
-      const slug = await uniqueGigSlug(ctx, args.title);
-      await ctx.db.patch(gigId, {
-        slug,
-        lifecycle: "published",
-        doorsAt: gig.doorsAt ?? gig.startsAt,
-        performers: [{ name: band.name, role: "headliner", bandId: band._id }],
-      });
-      await createProjectForGig(
-        ctx,
-        { ...gig, slug, lifecycle: "published" },
-        band._id,
-      );
-      return { gigId, slug };
-    }
-    throw new Error("Published gig not found");
-  },
-});
-
 export const manageForBand = query({
   args: { bandId: v.id("bands") },
   returns: v.array(projectPayloadValidator),
   handler: async (ctx, args) => {
-    await requireBandAdminQuery(ctx, args.bandId);
+    await requireBandRole(ctx, args.bandId, { role: "admin" });
     const projects = await ctx.db
       .query("gigProjects")
       .withIndex("by_band_and_status", (q) => q.eq("bandId", args.bandId))
@@ -685,19 +585,14 @@ export const getProject = query({
   args: { projectId: v.id("gigProjects") },
   returns: projectPayloadValidator,
   handler: async (ctx, args) =>
-    await toProjectPayload(
-      ctx,
-      await requireProjectAdminQuery(ctx, args.projectId),
-    ),
+    await toProjectPayload(ctx, await requireProjectAdmin(ctx, args.projectId)),
 });
 
 export const createDraft = mutation({
   args: { bandId: v.id("bands") },
   returns: projectPayloadValidator,
   handler: async (ctx, args) => {
-    await requireBandAdmin(ctx, args.bandId);
-    const band = await ctx.db.get(args.bandId);
-    if (!band) throw new Error("Band not found");
+    const { band } = await requireBandRole(ctx, args.bandId, { role: "admin" });
     const now = Date.now();
     const projectId = await ctx.db.insert("gigProjects", {
       bandId: args.bandId,
@@ -736,7 +631,7 @@ export const saveDraft = mutation({
     startsAt: v.union(v.number(), v.null()),
     venueId: v.union(v.id("venues"), v.null()),
     price: v.number(),
-    flyKey: v.string(),
+    flyKey: knownFlyKeyValidator,
     flyStorageId: v.union(v.id("_storage"), v.null()),
     overlay: v.boolean(),
     desc: v.string(),
@@ -959,7 +854,7 @@ export const doorRoster = query({
     truncated: v.boolean(),
   }),
   handler: async (ctx, args) => {
-    const project = await requireProjectAdminQuery(ctx, args.projectId);
+    const project = await requireProjectAdmin(ctx, args.projectId);
     if (!project.publicGigId || project.ticketing !== "rsvp") {
       return { total: 0, checkedIn: 0, truncated: false };
     }
@@ -1009,7 +904,9 @@ export const checkInTicket = mutation({
         checkedInAt: rsvp.checkedInAt,
       };
     }
-    const admin = await requireBandAdmin(ctx, project.bandId);
+    const { user: admin } = await requireBandRole(ctx, project.bandId, {
+      role: "admin",
+    });
     const checkedInAt = Date.now();
     await ctx.db.patch(rsvp._id, { checkedInAt, checkedInBy: admin._id });
     return { status: "checkedIn" as const, fanName, checkedInAt };
@@ -1169,9 +1066,7 @@ export const claimPerformerInvite = mutation({
   args: { token: v.string(), bandId: v.id("bands") },
   returns: v.object({ projectId: v.id("gigProjects") }),
   handler: async (ctx, args) => {
-    await requireBandAdmin(ctx, args.bandId);
-    const band = await ctx.db.get(args.bandId);
-    if (!band) throw new Error("Band not found");
+    const { band } = await requireBandRole(ctx, args.bandId, { role: "admin" });
     const performer =
       args.token.length <= 200
         ? await ctx.db

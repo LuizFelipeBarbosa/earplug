@@ -245,6 +245,15 @@ class _VenueMarkerLayer extends StatelessWidget {
   }
 }
 
+/// What the map renders off [AppState]; the pins and camera follow [feed] and
+/// [center], the user marker follows [position] and [location].
+typedef _MapInputs = ({
+  List<Gig> feed,
+  LatLng center,
+  LatLng? position,
+  DiscoveryLocation location,
+});
+
 /// Full-screen gig map with tappable pins and a bottom gig card.
 class GigMapView extends StatefulWidget {
   const GigMapView({super.key, this.emptyState});
@@ -334,8 +343,16 @@ class _GigMapViewState extends State<GigMapView> {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final gigs = app.feed;
+    final app = context.read<AppState>();
+    final view = context.select<AppState, _MapInputs>(
+      (app) => (
+        feed: app.feed,
+        center: app.discoveryCenter,
+        position: app.currentPosition,
+        location: app.discoveryLocation,
+      ),
+    );
+    final gigs = view.feed;
     final groups = _mapGroups(app, gigs);
     _VenueGigGroup? selectedGroup;
     var selectedIndex = -1;
@@ -358,7 +375,7 @@ class _GigMapViewState extends State<GigMapView> {
         EpMap(
           mapController: _controller,
           options: MapOptions(
-            initialCenter: app.discoveryCenter,
+            initialCenter: view.center,
             initialZoom: 13,
             backgroundColor: context.epColors.background,
             interactionOptions: const InteractionOptions(
@@ -374,8 +391,8 @@ class _GigMapViewState extends State<GigMapView> {
           layers: [
             MarkerLayer(
               markers: [
-                if (app.currentPosition case final position?)
-                  if (app.discoveryLocation == DiscoveryLocation.current)
+                if (view.position case final position?)
+                  if (view.location == DiscoveryLocation.current)
                     Marker(
                       key: const Key('current-location-marker'),
                       point: position,

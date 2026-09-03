@@ -10,8 +10,6 @@ class Venue {
   final String name;
   final String area;
   final String addr;
-  final String distSF;
-  final String distOak;
   final LatLng point;
 
   const Venue({
@@ -19,8 +17,6 @@ class Venue {
     required this.name,
     required this.area,
     required this.addr,
-    required this.distSF,
-    required this.distOak,
     required this.point,
   });
 
@@ -29,8 +25,6 @@ class Venue {
     name: json['name'] as String,
     area: json['area'] as String,
     addr: json['addr'] as String,
-    distSF: json['distSF'] as String,
-    distOak: json['distOak'] as String,
     point: LatLng(
       (json['lat'] as num).toDouble(),
       (json['lng'] as num).toDouble(),
@@ -650,6 +644,14 @@ class Gig {
     return GigWhen.later;
   }
 
+  /// "8PM" from "8PM / 9PM" — the doors half of [time].
+  String get doorsLabel => doorsLabelFor(time);
+
+  static String doorsLabelFor(String doorsTime) {
+    final separator = doorsTime.indexOf(' / ');
+    return separator == -1 ? doorsTime : doorsTime.substring(0, separator);
+  }
+
   static String dateShortFor(int startsAtMs) {
     final startsAt = DateTime.fromMillisecondsSinceEpoch(startsAtMs);
     return _dateShortForDate(startsAt);
@@ -671,10 +673,7 @@ class Gig {
     String doorsTime,
     DateTime now,
   ) {
-    final separator = doorsTime.indexOf(' / ');
-    final doors = separator == -1
-        ? doorsTime
-        : doorsTime.substring(0, separator);
+    final doors = doorsLabelFor(doorsTime);
     if (_whenForDate(startsAt, now) == GigWhen.tonight) {
       return 'TONIGHT · DOORS $doors';
     }

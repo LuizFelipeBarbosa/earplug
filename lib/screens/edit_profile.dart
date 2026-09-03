@@ -229,21 +229,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ? "Couldn't save your profile. Your changes are still here."
             : "Your details saved, but the photo didn't. Try saving again.";
       });
-      _revealFeedback();
+      revealFormFeedback(this, _scrollController);
       return;
     }
     app.back();
-  }
-
-  void _revealFeedback() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
-    });
   }
 
   @override

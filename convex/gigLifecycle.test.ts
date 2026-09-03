@@ -79,17 +79,17 @@ describe("gig project lifecycle", () => {
       projectId: draft._id,
     });
     expect(
-      (await t.query(api.gigs.feed, {})).gigs.map((gig) => gig._id),
+      (await t.query(api.gigs.feedV2, {})).gigs.map((gig) => gig._id),
     ).toContain(gigId);
 
     await asAdmin.mutation(api.gigs.unpublish, { projectId: draft._id });
-    expect((await t.query(api.gigs.feed, {})).gigs).toHaveLength(0);
-    expect(await t.query(api.gigs.getPublic, { gigId })).toBeNull();
+    expect((await t.query(api.gigs.feedV2, {})).gigs).toHaveLength(0);
+    expect(await t.query(api.gigs.resolvePublic, { ref: gigId })).toBeNull();
 
     await asAdmin.mutation(api.gigs.publishDraft, { projectId: draft._id });
     await asAdmin.mutation(api.gigs.cancel, { projectId: draft._id });
-    expect((await t.query(api.gigs.feed, {})).gigs).toHaveLength(0);
-    expect((await t.query(api.gigs.getPublic, { gigId }))?.lifecycle).toBe(
+    expect((await t.query(api.gigs.feedV2, {})).gigs).toHaveLength(0);
+    expect((await t.query(api.gigs.resolvePublic, { ref: gigId }))?.lifecycle).toBe(
       "cancelled",
     );
 
@@ -101,7 +101,7 @@ describe("gig project lifecycle", () => {
     expect(duplicate.title).toBe("Copy of Recoverable Show");
 
     await asAdmin.mutation(api.gigs.deleteGig, { projectId: draft._id });
-    expect(await t.query(api.gigs.getPublic, { gigId })).toBeNull();
+    expect(await t.query(api.gigs.resolvePublic, { ref: gigId })).toBeNull();
     expect(
       (await asAdmin.query(api.gigs.manageForBand, { bandId })).map(
         (project) => project._id,
@@ -255,7 +255,7 @@ describe("gig project lifecycle", () => {
 
     expect(replacementGigId).not.toBe(missingGigId);
     expect(
-      (await t.query(api.gigs.getPublic, { gigId: replacementGigId }))?.title,
+      (await t.query(api.gigs.resolvePublic, { ref: replacementGigId }))?.title,
     ).toBe("Repaired Show");
   });
 
@@ -340,9 +340,9 @@ describe("gig project lifecycle", () => {
     });
     expect(project.publishedRevision).not.toBe(project.revision);
     expect(
-      (await t.query(api.gigs.getPublic, { gigId }))?.discoveryListingReady,
+      (await t.query(api.gigs.resolvePublic, { ref: gigId }))?.discoveryListingReady,
     ).toBe(false);
-    expect((await t.query(api.gigs.getPublic, { gigId }))?.lineup).toContain(
+    expect((await t.query(api.gigs.resolvePublic, { ref: gigId }))?.lineup).toContain(
       guestBandId,
     );
   });

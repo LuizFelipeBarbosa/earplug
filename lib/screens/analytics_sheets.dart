@@ -80,11 +80,6 @@ Future<void> showRecapShowsSheet(BuildContext context, BandRecap recap) {
       key: const Key('analytics-shows-sheet'),
       child: EpSheetShell(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-        backgroundColor: ctx.epColors.surfaceRaised,
-        borderColor: ctx.epColors.border,
-        topRadius: 20,
-        handleColor: ctx.epColors.contentDisabled,
-        handleBottomSpacing: 10,
         maxHeightFactor: .88,
         scrollable: true,
         mainAxisSize: MainAxisSize.min,
@@ -168,11 +163,6 @@ Future<void> showRecapRowsSheet(
       key: const Key('analytics-rows-sheet'),
       child: EpSheetShell(
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-        backgroundColor: ctx.epColors.surfaceRaised,
-        borderColor: ctx.epColors.border,
-        topRadius: 20,
-        handleColor: ctx.epColors.contentDisabled,
-        handleBottomSpacing: 10,
         maxHeightFactor: .88,
         scrollable: true,
         mainAxisSize: MainAxisSize.min,
@@ -330,10 +320,7 @@ class _ShowDetailRow extends StatelessWidget {
           children: [
             Row(
               children: [
-                DateBlock(
-                  day: date.day.toString().padLeft(2, '0'),
-                  month: monthNamesUpper[date.month - 1],
-                ),
+                DateBlock.forDate(date),
                 const SizedBox(width: 11),
                 Expanded(
                   child: Column(

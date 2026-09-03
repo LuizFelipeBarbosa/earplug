@@ -2,6 +2,7 @@ import { WithoutSystemFields } from "convex/server";
 import { Infer, v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
+import { DocCache } from "./docCache";
 import {
   ageRequirementValidator,
   fanCityValidator,
@@ -98,8 +99,9 @@ export async function currentUser(
   return user?.deletedAt === undefined ? user : null;
 }
 
-/** Throwing: for mutations. */
-export async function requireUser(ctx: MutationCtx): Promise<Doc<"users">> {
+/** Throwing: the current user's doc for any function that needs a signed-in,
+ * live account. `MutationCtx` extends `QueryCtx`, so this serves both. */
+export async function requireUser(ctx: QueryCtx): Promise<Doc<"users">> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) throw new Error("Not signed in");
   const user = await ctx.db
@@ -111,92 +113,37 @@ export async function requireUser(ctx: MutationCtx): Promise<Doc<"users">> {
   return user;
 }
 
-/** Throws unless the caller is an admin member of the band. Returns the user. */
-export async function requireBandAdmin(
-  ctx: MutationCtx,
-  bandId: Id<"bands">,
-): Promise<Doc<"users">> {
-  const user = await requireUser(ctx);
-  const band = await ctx.db.get(bandId);
-  if (!band || band.archivedAt !== undefined) throw new Error("Band not found");
-  const membership = await ctx.db
-    .query("bandMembers")
-    .withIndex("by_band_user", (q) =>
-      q.eq("bandId", bandId).eq("userId", user._id),
-    )
-    .unique();
-  if (!membership || membership.role !== "admin") {
-    throw new Error("Not an admin of this band");
-  }
-  return user;
-}
-
-/** Query counterpart to requireBandAdmin. Private admin queries intentionally
- * throw instead of returning an empty payload to an unauthorized caller. */
-export async function requireBandAdminQuery(
+/** The one band-membership guard, for queries and mutations alike. Throws
+ * unless the caller is signed in with a live user row and holds `role` in the
+ * band: `"admin"` requires the admin role, `"member"` accepts either. Private
+ * band queries intentionally throw instead of returning an empty payload to
+ * an unauthorized caller. An archived band reads as missing unless
+ * `allowArchived` is set (only `bands:archive` and `bands:archiveStatus`, which
+ * must keep answering the original admin after the tombstone). */
+export async function requireBandRole(
   ctx: QueryCtx,
   bandId: Id<"bands">,
-): Promise<Doc<"bands">> {
-  const user = await currentUser(ctx);
-  if (!user) {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not signed in");
-    throw new Error("No user record — call users:ensureUser first");
-  }
-  const band = await ctx.db.get(bandId);
-  if (!band || band.archivedAt !== undefined) throw new Error("Band not found");
-  const membership = await ctx.db
-    .query("bandMembers")
-    .withIndex("by_band_user", (q) =>
-      q.eq("bandId", bandId).eq("userId", user._id),
-    )
-    .unique();
-  if (!membership || membership.role !== "admin") {
-    throw new Error("Not an admin of this band");
-  }
-  return band;
-}
-
-/** Mutation guard for operations available to either band role. */
-export async function requireBandMemberMutation(
-  ctx: MutationCtx,
-  bandId: Id<"bands">,
+  options: { role: "admin" | "member"; allowArchived?: boolean },
 ): Promise<{ band: Doc<"bands">; user: Doc<"users"> }> {
   const user = await requireUser(ctx);
   const band = await ctx.db.get(bandId);
-  if (!band || band.archivedAt !== undefined) throw new Error("Band not found");
-  const membership = await ctx.db
-    .query("bandMembers")
-    .withIndex("by_band_user", (q) =>
-      q.eq("bandId", bandId).eq("userId", user._id),
-    )
-    .unique();
-  if (!membership) throw new Error("Not a member of this band");
-  return { band, user };
-}
-
-/** Throws unless the caller is a member of the band. Returns the band so a
- * private query can authorize and hydrate band-owned data with one guard. */
-export async function requireBandMember(
-  ctx: QueryCtx,
-  bandId: Id<"bands">,
-): Promise<Doc<"bands">> {
-  const user = await currentUser(ctx);
-  if (!user) {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) throw new Error("Not signed in");
-    throw new Error("No user record — call users:ensureUser first");
+  if (!band || (band.archivedAt !== undefined && !options.allowArchived)) {
+    throw new Error("Band not found");
   }
-  const band = await ctx.db.get(bandId);
-  if (!band || band.archivedAt !== undefined) throw new Error("Band not found");
   const membership = await ctx.db
     .query("bandMembers")
     .withIndex("by_band_user", (q) =>
       q.eq("bandId", bandId).eq("userId", user._id),
     )
     .unique();
-  if (!membership) throw new Error("Not a member of this band");
-  return band;
+  if (options.role === "admin") {
+    if (!membership || membership.role !== "admin") {
+      throw new Error("Not an admin of this band");
+    }
+  } else if (!membership) {
+    throw new Error("Not a member of this band");
+  }
+  return { band, user };
 }
 
 // ─── Contract payload validators + converters ───────────────────────────────
@@ -229,7 +176,7 @@ export const bandPayloadValidator = v.object({
  * plate when flyerUrl resolves null. The gigs.flyKey schema column stays
  * v.string() because legacy rows/seeds use older keys: paper, blue, black,
  * yellow, and bluetype. */
-export const flyKeyValidator = v.union(
+const flyKeyValidator = v.union(
   v.literal("xerox"),
   v.literal("riso"),
   v.literal("marquee"),
@@ -237,6 +184,22 @@ export const flyKeyValidator = v.union(
   v.literal("sunburst"),
   v.literal("custom"),
 );
+
+/** Every flyer key the client can render, including legacy styles. */
+export const knownFlyKeyValidator = v.union(
+  v.literal("xerox"),
+  v.literal("riso"),
+  v.literal("marquee"),
+  v.literal("blueprint"),
+  v.literal("sunburst"),
+  v.literal("custom"),
+  v.literal("paper"),
+  v.literal("blue"),
+  v.literal("black"),
+  v.literal("yellow"),
+  v.literal("bluetype"),
+);
+export type KnownFlyKey = Infer<typeof knownFlyKeyValidator>;
 
 export type AgeRequirement = Infer<typeof ageRequirementValidator>;
 
@@ -257,7 +220,7 @@ export const gigPublishFieldsValidator = v.object({
 });
 export type GigPublishFields = Infer<typeof gigPublishFieldsValidator>;
 
-export function isValidHttpsUrl(value: string | undefined): boolean {
+function isValidHttpsUrl(value: string | undefined): boolean {
   if (!value) return false;
   try {
     const parsed = new URL(value);
@@ -278,7 +241,7 @@ type GigPublishValidationFields = {
   externalUrl?: string;
 };
 
-/** Every non-auth check publishGig performs, in its original order. Throws on
+/** Every non-auth check a gig publish performs, in one fixed order. Throws on
  * the first failure; returns the resolved rows. Performs no writes. */
 export async function assertGigPublishable(
   ctx: MutationCtx,
@@ -325,22 +288,28 @@ export function feedCutoff(): number {
   return Date.now() - FEED_GRACE_MS;
 }
 
-/** One band's past gigs, newest first, at most `limit` of them.
+/** One band's published gigs on one side of the feed cutoff, at most `limit`
+ * of them: past gigs newest first, upcoming gigs oldest first.
  *
  * Reads `gigBands.by_band_startsAt` rather than filtering the global gig range
- * by `lineup`, so the window bounds the band's own history and nothing else.
- * A join row whose gig has been deleted is skipped rather than trusted. */
-export async function pastGigsForBand(
+ * by `lineup`, so the window bounds the band's own calendar and nothing else —
+ * the discovery feed's cap cannot crowd a band's shows out of this result. A
+ * join row whose gig has been deleted is skipped rather than trusted. */
+async function publishedGigsForBand(
   ctx: QueryCtx,
   bandId: Id<"bands">,
   limit: number,
+  side: "past" | "upcoming",
 ): Promise<Doc<"gigs">[]> {
+  const cutoff = feedCutoff();
   const joinRows = await ctx.db
     .query("gigBands")
     .withIndex("by_band_startsAt", (q) =>
-      q.eq("bandId", bandId).lt("startsAt", feedCutoff()),
+      side === "past"
+        ? q.eq("bandId", bandId).lt("startsAt", cutoff)
+        : q.eq("bandId", bandId).gte("startsAt", cutoff),
     )
-    .order("desc")
+    .order(side === "past" ? "desc" : "asc")
     .take(limit * 4);
 
   const gigs: Doc<"gigs">[] = [];
@@ -352,30 +321,22 @@ export async function pastGigsForBand(
   return gigs;
 }
 
-/** One band's upcoming gigs, oldest first, at most `limit` of them.
- *
- * The global discovery feed has its own cap. Reading the band's join rows
- * keeps unrelated gigs from crowding its shows out of this result. */
-export async function upcomingGigsForBand(
+/** One band's past gigs, newest first, at most `limit` of them. */
+export function pastGigsForBand(
   ctx: QueryCtx,
   bandId: Id<"bands">,
   limit: number,
 ): Promise<Doc<"gigs">[]> {
-  const joinRows = await ctx.db
-    .query("gigBands")
-    .withIndex("by_band_startsAt", (q) =>
-      q.eq("bandId", bandId).gte("startsAt", feedCutoff()),
-    )
-    .order("asc")
-    .take(limit * 4);
+  return publishedGigsForBand(ctx, bandId, limit, "past");
+}
 
-  const gigs: Doc<"gigs">[] = [];
-  for (const row of joinRows) {
-    const gig = await ctx.db.get(row.gigId);
-    if (gig && (gig.lifecycle ?? "published") === "published") gigs.push(gig);
-    if (gigs.length === limit) break;
-  }
-  return gigs;
+/** One band's upcoming gigs, oldest first, at most `limit` of them. */
+export function upcomingGigsForBand(
+  ctx: QueryCtx,
+  bandId: Id<"bands">,
+  limit: number,
+): Promise<Doc<"gigs">[]> {
+  return publishedGigsForBand(ctx, bandId, limit, "upcoming");
 }
 
 /** The only supported way to create a gig. `gigs.lineup` is an array, which
@@ -537,9 +498,9 @@ function resolveArtworkStorageId(
 // never absent keys), not a defensive default — the rest are required by the
 // schema, so a missing one is a bug worth failing on.
 /** Known fan-out cost, accepted for v1: resolving the hero joins its `_storage`
- * row into every reader's read set — including `gigs:feed`, where one band's
- * hero change re-fires the feed for every subscribed client. First thing to
- * revisit if the feed gets hot. */
+ * row into every reader's read set — `venues:detail`, `bands:list` and
+ * `bands:search` among them — so one band's hero change re-fires those results
+ * for every subscribed client. (`gigs:feedV2` ships summaries for this reason.) */
 export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
   const profileComplete = isBandProfileComplete(band);
   const profileImageReady = await hasValidProfileImage(ctx, band);
@@ -641,18 +602,32 @@ export async function toBandSummaryPayload(ctx: QueryCtx, band: Doc<"bands">) {
  * `gigs:goingCounts` instead. */
 export const gigFeedPayloadValidator = gigPayloadValidator.omit("goingCount");
 
-export async function toGigFeedPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
-  const { goingCount: _goingCount, ...payload } = await toGigPayload(ctx, gig);
+export async function toGigFeedPayload(
+  ctx: QueryCtx,
+  gig: Doc<"gigs">,
+  cache: DocCache,
+) {
+  const { goingCount: _goingCount, ...payload } = await toGigPayload(
+    ctx,
+    gig,
+    cache,
+  );
   return payload;
 }
 
-export async function toGigPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
+/** Pass one `docCache` across a hydration loop so gigs sharing a flyer or a
+ * legacy lineup band read each row once. */
+export async function toGigPayload(
+  ctx: QueryCtx,
+  gig: Doc<"gigs">,
+  cache: DocCache,
+) {
   const performers = [];
   if (gig.performers) {
     performers.push(...gig.performers);
   } else {
     for (let index = 0; index < gig.lineup.length; index++) {
-      const band = await ctx.db.get(gig.lineup[index]);
+      const band = await cache.get(gig.lineup[index]);
       if (band) {
         performers.push({
           name: band.name,
@@ -672,9 +647,7 @@ export async function toGigPayload(ctx: QueryCtx, gig: Doc<"gigs">) {
     doorsAt: gig.doorsAt ?? gig.startsAt,
     doorsTime: gig.doorsTime,
     flyKey: gig.flyKey,
-    flyerUrl: gig.flyStorageId
-      ? await ctx.storage.getUrl(gig.flyStorageId)
-      : null,
+    flyerUrl: gig.flyStorageId ? await cache.getUrl(gig.flyStorageId) : null,
     lineup: gig.lineup,
     performers,
     genres: gig.genres,

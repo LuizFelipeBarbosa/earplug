@@ -36,7 +36,7 @@ void main() {
   test('AppState preserves local state when account deletion fails', () async {
     final auth = FakeAuthService();
     final repository = _DeletionOrderRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await auth.signInDemo();
     await Future<void>.delayed(Duration.zero);
@@ -62,7 +62,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _FailingDeletionRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
       await auth.signInDemo();
       await Future<void>.delayed(Duration.zero);
@@ -87,7 +87,7 @@ void main() {
           return uploadGate.future;
         },
       );
-      final app = AppState(
+      final app = AppState.demo(
         repository: repository,
         auth: auth,
         mediaUploadService: uploader,
@@ -130,7 +130,7 @@ void main() {
           return uploadGate.future;
         },
       );
-      final app = AppState(
+      final app = AppState.demo(
         repository: repository,
         auth: auth,
         mediaUploadService: uploader,
@@ -162,7 +162,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _ProfileRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
       await auth.signInDemo();
       await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -181,7 +181,7 @@ void main() {
       expect(app.profile?.name, 'Sam Reyes');
       expect(app.profile?.bio, 'Always by the speakers.');
       expect(app.profile?.homeLocation, FanCity.oak);
-      expect(app.city, 'oak');
+      expect(app.discoveryLocation, DiscoveryLocation.oak);
 
       expect(
         await app.saveFanProfile(
@@ -195,7 +195,7 @@ void main() {
         isTrue,
       );
       expect(app.profile?.locationPersonalizationEnabled, isFalse);
-      expect(app.city, 'sf');
+      expect(app.discoveryLocation, DiscoveryLocation.sf);
 
       expect(
         await app.saveFanProfile(
@@ -234,7 +234,7 @@ void main() {
   test('profile tutorial persists completion and can be replayed', () async {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await auth.signInDemo();
     await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -256,7 +256,7 @@ void main() {
   test('profile tutorial failure stays visible with a useful error', () async {
     final auth = FakeAuthService();
     final repository = _FailingTutorialRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await auth.signInDemo();
     await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -271,7 +271,7 @@ void main() {
   test('profile responses from a signed-out session are ignored', () async {
     final auth = FakeAuthService();
     final repository = _GatedProfileRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
 
     await auth.signInDemo();
@@ -295,7 +295,7 @@ void main() {
     expect(app.authed, isFalse);
     expect(app.profile, isNull);
     expect(app.userGenres, isEmpty);
-    expect(app.city, 'sf');
+    expect(app.discoveryLocation, DiscoveryLocation.sf);
   });
 
   test(
@@ -303,7 +303,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = DemoRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
       await auth.signInDemo();
       await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -347,7 +347,7 @@ void main() {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _OutsideFeedFollowRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(const Duration(milliseconds: 10));
 
@@ -456,7 +456,6 @@ void main() {
   ) async {
     final auth = FakeAuthService(
       supportsEmailSignIn: true,
-      supportsPhoneSignIn: false,
       supportsGoogleSignIn: true,
       supportsAppleSignIn: false,
     );
@@ -470,7 +469,6 @@ void main() {
     );
 
     expect(find.text('EMAIL'), findsOne);
-    expect(find.text('PHONE'), findsNothing);
     expect(find.text('G · Continue with Google'), findsOne);
     expect(find.text(' Continue with Apple'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -761,7 +759,6 @@ class _CountingCodeAuth extends FakeAuthService {
   _CountingCodeAuth()
     : super(
         supportsEmailSignIn: true,
-        supportsPhoneSignIn: false,
         supportsGoogleSignIn: false,
         supportsAppleSignIn: false,
       );

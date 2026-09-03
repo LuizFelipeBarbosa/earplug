@@ -22,7 +22,7 @@ must always be selected together; never mix values between the two pairs.
 | Development | `brilliant-cardinal-773` | development (`pk_test_…`) | `config/dev.json` |
 | Production | `decisive-iguana-759` | production (`pk_live_…`) | `config/prod.json` |
 
-Both clients expose Email Code and Google sign-in. Phone and Apple are disabled.
+Both clients expose Email Code and Google sign-in. Apple is disabled.
 Development clients show a `DEV` ribbon. The canonical environment rules and
 credential locations are documented in `docs/environments.md`.
 

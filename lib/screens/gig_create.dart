@@ -2,24 +2,23 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../band_media_state.dart';
-import '../demo_data.dart';
+import '../flyer_styles.dart';
 import '../models.dart';
 import '../services/flyer_text_extractor.dart';
 import '../services/media_picker.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
-import '../widgets/ep_map.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
-import 'door_mode.dart';
-import 'gig_detail.dart';
+import '../widgets/sheets.dart';
+import '../widgets/slot_card.dart';
+import 'gig_create_preview.dart';
+import 'gig_create_sheets.dart';
 
 Future<void> _pickGigFlyerArt(BuildContext context) async {
   final app = context.read<AppState>();
@@ -52,7 +51,7 @@ Future<void> _pickGigFlyerArt(BuildContext context) async {
   unawaited(
     showEpSheet(
       context,
-      (_) => _Sheet(
+      (_) => EpFormSheet(
         title: 'Review flyer details',
         child: _FlyerReviewBody(proposal: proposal),
       ),
@@ -113,9 +112,31 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    if (app.gfPublished) return const _PublishedView();
-    if (app.gfPreviewing) return const _DraftPreview();
+    final app = context.read<AppState>();
+    final form = context
+        .select<
+          AppState,
+          ({
+            bool published,
+            bool previewing,
+            bool editingPublished,
+            String saveState,
+            int performerCount,
+          })
+        >(
+          (app) => (
+            published: app.gfPublished,
+            previewing: app.gfPreviewing,
+            editingPublished:
+                app.gfProject?.status == GigProjectStatus.published,
+            saveState: app.gfSaveState,
+            performerCount: app.gfPerformers.length,
+          ),
+        );
+    if (form.published) {
+      return const GigPublishedView(poster: _Poster(width: 212, height: 280));
+    }
+    if (form.previewing) return const GigDraftPreview();
 
     return Stack(
       children: [
@@ -140,18 +161,16 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          app.gfProject?.status == GigProjectStatus.published
-                              ? 'EDIT GIG'
-                              : 'GIG DRAFT',
+                          form.editingPublished ? 'EDIT GIG' : 'GIG DRAFT',
                           style: epDisplay(size: 16),
                         ),
                         Text(
-                          app.gfSaveState,
+                          form.saveState,
                           style: epText(
                             size: 11,
                             weight: FontWeight.w800,
                             letterSpacing: .8,
-                            color: app.gfSaveState == 'SAVE FAILED'
+                            color: form.saveState == 'SAVE FAILED'
                                 ? context.epColors.warning
                                 : context.epColors.contentDisabled,
                           ),
@@ -173,7 +192,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                   _NameCard(controller: _cardName, focusNode: _cardFocus),
                   const SizedBox(height: 18),
                   const _SlotGrid(),
-                  SectionBar(label: 'Lineup', count: app.gfPerformers.length),
+                  SectionBar(label: 'Lineup', count: form.performerCount),
                   const _LineupField(),
                   const SectionBar(label: 'Poster'),
                   const _FlyerStudio(),
@@ -198,13 +217,21 @@ class _FlyerStudio extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
+    final app = context.read<AppState>();
+    final flyer = context
+        .select<AppState, ({bool custom, bool hasArt, bool showOverlay})>(
+          (app) => (
+            custom: app.gfCustomFlyer,
+            hasArt: app.gfFlyerArt != null || app.gfFlyerUrl != null,
+            showOverlay: app.gfShowOverlay,
+          ),
+        );
     return Column(
       children: [
         const _Poster(),
         const SizedBox(height: 12),
         const _SwatchRow(),
-        if (app.gfCustomFlyer) ...[
+        if (flyer.custom) ...[
           const SizedBox(height: 8),
           Wrap(
             alignment: WrapAlignment.center,
@@ -214,13 +241,9 @@ class _FlyerStudio extends StatelessWidget {
               TextButton.icon(
                 onPressed: () => _pickGigFlyerArt(context),
                 icon: Icon(Icons.add_photo_alternate_outlined),
-                label: Text(
-                  app.gfFlyerArt == null && app.gfFlyerUrl == null
-                      ? 'ADD FLYER ART'
-                      : 'CHANGE ART',
-                ),
+                label: Text(flyer.hasArt ? 'CHANGE ART' : 'ADD FLYER ART'),
               ),
-              if (app.gfFlyerArt != null || app.gfFlyerUrl != null)
+              if (flyer.hasArt)
                 TextButton.icon(
                   key: const ValueKey('clear-flyer-art'),
                   onPressed: () => app.setGfFlyerArt(null),
@@ -236,8 +259,8 @@ class _FlyerStudio extends StatelessWidget {
         SizedBox(
           width: 250,
           child: Text(
-            app.gfCustomFlyer
-                ? (app.gfShowOverlay
+            flyer.custom
+                ? (flyer.showOverlay
                       ? 'Your flyer art previews with listing details on top.'
                       : 'Overlay off. Your art stays clean, and details still appear below.')
                 : 'Use the fields below; the poster previews changes live.',
@@ -264,8 +287,15 @@ class _Poster extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final fly = app.flyer(app.gfFly);
+    final poster = context
+        .select<AppState, ({String fly, bool custom, bool showOverlay})>(
+          (app) => (
+            fly: app.gfFly,
+            custom: app.gfCustomFlyer,
+            showOverlay: app.gfShowOverlay,
+          ),
+        );
+    final fly = context.read<AppState>().flyer(poster.fly);
 
     return Container(
       width: width,
@@ -284,12 +314,12 @@ class _Poster extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (app.gfCustomFlyer)
+          if (poster.custom)
             _CustomArtSlot(base: fly.base)
           else
             FlyerBox(style: fly, radius: 0, shadow: false),
           // Readability overlay for uploaded artwork.
-          if (app.gfCustomFlyer && app.gfShowOverlay)
+          if (poster.custom && poster.showOverlay)
             IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -307,7 +337,7 @@ class _Poster extends StatelessWidget {
                 ),
               ),
             ),
-          if (app.gfShowOverlay) _PosterOverlay(ink: fly.fg),
+          if (poster.showOverlay) _PosterOverlay(ink: fly.fg),
         ],
       ),
     );
@@ -435,8 +465,17 @@ class _PosterOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
+    final details = context.select<AppState, _PosterDetails>(
+      (app) => (
+        name: app.gfName,
+        date: app.gfDate,
+        dateLabel: app.gfDateLabel,
+        doorsLabel: app.gfDoorsLabel,
+        venue: app.gfVenueId == null ? null : app.venue(app.gfVenueId!),
+        price: app.gfPrice,
+      ),
+    );
+    final venue = details.venue;
     final titleStyle = epDisplay(
       size: 23,
       color: ink,
@@ -451,9 +490,9 @@ class _PosterOverlay extends StatelessWidget {
         children: [
           Flexible(
             child: Text(
-              app.gfName.trim().isEmpty
+              details.name.trim().isEmpty
                   ? 'YOUR GIG NAME'
-                  : app.gfName.toUpperCase(),
+                  : details.name.toUpperCase(),
               maxLines: 4,
               overflow: TextOverflow.ellipsis,
               style: titleStyle,
@@ -464,10 +503,10 @@ class _PosterOverlay extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               _PosterLine(
-                label: app.gfDate == null
+                label: details.date == null
                     ? '+ DATE & DOORS'
-                    : '${app.gfDateLabel.toUpperCase()} · DOORS ${app.gfDoorsLabel}',
-                unset: app.gfDate == null,
+                    : '${details.dateLabel.toUpperCase()} · DOORS ${details.doorsLabel}',
+                unset: details.date == null,
                 ink: ink,
               ),
               const SizedBox(height: 7),
@@ -480,9 +519,9 @@ class _PosterOverlay extends StatelessWidget {
               ),
               const SizedBox(height: 7),
               _PosterLine(
-                label: app.gfPrice == 'FREE'
+                label: details.price == 'FREE'
                     ? 'FREE'
-                    : '${app.gfPrice} AT THE DOOR',
+                    : '${details.price} AT THE DOOR',
                 unset: false,
                 ink: ink,
               ),
@@ -493,6 +532,16 @@ class _PosterOverlay extends StatelessWidget {
     );
   }
 }
+
+/// The listing details the poster overlay prints.
+typedef _PosterDetails = ({
+  String name,
+  DateTime? date,
+  String dateLabel,
+  String doorsLabel,
+  Venue? venue,
+  String price,
+});
 
 /// One detail printed on the flyer — dashed and dimmed until it is filled in.
 class _PosterLine extends StatelessWidget {
@@ -534,14 +583,17 @@ class _SwatchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
+    final app = context.read<AppState>();
+    final press = context.select<AppState, ({String fly, bool custom})>(
+      (app) => (fly: app.gfFly, custom: app.gfCustomFlyer),
+    );
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        for (final key in DemoData.flyerPicks) ...[
+        for (final key in flyerPicks) ...[
           Swatch(
             key: ValueKey('press-$key'),
-            selected: app.gfFly == key,
+            selected: press.fly == key,
             onTap: () => app.setGfFly(key),
             child: ClipOval(
               child: FlyerBox(
@@ -556,7 +608,7 @@ class _SwatchRow extends StatelessWidget {
         ],
         Swatch(
           key: const ValueKey('press-custom'),
-          selected: app.gfCustomFlyer,
+          selected: press.custom,
           dashed: true,
           onTap: () => app.setGfFly('custom'),
           child: Center(
@@ -578,8 +630,8 @@ class _OverlayToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final on = app.gfShowOverlay;
+    final app = context.read<AppState>();
+    final on = context.select<AppState, bool>((app) => app.gfShowOverlay);
     return EpCard(
       variant: on ? EpCardVariant.selected : EpCardVariant.standard,
       padding: EdgeInsets.zero,
@@ -599,73 +651,6 @@ class _OverlayToggle extends StatelessWidget {
 
 // ============================ form cards ============================
 
-/// Card outline states shared by the six editing slots.
-enum _SlotState { done, needed }
-
-class _SlotShell extends StatelessWidget {
-  final _SlotState state;
-  final Widget child;
-  final VoidCallback? onTap;
-
-  const _SlotShell({required this.state, required this.child, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final content = ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 72),
-      child: Align(alignment: Alignment.centerLeft, child: child),
-    );
-    if (state != _SlotState.needed) {
-      return EpCard(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-        onTap: onTap,
-        child: content,
-      );
-    }
-
-    final radius = BorderRadius.circular(12);
-    return Semantics(
-      container: true,
-      button: onTap != null,
-      child: Material(
-        color: context.epColors.surface,
-        borderRadius: radius,
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: radius,
-          child: DashedBox(
-            color: context.epColors.volt,
-            radius: 12,
-            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 10),
-            child: content,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SlotTag extends StatelessWidget {
-  final String text;
-  final Color color;
-
-  const _SlotTag(this.text, this.color);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: epText(
-        size: 11,
-        weight: FontWeight.w900,
-        letterSpacing: 1.2,
-        color: color,
-      ),
-    );
-  }
-}
-
 class _NameCard extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
@@ -674,15 +659,17 @@ class _NameCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final filled = app.gfName.trim().isNotEmpty;
+    final app = context.read<AppState>();
+    final filled = context.select<AppState, bool>(
+      (app) => app.gfName.trim().isNotEmpty,
+    );
     return EpCard(
       variant: EpCardVariant.raised,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SlotTag(
+          SlotTag(
             filled ? 'YOUR GIG NAME ✓' : 'YOUR GIG NAME · REQUIRED',
             filled ? context.epColors.success : context.epColors.warning,
           ),
@@ -711,62 +698,75 @@ class _SlotGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final venue = app.gfVenueId == null ? null : app.venue(app.gfVenueId!);
+    final slot = context.select<AppState, _SlotValues>(
+      (app) => (
+        venue: app.gfVenueId == null ? null : app.venue(app.gfVenueId!),
+        date: app.gfDate,
+        dateLabel: app.gfDateLabel,
+        doorsLabel: app.gfDoorsLabel,
+        startLabel: app.gfStartLabel,
+        price: app.gfPrice,
+        tix: app.gfTix,
+        cap: app.gfCap,
+        ext: app.gfExt,
+        validExternalUrl: app.validExternalTicketUrl,
+        age: app.gfAgeRequirement,
+      ),
+    );
+    final venue = slot.venue;
     final slots = <Widget>[
-      _SlotCard(
+      SlotCard(
         key: const ValueKey('gig-slot-date'),
         tag: 'DATE',
-        value: app.gfDate == null ? 'REQUIRED' : app.gfDateLabel.toUpperCase(),
-        sub: app.gfDate == null ? 'Choose a date' : 'Calendar date for doors',
-        state: app.gfDate == null ? _SlotState.needed : _SlotState.done,
+        value: slot.date == null ? 'REQUIRED' : slot.dateLabel.toUpperCase(),
+        sub: slot.date == null ? 'Choose a date' : 'Calendar date for doors',
+        state: slot.date == null ? SlotState.needed : SlotState.done,
         onTap: () => showWhenSheet(context),
       ),
-      _SlotCard(
+      SlotCard(
         key: const ValueKey('gig-slot-times'),
         tag: 'TIMES',
-        value: 'Doors ${app.gfDoorsLabel} · Start ${app.gfStartLabel}',
+        value: 'Doors ${slot.doorsLabel} · Start ${slot.startLabel}',
         sub: 'A start earlier than doors is treated as after midnight',
-        state: _SlotState.done,
+        state: SlotState.done,
         onTap: () => showWhenSheet(context),
       ),
-      _SlotCard(
+      SlotCard(
         key: const ValueKey('gig-slot-venue'),
         tag: 'VENUE',
         value: venue?.name ?? 'REQUIRED',
         sub: venue?.area ?? 'Choose a venue',
-        state: venue == null ? _SlotState.needed : _SlotState.done,
+        state: venue == null ? SlotState.needed : SlotState.done,
         onTap: () => showVenueSheet(context),
       ),
-      _SlotCard(
+      SlotCard(
         key: const ValueKey('gig-slot-cover'),
         tag: 'COVER',
-        value: app.gfPrice,
-        sub: app.gfPrice == 'FREE' ? 'No cover' : 'At the door',
-        state: _SlotState.done,
+        value: slot.price,
+        sub: slot.price == 'FREE' ? 'No cover' : 'At the door',
+        state: SlotState.done,
         onTap: () => showPriceSheet(context),
       ),
-      _SlotCard(
+      SlotCard(
         key: const ValueKey('gig-slot-access'),
         tag: 'ACCESS',
-        value: app.gfTix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
-        sub: switch (app.gfTix) {
-          Ticketing.rsvp when app.gfCap == 'No cap' => 'No RSVP cap',
-          Ticketing.rsvp => 'RSVP cap ${app.gfCap}',
-          Ticketing.external =>
-            app.gfExt.isEmpty ? 'Add ticket URL' : app.gfExt,
+        value: slot.tix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
+        sub: switch (slot.tix) {
+          Ticketing.rsvp when slot.cap == 'No cap' => 'No RSVP cap',
+          Ticketing.rsvp => 'RSVP cap ${slot.cap}',
+          Ticketing.external => slot.ext.isEmpty ? 'Add ticket URL' : slot.ext,
         },
-        state: app.gfTix == Ticketing.external && !app.validExternalTicketUrl
-            ? _SlotState.needed
-            : _SlotState.done,
+        state: slot.tix == Ticketing.external && !slot.validExternalUrl
+            ? SlotState.needed
+            : SlotState.done,
         onTap: () => showTicketsSheet(context),
       ),
-      _SlotCard(
+      SlotCard(
         key: const ValueKey('gig-slot-audience'),
         tag: 'AUDIENCE',
-        value: app.gfAgeRequirement.label,
+        value: slot.age.label,
         sub: 'Age requirement',
-        state: _SlotState.done,
+        state: SlotState.done,
         onTap: () => showAgeSheet(context),
       ),
     ];
@@ -791,13 +791,30 @@ class _SlotGrid extends StatelessWidget {
   }
 }
 
+/// What the slot grid prints for each card.
+typedef _SlotValues = ({
+  Venue? venue,
+  DateTime? date,
+  String dateLabel,
+  String doorsLabel,
+  String startLabel,
+  String price,
+  Ticketing tix,
+  String cap,
+  String ext,
+  bool validExternalUrl,
+  AgeRequirement age,
+});
+
 class _LineupField extends StatelessWidget {
   const _LineupField();
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final performers = app.gfPerformers;
+    final app = context.read<AppState>();
+    final performers = context.select<AppState, List<GigPerformer>>(
+      (app) => app.gfPerformers,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -943,7 +960,7 @@ class _LineupField extends StatelessWidget {
             ghost: true,
             onTap: () => showEpSheet(
               context,
-              (_) => const _Sheet(
+              (_) => const EpFormSheet(
                 title: 'Add performer',
                 child: _AddPerformerBody(),
               ),
@@ -1292,118 +1309,25 @@ class _ReviewChoice extends StatelessWidget {
   );
 }
 
-// ---------------------------- age ----------------------------
-
-void showAgeSheet(BuildContext context) {
-  showEpSheet(
-    context,
-    (_) => const _Sheet(title: 'Age requirement', child: _AgeBody()),
-  );
-}
-
-class _AgeBody extends StatelessWidget {
-  const _AgeBody();
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final requirement in AgeRequirement.values) ...[
-          _OptionCard(
-            title: requirement.label,
-            subtitle: switch (requirement) {
-              AgeRequirement.allAges => 'Everyone is welcome',
-              AgeRequirement.eighteenPlus => 'Guests must be 18 or older',
-              AgeRequirement.twentyOnePlus => 'Guests must be 21 or older',
-            },
-            selected: app.gfAgeRequirement == requirement,
-            onTap: () {
-              app.setGfAgeRequirement(requirement);
-              Navigator.pop(context);
-            },
-          ),
-          if (requirement != AgeRequirement.twentyOnePlus)
-            const SizedBox(height: 8),
-        ],
-      ],
-    );
-  }
-}
-
-class _SlotCard extends StatelessWidget {
-  final String tag;
-  final String value;
-  final String sub;
-  final _SlotState state;
-  final VoidCallback onTap;
-
-  const _SlotCard({
-    super.key,
-    required this.tag,
-    required this.value,
-    required this.sub,
-    required this.state,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return _SlotShell(
-      state: state,
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _SlotTag(
-                  tag,
-                  state == _SlotState.needed
-                      ? context.epColors.warning
-                      : context.epColors.contentSecondary,
-                ),
-              ),
-              if (state == _SlotState.done)
-                Icon(Icons.check, size: 17, color: context.epColors.success),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: epText(
-              size: 13,
-              weight: FontWeight.w800,
-              color: state == _SlotState.needed
-                  ? context.epColors.warning
-                  : context.epColors.contentPrimary,
-            ),
-          ),
-          if (sub.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              sub,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: epText(size: 11, color: context.epColors.contentDisabled),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
 class _PublishBar extends StatelessWidget {
   const _PublishBar();
 
   @override
   Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final missing = app.gigMissing;
+    final app = context.read<AppState>();
+    final publish = context
+        .select<
+          AppState,
+          ({String missingLabel, bool editingPublished, bool canPublish})
+        >(
+          (app) => (
+            missingLabel: app.gigMissing.join(' + '),
+            editingPublished:
+                app.gfProject?.status == GigProjectStatus.published,
+            canPublish: app.canPublishGig,
+          ),
+        );
+    final missingLabel = publish.missingLabel;
     return ColoredBox(
       color: context.epColors.tabBarBackground.withValues(alpha: .95),
       child: Column(
@@ -1414,15 +1338,15 @@ class _PublishBar extends StatelessWidget {
             child: Semantics(
               liveRegion: true,
               child: Text(
-                missing.isEmpty
+                missingLabel.isEmpty
                     ? 'Ready. Fans nearby see it as soon as you publish.'
-                    : 'Still needs ${missing.join(' + ')}',
+                    : 'Still needs $missingLabel',
                 textAlign: TextAlign.center,
                 style: epText(
                   size: 11,
                   weight: FontWeight.w700,
                   letterSpacing: .3,
-                  color: missing.isEmpty
+                  color: missingLabel.isEmpty
                       ? context.epColors.success
                       : context.epColors.contentSecondary,
                 ),
@@ -1432,1072 +1356,12 @@ class _PublishBar extends StatelessWidget {
           StickyActionBar(
             secondaryLabel: 'Preview',
             onSecondary: app.previewGigDraft,
-            primaryLabel: app.gfProject?.status == GigProjectStatus.published
+            primaryLabel: publish.editingPublished
                 ? 'Publish updates'
                 : 'Publish gig',
-            onPrimary: app.canPublishGig ? app.publishGig : null,
+            onPrimary: publish.canPublish ? app.publishGig : null,
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ============================ sheets ============================
-
-class _Sheet extends StatelessWidget {
-  final String title;
-  final Widget? trailing;
-  final Widget child;
-
-  /// Sheets that own their own scrolling (the calendar) lay out their body.
-  final bool padBody;
-
-  const _Sheet({
-    required this.title,
-    required this.child,
-    this.trailing,
-    this.padBody = true,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      decoration: BoxDecoration(
-        color: context.epColors.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(title.toUpperCase(), style: epDisplay(size: 15)),
-                ),
-                trailing ??
-                    IconButton(
-                      tooltip: 'Close',
-                      onPressed: () => Navigator.pop(context),
-                      icon: Icon(Icons.close),
-                    ),
-              ],
-            ),
-          ),
-          if (padBody)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-              child: child,
-            )
-          else
-            Flexible(child: child),
-        ],
-      ),
-    );
-  }
-}
-
-/// Full-width option row used by the venue and ticketing sheets.
-class _OptionCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool titleCaps;
-
-  const _OptionCard({
-    required this.title,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
-    this.titleCaps = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return EpCard(
-      variant: selected ? EpCardVariant.selected : EpCardVariant.standard,
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            titleCaps ? title.toUpperCase() : title,
-            style: epText(size: 12.5, weight: FontWeight.w800),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: epText(size: 11, color: context.epColors.contentSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------- when ----------------------------
-
-void showWhenSheet(BuildContext context) {
-  showEpSheet(context, (ctx) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(ctx).height * .82,
-      ),
-      child: const _Sheet(
-        title: 'When is it',
-        padBody: false,
-        child: _WhenBody(),
-      ),
-    );
-  });
-}
-
-class _WhenBody extends StatelessWidget {
-  const _WhenBody();
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            itemCount: 4,
-            separatorBuilder: (_, _) => const SizedBox(height: 14),
-            itemBuilder: (_, index) => _Month(
-              first: DateTime(today.year, today.month + index, 1),
-              today: today,
-            ),
-          ),
-        ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 13, 16, 34),
-          decoration: BoxDecoration(
-            border: Border(top: BorderSide(color: context.epColors.border)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'DOORS',
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w800,
-                      letterSpacing: 1.3,
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
-                  OutlinedButton(
-                    onPressed: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: app.gfDoors,
-                      );
-                      if (picked != null) app.setGfDoors(picked);
-                    },
-                    child: Text(app.gfDoorsLabel),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'START',
-                    style: epText(
-                      size: 11,
-                      weight: FontWeight.w800,
-                      letterSpacing: 1.3,
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
-                  OutlinedButton(
-                    onPressed: () async {
-                      final picked = await showTimePicker(
-                        context: context,
-                        initialTime: app.gfStart,
-                      );
-                      if (picked != null) app.setGfStart(picked);
-                    },
-                    child: Text(app.gfStartLabel),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 9),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    for (final hour in const [18, 19, 20, 21, 22]) ...[
-                      EpChip(
-                        label:
-                            'DOORS ${timeLabel(TimeOfDay(hour: hour, minute: 0))}',
-                        active: app.gfDoors == TimeOfDay(hour: hour, minute: 0),
-                        onTap: () =>
-                            app.setGfDoors(TimeOfDay(hour: hour, minute: 0)),
-                      ),
-                      const SizedBox(width: 7),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 11),
-              const DoneButton(),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Month extends StatelessWidget {
-  final DateTime first;
-  final DateTime today;
-
-  const _Month({required this.first, required this.today});
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedDate = context.select<AppState, DateTime?>(
-      (app) => app.gfDate,
-    );
-    // The grid starts on Sunday; Dart weekdays run Mon(1)..Sun(7).
-    final lead = first.weekday % 7;
-    final days = DateTime(first.year, first.month + 1, 0).day;
-    final rows = ((lead + days) / 7).ceil();
-
-    Widget cell(int slot) {
-      final day = slot - lead + 1;
-      if (day < 1 || day > days) return const SizedBox(height: 48);
-      final date = DateTime(first.year, first.month, day);
-      final past = date.isBefore(today);
-      final selected = date == selectedDate;
-
-      return Semantics(
-        // Keyed by the whole date, not the day number: four months are on
-        // screen at once, so '1' alone is ambiguous four times over.
-        button: !past,
-        selected: selected,
-        enabled: !past,
-        label: '${date.year}-${date.month}-$day',
-        child: Material(
-          color: past
-              ? Colors.transparent
-              : selected
-              ? context.epColors.surfaceSelected
-              : context.epColors.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: BorderSide(
-              color: past
-                  ? context.epColors.surfaceDisabled
-                  : selected || date == today
-                  ? context.epColors.accent
-                  : context.epColors.border,
-            ),
-          ),
-          child: InkWell(
-            key: ValueKey('day-${date.year}-${date.month}-${date.day}'),
-            onTap: past ? null : () => context.read<AppState>().setGfDate(date),
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              height: 48,
-              child: Center(
-                child: Text(
-                  '$day',
-                  style: Theme.of(context).textTheme.epLabel.copyWith(
-                    color: past
-                        ? context.epColors.contentDisabled
-                        : selected
-                        ? context.epColors.contentPrimary
-                        : context.epColors.contentSecondary,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    Widget grid(int row, Widget Function(int) child) => Row(
-      children: [
-        for (var column = 0; column < 7; column++) ...[
-          if (column > 0) const SizedBox(width: 4),
-          Expanded(child: child(row * 7 + column)),
-        ],
-      ],
-    );
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          monthLabel(first).toUpperCase(),
-          style: epText(
-            size: 11,
-            weight: FontWeight.w900,
-            letterSpacing: 1.3,
-            color: context.epColors.contentDisabled,
-          ),
-        ),
-        const SizedBox(height: 8),
-        grid(
-          0,
-          (slot) => Text(
-            const ['S', 'M', 'T', 'W', 'T', 'F', 'S'][slot],
-            textAlign: TextAlign.center,
-            style: epText(
-              size: 11,
-              weight: FontWeight.w900,
-              letterSpacing: .5,
-              color: context.epColors.contentDisabled,
-            ),
-          ),
-        ),
-        const SizedBox(height: 5),
-        for (var row = 0; row < rows; row++) ...[
-          if (row > 0) const SizedBox(height: 4),
-          grid(row, cell),
-        ],
-      ],
-    );
-  }
-}
-
-// ---------------------------- venue ----------------------------
-
-void showVenueSheet(BuildContext context) {
-  final app = context.read<AppState>();
-  app.ensureVenueDirectory();
-  showEpSheet(context, (ctx) {
-    return _Sheet(
-      title: 'Where is it',
-      trailing: TextAction(
-        '+ NEW VENUE',
-        onTap: () {
-          Navigator.pop(ctx);
-          if (context.mounted) showNewVenueSheet(context);
-        },
-        size: 11,
-        letterSpacing: .6,
-      ),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(ctx).height * .6,
-        ),
-        child: Selector<AppState, (String?, List<Venue>)>(
-          selector: (_, app) => (app.gfVenueId, app.venues),
-          builder: (context, selection, _) {
-            final (selectedVenueId, venues) = selection;
-            return ListView.builder(
-              shrinkWrap: true,
-              itemCount: venues.length + 1,
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return Text(
-                    'Venues are shared records, so the address stays consistent across '
-                    "every band's listings.",
-                    style: epText(
-                      size: 11,
-                      color: context.epColors.contentDisabled,
-                      height: 1.45,
-                    ),
-                  );
-                }
-
-                final venue = venues[index - 1];
-                return Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: _OptionCard(
-                    title: venue.name,
-                    titleCaps: true,
-                    subtitle: '${venue.addr} · ${venue.area}',
-                    selected: selectedVenueId == venue.id,
-                    onTap: () {
-                      app.setGfVenue(venue.id);
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                );
-              },
-            );
-          },
-        ),
-      ),
-    );
-  });
-}
-
-void showNewVenueSheet(BuildContext context) {
-  showEpSheet(
-    context,
-    (_) => const _Sheet(title: 'New venue', child: _NewVenueBody()),
-  );
-}
-
-class _NewVenueBody extends StatefulWidget {
-  const _NewVenueBody();
-
-  @override
-  State<_NewVenueBody> createState() => _NewVenueBodyState();
-}
-
-class _NewVenueBodyState extends State<_NewVenueBody> {
-  final _name = TextEditingController();
-  final _address = TextEditingController();
-  final _area = TextEditingController();
-  LatLng? _pin;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _address.dispose();
-    _area.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final pin = _pin;
-    if (_name.text.trim().isEmpty ||
-        _address.text.trim().isEmpty ||
-        _area.text.trim().isEmpty ||
-        pin == null) {
-      setState(
-        () => _error = 'Name, street address, area, and map pin are required.',
-      );
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      final result = await context.read<AppState>().createVenue(
-        name: _name.text,
-        area: _area.text,
-        address: _address.text,
-        point: pin,
-      );
-      if (!mounted) return;
-      Navigator.pop(context);
-      context.read<AppState>().say(
-        result.created
-            ? 'Venue created and selected.'
-            : 'Existing venue selected.',
-      );
-    } catch (error) {
-      if (mounted) {
-        setState(
-          () => _error =
-              'Venue could not be created. Check the details and retry.',
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    const center = LatLng(37.7749, -122.4194);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        TextField(
-          key: const Key('new-venue-name'),
-          controller: _name,
-          maxLength: 120,
-          decoration: sheetInput(context, 'Venue name'),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          key: const Key('new-venue-address'),
-          controller: _address,
-          maxLength: 240,
-          decoration: sheetInput(context, 'Street address'),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          key: const Key('new-venue-area'),
-          controller: _area,
-          maxLength: 80,
-          decoration: sheetInput(context, 'Neighborhood or city'),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          _pin == null
-              ? 'TAP THE MAP TO PLACE THE REQUIRED PIN'
-              : 'MAP PIN SET ✓',
-          style: epText(
-            size: 11,
-            weight: FontWeight.w900,
-            color: _pin == null
-                ? context.epColors.warning
-                : context.epColors.accent,
-          ),
-        ),
-        const SizedBox(height: 7),
-        SizedBox(
-          key: const Key('new-venue-map'),
-          height: 220,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: EpMap(
-              options: MapOptions(
-                initialCenter: center,
-                initialZoom: 11.5,
-                backgroundColor: context.epColors.background,
-                onTap: (_, point) => setState(() => _pin = point),
-              ),
-              layers: [
-                if (_pin case final pin?)
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: pin,
-                        width: 40,
-                        height: 40,
-                        child: Icon(
-                          Icons.location_pin,
-                          color: context.epColors.accent,
-                          size: 40,
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-        ),
-        if (_error case final error?) ...[
-          const SizedBox(height: 8),
-          Text(error, style: epText(size: 11, color: context.epColors.warning)),
-        ],
-        const SizedBox(height: 12),
-        EpButton(
-          _saving ? 'CREATING…' : 'CREATE & SELECT VENUE',
-          kind: _saving ? EpButtonKind.disabled : EpButtonKind.filled,
-          onTap: _saving ? null : _save,
-        ),
-      ],
-    );
-  }
-}
-
-// ---------------------------- price ----------------------------
-
-const _presetPrices = ['FREE', '\$5', '\$8', '\$10', '\$12', '\$15'];
-
-void showPriceSheet(BuildContext context) {
-  showEpSheet(
-    context,
-    (_) => const _Sheet(title: 'Cover', child: _PriceBody()),
-  );
-}
-
-class _PriceBody extends StatefulWidget {
-  const _PriceBody();
-
-  @override
-  State<_PriceBody> createState() => _PriceBodyState();
-}
-
-class _PriceBodyState extends State<_PriceBody> {
-  late final TextEditingController _custom;
-
-  @override
-  void initState() {
-    super.initState();
-    final price = context.read<AppState>().gfPrice;
-    _custom = TextEditingController(
-      text: _presetPrices.contains(price) ? '' : price.replaceAll('\$', ''),
-    );
-  }
-
-  @override
-  void dispose() {
-    _custom.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final isCustom = !_presetPrices.contains(app.gfPrice);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Wrap(
-          spacing: 7,
-          runSpacing: 7,
-          children: [
-            for (final price in _presetPrices)
-              EpChip(
-                label: price,
-                active: app.gfPrice == price,
-                onTap: () {
-                  app.setGfPrice(price);
-                  Navigator.pop(context);
-                },
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-          decoration: BoxDecoration(
-            color: isCustom
-                ? context.epColors.surfaceSelected
-                : context.epColors.background,
-            border: isCustom
-                ? Border.all(color: context.epColors.accent, width: 1.5)
-                : Border.all(color: context.epColors.border),
-            borderRadius: BorderRadius.circular(11),
-          ),
-          child: Row(
-            children: [
-              Text(
-                '\$',
-                style: epDisplay(
-                  size: 19,
-                  color: context.epColors.contentSecondary,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _custom,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  onChanged: (value) {
-                    final amount = int.tryParse(value) ?? 0;
-                    app.setGfPrice(amount == 0 ? 'FREE' : '\$$amount');
-                  },
-                  style: epText(size: 16, weight: FontWeight.w800),
-                  decoration: epCollapsedInputDecoration(
-                    'Other amount',
-                    hintStyle: epText(
-                      size: 16,
-                      weight: FontWeight.w800,
-                      color: context.epColors.contentDisabled,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                'AT THE DOOR',
-                style: epText(
-                  size: 11,
-                  weight: FontWeight.w800,
-                  letterSpacing: .6,
-                  color: context.epColors.contentDisabled,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          'Free gigs get roughly twice the RSVPs. Sliding scale? Put the range '
-          'in the gig name.',
-          style: epText(
-            size: 11,
-            color: context.epColors.contentDisabled,
-            height: 1.45,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ---------------------------- tickets ----------------------------
-
-const _presetCaps = ['No cap', '50', '100', '150'];
-
-void showTicketsSheet(BuildContext context) {
-  showEpSheet(
-    context,
-    (_) => const _Sheet(title: 'Tickets', child: _TicketsBody()),
-  );
-}
-
-class _TicketsBody extends StatefulWidget {
-  const _TicketsBody();
-
-  @override
-  State<_TicketsBody> createState() => _TicketsBodyState();
-}
-
-class _TicketsBodyState extends State<_TicketsBody> {
-  late final TextEditingController _cap;
-  late final TextEditingController _ext;
-
-  @override
-  void initState() {
-    super.initState();
-    final app = context.read<AppState>();
-    _cap = TextEditingController(
-      text: _presetCaps.contains(app.gfCap) ? '' : app.gfCap,
-    );
-    _ext = TextEditingController(text: app.gfExt);
-  }
-
-  @override
-  void dispose() {
-    _cap.dispose();
-    _ext.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    final capIsCustom = !_presetCaps.contains(app.gfCap);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _OptionCard(
-          title: 'In-app RSVP',
-          subtitle: 'Free headcount, QR at the door, optional cap',
-          selected: app.gfTix == Ticketing.rsvp,
-          onTap: () => app.setGfTix(Ticketing.rsvp),
-        ),
-        if (app.gfTix == Ticketing.rsvp)
-          Padding(
-            padding: const EdgeInsets.only(left: 6, top: 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    for (final cap in _presetCaps)
-                      EpChip(
-                        label: cap,
-                        active: app.gfCap == cap,
-                        onTap: () => app.setGfCap(cap),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 13,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: capIsCustom
-                        ? context.epColors.surfaceSelected
-                        : context.epColors.background,
-                    border: capIsCustom
-                        ? Border.all(color: context.epColors.accent, width: 1.5)
-                        : Border.all(color: context.epColors.border),
-                    borderRadius: BorderRadius.circular(11),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _cap,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          onChanged: (value) {
-                            final spots = int.tryParse(value) ?? 0;
-                            app.setGfCap(spots <= 0 ? 'No cap' : '$spots');
-                          },
-                          style: epText(size: 14, weight: FontWeight.w800),
-                          decoration: epCollapsedInputDecoration(
-                            'Other cap',
-                            hintStyle: epText(
-                              size: 14,
-                              weight: FontWeight.w800,
-                              color: context.epColors.contentDisabled,
-                            ),
-                          ),
-                        ),
-                      ),
-                      Text(
-                        'SPOTS',
-                        style: epText(
-                          size: 11,
-                          weight: FontWeight.w800,
-                          letterSpacing: .6,
-                          color: context.epColors.contentDisabled,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        const SizedBox(height: 10),
-        _OptionCard(
-          title: 'External ticket link',
-          subtitle: 'DICE, Eventbrite, venue box office…',
-          selected: app.gfTix == Ticketing.external,
-          onTap: () => app.setGfTix(Ticketing.external),
-        ),
-        if (app.gfTix == Ticketing.external)
-          Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: TextField(
-              controller: _ext,
-              keyboardType: TextInputType.url,
-              onChanged: app.setGfExt,
-              style: epText(size: 12.5),
-              decoration: sheetInput(context, 'https://…').copyWith(
-                errorText:
-                    app.gfExt.trim().isNotEmpty && !app.validExternalTicketUrl
-                    ? 'Enter a complete HTTPS URL.'
-                    : null,
-              ),
-            ),
-          ),
-        const SizedBox(height: 14),
-        const DoneButton(),
-      ],
-    );
-  }
-}
-
-// ============================ fan preview ============================
-
-class _DraftPreview extends StatelessWidget {
-  const _DraftPreview();
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    return ColoredBox(
-      color: context.epColors.background,
-      child: GigDetailPresentation(
-        key: const ValueKey('redesigned-gig-draft-preview'),
-        gig: _draftGig(app),
-        app: app,
-        performers: app.gfPerformers,
-        previewLabel: app.gigPreviewLabel,
-        onBack: app.closeGigPreview,
-        flyerBytes: app.gfFlyerArt?.bytes,
-        venueSet: app.gfVenueId != null,
-      ),
-    );
-  }
-}
-
-Gig _draftGig(AppState app) {
-  final draftDate = app.gfDate;
-  final date = draftDate ?? DateTime.now();
-  final doorsAt = DateTime(
-    date.year,
-    date.month,
-    date.day,
-    app.gfDoors.hour,
-    app.gfDoors.minute,
-  );
-  var startsAt = DateTime(
-    date.year,
-    date.month,
-    date.day,
-    app.gfStart.hour,
-    app.gfStart.minute,
-  );
-  if (startsAt.isBefore(doorsAt)) {
-    startsAt = startsAt.add(const Duration(days: 1));
-  }
-  final price =
-      int.tryParse(app.gfPrice.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
-  final lineup = [
-    for (final performer in app.gfPerformers)
-      if (performer.bandId != null) performer.bandId!,
-  ];
-  final genres = <String>{
-    for (final bandId in lineup) ...?app.band(bandId)?.genres,
-  }.toList();
-
-  return Gig(
-    id: 'draft-preview',
-    title: app.gfName.trim().isEmpty ? 'Untitled gig' : app.gfName.trim(),
-    venueId: app.gfVenueId ?? '',
-    price: price,
-    startsAt: startsAt,
-    doorsAt: doorsAt,
-    dateShort: draftDate == null
-        ? 'DATE NOT SET'
-        : Gig.dateShortFor(doorsAt.millisecondsSinceEpoch),
-    dateLine: draftDate == null
-        ? 'DATE NOT SET · DOORS ${app.gfDoorsLabel}'
-        : Gig.dateLineFor(
-            startsAt.millisecondsSinceEpoch,
-            '${app.gfDoorsLabel} / ${app.gfStartLabel}',
-          ),
-    time: '${app.gfDoorsLabel} / ${app.gfStartLabel}',
-    when: Gig.whenFor(startsAt.millisecondsSinceEpoch),
-    flyKey: app.gfFly,
-    lineup: lineup,
-    performers: List.of(app.gfPerformers),
-    going: 0,
-    genres: genres,
-    desc: app.gfDesc,
-    tix: app.gfTix,
-    externalUrl: app.gfExt.trim().isEmpty ? null : app.gfExt.trim(),
-    flyerUrl: app.gfFlyerUrl,
-    cap: app.gfCap,
-    ageRequirement: app.gfAgeRequirement,
-    lifecycle: GigLifecycle.unpublished,
-    createdByBand: app.bandId.isEmpty ? null : app.bandId,
-  );
-}
-
-// ============================ published ============================
-
-class _PublishedView extends StatelessWidget {
-  const _PublishedView();
-
-  @override
-  Widget build(BuildContext context) {
-    final app = context.watch<AppState>();
-    return ColoredBox(
-      color: context.epColors.background,
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'PUBLISHED',
-                style: epText(
-                  size: 11,
-                  weight: FontWeight.w900,
-                  letterSpacing: 2,
-                  color: context.epColors.accent,
-                ),
-              ),
-              const SizedBox(height: 16),
-              TweenAnimationBuilder<double>(
-                tween: Tween(begin: .9, end: 1),
-                duration: const Duration(milliseconds: 350),
-                curve: Curves.easeOutBack,
-                builder: (_, scale, child) =>
-                    Transform.scale(scale: scale, child: child),
-                child: const _Poster(width: 212, height: 280),
-              ),
-              const SizedBox(height: 16),
-              Text("IT'S LIVE.", style: epDisplay(size: 20)),
-              const SizedBox(height: 4),
-              Text(
-                app.gigUrl,
-                style: epText(
-                  size: 12,
-                  color: context.epColors.contentSecondary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: 300,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: EpButton(
-                        'SHARE LINK',
-                        fontSize: 11.5,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        onTap: () => copyForUser(
-                          context,
-                          'https://${app.gigUrl}',
-                          successMessage: 'Link copied: ${app.gigUrl}',
-                        ),
-                      ),
-                    ),
-                    if (app.gfProject?.ticketing == Ticketing.rsvp) ...[
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: EpButton(
-                          'DOOR MODE',
-                          kind: EpButtonKind.ghost,
-                          fontSize: 11.5,
-                          padding: const EdgeInsets.symmetric(vertical: 13),
-                          onTap: () => showDoorMode(
-                            context,
-                            DoorModeLaunch(
-                              projectId: app.gfProject!.id,
-                              gigTitle: app.gfName.trim().isEmpty
-                                  ? 'Untitled gig'
-                                  : app.gfName,
-                              venueName: app.gfVenueId == null
-                                  ? 'Venue TBD'
-                                  : app.venue(app.gfVenueId!).name,
-                              doorsTime: app.gfDoorsLabel,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  TextAction(
-                    'KEEP EDITING',
-                    onTap: app.editPublishedGig,
-                    color: context.epColors.contentSecondary,
-                    size: 11,
-                    letterSpacing: .6,
-                  ),
-                  TextAction(
-                    'MAKE ANOTHER',
-                    onTap: app.makeAnotherGig,
-                    size: 11,
-                    letterSpacing: .6,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              TextAction(
-                'BACK TO GIGS',
-                onTap: app.closeGigCreate,
-                color: context.epColors.contentDisabled,
-                size: 11,
-                letterSpacing: .6,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

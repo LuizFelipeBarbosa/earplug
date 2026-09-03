@@ -49,7 +49,7 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  String? _method; // 'Apple' | 'Google' | 'Email' | 'Phone'
+  String? _method; // 'Apple' | 'Google' | 'Email'
   bool _leaving = false;
   bool _completionScheduled = false;
   PendingKind? _completedKind;
@@ -157,7 +157,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
 // ========================= the door =========================
 
-enum _EntryStage { providers, email, emailCode, phone, phoneCode }
+enum _EntryStage { providers, email, emailCode }
 
 class _DoorStep extends StatefulWidget {
   final AppState app;
@@ -178,7 +178,6 @@ class _DoorStep extends StatefulWidget {
 
 class _DoorStepState extends State<_DoorStep> {
   final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
   final _codeController = TextEditingController();
 
   _EntryStage _stage = _EntryStage.providers;
@@ -198,7 +197,6 @@ class _DoorStepState extends State<_DoorStep> {
   @override
   void dispose() {
     _emailController.dispose();
-    _phoneController.dispose();
     _codeController.dispose();
     super.dispose();
   }
@@ -263,29 +261,9 @@ class _DoorStepState extends State<_DoorStep> {
 
   List<Widget> _buildProviders() {
     final locked = _loading || widget.app.authStep == 2;
-    final supportsEmail = widget.app.auth.supportsEmailSignIn;
-    final supportsPhone = widget.app.auth.supportsPhoneSignIn;
-
-    final Widget? codeMethods;
-    if (supportsEmail && supportsPhone) {
-      codeMethods = Row(
-        children: [
-          Expanded(
-            child: _MethodTile('EMAIL', onTap: locked ? null : _showEmail),
-          ),
-          const SizedBox(width: 9),
-          Expanded(
-            child: _MethodTile('PHONE', onTap: locked ? null : _showPhone),
-          ),
-        ],
-      );
-    } else if (supportsEmail) {
-      codeMethods = _MethodTile('EMAIL', onTap: locked ? null : _showEmail);
-    } else if (supportsPhone) {
-      codeMethods = _MethodTile('PHONE', onTap: locked ? null : _showPhone);
-    } else {
-      codeMethods = null;
-    }
+    final codeMethods = widget.app.auth.supportsEmailSignIn
+        ? _MethodTile('EMAIL', onTap: locked ? null : _showEmail)
+        : null;
 
     return [
       if (widget.app.auth.supportsAppleSignIn) ...[
@@ -328,19 +306,6 @@ class _DoorStepState extends State<_DoorStep> {
             if (_stage == _EntryStage.email) _sendEmailCode();
           },
         ),
-      if (_stage == _EntryStage.phone || _stage == _EntryStage.phoneCode)
-        TextField(
-          controller: _phoneController,
-          enabled: !_loading && _stage == _EntryStage.phone,
-          keyboardType: TextInputType.phone,
-          autofillHints: const [AutofillHints.telephoneNumber],
-          autocorrect: false,
-          style: epText(size: 14),
-          decoration: epInputDecoration(context, '+1 555 555 0100'),
-          onSubmitted: (_) {
-            if (_stage == _EntryStage.phone) _sendPhoneCode();
-          },
-        ),
       const SizedBox(height: 10),
       if (_stage == _EntryStage.email)
         EpButton(
@@ -348,18 +313,8 @@ class _DoorStepState extends State<_DoorStep> {
           kind: _loading ? EpButtonKind.disabled : EpButtonKind.filled,
           onTap: _loading ? null : _sendEmailCode,
         ),
-      if (_stage == _EntryStage.phone)
-        EpButton(
-          _loading ? 'SENDING…' : 'SEND CODE',
-          kind: _loading ? EpButtonKind.disabled : EpButtonKind.filled,
-          onTap: _loading ? null : _sendPhoneCode,
-        ),
-      if (_stage == _EntryStage.emailCode)
-        _buildCodeEntry(verify: _verifyEmailCode, resend: _sendEmailCode),
-      if (_stage == _EntryStage.phoneCode)
-        _buildCodeEntry(verify: _verifyPhoneCode, resend: _sendPhoneCode),
-      if ((_stage == _EntryStage.email || _stage == _EntryStage.phone) &&
-          _error != null) ...[
+      if (_stage == _EntryStage.emailCode) _buildCodeEntry(),
+      if (_stage == _EntryStage.email && _error != null) ...[
         const SizedBox(height: 9),
         _InlineError(_error!),
       ],
@@ -368,10 +323,7 @@ class _DoorStepState extends State<_DoorStep> {
     ];
   }
 
-  Widget _buildCodeEntry({
-    required Future<void> Function() verify,
-    required Future<void> Function() resend,
-  }) {
+  Widget _buildCodeEntry() {
     final codeComplete = RegExp(
       r'^\d{6}$',
     ).hasMatch(_codeController.text.trim());
@@ -394,7 +346,7 @@ class _DoorStepState extends State<_DoorStep> {
             '6-digit code',
           ).copyWith(counterText: ''),
           maxLength: 6,
-          onSubmitted: (_) => verify(),
+          onSubmitted: (_) => _verifyEmailCode(),
         ),
         const SizedBox(height: 10),
         EpButton(
@@ -402,7 +354,7 @@ class _DoorStepState extends State<_DoorStep> {
           kind: _loading || !codeComplete
               ? EpButtonKind.disabled
               : EpButtonKind.filled,
-          onTap: _loading || !codeComplete ? null : verify,
+          onTap: _loading || !codeComplete ? null : _verifyEmailCode,
         ),
         if (_error != null) ...[
           const SizedBox(height: 9),
@@ -411,7 +363,7 @@ class _DoorStepState extends State<_DoorStep> {
         const SizedBox(height: 12),
         TextAction(
           'RESEND CODE',
-          onTap: _loading ? null : resend,
+          onTap: _loading ? null : _sendEmailCode,
           color: context.epColors.accent,
         ),
       ],
@@ -426,21 +378,12 @@ class _DoorStepState extends State<_DoorStep> {
     });
   }
 
-  void _showPhone() {
-    widget.onPick('Phone');
-    setState(() {
-      _stage = _EntryStage.phone;
-      _error = null;
-    });
-  }
-
   void _showProviders() {
     widget.onClearPick();
     setState(() {
       _stage = _EntryStage.providers;
       _error = null;
       _emailController.clear();
-      _phoneController.clear();
       _codeController.clear();
     });
   }
@@ -486,43 +429,7 @@ class _DoorStepState extends State<_DoorStep> {
     }
   }
 
-  Future<void> _sendPhoneCode() async {
-    final phoneNumber = _phoneController.text.replaceAll(
-      RegExp(r'[\s\-().]'),
-      '',
-    );
-    if (!phoneNumber.startsWith('+')) {
-      setState(() => _error = 'Include your country code, e.g. +1');
-      return;
-    }
-
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      await widget.app.auth.startPhoneSignIn(phoneNumber);
-      if (!mounted) return;
-      setState(() {
-        _stage = _EntryStage.phoneCode;
-        _codeController.clear();
-      });
-    } catch (error) {
-      if (mounted) setState(() => _error = _messageFor(error));
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _verifyEmailCode() {
-    return _verifyCode(widget.app.auth.verifyEmailCode);
-  }
-
-  Future<void> _verifyPhoneCode() {
-    return _verifyCode(widget.app.auth.verifyPhoneCode);
-  }
-
-  Future<void> _verifyCode(Future<bool> Function(String code) verify) async {
+  Future<void> _verifyEmailCode() async {
     final code = _codeController.text.trim();
     if (!RegExp(r'^\d{6}$').hasMatch(code)) {
       setState(() => _error = 'Enter the 6-digit code.');
@@ -533,7 +440,7 @@ class _DoorStepState extends State<_DoorStep> {
       _error = null;
     });
     try {
-      final verified = await verify(code);
+      final verified = await widget.app.auth.verifyEmailCode(code);
       if (!verified && mounted) {
         setState(() => _error = 'That code is wrong or expired.');
       }

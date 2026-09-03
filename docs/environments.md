@@ -42,12 +42,10 @@ look for:
   webhook endpoint/instance. It must pair with the same deployment as the
   issuer domain. Configure the endpoint as `POST /clerk-webhook` on the
   deployment's `.convex.site` host, not `.convex.cloud`.
-- `CLERK_SECRET_KEY` exists on both deployments and is read by
-  `clerkBackfill:backfillEmails`; no client code ever sees it. It must belong
-  to the same Clerk instance as the issuer and webhook secret. A `sk_live_`
-  key used against dev (or a test key against prod) returns zero matches for
-  every id and reports `skippedNotFoundInClerk: 146` with no other symptom —
-  indistinguishable from “Clerk has no record of these users”.
+- `CLERK_SECRET_KEY` exists on both deployments; no client code ever sees it,
+  and no Convex function currently reads it (the one-off email backfill that
+  did has been removed). It must still belong to the same Clerk instance as
+  the issuer and webhook secret.
 
 ## Building
 
@@ -116,14 +114,12 @@ permits caching. No region download or public OSM fallback is configured.
 ## Sign-in capabilities
 
 Both environment files deliberately expose the same product surface: Email
-Code and Google are enabled; Phone and Apple are disabled. The four explicit
-flags are `EMAIL_SIGN_IN_ENABLED`, `PHONE_SIGN_IN_ENABLED`,
-`GOOGLE_SIGN_IN_ENABLED`, and `APPLE_SIGN_IN_ENABLED`.
+Code and Google are enabled; Apple is disabled. The three explicit flags are
+`EMAIL_SIGN_IN_ENABLED`, `GOOGLE_SIGN_IN_ENABLED`, and `APPLE_SIGN_IN_ENABLED`.
 
 | Method | Environment policy | Web | Mobile |
 |---|---|---|---|
 | Email code | enabled | shown | shown |
-| Phone code | disabled | hidden | hidden |
 | Google | enabled | shown | hidden until native credentials exist |
 | Apple | disabled | hidden | hidden |
 

@@ -7,11 +7,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
-import {
-  requireBandAdmin,
-  requireBandAdminQuery,
-  requireUser,
-} from "./lib/helpers";
+import { requireBandRole, requireUser } from "./lib/helpers";
 
 const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -141,7 +137,7 @@ export const manage = query({
   args: { bandId: v.id("bands") },
   returns: v.union(invitePayloadValidator, v.null()),
   handler: async (ctx, args) => {
-    await requireBandAdminQuery(ctx, args.bandId);
+    await requireBandRole(ctx, args.bandId, { role: "admin" });
     const invite = await ctx.db
       .query("bandInvites")
       .withIndex("by_band", (q) => q.eq("bandId", args.bandId))
@@ -155,7 +151,7 @@ export const create = mutation({
   args: { bandId: v.id("bands") },
   returns: invitePayloadValidator,
   handler: async (ctx, args) => {
-    const user = await requireBandAdmin(ctx, args.bandId);
+    const { user } = await requireBandRole(ctx, args.bandId, { role: "admin" });
     const existing = await ctx.db
       .query("bandInvites")
       .withIndex("by_band", (q) => q.eq("bandId", args.bandId))
@@ -176,7 +172,7 @@ export const rotate = mutation({
   args: { bandId: v.id("bands") },
   returns: invitePayloadValidator,
   handler: async (ctx, args) => {
-    const user = await requireBandAdmin(ctx, args.bandId);
+    const { user } = await requireBandRole(ctx, args.bandId, { role: "admin" });
     const existing = await ctx.db
       .query("bandInvites")
       .withIndex("by_band", (q) => q.eq("bandId", args.bandId))
@@ -193,7 +189,7 @@ export const revoke = mutation({
   args: { bandId: v.id("bands") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireBandAdmin(ctx, args.bandId);
+    await requireBandRole(ctx, args.bandId, { role: "admin" });
     const existing = await ctx.db
       .query("bandInvites")
       .withIndex("by_band", (q) => q.eq("bandId", args.bandId))

@@ -33,6 +33,25 @@ class MediaUpload {
   // them or every completed video could retain another 25 MB.
   final PickedMedia? payload;
   final Uint8List? preview;
+
+  /// `error` and `payload` are nullable, so they take a getter: omit it to
+  /// keep the current value, pass `() => null` to clear it.
+  MediaUpload copyWith({
+    MediaUploadPhase? phase,
+    ValueGetter<String?>? error,
+    ValueGetter<PickedMedia?>? payload,
+    Uint8List? preview,
+  }) => MediaUpload(
+    id: id,
+    bandId: bandId,
+    kind: kind,
+    filename: filename,
+    sizeBytes: sizeBytes,
+    phase: phase ?? this.phase,
+    error: error == null ? this.error : error(),
+    payload: payload == null ? this.payload : payload(),
+    preview: preview ?? this.preview,
+  );
 }
 
 class BandMediaController extends ChangeNotifier {
@@ -144,12 +163,6 @@ class BandMediaController extends ChangeNotifier {
 
   List<MediaUpload> uploadsFor(String bandId) =>
       List<MediaUpload>.unmodifiable(_uploads[bandId] ?? const []);
-
-  bool isUploading(String bandId) => uploadsFor(bandId).any(
-    (upload) =>
-        upload.phase != MediaUploadPhase.failed &&
-        upload.phase != MediaUploadPhase.done,
-  );
 
   Future<void> pickAndUploadVideo(String bandId) async {
     final PickedMedia? media;
@@ -279,17 +292,10 @@ class BandMediaController extends ChangeNotifier {
     final index = uploads?.indexWhere((upload) => upload.id == uploadId) ?? -1;
     if (uploads == null || index == -1) return;
 
-    final current = uploads[index];
-    uploads[index] = MediaUpload(
-      id: current.id,
-      bandId: current.bandId,
-      kind: current.kind,
-      filename: current.filename,
-      sizeBytes: current.sizeBytes,
+    uploads[index] = uploads[index].copyWith(
       phase: phase,
-      error: error,
-      payload: phase == MediaUploadPhase.done ? null : current.payload,
-      preview: current.preview,
+      error: () => error,
+      payload: phase == MediaUploadPhase.done ? () => null : null,
     );
     notifyListeners();
   }
@@ -298,18 +304,7 @@ class BandMediaController extends ChangeNotifier {
     final uploads = _uploads[bandId];
     final index = uploads?.indexWhere((upload) => upload.id == uploadId) ?? -1;
     if (uploads == null || index == -1) return;
-    final current = uploads[index];
-    uploads[index] = MediaUpload(
-      id: current.id,
-      bandId: current.bandId,
-      kind: current.kind,
-      filename: current.filename,
-      sizeBytes: current.sizeBytes,
-      phase: current.phase,
-      error: current.error,
-      payload: current.payload,
-      preview: preview,
-    );
+    uploads[index] = uploads[index].copyWith(preview: preview);
     notifyListeners();
   }
 
@@ -364,17 +359,6 @@ class BandMediaController extends ChangeNotifier {
 
   Future<void> remove(String bandId, String mediaId) async {
     await _mutate(bandId, () => repository.deleteBandMedia(mediaId));
-  }
-
-  Future<void> setHero(String bandId, String mediaId) async {
-    await _mutate(
-      bandId,
-      () => repository.setBandBanner(bandId: bandId, mediaId: mediaId),
-    );
-  }
-
-  Future<void> clearHero(String bandId) async {
-    await _mutate(bandId, () => repository.clearBandBanner(bandId));
   }
 
   Future<bool> setAvatar(String bandId, String mediaId) => _mutateResult(

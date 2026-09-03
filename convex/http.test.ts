@@ -542,7 +542,9 @@ describe("Clerk user deletion tombstones", () => {
     ).rejects.toThrow("Account deleted");
     expect(await asDeletedUser.query(api.users.me, {})).toBeNull();
     await expect(
-      asDeletedUser.mutation(api.users.setGenres, { genres: ["punk"] }),
+      asDeletedUser.mutation(api.users.setProfileTutorialCompleted, {
+        completed: true,
+      }),
     ).rejects.toThrow("Account deleted");
     const row = await t.run(async (ctx) => ctx.db.get(userId));
     expect(row?.deletedAt).toBe(1);

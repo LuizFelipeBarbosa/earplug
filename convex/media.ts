@@ -16,7 +16,7 @@ import {
   assertVideoThumbnailAcceptable,
   mediaKindValidator,
   mediaPayloadValidator,
-  requireBandAdmin,
+  requireBandRole,
   toMediaPayload,
 } from "./lib/helpers";
 
@@ -36,7 +36,7 @@ async function mediaForAdmin(
 ): Promise<Doc<"bandMedia">> {
   const media = await ctx.db.get(mediaId);
   if (!media) throw new Error("Media not found");
-  await requireBandAdmin(ctx, media.bandId);
+  await requireBandRole(ctx, media.bandId, { role: "admin" });
   return media;
 }
 
@@ -44,7 +44,7 @@ export const generateUploadUrl = mutation({
   args: { bandId: v.id("bands") },
   returns: v.string(),
   handler: async (ctx, args) => {
-    await requireBandAdmin(ctx, args.bandId);
+    await requireBandRole(ctx, args.bandId, { role: "admin" });
     // The row cap belongs in addMedia because this URL also uploads gig flyers.
     return await ctx.storage.generateUploadUrl();
   },
@@ -62,7 +62,7 @@ export const addMedia = mutation({
   },
   returns: v.object({ mediaId: v.id("bandMedia") }),
   handler: async (ctx, args) => {
-    const user = await requireBandAdmin(ctx, args.bandId);
+    const { user } = await requireBandRole(ctx, args.bandId, { role: "admin" });
     const media = await ctx.db
       .query("bandMedia")
       .withIndex("by_band_order", (q) => q.eq("bandId", args.bandId))
@@ -353,7 +353,10 @@ export const sweepOrphanBlobs = internalMutation({
       .withIndex("by_name")
       .take(2000);
     const gigs = await ctx.db.query("gigs").withIndex("by_startsAt").take(2000);
-    const gigProjects = await ctx.db.query("gigProjects").take(2000);
+    const gigProjects = await ctx.db
+      .query("gigProjects")
+      .withIndex("by_band_and_status")
+      .take(2000);
     const users = await ctx.db
       .query("users")
       .withIndex("by_clerk_id")

@@ -11,6 +11,7 @@ import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/accessibility.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
 
@@ -290,6 +291,19 @@ void main() {
     );
     expect(disabledCreate.onPressed, isNull);
     expect(app.nbCreated, isFalse);
+  });
+
+  testWidgets('band creation is usable at increased text scale', (
+    tester,
+  ) async {
+    await pumpApp(
+      tester,
+      beforePump: (app) => app.startBandCreate(),
+      home: scaledScreen(const BandCreateScreen()),
+    );
+
+    expect(find.text('CREATE BAND'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
   });
 }
 

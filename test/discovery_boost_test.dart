@@ -1,8 +1,8 @@
-import 'dart:ui';
-
 import 'package:earplug/app_state.dart';
 import 'package:earplug/models.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/fixtures.dart';
 
 void main() {
   group('discovery boost eligibility', () {
@@ -198,14 +198,8 @@ void main() {
   });
 }
 
-Band _band(String id, {required bool discoveryReady}) => Band(
+Band _band(String id, {required bool discoveryReady}) => bandFixture(
   id: id,
-  name: id,
-  genres: const ['punk'],
-  area: 'Oakland',
-  color: const Color(0xFF7B8FFF),
-  initials: 'BD',
-  followers: 1,
   bio: 'bio',
   profileComplete: true,
   discoveryProfileReady: discoveryReady,
@@ -216,22 +210,16 @@ Gig _gig(
   required DateTime startsAt,
   String? creator,
   bool listingReady = false,
-}) => Gig(
+}) => gigFixture(
   id: id,
-  title: id,
   venueId: id,
-  price: 0,
   startsAt: startsAt,
   dateShort: 'MON AUG 24',
   dateLine: 'MON · DOORS 8PM',
-  time: '8PM / 9PM',
   when: GigWhen.week,
   flyKey: 'xerox',
   lineup: creator == null ? const [] : [creator],
-  going: 0,
   genres: const ['punk'],
-  desc: '',
-  tix: Ticketing.rsvp,
   createdByBand: creator,
   discoveryListingReady: listingReady,
 );

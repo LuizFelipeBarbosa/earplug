@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:ui' show Color;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show TimeOfDay;
 import 'package:latlong2/latlong.dart';
 
 import '../app_links.dart';
 import '../band_identity.dart';
+import '../date_names.dart';
 import '../demo_data.dart';
 import '../models.dart';
 import '../services/auth_service.dart';
@@ -289,19 +291,6 @@ class DemoRepository implements EarplugRepository {
   Future<void> moveMediaWithinKind(String mediaId, String direction) =>
       moveBandMedia(mediaId, direction == 'earlier' ? 'up' : 'down');
 
-  @override
-  Future<void> setBandPhoto({
-    required String bandId,
-    required String mediaId,
-  }) async {
-    _requireOwnedPhoto(bandId, mediaId);
-    _heroByBand[bandId] = mediaId;
-    _avatarByBand[bandId] = mediaId;
-    _refreshBandReadiness(bandId);
-    _emitFeed();
-    _bandsController.add(_currentMemberships());
-  }
-
   void _requireOwnedPhoto(String bandId, String mediaId) {
     final media = _mediaListContaining(mediaId);
     final targetIndex = media?.indexWhere((item) => item.id == mediaId) ?? -1;
@@ -311,15 +300,6 @@ class DemoRepository implements EarplugRepository {
         target.bandId != bandId) {
       throw StateError('Band photo must be a photo owned by the same band.');
     }
-  }
-
-  @override
-  Future<void> clearBandPhoto(String bandId) async {
-    _heroByBand.remove(bandId);
-    _avatarByBand.remove(bandId);
-    _refreshBandReadiness(bandId);
-    _emitFeed();
-    _bandsController.add(_currentMemberships());
   }
 
   @override
@@ -558,8 +538,6 @@ class DemoRepository implements EarplugRepository {
       name: name.trim(),
       area: area.trim(),
       addr: address.trim(),
-      distSF: '—',
-      distOak: '—',
       point: LatLng(latitude, longitude),
     );
     _venues[venue.id] = venue;
@@ -708,13 +686,6 @@ class DemoRepository implements EarplugRepository {
   Future<void> ensureSave(String gigId) async {
     _savedGigIds.add(gigId);
     _emitInteractionsIfSignedIn();
-  }
-
-  @override
-  Future<void> setGenres(List<String> genres) async {
-    _userGenres
-      ..clear()
-      ..addAll(genres);
   }
 
   @override
@@ -1426,7 +1397,9 @@ class DemoRepository implements EarplugRepository {
     }
     final gigId = project.publicGigId ?? 'gx${_nextGigId++}';
     final slug = project.publicSlug ?? _uniqueGigSlug(project.title!);
-    final time = '${_demoTimeLabel(doorsAt)} / ${_demoTimeLabel(startsAt)}';
+    final time =
+        '${timeLabel(TimeOfDay.fromDateTime(doorsAt))} / '
+        '${timeLabel(TimeOfDay.fromDateTime(startsAt))}';
     final gig = Gig(
       id: gigId,
       slug: slug,
@@ -1597,58 +1570,6 @@ class DemoRepository implements EarplugRepository {
       fanName: _userName ?? 'Earplug Fan',
       checkedInAt: DateTime.now(),
     );
-  }
-
-  @override
-  Future<String> publishGig({
-    required String bandId,
-    required String title,
-    required int startsAt,
-    required String doorsTime,
-    required String venueId,
-    required int price,
-    required String flyKey,
-    String? flyStorageId,
-    required Ticketing ticketing,
-    required AgeRequirement ageRequirement,
-    String? externalUrl,
-    required String cap,
-  }) async {
-    final id = 'gx${_nextGigId++}';
-    final slug = _uniqueGigSlug(title);
-    final now = DateTime.now();
-    final bandName = _bands[bandId]?.name ?? '';
-    _publishedGigs.add(
-      Gig(
-        id: id,
-        slug: slug,
-        title: title,
-        venueId: venueId,
-        price: price,
-        startsAt: DateTime.fromMillisecondsSinceEpoch(startsAt),
-        dateShort: Gig.dateShortFor(startsAt),
-        dateLine: Gig.dateLineFor(startsAt, doorsTime, now: now),
-        time: doorsTime,
-        when: Gig.whenFor(startsAt, now: now),
-        flyKey: flyKey,
-        lineup: [bandId],
-        going: 0,
-        genres: const ['punk'],
-        desc:
-            '${ticketing == Ticketing.external ? 'Tickets via external link. ' : 'RSVP in app. '}'
-            'Listed by $bandName.',
-        tix: ticketing,
-        ageRequirement: ageRequirement,
-        externalUrl: externalUrl,
-        cap: cap,
-        createdByBand: bandId,
-        discoveryListingReady:
-            DemoData.venues.containsKey(venueId) &&
-            (flyKey != 'custom' || flyStorageId != null),
-      ),
-    );
-    _emitFeed();
-    return id;
   }
 
   GigProject _requireGigProject(String projectId) {
@@ -1852,12 +1773,4 @@ class DemoRepository implements EarplugRepository {
     }
     return null;
   }
-}
-
-String _demoTimeLabel(DateTime time) {
-  final hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
-  final minutes = time.minute == 0
-      ? ''
-      : ':${time.minute.toString().padLeft(2, '0')}';
-  return '$hour$minutes${time.hour < 12 ? 'AM' : 'PM'}';
 }

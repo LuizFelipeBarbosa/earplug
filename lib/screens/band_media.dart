@@ -241,11 +241,9 @@ class _MediaHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 12),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: context.epColors.border)),
-      ),
+    return ScreenHeader(
+      bottomPadding: 12,
+      filled: false,
       child: Row(
         children: [
           CircleIconButton(onTap: onBack),

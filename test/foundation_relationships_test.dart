@@ -10,6 +10,9 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/async.dart';
+import 'support/fixtures.dart';
+
 void main() {
   group('age requirements', () {
     test('parses wire values, labels them, and defaults legacy gigs', () {
@@ -81,22 +84,22 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _PagedRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
       app.go(Screen.explore);
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.exploreBandIds, ['b1', 'b2']);
       expect(app.hasMoreExploreBands, isTrue);
 
       app.loadMoreExploreBands();
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.exploreBandIds, ['b1', 'b2']);
       expect(app.exploreBandsError, contains('page failed'));
       expect(app.hasMoreExploreBands, isTrue);
 
       app.retryExploreBands();
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.exploreBandIds, ['b1', 'b2', 'b3']);
       expect(app.exploreBandsError, isNull);
       expect(app.hasMoreExploreBands, isFalse);
@@ -109,15 +112,15 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _MergePrecedenceRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
       app.go(Screen.explore);
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.band('b1')?.past, hasLength(4));
 
       repository.pageGate.complete();
-      await _flushAsyncWork();
+      await flushAsyncWork();
 
       expect(app.exploreBandIds, ['b1', 'directory-only']);
       expect(app.band('b1')?.bio, DemoData.bands['b1']!.bio);
@@ -131,7 +134,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _QueuedRefreshRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
       app.go(Screen.explore);
@@ -145,7 +148,7 @@ void main() {
       expect(repository.cursors, [null]);
 
       repository.releaseFirstPage.complete();
-      await _flushAsyncWork();
+      await flushAsyncWork();
 
       expect(repository.cursors, [null, null]);
       expect(app.exploreBandIds, contains(createdBandId));
@@ -156,22 +159,22 @@ void main() {
   test('venue detail retries, caches, and supports venue navigation', () async {
     final auth = FakeAuthService();
     final repository = _VenueRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
 
     expect(app.venueDetail('v1'), isNull);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.venueDetailError('v1'), contains('detail failed'));
 
     app.retryVenueDetail('v1');
-    await _flushAsyncWork();
+    await flushAsyncWork();
     final detail = app.venueDetail('v1');
     expect(detail?.venue.name, DemoData.venues['v1']!.name);
     expect(app.gig('g1'), same(DemoData.gigs.first));
     expect(repository.detailCalls, 2);
 
     expect(app.venueDetail('v1'), same(detail));
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(repository.detailCalls, 2);
 
     app.openVenue('v1');
@@ -184,9 +187,9 @@ void main() {
   test('knownVenue requests and resolves venues outside the feed', () async {
     final auth = FakeAuthService();
     final repository = _DeferredVenueDirectoryRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     var notifications = 0;
     app.addListener(() => notifications++);
 
@@ -196,7 +199,7 @@ void main() {
     expect(repository.directoryCalls, 1);
 
     repository.releaseDirectory.complete();
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     expect(
       app.knownVenue(repository.directoryVenue.id),
@@ -208,17 +211,17 @@ void main() {
   test('feed changes invalidate only affected venue details', () async {
     final auth = FakeAuthService();
     final repository = _RefreshingVenueRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
       await repository.dispose();
     });
 
     repository.emitFeed([repository.oldGig, repository.untouchedGig]);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.venueDetail('v1'), isNull);
     expect(app.venueDetail('v2'), isNull);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     final cachedChangedVenue = app.venueDetail('v1');
     final cachedUntouchedVenue = app.venueDetail('v2');
     expect(cachedChangedVenue?.gigs.single.id, repository.oldGig.id);
@@ -226,7 +229,7 @@ void main() {
     expect(repository.detailCalls, {'v1': 1, 'v2': 1});
 
     repository.emitFeed([repository.oldGig, repository.untouchedGig]);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.venueDetail('v1'), same(cachedChangedVenue));
     expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
     expect(repository.detailCalls, {'v1': 1, 'v2': 1});
@@ -235,7 +238,7 @@ void main() {
       going: repository.oldGig.going + 1,
     );
     repository.emitFeed([goingOnlyChangedGig, repository.untouchedGig]);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     // Going now comes from goingCounts and is intentionally excluded here.
     expect(app.venueDetail('v1'), same(cachedChangedVenue));
     expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
@@ -245,10 +248,10 @@ void main() {
       lifecycle: GigLifecycle.cancelled,
     );
     repository.emitFeed([lifecycleChangedGig, repository.untouchedGig]);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.venueDetail('v1'), isNull);
     expect(app.venueDetail('v2'), same(cachedUntouchedVenue));
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     expect(
       app.venueDetail('v1')?.gigs.single.lifecycle,
@@ -263,12 +266,12 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _SilentPublishRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.venueDetail('v1'), isNull);
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(repository.detailCalls, 1);
 
       app.startGigCreate();
@@ -279,7 +282,7 @@ void main() {
       expect(app.gfPublished, isTrue);
 
       expect(app.venueDetail('v1'), isNull);
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(repository.detailCalls, 2);
       expect(
         app.venueDetail('v1')?.gigs.map((gig) => gig.title),
@@ -291,7 +294,7 @@ void main() {
   test('save requests require auth and preserve a rejected intent', () async {
     final auth = FakeAuthService();
     final repository = _GatedSaveRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
 
     app.requestSave('g1');
@@ -300,13 +303,13 @@ void main() {
     expect(app.saved, isNot(contains('g1')));
 
     await auth.signInDemo();
-    await _flushAsyncWork();
+    await flushAsyncWork();
     final commit = app.commitAuth();
     expect(app.saved, isNot(contains('g1')));
 
     repository.saveGate.completeError(StateError('save failed'));
     await expectLater(commit, throwsStateError);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.saved, isNot(contains('g1')));
     expect(app.pending?.kind, PendingKind.save);
   });
@@ -315,22 +318,22 @@ void main() {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _GatedSaveRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     app.requestSave('g1');
     expect(app.saved, contains('g1'));
 
     repository.saveGate.completeError(StateError('save failed'));
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.saved, isNot(contains('g1')));
     expect(app.toast, isNotEmpty);
   });
 
   test('result type changes do not alter the submitted query', () {
     final auth = FakeAuthService();
-    final app = AppState(
+    final app = AppState.demo(
       repository: DemoRepository(auth: auth),
       auth: auth,
     );
@@ -420,8 +423,6 @@ class _DeferredVenueDirectoryRepository extends DemoRepository {
     name: 'Directory Hall',
     area: 'Richmond, SF',
     addr: '1 Directory Way, San Francisco',
-    distSF: '3.0 mi',
-    distOak: '10.0 mi',
     point: DemoData.venues['v1']!.point,
   );
   final releaseDirectory = Completer<void>();
@@ -509,14 +510,12 @@ class _MergePrecedenceRepository extends DemoRepository {
     past: const [],
   );
 
-  static const _directoryOnly = Band(
+  static final _directoryOnly = bandFixture(
     id: 'directory-only',
     name: 'Directory Only',
-    genres: ['punk'],
     area: 'Mission, SF',
-    color: Color(0xFF1435F0),
+    color: const Color(0xFF1435F0),
     initials: 'DO',
-    followers: 1,
     bio: 'Only returned by pagination.',
   );
 
@@ -543,19 +542,11 @@ class _GatedSaveRepository extends DemoRepository {
   Future<void> ensureSave(String gigId) => saveGate.future;
 }
 
-Future<void> _flushAsyncWork() async {
-  for (var i = 0; i < 5; i++) {
-    await Future<void>.delayed(Duration.zero);
-  }
-}
-
 Map<String, dynamic> _venueJson() => {
   '_id': 'v1',
   'name': 'Room One',
   'area': 'Mission, SF',
   'addr': '1 Main St',
-  'distSF': '1.0 mi',
-  'distOak': '8.0 mi',
   'lat': 37.75,
   'lng': -122.42,
 };

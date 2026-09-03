@@ -35,7 +35,7 @@ final class ClerkMobileAuth implements AuthService {
 
   Future<void>? _initialization;
   Future<void>? _googleInitialization;
-  ({_CodeFlow flow, Strategy strategy})? _pendingCodeFlow;
+  _CodeFlow? _pendingCodeFlow;
   bool _lastSignedIn = false;
 
   @override
@@ -52,9 +52,6 @@ final class ClerkMobileAuth implements AuthService {
 
   @override
   bool get supportsEmailSignIn => Env.emailSignInEnabled;
-
-  @override
-  bool get supportsPhoneSignIn => Env.phoneSignInEnabled;
 
   // OAuth methods combine product policy with native credential availability.
   // Web needs no native credentials, but mobile does. An enabled method remains
@@ -103,7 +100,7 @@ final class ClerkMobileAuth implements AuthService {
         identifier: identifier,
         strategy: Strategy.emailCode,
       );
-      _pendingCodeFlow = (flow: _CodeFlow.signIn, strategy: Strategy.emailCode);
+      _pendingCodeFlow = _CodeFlow.signIn;
     } catch (error) {
       if (!_isMissingIdentifier(error)) {
         throw AuthException(_messageFor(error));
@@ -115,10 +112,7 @@ final class ClerkMobileAuth implements AuthService {
           emailAddress: identifier,
           strategy: Strategy.emailCode,
         );
-        _pendingCodeFlow = (
-          flow: _CodeFlow.signUp,
-          strategy: Strategy.emailCode,
-        );
+        _pendingCodeFlow = _CodeFlow.signUp;
       } catch (signUpError) {
         throw AuthException(_messageFor(signUpError));
       }
@@ -126,67 +120,18 @@ final class ClerkMobileAuth implements AuthService {
   }
 
   @override
-  Future<bool> verifyEmailCode(String code) {
-    return _verifyCode(code, Strategy.emailCode);
-  }
-
-  @override
-  Future<void> startPhoneSignIn(String phoneNumber) async {
-    await initialize();
-    final identifier = phoneNumber.trim();
-    if (identifier.isEmpty) {
-      throw const AuthException('Enter your phone number.');
-    }
-
-    _pendingCodeFlow = null;
-    await _auth.resetClient();
-    try {
-      await _auth.attemptSignIn(
-        identifier: identifier,
-        strategy: Strategy.phoneCode,
-      );
-      _pendingCodeFlow = (flow: _CodeFlow.signIn, strategy: Strategy.phoneCode);
-    } catch (error) {
-      if (!_isMissingIdentifier(error)) {
-        throw AuthException(_messageFor(error));
-      }
-
-      await _auth.resetClient();
-      try {
-        await _auth.attemptSignUp(
-          phoneNumber: identifier,
-          strategy: Strategy.phoneCode,
-        );
-        _pendingCodeFlow = (
-          flow: _CodeFlow.signUp,
-          strategy: Strategy.phoneCode,
-        );
-      } catch (signUpError) {
-        throw AuthException(_messageFor(signUpError));
-      }
-    }
-  }
-
-  @override
-  Future<bool> verifyPhoneCode(String code) {
-    return _verifyCode(code, Strategy.phoneCode);
-  }
-
-  Future<bool> _verifyCode(String code, Strategy strategy) async {
+  Future<bool> verifyEmailCode(String code) async {
     await initialize();
     if (code.length != Strategy.numericalCodeLength) return false;
 
     try {
-      final pending = _pendingCodeFlow;
-      if (pending == null || pending.strategy != strategy) {
-        throw const AuthException('Send a verification code first.');
-      }
-
-      switch (pending.flow) {
+      switch (_pendingCodeFlow) {
         case _CodeFlow.signIn:
-          await _auth.attemptSignIn(strategy: strategy, code: code);
+          await _auth.attemptSignIn(strategy: Strategy.emailCode, code: code);
         case _CodeFlow.signUp:
-          await _auth.attemptSignUp(strategy: strategy, code: code);
+          await _auth.attemptSignUp(strategy: Strategy.emailCode, code: code);
+        case null:
+          throw const AuthException('Send a verification code first.');
       }
       return _auth.isSignedIn;
     } catch (error) {

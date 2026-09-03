@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../date_names.dart';
+import '../memo.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -57,12 +57,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
     return Column(
       children: [
-        Container(
-          padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 12),
-          decoration: BoxDecoration(
-            color: context.epColors.background,
-            border: Border(bottom: BorderSide(color: context.epColors.border)),
-          ),
+        ScreenHeader(
+          bottomPadding: 12,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -523,7 +519,7 @@ class _BandRow extends StatelessWidget {
   }
 }
 
-class _BrowseRows extends StatelessWidget {
+class _BrowseRows extends StatefulWidget {
   final AppState app;
   final bool showAllBands;
   final bool showAllVenues;
@@ -539,22 +535,24 @@ class _BrowseRows extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    final gigs = app.feed;
-    final tonight = gigs.where((gig) => gig.when == GigWhen.tonight).toList();
-    final tonightIds = tonight.map((gig) => gig.id).toSet();
-    final free = gigs
-        .where(
-          (gig) =>
-              gig.free &&
-              gig.when != GigWhen.later &&
-              !tonightIds.contains(gig.id),
-        )
-        .toList();
-    final featuredIds = {...tonightIds, for (final gig in free) gig.id};
-    final upcoming = gigs
-        .where((gig) => !featuredIds.contains(gig.id))
-        .toList();
+  State<_BrowseRows> createState() => _BrowseRowsState();
+}
+
+class _BrowseRowsState extends State<_BrowseRows> {
+  final Memo<
+    ({
+      List<Gig> gigs,
+      ExploreResultType type,
+      List<Venue>? venues,
+      bool showAllVenues,
+    }),
+    List<_BrowseRow>
+  >
+  _rowsMemo = Memo();
+
+  /// Partitions the feed into rows once per feed instance and scope. The
+  /// venue list is only read (and so only requested) when the scope shows it.
+  List<_BrowseRow> _browseRows(AppState app) {
     final type = app.exploreResultType;
     final showEvents =
         type == ExploreResultType.all || type == ExploreResultType.events;
@@ -562,57 +560,85 @@ class _BrowseRows extends StatelessWidget {
         type == ExploreResultType.all || type == ExploreResultType.bands;
     final showVenues =
         type == ExploreResultType.all || type == ExploreResultType.venues;
-    final rows = <_BrowseRow>[];
+    final inputs = (
+      gigs: app.feed,
+      type: type,
+      venues: showVenues ? app.venues : null,
+      showAllVenues: widget.showAllVenues,
+    );
+    return _rowsMemo(inputs, () {
+      final gigs = inputs.gigs;
+      final tonight = gigs.where((gig) => gig.when == GigWhen.tonight).toList();
+      final tonightIds = tonight.map((gig) => gig.id).toSet();
+      final free = gigs
+          .where(
+            (gig) =>
+                gig.free &&
+                gig.when != GigWhen.later &&
+                !tonightIds.contains(gig.id),
+          )
+          .toList();
+      final featuredIds = {...tonightIds, for (final gig in free) gig.id};
+      final upcoming = gigs
+          .where((gig) => !featuredIds.contains(gig.id))
+          .toList();
+      final rows = <_BrowseRow>[];
 
-    if (showEvents) {
-      if (tonight.isNotEmpty) {
-        rows.add(_BrowseSectionRow('TONIGHT NEAR YOU', tonight.length));
-        for (final gig in tonight) {
+      if (showEvents) {
+        if (tonight.isNotEmpty) {
+          rows.add(_BrowseSectionRow('TONIGHT NEAR YOU', tonight.length));
+          for (final gig in tonight) {
+            rows.add(_BrowseEventRow(gig));
+          }
+        }
+        if (free.isNotEmpty) {
+          rows.add(_BrowseSectionRow('FREE THIS WEEK', free.length));
+          for (final gig in free) {
+            rows.add(_BrowseEventRow(gig));
+          }
+        }
+        if (tonight.isEmpty && free.isEmpty && upcoming.isEmpty) {
+          rows.add(const _BrowseEmptyEventsRow());
+        }
+      }
+
+      if (showBands) {
+        rows.add(const _BrowseBandsRow());
+      }
+
+      if (inputs.venues case final venues?) {
+        rows.add(const _BrowseSpacerRow(10));
+        rows.add(const _BrowseVenueHeadingRow());
+        rows.add(const _BrowseSpacerRow(8));
+        if (venues.isEmpty) {
+          rows.add(const _BrowseVenueStateRow());
+        } else {
+          final visibleVenues = inputs.showAllVenues ? venues : venues.take(3);
+          for (final venue in visibleVenues) {
+            rows.add(_BrowseVenueRow(venue));
+          }
+        }
+      }
+
+      // Keep the mixed ALL directory compact near the top while still
+      // rendering every remaining event from the same filtered feed. In the
+      // EVENTS scope this naturally follows the two featured event groups.
+      if (showEvents && upcoming.isNotEmpty) {
+        rows.add(_BrowseSectionRow('UPCOMING', upcoming.length));
+        for (final gig in upcoming) {
           rows.add(_BrowseEventRow(gig));
         }
       }
-      if (free.isNotEmpty) {
-        rows.add(_BrowseSectionRow('FREE THIS WEEK', free.length));
-        for (final gig in free) {
-          rows.add(_BrowseEventRow(gig));
-        }
-      }
-      if (tonight.isEmpty && free.isEmpty && upcoming.isEmpty) {
-        rows.add(const _BrowseEmptyEventsRow());
-      }
-    }
+      return rows;
+    });
+  }
 
-    if (showBands) {
-      rows.add(const _BrowseBandsRow());
-    }
-
-    if (showVenues) {
-      rows.add(const _BrowseSpacerRow(10));
-      rows.add(const _BrowseVenueHeadingRow());
-      rows.add(const _BrowseSpacerRow(8));
-      final venues = app.venues;
-      if (venues.isEmpty) {
-        rows.add(const _BrowseVenueStateRow());
-      } else {
-        final visibleVenues = showAllVenues ? venues : venues.take(3);
-        for (final venue in visibleVenues) {
-          rows.add(_BrowseVenueRow(venue));
-        }
-      }
-    }
-
-    // Keep the mixed ALL directory compact near the top while still
-    // rendering every remaining event from the same filtered feed. In the
-    // EVENTS scope this naturally follows the two featured event groups.
-    if (showEvents && upcoming.isNotEmpty) {
-      rows.add(_BrowseSectionRow('UPCOMING', upcoming.length));
-      for (final gig in upcoming) {
-        rows.add(_BrowseEventRow(gig));
-      }
-    }
-
+  @override
+  Widget build(BuildContext context) {
+    final app = widget.app;
+    final rows = _browseRows(app);
     return ListView.builder(
-      key: ValueKey('explore-browse-${type.name}'),
+      key: ValueKey('explore-browse-${app.exploreResultType.name}'),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, tabBarClearance),
       itemCount: rows.length,
       itemBuilder: (context, index) => _buildRow(context, rows[index]),
@@ -620,6 +646,7 @@ class _BrowseRows extends StatelessWidget {
   }
 
   Widget _buildRow(BuildContext context, _BrowseRow row) {
+    final app = widget.app;
     return switch (row) {
       _BrowseSectionRow(:final label, :final count) => SectionBar(
         label: label,
@@ -640,9 +667,11 @@ class _BrowseRows extends StatelessWidget {
       _BrowseSpacerRow(:final height) => SizedBox(height: height),
       _BrowseVenueHeadingRow() => _SectionHeading(
         label: 'VENUES',
-        actionLabel: showAllVenues ? 'SEE LESS VENUES' : 'SEE ALL VENUES',
+        actionLabel: widget.showAllVenues
+            ? 'SEE LESS VENUES'
+            : 'SEE ALL VENUES',
         actionKey: const Key('explore-toggle-venues'),
-        onAction: onToggleVenues,
+        onAction: widget.onToggleVenues,
       ),
       _BrowseVenueRow(:final venue) => Padding(
         padding: const EdgeInsets.only(bottom: 6),
@@ -653,6 +682,8 @@ class _BrowseRows extends StatelessWidget {
   }
 
   Widget _buildBandsBlock() {
+    final app = widget.app;
+    final showAllBands = widget.showAllBands;
     final bandIds = showAllBands
         ? app.exploreBandIds
         : app.exploreBandIds.take(3);
@@ -663,7 +694,7 @@ class _BrowseRows extends StatelessWidget {
           label: 'BANDS ON EARPLUG',
           actionLabel: showAllBands ? 'SEE LESS BANDS' : 'SEE ALL BANDS',
           actionKey: const Key('explore-toggle-bands'),
-          onAction: onToggleBands,
+          onAction: widget.onToggleBands,
         ),
         const SizedBox(height: 8),
         Column(
@@ -683,6 +714,7 @@ class _BrowseRows extends StatelessWidget {
   }
 
   Widget _buildVenueState(BuildContext context) {
+    final app = widget.app;
     if (app.venueStatus == DataStatus.connecting) {
       return Text(
         'Loading venues…',
@@ -777,11 +809,7 @@ class _ExploreEventRow extends StatelessWidget {
       onTap: () => app.openGig(gig.id),
       child: Row(
         children: [
-          DateBlock(
-            day: gig.startsAt.day.toString().padLeft(2, '0'),
-            month: monthNamesUpper[gig.startsAt.month - 1],
-            semanticLabel: gig.dateShort,
-          ),
+          DateBlock.forDate(gig.startsAt, semanticLabel: gig.dateShort),
           const SizedBox(width: 11),
           Expanded(
             child: Column(
@@ -877,17 +905,10 @@ class _SectionHeading extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: SectionLabel(label)),
-        TextButton(
+        SectionActionButton(
           key: actionKey,
+          label: actionLabel,
           onPressed: onAction,
-          child: Text(
-            actionLabel,
-            maxLines: 2,
-            textAlign: TextAlign.end,
-            style: Theme.of(
-              context,
-            ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .7),
-          ),
         ),
       ],
     );

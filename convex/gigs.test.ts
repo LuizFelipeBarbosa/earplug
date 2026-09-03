@@ -1,7 +1,12 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
-import { insertGigWithBandIndex, MAX_FEED_GIGS } from "./lib/helpers";
+import { publishGigAsAdmin } from "./gigFixtures.test-helpers";
+import {
+  insertGigWithBandIndex,
+  MAX_FEED_GIGS,
+  type KnownFlyKey,
+} from "./lib/helpers";
 import schema from "./schema";
 
 describe("gigs:pastForBand", () => {
@@ -124,7 +129,7 @@ describe("gigs:pastForBand", () => {
   });
 });
 
-describe("gigs:publishGig auth", () => {
+describe("gigs:publishDraft auth and validation", () => {
   async function setupBand() {
     const t = convexTest(schema);
     const asAdmin = t.withIdentity({ subject: "user_admin", email: "a@x.com" });
@@ -153,7 +158,6 @@ describe("gigs:publishGig auth", () => {
   const gigArgs = {
     title: "Riptide Release Show",
     startsAt: Date.now() + 86400_000,
-    doorsTime: "8PM / 9PM",
     price: 10,
     flyKey: "riso" as const,
     ticketing: "rsvp" as const,
@@ -162,9 +166,9 @@ describe("gigs:publishGig auth", () => {
   };
 
   test("rejects unauthenticated and non-members; member (non-admin) rejected too", async () => {
-    const { t, bandId, venueId } = await setupBand();
+    const { t, bandId } = await setupBand();
     await expect(
-      t.mutation(api.gigs.publishGig, { bandId, venueId, ...gigArgs }),
+      t.mutation(api.gigs.createDraft, { bandId }),
     ).rejects.toThrow();
 
     const asStranger = t.withIdentity({
@@ -173,7 +177,7 @@ describe("gigs:publishGig auth", () => {
     });
     await asStranger.mutation(api.users.ensureUser, {});
     await expect(
-      asStranger.mutation(api.gigs.publishGig, { bandId, venueId, ...gigArgs }),
+      asStranger.mutation(api.gigs.createDraft, { bandId }),
     ).rejects.toThrow("Not an admin");
 
     // Plain member (not admin) also rejected.
@@ -186,13 +190,13 @@ describe("gigs:publishGig auth", () => {
       await ctx.db.insert("bandMembers", { bandId, userId, role: "member" });
     });
     await expect(
-      asMember.mutation(api.gigs.publishGig, { bandId, venueId, ...gigArgs }),
+      asMember.mutation(api.gigs.createDraft, { bandId }),
     ).rejects.toThrow("Not an admin");
   });
 
   test("admin publishes the explicit age requirement with the gig", async () => {
     const { t, asAdmin, bandId, venueId } = await setupBand();
-    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+    const { gigId } = await publishGigAsAdmin(asAdmin, {
       bandId,
       venueId,
       ...gigArgs,
@@ -209,7 +213,7 @@ describe("gigs:publishGig auth", () => {
   test("preserves an explicitly supplied doors time", async () => {
     const { t, asAdmin, bandId, venueId } = await setupBand();
     const doorsAt = gigArgs.startsAt - 45 * 60_000;
-    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+    const { gigId } = await publishGigAsAdmin(asAdmin, {
       bandId,
       venueId,
       ...gigArgs,
@@ -223,33 +227,50 @@ describe("gigs:publishGig auth", () => {
 
   test("requires one of the three supported age requirements", async () => {
     const { asAdmin, bandId, venueId } = await setupBand();
+    const draft = await asAdmin.mutation(api.gigs.createDraft, { bandId });
     const { ageRequirement: _ageRequirement, ...withoutAge } = gigArgs;
+    const draftFields = {
+      projectId: draft._id,
+      revision: draft.revision,
+      doorsAt: gigArgs.startsAt,
+      venueId,
+      flyStorageId: null,
+      overlay: true,
+      desc: "",
+      externalUrl: null,
+    };
 
     await expect(
-      asAdmin.mutation(api.gigs.publishGig, {
-        bandId,
-        venueId,
+      asAdmin.mutation(api.gigs.saveDraft, {
+        ...draftFields,
         ...withoutAge,
       } as never),
     ).rejects.toThrow("Validator error");
     await expect(
-      asAdmin.mutation(api.gigs.publishGig, {
-        bandId,
-        venueId,
+      asAdmin.mutation(api.gigs.saveDraft, {
+        ...draftFields,
         ...gigArgs,
         ageRequirement: "16Plus" as never,
       }),
     ).rejects.toThrow("Validator error: Expected one of");
   });
 
-  test("rejects a flyKey outside the press list", async () => {
+  test("rejects a flyKey the client cannot render", async () => {
     const { asAdmin, bandId, venueId } = await setupBand();
+    const draft = await asAdmin.mutation(api.gigs.createDraft, { bandId });
+
     await expect(
-      asAdmin.mutation(api.gigs.publishGig, {
-        bandId,
-        venueId,
+      asAdmin.mutation(api.gigs.saveDraft, {
+        projectId: draft._id,
+        revision: draft.revision,
         ...gigArgs,
+        doorsAt: gigArgs.startsAt,
+        venueId,
         flyKey: "hologram" as never,
+        flyStorageId: null,
+        overlay: true,
+        desc: "",
+        externalUrl: null,
       }),
     ).rejects.toThrow("Validator error: Expected one of");
   });
@@ -259,7 +280,7 @@ describe("gigs:publishGig auth", () => {
     const flyStorageId = await t.run(async (ctx) =>
       ctx.storage.store(new Blob([new Uint8Array([1, 2, 3])])),
     );
-    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+    const { gigId } = await publishGigAsAdmin(asAdmin, {
       bandId,
       venueId,
       ...gigArgs,
@@ -275,7 +296,7 @@ describe("gigs:publishGig auth", () => {
   test("rejects a custom press without flyer storage", async () => {
     const { asAdmin, bandId, venueId } = await setupBand();
     await expect(
-      asAdmin.mutation(api.gigs.publishGig, {
+      publishGigAsAdmin(asAdmin, {
         bandId,
         venueId,
         ...gigArgs,
@@ -294,7 +315,7 @@ describe("gigs:publishGig auth", () => {
       return storageId;
     });
     await expect(
-      asAdmin.mutation(api.gigs.publishGig, {
+      publishGigAsAdmin(asAdmin, {
         bandId,
         venueId,
         ...gigArgs,
@@ -309,7 +330,7 @@ describe("gigs:publishGig auth", () => {
     const flyStorageId = await t.run(async (ctx) =>
       ctx.storage.store(new Blob([new Uint8Array([1, 2, 3])])),
     );
-    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+    const { gigId } = await publishGigAsAdmin(asAdmin, {
       bandId,
       venueId,
       ...gigArgs,
@@ -326,7 +347,7 @@ describe("gigs:publishGig auth", () => {
     const error = "External ticketing requires a valid HTTPS URL";
 
     await expect(
-      asAdmin.mutation(api.gigs.publishGig, {
+      publishGigAsAdmin(asAdmin, {
         bandId,
         venueId,
         ...gigArgs,
@@ -334,7 +355,7 @@ describe("gigs:publishGig auth", () => {
       }),
     ).rejects.toThrow(error);
     await expect(
-      asAdmin.mutation(api.gigs.publishGig, {
+      publishGigAsAdmin(asAdmin, {
         bandId,
         venueId,
         ...gigArgs,
@@ -346,7 +367,7 @@ describe("gigs:publishGig auth", () => {
 
   test("rsvp ticketing drops an external URL", async () => {
     const { t, asAdmin, bandId, venueId } = await setupBand();
-    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+    const { gigId } = await publishGigAsAdmin(asAdmin, {
       bandId,
       venueId,
       ...gigArgs,
@@ -384,7 +405,6 @@ describe("public gig slugs", () => {
       bandId,
       title: "Same Night",
       startsAt: Date.now() + 86_400_000,
-      doorsTime: "8PM / 9PM",
       venueId,
       price: 0,
       flyKey: "xerox" as const,
@@ -392,8 +412,8 @@ describe("public gig slugs", () => {
       ageRequirement: "allAges" as const,
       cap: "No cap",
     };
-    const first = await asAdmin.mutation(api.gigs.publishGig, fields);
-    const second = await asAdmin.mutation(api.gigs.publishGig, {
+    const first = await publishGigAsAdmin(asAdmin, fields);
+    const second = await publishGigAsAdmin(asAdmin, {
       ...fields,
       startsAt: fields.startsAt + 86_400_000,
     });
@@ -415,7 +435,7 @@ describe("public gig slugs", () => {
       startsAt: draft.startsAt,
       venueId: draft.venueId,
       price: draft.price,
-      flyKey: draft.flyKey,
+      flyKey: draft.flyKey as KnownFlyKey,
       flyStorageId: null,
       overlay: draft.overlay,
       desc: draft.desc,
@@ -431,7 +451,7 @@ describe("public gig slugs", () => {
   });
 });
 
-describe("feed and array-shaped queries (contract clarifications)", () => {
+describe("feedV2 and array-shaped queries (contract clarifications)", () => {
   test("normalizes a legacy gig without stored age to allAges", async () => {
     const t = convexTest(schema);
     const { bandId, venueId } = await t.run(async (ctx) => {
@@ -472,19 +492,19 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
       return { bandId, venueId };
     });
 
-    const feed = await t.query(api.gigs.feed, {});
+    const feed = await t.query(api.gigs.feedV2, {});
     expect(feed.gigs).toHaveLength(1);
     expect(feed.gigs[0].ageRequirement).toBe("allAges");
   });
 
-  test("seedDemo then feed: object with arrays; band summaries always carry pastShows; explicit nulls", async () => {
+  test("seedDemo then feedV2: object with arrays; full band payloads carry pastShows; explicit nulls", async () => {
     const t = convexTest(schema);
     await t.mutation(internal.seed.seedDemo, {});
     // Idempotent re-run.
     const again = await t.mutation(internal.seed.seedDemo, {});
     expect(again).toEqual({ seeded: false });
 
-    const feed = await t.query(api.gigs.feed, {});
+    const feed = await t.query(api.gigs.feedV2, {});
     expect(Array.isArray(feed.gigs)).toBe(true);
     expect(Array.isArray(feed.venues)).toBe(true);
     expect(Array.isArray(feed.bands)).toBe(true);
@@ -504,15 +524,15 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(gig.cap).toBe("No cap");
     expect(gig.ageRequirement).toBe("allAges");
 
-    // Band summaries always include pastShows.
-    for (const band of feed.bands) {
-      expect(Array.isArray(band.pastShows)).toBe(true);
-    }
     const foghorn = feed.bands.find((band) => band.name === "Foghorn Diet");
-    expect(foghorn!.pastShows.length).toBe(4);
     expect(foghorn!.colorHex).toBe("#7B8FFF");
     expect(foghorn!.initials).toBe("FD");
     expect(foghorn!.followerCount).toBe(486);
+
+    // The full band payload always includes pastShows.
+    const full = await t.query(api.bands.get, { bandId: foghorn!._id });
+    expect(Array.isArray(full!.pastShows)).toBe(true);
+    expect(full!.pastShows.length).toBe(4);
 
     // gigs:forBand — top-level array, upcoming only, ascending.
     const forBand = await t.query(api.gigs.forBand, { bandId: foghorn!._id });
@@ -521,55 +541,6 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     expect(forBand.every((gig) => gig.lineup.includes(foghorn!._id))).toBe(
       true,
     );
-  });
-
-  test("reports the first gig omitted from the bounded feed", async () => {
-    const t = convexTest(schema);
-    const asAdmin = t.withIdentity({ subject: "user_admin", email: "a@x.com" });
-    await asAdmin.mutation(api.users.ensureUser, {});
-    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
-      name: "Long Calendar",
-      genres: ["punk"],
-      bio: "",
-      area: "Bay Area",
-      inviteHandles: [],
-    });
-    const venueId = await t.run(async (ctx) =>
-      ctx.db.insert("venues", {
-        name: "Calendar Hall",
-        area: "Mission, SF",
-        addr: "1 Date St",
-        distSF: "1.0 mi",
-        distOak: "7.0 mi",
-        lat: 37.75,
-        lng: -122.42,
-      }),
-    );
-    const firstStartsAt = Date.now() + 86_400_000;
-    await t.run(async (ctx) => {
-      for (let index = 0; index <= MAX_FEED_GIGS; index++) {
-        await ctx.db.insert("gigs", {
-          title: `Gig ${index}`,
-          venueId,
-          price: 0,
-          startsAt: firstStartsAt + index * 60_000,
-          doorsTime: "7PM / 8PM",
-          flyKey: "paper",
-          lineup: [bandId],
-          genres: ["punk"],
-          desc: "",
-          ticketing: "rsvp",
-          cap: "No cap",
-          goingCount: 0,
-        });
-      }
-    });
-
-    const feed = await t.query(api.gigs.feed, {});
-
-    expect(feed.gigs).toHaveLength(MAX_FEED_GIGS);
-    expect(feed.gigs[0].startsAt).toBe(firstStartsAt);
-    expect(feed.nextStartsAt).toBe(firstStartsAt + MAX_FEED_GIGS * 60_000);
   });
 
   test("cancelled rows cannot crowd later published gigs out of the feed", async () => {
@@ -629,7 +600,7 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
     });
 
     expect(
-      (await t.query(api.gigs.feed, {})).gigs.map((gig) => gig.title),
+      (await t.query(api.gigs.feedV2, {})).gigs.map((gig) => gig.title),
     ).toEqual(["Still Visible"]);
   });
 
@@ -698,7 +669,7 @@ describe("feed and array-shaped queries (contract clarifications)", () => {
       });
     });
 
-    const feed = await t.query(api.gigs.feed, {});
+    const feed = await t.query(api.gigs.feedV2, {});
     expect(feed.gigs.some((gig) => gig.lineup.includes(followedBandId))).toBe(
       false,
     );
@@ -787,19 +758,18 @@ describe("gigs:feedV2 and gigs:goingCounts", () => {
     const gigArgs = {
       venueId,
       startsAt: Date.now() + 86_400_000,
-      doorsTime: "8PM / 9PM",
       price: 10,
       flyKey: "riso" as const,
       ticketing: "rsvp" as const,
       ageRequirement: "allAges" as const,
       cap: "No cap",
     };
-    const { gigId } = await asAdmin.mutation(api.gigs.publishGig, {
+    const { gigId } = await publishGigAsAdmin(asAdmin, {
       ...gigArgs,
       bandId,
       title: "Feed Show",
     });
-    const { gigId: readyGigId } = await asAdmin.mutation(api.gigs.publishGig, {
+    const { gigId: readyGigId } = await publishGigAsAdmin(asAdmin, {
       ...gigArgs,
       bandId: readyBandId,
       title: "Ready Show",
@@ -808,28 +778,30 @@ describe("gigs:feedV2 and gigs:goingCounts", () => {
     return { t, asAdmin, bandId, readyBandId, venueId, gigId, readyGigId };
   }
 
-  test("ships feed's gigs without goingCount and bands as summaries only", async () => {
+  test("ships gigs without goingCount and bands as summaries only", async () => {
     const t = convexTest(schema);
     await t.mutation(internal.seed.seedDemo, {});
 
-    const feed = await t.query(api.gigs.feed, {});
     const feedV2 = await t.query(api.gigs.feedV2, {});
-
-    expect(feedV2.gigs.length).toBe(feed.gigs.length);
-    expect(feedV2.bands.length).toBe(feed.bands.length);
-    expect(feedV2.venues).toEqual(feed.venues);
-    expect(feedV2.nextStartsAt).toBe(feed.nextStartsAt);
-    feed.gigs.forEach(({ goingCount: _goingCount, ...rest }, index) => {
-      expect(feedV2.gigs[index]).toEqual(rest);
-    });
+    expect(feedV2.gigs.length).toBe(7);
+    for (const gig of feedV2.gigs) {
+      expect(gig).not.toHaveProperty("goingCount");
+    }
     for (const band of feedV2.bands) {
       expect(Object.keys(band).sort()).toEqual(SUMMARY_KEYS);
     }
 
+    // goingCounts carries exactly the feed's gigs with their stored counts.
     const counts = await t.query(api.gigs.goingCounts, {});
-    expect(counts).toEqual(
-      feed.gigs.map((gig) => ({ gigId: gig._id, goingCount: gig.goingCount })),
-    );
+    const stored = await t.run(async (ctx) => {
+      const rows = [];
+      for (const gig of feedV2.gigs) {
+        const row = await ctx.db.get(gig._id);
+        rows.push({ gigId: gig._id, goingCount: row!.goingCount });
+      }
+      return rows;
+    });
+    expect(counts).toEqual(stored);
   });
 
   test("an RSVP changes goingCounts but leaves feedV2 byte-for-byte unchanged", async () => {
@@ -853,24 +825,22 @@ describe("gigs:feedV2 and gigs:goingCounts", () => {
     );
   });
 
-  test("excludes an archived owner's gigs and band exactly like feed", async () => {
+  test("excludes an archived owner's gigs and band", async () => {
     const { t, bandId, gigId, readyGigId } = await setupFeed();
     await t.run(async (ctx) => {
       await ctx.db.patch(bandId, { archivedAt: Date.now() });
     });
 
-    const feed = await t.query(api.gigs.feed, {});
     const feedV2 = await t.query(api.gigs.feedV2, {});
     const counts = await t.query(api.gigs.goingCounts, {});
 
-    expect(feed.gigs.map((gig) => gig._id)).toEqual([readyGigId]);
     expect(feedV2.gigs.map((gig) => gig._id)).toEqual([readyGigId]);
     expect(counts.map((row) => row.gigId)).toEqual([readyGigId]);
     expect(feedV2.bands.some((band) => band._id === bandId)).toBe(false);
     expect(feedV2.gigs.some((gig) => gig._id === gigId)).toBe(false);
   });
 
-  test("reports the same nextStartsAt as feed past the bounded window", async () => {
+  test("reports the first gig omitted past the bounded window", async () => {
     const { t, bandId, venueId } = await setupFeed();
     const firstStartsAt = Date.now() + 10 * 86_400_000;
     await t.run(async (ctx) => {
@@ -892,12 +862,10 @@ describe("gigs:feedV2 and gigs:goingCounts", () => {
       }
     });
 
-    const feed = await t.query(api.gigs.feed, {});
     const feedV2 = await t.query(api.gigs.feedV2, {});
     const counts = await t.query(api.gigs.goingCounts, {});
 
     expect(feedV2.gigs).toHaveLength(MAX_FEED_GIGS);
-    expect(feedV2.nextStartsAt).toBe(feed.nextStartsAt);
     // The two setup gigs come first, so the window ends two rows early.
     expect(feedV2.nextStartsAt).toBe(firstStartsAt + (MAX_FEED_GIGS - 2) * 60_000);
     expect(counts.map((row) => row.gigId)).toEqual(
@@ -905,13 +873,13 @@ describe("gigs:feedV2 and gigs:goingCounts", () => {
     );
   });
 
-  test("band summaries carry the same readiness flags and avatar as feed", async () => {
+  test("band summaries carry the same readiness flags and avatar as the full band payload", async () => {
     const { t, bandId, readyBandId } = await setupFeed();
-    const feed = await t.query(api.gigs.feed, {});
     const feedV2 = await t.query(api.gigs.feedV2, {});
 
-    for (const full of feed.bands) {
-      const summary = feedV2.bands.find((band) => band._id === full._id)!;
+    expect(feedV2.bands).toHaveLength(2);
+    for (const summary of feedV2.bands) {
+      const full = (await t.query(api.bands.get, { bandId: summary._id }))!;
       expect(summary.profileComplete).toBe(full.profileComplete);
       expect(summary.discoveryProfileReady).toBe(full.discoveryProfileReady);
       expect(summary.avatarUrl).toBe(full.avatarUrl);

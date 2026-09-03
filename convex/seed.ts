@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { insertGigWithBandIndex, uniqueSlug } from "./lib/helpers";
+import { normalizeVenueText } from "./venues";
 
 // Port of lib/demo_data.dart (verbatim strings/numbers). startsAt is computed
 // relative to run time so gig 1 lands "tonight" (8PM Pacific) and the rest
@@ -118,6 +119,8 @@ export const seedDemo = internalMutation({
         name: venue.name,
         area: venue.area,
         addr: venue.addr,
+        normalizedName: normalizeVenueText(venue.name),
+        normalizedAddr: normalizeVenueText(venue.addr),
         distSF: venue.distSF,
         distOak: venue.distOak,
         lat: venue.lat,

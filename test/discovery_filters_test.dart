@@ -138,7 +138,7 @@ void main() {
     test('home distance filters use the saved fan city', () async {
       final auth = FakeAuthService();
       await auth.signInDemo();
-      final app = AppState(
+      final app = AppState.demo(
         repository: DemoRepository(auth: auth),
         auth: auth,
       );
@@ -173,7 +173,7 @@ void main() {
     test('saved home city remains available after switching away', () async {
       final auth = FakeAuthService();
       await auth.signInDemo();
-      final app = AppState(
+      final app = AppState.demo(
         repository: DemoRepository(auth: auth),
         auth: auth,
       );
@@ -204,7 +204,7 @@ void main() {
     test('saved home city with a dedicated tile uses that location', () async {
       final auth = FakeAuthService();
       await auth.signInDemo();
-      final app = AppState(
+      final app = AppState.demo(
         repository: DemoRepository(auth: auth),
         auth: auth,
       );
@@ -231,7 +231,7 @@ void main() {
     test('saved home city without a dedicated tile uses home', () async {
       final auth = FakeAuthService();
       await auth.signInDemo();
-      final app = AppState(
+      final app = AppState.demo(
         repository: DemoRepository(auth: auth),
         auth: auth,
       );
@@ -368,7 +368,7 @@ Future<AppState> _app({
   List<Gig>? feedGigs,
 }) async {
   final auth = FakeAuthService();
-  final app = AppState(
+  final app = AppState.demo(
     repository: nextFeedStartsAt == null && feedGigs == null
         ? DemoRepository(auth: auth)
         : _BoundedFeedRepository(

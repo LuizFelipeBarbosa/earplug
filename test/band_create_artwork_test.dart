@@ -133,7 +133,7 @@ Future<_ArtworkHarness> _makeArtworkHarness({
     repository: repository,
     thumbnailGenerator: FakeVideoThumbnailGenerator(),
   );
-  final app = AppState(
+  final app = AppState.demo(
     repository: repository,
     auth: auth,
     mediaUploadService: uploader,

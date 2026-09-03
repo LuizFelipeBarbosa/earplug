@@ -322,7 +322,7 @@ void main() {
   test('18+ to all ages survives save, reopen, and publish', () async {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
     app.startGigCreate();
@@ -343,7 +343,7 @@ void main() {
 
   test('external tickets require an absolute HTTPS URL', () async {
     final auth = FakeAuthService();
-    final app = AppState(
+    final app = AppState.demo(
       repository: DemoRepository(auth: auth),
       auth: auth,
     );
@@ -428,7 +428,7 @@ void main() {
     'new venues are created, deduplicated, refreshed, and selected',
     () async {
       final auth = FakeAuthService();
-      final app = AppState(
+      final app = AppState.demo(
         repository: DemoRepository(auth: auth),
         auth: auth,
       );
@@ -461,7 +461,7 @@ void main() {
     'preview labels distinguish private, live, and unpublished changes',
     () async {
       final auth = FakeAuthService();
-      final app = AppState(
+      final app = AppState.demo(
         repository: DemoRepository(auth: auth),
         auth: auth,
       );
@@ -621,7 +621,7 @@ void main() {
   test('stale draft creation cannot replace a newer editor', () async {
     final auth = FakeAuthService();
     final repository = _GatedDraftRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
 
@@ -648,7 +648,7 @@ void main() {
   test('stale draft saves cannot update or clear a newer editor', () async {
     final auth = FakeAuthService();
     final repository = _GatedSaveRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
 
@@ -677,7 +677,7 @@ void main() {
   test('opening and closing a pristine editor creates no draft', () async {
     final auth = FakeAuthService();
     final repository = _CountingDraftRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
 
@@ -693,7 +693,7 @@ void main() {
   test('managed gig refreshes stay bound to the requested band', () async {
     final auth = FakeAuthService();
     final repository = _GatedManageRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
     final created = await repository.createBand(
@@ -754,39 +754,6 @@ class _GatedFlyerRepository extends DemoRepository {
   }
 
   @override
-  Future<String> publishGig({
-    required String bandId,
-    required String title,
-    required int startsAt,
-    required String doorsTime,
-    required String venueId,
-    required int price,
-    required String flyKey,
-    String? flyStorageId,
-    required Ticketing ticketing,
-    required AgeRequirement ageRequirement,
-    String? externalUrl,
-    required String cap,
-  }) async {
-    publishCalls++;
-    publishedFlyStorageId = flyStorageId;
-    return super.publishGig(
-      bandId: bandId,
-      title: title,
-      startsAt: startsAt,
-      doorsTime: doorsTime,
-      venueId: venueId,
-      price: price,
-      flyKey: flyKey,
-      flyStorageId: flyStorageId,
-      ticketing: ticketing,
-      ageRequirement: ageRequirement,
-      externalUrl: externalUrl,
-      cap: cap,
-    );
-  }
-
-  @override
   Future<String> publishGigDraft(String projectId) async {
     publishCalls++;
     publishedFlyStorageId = (await getGigProject(projectId)).flyStorageId;
@@ -809,8 +776,6 @@ class _GatedVenueRepository extends DemoRepository {
         name: 'Late Arrival Hall',
         area: 'Oakland',
         addr: '123 Late Street',
-        distSF: '7.0 mi',
-        distOak: '1.0 mi',
         point: LatLng(37.8, -122.27),
       ),
     ];
@@ -826,8 +791,6 @@ class _TwoVenueRepository extends DemoRepository {
       name: 'First Test Venue',
       area: 'Oakland',
       addr: '1 First Street',
-      distSF: '7.0 mi',
-      distOak: '1.0 mi',
       point: LatLng(37.8, -122.27),
     ),
     Venue(
@@ -835,8 +798,6 @@ class _TwoVenueRepository extends DemoRepository {
       name: 'Second Test Venue',
       area: 'San Francisco',
       addr: '2 Second Street',
-      distSF: '1.0 mi',
-      distOak: '7.0 mi',
       point: LatLng(37.76, -122.42),
     ),
   ];

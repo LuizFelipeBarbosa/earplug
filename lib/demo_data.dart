@@ -12,8 +12,6 @@ abstract final class DemoData {
       name: 'The Foghorn Club',
       area: 'Mission, SF',
       addr: '2455 Harrison St, San Francisco',
-      distSF: '0.8 mi',
-      distOak: '6.3 mi',
       point: LatLng(37.7524, -122.4180),
     ),
     'v2': Venue(
@@ -21,8 +19,6 @@ abstract final class DemoData {
       name: 'Nightcrawler Records',
       area: 'Temescal, Oakland',
       addr: '486 40th St, Oakland',
-      distSF: '6.1 mi',
-      distOak: '0.9 mi',
       point: LatLng(37.8180, -122.2690),
     ),
     'v3': Venue(
@@ -30,8 +26,6 @@ abstract final class DemoData {
       name: 'Casa Quake',
       area: 'Bernal Heights, SF',
       addr: '(address with RSVP)',
-      distSF: '1.2 mi',
-      distOak: '6.7 mi',
       point: LatLng(37.7399, -122.4166),
     ),
     'v4': Venue(
@@ -39,8 +33,6 @@ abstract final class DemoData {
       name: 'The Rusty Anchor',
       area: 'Dogpatch, SF',
       addr: '701 22nd St, San Francisco',
-      distSF: '1.9 mi',
-      distOak: '5.4 mi',
       point: LatLng(37.7583, -122.3880),
     ),
     'v5': Venue(
@@ -48,8 +40,6 @@ abstract final class DemoData {
       name: 'Peralta Hall',
       area: 'West Oakland',
       addr: '1801 Peralta St, Oakland',
-      distSF: '6.8 mi',
-      distOak: '1.6 mi',
       point: LatLng(37.8060, -122.2910),
     ),
     'v6': Venue(
@@ -57,88 +47,9 @@ abstract final class DemoData {
       name: 'Sunset Bunker',
       area: 'Outer Sunset, SF',
       addr: '3820 Noriega St, San Francisco',
-      distSF: '4.3 mi',
-      distOak: '9.8 mi',
       point: LatLng(37.7540, -122.5040),
     ),
   };
-
-  static const flyers = <String, FlyerStyle>{
-    'paper': FlyerStyle(
-      base: Color(0xFFF4F4F0),
-      patternColor: Color(0x0D000000),
-      fg: Color(0xFF111114),
-    ),
-    'blue': FlyerStyle(
-      base: Color(0xFF1435F0),
-      patternColor: Color(0x1F000000),
-      fg: Color(0xFFFFFFFF),
-    ),
-    'black': FlyerStyle(
-      base: Color(0xFF141418),
-      patternColor: Color(0x0DFFFFFF),
-      fg: Color(0xFFF4F4F0),
-    ),
-    'yellow': FlyerStyle(
-      base: Color(0xFFE4DC4A),
-      patternColor: Color(0x0F000000),
-      fg: Color(0xFF111114),
-    ),
-    'bluetype': FlyerStyle(
-      base: Color(0xFFF4F4F0),
-      patternColor: Color(0x141435F0),
-      fg: Color(0xFF1435F0),
-    ),
-    // The five presses a band picks from when creating a gig.
-    'xerox': FlyerStyle(
-      base: Color(0xFFF4F4F0),
-      patternColor: Color(0x0E000000),
-      fg: Color(0xFF111114),
-    ),
-    'riso': FlyerStyle(
-      base: Color(0xFFF4F4F0),
-      patternColor: Color(0x6BF0456B),
-      fg: Color(0xFF1435F0),
-      pattern: FlyerPattern.dots,
-      pitch: 6,
-    ),
-    'marquee': FlyerStyle(
-      base: Color(0xFF141418),
-      patternColor: Color(0x80E4DC4A),
-      fg: Color(0xFFE4DC4A),
-      pattern: FlyerPattern.dots,
-      pitch: 9,
-    ),
-    'blueprint': FlyerStyle(
-      base: Color(0xFF1435F0),
-      patternColor: Color(0x14FFFFFF),
-      fg: Color(0xFFF4F4F0),
-      pattern: FlyerPattern.hatch,
-      pitch: 14,
-    ),
-    'sunburst': FlyerStyle(
-      base: Color(0xFFF2EE9E),
-      patternColor: Color(0xFFE4DC4A),
-      fg: Color(0xFF111114),
-      pattern: FlyerPattern.rays,
-      pitch: 18,
-    ),
-    // Band-supplied art: dark plate the uploaded image sits on.
-    'custom': FlyerStyle(
-      base: Color(0xFF141418),
-      patternColor: Color(0x00000000),
-      fg: Color(0xFFF4F4F0),
-    ),
-  };
-
-  /// Presses offered by the gig-create flyer picker, in swatch order.
-  static const flyerPicks = [
-    'xerox',
-    'riso',
-    'marquee',
-    'blueprint',
-    'sunburst',
-  ];
 
   static final _demoToday = () {
     final now = DateTime.now();

@@ -46,10 +46,6 @@ class _SheetFrame extends StatelessWidget {
     return EpSheetShell(
       heightFactor: .88,
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
-      backgroundColor: context.epColors.surfaceRaised,
-      borderColor: context.epColors.border,
-      topRadius: 20,
-      handleColor: context.epColors.contentDisabled,
       handleBottomSpacing: 12,
       header: Row(
         children: [

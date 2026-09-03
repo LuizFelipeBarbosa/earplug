@@ -233,9 +233,9 @@ class AnalyticsScreen extends StatelessWidget {
       key: const Key('analytics-turnout'),
       title: 'TURNOUT BY SHOW',
       trailing: shows.length > kRecapPreviewCount
-          ? _SeeAllButton(
+          ? SectionActionButton(
               key: const Key('analytics-turnout-see-all'),
-              total: shows.length,
+              label: 'SEE ALL ${shows.length}',
               onPressed: () => showRecapShowsSheet(context, recap),
             )
           : null,
@@ -347,9 +347,9 @@ class AnalyticsScreen extends StatelessWidget {
       trailing:
           !recap.newReturningSuppressed &&
               recap.shows.length > kRecapPreviewCount
-          ? _SeeAllButton(
+          ? SectionActionButton(
               key: const Key('analytics-new-returning-see-all'),
-              total: recap.shows.length,
+              label: 'SEE ALL ${recap.shows.length}',
               onPressed: () => showRecapShowsSheet(context, recap),
             )
           : null,
@@ -450,9 +450,9 @@ class AnalyticsScreen extends StatelessWidget {
       key: const Key('analytics-rooms'),
       title: 'ROOMS THAT DRAW',
       trailing: !recap.venues.suppressed && rows.length > kRecapPreviewCount
-          ? _SeeAllButton(
+          ? SectionActionButton(
               key: const Key('analytics-rooms-see-all'),
-              total: rows.length,
+              label: 'SEE ALL ${rows.length}',
               onPressed: () => showRecapRowsSheet(
                 context,
                 title: 'ALL ${rows.length} ROOMS',
@@ -500,9 +500,9 @@ class AnalyticsScreen extends StatelessWidget {
       key: const Key('analytics-best-nights'),
       title: 'BEST NIGHTS',
       trailing: !recap.weekdays.suppressed && rows.length > kRecapPreviewCount
-          ? _SeeAllButton(
+          ? SectionActionButton(
               key: const Key('analytics-best-nights-see-all'),
-              total: rows.length,
+              label: 'SEE ALL ${rows.length}',
               onPressed: () => showRecapRowsSheet(
                 context,
                 title: 'ALL ${rows.length} NIGHTS',
@@ -785,32 +785,6 @@ class _TurnoutChart extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SeeAllButton extends StatelessWidget {
-  const _SeeAllButton({
-    super.key,
-    required this.total,
-    required this.onPressed,
-  });
-
-  final int total;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton(
-      onPressed: onPressed,
-      child: Text(
-        'SEE ALL $total',
-        maxLines: 2,
-        textAlign: TextAlign.end,
-        style: Theme.of(
-          context,
-        ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .7),
       ),
     );
   }

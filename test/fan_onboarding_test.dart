@@ -39,7 +39,7 @@ void main() {
     expect(find.byKey(const Key('fan-setup-expanded')), findsOne);
     await _tapVisible(tester, find.byKey(const Key('fan-city-oak')));
     await tester.pump();
-    expect(first.app.city, 'oak');
+    expect(first.app.discoveryLocation, DiscoveryLocation.oak);
     expect(repository.onboarding?.preferredCity, FanCity.oak);
 
     await _tapVisible(tester, find.byKey(const Key('fan-genres-open')));
@@ -59,7 +59,7 @@ void main() {
       repository: repository,
       home: const Scaffold(body: MyGigsScreen()),
     );
-    expect(second.app.city, 'oak');
+    expect(second.app.discoveryLocation, DiscoveryLocation.oak);
     tester.view.physicalSize = const Size(402, 1500);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('fan-setup-collapsed')), findsOne);
@@ -213,7 +213,6 @@ void main() {
     harness.app.selectFanCity(FanCity.oak);
     await tester.pump();
 
-    expect(harness.app.city, 'sf');
     expect(harness.app.discoveryLocation, DiscoveryLocation.current);
     expect(harness.app.currentPosition, position);
     expect(harness.app.fMaxDistanceMiles, 5);
@@ -299,11 +298,6 @@ class _ProfileRepository extends DemoRepository {
     createdAt: DateTime(2026, 8, 23),
     fanOnboarding: onboarding,
   );
-
-  @override
-  Future<void> setGenres(List<String> nextGenres) async {
-    genres = List.of(nextGenres);
-  }
 
   @override
   Future<void> updateFanOnboarding({

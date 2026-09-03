@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
+import { publishGigAsAdmin } from "./gigFixtures.test-helpers";
 import schema from "./schema";
 
 async function setup() {
@@ -104,7 +105,7 @@ describe("interactions", () => {
       });
     });
 
-    const feed = await t.query(api.gigs.feed, {});
+    const feed = await t.query(api.gigs.feedV2, {});
     expect(feed.gigs).toHaveLength(200);
     expect(feed.gigs.map((gig) => gig._id)).not.toContain(outsideGigId);
 
@@ -665,11 +666,10 @@ describe("RSVP tickets and Door Mode", () => {
       }),
     );
     const publish = (title: string, offset: number) =>
-      asAdmin.mutation(api.gigs.publishGig, {
+      publishGigAsAdmin(asAdmin, {
         bandId,
         title,
         startsAt: Date.now() + offset,
-        doorsTime: "8PM / 9PM",
         venueId,
         price: 0,
         flyKey: "xerox",

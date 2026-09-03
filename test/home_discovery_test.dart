@@ -16,6 +16,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
+// Purging the seeded demo rows made a genuinely empty feed reachable for the
+// first time, so the two reasons a feed can be empty have to read differently.
+const _noGigs =
+    'No upcoming gigs yet.\nWhen a band books one, it shows up here.';
+const _noMatches =
+    'Nothing matches those filters.\nLoosen them up and see what is out there.';
+
 void main() {
   testWidgets('Home defaults to Map and keeps List as an intentional switch', (
     tester,
@@ -214,6 +221,36 @@ void main() {
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
+  testWidgets('a same-second boundary refreshes discovery boost membership', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    var now = DateTime.utc(2026, 8, 25, 19, 0, 0, 400);
+    const boundaryDelay = Duration(milliseconds: 500);
+    final repository = _BoundaryBoostRepository(
+      auth: auth,
+      now: now,
+      opensAfter: boundaryDelay,
+    );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: HomeScreen()),
+      beforePump: (app) => app.setMapMode(false),
+      now: () => now,
+    );
+
+    expect(harness.app.isDiscoveryBoosted(repository.gig), isFalse);
+    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsNothing);
+
+    now = now.add(boundaryDelay);
+    await tester.pump(boundaryDelay);
+
+    expect(harness.app.isDiscoveryBoosted(repository.gig), isTrue);
+    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
+  });
+
   testWidgets('the whole map card opens one gig route', (tester) async {
     final harness = await pumpApp(
       tester,
@@ -368,6 +405,9 @@ void main() {
       },
     );
 
+    expect(harness.app.feed, isEmpty);
+    expect(find.text(_noMatches), findsOne);
+    expect(find.text(_noGigs), findsNothing);
     expect(find.text('SHOW THIS WEEK'), findsOne);
     expect(find.text('CLEAR GENRES'), findsOne);
     expect(find.text('VIEW ALL NEARBY SHOWS'), findsOne);
@@ -380,6 +420,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(harness.app.filters.activeCount, 0);
     expect(harness.app.feed, isNotEmpty);
+  });
+
+  testWidgets('an empty backend blames nobody', (tester) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _EmptyFeedRepository(auth: auth),
+      home: const Scaffold(body: HomeScreen()),
+    );
+
+    expect(harness.app.allGigs, isEmpty);
+    expect(find.text(_noGigs), findsOne);
+    expect(find.text(_noMatches), findsNothing);
+    expect(find.text('0 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
   });
 }
 
@@ -472,8 +527,11 @@ class _BoostRepository extends DemoRepository {
 }
 
 class _BoundaryBoostRepository extends DemoRepository {
-  _BoundaryBoostRepository({required super.auth, required DateTime now})
-    : opensAt = now.add(const Duration(seconds: 2));
+  _BoundaryBoostRepository({
+    required super.auth,
+    required DateTime now,
+    Duration opensAfter = const Duration(seconds: 2),
+  }) : opensAt = now.add(opensAfter);
 
   final DateTime opensAt;
 
@@ -515,3 +573,12 @@ final _missingVenueGig = Gig(
   desc: 'The venue row was deleted.',
   tix: Ticketing.rsvp,
 );
+
+/// Stands in for the cleaned dev deployment: reachable, healthy, nothing booked.
+class _EmptyFeedRepository extends DemoRepository {
+  _EmptyFeedRepository({required super.auth});
+
+  @override
+  Stream<FeedSnapshot> feed() =>
+      Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {}));
+}

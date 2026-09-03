@@ -5,6 +5,8 @@ import { MutationCtx, QueryCtx } from "../_generated/server";
  * hydration loops that revisit the same venues, bands or flyers row after row.
  * The memo never observes writes, so in a mutation take it for a read phase
  * that finishes before the first patch. */
+export type DocCache = ReturnType<typeof docCache>;
+
 export function docCache(ctx: QueryCtx | MutationCtx) {
   const docs = new Map<string, Promise<unknown>>();
   const urls = new Map<string, Promise<string | null>>();

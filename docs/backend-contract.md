@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.17)
+# EarPlug Convex function contract (FROZEN — v1.18)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -191,13 +191,39 @@ only; no bio, links, or `pastShows`) instead of full `BandPayload[]`;
 emission into its last-known-count map rather than replacing that map, and it
 waits for the first result from both subscriptions (or a `goingCounts` error)
 before marking data ready and rendering. This split makes an RSVP anywhere
-leave `feedV2` byte-for-byte unchanged. `gigs:feed` is unchanged and remains
-served for the previously published client. The branch client subscribes to
-`feedV2` plus `goingCounts` in place of `feed`, and to `gigs:forBand` for a
-followed band only while
+leave `feedV2` byte-for-byte unchanged. The client subscribes to `feedV2` plus
+`goingCounts`, and to `gigs:forBand` for a followed band only while
 `feedV2.nextStartsAt` is non-null, once the bounded feed window is exhausted.
 That conditional subscription supersedes v1.12's statement that the client
 subscribes to `gigs:forBand` unconditionally for every followed band.
+
+**v1.18 — pre-marketplace cleanup.** Removed these obsolete functions and
+maintenance paths: the pre-v1.17 `gigs:feed` (the client has read
+`gigs:feedV2` + `gigs:goingCounts` since v1.17);
+`gigs:getPublic` (superseded by `gigs:resolvePublic`, which accepts a raw gig
+id as well as a slug); the `gigs:publishGig` compatibility mutation (every
+client publishes through the draft pipeline, and `maintenance:publishRealGig`
+remains the operator path); `users:setGenres` (no client caller — genres are
+written by `users:updateProfile` and `users:updateFanOnboarding`); the one-off
+`clerkBackfill:*` email backfill; the `maintenance:recountBandFollowers` and
+`maintenance:backfillGigBands` reconcilers; and the completed QA-remediation
+migrations (`backfillGigSlugs`, `backfillVenueNormalizedKeys`,
+`repairReservedBandSlugs`, `runQaRemediationBackfills`). `venues:create` no
+longer falls back to scanning rows without normalized keys — every venue row
+on both deployments carries them. Internally, the four band-membership guards
+collapsed into one `requireBandRole(ctx, bandId, { role, allowArchived? })`;
+`requireBandAdmin` in the tables below means
+`requireBandRole(…, { role: "admin" })`, and the project guard is
+`requireProjectAdmin` for queries and mutations alike. Private band queries
+`bands:setupStatus`, `bands:discoveryReadiness`, `bandInvites:manage`,
+`analytics:bandRecap`, `gigs:manageForBand`, `gigs:getProject`, and
+`gigs:doorRoster` now throw `"Account deleted"` for a tombstoned user
+(previously `"No user record — call users:ensureUser first"`). Separately,
+`bands:archiveStatus` now throws
+`"No user record — call users:ensureUser first"` for a missing user row
+(previously `"Not signed in"`) and `"Band not found"` for an unknown `bandId`
+(previously `"Not an admin of this band"`). Wire shapes are unchanged in all
+cases.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
@@ -213,8 +239,8 @@ and throw unless the caller has their required band role.
 
 Verified against the current source as of v1.17; these deployed, client-required contract surfaces were previously undocumented:
 
-- `gigs:resolvePublic({ ref: string }) -> GigPayload | null` — public; trims `ref`, rejects more than 200 characters, tries a slug through `by_slug` before normalizing a raw gig id, and applies `gigs:getPublic`'s published/cancelled lifecycle and `ownedByActiveBand` rule.
-- `gigs:doorRoster({ projectId }) -> { total: number, checkedIn: number, truncated: boolean }` — `requireProjectAdminQuery`; counts at most 501 `gigRsvps` for the project's public RSVP gig, reports `truncated` past 500, and otherwise returns zeros.
+- `gigs:resolvePublic({ ref: string }) -> GigPayload | null` — public; trims `ref`, rejects more than 200 characters, tries a slug through `by_slug` before normalizing a raw gig id, and returns only `published` or `cancelled` gigs (so an old share link can explain a cancellation) whose owning band is not archived.
+- `gigs:doorRoster({ projectId }) -> { total: number, checkedIn: number, truncated: boolean }` — `requireProjectAdmin`; counts at most 501 `gigRsvps` for the project's public RSVP gig, reports `truncated` past 500, and otherwise returns zeros.
 - `gigs:checkInTicket({ projectId, payload: string }) -> { status: "checkedIn"|"alreadyCheckedIn", fanName, checkedInAt } | { status: "invalid" } | { status: "wrongGig" }` — `requireProjectAdmin`; validates a `TICKET_PREFIX`-prefixed 64-hex-character token through `gigRsvps.by_ticketToken`, then patches `checkedInAt` and `checkedInBy` once.
 - `interactions:ticketForGig({ gigId }) -> { payload: string, checkedInAt: number|null }` — authenticated; requires an RSVP, mints or reuses its `ticketToken`, and returns it with `TICKET_PREFIX`.
 - `venues:create({ bandId, name, area, addr, lat, lng }) -> { venue: VenuePayload, created: boolean }` — `requireBandAdmin(bandId)`; trims and length-validates text, range-validates coordinates, then deduplicates by normalized address before normalized name.
@@ -232,7 +258,7 @@ Verified against the current source as of v1.17; these deployed, client-required
 { "_id": "...", "title": "...", "venueId": "...", "price": 0,
   "doorsAt": 1785296400000, "startsAt": 1785300000000,
   "doorsTime": "8PM / 9PM", "lifecycle": "published|cancelled",
-  // publish accepts the first six; feeds may also return the five legacy keys
+  // saveDraft accepts all eleven; maintenance:publishRealGig accepts the first six
   // custom implies a non-null flyerUrl once valid flyStorageId was supplied
   "flyKey": "xerox|riso|marquee|blueprint|sunburst|custom|paper|blue|black|yellow|bluetype",
   // resolved from flyStorageId; null when no custom flyer is stored/live
@@ -400,12 +426,10 @@ Verified against the current source as of v1.17; these deployed, client-required
 
 | Function                        | Args                 | Returns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| ★ `gigs:feed`                   | `{}`                 | `{ gigs: GigPayload[], venues: VenuePayload[], bands: BandPayload[], nextStartsAt: number\|null }` — all gigs with `startsAt >= now - 6h`, ascending, plus every venue/band they reference. Public. Bounded to the 200 nearest upcoming gigs; `nextStartsAt` is the first omitted timestamp or `null`.                                                                                                                                                                                                                                                                                                              |
-| `gigs:feedV2`                   | `{}`                 | `{ gigs: GigFeedPayload[], venues: VenuePayload[], bands: BandSummaryPayload[], nextStartsAt: number\|null }` — the same window, bounds, sentinel, and archived-band-owner exclusion as `gigs:feed`. The split makes an RSVP anywhere leave this result byte-for-byte unchanged; pair with `gigs:goingCounts` for the omitted counts. Public. Not yet subscribed to by a released client (v1.17); the client on this branch will move to it.                                                                                                                                                                   |
+| ★ `gigs:feedV2`                 | `{}`                 | `{ gigs: GigFeedPayload[], venues: VenuePayload[], bands: BandSummaryPayload[], nextStartsAt: number\|null }` — all published gigs with `startsAt >= now - 6h` whose owning band is not archived, ascending, plus every venue and band summary they reference. Public. Bounded to the 200 nearest upcoming gigs; `nextStartsAt` is the first omitted timestamp or `null`. Gigs omit `goingCount` so an RSVP anywhere leaves this result byte-for-byte unchanged; pair with `gigs:goingCounts` for the counts.                                                                                                     |
 | `gigs:goingCounts`              | `{}`                 | `Array<{ gigId, goingCount }>` — the `goingCount` values `feedV2` omits. It reads the same window, but Convex evaluates the subscriptions independently, so a gig may momentarily occur in only one result. The client merges emissions into a last-known-count map (never replacing it wholesale) and waits for the first `feedV2` result plus the first counts result, or a counts error, before marking data ready and rendering. Public. Subscribing separately keeps RSVP churn off the feed payload.                                                                                                                                                                                         |
 | ★ `gigs:forBand`                | `{ bandId }`         | `GigPayload[]` — the band's next 200 upcoming/grace-window gigs, ascending. Reads `gigBands.by_band_startsAt`, so unrelated discovery gigs cannot crowd the band out of the result. In v1.17, the branch client subscribes for a followed band only while `feedV2.nextStartsAt` is non-null, once the bounded feed window has been exhausted.                                                                                                                                                                                                                                                                       |
 | `gigs:pastForBand`              | `{ bandId }`         | `{ gigs: GigPayload[], venues: VenuePayload[] }` — the band's 200 most recent past gigs, **descending**, plus the venues they reference. Public. Reads `gigBands.by_band_startsAt`, so other bands cannot crowd its history out of the window.                                                                                                                                                                                                                                                                                                                                                                      |
-| `gigs:getPublic`                | `{ gigId }`          | `GigPayload \| null` — returns published and cancelled public pages; unpublished, deleted, or unknown ids return null.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `gigs:manageForBand`            | `{ bandId }`         | `GigProjectPayload[]` — admin-only draft/published/cancelled projects, newest first; deleted projects are omitted.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `gigs:getProject`               | `{ projectId }`      | `GigProjectPayload` — admin-only private source used for editing and fan preview.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `venues:list`                   | `{}`                 | `VenuePayload[]` — every venue, name-ascending, capped at 500. Public.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -432,7 +456,6 @@ Verified against the current source as of v1.17; these deployed, client-required
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `users:ensureUser`                      | `{ name?: string }`                                                                                                                                                                                                  | `{ userId }`                    | Thin authenticated adapter over the shared Clerk adoption ladder, keyed on `identity.subject`. Falls back to adopting a live legacy row by `identity.email` — but **only** when `identity.emailVerified` is true **and** exactly one row carries that address, so an unverified sign-up cannot claim a migrated account and the known duplicate-email rows are left alone. Empty-email repair refuses collisions. Called by the client right after sign-in, but `user.created` can now run the same adoption before any sign-in. |
 | `users:deleteMe`                        | `{}`                                                                                                                                                                                                                 | `null`                          | Authenticated soft tombstone invoked before Clerk account deletion invalidates the session. Blanks email and preserves referenced history/joins; the webhook repeats the same operation idempotently.                                                                                                                                                                                                                                                                                                                            |
-| `users:setGenres`                       | `{ genres: string[] }`                                                                                                                                                                                               | `null`                          |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `users:updateProfile`                   | `{ name: string, bio: string\|null, homeLocation: "sf"\|"oak"\|null, genres: string[], locationPersonalizationEnabled: boolean, followedBandUpdatesEnabled: boolean }`                                               | `null`                          | Explicit full save. Trims name, bio, and genres; blank bio/unset location are stored absent and emitted as null. Rejects a blank or >100-char name, >500-char bio, more than 20 genres, and blank, duplicate, or >50-char genres.                                                                                                                                                                                                                                                                                                |
 | `users:generateAvatarUploadUrl`         | `{}`                                                                                                                                                                                                                 | upload URL string               | Requires an authenticated user row. The client must upload a photo-compatible file before calling `setAvatar`.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `users:setAvatar`                       | `{ storageId }`                                                                                                                                                                                                      | `null`                          | Requires a live `_storage` row accepted by the shared photo size/type rules. Sets `avatarStorageId` and clears legacy `avatarUrl`; replaced blobs are left to the existing orphan sweep.                                                                                                                                                                                                                                                                                                                                         |
@@ -449,8 +472,6 @@ Verified against the current source as of v1.17; these deployed, client-required
 | `bandInvites:rotate`                    | `{ bandId }`                                                                                                                                                                                                         | `BandInvite`                    | requireBandAdmin. Replaces the token, creator, and seven-day expiry on the band's single row and clears revoked state. The former token stops resolving immediately.                                                                                                                                                                                                                                                                                                                                                             |
 | `bandInvites:revoke`                    | `{ bandId }`                                                                                                                                                                                                         | `null`                          | requireBandAdmin. Idempotently marks the current reusable link revoked.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `bandInvites:accept`                    | `{ token }`                                                                                                                                                                                                          | `{ bandId, membershipCreated }` | Authenticated explicit confirmation. Rejects expired/revoked/unknown links. Inserts a `member` membership and increments `followerCount` in the same transaction only when no membership already exists; repeat acceptance returns `membershipCreated: false`.                                                                                                                                                                                                                                                                   |
-| `gigs:publishGig`                       | `{ bandId, title, startsAt, doorsTime, venueId, price: number, flyKey: "xerox"\|"riso"\|"marquee"\|"blueprint"\|"sunburst"\|"custom", ticketing, ageRequirement: "allAges"\|"18Plus"\|"21Plus", externalUrl?, cap }` | `{ gigId }`                     | requireBandAdmin(bandId); age requirement is explicit on every new write; flyKey client-chosen from the six listed literals; `ticketing === "external"` requires a valid http(s) `externalUrl`; `externalUrl` is dropped for `ticketing === "rsvp"`; `startsAt`/`price` must be finite and non-negative and the venue must exist. `lineup` is `[bandId]`, `genres` are copied from the band, `desc` starts empty, `createdByBand = bandId`, goingCount 0.                                                                        |
-| ↳ v1.1 args/rules for `gigs:publishGig` | Adds `flyStorageId?` to the args above                                                                                                                                                                               | `{ gigId }`                     | `flyKey === "custom"` requires a live `flyStorageId` or throws. A non-`"custom"` flyKey silently drops any supplied `flyStorageId`; nothing is stored.                                                                                                                                                                                                                                                                                                                                                                           |
 | `media:generateUploadUrl`               | `{ bandId }`                                                                                                                                                                                                         | upload URL string               | requireBandAdmin(bandId) and nothing else — the 50-row cap is NOT checked here, because this URL also uploads gig flyers. `media:addMedia` is the only place the cap is enforced.                                                                                                                                                                                                                                                                                                                                                |
 | `media:addMedia`                        | `{ bandId, kind: "video"\|"photo", storageId, title, caption?, lengthSec? }`                                                                                                                                         | `{ mediaId }`                   | requireBandAdmin(bandId); requires a live, acceptable, non-duplicate upload and room under the 50-row per-band cap. Ordering is appended **globally** — `max(order) + 1` across both kinds, one list per band, not one per kind. The first video auto-pins. A video insert sets `bands.hasClip = true` in the same transaction.                                                                                                                                                                                                  |
 | `media:deleteMedia`                     | `{ mediaId }`                                                                                                                                                                                                        | `null`                          | requireBandAdmin of the media's band; deletes the row only — the blob stays and is reclaimed later by `media:sweepOrphanBlobs`, so a shared or missing blob can never wedge row deletion. Repacks the band's whole order to 0..n-1, clears the hero reference when applicable, promotes the next video when the pinned one is deleted, and transactionally recomputes `bands.hasClip` after a video deletion.                                                                                                                    |
@@ -524,12 +545,9 @@ the creating band republishes.
 bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
   its follow row), `bands:createBand` (seeds 1 with its admin member row), and
   `bandInvites:accept` (+1 with a newly inserted member row).
-  `maintenance:recountBandFollowers` checks and can repair drift.
   `convex/seed.ts`, however, writes decorative follower counts (486, 1214, 743,
   312, 927, 158) without creating any `follows` or `bandMembers` rows, so every
-  seeded band intentionally violates the invariant. On a seeded dev deployment
-  the reconciler reports every band as drift, and a non-dry run zeroes those
-  counts; non-dry runs are therefore for production or unseeded data only.
+  seeded band intentionally violates the invariant.
 - `gigs.goingCount == count(gigRsvps by gigId)`. Its writers are
   `interactions:toggleRsvp` (±1 with its RSVP row) and every gig insert, which
   seeds it to 0.
@@ -573,11 +591,6 @@ bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
 - `bandInvites:expire` internalMutation — scheduled at the current token's
   server-issued expiry. It sets the materialized `expired` flag only when both
   band id and token still match, so delayed jobs from rotated links are no-ops.
-- `maintenance:backfillGigBands` internalMutation — dry-run by default; creates
-  the `gigBands` rows for gigs written before the join table existed (all 14
-  production rows came out of the legacy `events` migration). Idempotent by
-  (gigId, bandId); never deletes or patches. Until it has run non-dry against a
-  deployment, `gigs:pastForBand` and `analytics:bandRecap` return nothing there.
 - `users:syncFromClerk` internalMutation — the webhook's single write entry
   point for a flattened, validated Clerk identity. Runs the same adoption
   ladder as `users:ensureUser`; `user.updated` makes a non-empty, non-colliding
@@ -586,16 +599,6 @@ bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
   Clerk id and blanks its email as an idempotent retry of `users:deleteMe`. It
   deliberately leaves follows, memberships, RSVPs, saves, media attribution
   and denormalized counters untouched.
-- `clerkBackfill:backfillEmails` internalAction — dry-run by default; processes
-  one batch per invocation and self-schedules by monotonic creation time. It
-  writes only Clerk-verified primary addresses and never an address another
-  row already holds.
-- `clerkBackfill:listUsersNeedingEmail` internalQuery — reads only the
-  `by_email` range for `email == ""`, after a supplied creation-time boundary.
-- `clerkBackfill:applyEmails` internalMutation — rechecks missing/filled/
-  tombstoned rows and email collisions inside the write transaction, including
-  collisions introduced earlier in the same batch.
-
 - `seed:seedDemo` internalMutation — **test fixture only, never run it against a
   real deployment.** Its idempotency marker is a venue named "The Foghorn Club",
   which prod does not have, so on prod it is not idempotent: it inserts fake
@@ -606,15 +609,9 @@ bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
   `convex/crons.ts` every 24 hours with `{ dryRun: false }`. Also the only
   thing that deletes blobs: it aborts rather than guess when any reference
   table hits its 2000-row read guard.
-- `maintenance:recountBandFollowers` internalMutation — dry-run by default with
-  an optional `bandId` scope. It recomputes counts from the `by_band` indexes on
-  `follows` and `bandMembers`, reports each before/after in `changes`, and is
-  idempotent when run live twice. It is NOT scheduled by crons. An unscoped
-  band read that hits its cap aborts the whole run; a per-band join read that
-  hits its cap skips that band without writing.
 - `maintenance:publishRealGig` internalMutation — dry-run by default and takes
-  the same args as `gigs:publishGig` through the shared validators/helpers in
-  `convex/lib/helpers.ts`, minus the `requireBandAdmin` check. It deduplicates
+  the shared gig publish fields (`gigPublishFieldsValidator` in
+  `convex/lib/helpers.ts`) with no auth check. It deduplicates
   `(title, startsAt, venueId)` through the `by_title` index and takes real
   operator-supplied gig details. It is not a seeder and shares nothing with
   `seed:seedDemo`.

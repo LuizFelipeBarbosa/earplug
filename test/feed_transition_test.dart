@@ -8,35 +8,37 @@ import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/async.dart';
+
 void main() {
   test('listing edits invalidate the affected cached venue detail', () async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _FeedTransitionRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
-      await _flushAsyncWork();
+      await flushAsyncWork();
       await repository.close();
     });
 
     final gig = DemoData.gigs.firstWhere((gig) => gig.id == 'g2');
     repository.emitFeed(gigs: [gig]);
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     expect(app.venueDetail(gig.venueId), isNull);
     expect(app.venueDetailLoading(gig.venueId), isTrue);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     final cached = app.venueDetail(gig.venueId);
     expect(cached?.gigs.single.title, gig.title);
 
     final renamed = gig.copyWith(title: '${gig.title} — Late Set');
     repository.emitFeed(gigs: [renamed]);
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     expect(app.venueDetail(gig.venueId), isNull);
     expect(app.venueDetailLoading(gig.venueId), isTrue);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.venueDetail(gig.venueId)?.gigs.single.title, renamed.title);
   });
 
@@ -46,10 +48,10 @@ void main() {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = _FeedTransitionRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
-        await _flushAsyncWork();
+        await flushAsyncWork();
         await repository.close();
       });
 
@@ -62,13 +64,13 @@ void main() {
         'pastShows': const <Map<String, String>>[],
       });
       repository.emitFeed(gigs: [gig], bands: {fullBand.id: fullBand});
-      await _flushAsyncWork();
+      await flushAsyncWork();
 
       final summary = Band.fromJson({..._bandJson(), 'avatarUrl': null});
       expect(summary.isSummary, isTrue);
       expect(summary.avatarUrlResolved, isTrue);
       repository.emitFeed(gigs: [gig], bands: {summary.id: summary});
-      await _flushAsyncWork();
+      await flushAsyncWork();
 
       final merged = app.band(fullBand.id)!;
       expect(merged.avatarUrl, isNull);
@@ -76,7 +78,7 @@ void main() {
       expect(merged.isSummary, isFalse);
 
       repository.emitFeed(gigs: [gig], bands: {summary.id: summary});
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.band(fullBand.id), same(merged));
     },
   );
@@ -87,10 +89,10 @@ void main() {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = _FeedTransitionRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
-        await _flushAsyncWork();
+        await flushAsyncWork();
         await repository.close();
       });
 
@@ -103,11 +105,11 @@ void main() {
         bands: {band.id: band},
         nextStartsAt: nextStartsAt,
       );
-      await _flushAsyncWork();
+      await flushAsyncWork();
 
       repository.detailGigs = [feedGig, outsideGig];
       expect(app.venueDetail(feedGig.venueId), isNull);
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.band(band.id)?.upcoming, [feedGig.id, outsideGig.id]);
 
       repository.emitFeed(
@@ -115,7 +117,7 @@ void main() {
         bands: {band.id: band},
         nextStartsAt: nextStartsAt,
       );
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.band(band.id)?.upcoming, [feedGig.id, outsideGig.id]);
 
       repository.emitFeed(
@@ -123,7 +125,7 @@ void main() {
         bands: {band.id: band},
         nextStartsAt: nextStartsAt,
       );
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.band(band.id)?.upcoming, [outsideGig.id]);
     },
   );
@@ -132,29 +134,29 @@ void main() {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _FeedTransitionRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
-      await _flushAsyncWork();
+      await flushAsyncWork();
       await repository.close();
     });
 
     app.retry();
-    await _flushAsyncWork();
+    await flushAsyncWork();
     final gig = DemoData.gigs
         .firstWhere((gig) => gig.id == 'g2')
         .copyWith(going: 0);
     repository.emitFeed(gigs: [gig]);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.dataStatus, DataStatus.connecting);
 
     repository.emitGoingCounts({gig.id: 41});
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.rsvpCount(gig), 41);
     expect(app.dataStatus, DataStatus.ready);
 
     repository.emitGoingCounts(const {});
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.rsvpCount(gig), 41);
   });
 
@@ -164,22 +166,22 @@ void main() {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = _FeedTransitionRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
-        await _flushAsyncWork();
+        await flushAsyncWork();
         await repository.close();
       });
 
       app.retry();
-      await _flushAsyncWork();
+      await flushAsyncWork();
       final gig = DemoData.gigs.firstWhere((gig) => gig.id == 'g2');
       repository.emitFeed(gigs: [gig]);
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.dataStatus, DataStatus.connecting);
 
       repository.emitGoingCountsError(StateError('counts unavailable'));
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.dataStatus, DataStatus.ready);
     },
   );
@@ -263,9 +265,3 @@ Map<String, dynamic> _bandJson() => <String, dynamic>{
   'profileComplete': true,
   'discoveryProfileReady': true,
 };
-
-Future<void> _flushAsyncWork() async {
-  for (var i = 0; i < 5; i++) {
-    await Future<void>.delayed(Duration.zero);
-  }
-}

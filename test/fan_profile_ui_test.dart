@@ -1220,22 +1220,13 @@ Gig _rsvpGig({
   required String title,
   required DateTime startsAt,
   GigLifecycle lifecycle = GigLifecycle.published,
-}) => Gig(
+}) => gigFixture(
   id: id,
   title: title,
-  venueId: 'v1',
-  price: 0,
   startsAt: startsAt,
-  dateShort: Gig.dateShortFor(startsAt.millisecondsSinceEpoch),
-  dateLine: Gig.dateLineFor(startsAt.millisecondsSinceEpoch, '7PM / 8PM'),
   time: '7PM / 8PM',
-  when: Gig.whenFor(startsAt.millisecondsSinceEpoch),
-  flyKey: 'paper',
-  lineup: const [],
   going: 1,
   genres: const ['indie'],
-  desc: '',
-  tix: Ticketing.rsvp,
   lifecycle: lifecycle,
 );
 

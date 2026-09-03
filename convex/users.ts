@@ -229,18 +229,6 @@ export const markDeletedFromClerk = internalMutation({
   },
 });
 
-export const setGenres = mutation({
-  args: { genres: v.array(v.string()) },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
-    await ctx.db.patch(user._id, {
-      genres: validateProfileGenres(args.genres),
-    });
-    return null;
-  },
-});
-
 export const updateFanOnboarding = mutation({
   args: {
     ...fanOnboardingValidator.partial().fields,

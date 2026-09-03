@@ -3,6 +3,8 @@
 /// Index with `DateTime.weekday - 1` and `DateTime.month - 1`.
 library;
 
+import 'package:flutter/material.dart' show TimeOfDay;
+
 const List<String> weekdayNames = [
   'Mon',
   'Tue',
@@ -37,3 +39,19 @@ final List<String> weekdayNamesUpper = [
 final List<String> monthNamesUpper = [
   for (final name in monthNames) name.toUpperCase(),
 ];
+
+/// "8PM" / "9:30PM" — the form the rest of the app stores doors times in.
+String timeLabel(TimeOfDay t) {
+  final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
+  final minutes = t.minute == 0
+      ? ''
+      : ':${t.minute.toString().padLeft(2, '0')}';
+  return '$hour$minutes${t.hour < 12 ? 'AM' : 'PM'}';
+}
+
+/// "Sat Aug 15".
+String dateLabel(DateTime d) =>
+    '${weekdayNames[d.weekday - 1]} ${monthNames[d.month - 1]} ${d.day}';
+
+/// "Aug 2026".
+String monthLabel(DateTime d) => '${monthNames[d.month - 1]} ${d.year}';

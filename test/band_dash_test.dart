@@ -10,6 +10,7 @@ import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/accessibility.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -341,6 +342,13 @@ void main() {
 
     expect(harness.app.bandId, 'b2');
     expect(harness.app.current.screen, Screen.bandDash);
+  });
+
+  testWidgets('dashboard is usable at increased text scale', (tester) async {
+    await pumpApp(tester, home: scaledScreen(const BandDashScreen()));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Scrollable), findsWidgets);
   });
 }
 

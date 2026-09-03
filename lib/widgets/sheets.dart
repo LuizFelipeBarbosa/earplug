@@ -13,11 +13,11 @@ class EpSheetShell extends StatelessWidget {
   const EpSheetShell({
     super.key,
     required this.padding,
-    required this.backgroundColor,
-    required this.borderColor,
-    required this.topRadius,
-    required this.handleColor,
-    required this.handleBottomSpacing,
+    this.backgroundColor,
+    this.borderColor,
+    this.topRadius = 20,
+    this.handleColor,
+    this.handleBottomSpacing = 10,
     required this.header,
     required this.children,
     this.heightFactor,
@@ -27,10 +27,13 @@ class EpSheetShell extends StatelessWidget {
   }) : assert(heightFactor == null || maxHeightFactor == null);
 
   final EdgeInsetsGeometry padding;
-  final Color backgroundColor;
-  final Color borderColor;
+
+  /// Colors fall back to the raised-surface sheet look; [EpActionSheet] and
+  /// the band media sheet pass their own denser palette.
+  final Color? backgroundColor;
+  final Color? borderColor;
   final double topRadius;
-  final Color handleColor;
+  final Color? handleColor;
   final double handleBottomSpacing;
   final Widget header;
   final List<Widget> children;
@@ -42,6 +45,7 @@ class EpSheetShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.sizeOf(context).height;
+    final colors = context.epColors;
     final content = Column(
       mainAxisSize: mainAxisSize,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -51,7 +55,7 @@ class EpSheetShell extends StatelessWidget {
             width: 36,
             height: 4,
             decoration: BoxDecoration(
-              color: handleColor,
+              color: handleColor ?? colors.contentDisabled,
               borderRadius: BorderRadius.circular(99),
             ),
           ),
@@ -71,9 +75,9 @@ class EpSheetShell extends StatelessWidget {
             : BoxConstraints(maxHeight: screenHeight * maxHeightFactor!),
         padding: padding,
         decoration: BoxDecoration(
-          color: backgroundColor,
+          color: backgroundColor ?? colors.surfaceRaised,
           borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
-          border: Border(top: BorderSide(color: borderColor)),
+          border: Border(top: BorderSide(color: borderColor ?? colors.border)),
         ),
         child: scrollable ? SingleChildScrollView(child: content) : content,
       ),
@@ -81,33 +85,122 @@ class EpSheetShell extends StatelessWidget {
   }
 }
 
-class _SheetOption extends StatelessWidget {
-  final Widget leading;
+/// Keyboard-aware chrome for a form sheet: an uppercase title with a Close
+/// button (or [trailing]) above [child]. Unlike [EpSheetShell] it has no drag
+/// handle and rises with the on-screen keyboard.
+class EpFormSheet extends StatelessWidget {
+  final String title;
   final Widget? trailing;
+  final Widget child;
+
+  /// Sheets that own their own scrolling (the calendar) lay out their body.
+  final bool padBody;
+
+  const EpFormSheet({
+    super.key,
+    required this.title,
+    required this.child,
+    this.trailing,
+    this.padBody = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      decoration: BoxDecoration(
+        color: context.epColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(title.toUpperCase(), style: epDisplay(size: 15)),
+                ),
+                trailing ??
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(Icons.close),
+                    ),
+              ],
+            ),
+          ),
+          if (padBody)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+              child: child,
+            )
+          else
+            Flexible(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-width option row for a form sheet: a title over a caption, selected
+/// state drawn by the card.
+class EpOptionCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
   final bool selected;
   final VoidCallback onTap;
+  final bool titleCaps;
 
-  const _SheetOption({
-    required this.leading,
-    this.trailing,
-    this.selected = false,
+  const EpOptionCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
     required this.onTap,
+    this.titleCaps = false,
   });
+
+  @override
+  Widget build(BuildContext context) {
+    return EpCard(
+      variant: selected ? EpCardVariant.selected : EpCardVariant.standard,
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            titleCaps ? title.toUpperCase() : title,
+            style: epText(size: 12.5, weight: FontWeight.w800),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: epText(size: 11, color: context.epColors.contentSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SheetOption extends StatelessWidget {
+  final Widget leading;
+  final VoidCallback onTap;
+
+  const _SheetOption({required this.leading, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 10),
       child: EpCard(
-        variant: selected ? EpCardVariant.selected : EpCardVariant.standard,
         onTap: onTap,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-        child: Row(
-          children: [
-            Expanded(child: leading),
-            ?trailing,
-          ],
-        ),
+        child: Row(children: [Expanded(child: leading)]),
       ),
     );
   }
@@ -224,53 +317,6 @@ Future<void> showEpActionSheet(
   );
 }
 
-// ============================ city picker ============================
-
-void showCitySheet(BuildContext context) {
-  final app = context.read<AppState>();
-  showEpSheet(context, (ctx) {
-    final city = app.city;
-    Widget option(String title, String sub, String value) {
-      return _SheetOption(
-        selected: city == value,
-        onTap: () {
-          Navigator.pop(ctx);
-          app.setCity(value);
-        },
-        leading: Text(title, style: Theme.of(ctx).textTheme.epLabel),
-        trailing: Text(sub, style: Theme.of(ctx).textTheme.epCaption),
-      );
-    }
-
-    return EpSheetShell(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-      backgroundColor: ctx.epColors.surfaceRaised,
-      borderColor: ctx.epColors.border,
-      topRadius: 20,
-      handleColor: ctx.epColors.contentDisabled,
-      handleBottomSpacing: 10,
-      maxHeightFactor: .88,
-      scrollable: true,
-      mainAxisSize: MainAxisSize.min,
-      header: Text(
-        'WHERE ARE YOU?',
-        style: Theme.of(ctx).textTheme.epSectionHeading,
-      ),
-      children: [
-        const SizedBox(height: 6),
-        Text(
-          "Pick a scene. Everything's within BART distance anyway.",
-          style: Theme.of(
-            ctx,
-          ).textTheme.epBody.copyWith(color: context.epColors.contentSecondary),
-        ),
-        option('San Francisco', 'Mission & around', 'sf'),
-        option('Oakland', 'Temescal & around', 'oak'),
-      ],
-    );
-  });
-}
-
 // ============================ view switcher ============================
 
 String bandEntryLabel(int bandCount) => switch (bandCount) {
@@ -288,11 +334,6 @@ void showSwitcherSheet(BuildContext context) {
         : profileName;
     return EpSheetShell(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
-      backgroundColor: ctx.epColors.surfaceRaised,
-      borderColor: ctx.epColors.border,
-      topRadius: 20,
-      handleColor: ctx.epColors.contentDisabled,
-      handleBottomSpacing: 10,
       maxHeightFactor: .88,
       scrollable: true,
       mainAxisSize: MainAxisSize.min,
