@@ -203,7 +203,7 @@ class GigDetailPresentation extends StatelessWidget {
           bottom: 0,
           child: isPreview
               ? _PreviewCtaBar(gig: gig)
-              : _CtaBar(gig: gig, app: app),
+              : _GigCtaBar(gig: gig, app: app),
         ),
       ],
     );
@@ -826,46 +826,18 @@ class _PreviewCtaBar extends StatelessWidget {
         ? 'RSVP — FREE'
         : 'RSVP — ${gig.priceLabel} AT DOOR';
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.bottomCenter,
-          end: Alignment.topCenter,
-          stops: [0, .75, 1],
-          colors: [
-            context.epColors.background,
-            context.epColors.background,
-            Colors.transparent,
-          ],
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            note,
-            textAlign: TextAlign.center,
-            style: epText(
-              size: 11,
-              weight: FontWeight.w700,
-              letterSpacing: .5,
-              color: context.epColors.contentSecondary,
-            ),
-          ),
-          const SizedBox(height: 7),
-          EpButton(label, kind: EpButtonKind.disabled, onTap: null),
-        ],
-      ),
+    return _CtaBar(
+      note: note,
+      child: EpButton(label, kind: EpButtonKind.disabled, onTap: null),
     );
   }
 }
 
-class _CtaBar extends StatelessWidget {
+class _GigCtaBar extends StatelessWidget {
   final Gig gig;
   final AppState app;
 
-  const _CtaBar({required this.gig, required this.app});
+  const _GigCtaBar({required this.gig, required this.app});
 
   @override
   Widget build(BuildContext context) {
@@ -920,6 +892,20 @@ class _CtaBar extends StatelessWidget {
       );
     }
 
+    return _CtaBar(note: tixNote, child: button);
+  }
+}
+
+/// The footer that fades up over the page and holds a ticketing note above
+/// the call to action.
+class _CtaBar extends StatelessWidget {
+  const _CtaBar({required this.note, required this.child});
+
+  final String note;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 40),
       decoration: BoxDecoration(
@@ -938,7 +924,7 @@ class _CtaBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            tixNote,
+            note,
             textAlign: TextAlign.center,
             style: epText(
               size: 11,
@@ -948,7 +934,7 @@ class _CtaBar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 7),
-          button,
+          child,
         ],
       ),
     );

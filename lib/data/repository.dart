@@ -465,18 +465,10 @@ abstract class EarplugRepository {
   Future<void> pinBandMedia(String mediaId);
   Future<void> moveBandMedia(String mediaId, String direction);
   Future<void> moveMediaWithinKind(String mediaId, String direction);
-  Future<void> setBandPhoto({required String bandId, required String mediaId});
-  Future<void> clearBandPhoto(String bandId);
-  Future<void> setBandAvatar({
-    required String bandId,
-    required String mediaId,
-  }) => setBandPhoto(bandId: bandId, mediaId: mediaId);
-  Future<void> clearBandAvatar(String bandId) => clearBandPhoto(bandId);
-  Future<void> setBandBanner({
-    required String bandId,
-    required String mediaId,
-  }) => setBandPhoto(bandId: bandId, mediaId: mediaId);
-  Future<void> clearBandBanner(String bandId) => clearBandPhoto(bandId);
+  Future<void> setBandAvatar({required String bandId, required String mediaId});
+  Future<void> clearBandAvatar(String bandId);
+  Future<void> setBandBanner({required String bandId, required String mediaId});
+  Future<void> clearBandBanner(String bandId);
   Future<List<FanHistoryItem>> history();
   Future<BandHistory> bandHistory(String bandId);
   Future<BandRecap> bandRecap(String bandId);
@@ -503,7 +495,6 @@ abstract class EarplugRepository {
   Future<void> ensureRsvp(String gigId);
   Future<void> ensureFollow(String bandId);
   Future<void> ensureSave(String gigId);
-  Future<void> setGenres(List<String> genres);
   Future<void> updateFanProfile({
     required String name,
     required String? bio,
@@ -602,19 +593,5 @@ abstract class EarplugRepository {
   Future<DoorCheckInResult> checkInTicket({
     required String projectId,
     required String payload,
-  });
-  Future<String> publishGig({
-    required String bandId,
-    required String title,
-    required int startsAt,
-    required String doorsTime,
-    required String venueId,
-    required int price,
-    required String flyKey,
-    String? flyStorageId,
-    required Ticketing ticketing,
-    required AgeRequirement ageRequirement,
-    String? externalUrl,
-    required String cap,
   });
 }

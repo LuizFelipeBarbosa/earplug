@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../app_links.dart';
 import '../app_state.dart';
-import '../date_names.dart';
 import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
@@ -59,11 +58,7 @@ class FanEventCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DateBlock(
-                day: gig.startsAt.day.toString().padLeft(2, '0'),
-                month: monthNamesUpper[gig.startsAt.month - 1],
-                semanticLabel: gig.dateShort,
-              ),
+              DateBlock.forDate(gig.startsAt, semanticLabel: gig.dateShort),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -93,7 +88,7 @@ class FanEventCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      '${gig.dateShort} · DOORS ${_doorsTime(gig.time)}',
+                      '${gig.dateShort} · DOORS ${gig.doorsLabel}',
                       style: Theme.of(context).textTheme.epMeta.copyWith(
                         color: context.epColors.accent,
                       ),
@@ -226,7 +221,7 @@ class FanEventCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  '${gig.dateShort} · DOORS ${_doorsTime(gig.time)}',
+                  '${gig.dateShort} · DOORS ${gig.doorsLabel}',
                   style: Theme.of(
                     context,
                   ).textTheme.epLabel.copyWith(color: context.epColors.volt),
@@ -275,11 +270,6 @@ class FanEventCard extends StatelessWidget {
       ),
     );
   }
-}
-
-String _doorsTime(String value) {
-  final separator = value.indexOf(' / ');
-  return separator == -1 ? value : value.substring(0, separator);
 }
 
 Future<void> _share(BuildContext context, Gig gig) => copyForUser(

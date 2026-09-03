@@ -650,6 +650,14 @@ class Gig {
     return GigWhen.later;
   }
 
+  /// "8PM" from "8PM / 9PM" — the doors half of [time].
+  String get doorsLabel => doorsLabelFor(time);
+
+  static String doorsLabelFor(String doorsTime) {
+    final separator = doorsTime.indexOf(' / ');
+    return separator == -1 ? doorsTime : doorsTime.substring(0, separator);
+  }
+
   static String dateShortFor(int startsAtMs) {
     final startsAt = DateTime.fromMillisecondsSinceEpoch(startsAtMs);
     return _dateShortForDate(startsAt);
@@ -671,10 +679,7 @@ class Gig {
     String doorsTime,
     DateTime now,
   ) {
-    final separator = doorsTime.indexOf(' / ');
-    final doors = separator == -1
-        ? doorsTime
-        : doorsTime.substring(0, separator);
+    final doors = doorsLabelFor(doorsTime);
     if (_whenForDate(startsAt, now) == GigWhen.tonight) {
       return 'TONIGHT · DOORS $doors';
     }

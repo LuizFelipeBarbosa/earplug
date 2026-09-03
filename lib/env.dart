@@ -24,9 +24,6 @@ abstract final class Env {
   static const bool emailSignInEnabled = bool.fromEnvironment(
     'EMAIL_SIGN_IN_ENABLED',
   );
-  static const bool phoneSignInEnabled = bool.fromEnvironment(
-    'PHONE_SIGN_IN_ENABLED',
-  );
   static const bool googleSignInEnabled = bool.fromEnvironment(
     'GOOGLE_SIGN_IN_ENABLED',
   );

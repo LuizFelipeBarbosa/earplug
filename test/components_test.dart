@@ -298,8 +298,8 @@ void main() {
           const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              EpProfileAvatar(name: 'Sam Reyes'),
-              EpProfileAvatar(name: null),
+              EpFanAvatar(name: 'Sam Reyes'),
+              EpFanAvatar(name: null),
             ],
           ),
         ),
@@ -309,7 +309,7 @@ void main() {
       expect(find.byIcon(Icons.person), findsOneWidget);
       expect(
         find.descendant(
-          of: find.byType(EpProfileAvatar),
+          of: find.byType(EpFanAvatar),
           matching: find.byType(Transform),
         ),
         findsNothing,

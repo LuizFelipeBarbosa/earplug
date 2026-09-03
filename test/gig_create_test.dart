@@ -754,39 +754,6 @@ class _GatedFlyerRepository extends DemoRepository {
   }
 
   @override
-  Future<String> publishGig({
-    required String bandId,
-    required String title,
-    required int startsAt,
-    required String doorsTime,
-    required String venueId,
-    required int price,
-    required String flyKey,
-    String? flyStorageId,
-    required Ticketing ticketing,
-    required AgeRequirement ageRequirement,
-    String? externalUrl,
-    required String cap,
-  }) async {
-    publishCalls++;
-    publishedFlyStorageId = flyStorageId;
-    return super.publishGig(
-      bandId: bandId,
-      title: title,
-      startsAt: startsAt,
-      doorsTime: doorsTime,
-      venueId: venueId,
-      price: price,
-      flyKey: flyKey,
-      flyStorageId: flyStorageId,
-      ticketing: ticketing,
-      ageRequirement: ageRequirement,
-      externalUrl: externalUrl,
-      cap: cap,
-    );
-  }
-
-  @override
   Future<String> publishGigDraft(String projectId) async {
     publishCalls++;
     publishedFlyStorageId = (await getGigProject(projectId)).flyStorageId;

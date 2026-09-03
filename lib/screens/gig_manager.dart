@@ -11,8 +11,20 @@ import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 import 'door_mode.dart';
 
-class GigManagerScreen extends StatelessWidget {
+class GigManagerScreen extends StatefulWidget {
   const GigManagerScreen({super.key});
+
+  @override
+  State<GigManagerScreen> createState() => _GigManagerScreenState();
+}
+
+class _GigManagerScreenState extends State<GigManagerScreen> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final app = context.read<AppState>();
+    if (app.isAdminOf(app.bandId)) app.ensureManagedGigs();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +41,6 @@ class GigManagerScreen extends StatelessWidget {
         ),
       );
     }
-    app.ensureManagedGigs();
     final projects = app.managedGigProjects;
     final drafts = projects
         .where((project) => project.status == GigProjectStatus.draft)

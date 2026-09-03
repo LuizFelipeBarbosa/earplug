@@ -133,22 +133,6 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<void> setBandPhoto({
-    required String bandId,
-    required String mediaId,
-  }) async {
-    await _convexService.mutation('bands:setBandPhoto', {
-      'bandId': bandId,
-      'mediaId': mediaId,
-    });
-  }
-
-  @override
-  Future<void> clearBandPhoto(String bandId) async {
-    await _convexService.mutation('bands:clearBandPhoto', {'bandId': bandId});
-  }
-
-  @override
   Future<void> setBandAvatar({
     required String bandId,
     required String mediaId,
@@ -338,11 +322,6 @@ class ConvexRepository implements EarplugRepository {
       'gigId': gigId,
       'on': true,
     });
-  }
-
-  @override
-  Future<void> setGenres(List<String> genres) async {
-    await _convexService.mutation('users:setGenres', {'genres': genres});
   }
 
   @override
@@ -743,38 +722,6 @@ class ConvexRepository implements EarplugRepository {
       }),
     ),
   );
-
-  @override
-  Future<String> publishGig({
-    required String bandId,
-    required String title,
-    required int startsAt,
-    required String doorsTime,
-    required String venueId,
-    required int price,
-    required String flyKey,
-    String? flyStorageId,
-    required Ticketing ticketing,
-    required AgeRequirement ageRequirement,
-    String? externalUrl,
-    required String cap,
-  }) async {
-    final result = await _convexService.mutation('gigs:publishGig', {
-      'bandId': bandId,
-      'title': title,
-      'startsAt': startsAt,
-      'doorsTime': doorsTime,
-      'venueId': venueId,
-      'price': price,
-      'flyKey': flyKey,
-      'flyStorageId': ?flyStorageId,
-      'ticketing': ticketing.name,
-      'ageRequirement': ageRequirement.wireValue,
-      'externalUrl': ?externalUrl,
-      'cap': cap,
-    });
-    return _asMap(result)['gigId'] as String;
-  }
 }
 
 BandPage parseBandPage(dynamic decoded) {

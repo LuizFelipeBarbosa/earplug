@@ -347,12 +347,8 @@ class _ProfileHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: context.epColors.border)),
-      ),
+    return ScreenHeader(
+      filled: false,
       child: isManagedPreview
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

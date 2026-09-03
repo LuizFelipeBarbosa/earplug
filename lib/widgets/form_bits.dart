@@ -3,6 +3,19 @@ import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'common.dart';
 
+/// Scrolls [controller] to its end after the next frame, so feedback that
+/// just appeared below a form comes into view. No-op once [state] is gone.
+void revealFormFeedback(State state, ScrollController controller) {
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!state.mounted || !controller.hasClients) return;
+    controller.animateTo(
+      controller.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
+  });
+}
+
 /// READY / DRAFT badge in the header of a create flow.
 class ReadyPill extends StatelessWidget {
   final bool ready;
@@ -116,22 +129,13 @@ class DoneButton extends StatelessWidget {
 }
 
 /// Text-field styling for inputs that sit inside a create-flow sheet.
+/// [epInputDecoration] on the page background, for fields inside sheets.
 InputDecoration sheetInput(BuildContext context, String hint) =>
-    InputDecoration(
-      hintText: hint,
-      filled: true,
+    epInputDecoration(
+      context,
+      hint,
       fillColor: context.epColors.background,
-      isDense: true,
-      constraints: const BoxConstraints(minHeight: 48),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
-        borderSide: BorderSide(color: context.epColors.border),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
-        borderSide: BorderSide(color: context.epColors.accent, width: 2),
-      ),
+      horizontalPadding: 12,
     );
 
 /// A bare tappable label — no box, no fill. Defaults to the roomy tracked-out

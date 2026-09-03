@@ -38,12 +38,7 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-      decoration: BoxDecoration(
-        color: context.epColors.background,
-        border: Border(bottom: BorderSide(color: context.epColors.border)),
-      ),
+    return ScreenHeader(
       child: Column(
         children: [
           Row(

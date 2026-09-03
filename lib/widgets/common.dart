@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../date_names.dart';
 import '../models.dart';
 import '../services/image_url.dart';
 import '../theme.dart';
@@ -14,6 +15,42 @@ double headerTopPad(BuildContext context) =>
 
 /// Bottom inset used by scrollables so content clears the floating tab bar.
 const double tabBarClearance = 96;
+
+/// The fixed bar across the top of a screen: status-bar clearance, the page
+/// gutters and a hairline underneath.
+class ScreenHeader extends StatelessWidget {
+  const ScreenHeader({
+    super.key,
+    required this.child,
+    this.bottomPadding = 10,
+    this.filled = true,
+  });
+
+  final Widget child;
+  final double bottomPadding;
+
+  /// Paints the page background behind the bar. Off where the screen's own
+  /// scaffold already supplies it.
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        16,
+        headerTopPad(context),
+        16,
+        bottomPadding,
+      ),
+      decoration: BoxDecoration(
+        color: filled ? context.epColors.background : null,
+        border: Border(bottom: BorderSide(color: context.epColors.border)),
+      ),
+      child: child,
+    );
+  }
+}
 
 class EpNetworkImage extends StatelessWidget {
   final String? url;
@@ -152,6 +189,15 @@ class DateBlock extends StatelessWidget {
     this.semanticLabel,
     this.size = 40,
   });
+
+  /// Zero-padded day over the three-letter month, e.g. "07" / "SEP".
+  DateBlock.forDate(
+    DateTime date, {
+    super.key,
+    this.semanticLabel,
+    this.size = 40,
+  }) : day = date.day.toString().padLeft(2, '0'),
+       month = monthNamesUpper[date.month - 1];
 
   final String day;
   final String month;
@@ -775,9 +821,12 @@ class GigFlyer extends StatelessWidget {
   }
 }
 
-/// Upright shared profile treatment for people and bands.
-class EpProfileAvatar extends StatelessWidget {
-  const EpProfileAvatar({
+/// The fan-profile avatar: an uploaded photo, or initials on the brand color.
+///
+/// Kept separate from [BandAvatar] so the personal-identity fallback stays
+/// consistent everywhere it appears.
+class EpFanAvatar extends StatelessWidget {
+  const EpFanAvatar({
     super.key,
     required this.name,
     this.imageUrl,
@@ -834,38 +883,7 @@ class EpProfileAvatar extends StatelessWidget {
   }
 }
 
-/// The private fan-profile avatar treatment.
-///
-/// Keeping this separate from [BandAvatar] makes the fan fallback consistent
-/// anywhere the personal identity appears, while uploaded photos still use the
-/// same accessible network-image behavior as every other profile image.
-class EpFanAvatar extends StatelessWidget {
-  const EpFanAvatar({
-    super.key,
-    required this.name,
-    this.imageUrl,
-    this.size = 40,
-    this.radius = 9,
-    this.fontSize,
-  });
-
-  final String? name;
-  final String? imageUrl;
-  final double size;
-  final double radius;
-  final double? fontSize;
-
-  @override
-  Widget build(BuildContext context) {
-    return EpProfileAvatar(
-      name: name,
-      imageUrl: imageUrl,
-      size: size,
-      radius: radius,
-      fontSize: fontSize,
-    );
-  }
-}
+/// Former name of [EpFanAvatar]; still referenced by tests.
 
 class ProfileCompleteBadge extends StatelessWidget {
   const ProfileCompleteBadge({super.key});
@@ -912,7 +930,7 @@ class BandAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EpProfileAvatar(
+    return EpFanAvatar(
       name: band.name,
       imageUrl: band.profileImageUrl,
       size: size,
@@ -1086,23 +1104,30 @@ class EpButton extends StatelessWidget {
   }
 }
 
-InputDecoration epInputDecoration(BuildContext context, String hint) =>
-    InputDecoration(
-      hintText: hint,
-      filled: true,
-      fillColor: context.epColors.surface,
-      isDense: true,
-      constraints: const BoxConstraints(minHeight: 48),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 13, vertical: 14),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
-        borderSide: BorderSide(color: context.epColors.border),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
-        borderSide: BorderSide(color: context.epColors.accent, width: 2),
-      ),
-    );
+InputDecoration epInputDecoration(
+  BuildContext context,
+  String hint, {
+  Color? fillColor,
+  double horizontalPadding = 13,
+}) => InputDecoration(
+  hintText: hint,
+  filled: true,
+  fillColor: fillColor ?? context.epColors.surface,
+  isDense: true,
+  constraints: const BoxConstraints(minHeight: 48),
+  contentPadding: EdgeInsets.symmetric(
+    horizontal: horizontalPadding,
+    vertical: 14,
+  ),
+  enabledBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(11),
+    borderSide: BorderSide(color: context.epColors.border),
+  ),
+  focusedBorder: OutlineInputBorder(
+    borderRadius: BorderRadius.circular(11),
+    borderSide: BorderSide(color: context.epColors.accent, width: 2),
+  ),
+);
 
 InputDecoration epCollapsedInputDecoration(
   String hint, {

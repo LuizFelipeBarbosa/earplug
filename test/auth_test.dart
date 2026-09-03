@@ -181,7 +181,7 @@ void main() {
       expect(app.profile?.name, 'Sam Reyes');
       expect(app.profile?.bio, 'Always by the speakers.');
       expect(app.profile?.homeLocation, FanCity.oak);
-      expect(app.city, 'oak');
+      expect(app.discoveryLocation, DiscoveryLocation.oak);
 
       expect(
         await app.saveFanProfile(
@@ -195,7 +195,7 @@ void main() {
         isTrue,
       );
       expect(app.profile?.locationPersonalizationEnabled, isFalse);
-      expect(app.city, 'sf');
+      expect(app.discoveryLocation, DiscoveryLocation.sf);
 
       expect(
         await app.saveFanProfile(
@@ -295,7 +295,7 @@ void main() {
     expect(app.authed, isFalse);
     expect(app.profile, isNull);
     expect(app.userGenres, isEmpty);
-    expect(app.city, 'sf');
+    expect(app.discoveryLocation, DiscoveryLocation.sf);
   });
 
   test(
@@ -456,7 +456,6 @@ void main() {
   ) async {
     final auth = FakeAuthService(
       supportsEmailSignIn: true,
-      supportsPhoneSignIn: false,
       supportsGoogleSignIn: true,
       supportsAppleSignIn: false,
     );
@@ -470,7 +469,6 @@ void main() {
     );
 
     expect(find.text('EMAIL'), findsOne);
-    expect(find.text('PHONE'), findsNothing);
     expect(find.text('G · Continue with Google'), findsOne);
     expect(find.text(' Continue with Apple'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -761,7 +759,6 @@ class _CountingCodeAuth extends FakeAuthService {
   _CountingCodeAuth()
     : super(
         supportsEmailSignIn: true,
-        supportsPhoneSignIn: false,
         supportsGoogleSignIn: false,
         supportsAppleSignIn: false,
       );

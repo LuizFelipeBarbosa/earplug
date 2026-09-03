@@ -634,10 +634,6 @@ class _ProfileDetailSheet extends StatelessWidget {
     return EpSheetShell(
       heightFactor: .84,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      backgroundColor: context.epColors.surfaceRaised,
-      borderColor: context.epColors.border,
-      topRadius: 20,
-      handleColor: context.epColors.contentDisabled,
       handleBottomSpacing: 8,
       header: Row(
         children: [
@@ -814,12 +810,7 @@ class _HistoryRow extends StatelessWidget {
         padding: const EdgeInsets.all(10),
         child: Row(
           children: [
-            DateBlock(
-              day: '${date.day}',
-              month: monthNamesUpper[date.month - 1].substring(0, 3),
-              semanticLabel: dateLabel,
-              size: 44,
-            ),
+            DateBlock.forDate(date, semanticLabel: dateLabel, size: 44),
             const SizedBox(width: 10),
             Expanded(
               child: Column(

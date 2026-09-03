@@ -195,7 +195,7 @@ void main() {
       ]);
 
       expect(await harness.controller.setAvatar(bandId, 'bm6'), isTrue);
-      await harness.controller.setHero(bandId, 'bm7');
+      expect(await harness.controller.setBanner(bandId, 'bm7'), isTrue);
       expect(
         harness.controller
             .photosFor(bandId)
@@ -210,7 +210,7 @@ void main() {
             .id,
         'bm6',
       );
-      await harness.controller.clearHero(bandId);
+      expect(await harness.controller.clearBanner(bandId), isTrue);
       expect(
         harness.controller.photosFor(bandId).any((media) => media.isHero),
         isFalse,

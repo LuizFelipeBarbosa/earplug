@@ -296,12 +296,12 @@ class _BandEditScreenState extends State<BandEditScreen> {
         _saved = false;
         _error = 'Band name, sound, and home base are required.';
       });
-      _revealFeedback();
+      revealFormFeedback(this, _scrollController);
       return;
     }
     if (_genres.length > 3) {
       setState(() => _error = 'Choose no more than three genres.');
-      _revealFeedback();
+      revealFormFeedback(this, _scrollController);
       return;
     }
 
@@ -326,27 +326,16 @@ class _BandEditScreenState extends State<BandEditScreen> {
       );
       if (!mounted) return;
       setState(() => _saved = true);
-      _revealFeedback();
+      revealFormFeedback(this, _scrollController);
     } on Object {
       if (!mounted) return;
       setState(() {
         _error = 'Changes could not be saved. Check your connection and retry.';
       });
-      _revealFeedback();
+      revealFormFeedback(this, _scrollController);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-  }
-
-  void _revealFeedback() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
-    });
   }
 
   @override

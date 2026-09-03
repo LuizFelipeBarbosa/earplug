@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
-import '../date_names.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -57,12 +56,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
 
     return Column(
       children: [
-        Container(
-          padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 12),
-          decoration: BoxDecoration(
-            color: context.epColors.background,
-            border: Border(bottom: BorderSide(color: context.epColors.border)),
-          ),
+        ScreenHeader(
+          bottomPadding: 12,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -777,11 +772,7 @@ class _ExploreEventRow extends StatelessWidget {
       onTap: () => app.openGig(gig.id),
       child: Row(
         children: [
-          DateBlock(
-            day: gig.startsAt.day.toString().padLeft(2, '0'),
-            month: monthNamesUpper[gig.startsAt.month - 1],
-            semanticLabel: gig.dateShort,
-          ),
+          DateBlock.forDate(gig.startsAt, semanticLabel: gig.dateShort),
           const SizedBox(width: 11),
           Expanded(
             child: Column(

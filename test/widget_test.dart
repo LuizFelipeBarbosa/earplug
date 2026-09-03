@@ -237,7 +237,10 @@ void main() {
 
     test('an in-flight create is visible and blocks a second one', () async {
       final repository = _GatedCreateRepository();
-      final app = AppState.demo(repository: repository, auth: FakeAuthService());
+      final app = AppState.demo(
+        repository: repository,
+        auth: FakeAuthService(),
+      );
       addTearDown(app.dispose);
       _fillBandForm(app);
 
@@ -258,7 +261,10 @@ void main() {
 
     test('failed RSVP mutation reverts its optimistic update', () async {
       final auth = FakeAuthService();
-      final app = AppState.demo(repository: _FailingRsvpRepository(), auth: auth);
+      final app = AppState.demo(
+        repository: _FailingRsvpRepository(),
+        auth: auth,
+      );
       addTearDown(app.dispose);
 
       app.toggleRsvp('g1');
@@ -684,15 +690,6 @@ class _FailingRsvpRepository implements EarplugRepository {
   Future<void> moveMediaWithinKind(String mediaId, String direction) async {}
 
   @override
-  Future<void> setBandPhoto({
-    required String bandId,
-    required String mediaId,
-  }) async {}
-
-  @override
-  Future<void> clearBandPhoto(String bandId) async {}
-
-  @override
   Future<void> setBandAvatar({
     required String bandId,
     required String mediaId,
@@ -769,9 +766,6 @@ class _FailingRsvpRepository implements EarplugRepository {
 
   @override
   Future<void> ensureSave(String gigId) async {}
-
-  @override
-  Future<void> setGenres(List<String> genres) async {}
 
   @override
   Future<void> updateFanProfile({
@@ -984,22 +978,6 @@ class _FailingRsvpRepository implements EarplugRepository {
     required String projectId,
     required String payload,
   }) => throw UnimplementedError();
-
-  @override
-  Future<String> publishGig({
-    required String bandId,
-    required String title,
-    required int startsAt,
-    required String doorsTime,
-    required String venueId,
-    required int price,
-    required String flyKey,
-    String? flyStorageId,
-    required Ticketing ticketing,
-    required AgeRequirement ageRequirement,
-    String? externalUrl,
-    required String cap,
-  }) async => 'unused';
 }
 
 Band _bandFixture({

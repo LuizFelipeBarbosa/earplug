@@ -12,15 +12,6 @@ AuthService createPlatformAuthService() {
 
 enum _CodeFlow { signIn, signUp }
 
-enum _CodeStrategy {
-  email('email_code'),
-  phone('phone_code');
-
-  const _CodeStrategy(this.value);
-
-  final String value;
-}
-
 final class ClerkWebAuth implements AuthService {
   ClerkWebAuth(this._publishableKey);
 
@@ -33,7 +24,6 @@ final class ClerkWebAuth implements AuthService {
   _SignIn? _codeSignIn;
   _SignUp? _codeSignUp;
   _CodeFlow? _codeFlow;
-  _CodeStrategy? _codeStrategy;
   bool _lastSignedIn = false;
 
   @override
@@ -58,9 +48,6 @@ final class ClerkWebAuth implements AuthService {
 
   @override
   bool get supportsEmailSignIn => Env.emailSignInEnabled;
-
-  @override
-  bool get supportsPhoneSignIn => Env.phoneSignInEnabled;
 
   @override
   bool get supportsAppleSignIn => Env.appleSignInEnabled;
@@ -174,7 +161,6 @@ final class ClerkWebAuth implements AuthService {
           )
           .toDart;
       _codeFlow = _CodeFlow.signIn;
-      _codeStrategy = _CodeStrategy.email;
     } catch (error) {
       if (!_isMissingIdentifier(error)) {
         throw AuthException(_messageFor(error));
@@ -190,7 +176,6 @@ final class ClerkWebAuth implements AuthService {
             )
             .toDart;
         _codeFlow = _CodeFlow.signUp;
-        _codeStrategy = _CodeStrategy.email;
       } catch (signUpError) {
         throw AuthException(_messageFor(signUpError));
       }
@@ -198,63 +183,11 @@ final class ClerkWebAuth implements AuthService {
   }
 
   @override
-  Future<bool> verifyEmailCode(String code) {
-    return _verifyCode(code, _CodeStrategy.email);
-  }
-
-  @override
-  Future<void> startPhoneSignIn(String phoneNumber) async {
-    await initialize();
-    final identifier = phoneNumber.trim();
-    if (identifier.isEmpty) {
-      throw const AuthException('Enter your phone number.');
-    }
-
-    _resetCodeFlow();
-    try {
-      _codeSignIn = await _clerk.client.signIn
-          .create(
-            _SignInCreateParams(identifier: identifier, strategy: 'phone_code'),
-          )
-          .toDart;
-      _codeFlow = _CodeFlow.signIn;
-      _codeStrategy = _CodeStrategy.phone;
-    } catch (error) {
-      if (!_isMissingIdentifier(error)) {
-        throw AuthException(_messageFor(error));
-      }
-
-      try {
-        final signUp = await _clerk.client.signUp
-            .create(_SignUpCreateParams(phoneNumber: identifier))
-            .toDart;
-        _codeSignUp = await signUp
-            .preparePhoneNumberVerification(
-              _VerificationPrepareParams(strategy: 'phone_code'),
-            )
-            .toDart;
-        _codeFlow = _CodeFlow.signUp;
-        _codeStrategy = _CodeStrategy.phone;
-      } catch (signUpError) {
-        throw AuthException(_messageFor(signUpError));
-      }
-    }
-  }
-
-  @override
-  Future<bool> verifyPhoneCode(String code) {
-    return _verifyCode(code, _CodeStrategy.phone);
-  }
-
-  Future<bool> _verifyCode(String code, _CodeStrategy strategy) async {
+  Future<bool> verifyEmailCode(String code) async {
     await initialize();
     if (!RegExp(r'^\d{6}$').hasMatch(code)) return false;
 
     try {
-      if (_codeStrategy != strategy) {
-        throw const AuthException('Send a verification code first.');
-      }
-
       final String? createdSessionId;
       switch (_codeFlow) {
         case _CodeFlow.signIn:
@@ -264,7 +197,7 @@ final class ClerkWebAuth implements AuthService {
           }
           final result = await signIn
               .attemptFirstFactor(
-                _CodeAttemptParams(strategy: strategy.value, code: code),
+                _CodeAttemptParams(strategy: 'email_code', code: code),
               )
               .toDart;
           createdSessionId = result.createdSessionId;
@@ -273,18 +206,9 @@ final class ClerkWebAuth implements AuthService {
           if (signUp == null) {
             throw const AuthException('Send a verification code first.');
           }
-          final result = switch (strategy) {
-            _CodeStrategy.email =>
-              await signUp
-                  .attemptEmailAddressVerification(
-                    _CodeVerifyParams(code: code),
-                  )
-                  .toDart,
-            _CodeStrategy.phone =>
-              await signUp
-                  .attemptPhoneNumberVerification(_CodeVerifyParams(code: code))
-                  .toDart,
-          };
+          final result = await signUp
+              .attemptEmailAddressVerification(_CodeVerifyParams(code: code))
+              .toDart;
           createdSessionId = result.createdSessionId;
         case null:
           throw const AuthException('Send a verification code first.');
@@ -369,7 +293,6 @@ final class ClerkWebAuth implements AuthService {
 
   void _resetCodeFlow() {
     _codeFlow = null;
-    _codeStrategy = null;
     _codeSignIn = null;
     _codeSignUp = null;
   }
@@ -519,12 +442,6 @@ extension type _SignUp(JSObject _) implements JSObject {
   external JSPromise<_SignUp> attemptEmailAddressVerification(
     _CodeVerifyParams params,
   );
-  external JSPromise<_SignUp> preparePhoneNumberVerification(
-    _VerificationPrepareParams params,
-  );
-  external JSPromise<_SignUp> attemptPhoneNumberVerification(
-    _CodeVerifyParams params,
-  );
   external String? get createdSessionId;
 }
 
@@ -550,10 +467,7 @@ extension type _SignInCreateParams._(JSObject _) implements JSObject {
 
 @JS()
 extension type _SignUpCreateParams._(JSObject _) implements JSObject {
-  external factory _SignUpCreateParams({
-    String? emailAddress,
-    String? phoneNumber,
-  });
+  external factory _SignUpCreateParams({String? emailAddress});
 }
 
 @JS()

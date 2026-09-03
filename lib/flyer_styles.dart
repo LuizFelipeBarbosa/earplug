@@ -74,10 +74,4 @@ const flyerStyles = <String, FlyerStyle>{
 };
 
 /// Presses offered by the gig-create flyer picker, in swatch order.
-const flyerPicks = [
-  'xerox',
-  'riso',
-  'marquee',
-  'blueprint',
-  'sunburst',
-];
+const flyerPicks = ['xerox', 'riso', 'marquee', 'blueprint', 'sunburst'];

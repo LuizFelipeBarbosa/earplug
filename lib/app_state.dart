@@ -21,6 +21,8 @@ import 'services/location_service.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
 
+export 'date_names.dart' show timeLabel;
+
 enum Screen {
   home,
   gig,
@@ -483,13 +485,8 @@ class AppState extends ChangeNotifier {
   bool get profileTutorialAvailable =>
       authed && profile?.profileTutorialAvailable == true;
 
-  /// Legacy-imported count and RSVP-derived history can disagree; show
-  /// whichever credits the fan more.
-  int get gigsAttended => attended > history.length ? attended : history.length;
-
   // ---- home filters
   bool mapMode = true;
-  String city = 'sf';
   DiscoveryLocation discoveryLocation = DiscoveryLocation.sf;
   FanCity? _discoveryHomeCity;
   FanCity? get discoveryHomeCity => _discoveryHomeCity;
@@ -503,8 +500,6 @@ class AppState extends ChangeNotifier {
   DateTimeRange? get fDateRange => filters.dateRange;
   bool get fFree => filters.price == PriceFilter.free;
   Set<String> get fGenres => filters.genres;
-  String? get fGenre =>
-      filters.genres.length == 1 ? filters.genres.single : null;
   PriceFilter get fPrice => filters.price;
   String? get fVenueId => filters.venueId;
   double? get fMaxDistanceMiles => filters.maxDistanceMiles;
@@ -525,16 +520,6 @@ class AppState extends ChangeNotifier {
   String? _exploreBandsCursor;
   String? exploreBandsError;
 
-  DataStatus get exploreBandsStatus {
-    if (exploreBandIds.isEmpty && exploreBandsError != null) {
-      return DataStatus.error;
-    }
-    if (exploreBandIds.isEmpty && exploreBandsLoading) {
-      return DataStatus.connecting;
-    }
-    return DataStatus.ready;
-  }
-
   bool get hasMoreExploreBands => !_exploreBandsDone;
 
   // ---- band membership
@@ -552,7 +537,6 @@ class AppState extends ChangeNotifier {
   String nbIg = '';
   String nbBc = '';
   String nbYt = '';
-  String nbLabel = 'cream';
 
   /// Kept as `nbPhoto` for compatibility with the existing creation recovery
   /// path; it is now the avatar/profile image only.
@@ -1486,7 +1470,6 @@ class AppState extends ChangeNotifier {
     _clearFollowedBandGigSubscriptions();
     _interactionGigs.clear();
     _locationRequestGeneration++;
-    city = 'sf';
     discoveryLocation = DiscoveryLocation.sf;
     _discoveryHomeCity = null;
     currentPosition = null;
@@ -1883,7 +1866,6 @@ class AppState extends ChangeNotifier {
     final previous = fanOnboarding;
     if (previous == null) return;
     final previousDiscoveryState = (
-      city: city,
       location: discoveryLocation,
       homeCity: _discoveryHomeCity,
       position: currentPosition,
@@ -1910,7 +1892,6 @@ class AppState extends ChangeNotifier {
         final current = fanOnboarding;
         if (current?.preferredCity == preferredCity) {
           _locationRequestGeneration++;
-          city = previousDiscoveryState.city;
           discoveryLocation = previousDiscoveryState.location;
           _discoveryHomeCity = previousDiscoveryState.homeCity;
           currentPosition = previousDiscoveryState.position;
@@ -2026,7 +2007,6 @@ class AppState extends ChangeNotifier {
   void _applyDiscoveryCity(String c) {
     _appliedHomePersonalization = null;
     _locationRequestGeneration++;
-    city = c;
     discoveryLocation = c == 'oak'
         ? DiscoveryLocation.oak
         : DiscoveryLocation.sf;
@@ -2040,7 +2020,6 @@ class AppState extends ChangeNotifier {
   void _applyFanCity(FanCity selectedCity) {
     _appliedHomePersonalization = null;
     _locationRequestGeneration++;
-    city = selectedCity.name;
     discoveryLocation = discoveryLocationForFanCity(selectedCity);
     _discoveryHomeCity = discoveryLocation == DiscoveryLocation.home
         ? selectedCity
@@ -2392,9 +2371,6 @@ class AppState extends ChangeNotifier {
     return null;
   }
 
-  bool publicGigLoading(String id) =>
-      _subscribedPublicGigId == id && _publicGigLoading;
-
   bool publicGigMissing(String id) => _missingPublicGigs.contains(id);
 
   String? publicGigError(String id) => _publicGigErrors[id];
@@ -2481,8 +2457,6 @@ class AppState extends ChangeNotifier {
   }
 
   Band? band(String id) => _bands[id];
-
-  bool publicBandLoading(String ref) => _loadingPublicBands.contains(ref);
 
   bool publicBandMissing(String ref) => _missingPublicBands.contains(ref);
 
@@ -2714,8 +2688,7 @@ class AppState extends ChangeNotifier {
     point: LatLng(0, 0),
   );
 
-  FlyerStyle flyer(String key) =>
-      flyerStyles[key] ?? flyerStyles['paper']!;
+  FlyerStyle flyer(String key) => flyerStyles[key] ?? flyerStyles['paper']!;
 
   double? distanceMilesFromCurrent(Venue venue) {
     final origin = currentPosition;
@@ -2914,11 +2887,6 @@ class AppState extends ChangeNotifier {
     _myBandGigsVersion = _stateVersion;
     return _cachedMyBandGigs;
   }
-
-  String get myBandNames => myBands
-      .map((id) => band(id)?.name ?? '')
-      .where((n) => n.isNotEmpty)
-      .join(' · ');
 
   void switchToBand(String id) {
     bandId = id;
@@ -3336,7 +3304,6 @@ class AppState extends ChangeNotifier {
     nbIg = '';
     nbBc = '';
     nbYt = '';
-    nbLabel = 'cream';
     nbPhoto = null;
     nbPhotoError = null;
     nbPhotoUploading = false;
@@ -3366,8 +3333,6 @@ class AppState extends ChangeNotifier {
   void setNbBc(String v) => _set(() => nbBc = v);
 
   void setNbYt(String v) => _set(() => nbYt = v);
-
-  void setNbLabel(String key) => _set(() => nbLabel = key);
 
   void setNbPhoto(PickedMedia? photo) => _set(() {
     nbPhoto = photo;
@@ -3416,22 +3381,6 @@ class AppState extends ChangeNotifier {
     if (nbGenres.isEmpty) 'a genre',
     if (nbArea == null) 'a home base',
   ];
-
-  /// How full the tape winds: the seven setup checklist lines, equally weighted.
-  double get nbCompletion {
-    final done = [
-      nbName.trim().isNotEmpty,
-      nbGenres.isNotEmpty,
-      nbArea != null,
-      nbPhoto != null,
-      nbBanner != null,
-      nbBio.trim().isNotEmpty,
-      nbIg.trim().isNotEmpty ||
-          nbBc.trim().isNotEmpty ||
-          nbYt.trim().isNotEmpty,
-    ];
-    return done.where((d) => d).length / done.length;
-  }
 
   String get nbSlug {
     final slug = _slugify(nbName.trim().isEmpty ? 'your-band' : nbName);
@@ -4374,12 +4323,3 @@ String dateLabel(DateTime d) =>
 
 /// "Aug 2026".
 String monthLabel(DateTime d) => '${monthNames[d.month - 1]} ${d.year}';
-
-/// "8PM" / "9:30PM" — the form the rest of the app stores doors times in.
-String timeLabel(TimeOfDay t) {
-  final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
-  final minutes = t.minute == 0
-      ? ''
-      : ':${t.minute.toString().padLeft(2, '0')}';
-  return '$hour$minutes${t.hour < 12 ? 'AM' : 'PM'}';
-}

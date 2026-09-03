@@ -22,10 +22,7 @@ abstract class AuthService {
   Future<String?> fetchConvexToken();
   Future<void> startEmailSignIn(String email);
   Future<bool> verifyEmailCode(String code);
-  Future<void> startPhoneSignIn(String phoneNumber);
-  Future<bool> verifyPhoneCode(String code);
   bool get supportsEmailSignIn;
-  bool get supportsPhoneSignIn;
   bool get supportsAppleSignIn;
   bool get supportsGoogleSignIn;
   Future<void> signInWithOAuth(OAuthProvider provider);
@@ -34,7 +31,6 @@ abstract class AuthService {
 class FakeAuthService implements AuthService {
   FakeAuthService({
     this.supportsEmailSignIn = true,
-    this.supportsPhoneSignIn = true,
     this.supportsAppleSignIn = true,
     this.supportsGoogleSignIn = true,
   });
@@ -44,9 +40,6 @@ class FakeAuthService implements AuthService {
 
   @override
   final bool supportsEmailSignIn;
-
-  @override
-  final bool supportsPhoneSignIn;
 
   @override
   final bool supportsAppleSignIn;
@@ -99,16 +92,6 @@ class FakeAuthService implements AuthService {
 
   @override
   Future<bool> verifyEmailCode(String code) async {
-    if (code != '424242') return false;
-    await signInDemo();
-    return true;
-  }
-
-  @override
-  Future<void> startPhoneSignIn(String phoneNumber) async {}
-
-  @override
-  Future<bool> verifyPhoneCode(String code) async {
     if (code != '424242') return false;
     await signInDemo();
     return true;
