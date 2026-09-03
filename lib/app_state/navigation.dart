@@ -6,10 +6,13 @@ mixin _NavigationState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   bool get authed;
   String get bandId;
+  String get organizationId;
   UserProfile? get profile;
   Map<String, Band> get _bands;
   Gig? gig(String id);
+  Venue? knownVenue(String id);
   bool isAdminOf(String id);
+  OrganizationRole? organizerRoleFor(String organizationId);
   void ensureExploreBands();
   void needAuth(PendingAuth p);
   Future<void> loadBandProfileDetails(String id, {bool refresh = false});
@@ -24,6 +27,18 @@ mixin _NavigationState on _AppStateCore {
   List<ScreenEntry> _stack = const [ScreenEntry(Screen.home)];
   ScreenEntry get current => _stack.last;
   bool get canGoBack => _stack.length > 1;
+  ActiveIdentity get identity {
+    final screen = current.screen;
+    if (organizerTabScreens.contains(screen)) {
+      return OrganizerIdentity(
+        organizationId,
+        organizerRoleFor(organizationId),
+      );
+    }
+    if (adminScreens.contains(screen)) return const AdminIdentity();
+    if (bandTabScreens.contains(screen)) return BandIdentity(bandId);
+    return const PersonalIdentity();
+  }
 
   // ========================= navigation =========================
 
@@ -68,8 +83,20 @@ mixin _NavigationState on _AppStateCore {
   String _browserPathFor(Screen screen, String? param) => switch (screen) {
     Screen.gig => '/g/${gig(param ?? '')?.publicRef ?? param ?? ''}',
     Screen.band => '/${_bands[param]?.publicRef ?? param ?? ''}',
+    Screen.venue => _venueBrowserPath(param),
+    Screen.orgJoin => '/apply/${param ?? ''}',
     _ => '/',
   };
+
+  String _venueBrowserPath(String? param) {
+    final requestedRef = param ?? '';
+    final venue = knownVenue(requestedRef);
+    final slug = venue?.slug?.trim();
+    final browserRef = slug != null && slug.isNotEmpty
+        ? slug
+        : venue?.id ?? requestedRef;
+    return '/venues/$browserRef';
+  }
 
   void _refreshVisibleBandDashboard() {
     if (current.screen == Screen.bandDash && bandId.isNotEmpty) {

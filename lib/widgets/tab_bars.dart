@@ -121,8 +121,9 @@ class FanTabBar extends StatelessWidget {
     final app = context.watch<AppState>();
     final scr = app.current.screen;
     final bandCount = app.authed ? app.myBands.length : 0;
-    final membershipsLoading =
-        app.authed && !app.membershipsLoaded && bandCount == 0;
+    final hasSwitchableIdentity =
+        bandCount > 0 || app.myOrganizations.isNotEmpty;
+    final switcherLabel = hasSwitchableIdentity ? 'SWITCH' : 'CREATE';
     return _TabBarShell(
       borderColor: context.epColors.border,
       items: [
@@ -146,19 +147,15 @@ class FanTabBar extends StatelessWidget {
         ),
         EpNavigationItem(
           icon: Icons.groups_outlined,
-          label: membershipsLoading
-              ? 'BANDS'
-              : bandCount == 0
-              ? 'CREATE BAND'
-              : 'SWITCH BAND',
-          compactLabel: 'BAND',
+          label: switcherLabel,
+          compactLabel: switcherLabel,
           selected: false,
           onPressed: () {
             if (!app.authed) {
               app.requestStartBand();
             } else if (!app.membershipsLoaded) {
               return;
-            } else if (bandCount == 0) {
+            } else if (!hasSwitchableIdentity) {
               app.requestStartBand();
             } else {
               showSwitcherSheet(context);
@@ -205,6 +202,52 @@ class BandTabBar extends StatelessWidget {
           selected: scr == Screen.analytics,
           onPressed: () => app.resetTo(Screen.analytics),
         ),
+      ],
+    );
+  }
+}
+
+class OrganizerTabBar extends StatelessWidget {
+  const OrganizerTabBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final scr = app.current.screen;
+    final canManage = app.canManageOrganization(app.organizationId);
+    return _TabBarShell(
+      borderColor: context.epColors.border,
+      items: [
+        EpNavigationItem(
+          key: const Key('organizer-tab-dash'),
+          icon: Icons.grid_view_rounded,
+          label: 'DASH',
+          selected: scr == Screen.orgDash,
+          onPressed: () => app.resetTo(Screen.orgDash),
+        ),
+        EpNavigationItem(
+          key: const Key('organizer-tab-venues'),
+          icon: Icons.storefront_outlined,
+          label: 'VENUES',
+          selected: scr == Screen.orgVenues,
+          onPressed: () => app.resetTo(Screen.orgVenues),
+        ),
+        if (canManage)
+          EpNavigationItem(
+            key: const Key('organizer-tab-team'),
+            icon: Icons.group_outlined,
+            label: 'TEAM',
+            selected: scr == Screen.orgTeam,
+            onPressed: () => app.resetTo(Screen.orgTeam),
+          ),
+        if (canManage)
+          EpNavigationItem(
+            key: const Key('organizer-tab-settings'),
+            icon: Icons.settings_outlined,
+            label: 'SETTINGS',
+            selected: scr == Screen.orgSettings,
+            onPressed: () => app.resetTo(Screen.orgSettings),
+          ),
       ],
     );
   }

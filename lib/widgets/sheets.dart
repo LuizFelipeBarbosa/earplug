@@ -191,7 +191,7 @@ class _SheetOption extends StatelessWidget {
   final Widget leading;
   final VoidCallback onTap;
 
-  const _SheetOption({required this.leading, required this.onTap});
+  const _SheetOption({super.key, required this.leading, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -325,6 +325,24 @@ String bandEntryLabel(int bandCount) => switch (bandCount) {
   _ => 'Switch band',
 };
 
+String _roleLabel(OrganizationRole role) => switch (role) {
+  OrganizationRole.owner => 'Owner',
+  OrganizationRole.manager => 'Manager',
+  OrganizationRole.finance => 'Finance',
+  OrganizationRole.door => 'Door',
+};
+
+String _applicationStatusLabel(OrganizationApplicationStatus status) =>
+    switch (status) {
+      OrganizationApplicationStatus.draft => 'Draft',
+      OrganizationApplicationStatus.submitted => 'Submitted',
+      OrganizationApplicationStatus.underReview => 'Under review',
+      OrganizationApplicationStatus.needsInfo => 'Needs info',
+      OrganizationApplicationStatus.approved => 'Approved',
+      OrganizationApplicationStatus.rejected => 'Rejected',
+      OrganizationApplicationStatus.withdrawn => 'Withdrawn',
+    };
+
 void showSwitcherSheet(BuildContext context) {
   final app = context.read<AppState>();
   showEpSheet(context, (ctx) {
@@ -398,6 +416,43 @@ void showSwitcherSheet(BuildContext context) {
                 ],
               ),
             ),
+        for (final membership in app.myOrganizations)
+          _SheetOption(
+            key: Key('switcher-org-${membership.organization.id}'),
+            onTap: () {
+              Navigator.pop(ctx);
+              app.switchToOrganization(membership.organization.id);
+            },
+            leading: Row(
+              children: [
+                EpFanAvatar(
+                  name: membership.organization.name,
+                  imageUrl: membership.organization.photoUrls.isEmpty
+                      ? null
+                      : membership.organization.photoUrls.first,
+                  size: 34,
+                  radius: 8,
+                  fontSize: 12,
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        membership.organization.name.toUpperCase(),
+                        style: Theme.of(ctx).textTheme.epLabel,
+                      ),
+                      Text(
+                        'Organizer · ${_roleLabel(membership.role)}',
+                        style: Theme.of(ctx).textTheme.epCaption,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.only(top: 10),
           child: OutlinedButton.icon(
@@ -411,6 +466,47 @@ void showSwitcherSheet(BuildContext context) {
             ),
           ),
         ),
+        // Approved organizers enter through their membership; withdrawn
+        // applications may start over.
+        if (app.myOrganizationApplication?.status !=
+            OrganizationApplicationStatus.approved)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: OutlinedButton.icon(
+              key: const Key('switcher-become-organizer'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                final application = app.myOrganizationApplication;
+                if (application == null ||
+                    application.status ==
+                        OrganizationApplicationStatus.withdrawn) {
+                  app.openOrganizerApply();
+                } else {
+                  app.go(Screen.orgApplicationStatus);
+                }
+              },
+              icon: const Icon(Icons.storefront_outlined),
+              label: Text(switch (app.myOrganizationApplication) {
+                OrganizationApplication(status: final status)
+                    when status != OrganizationApplicationStatus.withdrawn =>
+                  'ORGANIZER APPLICATION · ${_applicationStatusLabel(status).toUpperCase()}',
+                _ => 'BECOME AN ORGANIZER',
+              }),
+            ),
+          ),
+        if (app.isPlatformAdmin)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: OutlinedButton.icon(
+              key: const Key('switcher-admin'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                app.switchToAdmin();
+              },
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              label: const Text('EARPLUG ADMIN'),
+            ),
+          ),
       ],
     );
   });

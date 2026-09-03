@@ -154,6 +154,19 @@ Future<AppHarness> pumpApp(
   return AppHarness(app: app, auth: resolvedAuth, media: media, picker: picker);
 }
 
+Future<void> enterOrganizer(
+  WidgetTester tester,
+  AppHarness harness,
+  String organizationId,
+) async {
+  if (!harness.auth.signedIn) {
+    await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+  }
+  harness.app.switchToOrganization(organizationId);
+  await tester.pumpAndSettle();
+}
+
 class _EmptyVectorTileProvider extends vt.VectorTileProvider {
   @override
   bool get cacheBytesToDisk => false;

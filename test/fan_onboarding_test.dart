@@ -110,8 +110,8 @@ void main() {
     expect(find.byKey(const Key('band-entry')), findsNothing);
     expect(find.byKey(const Key('create-band-from-profile')), findsNothing);
     expect(find.text('PLAY IN A BAND?'), findsNothing);
-    expect(find.text('CREATE BAND'), findsOne);
-    await tester.tap(find.text('CREATE BAND'));
+    expect(find.text('CREATE'), findsOne);
+    await tester.tap(find.text('CREATE'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandCreate);
   });
@@ -129,8 +129,8 @@ void main() {
       ),
     );
 
-    expect(find.text('CREATE BAND'), findsOne);
-    await tester.tap(find.text('CREATE BAND'));
+    expect(find.text('CREATE'), findsOne);
+    await tester.tap(find.text('CREATE'));
     await tester.pump();
 
     expect(harness.app.current.screen, Screen.auth);
@@ -156,9 +156,9 @@ void main() {
     await harness.app.commitAuth();
     await tester.pump();
 
-    expect(find.text('BANDS'), findsOne);
+    expect(find.text('SWITCH'), findsOne);
     expect(repository.hasMembershipListener, isTrue);
-    await tester.tap(find.text('BANDS'));
+    await tester.tap(find.text('SWITCH'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.home);
 
@@ -169,8 +169,8 @@ void main() {
 
     expect(harness.app.membershipsLoaded, isTrue);
     expect(harness.app.myBands, ['b1']);
-    expect(find.text('SWITCH BAND'), findsOne);
-    await tester.tap(find.text('SWITCH BAND'));
+    expect(find.text('SWITCH'), findsOne);
+    await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
     expect(find.text('MANAGE BAND'), findsOne);
     await tester.tap(find.text('FOGHORN DIET'));
@@ -182,7 +182,7 @@ void main() {
     await tester.pump();
     expect(harness.app.myBands, isEmpty);
     expect(harness.app.membershipsLoaded, isFalse);
-    expect(find.text('CREATE BAND'), findsOne);
+    expect(find.text('CREATE'), findsOne);
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -237,8 +237,8 @@ void main() {
       ),
     );
 
-    expect(find.text('SWITCH BAND'), findsOne);
-    await tester.tap(find.text('SWITCH BAND'));
+    expect(find.text('SWITCH'), findsOne);
+    await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
     expect(find.text('MANAGE BAND'), findsOne);
     expect(find.text('Personal account'), findsOne);
@@ -261,8 +261,8 @@ void main() {
       ),
     );
 
-    expect(find.text('SWITCH BAND'), findsOne);
-    await tester.tap(find.text('SWITCH BAND'));
+    expect(find.text('SWITCH'), findsOne);
+    await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
     expect(find.text('SWITCH BAND'), findsWidgets);
     expect(find.text('PIGEON COURT'), findsWidgets);
@@ -341,6 +341,10 @@ class _MembershipRepository extends DemoRepository {
   _MembershipRepository({required super.auth, required this.count});
 
   final int count;
+
+  @override
+  Stream<List<OrganizationMembership>> myOrganizations() =>
+      Stream.value(const []);
 
   @override
   Stream<List<BandMembership>> myBands() => Stream.value([

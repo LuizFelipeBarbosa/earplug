@@ -86,12 +86,16 @@ Future<void> main() async {
   final performerInviteToken = performerInviteTokenFromUri(Uri.base);
   final gigId = gigIdFromUri(Uri.base);
   final bandSlug = bandSlugFromUri(Uri.base);
+  final venueRef = venueRefFromUri(Uri.base);
+  final orgInviteToken = orgInviteTokenFromUri(Uri.base);
   if (Env.demo) {
     final appState = AppState.demo(
       initialJoinToken: joinToken,
       initialPerformerInviteToken: performerInviteToken,
       initialGigId: gigId,
       initialBandSlug: bandSlug,
+      initialVenueRef: venueRef,
+      initialOrgInviteToken: orgInviteToken,
     );
     runApp(
       EarplugApp(
@@ -124,6 +128,8 @@ Future<void> main() async {
       initialPerformerInviteToken: performerInviteToken,
       initialGigId: gigId,
       initialBandSlug: bandSlug,
+      initialVenueRef: venueRef,
+      initialOrgInviteToken: orgInviteToken,
     ),
   );
   _removeSplashAfterFirstFrame();
@@ -168,6 +174,10 @@ String? performerInviteTokenFromUri(Uri uri) =>
 
 String? gigIdFromUri(Uri uri) => _routeValueFromUri(uri, 'g');
 
+String? venueRefFromUri(Uri uri) => _routeValueFromUri(uri, 'venues');
+
+String? orgInviteTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'apply');
+
 String? bandSlugFromUri(Uri uri) {
   final segments = uri.pathSegments
       .where((segment) => segment.isNotEmpty)
@@ -175,7 +185,21 @@ String? bandSlugFromUri(Uri uri) {
   if (segments.length != 1) return null;
   final slug = segments.single.trim().toLowerCase();
   if (slug.isEmpty ||
-      const {'g', 'join', 'gig-invite', 'check-in'}.contains(slug)) {
+      const {
+        'g',
+        'join',
+        'gig-invite',
+        'check-in',
+        'venues',
+        'orgs',
+        'apply',
+        't',
+        'org',
+        'band',
+        'checkout',
+        'admin',
+        'opportunities',
+      }.contains(slug)) {
     return null;
   }
   return slug;
@@ -242,6 +266,8 @@ class EarplugApp extends StatelessWidget {
     this.initialPerformerInviteToken,
     this.initialGigId,
     this.initialBandSlug,
+    this.initialVenueRef,
+    this.initialOrgInviteToken,
   });
 
   final AppearanceController appearance;
@@ -252,6 +278,8 @@ class EarplugApp extends StatelessWidget {
   final String? initialPerformerInviteToken;
   final String? initialGigId;
   final String? initialBandSlug;
+  final String? initialVenueRef;
+  final String? initialOrgInviteToken;
 
   @override
   Widget build(BuildContext context) {
@@ -272,6 +300,8 @@ class EarplugApp extends StatelessWidget {
                 initialPerformerInviteToken: initialPerformerInviteToken,
                 initialGigId: initialGigId,
                 initialBandSlug: initialBandSlug,
+                initialVenueRef: initialVenueRef,
+                initialOrgInviteToken: initialOrgInviteToken,
               ),
         ),
         ChangeNotifierProvider<BandMediaController>(
@@ -382,14 +412,6 @@ String? _environmentRibbon() {
   return Env.convexTier == DeploymentTier.development ? 'DEV' : null;
 }
 
-const _fanTabScreens = {Screen.home, Screen.explore, Screen.myGigs};
-const _bandTabScreens = {
-  Screen.bandDash,
-  Screen.bandEdit,
-  Screen.gigMgr,
-  Screen.analytics,
-};
-
 class RootShell extends StatelessWidget {
   const RootShell({super.key});
 
@@ -444,10 +466,17 @@ class RootShell extends StatelessWidget {
       DataStatus.ready => Stack(
         children: [
           Positioned.fill(child: _screenFor(entry)),
-          if (_fanTabScreens.contains(screen))
+          if (fanTabScreens.contains(screen))
             const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-          if (_bandTabScreens.contains(screen))
+          if (bandTabScreens.contains(screen))
             const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
+          if (organizerTabScreens.contains(screen))
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: OrganizerTabBar(),
+            ),
           const _ToastLayer(),
         ],
       ),
@@ -494,7 +523,108 @@ class RootShell extends StatelessWidget {
       Screen.gigMgr => GigManagerScreen(key: key),
       Screen.gigCreate => GigCreateScreen(key: key),
       Screen.analytics => AnalyticsScreen(key: key),
+      Screen.orgApply => _PlaceholderScreen(
+        key: key,
+        screenName: 'orgApply',
+        title: 'Organizer application',
+      ),
+      Screen.orgApplicationStatus => _PlaceholderScreen(
+        key: key,
+        screenName: 'orgApplicationStatus',
+        title: 'Application status',
+      ),
+      Screen.orgJoin => _PlaceholderScreen(
+        key: key,
+        screenName: 'orgJoin',
+        title: 'Join organization',
+        param: entry.param,
+      ),
+      Screen.orgDash => _PlaceholderScreen(
+        key: key,
+        screenName: 'orgDash',
+        title: 'Organizer dashboard',
+      ),
+      Screen.orgVenues => _PlaceholderScreen(
+        key: key,
+        screenName: 'orgVenues',
+        title: 'Venues',
+      ),
+      Screen.orgTeam => _PlaceholderScreen(
+        key: key,
+        screenName: 'orgTeam',
+        title: 'Team',
+      ),
+      Screen.orgSettings => _PlaceholderScreen(
+        key: key,
+        screenName: 'orgSettings',
+        title: 'Organization settings',
+      ),
+      Screen.adminQueue => _PlaceholderScreen(
+        key: key,
+        screenName: 'adminQueue',
+        title: 'Review queue',
+      ),
+      Screen.adminApplication => _PlaceholderScreen(
+        key: key,
+        screenName: 'adminApplication',
+        title: 'Application',
+        param: entry.param,
+      ),
     };
+  }
+}
+
+class _PlaceholderScreen extends StatelessWidget {
+  const _PlaceholderScreen({
+    super.key,
+    required this.screenName,
+    required this.title,
+    this.param,
+  });
+
+  final String screenName;
+  final String title;
+  final String? param;
+
+  @override
+  Widget build(BuildContext context) {
+    return KeyedSubtree(
+      key: Key('placeholder-$screenName'),
+      child: ColoredBox(
+        color: context.epColors.background,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 32, 24, tabBarClearance),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  title.toUpperCase(),
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.epPageHeading,
+                ),
+                if (param case final value?) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    value,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.epBody,
+                  ),
+                ],
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: 260,
+                  child: EpButton(
+                    'BACK TO FAN VIEW',
+                    onTap: context.read<AppState>().toFanView,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

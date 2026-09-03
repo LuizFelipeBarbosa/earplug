@@ -7,8 +7,10 @@ import 'package:earplug/main.dart'
         bandSlugFromUri,
         gigIdFromUri,
         joinTokenFromUri,
+        orgInviteTokenFromUri,
         performerInviteTokenFromUri,
-        shouldEnableWebSemantics;
+        shouldEnableWebSemantics,
+        venueRefFromUri;
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +36,51 @@ void main() {
       isNull,
     );
     expect(bandSlugFromUri(Uri.parse('https://earplug.app/check-in')), isNull);
+  });
+
+  test('venue and organization invitation routes preserve their values', () {
+    expect(
+      venueRefFromUri(Uri.parse('https://earplug.app/venues/the-foghorn-club')),
+      'the-foghorn-club',
+    );
+    expect(
+      orgInviteTokenFromUri(Uri.parse('https://earplug.app/apply/abc')),
+      'abc',
+    );
+  });
+
+  test('application route roots are not treated as band slugs', () {
+    for (final segment in const {
+      'venues',
+      'orgs',
+      'apply',
+      't',
+      'org',
+      'band',
+      'checkout',
+      'admin',
+      'opportunities',
+    }) {
+      expect(
+        bandSlugFromUri(Uri.parse('https://earplug.app/$segment')),
+        isNull,
+        reason: '$segment is an application route',
+      );
+    }
+  });
+
+  test('organization invitation tokens seed the join placeholder', () async {
+    final auth = FakeAuthService();
+    final resolved = AppState.demo(
+      repository: DemoRepository(auth: auth),
+      auth: auth,
+      initialOrgInviteToken: 'tok123',
+    );
+    addTearDown(resolved.dispose);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(resolved.current.screen, Screen.orgJoin);
+    expect(resolved.current.param, 'tok123');
   });
 
   test(
