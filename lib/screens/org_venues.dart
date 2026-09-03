@@ -193,8 +193,11 @@ class _VenueEditorSheetState extends State<_VenueEditorSheet> {
     super.initState();
     final venue = widget.venue;
     _name = TextEditingController(text: venue.name);
-    _description = TextEditingController();
-    _publicCapacity = TextEditingController();
+    _description = TextEditingController(text: venue.description ?? '');
+    _publicCapacity = TextEditingController(
+      text: venue.capacityPublic?.toString() ?? '',
+    );
+    _venueType = venue.venueType ?? VenueType.other;
     _neighborhood = TextEditingController(text: venue.neighborhood ?? '');
     _city = TextEditingController(text: venue.city ?? '');
     _loadInNotes = TextEditingController();

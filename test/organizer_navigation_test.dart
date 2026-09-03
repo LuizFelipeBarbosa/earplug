@@ -40,7 +40,7 @@ void main() {
     await enterOrganizer(tester, harness, 'org1');
 
     expect(find.byKey(const Key('organizer-tab-dash')), findsOne);
-    expect(find.byKey(const Key('placeholder-orgDash')), findsOne);
+    expect(find.byKey(const Key('org-dash-verification')), findsOne);
     expect(harness.app.identity, isA<OrganizerIdentity>());
 
     harness.app.toFanView();
@@ -76,7 +76,7 @@ void main() {
     await tester.tap(adminButton);
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('placeholder-adminQueue')), findsOne);
+    expect(find.byKey(const Key('admin-queue-exit')), findsOne);
     expect(harness.app.identity, isA<AdminIdentity>());
   });
 }

@@ -104,9 +104,6 @@ class DemoRepository implements EarplugRepository {
   final Set<String> _previewedBands = {};
   final Map<String, BandInvite> _bandInvites = {};
   final Map<String, OrganizationInvite> _organizationInvites = {};
-  final Map<String, String> _venueDescriptions = {};
-  final Map<String, VenueType> _venueTypes = {};
-  final Map<String, int> _venuePublicCapacities = {};
   final Map<String, List<String>> _venuePhotoStorageIds = {};
   final Map<String, Set<String>> _acceptedMemberNames = {};
   final Map<String, DateTime> _archivedBands = {};
@@ -873,6 +870,7 @@ class DemoRepository implements EarplugRepository {
           approx: approx,
           neighborhood: venueDraft.neighborhood,
           city: venueDraft.city,
+          venueType: venueDraft.venueType,
           disclosure: AddressDisclosure.onTicket,
           verified: true,
           managedByOrganizationId: organizationId,
@@ -884,9 +882,6 @@ class DemoRepository implements EarplugRepository {
           point: venueDraft.point,
           capacity: venueDraft.capacity,
         );
-        if (venueDraft.venueType case final type?) {
-          _venueTypes[venueId] = type;
-        }
       }
 
       if (_myOrganizationApplicationId == applicationId) {
@@ -1242,27 +1237,21 @@ class DemoRepository implements EarplugRepository {
     String? city,
   }) async {
     final venue = _requireVenue(venueId);
-    _venues[venueId] = Venue(
-      id: venue.id,
-      name: name ?? venue.name,
-      area: venue.area,
-      addr: venue.addr,
-      point: venue.point,
-      slug: venue.slug,
-      approx: venue.approx,
-      neighborhood: neighborhood ?? venue.neighborhood,
-      city: city ?? venue.city,
-      disclosure: venue.disclosure,
-      verified: venue.verified,
-      managedByOrganizationId: venue.managedByOrganizationId,
-      exactAddress: venue.exactAddress,
-      supportsApproxLocation: venue.supportsApproxLocation,
+    var updatedVenue = venue.copyWith(
+      name: name,
+      neighborhood: neighborhood,
+      city: city,
     );
-    if (description != null) _venueDescriptions[venueId] = description;
-    if (venueType != null) _venueTypes[venueId] = venueType;
-    if (capacityPublic != null) {
-      _venuePublicCapacities[venueId] = capacityPublic;
+    if (description != null) {
+      updatedVenue = updatedVenue.copyWith(description: description);
     }
+    if (venueType != null) {
+      updatedVenue = updatedVenue.copyWith(venueType: venueType);
+    }
+    if (capacityPublic != null) {
+      updatedVenue = updatedVenue.copyWith(capacityPublic: capacityPublic);
+    }
+    _venues[venueId] = updatedVenue;
     _emitFeed();
   }
 
@@ -1283,21 +1272,10 @@ class DemoRepository implements EarplugRepository {
       capacity: capacity,
     );
     if (venue.disclosure == AddressDisclosure.public) {
-      _venues[venueId] = Venue(
-        id: venue.id,
-        name: venue.name,
-        area: venue.area,
+      _venues[venueId] = venue.copyWith(
         addr: addr,
         point: point,
-        slug: venue.slug,
-        approx: venue.approx,
-        neighborhood: venue.neighborhood,
-        city: venue.city,
-        disclosure: venue.disclosure,
-        verified: venue.verified,
-        managedByOrganizationId: venue.managedByOrganizationId,
         exactAddress: addr,
-        supportsApproxLocation: venue.supportsApproxLocation,
       );
       _emitFeed();
     }
@@ -1312,19 +1290,11 @@ class DemoRepository implements EarplugRepository {
     final privateDetails = _venuePrivateDetails[venueId];
     final discloseExact =
         disclosure == AddressDisclosure.public && privateDetails != null;
-    _venues[venueId] = Venue(
-      id: venue.id,
-      name: venue.name,
+    _venues[venueId] = venue.copyWith(
       area: discloseExact ? venue.area : venue.approx.label,
       addr: discloseExact ? privateDetails.addr : venue.approx.label,
       point: discloseExact ? privateDetails.point : venue.approx.centroid,
-      slug: venue.slug,
-      approx: venue.approx,
-      neighborhood: venue.neighborhood,
-      city: venue.city,
       disclosure: disclosure,
-      verified: venue.verified,
-      managedByOrganizationId: venue.managedByOrganizationId,
       exactAddress: discloseExact ? privateDetails.addr : null,
       supportsApproxLocation: true,
     );

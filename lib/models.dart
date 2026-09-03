@@ -109,6 +109,9 @@ class Venue {
   final String addr;
   final LatLng point;
   final String? slug;
+  final String? description;
+  final VenueType? venueType;
+  final int? capacityPublic;
   final ApproxLocation? _approx;
   final String? neighborhood;
   final String? city;
@@ -125,6 +128,9 @@ class Venue {
     required this.addr,
     required this.point,
     this.slug,
+    this.description,
+    this.venueType,
+    this.capacityPublic,
     ApproxLocation? approx,
     this.neighborhood,
     this.city,
@@ -151,6 +157,11 @@ class Venue {
     final area = _marketplaceString(json['area']);
     final addr = _marketplaceString(json['addr']);
     final disclosedPoint = _marketplacePoint(json);
+    final description = _marketplaceOptionalString(json['description']);
+    final venueType = json['venueType'] is String
+        ? VenueType.fromWire(json['venueType'])
+        : null;
+    final capacityPublic = _marketplaceOptionalInt(json['capacityPublic']);
     if (!json.containsKey('approxLocation')) {
       return Venue(
         id: _marketplaceString(json['_id']),
@@ -158,6 +169,9 @@ class Venue {
         area: area,
         addr: addr,
         point: disclosedPoint,
+        description: description,
+        venueType: venueType,
+        capacityPublic: capacityPublic,
       );
     }
 
@@ -174,6 +188,9 @@ class Venue {
       addr: addr.isEmpty ? exactAddress ?? approx.label : addr,
       point: exactAddress == null ? approx.centroid : disclosedPoint,
       slug: _marketplaceOptionalString(json['slug']),
+      description: description,
+      venueType: venueType,
+      capacityPublic: capacityPublic,
       approx: approx,
       neighborhood: _marketplaceOptionalString(json['neighborhood']),
       city: _marketplaceOptionalString(json['city']),
@@ -186,6 +203,59 @@ class Venue {
       supportsApproxLocation: true,
     );
   }
+
+  static const _unchanged = Object();
+
+  Venue copyWith({
+    String? id,
+    String? name,
+    String? area,
+    String? addr,
+    LatLng? point,
+    Object? slug = _unchanged,
+    Object? description = _unchanged,
+    Object? venueType = _unchanged,
+    Object? capacityPublic = _unchanged,
+    Object? approx = _unchanged,
+    Object? neighborhood = _unchanged,
+    Object? city = _unchanged,
+    AddressDisclosure? disclosure,
+    bool? verified,
+    Object? managedByOrganizationId = _unchanged,
+    Object? exactAddress = _unchanged,
+    bool? supportsApproxLocation,
+  }) => Venue(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    area: area ?? this.area,
+    addr: addr ?? this.addr,
+    point: point ?? this.point,
+    slug: identical(slug, _unchanged) ? this.slug : slug as String?,
+    description: identical(description, _unchanged)
+        ? this.description
+        : description as String?,
+    venueType: identical(venueType, _unchanged)
+        ? this.venueType
+        : venueType as VenueType?,
+    capacityPublic: identical(capacityPublic, _unchanged)
+        ? this.capacityPublic
+        : capacityPublic as int?,
+    approx: identical(approx, _unchanged) ? _approx : approx as ApproxLocation?,
+    neighborhood: identical(neighborhood, _unchanged)
+        ? this.neighborhood
+        : neighborhood as String?,
+    city: identical(city, _unchanged) ? this.city : city as String?,
+    disclosure: disclosure ?? this.disclosure,
+    verified: verified ?? this.verified,
+    managedByOrganizationId: identical(managedByOrganizationId, _unchanged)
+        ? this.managedByOrganizationId
+        : managedByOrganizationId as String?,
+    exactAddress: identical(exactAddress, _unchanged)
+        ? this.exactAddress
+        : exactAddress as String?,
+    supportsApproxLocation:
+        supportsApproxLocation ?? this.supportsApproxLocation,
+  );
 }
 
 class VenuePrivateDetails {

@@ -11,6 +11,7 @@ import {
   gigLifecycleValidator,
   gigPublicPerformerValidator,
   pastShowValidator,
+  venueTypeValidator,
 } from "../schema";
 import { approximateLocation, formatMiles, OAK_CENTER, SF_CENTER } from "./geo";
 
@@ -442,6 +443,9 @@ export const venuePayloadValidator = v.object({
   }),
   neighborhood: v.union(v.string(), v.null()),
   city: v.union(v.string(), v.null()),
+  description: v.union(v.string(), v.null()),
+  venueType: v.union(venueTypeValidator, v.null()),
+  capacityPublic: v.union(v.number(), v.null()),
   addressDisclosure: addressDisclosureValidator,
   verified: v.boolean(),
   managedByOrganizationId: v.union(v.id("organizations"), v.null()),
@@ -730,6 +734,9 @@ export function toVenuePayload(venue: Doc<"venues">) {
     },
     neighborhood: venue.neighborhood ?? approx.neighborhood ?? null,
     city: venue.city ?? approx.city ?? null,
+    description: venue.description ?? null,
+    venueType: venue.venueType ?? null,
+    capacityPublic: venue.capacityPublic ?? null,
     addressDisclosure: disclosure,
     verified: venue.status === "verified",
     managedByOrganizationId: venue.managedByOrganizationId ?? null,

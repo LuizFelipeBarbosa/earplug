@@ -16,6 +16,9 @@ abstract final class DemoData {
       addr: 'Mission, San Francisco',
       point: LatLng(37.7599, -122.4148),
       slug: 'the-foghorn-club',
+      description: 'An intimate Mission bar with a welcoming live room.',
+      venueType: VenueType.bar,
+      capacityPublic: 180,
       approx: ApproxLocation(
         centroid: LatLng(37.7599, -122.4148),
         label: 'Mission, San Francisco',

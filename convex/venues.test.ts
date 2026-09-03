@@ -460,6 +460,25 @@ describe("venues:detail", () => {
     expect(detail?.truncated).toBe(false);
   });
 
+  test("includes organizer-editable public venue fields", async () => {
+    const t = convexTest(schema);
+    const venueId = await t.run((ctx) =>
+      ctx.db.insert("venues", {
+        ...venueFields("Editable Room"),
+        description: "An intimate all-ages venue.",
+        venueType: "club",
+        capacityPublic: 250,
+      }),
+    );
+
+    const detail = await t.query(api.venues.detail, { venueId });
+    expect(detail?.venue).toMatchObject({
+      description: "An intimate all-ages venue.",
+      venueType: "club",
+      capacityPublic: 250,
+    });
+  });
+
   test("returns null for a missing venue", async () => {
     const t = convexTest(schema);
     const missingVenueId = await t.run(async (ctx) => {
@@ -607,6 +626,9 @@ describe("venues:detail", () => {
         },
         neighborhood: "Downtown",
         city: "Oakland",
+        description: null,
+        venueType: null,
+        capacityPublic: null,
         addressDisclosure: "public",
         verified: false,
         managedByOrganizationId: null,

@@ -11,6 +11,8 @@ import 'data/convex_repository.dart';
 import 'data/repository.dart';
 import 'env.dart';
 import 'errors.dart';
+import 'screens/admin_application.dart';
+import 'screens/admin_queue.dart';
 import 'screens/analytics.dart';
 import 'screens/auth.dart';
 import 'screens/band_create.dart';
@@ -27,6 +29,13 @@ import 'screens/gig_invite.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
 import 'screens/my_gigs.dart';
+import 'screens/org_application_status.dart';
+import 'screens/org_apply.dart';
+import 'screens/org_dash.dart';
+import 'screens/org_join.dart';
+import 'screens/org_settings.dart';
+import 'screens/org_team.dart';
+import 'screens/org_venues.dart';
 import 'screens/settings.dart';
 import 'screens/venue_detail.dart';
 import 'services/appearance_controller.dart';
@@ -523,108 +532,19 @@ class RootShell extends StatelessWidget {
       Screen.gigMgr => GigManagerScreen(key: key),
       Screen.gigCreate => GigCreateScreen(key: key),
       Screen.analytics => AnalyticsScreen(key: key),
-      Screen.orgApply => _PlaceholderScreen(
+      Screen.orgApply => OrgApplyScreen(key: key),
+      Screen.orgApplicationStatus => OrgApplicationStatusScreen(key: key),
+      Screen.orgJoin => OrgJoinScreen(key: key, token: entry.param!),
+      Screen.orgDash => OrgDashScreen(key: key),
+      Screen.orgVenues => OrgVenuesScreen(key: key),
+      Screen.orgTeam => OrgTeamScreen(key: key),
+      Screen.orgSettings => OrgSettingsScreen(key: key),
+      Screen.adminQueue => AdminQueueScreen(key: key),
+      Screen.adminApplication => AdminApplicationScreen(
         key: key,
-        screenName: 'orgApply',
-        title: 'Organizer application',
-      ),
-      Screen.orgApplicationStatus => _PlaceholderScreen(
-        key: key,
-        screenName: 'orgApplicationStatus',
-        title: 'Application status',
-      ),
-      Screen.orgJoin => _PlaceholderScreen(
-        key: key,
-        screenName: 'orgJoin',
-        title: 'Join organization',
-        param: entry.param,
-      ),
-      Screen.orgDash => _PlaceholderScreen(
-        key: key,
-        screenName: 'orgDash',
-        title: 'Organizer dashboard',
-      ),
-      Screen.orgVenues => _PlaceholderScreen(
-        key: key,
-        screenName: 'orgVenues',
-        title: 'Venues',
-      ),
-      Screen.orgTeam => _PlaceholderScreen(
-        key: key,
-        screenName: 'orgTeam',
-        title: 'Team',
-      ),
-      Screen.orgSettings => _PlaceholderScreen(
-        key: key,
-        screenName: 'orgSettings',
-        title: 'Organization settings',
-      ),
-      Screen.adminQueue => _PlaceholderScreen(
-        key: key,
-        screenName: 'adminQueue',
-        title: 'Review queue',
-      ),
-      Screen.adminApplication => _PlaceholderScreen(
-        key: key,
-        screenName: 'adminApplication',
-        title: 'Application',
-        param: entry.param,
+        applicationId: entry.param!,
       ),
     };
-  }
-}
-
-class _PlaceholderScreen extends StatelessWidget {
-  const _PlaceholderScreen({
-    super.key,
-    required this.screenName,
-    required this.title,
-    this.param,
-  });
-
-  final String screenName;
-  final String title;
-  final String? param;
-
-  @override
-  Widget build(BuildContext context) {
-    return KeyedSubtree(
-      key: Key('placeholder-$screenName'),
-      child: ColoredBox(
-        color: context.epColors.background,
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 32, 24, tabBarClearance),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title.toUpperCase(),
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.epPageHeading,
-                ),
-                if (param case final value?) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    value,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.epBody,
-                  ),
-                ],
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: 260,
-                  child: EpButton(
-                    'BACK TO FAN VIEW',
-                    onTap: context.read<AppState>().toFanView,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 }
 

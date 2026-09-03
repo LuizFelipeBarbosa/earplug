@@ -80,21 +80,52 @@ void main() {
 
     await tester.tap(venueCard);
     await tester.pumpAndSettle();
+    final demoVenue = DemoData.venues['v1']!;
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const Key('org-venue-public-description')),
+          )
+          .controller
+          ?.text,
+      demoVenue.description,
+    );
+    expect(
+      tester.widget<EpChip>(find.byKey(const Key('org-venue-type-bar'))).active,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('org-venue-public-capacity')))
+          .controller
+          ?.text,
+      demoVenue.capacityPublic!.toString(),
+    );
+
     await tester.enterText(
       find.byKey(const Key('org-venue-public-name')),
       'Foghorn Hall',
     );
-    final save = find.byKey(const Key('org-venue-save-public'));
-    await tester.scrollUntilVisible(
-      save,
-      250,
-      scrollable: find
-          .descendant(
-            of: find.byType(EpSheetShell),
-            matching: find.byType(Scrollable),
-          )
-          .first,
+    const updatedDescription = 'A lively neighborhood room for local music.';
+    await tester.enterText(
+      find.byKey(const Key('org-venue-public-description')),
+      updatedDescription,
     );
+    final sheetScrollable = find
+        .descendant(
+          of: find.byType(EpSheetShell),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    final clubChip = find.byKey(const Key('org-venue-type-club'));
+    await tester.scrollUntilVisible(clubChip, 100, scrollable: sheetScrollable);
+    await tester.tap(clubChip);
+    await tester.enterText(
+      find.byKey(const Key('org-venue-public-capacity')),
+      '220',
+    );
+    final save = find.byKey(const Key('org-venue-save-public'));
+    await tester.scrollUntilVisible(save, 250, scrollable: sheetScrollable);
     await tester.pumpAndSettle();
     await tester.tap(save);
     await tester.pumpAndSettle();
@@ -106,7 +137,11 @@ void main() {
       find.descendant(of: refreshedCard, matching: find.text('Foghorn Hall')),
       findsOneWidget,
     );
-    expect((await repository.resolveVenue('v1'))?.name, 'Foghorn Hall');
+    final savedVenue = await repository.resolveVenue('v1');
+    expect(savedVenue?.name, 'Foghorn Hall');
+    expect(savedVenue?.description, updatedDescription);
+    expect(savedVenue?.venueType, VenueType.club);
+    expect(savedVenue?.capacityPublic, 220);
   });
 
   testWidgets('venue private location is seeded and disclosure can change', (

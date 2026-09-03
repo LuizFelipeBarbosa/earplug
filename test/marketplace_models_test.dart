@@ -22,6 +22,9 @@ void main() {
       expect(venue.exactPoint, venue.point);
       expect(venue.approx.centroid, venue.point);
       expect(venue.approx.label, venue.area);
+      expect(venue.description, isNull);
+      expect(venue.venueType, isNull);
+      expect(venue.capacityPublic, isNull);
     });
 
     test('uses the approximate centroid when exact address is withheld', () {
@@ -33,6 +36,9 @@ void main() {
         'lat': 37.75,
         'lng': -122.42,
         'slug': 'private-room',
+        'description': 'Cozy backroom bar with a small stage.',
+        'venueType': 'bar',
+        'capacityPublic': 180,
         'approxLocation': {
           'lat': 37.7599,
           'lng': -122.4148,
@@ -48,6 +54,9 @@ void main() {
       expect(venue.point, const LatLng(37.7599, -122.4148));
       expect(venue.exactPoint, isNull);
       expect(venue.exactAddress, isNull);
+      expect(venue.description, 'Cozy backroom bar with a small stage.');
+      expect(venue.venueType, VenueType.bar);
+      expect(venue.capacityPublic, 180);
     });
   });
 

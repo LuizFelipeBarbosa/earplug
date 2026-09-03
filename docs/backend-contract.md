@@ -235,7 +235,8 @@ link to its manager through `managedByOrganizationId`. The schema now includes
 exact shapes.
 
 `VenuePayload` adds `slug`, `approxLocation`, `neighborhood`, `city`,
-`addressDisclosure`, `verified`, `managedByOrganizationId`, and `exactAddr`.
+`addressDisclosure`, `verified`, `managedByOrganizationId`, `exactAddr`,
+`description`, `venueType`, and `capacityPublic`.
 The wire `addr`/`lat`/`lng` fields are always the disclosable location: exact
 for a public venue and approximate for a venue whose `addressDisclosure` is
 `onTicket`.
