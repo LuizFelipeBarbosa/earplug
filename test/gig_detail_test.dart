@@ -10,6 +10,7 @@ import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -245,19 +246,12 @@ Gig _textOnlyGig({
   String cap = 'No cap',
 }) {
   final startsAt = DateTime.now().add(const Duration(days: 2));
-  return Gig(
+  return gigFixture(
     id: 'shared-gig',
     title: 'Shared Show',
-    venueId: 'v1',
-    price: 0,
     startsAt: startsAt,
     doorsAt: startsAt.subtract(const Duration(hours: 1)),
-    dateShort: Gig.dateShortFor(startsAt.millisecondsSinceEpoch),
-    dateLine: Gig.dateLineFor(startsAt.millisecondsSinceEpoch, '8PM / 9PM'),
-    time: '8PM / 9PM',
-    when: Gig.whenFor(startsAt.millisecondsSinceEpoch),
     flyKey: 'xerox',
-    lineup: const [],
     performers: const [
       GigPerformer(
         id: '',
@@ -267,9 +261,7 @@ Gig _textOnlyGig({
       ),
     ],
     going: going,
-    genres: const [],
     desc: desc,
-    tix: Ticketing.rsvp,
     cap: cap,
     lifecycle: lifecycle,
   );

@@ -8,6 +8,7 @@ import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/accessibility.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -29,10 +30,7 @@ void main() {
       of: find.byType(FanTabBar),
       matching: find.byType(Row),
     );
-    expect(
-      tester.getSize(tabBarRow).height,
-      greaterThan(66),
-    );
+    expect(tester.getSize(tabBarRow).height, greaterThan(66));
     expect(tester.takeException(), isNull);
   });
 
@@ -42,7 +40,7 @@ void main() {
     await pumpApp(
       tester,
       beforePump: (app) => app.setMapMode(false),
-      home: _scaledScreen(const HomeScreen()),
+      home: scaledScreen(const HomeScreen()),
     );
 
     expect(find.text('LIST'), findsOne);
@@ -51,7 +49,7 @@ void main() {
   });
 
   testWidgets('Explore remains usable at increased text scale', (tester) async {
-    await pumpApp(tester, home: _scaledScreen(const ExploreScreen()));
+    await pumpApp(tester, home: scaledScreen(const ExploreScreen()));
 
     expect(find.text('Explore'), findsOne);
     final filters = find.byKey(const Key('explore-filter-button'));
@@ -73,7 +71,7 @@ void main() {
       tester,
       auth: auth,
       repository: DemoRepository(auth: auth),
-      home: _scaledScreen(const MyGigsScreen(), size: const Size(320, 900)),
+      home: scaledScreen(const MyGigsScreen(), size: const Size(320, 900)),
     );
     tester.view.physicalSize = const Size(320, 900);
     await tester.pumpAndSettle();
@@ -124,7 +122,7 @@ void main() {
         tester,
         auth: auth,
         repository: DemoRepository(auth: auth),
-        home: _scaledScreen(
+        home: scaledScreen(
           const EditProfileScreen(),
           size: const Size(320, 900),
         ),
@@ -200,11 +198,4 @@ void main() {
     expect(bounds.top, lessThan(900));
     expect(tester.takeException(), isNull);
   });
-}
-
-Widget _scaledScreen(Widget child, {Size size = const Size(402, 900)}) {
-  return MediaQuery(
-    data: MediaQueryData(size: size, textScaler: TextScaler.linear(1.5)),
-    child: Scaffold(body: child),
-  );
 }

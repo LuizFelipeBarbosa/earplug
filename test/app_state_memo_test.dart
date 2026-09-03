@@ -6,7 +6,11 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/async.dart';
+import 'support/harness.dart';
 
 void main() {
   test('feed is stable until the next notification', () async {
@@ -63,7 +67,7 @@ void main() {
     // This covers the RSVP interaction path; DemoRepository keeps its
     // followed-band shows in the same discovery feed.
     app.toggleRsvp('g2');
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.upcomingRsvpGigs.map((gig) => gig.id), contains('g2'));
     expect(app.gig('g2')?.id, 'g2');
   });
@@ -77,23 +81,23 @@ void main() {
       final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
-        await _flushAsyncWork();
+        await flushAsyncWork();
         await repository.close();
       });
 
       repository.emitFeed();
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(repository.upcomingBandIds, isEmpty);
 
       repository.emitFeed(
         nextStartsAt: DateTime.now().add(const Duration(days: 30)),
       );
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(repository.upcomingBandIds, unorderedEquals(['b2', 'b4']));
       expect(repository.activeUpcomingSubscriptions, 2);
 
       repository.emitFeed();
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(repository.activeUpcomingSubscriptions, 0);
     },
   );
@@ -108,11 +112,11 @@ void main() {
     });
 
     repository.emitFeed();
-    await _flushAsyncWork();
+    await flushAsyncWork();
     final band = app.band('b1');
 
     repository.emitFeed();
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(app.band('b1'), same(band));
   });
 
@@ -128,7 +132,7 @@ void main() {
       });
       final fullBand = DemoData.bands['b1']!;
       repository.emitFeed(bands: {fullBand.id: fullBand});
-      await _flushAsyncWork();
+      await flushAsyncWork();
 
       final summary = Band.fromJson({
         '_id': fullBand.id,
@@ -146,7 +150,7 @@ void main() {
       expect(summary.isSummary, isTrue);
 
       repository.emitFeed(bands: {fullBand.id: summary});
-      await _flushAsyncWork();
+      await flushAsyncWork();
       final merged = app.band(fullBand.id)!;
       expect(merged.name, summary.name);
       expect(merged.followers, summary.followers);
@@ -156,7 +160,7 @@ void main() {
       expect(merged.isSummary, isFalse);
 
       repository.emitFeed(bands: {fullBand.id: summary});
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(app.band(fullBand.id), same(merged));
 
       repository.emitFeed(
@@ -166,7 +170,7 @@ void main() {
         ],
         bands: {fullBand.id: summary},
       );
-      await _flushAsyncWork();
+      await flushAsyncWork();
       final updatedUpcoming = app.band(fullBand.id)!;
       expect(updatedUpcoming.upcoming, ['g2']);
       expect(updatedUpcoming.bio, fullBand.bio);
@@ -185,12 +189,12 @@ void main() {
     });
 
     repository.emitFeed();
-    await _flushAsyncWork();
+    await flushAsyncWork();
     final gig = app.feed.first;
     final updatedCount = gig.going + 7;
 
     repository.emitGoingCounts({gig.id: updatedCount});
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     expect(app.rsvpCount(gig), updatedCount);
   });
@@ -203,14 +207,14 @@ void main() {
       app.dispose();
       await repository.close();
     });
-    await _flushAsyncWork();
+    await flushAsyncWork();
     var notifications = 0;
     app.addListener(() => notifications++);
 
     repository.emitGoingCounts(const {'g1': 12});
-    await _flushAsyncWork();
+    await flushAsyncWork();
     repository.emitGoingCounts(const {'g1': 12});
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     expect(notifications, 1);
   });
@@ -227,11 +231,11 @@ void main() {
     final summaryBand = fullBand.copyWith(isSummary: true);
     repository.bandValue = fullBand;
     repository.emitFeed(bands: {summaryBand.id: summaryBand});
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     app.openBand(summaryBand.id);
     app.openBand(summaryBand.id);
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     expect(repository.bandCalls, 1);
     expect(app.band(summaryBand.id)?.isSummary, isFalse);
@@ -245,30 +249,63 @@ void main() {
       final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
-        await _flushAsyncWork();
+        await flushAsyncWork();
         await repository.close();
       });
 
       repository.emitFeed();
-      await _flushAsyncWork();
+      await flushAsyncWork();
       final streamedGig = DemoData.gigs.first.copyWith(
         going: DemoData.gigs.first.going + 10,
       );
       repository.publicGigValue = streamedGig;
 
       app.openGig(streamedGig.id);
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(repository.publicGigCalls, 1);
       expect(app.gig(streamedGig.id), same(streamedGig));
 
       app.back();
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(repository.publicGigCancellations, 1);
       expect(app.gig(streamedGig.id), same(streamedGig));
-      await _flushAsyncWork();
+      await flushAsyncWork();
       expect(repository.publicGigCalls, 1);
     },
   );
+
+  testWidgets('AppState keeps the confirmed demo RSVP count incremented', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final interactionCutoff = DateTime.now().subtract(const Duration(hours: 6));
+    final gig = (await repository.feed().first).gigs.firstWhere(
+      (gig) =>
+          gig.id != 'g5' &&
+          gig.tix == Ticketing.rsvp &&
+          !gig.startsAt.isBefore(interactionCutoff),
+    );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: SizedBox.shrink()),
+    );
+
+    expect(harness.app.rsvpCount(gig), gig.going);
+
+    harness.app.toggleRsvp(gig.id);
+    await tester.pump();
+    await tester.pump();
+
+    expect(harness.app.hasConfirmedRsvp(gig.id), isTrue);
+    expect(harness.app.rsvpCount(gig), gig.going + 1);
+
+    await tester.pump(const Duration(seconds: 3));
+    harness.app.dispose();
+  });
 }
 
 Future<AppState> _createApp() async {
@@ -279,14 +316,8 @@ Future<AppState> _createApp() async {
     auth: auth,
   );
   addTearDown(app.dispose);
-  await _flushAsyncWork();
+  await flushAsyncWork();
   return app;
-}
-
-Future<void> _flushAsyncWork() async {
-  for (var i = 0; i < 5; i++) {
-    await Future<void>.delayed(Duration.zero);
-  }
 }
 
 class _SubscriptionSpyRepository extends DemoRepository {

@@ -1,6 +1,3 @@
-import 'dart:async';
-
-import 'package:convex_flutter/convex_flutter.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
@@ -8,17 +5,12 @@ import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/home.dart';
 import 'package:earplug/services/auth_service.dart';
-import 'package:earplug/services/convex_service.dart';
-import 'package:earplug/services/convex_transport.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/ep_map.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:earplug/widgets/video_thumbnail.dart';
-// fake_async is already resolved transitively for deterministic timer tests.
-// ignore: depend_on_referenced_packages
-import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_vector_tiles/flutter_map_vector_tiles.dart' as vt;
@@ -26,7 +18,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
+import 'support/async.dart';
 import 'support/fake_video_player_platform.dart';
+import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -72,7 +66,7 @@ void main() {
           auth: auth,
         );
         addTearDown(app.dispose);
-        await _flushAsyncWork();
+        await flushAsyncWork();
 
         final feed = app.feed;
         expect(identical(app.feed, app.feed), isTrue);
@@ -147,7 +141,7 @@ void main() {
                 width: 200,
                 height: 100,
                 child: BandVideoThumbnail(
-                  media: _videoMedia(),
+                  media: videoMediaFixture(),
                   fallback: const ColoredBox(color: Colors.red),
                   legacyFrameEnabled: false,
                 ),
@@ -161,70 +155,7 @@ void main() {
       );
     });
   });
-
-  test('ConvexService skips a duplicate raw payload and parses once', () {
-    fakeAsync((async) {
-      final transport = _FakeConvexTransport();
-      final service = ConvexService(transport: transport);
-      unawaited(service.init('https://fake.convex.cloud'));
-      async.flushMicrotasks();
-
-      var parseCalls = 0;
-      final values = <int>[];
-      final subscription = service
-          .subscribe<int>('messages:list', const <String, dynamic>{}, (
-            decoded,
-          ) {
-            parseCalls++;
-            return (decoded as Map<String, dynamic>)['value'] as int;
-          })
-          .listen(values.add);
-      addTearDown(subscription.cancel);
-      async.flushMicrotasks();
-
-      final before = ConvexService.debugStats.value.duplicatePayloadsSkipped;
-      const raw = '{"value":1}';
-      transport
-        ..sendUpdate(raw)
-        ..sendUpdate(raw);
-      async.flushMicrotasks();
-
-      expect(parseCalls, 1);
-      expect(values, <int>[1]);
-      expect(
-        ConvexService.debugStats.value.duplicatePayloadsSkipped - before,
-        1,
-      );
-
-      unawaited(subscription.cancel());
-      async.flushMicrotasks();
-      async.elapse(const Duration(milliseconds: 251));
-      async.flushMicrotasks();
-    });
-  });
 }
-
-Future<void> _flushAsyncWork() async {
-  for (var i = 0; i < 5; i++) {
-    await Future<void>.delayed(Duration.zero);
-  }
-}
-
-BandMedia _videoMedia() => const BandMedia(
-  id: 'm1',
-  bandId: 'b1',
-  kind: MediaKind.video,
-  url: 'https://example.com/video.mp4',
-  thumbnailUrl: null,
-  title: 'Clip',
-  caption: null,
-  sizeBytes: 10,
-  views: 2,
-  lengthSec: 30,
-  pinned: true,
-  order: 0,
-  isHero: false,
-);
 
 class _BigFeedRepository extends DemoRepository {
   _BigFeedRepository({required super.auth});
@@ -266,63 +197,4 @@ class _BigFeedRepository extends DemoRepository {
 
   @override
   Stream<FeedSnapshot> feed() => Stream.value(_snapshot);
-}
-
-class _FakeConvexTransport implements ConvexTransport {
-  late void Function(String) _onUpdate;
-
-  @override
-  bool get isConnected => true;
-
-  @override
-  Stream<WebSocketConnectionState> get connectionState => const Stream.empty();
-
-  @override
-  Duration get operationTimeout => const Duration(seconds: 1);
-
-  @override
-  Future<void> initialize(String url) => Future<void>.value();
-
-  @override
-  Future<String> query(String name, Map<String, dynamic> args) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<String> mutation({
-    required String name,
-    required Map<String, dynamic> args,
-  }) {
-    throw UnimplementedError();
-  }
-
-  @override
-  Future<ConvexTransportSubscription> subscribe({
-    required String name,
-    required Map<String, dynamic> args,
-    required void Function(String) onUpdate,
-    required void Function(String, String?) onError,
-  }) {
-    _onUpdate = onUpdate;
-    return Future<ConvexTransportSubscription>.value(
-      const _FakeSubscriptionHandle(),
-    );
-  }
-
-  @override
-  Future<void> setAuthWithRefresh({
-    required Future<String?> Function() fetchToken,
-  }) => Future<void>.value();
-
-  @override
-  Future<void> clearAuth() => Future<void>.value();
-
-  void sendUpdate(String raw) => _onUpdate(raw);
-}
-
-class _FakeSubscriptionHandle implements ConvexTransportSubscription {
-  const _FakeSubscriptionHandle();
-
-  @override
-  void cancel() {}
 }

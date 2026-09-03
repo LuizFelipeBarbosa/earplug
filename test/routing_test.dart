@@ -1,10 +1,19 @@
+import 'package:earplug/app_links.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
-import 'package:earplug/main.dart' show bandSlugFromUri, gigIdFromUri;
+import 'package:earplug/main.dart'
+    show
+        bandSlugFromUri,
+        gigIdFromUri,
+        joinTokenFromUri,
+        performerInviteTokenFromUri,
+        shouldEnableWebSemantics;
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/async.dart';
 
 void main() {
   test('route parsing distinguishes gigs, bands, and reserved roots', () {
@@ -108,16 +117,16 @@ void main() {
     final repository = _NavigationRepository(auth: auth);
     final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     app.openGig('g1');
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(repository.publicGigCalls, 1);
 
     app.openBand('b1');
-    await _flushAsyncWork();
+    await flushAsyncWork();
     app.back();
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     expect(app.current.screen, Screen.gig);
     expect(app.current.param, 'g1');
@@ -129,27 +138,96 @@ void main() {
     final repository = _NavigationRepository(auth: auth);
     final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
-    await _flushAsyncWork();
+    await flushAsyncWork();
 
     app.go(Screen.explore);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(repository.listBandsCalls, 1);
 
     app.go(Screen.home);
     app.go(Screen.explore);
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(repository.listBandsCalls, 1);
 
     app.loadMoreExploreBands();
-    await _flushAsyncWork();
+    await flushAsyncWork();
     expect(repository.listBandsCalls, 2);
   });
-}
 
-Future<void> _flushAsyncWork() async {
-  for (var i = 0; i < 5; i++) {
-    await Future<void>.delayed(Duration.zero);
-  }
+  test('join token is preserved from a path-based web URL', () {
+    expect(
+      joinTokenFromUri(Uri.parse('https://earplug.app/join/secret-token')),
+      'secret-token',
+    );
+  });
+
+  test('join token is preserved from a hash-based fallback URL', () {
+    expect(
+      joinTokenFromUri(Uri.parse('https://earplug.app/#/join/secret-token')),
+      'secret-token',
+    );
+  });
+
+  test('ordinary app URLs do not enter the invitation flow', () {
+    expect(joinTokenFromUri(Uri.parse('https://earplug.app/explore')), isNull);
+  });
+
+  test('performer invitations are preserved from path and hash URLs', () {
+    expect(
+      performerInviteTokenFromUri(
+        Uri.parse('https://earplug.app/gig-invite/performer-token'),
+      ),
+      'performer-token',
+    );
+    expect(
+      performerInviteTokenFromUri(
+        Uri.parse('https://earplug.app/#/gig-invite/performer-token'),
+      ),
+      'performer-token',
+    );
+  });
+
+  test('band invitations use the canonical public website', () {
+    final invite = BandInvite(
+      bandId: 'band-id',
+      token: 'secret-token',
+      expiresAt: DateTime(2026, 9),
+      revoked: false,
+      expired: false,
+    );
+
+    expect(publicWebOrigin, 'https://earplug.app');
+    expect(invite.url, 'https://earplug.app/join/secret-token');
+  });
+
+  group('shouldEnableWebSemantics', () {
+    test("query '1' enables semantics regardless of the stored preference", () {
+      expect(shouldEnableWebSemantics(queryValue: '1', stored: false), isTrue);
+      expect(shouldEnableWebSemantics(queryValue: '1', stored: true), isTrue);
+    });
+
+    test(
+      "query '0' disables semantics regardless of the stored preference",
+      () {
+        expect(
+          shouldEnableWebSemantics(queryValue: '0', stored: false),
+          isFalse,
+        );
+        expect(
+          shouldEnableWebSemantics(queryValue: '0', stored: true),
+          isFalse,
+        );
+      },
+    );
+
+    test('a missing query uses the stored preference', () {
+      expect(
+        shouldEnableWebSemantics(queryValue: null, stored: false),
+        isFalse,
+      );
+      expect(shouldEnableWebSemantics(queryValue: null, stored: true), isTrue);
+    });
+  });
 }
 
 class _NavigationRepository extends DemoRepository {

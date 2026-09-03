@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 import 'support/fake_video_player_platform.dart';
+import 'support/fixtures.dart';
 
 void main() {
   late VideoPlayerPlatform originalPlatform;
@@ -49,7 +50,9 @@ void main() {
           width: 200,
           height: 100,
           child: BandVideoThumbnail(
-            media: _media(thumbnailUrl: 'https://example.com/poster.jpg'),
+            media: videoMediaFixture(
+              thumbnailUrl: 'https://example.com/poster.jpg',
+            ),
             fallback: const ColoredBox(color: Colors.red),
           ),
         ),
@@ -69,7 +72,7 @@ void main() {
           width: 200,
           height: 100,
           child: BandVideoThumbnail(
-            media: _media(),
+            media: videoMediaFixture(),
             fallback: const ColoredBox(color: Colors.red),
             legacyFrameEnabled: true,
           ),
@@ -88,19 +91,3 @@ void main() {
     expect(fakePlatform.calls, contains('dispose'));
   });
 }
-
-BandMedia _media({String? thumbnailUrl}) => BandMedia(
-  id: 'm1',
-  bandId: 'b1',
-  kind: MediaKind.video,
-  url: 'https://example.com/video.mp4',
-  thumbnailUrl: thumbnailUrl,
-  title: 'Clip',
-  caption: null,
-  sizeBytes: 10,
-  views: 2,
-  lengthSec: 30,
-  pinned: true,
-  order: 0,
-  isHero: false,
-);

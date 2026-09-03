@@ -16,6 +16,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 
+// Purging the seeded demo rows made a genuinely empty feed reachable for the
+// first time, so the two reasons a feed can be empty have to read differently.
+const _noGigs =
+    'No upcoming gigs yet.\nWhen a band books one, it shows up here.';
+const _noMatches =
+    'Nothing matches those filters.\nLoosen them up and see what is out there.';
+
 void main() {
   testWidgets('Home defaults to Map and keeps List as an intentional switch', (
     tester,
@@ -368,6 +375,9 @@ void main() {
       },
     );
 
+    expect(harness.app.feed, isEmpty);
+    expect(find.text(_noMatches), findsOne);
+    expect(find.text(_noGigs), findsNothing);
     expect(find.text('SHOW THIS WEEK'), findsOne);
     expect(find.text('CLEAR GENRES'), findsOne);
     expect(find.text('VIEW ALL NEARBY SHOWS'), findsOne);
@@ -380,6 +390,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(harness.app.filters.activeCount, 0);
     expect(harness.app.feed, isNotEmpty);
+  });
+
+  testWidgets('an empty backend blames nobody', (tester) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _EmptyFeedRepository(auth: auth),
+      home: const Scaffold(body: HomeScreen()),
+    );
+
+    expect(harness.app.allGigs, isEmpty);
+    expect(find.text(_noGigs), findsOne);
+    expect(find.text(_noMatches), findsNothing);
+    expect(find.text('0 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
   });
 }
 
@@ -515,3 +540,12 @@ final _missingVenueGig = Gig(
   desc: 'The venue row was deleted.',
   tix: Ticketing.rsvp,
 );
+
+/// Stands in for the cleaned dev deployment: reachable, healthy, nothing booked.
+class _EmptyFeedRepository extends DemoRepository {
+  _EmptyFeedRepository({required super.auth});
+
+  @override
+  Stream<FeedSnapshot> feed() =>
+      Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {}));
+}
