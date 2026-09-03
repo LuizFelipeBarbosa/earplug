@@ -85,6 +85,108 @@ class EpSheetShell extends StatelessWidget {
   }
 }
 
+/// Keyboard-aware chrome for a form sheet: an uppercase title with a Close
+/// button (or [trailing]) above [child]. Unlike [EpSheetShell] it has no drag
+/// handle and rises with the on-screen keyboard.
+class EpFormSheet extends StatelessWidget {
+  final String title;
+  final Widget? trailing;
+  final Widget child;
+
+  /// Sheets that own their own scrolling (the calendar) lay out their body.
+  final bool padBody;
+
+  const EpFormSheet({
+    super.key,
+    required this.title,
+    required this.child,
+    this.trailing,
+    this.padBody = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      decoration: BoxDecoration(
+        color: context.epColors.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(title.toUpperCase(), style: epDisplay(size: 15)),
+                ),
+                trailing ??
+                    IconButton(
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(Icons.close),
+                    ),
+              ],
+            ),
+          ),
+          if (padBody)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+              child: child,
+            )
+          else
+            Flexible(child: child),
+        ],
+      ),
+    );
+  }
+}
+
+/// Full-width option row for a form sheet: a title over a caption, selected
+/// state drawn by the card.
+class EpOptionCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+  final bool titleCaps;
+
+  const EpOptionCard({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+    this.titleCaps = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return EpCard(
+      variant: selected ? EpCardVariant.selected : EpCardVariant.standard,
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            titleCaps ? title.toUpperCase() : title,
+            style: epText(size: 12.5, weight: FontWeight.w800),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: epText(size: 11, color: context.epColors.contentSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SheetOption extends StatelessWidget {
   final Widget leading;
   final VoidCallback onTap;

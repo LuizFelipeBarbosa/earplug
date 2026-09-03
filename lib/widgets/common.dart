@@ -180,6 +180,34 @@ class SectionBar extends StatelessWidget {
   }
 }
 
+/// The small tracked-out text button at the end of a section heading —
+/// "SEE ALL 12", "SEE LESS VENUES".
+class SectionActionButton extends StatelessWidget {
+  const SectionActionButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      child: Text(
+        label,
+        maxLines: 2,
+        textAlign: TextAlign.end,
+        style: Theme.of(
+          context,
+        ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .7),
+      ),
+    );
+  }
+}
+
 /// A date-first visual anchor for event and history rows.
 class DateBlock extends StatelessWidget {
   const DateBlock({
@@ -1127,6 +1155,16 @@ InputDecoration epInputDecoration(
     borderRadius: BorderRadius.circular(11),
     borderSide: BorderSide(color: context.epColors.accent, width: 2),
   ),
+);
+
+/// [epInputDecoration] with an always-floating [label] printed above it.
+InputDecoration labeledInputDecoration(
+  BuildContext context,
+  String label,
+  String hint,
+) => epInputDecoration(context, hint).copyWith(
+  labelText: label,
+  floatingLabelBehavior: FloatingLabelBehavior.always,
 );
 
 InputDecoration epCollapsedInputDecoration(

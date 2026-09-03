@@ -868,17 +868,10 @@ class _SectionHeading extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: SectionLabel(label)),
-        TextButton(
+        SectionActionButton(
           key: actionKey,
+          label: actionLabel,
           onPressed: onAction,
-          child: Text(
-            actionLabel,
-            maxLines: 2,
-            textAlign: TextAlign.end,
-            style: Theme.of(
-              context,
-            ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .7),
-          ),
         ),
       ],
     );

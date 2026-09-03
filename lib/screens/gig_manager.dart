@@ -124,13 +124,10 @@ class _ProjectSection extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         if (projects.isEmpty)
-          DashedBox(
+          EmptyNote(
+            message: empty,
             padding: const EdgeInsets.all(18),
-            child: Text(
-              empty,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.epCaption,
-            ),
+            style: Theme.of(context).textTheme.epCaption,
           )
         else
           for (var index = 0; index < projects.length; index++) ...[

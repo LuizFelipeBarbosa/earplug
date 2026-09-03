@@ -219,10 +219,10 @@ class MyGigsScreen extends StatelessWidget {
         ],
         const SectionBar(label: 'UPCOMING RSVPS', padding: sectionPadding),
         if (upcoming.isEmpty)
-          _EmptySection(
+          EmptyNote(
             message: 'No upcoming RSVPs. Pick a show you want to catch.',
-            action: 'FIND A SHOW',
-            onTap: () => app.resetTo(Screen.home),
+            actionLabel: 'FIND A SHOW',
+            onAction: () => app.resetTo(Screen.home),
           ),
         for (final g in upcoming) ...[
           FanEventCard(
@@ -238,10 +238,10 @@ class MyGigsScreen extends StatelessWidget {
         ],
         const SectionBar(label: 'SAVED SHOWS', padding: sectionPadding),
         if (savedGigs.isEmpty)
-          _EmptySection(
+          EmptyNote(
             message: 'Nothing saved. Bookmark a show to keep it handy.',
-            action: 'FIND A SHOW',
-            onTap: () => app.resetTo(Screen.home),
+            actionLabel: 'FIND A SHOW',
+            onAction: () => app.resetTo(Screen.home),
           ),
         for (final g in savedGigs) ...[
           FanEventCard(gig: g, app: app),
@@ -252,16 +252,16 @@ class MyGigsScreen extends StatelessWidget {
           padding: sectionPadding,
         ),
         if (app.followedBandShows.isEmpty)
-          _EmptySection(
+          EmptyNote(
             message: profile?.followedBandUpdatesEnabled == false
                 ? 'Followed-band updates are turned off.'
                 : app.follows.isEmpty
                 ? 'Follow a band to see its upcoming shows here.'
                 : 'No followed bands have an upcoming show yet.',
-            action: profile?.followedBandUpdatesEnabled == false
+            actionLabel: profile?.followedBandUpdatesEnabled == false
                 ? 'EDIT PREFERENCES'
                 : 'EXPLORE BANDS',
-            onTap: profile?.followedBandUpdatesEnabled == false
+            onAction: profile?.followedBandUpdatesEnabled == false
                 ? app.openEditProfile
                 : () => app.resetTo(Screen.explore),
           ),
@@ -506,10 +506,10 @@ class _FollowingSheetState extends State<_FollowingSheet> {
           ? ListView(
               padding: const EdgeInsets.only(top: 8),
               children: [
-                _EmptySection(
+                EmptyNote(
                   message: 'Follow bands to keep their profiles close.',
-                  action: 'EXPLORE BANDS',
-                  onTap: widget.onExplore,
+                  actionLabel: 'EXPLORE BANDS',
+                  onAction: widget.onExplore,
                 ),
               ],
             )
@@ -545,11 +545,11 @@ class _FollowingSheetState extends State<_FollowingSheet> {
                   child: visibleBandIds.isEmpty
                       ? ListView(
                           children: [
-                            _EmptySection(
+                            EmptyNote(
                               message:
                                   'No followed bands match “${_query.trim()}”.',
-                              action: 'CLEAR SEARCH',
-                              onTap: _clearSearch,
+                              actionLabel: 'CLEAR SEARCH',
+                              onAction: _clearSearch,
                             ),
                           ],
                         )
@@ -597,10 +597,10 @@ class _HistorySheet extends StatelessWidget {
           ? ListView(
               padding: const EdgeInsets.only(top: 8),
               children: [
-                _EmptySection(
+                EmptyNote(
                   message: 'Past RSVPs will build your private event history.',
-                  action: 'FIND A SHOW',
-                  onTap: onFindShow,
+                  actionLabel: 'FIND A SHOW',
+                  onAction: onFindShow,
                 ),
               ],
             )
@@ -671,37 +671,6 @@ class _ProfileDetailSheet extends StatelessWidget {
         const SizedBox(height: 6),
         Expanded(child: child),
       ],
-    );
-  }
-}
-
-class _EmptySection extends StatelessWidget {
-  const _EmptySection({
-    required this.message,
-    required this.action,
-    required this.onTap,
-  });
-
-  final String message;
-  final String action;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return DashedBox(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      child: Column(
-        children: [
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.epBody.copyWith(
-              color: context.epColors.contentSecondary,
-            ),
-          ),
-          TextAction(action, onTap: onTap),
-        ],
-      ),
     );
   }
 }

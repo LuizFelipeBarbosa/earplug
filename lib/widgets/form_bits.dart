@@ -138,6 +138,49 @@ InputDecoration sheetInput(BuildContext context, String hint) =>
       horizontalPadding: 12,
     );
 
+/// Dashed placeholder for an empty list: a centred [message] and, when
+/// [actionLabel] is given, a [TextAction] beneath it.
+class EmptyNote extends StatelessWidget {
+  const EmptyNote({
+    super.key,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+    this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    this.style,
+  });
+
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+  final EdgeInsets padding;
+
+  /// Defaults to body text in the secondary colour.
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    return DashedBox(
+      padding: padding,
+      child: Column(
+        children: [
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style:
+                style ??
+                Theme.of(context).textTheme.epBody.copyWith(
+                  color: context.epColors.contentSecondary,
+                ),
+          ),
+          if (actionLabel case final actionLabel?)
+            TextAction(actionLabel, onTap: onAction),
+        ],
+      ),
+    );
+  }
+}
+
 /// A bare tappable label — no box, no fill. Defaults to the roomy tracked-out
 /// form-footer look; pass the metrics for the tight inline variant.
 class TextAction extends StatelessWidget {
@@ -456,6 +499,49 @@ class DangerZone extends StatelessWidget {
             style: Theme.of(context).textTheme.epCaption,
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// A titled block of a create/edit form: a [SectionBar] heading, a caption,
+/// then [child] — inside a raised card unless [boxed] is false.
+class FormSection extends StatelessWidget {
+  const FormSection({
+    super.key,
+    required this.title,
+    required this.description,
+    required this.child,
+    this.count,
+    this.boxed = true,
+    this.spacing = 12,
+  });
+
+  final String title;
+  final String description;
+  final Widget child;
+  final int? count;
+  final bool boxed;
+
+  /// Gap between the caption and the body.
+  final double spacing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionBar(label: title, count: count),
+        Text(description, style: Theme.of(context).textTheme.epCaption),
+        SizedBox(height: spacing),
+        if (boxed)
+          EpCard(
+            variant: EpCardVariant.raised,
+            padding: const EdgeInsets.all(15),
+            child: child,
+          )
+        else
+          child,
       ],
     );
   }

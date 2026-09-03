@@ -471,8 +471,9 @@ class _BandEditScreenState extends State<BandEditScreen> {
               ),
               KeyedSubtree(
                 key: _linksKey,
-                child: _EditorSection(
+                child: FormSection(
                   title: 'Links',
+                  spacing: 14,
                   description:
                       'Add the places where fans can listen, watch, and follow.',
                   boxed: false,
@@ -488,7 +489,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                           _draftChanged(value);
                         },
                         style: Theme.of(context).textTheme.epBody,
-                        decoration: _bandInput(
+                        decoration: labeledInputDecoration(
                           context,
                           'INSTAGRAM',
                           'Instagram',
@@ -504,7 +505,11 @@ class _BandEditScreenState extends State<BandEditScreen> {
                           _draftChanged(value);
                         },
                         style: Theme.of(context).textTheme.epBody,
-                        decoration: _bandInput(context, 'BANDCAMP', 'Bandcamp'),
+                        decoration: labeledInputDecoration(
+                          context,
+                          'BANDCAMP',
+                          'Bandcamp',
+                        ),
                       ),
                       const SizedBox(height: 12),
                       TextField(
@@ -516,7 +521,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                           _draftChanged(value);
                         },
                         style: Theme.of(context).textTheme.epBody,
-                        decoration: _bandInput(
+                        decoration: labeledInputDecoration(
                           context,
                           'YOUTUBE OR VIDEO',
                           'YouTube or video',
@@ -526,8 +531,9 @@ class _BandEditScreenState extends State<BandEditScreen> {
                   ),
                 ),
               ),
-              _EditorSection(
+              FormSection(
                 title: 'Credits',
+                spacing: 14,
                 description:
                     'Acknowledge producers, artists, labels, and collaborators.',
                 child: Semantics(
@@ -544,7 +550,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                     minLines: 3,
                     maxLines: 6,
                     style: Theme.of(context).textTheme.epBody,
-                    decoration: _bandInput(
+                    decoration: labeledInputDecoration(
                       context,
                       'CREDITS',
                       'Who helped make the work',
@@ -598,48 +604,6 @@ class _BandEditScreenState extends State<BandEditScreen> {
             onPrimary: _saving ? null : _save,
           ),
         ),
-      ],
-    );
-  }
-}
-
-InputDecoration _bandInput(BuildContext context, String label, String hint) =>
-    epInputDecoration(context, hint).copyWith(
-      labelText: label,
-      floatingLabelBehavior: FloatingLabelBehavior.always,
-    );
-
-class _EditorSection extends StatelessWidget {
-  const _EditorSection({
-    required this.title,
-    required this.description,
-    required this.child,
-    this.count,
-    this.boxed = true,
-  });
-
-  final String title;
-  final String description;
-  final Widget child;
-  final int? count;
-  final bool boxed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionBar(label: title, count: count),
-        Text(description, style: Theme.of(context).textTheme.epCaption),
-        const SizedBox(height: 14),
-        if (boxed)
-          EpCard(
-            variant: EpCardVariant.raised,
-            padding: const EdgeInsets.all(15),
-            child: child,
-          )
-        else
-          child,
       ],
     );
   }
@@ -777,8 +741,9 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
     final members = app.profileDetailsFor(id)?.memberNames ?? const [];
     final active = invite != null && !invite.revoked && !invite.expired;
 
-    return _EditorSection(
+    return FormSection(
       title: 'Band members',
+      spacing: 14,
       count: members.length,
       description:
           'Share one secure link. It can be used by multiple members for seven days.',

@@ -214,7 +214,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 onAddCustomGenre: _addCustomGenre,
               ),
               const SizedBox(height: 24),
-              _OptionalSection(
+              FormSection(
                 title: 'Links',
                 description:
                     'Add the places where fans can listen, watch, and follow.',
@@ -247,7 +247,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                   ],
                 ),
               ),
-              _OptionalSection(
+              FormSection(
                 title: 'Credits',
                 description:
                     'Acknowledge producers, artists, labels, and collaborators.',
@@ -306,44 +306,7 @@ class _StandardField extends StatelessWidget {
       minLines: minLines,
       maxLines: maxLines,
       style: Theme.of(context).textTheme.epBody,
-      decoration: epInputDecoration(context, hint).copyWith(
-        labelText: label,
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-      ),
-    );
-  }
-}
-
-class _OptionalSection extends StatelessWidget {
-  const _OptionalSection({
-    required this.title,
-    required this.description,
-    required this.child,
-    this.boxed = true,
-  });
-
-  final String title;
-  final String description;
-  final Widget child;
-  final bool boxed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SectionBar(label: title),
-        Text(description, style: Theme.of(context).textTheme.epCaption),
-        const SizedBox(height: 12),
-        if (boxed)
-          EpCard(
-            variant: EpCardVariant.raised,
-            padding: const EdgeInsets.all(15),
-            child: child,
-          )
-        else
-          child,
-      ],
+      decoration: labeledInputDecoration(context, label, hint),
     );
   }
 }
