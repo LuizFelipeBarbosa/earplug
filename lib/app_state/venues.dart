@@ -185,8 +185,6 @@ mixin _VenueState on _AppStateCore {
     name: 'Venue unavailable',
     area: '',
     addr: '',
-    distSF: '',
-    distOak: '',
     point: LatLng(0, 0),
   );
 }

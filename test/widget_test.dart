@@ -452,8 +452,6 @@ void main() {
           'name': 'The Foghorn Club',
           'area': 'Mission, SF',
           'addr': '2455 Harrison St, San Francisco',
-          'distSF': '0.8 mi',
-          'distOak': '6.3 mi',
           'lat': 37.7524,
           'lng': -122.4180,
         },
@@ -462,8 +460,6 @@ void main() {
           'name': 'Nightcrawler Records',
           'area': 'Temescal, Oakland',
           'addr': '486 40th St, Oakland',
-          'distSF': '6.1 mi',
-          'distOak': '0.9 mi',
           'lat': 37.8180,
           'lng': -122.2690,
         },
@@ -540,8 +536,6 @@ const _extraVenue = Venue(
   name: 'Derby Street House',
   area: 'South Berkeley',
   addr: '2863 Derby St, Berkeley',
-  distSF: '10.2 mi',
-  distOak: '4.8 mi',
   point: LatLng(37.8614, -122.2508),
 );
 
@@ -563,8 +557,6 @@ class _ConflictingVenueRepository extends DemoRepository {
     name: 'Stale Directory Name',
     area: 'Mission, SF',
     addr: '2455 Harrison St, San Francisco',
-    distSF: '0.8 mi',
-    distOak: '6.3 mi',
     point: LatLng(37.7524, -122.4180),
   );
 

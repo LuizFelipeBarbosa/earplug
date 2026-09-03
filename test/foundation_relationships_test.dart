@@ -423,8 +423,6 @@ class _DeferredVenueDirectoryRepository extends DemoRepository {
     name: 'Directory Hall',
     area: 'Richmond, SF',
     addr: '1 Directory Way, San Francisco',
-    distSF: '3.0 mi',
-    distOak: '10.0 mi',
     point: DemoData.venues['v1']!.point,
   );
   final releaseDirectory = Completer<void>();
@@ -549,8 +547,6 @@ Map<String, dynamic> _venueJson() => {
   'name': 'Room One',
   'area': 'Mission, SF',
   'addr': '1 Main St',
-  'distSF': '1.0 mi',
-  'distOak': '8.0 mi',
   'lat': 37.75,
   'lng': -122.42,
 };

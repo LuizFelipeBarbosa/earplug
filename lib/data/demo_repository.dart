@@ -538,8 +538,6 @@ class DemoRepository implements EarplugRepository {
       name: name.trim(),
       area: area.trim(),
       addr: address.trim(),
-      distSF: '—',
-      distOak: '—',
       point: LatLng(latitude, longitude),
     );
     _venues[venue.id] = venue;

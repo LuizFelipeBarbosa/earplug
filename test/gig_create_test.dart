@@ -776,8 +776,6 @@ class _GatedVenueRepository extends DemoRepository {
         name: 'Late Arrival Hall',
         area: 'Oakland',
         addr: '123 Late Street',
-        distSF: '7.0 mi',
-        distOak: '1.0 mi',
         point: LatLng(37.8, -122.27),
       ),
     ];
@@ -793,8 +791,6 @@ class _TwoVenueRepository extends DemoRepository {
       name: 'First Test Venue',
       area: 'Oakland',
       addr: '1 First Street',
-      distSF: '7.0 mi',
-      distOak: '1.0 mi',
       point: LatLng(37.8, -122.27),
     ),
     Venue(
@@ -802,8 +798,6 @@ class _TwoVenueRepository extends DemoRepository {
       name: 'Second Test Venue',
       area: 'San Francisco',
       addr: '2 Second Street',
-      distSF: '1.0 mi',
-      distOak: '7.0 mi',
       point: LatLng(37.76, -122.42),
     ),
   ];

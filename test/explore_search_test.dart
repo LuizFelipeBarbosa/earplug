@@ -20,8 +20,6 @@ const _directoryOnlyVenue = Venue(
   name: 'Derby Street House',
   area: 'South Berkeley',
   addr: '2863 Derby St, Berkeley',
-  distSF: '10.2 mi',
-  distOak: '4.8 mi',
   point: LatLng(37.8614, -122.2508),
 );
 

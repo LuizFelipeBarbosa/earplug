@@ -12,8 +12,6 @@ abstract final class DemoData {
       name: 'The Foghorn Club',
       area: 'Mission, SF',
       addr: '2455 Harrison St, San Francisco',
-      distSF: '0.8 mi',
-      distOak: '6.3 mi',
       point: LatLng(37.7524, -122.4180),
     ),
     'v2': Venue(
@@ -21,8 +19,6 @@ abstract final class DemoData {
       name: 'Nightcrawler Records',
       area: 'Temescal, Oakland',
       addr: '486 40th St, Oakland',
-      distSF: '6.1 mi',
-      distOak: '0.9 mi',
       point: LatLng(37.8180, -122.2690),
     ),
     'v3': Venue(
@@ -30,8 +26,6 @@ abstract final class DemoData {
       name: 'Casa Quake',
       area: 'Bernal Heights, SF',
       addr: '(address with RSVP)',
-      distSF: '1.2 mi',
-      distOak: '6.7 mi',
       point: LatLng(37.7399, -122.4166),
     ),
     'v4': Venue(
@@ -39,8 +33,6 @@ abstract final class DemoData {
       name: 'The Rusty Anchor',
       area: 'Dogpatch, SF',
       addr: '701 22nd St, San Francisco',
-      distSF: '1.9 mi',
-      distOak: '5.4 mi',
       point: LatLng(37.7583, -122.3880),
     ),
     'v5': Venue(
@@ -48,8 +40,6 @@ abstract final class DemoData {
       name: 'Peralta Hall',
       area: 'West Oakland',
       addr: '1801 Peralta St, Oakland',
-      distSF: '6.8 mi',
-      distOak: '1.6 mi',
       point: LatLng(37.8060, -122.2910),
     ),
     'v6': Venue(
@@ -57,8 +47,6 @@ abstract final class DemoData {
       name: 'Sunset Bunker',
       area: 'Outer Sunset, SF',
       addr: '3820 Noriega St, San Francisco',
-      distSF: '4.3 mi',
-      distOak: '9.8 mi',
       point: LatLng(37.7540, -122.5040),
     ),
   };

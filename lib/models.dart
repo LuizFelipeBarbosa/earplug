@@ -10,8 +10,6 @@ class Venue {
   final String name;
   final String area;
   final String addr;
-  final String distSF;
-  final String distOak;
   final LatLng point;
 
   const Venue({
@@ -19,8 +17,6 @@ class Venue {
     required this.name,
     required this.area,
     required this.addr,
-    required this.distSF,
-    required this.distOak,
     required this.point,
   });
 
@@ -29,8 +25,6 @@ class Venue {
     name: json['name'] as String,
     area: json['area'] as String,
     addr: json['addr'] as String,
-    distSF: json['distSF'] as String,
-    distOak: json['distOak'] as String,
     point: LatLng(
       (json['lat'] as num).toDouble(),
       (json['lng'] as num).toDouble(),
