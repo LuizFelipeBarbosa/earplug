@@ -8,7 +8,6 @@ import 'package:provider/provider.dart';
 import 'app_state.dart';
 import 'band_media_state.dart';
 import 'data/convex_repository.dart';
-import 'data/demo_repository.dart';
 import 'data/repository.dart';
 import 'env.dart';
 import 'errors.dart';
@@ -88,16 +87,18 @@ Future<void> main() async {
   final gigId = gigIdFromUri(Uri.base);
   final bandSlug = bandSlugFromUri(Uri.base);
   if (Env.demo) {
-    final demoAuth = FakeAuthService();
+    final appState = AppState.demo(
+      initialJoinToken: joinToken,
+      initialPerformerInviteToken: performerInviteToken,
+      initialGigId: gigId,
+      initialBandSlug: bandSlug,
+    );
     runApp(
       EarplugApp(
         appearance: appearance,
-        repository: DemoRepository(auth: demoAuth),
-        auth: demoAuth,
-        initialJoinToken: joinToken,
-        initialPerformerInviteToken: performerInviteToken,
-        initialGigId: gigId,
-        initialBandSlug: bandSlug,
+        repository: appState.repository,
+        auth: appState.auth,
+        appState: appState,
       ),
     );
     _removeSplashAfterFirstFrame();
@@ -236,6 +237,7 @@ class EarplugApp extends StatelessWidget {
     required this.appearance,
     required this.repository,
     required this.auth,
+    this.appState,
     this.initialJoinToken,
     this.initialPerformerInviteToken,
     this.initialGigId,
@@ -245,6 +247,7 @@ class EarplugApp extends StatelessWidget {
   final AppearanceController appearance;
   final EarplugRepository repository;
   final AuthService auth;
+  final AppState? appState;
   final String? initialJoinToken;
   final String? initialPerformerInviteToken;
   final String? initialGigId;
@@ -260,14 +263,16 @@ class EarplugApp extends StatelessWidget {
           dispose: (_, repository) => repository.dispose(),
         ),
         ChangeNotifierProvider(
-          create: (_) => AppState(
-            repository: repository,
-            auth: auth,
-            initialJoinToken: initialJoinToken,
-            initialPerformerInviteToken: initialPerformerInviteToken,
-            initialGigId: initialGigId,
-            initialBandSlug: initialBandSlug,
-          ),
+          create: (_) =>
+              appState ??
+              AppState(
+                repository: repository,
+                auth: auth,
+                initialJoinToken: initialJoinToken,
+                initialPerformerInviteToken: initialPerformerInviteToken,
+                initialGigId: initialGigId,
+                initialBandSlug: initialBandSlug,
+              ),
         ),
         ChangeNotifierProvider<BandMediaController>(
           create: (ctx) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../memo.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/branding.dart';
@@ -200,8 +201,8 @@ class _FeedList extends StatefulWidget {
 }
 
 class _FeedListState extends State<_FeedList> {
-  ({List<Gig> feed, bool featuredBoosted})? _rowsInputs;
-  List<_FeedRow> _rows = const [];
+  final Memo<({List<Gig> feed, bool featuredBoosted}), List<_FeedRow>>
+  _rowsMemo = Memo();
 
   /// Partitions the feed into rows once per feed instance. The list itself
   /// rebuilds on every AppState notification because its cards read live
@@ -212,46 +213,44 @@ class _FeedListState extends State<_FeedList> {
       feed: feed,
       featuredBoosted: feed.isNotEmpty && app.isDiscoveryBoosted(feed.first),
     );
-    if (inputs == _rowsInputs) return _rows;
+    return _rowsMemo(inputs, () {
+      final rows = <_FeedRow>[];
+      if (feed.isEmpty) {
+        rows.add(const _FeedEmptyRow());
+      } else {
+        rows.add(_FeedCountRow(feed.length));
 
-    final rows = <_FeedRow>[];
-    if (feed.isEmpty) {
-      rows.add(const _FeedEmptyRow());
-    } else {
-      rows.add(_FeedCountRow(feed.length));
+        final featured = feed.first;
+        rows.add(const _FeedSectionRow(label: 'FEATURED NEAR YOU', count: 1));
+        if (inputs.featuredBoosted) {
+          rows.add(_FeedBoostRow(featured));
+        }
+        rows.add(_FeedCardRow(featured, featured: true));
 
-      final featured = feed.first;
-      rows.add(const _FeedSectionRow(label: 'FEATURED NEAR YOU', count: 1));
-      if (inputs.featuredBoosted) {
-        rows.add(_FeedBoostRow(featured));
-      }
-      rows.add(_FeedCardRow(featured, featured: true));
+        final remaining = feed.skip(1);
+        for (final section in GigWhen.values) {
+          final gigs = remaining
+              .where((gig) => gig.when == section)
+              .toList(growable: false);
+          if (gigs.isEmpty) continue;
 
-      final remaining = feed.skip(1);
-      for (final section in GigWhen.values) {
-        final gigs = remaining
-            .where((gig) => gig.when == section)
-            .toList(growable: false);
-        if (gigs.isEmpty) continue;
-
-        rows.add(
-          _FeedSectionRow(
-            label: switch (section) {
-              GigWhen.tonight => 'TONIGHT',
-              GigWhen.week => 'THIS WEEK',
-              GigWhen.later => 'LATER',
-            },
-            count: gigs.length,
-          ),
-        );
-        for (final gig in gigs) {
-          rows.add(_FeedCardRow(gig));
+          rows.add(
+            _FeedSectionRow(
+              label: switch (section) {
+                GigWhen.tonight => 'TONIGHT',
+                GigWhen.week => 'THIS WEEK',
+                GigWhen.later => 'LATER',
+              },
+              count: gigs.length,
+            ),
+          );
+          for (final gig in gigs) {
+            rows.add(_FeedCardRow(gig));
+          }
         }
       }
-    }
-    _rowsInputs = inputs;
-    _rows = rows;
-    return rows;
+      return rows;
+    });
   }
 
   @override

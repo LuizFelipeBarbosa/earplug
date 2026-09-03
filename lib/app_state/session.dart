@@ -17,8 +17,11 @@ mixin _SessionState on _AppStateCore {
   abstract UserProfile? profile;
   set history(List<FanHistoryItem> value);
   Set<String> get rsvps;
+  set rsvps(Set<String> value);
   Set<String> get follows;
+  set follows(Set<String> value);
   Set<String> get saved;
+  set saved(Set<String> value);
   Band? band(String id);
   void go(Screen s, [String? param]);
   void back();
@@ -192,19 +195,19 @@ mixin _SessionState on _AppStateCore {
     switch (p?.kind) {
       case PendingKind.rsvp:
         await repository.ensureRsvp(p!.id!);
-        rsvps.add(p.id!);
+        rsvps = {...rsvps, p.id!};
         say("You're on the list. QR is in Profile.");
         _postAuthScreen = null;
       case PendingKind.follow:
         await repository.ensureFollow(p!.id!);
-        follows.add(p.id!);
+        follows = {...follows, p.id!};
         _syncFollowedBandGigSubscriptions();
         final name = band(p.id!)?.name;
         say(name == null ? 'Band followed.' : 'Following $name.');
         _postAuthScreen = null;
       case PendingKind.save:
         await repository.ensureSave(p!.id!);
-        saved.add(p.id!);
+        saved = {...saved, p.id!};
         say('Show saved.');
         _postAuthScreen = null;
       case PendingKind.myGigs:

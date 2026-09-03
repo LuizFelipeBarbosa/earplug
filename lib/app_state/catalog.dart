@@ -272,6 +272,7 @@ mixin _CatalogState on _AppStateCore {
   void _handleDiscoveryBoundary() {
     _discoveryBoundaryTimer = null;
     if (_disposed) return;
+    _discoveryBoundaryTick++;
 
     final readinessIds = <String>{
       ..._bandDiscoveryReadiness.keys,
@@ -305,6 +306,7 @@ mixin _CatalogState on _AppStateCore {
   void _handleDayRollover() {
     _dayRolloverTimer = null;
     if (_disposed) return;
+    _discoveryBoundaryTick++;
 
     final now = _now();
     _allGigs = [for (final gig in _allGigs) gig.relabeled(now: now)];
@@ -325,14 +327,16 @@ mixin _CatalogState on _AppStateCore {
 
   List<Gig> get allGigs => _allGigs;
 
-  ({
-    List<Gig> gigs,
-    Map<String, List<Gig>> followedBandGigs,
-    Map<String, Gig> interactionGigs,
-    Map<String, Gig> relationshipGigs,
-  })?
-  _gigIndexInputs;
-  Map<String, Gig> _cachedGigIndex = const {};
+  final Memo<
+    ({
+      List<Gig> gigs,
+      Map<String, List<Gig>> followedBandGigs,
+      Map<String, Gig> interactionGigs,
+      Map<String, Gig> relationshipGigs,
+    }),
+    Map<String, Gig>
+  >
+  _gigIndexMemo = Memo();
 
   /// Every gig the app holds outside the public-gig stream, by id (and by
   /// slug for feed gigs). Rebuilt only when one of its source collections is
@@ -344,27 +348,25 @@ mixin _CatalogState on _AppStateCore {
       interactionGigs: _interactionGigs,
       relationshipGigs: _relationshipGigs,
     );
-    if (inputs == _gigIndexInputs) return _cachedGigIndex;
-
-    final index = <String, Gig>{};
-    for (final gig in inputs.gigs) {
-      index.putIfAbsent(gig.id, () => gig);
-      index.putIfAbsent(gig.slug, () => gig);
-    }
-    for (final gigs in inputs.followedBandGigs.values) {
-      for (final gig in gigs) {
+    return _gigIndexMemo(inputs, () {
+      final index = <String, Gig>{};
+      for (final gig in inputs.gigs) {
         index.putIfAbsent(gig.id, () => gig);
+        index.putIfAbsent(gig.slug, () => gig);
       }
-    }
-    for (final entry in inputs.interactionGigs.entries) {
-      index.putIfAbsent(entry.key, () => entry.value);
-    }
-    for (final entry in inputs.relationshipGigs.entries) {
-      index.putIfAbsent(entry.key, () => entry.value);
-    }
-    _cachedGigIndex = Map<String, Gig>.unmodifiable(index);
-    _gigIndexInputs = inputs;
-    return _cachedGigIndex;
+      for (final gigs in inputs.followedBandGigs.values) {
+        for (final gig in gigs) {
+          index.putIfAbsent(gig.id, () => gig);
+        }
+      }
+      for (final entry in inputs.interactionGigs.entries) {
+        index.putIfAbsent(entry.key, () => entry.value);
+      }
+      for (final entry in inputs.relationshipGigs.entries) {
+        index.putIfAbsent(entry.key, () => entry.value);
+      }
+      return Map<String, Gig>.unmodifiable(index);
+    });
   }
 
   @override

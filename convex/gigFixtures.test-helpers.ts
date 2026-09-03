@@ -4,6 +4,7 @@
 import type { TestConvexForDataModel } from "convex-test";
 import { api } from "./_generated/api";
 import { DataModel, Id } from "./_generated/dataModel";
+import type { KnownFlyKey } from "./lib/helpers";
 
 type AdminCaller = Pick<TestConvexForDataModel<DataModel>, "mutation">;
 
@@ -14,7 +15,7 @@ export type PublishGigFields = {
   doorsAt?: number;
   venueId: Id<"venues">;
   price: number;
-  flyKey: string;
+  flyKey: KnownFlyKey;
   flyStorageId?: Id<"_storage">;
   ticketing: "rsvp" | "external";
   ageRequirement: "allAges" | "18Plus" | "21Plus";

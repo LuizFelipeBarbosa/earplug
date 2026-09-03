@@ -1,6 +1,6 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 function bandFields(name: string) {
@@ -171,6 +171,27 @@ describe("venues:create", () => {
     expect(duplicate).toMatchObject({ created: false });
     expect(duplicate.venue._id).toBe(first.venue._id);
     expect(await t.query(api.venues.list, {})).toHaveLength(1);
+  });
+
+  test("deduplicates venues inserted by the demo seed", async () => {
+    const { t, asAdmin, bandId } = await setupAdmin();
+    await t.mutation(internal.seed.seedDemo, {});
+    const seededVenue = (await t.query(api.venues.list, {})).find(
+      (venue) => venue.name === "The Foghorn Club",
+    );
+    expect(seededVenue).toBeDefined();
+
+    const duplicate = await asAdmin.mutation(api.venues.create, {
+      bandId,
+      name: "The Foghorn Club",
+      area: "Mission, SF",
+      addr: "2455 Harrison St, San Francisco",
+      lat: 37.7524,
+      lng: -122.418,
+    });
+
+    expect(duplicate.created).toBe(false);
+    expect(duplicate.venue._id).toBe(seededVenue!._id);
   });
 });
 

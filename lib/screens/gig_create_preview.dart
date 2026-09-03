@@ -23,7 +23,7 @@ class GigDraftPreview extends StatelessWidget {
       color: context.epColors.background,
       child: GigDetailPresentation(
         key: const ValueKey('redesigned-gig-draft-preview'),
-        gig: draftGigFrom(app),
+        gig: _draftGigFrom(app),
         app: app,
         performers: app.gfPerformers,
         previewLabel: app.gigPreviewLabel,
@@ -36,7 +36,7 @@ class GigDraftPreview extends StatelessWidget {
 }
 
 /// A [Gig] built from the editor's current fields, for previewing.
-Gig draftGigFrom(AppState app) {
+Gig _draftGigFrom(AppState app) {
   final draftDate = app.gfDate;
   final date = draftDate ?? DateTime.now();
   final doorsAt = DateTime(

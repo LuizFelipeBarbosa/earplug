@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../memo.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -538,14 +539,16 @@ class _BrowseRows extends StatefulWidget {
 }
 
 class _BrowseRowsState extends State<_BrowseRows> {
-  ({
-    List<Gig> gigs,
-    ExploreResultType type,
-    List<Venue>? venues,
-    bool showAllVenues,
-  })?
-  _rowsInputs;
-  List<_BrowseRow> _rows = const [];
+  final Memo<
+    ({
+      List<Gig> gigs,
+      ExploreResultType type,
+      List<Venue>? venues,
+      bool showAllVenues,
+    }),
+    List<_BrowseRow>
+  >
+  _rowsMemo = Memo();
 
   /// Partitions the feed into rows once per feed instance and scope. The
   /// venue list is only read (and so only requested) when the scope shows it.
@@ -563,73 +566,71 @@ class _BrowseRowsState extends State<_BrowseRows> {
       venues: showVenues ? app.venues : null,
       showAllVenues: widget.showAllVenues,
     );
-    if (inputs == _rowsInputs) return _rows;
+    return _rowsMemo(inputs, () {
+      final gigs = inputs.gigs;
+      final tonight = gigs.where((gig) => gig.when == GigWhen.tonight).toList();
+      final tonightIds = tonight.map((gig) => gig.id).toSet();
+      final free = gigs
+          .where(
+            (gig) =>
+                gig.free &&
+                gig.when != GigWhen.later &&
+                !tonightIds.contains(gig.id),
+          )
+          .toList();
+      final featuredIds = {...tonightIds, for (final gig in free) gig.id};
+      final upcoming = gigs
+          .where((gig) => !featuredIds.contains(gig.id))
+          .toList();
+      final rows = <_BrowseRow>[];
 
-    final gigs = inputs.gigs;
-    final tonight = gigs.where((gig) => gig.when == GigWhen.tonight).toList();
-    final tonightIds = tonight.map((gig) => gig.id).toSet();
-    final free = gigs
-        .where(
-          (gig) =>
-              gig.free &&
-              gig.when != GigWhen.later &&
-              !tonightIds.contains(gig.id),
-        )
-        .toList();
-    final featuredIds = {...tonightIds, for (final gig in free) gig.id};
-    final upcoming = gigs
-        .where((gig) => !featuredIds.contains(gig.id))
-        .toList();
-    final rows = <_BrowseRow>[];
+      if (showEvents) {
+        if (tonight.isNotEmpty) {
+          rows.add(_BrowseSectionRow('TONIGHT NEAR YOU', tonight.length));
+          for (final gig in tonight) {
+            rows.add(_BrowseEventRow(gig));
+          }
+        }
+        if (free.isNotEmpty) {
+          rows.add(_BrowseSectionRow('FREE THIS WEEK', free.length));
+          for (final gig in free) {
+            rows.add(_BrowseEventRow(gig));
+          }
+        }
+        if (tonight.isEmpty && free.isEmpty && upcoming.isEmpty) {
+          rows.add(const _BrowseEmptyEventsRow());
+        }
+      }
 
-    if (showEvents) {
-      if (tonight.isNotEmpty) {
-        rows.add(_BrowseSectionRow('TONIGHT NEAR YOU', tonight.length));
-        for (final gig in tonight) {
+      if (showBands) {
+        rows.add(const _BrowseBandsRow());
+      }
+
+      if (inputs.venues case final venues?) {
+        rows.add(const _BrowseSpacerRow(10));
+        rows.add(const _BrowseVenueHeadingRow());
+        rows.add(const _BrowseSpacerRow(8));
+        if (venues.isEmpty) {
+          rows.add(const _BrowseVenueStateRow());
+        } else {
+          final visibleVenues = inputs.showAllVenues ? venues : venues.take(3);
+          for (final venue in visibleVenues) {
+            rows.add(_BrowseVenueRow(venue));
+          }
+        }
+      }
+
+      // Keep the mixed ALL directory compact near the top while still
+      // rendering every remaining event from the same filtered feed. In the
+      // EVENTS scope this naturally follows the two featured event groups.
+      if (showEvents && upcoming.isNotEmpty) {
+        rows.add(_BrowseSectionRow('UPCOMING', upcoming.length));
+        for (final gig in upcoming) {
           rows.add(_BrowseEventRow(gig));
         }
       }
-      if (free.isNotEmpty) {
-        rows.add(_BrowseSectionRow('FREE THIS WEEK', free.length));
-        for (final gig in free) {
-          rows.add(_BrowseEventRow(gig));
-        }
-      }
-      if (tonight.isEmpty && free.isEmpty && upcoming.isEmpty) {
-        rows.add(const _BrowseEmptyEventsRow());
-      }
-    }
-
-    if (showBands) {
-      rows.add(const _BrowseBandsRow());
-    }
-
-    if (inputs.venues case final venues?) {
-      rows.add(const _BrowseSpacerRow(10));
-      rows.add(const _BrowseVenueHeadingRow());
-      rows.add(const _BrowseSpacerRow(8));
-      if (venues.isEmpty) {
-        rows.add(const _BrowseVenueStateRow());
-      } else {
-        final visibleVenues = inputs.showAllVenues ? venues : venues.take(3);
-        for (final venue in visibleVenues) {
-          rows.add(_BrowseVenueRow(venue));
-        }
-      }
-    }
-
-    // Keep the mixed ALL directory compact near the top while still
-    // rendering every remaining event from the same filtered feed. In the
-    // EVENTS scope this naturally follows the two featured event groups.
-    if (showEvents && upcoming.isNotEmpty) {
-      rows.add(_BrowseSectionRow('UPCOMING', upcoming.length));
-      for (final gig in upcoming) {
-        rows.add(_BrowseEventRow(gig));
-      }
-    }
-    _rowsInputs = inputs;
-    _rows = rows;
-    return rows;
+      return rows;
+    });
   }
 
   @override

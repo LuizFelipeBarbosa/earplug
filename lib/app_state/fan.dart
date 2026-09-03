@@ -175,23 +175,26 @@ mixin _FanState on _AppStateCore {
 
   // ========================= fan actions =========================
 
-  /// Flips [id] in [ids] on screen straight away and persists in the
+  /// Flips [id] in the selected set on screen straight away and persists in the
   /// background; a rejected write puts the flip back and says so. Returns
   /// whether [id] ended up on.
-  bool _toggleOptimistically(
-    Set<String> ids,
-    String id,
-    Future<void> Function(String) persist, [
+  bool _toggleOptimistically({
+    required Set<String> Function() getIds,
+    required void Function(Set<String>) setIds,
+    required String id,
+    required Future<void> Function(String) persist,
     void Function()? onChanged,
-  ]) {
+  }) {
+    final ids = getIds();
     final wasOn = ids.contains(id);
-    wasOn ? ids.remove(id) : ids.add(id);
+    setIds(wasOn ? ({...ids}..remove(id)) : {...ids, id});
     onChanged?.call();
     notifyListeners();
     unawaited(
       persist(id).catchError((Object error) {
         logError('toggle $id', error);
-        wasOn ? ids.add(id) : ids.remove(id);
+        final currentIds = getIds();
+        setIds(wasOn ? {...currentIds, id} : ({...currentIds}..remove(id)));
         onChanged?.call();
         say(genericErrorMessage); // notifies, so the roll-back shows
       }),
@@ -204,7 +207,7 @@ mixin _FanState on _AppStateCore {
     final nowGoing = !wasGoing;
     final operation = Object();
     _pendingRsvps[id] = (desired: nowGoing, operation: operation);
-    nowGoing ? rsvps.add(id) : rsvps.remove(id);
+    rsvps = nowGoing ? {...rsvps, id} : ({...rsvps}..remove(id));
     notifyListeners();
     unawaited(
       repository
@@ -217,7 +220,7 @@ mixin _FanState on _AppStateCore {
             logError('toggle $id', error);
             if (!identical(_pendingRsvps[id]?.operation, operation)) return;
             _pendingRsvps.remove(id);
-            wasGoing ? rsvps.add(id) : rsvps.remove(id);
+            rsvps = wasGoing ? {...rsvps, id} : ({...rsvps}..remove(id));
             say(genericErrorMessage);
           }),
     );
@@ -234,10 +237,11 @@ mixin _FanState on _AppStateCore {
 
   void toggleFollow(String id) {
     if (_toggleOptimistically(
-      follows,
-      id,
-      repository.toggleFollow,
-      _syncFollowedBandGigSubscriptions,
+      getIds: () => follows,
+      setIds: (ids) => follows = ids,
+      id: id,
+      persist: repository.toggleFollow,
+      onChanged: _syncFollowedBandGigSubscriptions,
     )) {
       final name = band(id)?.name;
       say(name == null ? 'Band followed.' : 'Following $name.');
@@ -253,7 +257,12 @@ mixin _FanState on _AppStateCore {
   }
 
   void toggleSave(String id) {
-    final nowSaved = _toggleOptimistically(saved, id, repository.toggleSave);
+    final nowSaved = _toggleOptimistically(
+      getIds: () => saved,
+      setIds: (ids) => saved = ids,
+      id: id,
+      persist: repository.toggleSave,
+    );
     say(nowSaved ? 'Show saved.' : 'Removed from saved shows.');
   }
 
@@ -589,87 +598,77 @@ mixin _FanState on _AppStateCore {
     );
   }
 
-  ({
-    Map<String, Gig> interactionGigs,
-    Map<String, Gig> publicGigs,
-    Map<String, Gig> gigIndex,
-    int minute,
-  })?
-  _upcomingRsvpGigsInputs;
-  // [rsvps] is flipped in place by the optimistic toggles, so the cache holds
-  // a snapshot and compares it by value.
-  Set<String> _upcomingRsvpGigsRsvps = const {};
-  List<Gig> _upcomingRsvpGigs = const [];
+  final Memo<
+    ({
+      Set<String> rsvps,
+      Map<String, Gig> interactionGigs,
+      Map<String, Gig> publicGigs,
+      Map<String, Gig> gigIndex,
+      int minute,
+    }),
+    List<Gig>
+  >
+  _upcomingRsvpGigsMemo = Memo();
 
   List<Gig> get upcomingRsvpGigs {
     final now = _now();
     final inputs = (
+      rsvps: rsvps,
       interactionGigs: _interactionGigs,
       publicGigs: _publicGigs,
       gigIndex: _gigIndex,
       minute: now.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute,
     );
-    if (inputs == _upcomingRsvpGigsInputs &&
-        setEquals(rsvps, _upcomingRsvpGigsRsvps)) {
-      return _upcomingRsvpGigs;
-    }
-    final gigs = [
-      for (final id in rsvps)
-        if (_interactionGigs[id] ?? _cachedGig(id) case final Gig gig
-            when gig.startsAt.isAfter(now) &&
-                (gig.lifecycle == GigLifecycle.published ||
-                    gig.lifecycle == GigLifecycle.cancelled) &&
-                gig.tix == Ticketing.rsvp)
-          gig,
-    ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
-    _upcomingRsvpGigs = List<Gig>.unmodifiable(gigs);
-    _upcomingRsvpGigsInputs = inputs;
-    _upcomingRsvpGigsRsvps = Set<String>.of(rsvps);
-    return _upcomingRsvpGigs;
+    return _upcomingRsvpGigsMemo(inputs, () {
+      final gigs = [
+        for (final id in inputs.rsvps)
+          if (inputs.interactionGigs[id] ?? _cachedGig(id) case final Gig gig
+              when gig.startsAt.isAfter(now) &&
+                  (gig.lifecycle == GigLifecycle.published ||
+                      gig.lifecycle == GigLifecycle.cancelled) &&
+                  gig.tix == Ticketing.rsvp)
+            gig,
+      ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+      return List<Gig>.unmodifiable(gigs);
+    });
   }
 
-  ({
-    bool updatesDisabled,
-    List<Gig> gigs,
-    Map<String, List<Gig>> followedBandGigs,
-    int minute,
-  })?
-  _followedBandShowsInputs;
-  // [follows] is flipped in place by the optimistic toggles, so the cache
-  // holds a snapshot and compares it by value.
-  Set<String> _followedBandShowsFollows = const {};
-  List<Gig> _followedBandShows = const [];
+  final Memo<
+    ({
+      bool updatesDisabled,
+      Set<String> follows,
+      List<Gig> gigs,
+      Map<String, List<Gig>> followedBandGigs,
+      int minute,
+    }),
+    List<Gig>
+  >
+  _followedBandShowsMemo = Memo();
 
   List<Gig> get followedBandShows {
-    final now = DateTime.now();
+    final now = _now();
     final inputs = (
       updatesDisabled: profile?.followedBandUpdatesEnabled == false,
+      follows: follows,
       gigs: _allGigs,
       followedBandGigs: _followedBandGigs,
       minute: now.millisecondsSinceEpoch ~/ Duration.millisecondsPerMinute,
     );
-    if (inputs == _followedBandShowsInputs &&
-        setEquals(follows, _followedBandShowsFollows)) {
-      return _followedBandShows;
-    }
-    _followedBandShowsInputs = inputs;
-    _followedBandShowsFollows = Set<String>.of(follows);
-    if (inputs.updatesDisabled || follows.isEmpty) {
-      _followedBandShows = const [];
-      return _followedBandShows;
-    }
-    final gigsById = {
-      for (final gig in inputs.gigs) gig.id: gig,
-      for (final gigs in inputs.followedBandGigs.values)
-        for (final gig in gigs) gig.id: gig,
-    };
-    final shows = [
-      for (final gig in gigsById.values)
-        if (!gig.startsAt.isBefore(now) && gig.lineup.any(follows.contains))
-          gig,
-    ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
-    _followedBandShows = List<Gig>.unmodifiable(shows);
-    return _followedBandShows;
+    return _followedBandShowsMemo(inputs, () {
+      if (inputs.updatesDisabled || inputs.follows.isEmpty) return const [];
+      final gigsById = {
+        for (final gig in inputs.gigs) gig.id: gig,
+        for (final gigs in inputs.followedBandGigs.values)
+          for (final gig in gigs) gig.id: gig,
+      };
+      final shows = [
+        for (final gig in gigsById.values)
+          if (!gig.startsAt.isBefore(now) &&
+              gig.lineup.any(inputs.follows.contains))
+            gig,
+      ]..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+      return List<Gig>.unmodifiable(shows);
+    });
   }
 
   /// The most recent server-confirmed RSVP state, excluding local optimism.

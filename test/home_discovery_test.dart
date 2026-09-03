@@ -221,6 +221,36 @@ void main() {
     expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
+  testWidgets('a same-second boundary refreshes discovery boost membership', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    var now = DateTime.utc(2026, 8, 25, 19, 0, 0, 400);
+    const boundaryDelay = Duration(milliseconds: 500);
+    final repository = _BoundaryBoostRepository(
+      auth: auth,
+      now: now,
+      opensAfter: boundaryDelay,
+    );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: HomeScreen()),
+      beforePump: (app) => app.setMapMode(false),
+      now: () => now,
+    );
+
+    expect(harness.app.isDiscoveryBoosted(repository.gig), isFalse);
+    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsNothing);
+
+    now = now.add(boundaryDelay);
+    await tester.pump(boundaryDelay);
+
+    expect(harness.app.isDiscoveryBoosted(repository.gig), isTrue);
+    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
+  });
+
   testWidgets('the whole map card opens one gig route', (tester) async {
     final harness = await pumpApp(
       tester,
@@ -497,8 +527,11 @@ class _BoostRepository extends DemoRepository {
 }
 
 class _BoundaryBoostRepository extends DemoRepository {
-  _BoundaryBoostRepository({required super.auth, required DateTime now})
-    : opensAt = now.add(const Duration(seconds: 2));
+  _BoundaryBoostRepository({
+    required super.auth,
+    required DateTime now,
+    Duration opensAfter = const Duration(seconds: 2),
+  }) : opensAt = now.add(opensAfter);
 
   final DateTime opensAt;
 

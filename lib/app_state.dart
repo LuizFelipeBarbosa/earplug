@@ -15,6 +15,7 @@ import 'discovery_filters.dart';
 import 'discovery_policy.dart';
 import 'errors.dart';
 import 'flyer_styles.dart';
+import 'memo.dart';
 import 'models.dart';
 import 'navigation.dart';
 import 'services/auth_service.dart';
@@ -84,6 +85,7 @@ mixin _AppStateCore on ChangeNotifier {
   Future<void> _refreshHistory();
 
   bool _disposed = false;
+  int _discoveryBoundaryTick = 0;
 
   BandMediaController? _media;
 
@@ -144,7 +146,7 @@ class AppState extends ChangeNotifier
          now ?? DateTime.now,
        );
 
-  /// Offline state over in-memory demo fixtures. The only production caller
+  /// Offline state over in-memory demo fixtures. Its only production caller
   /// is the `EARPLUG_DEMO` branch of `main()`, so release builds that leave
   /// the flag off tree-shake [DemoRepository] and [FakeAuthService] away.
   factory AppState.demo({

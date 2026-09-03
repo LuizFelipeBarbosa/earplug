@@ -2,7 +2,11 @@ import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import { publishGigAsAdmin } from "./gigFixtures.test-helpers";
-import { insertGigWithBandIndex, MAX_FEED_GIGS } from "./lib/helpers";
+import {
+  insertGigWithBandIndex,
+  MAX_FEED_GIGS,
+  type KnownFlyKey,
+} from "./lib/helpers";
 import schema from "./schema";
 
 describe("gigs:pastForBand", () => {
@@ -155,7 +159,7 @@ describe("gigs:publishDraft auth and validation", () => {
     title: "Riptide Release Show",
     startsAt: Date.now() + 86400_000,
     price: 10,
-    flyKey: "riso",
+    flyKey: "riso" as const,
     ticketing: "rsvp" as const,
     ageRequirement: "allAges" as const,
     cap: "No cap",
@@ -247,6 +251,26 @@ describe("gigs:publishDraft auth and validation", () => {
         ...draftFields,
         ...gigArgs,
         ageRequirement: "16Plus" as never,
+      }),
+    ).rejects.toThrow("Validator error: Expected one of");
+  });
+
+  test("rejects a flyKey the client cannot render", async () => {
+    const { asAdmin, bandId, venueId } = await setupBand();
+    const draft = await asAdmin.mutation(api.gigs.createDraft, { bandId });
+
+    await expect(
+      asAdmin.mutation(api.gigs.saveDraft, {
+        projectId: draft._id,
+        revision: draft.revision,
+        ...gigArgs,
+        doorsAt: gigArgs.startsAt,
+        venueId,
+        flyKey: "hologram" as never,
+        flyStorageId: null,
+        overlay: true,
+        desc: "",
+        externalUrl: null,
       }),
     ).rejects.toThrow("Validator error: Expected one of");
   });
@@ -383,7 +407,7 @@ describe("public gig slugs", () => {
       startsAt: Date.now() + 86_400_000,
       venueId,
       price: 0,
-      flyKey: "xerox",
+      flyKey: "xerox" as const,
       ticketing: "rsvp" as const,
       ageRequirement: "allAges" as const,
       cap: "No cap",
@@ -411,7 +435,7 @@ describe("public gig slugs", () => {
       startsAt: draft.startsAt,
       venueId: draft.venueId,
       price: draft.price,
-      flyKey: draft.flyKey,
+      flyKey: draft.flyKey as KnownFlyKey,
       flyStorageId: null,
       overlay: draft.overlay,
       desc: draft.desc,
@@ -735,7 +759,7 @@ describe("gigs:feedV2 and gigs:goingCounts", () => {
       venueId,
       startsAt: Date.now() + 86_400_000,
       price: 10,
-      flyKey: "riso",
+      flyKey: "riso" as const,
       ticketing: "rsvp" as const,
       ageRequirement: "allAges" as const,
       cap: "No cap",

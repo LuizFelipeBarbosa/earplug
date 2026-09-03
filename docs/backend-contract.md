@@ -197,9 +197,9 @@ leave `feedV2` byte-for-byte unchanged. The client subscribes to `feedV2` plus
 That conditional subscription supersedes v1.12's statement that the client
 subscribes to `gigs:forBand` unconditionally for every followed band.
 
-**v1.18 — pre-marketplace cleanup.** Removed, with no surviving function
-changing its wire shape or error strings: the pre-v1.17 `gigs:feed` (the
-client has read `gigs:feedV2` + `gigs:goingCounts` since v1.17);
+**v1.18 — pre-marketplace cleanup.** Removed these obsolete functions and
+maintenance paths: the pre-v1.17 `gigs:feed` (the client has read
+`gigs:feedV2` + `gigs:goingCounts` since v1.17);
 `gigs:getPublic` (superseded by `gigs:resolvePublic`, which accepts a raw gig
 id as well as a slug); the `gigs:publishGig` compatibility mutation (every
 client publishes through the draft pipeline, and `maintenance:publishRealGig`
@@ -214,7 +214,16 @@ on both deployments carries them. Internally, the four band-membership guards
 collapsed into one `requireBandRole(ctx, bandId, { role, allowArchived? })`;
 `requireBandAdmin` in the tables below means
 `requireBandRole(…, { role: "admin" })`, and the project guard is
-`requireProjectAdmin` for queries and mutations alike.
+`requireProjectAdmin` for queries and mutations alike. Private band queries
+`bands:setupStatus`, `bands:discoveryReadiness`, `bandInvites:manage`,
+`analytics:bandRecap`, `gigs:manageForBand`, `gigs:getProject`, and
+`gigs:doorRoster` now throw `"Account deleted"` for a tombstoned user
+(previously `"No user record — call users:ensureUser first"`). Separately,
+`bands:archiveStatus` now throws
+`"No user record — call users:ensureUser first"` for a missing user row
+(previously `"Not signed in"`) and `"Band not found"` for an unknown `bandId`
+(previously `"Not an admin of this band"`). Wire shapes are unchanged in all
+cases.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
@@ -249,7 +258,7 @@ Verified against the current source as of v1.17; these deployed, client-required
 { "_id": "...", "title": "...", "venueId": "...", "price": 0,
   "doorsAt": 1785296400000, "startsAt": 1785300000000,
   "doorsTime": "8PM / 9PM", "lifecycle": "published|cancelled",
-  // publish accepts the first six; feeds may also return the five legacy keys
+  // saveDraft accepts all eleven; maintenance:publishRealGig accepts the first six
   // custom implies a non-null flyerUrl once valid flyStorageId was supplied
   "flyKey": "xerox|riso|marquee|blueprint|sunburst|custom|paper|blue|black|yellow|bluetype",
   // resolved from flyStorageId; null when no custom flyer is stored/live

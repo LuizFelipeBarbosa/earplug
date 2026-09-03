@@ -18,6 +18,7 @@ import {
   feedCutoff,
   gigFeedPayloadValidator,
   gigPayloadValidator,
+  knownFlyKeyValidator,
   pastGigsForBand,
   requireBandRole,
   slugify,
@@ -510,7 +511,7 @@ export const resolvePublic = query({
       return null;
     }
     if (!(await ownedByActiveBand(ctx, gig))) return null;
-    return await toGigPayload(ctx, gig);
+    return await toGigPayload(ctx, gig, docCache(ctx));
   },
 });
 
@@ -526,9 +527,10 @@ export const forBand = query({
       MAX_UPCOMING_GIGS_PER_BAND * 2,
     );
     const out = [];
+    const cache = docCache(ctx);
     for (const gig of rows) {
       if (lifecycle(gig) === "published")
-        out.push(await toGigPayload(ctx, gig));
+        out.push(await toGigPayload(ctx, gig, cache));
       if (out.length === MAX_UPCOMING_GIGS_PER_BAND) break;
     }
     return out;
@@ -549,9 +551,10 @@ export const pastForBand = query({
     const rows = await pastGigsForBand(ctx, args.bandId, MAX_PAST_GIGS * 2);
     const gigs = [];
     const venueIds = new Set<Id<"venues">>();
+    const cache = docCache(ctx);
     for (const gig of rows) {
       if (lifecycle(gig) !== "published") continue;
-      gigs.push(await toGigPayload(ctx, gig));
+      gigs.push(await toGigPayload(ctx, gig, cache));
       venueIds.add(gig.venueId);
       if (gigs.length === MAX_PAST_GIGS) break;
     }
@@ -628,7 +631,7 @@ export const saveDraft = mutation({
     startsAt: v.union(v.number(), v.null()),
     venueId: v.union(v.id("venues"), v.null()),
     price: v.number(),
-    flyKey: v.string(),
+    flyKey: knownFlyKeyValidator,
     flyStorageId: v.union(v.id("_storage"), v.null()),
     overlay: v.boolean(),
     desc: v.string(),

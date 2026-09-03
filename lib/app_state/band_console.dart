@@ -237,17 +237,17 @@ mixin _BandConsoleState on _AppStateCore {
 
   Band? get myBand => band(bandId);
 
-  ({List<Gig> gigs, String bandId})? _myBandGigsInputs;
-  List<Gig> _cachedMyBandGigs = const [];
+  final Memo<({List<Gig> gigs, String bandId}), List<Gig>> _myBandGigsMemo =
+      Memo();
 
   List<Gig> get myBandGigs {
     final inputs = (gigs: allGigs, bandId: bandId);
-    if (inputs == _myBandGigsInputs) return _cachedMyBandGigs;
-    _cachedMyBandGigs = List<Gig>.unmodifiable(
-      inputs.gigs.where((gig) => gig.lineup.contains(inputs.bandId)),
+    return _myBandGigsMemo(
+      inputs,
+      () => List<Gig>.unmodifiable(
+        inputs.gigs.where((gig) => gig.lineup.contains(inputs.bandId)),
+      ),
     );
-    _myBandGigsInputs = inputs;
-    return _cachedMyBandGigs;
   }
 
   void switchToBand(String id) {

@@ -2,7 +2,7 @@ import { WithoutSystemFields } from "convex/server";
 import { Infer, v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
-import { DocCache, docCache } from "./docCache";
+import { DocCache } from "./docCache";
 import {
   ageRequirementValidator,
   fanCityValidator,
@@ -184,6 +184,22 @@ const flyKeyValidator = v.union(
   v.literal("sunburst"),
   v.literal("custom"),
 );
+
+/** Every flyer key the client can render, including legacy styles. */
+export const knownFlyKeyValidator = v.union(
+  v.literal("xerox"),
+  v.literal("riso"),
+  v.literal("marquee"),
+  v.literal("blueprint"),
+  v.literal("sunburst"),
+  v.literal("custom"),
+  v.literal("paper"),
+  v.literal("blue"),
+  v.literal("black"),
+  v.literal("yellow"),
+  v.literal("bluetype"),
+);
+export type KnownFlyKey = Infer<typeof knownFlyKeyValidator>;
 
 export type AgeRequirement = Infer<typeof ageRequirementValidator>;
 
@@ -589,7 +605,7 @@ export const gigFeedPayloadValidator = gigPayloadValidator.omit("goingCount");
 export async function toGigFeedPayload(
   ctx: QueryCtx,
   gig: Doc<"gigs">,
-  cache: DocCache = docCache(ctx),
+  cache: DocCache,
 ) {
   const { goingCount: _goingCount, ...payload } = await toGigPayload(
     ctx,
@@ -600,11 +616,11 @@ export async function toGigFeedPayload(
 }
 
 /** Pass one `docCache` across a hydration loop so gigs sharing a flyer or a
- * legacy lineup band read each row once; the default is a fresh, empty memo. */
+ * legacy lineup band read each row once. */
 export async function toGigPayload(
   ctx: QueryCtx,
   gig: Doc<"gigs">,
-  cache: DocCache = docCache(ctx),
+  cache: DocCache,
 ) {
   const performers = [];
   if (gig.performers) {

@@ -4,6 +4,7 @@ import migrationsTest from "@convex-dev/migrations/test";
 import { describe, expect, test } from "vitest";
 import { api, components, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import type { KnownFlyKey } from "./lib/helpers";
 import schema from "./schema";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -68,7 +69,7 @@ async function createPublishableProject(
   setupResult: Awaited<ReturnType<typeof setup>>,
   options: {
     startsAt?: number;
-    flyKey?: string;
+    flyKey?: KnownFlyKey;
     flyStorageId?: Id<"_storage"> | null;
     overlay?: boolean;
   } = {},
@@ -261,7 +262,7 @@ describe("discovery listing readiness", () => {
       startsAt: published.startsAt,
       venueId: published.venueId,
       price: published.price,
-      flyKey: published.flyKey,
+      flyKey: published.flyKey as KnownFlyKey,
       flyStorageId: published.flyStorageId,
       overlay: published.overlay,
       desc: "saved after publish",

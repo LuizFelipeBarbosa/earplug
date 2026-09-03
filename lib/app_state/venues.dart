@@ -168,9 +168,11 @@ mixin _VenueState on _AppStateCore {
 
   Venue venue(String id) => knownVenue(id) ?? _unknownVenue;
 
-  ({Map<String, Venue> directory, Map<String, Venue> feedVenues})?
-  _venuesInputs;
-  List<Venue> _cachedVenues = const [];
+  final Memo<
+    ({Map<String, Venue> directory, Map<String, Venue> feedVenues}),
+    List<Venue>
+  >
+  _venuesMemo = Memo();
 
   /// Every venue the app knows: the curated table plus whatever the live feed
   /// carries. Feed rows win on id — they are realtime. Name-ordered, one entry
@@ -178,13 +180,12 @@ mixin _VenueState on _AppStateCore {
   List<Venue> get venues {
     ensureVenueDirectory();
     final inputs = (directory: _venueDirectory, feedVenues: _venues);
-    if (inputs == _venuesInputs) return _cachedVenues;
-    final merged = <String, Venue>{...inputs.directory, ...inputs.feedVenues};
-    final venues = merged.values.toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
-    _cachedVenues = List<Venue>.unmodifiable(venues);
-    _venuesInputs = inputs;
-    return _cachedVenues;
+    return _venuesMemo(inputs, () {
+      final merged = <String, Venue>{...inputs.directory, ...inputs.feedVenues};
+      final venues = merged.values.toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+      return List<Venue>.unmodifiable(venues);
+    });
   }
 
   static const _unknownVenue = Venue(

@@ -376,7 +376,7 @@ mixin _GigEditorState on _AppStateCore {
       ageRequirement: gfAgeRequirement,
       externalUrl: gfExt.trim().isEmpty ? null : gfExt.trim(),
       cap: gfCap,
-      updatedAt: DateTime.now(),
+      updatedAt: _now(),
       performers: performers ?? project.performers,
     );
   }
@@ -510,7 +510,7 @@ mixin _GigEditorState on _AppStateCore {
       ageRequirement: current.ageRequirement,
       externalUrl: current.externalUrl,
       cap: current.cap,
-      updatedAt: DateTime.now(),
+      updatedAt: _now(),
       performers: current.performers,
     );
     gfSaveState = 'PUBLISHED';

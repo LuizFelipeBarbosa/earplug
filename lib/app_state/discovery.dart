@@ -298,7 +298,7 @@ mixin _DiscoveryState on _AppStateCore {
   });
 
   DateTime get firstSelectableDiscoveryDate {
-    final today = DateTime.now();
+    final today = _now();
     return DateTime(today.year, today.month, today.day);
   }
 
@@ -422,25 +422,27 @@ mixin _DiscoveryState on _AppStateCore {
     endLongitude: venue.point.longitude,
   );
 
-  ({
-    List<Gig> gigs,
-    DiscoveryFilters filters,
-    DateTime startOfToday,
-    DiscoveryLocation location,
-    LatLng? position,
-    FanCity? homeCity,
-    Map<String, Venue> feedVenues,
-    Map<String, Venue> venueDirectory,
-    Set<String> boostedGigIds,
-  })?
-  _feedInputs;
-  List<Gig> _cachedFeed = const [];
+  final Memo<
+    ({
+      List<Gig> gigs,
+      DiscoveryFilters filters,
+      DateTime startOfToday,
+      DiscoveryLocation location,
+      LatLng? position,
+      FanCity? homeCity,
+      Map<String, Venue> feedVenues,
+      Map<String, Venue> venueDirectory,
+      Set<String> boostedGigIds,
+    }),
+    List<Gig>
+  >
+  _feedMemo = Memo();
 
   /// The filtered, distance-ordered discovery feed. Recomputed only when one
   /// of its inputs changes: the collections compare by identity (they are
   /// replaced, never mutated), the filters by value.
   List<Gig> get feed {
-    final today = DateTime.now();
+    final today = _now();
     final startOfToday = DateTime(today.year, today.month, today.day);
     final inputs = (
       gigs: allGigs,
@@ -453,79 +455,80 @@ mixin _DiscoveryState on _AppStateCore {
       venueDirectory: _venueDirectory,
       boostedGigIds: _discoveryBoostedGigIds,
     );
-    if (inputs == _feedInputs) return _cachedFeed;
+    return _feedMemo(inputs, () {
+      final endOfTonight = DateTime(today.year, today.month, today.day + 1);
+      final endOfWeek = DateTime(today.year, today.month, today.day + 8);
+      final filtered = allGigs.where((gig) {
+        final startsAt = gig.startsAt;
+        switch (filters.date) {
+          case DateFilter.all:
+            break;
+          case DateFilter.tonight:
+            if (startsAt.isBefore(startOfToday) ||
+                !startsAt.isBefore(endOfTonight)) {
+              return false;
+            }
+          case DateFilter.week:
+            if (startsAt.isBefore(startOfToday) ||
+                !startsAt.isBefore(endOfWeek)) {
+              return false;
+            }
+          case DateFilter.custom:
+            final range = filters.dateRange;
+            if (range == null) return false;
+            final endExclusive = DateTime(
+              range.end.year,
+              range.end.month,
+              range.end.day + 1,
+            );
+            if (startsAt.isBefore(range.start) ||
+                !startsAt.isBefore(endExclusive)) {
+              return false;
+            }
+        }
 
-    final endOfTonight = DateTime(today.year, today.month, today.day + 1);
-    final endOfWeek = DateTime(today.year, today.month, today.day + 8);
-    final filtered = allGigs.where((gig) {
-      final startsAt = gig.startsAt;
-      switch (filters.date) {
-        case DateFilter.all:
-          break;
-        case DateFilter.tonight:
-          if (startsAt.isBefore(startOfToday) ||
-              !startsAt.isBefore(endOfTonight)) {
-            return false;
-          }
-        case DateFilter.week:
-          if (startsAt.isBefore(startOfToday) ||
-              !startsAt.isBefore(endOfWeek)) {
-            return false;
-          }
-        case DateFilter.custom:
-          final range = filters.dateRange;
-          if (range == null) return false;
-          final endExclusive = DateTime(
-            range.end.year,
-            range.end.month,
-            range.end.day + 1,
-          );
-          if (startsAt.isBefore(range.start) ||
-              !startsAt.isBefore(endExclusive)) {
-            return false;
-          }
+        if (filters.price == PriceFilter.free && !gig.free) return false;
+        if (filters.price == PriceFilter.paid && gig.free) return false;
+        if (filters.genres.isNotEmpty &&
+            !gig.genres.any(filters.genres.contains)) {
+          return false;
+        }
+        if (filters.venueId case final String venueId) {
+          if (gig.venueId != venueId) return false;
+        }
+        if (filters.maxDistanceMiles case final double maxMiles) {
+          final distance = discoveryLocation == DiscoveryLocation.home
+              ? _distanceMilesFromDiscoveryCenter(venue(gig.venueId))
+              : distanceMilesFromCurrent(venue(gig.venueId));
+          if (distance != null && distance > maxMiles) return false;
+        }
+        return true;
+      }).toList();
+
+      final venueDistanceById = <String, double>{};
+      for (final gig in filtered) {
+        venueDistanceById.putIfAbsent(
+          gig.venueId,
+          () => _distanceMilesFromDiscoveryCenter(venue(gig.venueId)),
+        );
       }
 
-      if (filters.price == PriceFilter.free && !gig.free) return false;
-      if (filters.price == PriceFilter.paid && gig.free) return false;
-      if (filters.genres.isNotEmpty &&
-          !gig.genres.any(filters.genres.contains)) {
-        return false;
-      }
-      if (filters.venueId case final String venueId) {
-        if (gig.venueId != venueId) return false;
-      }
-      if (filters.maxDistanceMiles case final double maxMiles) {
-        final distance = discoveryLocation == DiscoveryLocation.home
-            ? _distanceMilesFromDiscoveryCenter(venue(gig.venueId))
-            : distanceMilesFromCurrent(venue(gig.venueId));
-        if (distance != null && distance > maxMiles) return false;
-      }
-      return true;
-    }).toList();
-
-    final venueDistanceById = <String, double>{};
-    for (final gig in filtered) {
-      venueDistanceById.putIfAbsent(
-        gig.venueId,
-        () => _distanceMilesFromDiscoveryCenter(venue(gig.venueId)),
+      return List<Gig>.unmodifiable(
+        orderDiscoveryGigs(
+          gigs: filtered,
+          distanceMiles: (gig) => venueDistanceById[gig.venueId]!,
+          boostedGigIds: inputs.boostedGigIds,
+        ),
       );
-    }
-
-    _cachedFeed = List<Gig>.unmodifiable(
-      orderDiscoveryGigs(
-        gigs: filtered,
-        distanceMiles: (gig) => venueDistanceById[gig.venueId]!,
-        boostedGigIds: inputs.boostedGigIds,
-      ),
-    );
-    _feedInputs = inputs;
-    return _cachedFeed;
+    });
   }
 
-  ({List<Gig> gigs, Map<String, Band> bands, int second})?
-  _discoveryBoostedGigIdsInputs;
-  Set<String> _cachedDiscoveryBoostedGigIds = const {};
+  final Memo<
+    ({List<Gig> gigs, Map<String, Band> bands, int second, int tick}),
+    Set<String>
+  >
+  _discoveryBoostedGigIdsMemo = Memo();
+  Set<String> _lastDiscoveryBoostedGigIds = const {};
 
   /// The gigs inside their discovery boost window right now, re-evaluated at
   /// most once a second. Keeps its instance while membership is unchanged so
@@ -536,20 +539,19 @@ mixin _DiscoveryState on _AppStateCore {
       gigs: allGigs,
       bands: _bands,
       second: now.millisecondsSinceEpoch ~/ Duration.millisecondsPerSecond,
+      tick: _discoveryBoundaryTick,
     );
-    if (inputs == _discoveryBoostedGigIdsInputs) {
-      return _cachedDiscoveryBoostedGigIds;
-    }
-    final boosted = discoveryBoostedGigIds(
-      gigs: inputs.gigs,
-      bands: inputs.bands,
-      now: now,
-    );
-    if (!setEquals(boosted, _cachedDiscoveryBoostedGigIds)) {
-      _cachedDiscoveryBoostedGigIds = Set<String>.unmodifiable(boosted);
-    }
-    _discoveryBoostedGigIdsInputs = inputs;
-    return _cachedDiscoveryBoostedGigIds;
+    return _discoveryBoostedGigIdsMemo(inputs, () {
+      final boosted = discoveryBoostedGigIds(
+        gigs: inputs.gigs,
+        bands: inputs.bands,
+        now: now,
+      );
+      if (!setEquals(boosted, _lastDiscoveryBoostedGigIds)) {
+        _lastDiscoveryBoostedGigIds = Set<String>.unmodifiable(boosted);
+      }
+      return _lastDiscoveryBoostedGigIds;
+    });
   }
 
   bool isDiscoveryBoosted(Gig gig, {DateTime? now}) {

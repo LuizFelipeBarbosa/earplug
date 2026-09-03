@@ -911,8 +911,6 @@ class EpFanAvatar extends StatelessWidget {
   }
 }
 
-/// Former name of [EpFanAvatar]; still referenced by tests.
-
 class ProfileCompleteBadge extends StatelessWidget {
   const ProfileCompleteBadge({super.key});
 

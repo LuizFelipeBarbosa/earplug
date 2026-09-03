@@ -176,7 +176,7 @@ export const detail = query({
     const bandIds = new Set<Id<"bands">>();
     const gigs = [];
     for (const gig of venueGigs) {
-      gigs.push(await toGigPayload(ctx, gig));
+      gigs.push(await toGigPayload(ctx, gig, cache));
       for (const bandId of gig.lineup) bandIds.add(bandId);
     }
 
