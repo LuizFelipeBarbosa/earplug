@@ -10,6 +10,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/sheets.dart';
+import 'analytics_sheets.dart';
 
 class AnalyticsScreen extends StatelessWidget {
   const AnalyticsScreen({super.key});
@@ -37,7 +38,7 @@ class AnalyticsScreen extends StatelessWidget {
         if (recap != null && recap.shows.isNotEmpty) ...[
           const SizedBox(height: 6),
           Text(
-            _windowLabel(recap),
+            recapWindowLabel(recap),
             style: Theme.of(context).textTheme.epSection.copyWith(
               color: context.epColors.contentSecondary,
             ),
@@ -87,7 +88,7 @@ class AnalyticsScreen extends StatelessWidget {
       const SizedBox(height: 14),
       _headline(recap),
       const SizedBox(height: 14),
-      _turnoutByShow(recap),
+      _turnoutByShow(context, recap),
       const SizedBox(height: 14),
       _contextGrid(recap),
       const SizedBox(height: 14),
@@ -95,9 +96,9 @@ class AnalyticsScreen extends StatelessWidget {
       const SizedBox(height: 14),
       _whenFansCommit(context, recap),
       const SizedBox(height: 14),
-      _roomsThatDraw(recap),
+      _roomsThatDraw(context, recap),
       const SizedBox(height: 14),
-      _bestNights(recap),
+      _bestNights(context, recap),
       const SizedBox(height: 14),
       _repeatFans(recap),
       ..._footnotes(context, recap),
@@ -226,12 +227,20 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  Widget _turnoutByShow(BandRecap recap) {
+  Widget _turnoutByShow(BuildContext context, BandRecap recap) {
+    final shows = recapSortedShows(recap);
     return _analyticsSection(
       key: const Key('analytics-turnout'),
       title: 'TURNOUT BY SHOW',
+      trailing: shows.length > kRecapPreviewCount
+          ? _SeeAllButton(
+              key: const Key('analytics-turnout-see-all'),
+              total: shows.length,
+              onPressed: () => showRecapShowsSheet(context, recap),
+            )
+          : null,
       child: _TurnoutChart(
-        shows: _sortedShows(recap),
+        shows: shows.take(kRecapPreviewCount).toList(),
         average: recap.totals.avgPerShow,
       ),
     );
@@ -267,7 +276,7 @@ class AnalyticsScreen extends StatelessWidget {
                     : room?.venueName ?? 'NO ROOM DATA',
                 caption: room == null || recap.venues.suppressed
                     ? null
-                    : '${_formatNumber(room.avgRsvps)} avg · '
+                    : '${recapFormatNumber(room.avgRsvps)} avg · '
                           '${room.shows} ${room.shows == 1 ? 'show' : 'shows'}',
                 suppressed: recap.venues.suppressed,
               ),
@@ -318,7 +327,7 @@ class AnalyticsScreen extends StatelessWidget {
                     : weekdayNamesUpper[night.weekday - 1],
                 caption: night == null || recap.weekdays.suppressed
                     ? null
-                    : '${_formatNumber(night.avgRsvps)} avg',
+                    : '${recapFormatNumber(night.avgRsvps)} avg',
                 suppressed: recap.weekdays.suppressed,
               ),
             ),
@@ -329,33 +338,44 @@ class AnalyticsScreen extends StatelessWidget {
   }
 
   Widget _newVsReturning(BuildContext context, BandRecap recap) {
+    final shows = recapSortedShows(recap)
+        .where((show) => show.newFans != null && show.returningFans != null)
+        .toList();
     return _analyticsSection(
       key: const Key('analytics-new-returning'),
       title: 'NEW VS RETURNING',
+      trailing:
+          !recap.newReturningSuppressed &&
+              recap.shows.length > kRecapPreviewCount
+          ? _SeeAllButton(
+              key: const Key('analytics-new-returning-see-all'),
+              total: recap.shows.length,
+              onPressed: () => showRecapShowsSheet(context, recap),
+            )
+          : null,
       child: recap.newReturningSuppressed
           ? const _SuppressedBreakdown()
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final show in _sortedShows(recap))
-                  if (show.newFans != null && show.returningFans != null) ...[
-                    Text(
-                      show.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: epText(
-                        size: 11,
-                        weight: FontWeight.w800,
-                        color: context.epColors.contentSecondary,
-                      ),
+                for (final show in shows.take(kRecapPreviewCount)) ...[
+                  Text(
+                    show.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: epText(
+                      size: 11,
+                      weight: FontWeight.w800,
+                      color: context.epColors.contentSecondary,
                     ),
-                    const SizedBox(height: 7),
-                    _AnalyticsStackedBar(
-                      newFans: show.newFans!,
-                      returningFans: show.returningFans!,
-                    ),
-                    const SizedBox(height: 13),
-                  ],
+                  ),
+                  const SizedBox(height: 7),
+                  AnalyticsStackedBar(
+                    newFans: show.newFans!,
+                    returningFans: show.returningFans!,
+                  ),
+                  const SizedBox(height: 13),
+                ],
                 if (recap.window.truncated)
                   Text(
                     '“New” means new within this analyzed window, not new-ever. '
@@ -397,7 +417,7 @@ class AnalyticsScreen extends StatelessWidget {
                 ],
                 if (leadTime.medianDays != null)
                   Text(
-                    'Median RSVP: ${_formatNumber(leadTime.medianDays!)} days '
+                    'Median RSVP: ${recapFormatNumber(leadTime.medianDays!)} days '
                     'before the show.',
                     style: epText(
                       size: 11,
@@ -419,8 +439,9 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  Widget _roomsThatDraw(BandRecap recap) {
-    final maxAverage = recap.venues.rows.fold<num>(
+  Widget _roomsThatDraw(BuildContext context, BandRecap recap) {
+    final rows = recapSortedVenues(recap);
+    final maxAverage = rows.fold<num>(
       0,
       (highest, row) => math.max(highest, row.avgRsvps),
     );
@@ -428,16 +449,38 @@ class AnalyticsScreen extends StatelessWidget {
     return _analyticsSection(
       key: const Key('analytics-rooms'),
       title: 'ROOMS THAT DRAW',
+      trailing: !recap.venues.suppressed && rows.length > kRecapPreviewCount
+          ? _SeeAllButton(
+              key: const Key('analytics-rooms-see-all'),
+              total: rows.length,
+              onPressed: () => showRecapRowsSheet(
+                context,
+                title: 'ALL ${rows.length} ROOMS',
+                subtitle: recapWindowLabel(recap),
+                rows: [
+                  for (final row in rows)
+                    RecapDetailRow(
+                      label: row.venueName,
+                      meta:
+                          '${row.shows} ${row.shows == 1 ? 'show' : 'shows'} · '
+                          '${row.totalRsvps} total RSVPs',
+                      value: row.avgRsvps,
+                      valueText: '${recapFormatNumber(row.avgRsvps)} avg',
+                    ),
+                ],
+              ),
+            )
+          : null,
       child: recap.venues.suppressed
           ? const _SuppressedBreakdown()
           : Column(
               children: [
-                for (final row in recap.venues.rows) ...[
+                for (final row in rows.take(kRecapPreviewCount)) ...[
                   EpBar(
                     label: row.venueName,
                     value: row.avgRsvps,
                     max: maxAverage,
-                    valueText: _formatNumber(row.avgRsvps),
+                    valueText: recapFormatNumber(row.avgRsvps),
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -446,8 +489,9 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  Widget _bestNights(BandRecap recap) {
-    final maxAverage = recap.weekdays.rows.fold<num>(
+  Widget _bestNights(BuildContext context, BandRecap recap) {
+    final rows = recapSortedWeekdays(recap);
+    final maxAverage = rows.fold<num>(
       0,
       (highest, row) => math.max(highest, row.avgRsvps),
     );
@@ -455,16 +499,36 @@ class AnalyticsScreen extends StatelessWidget {
     return _analyticsSection(
       key: const Key('analytics-best-nights'),
       title: 'BEST NIGHTS',
+      trailing: !recap.weekdays.suppressed && rows.length > kRecapPreviewCount
+          ? _SeeAllButton(
+              key: const Key('analytics-best-nights-see-all'),
+              total: rows.length,
+              onPressed: () => showRecapRowsSheet(
+                context,
+                title: 'ALL ${rows.length} NIGHTS',
+                subtitle: recapWindowLabel(recap),
+                rows: [
+                  for (final row in rows)
+                    RecapDetailRow(
+                      label: weekdayNamesUpper[row.weekday - 1],
+                      meta: '${row.shows} ${row.shows == 1 ? 'show' : 'shows'}',
+                      value: row.avgRsvps,
+                      valueText: '${recapFormatNumber(row.avgRsvps)} avg',
+                    ),
+                ],
+              ),
+            )
+          : null,
       child: recap.weekdays.suppressed
           ? const _SuppressedBreakdown()
           : Column(
               children: [
-                for (final row in recap.weekdays.rows) ...[
+                for (final row in rows.take(kRecapPreviewCount)) ...[
                   EpBar(
                     label: weekdayNamesUpper[row.weekday - 1],
                     value: row.avgRsvps,
                     max: maxAverage,
-                    valueText: _formatNumber(row.avgRsvps),
+                    valueText: recapFormatNumber(row.avgRsvps),
                   ),
                   const SizedBox(height: 12),
                 ],
@@ -549,17 +613,8 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  static List<RecapShow> _sortedShows(BandRecap recap) {
-    final shows = [...recap.shows]
-      ..sort((a, b) {
-        final byDate = b.startsAt.compareTo(a.startsAt);
-        return byDate != 0 ? byDate : a.gigId.compareTo(b.gigId);
-      });
-    return shows;
-  }
-
   static List<RecapShow> _bestShows(BandRecap recap) {
-    final shows = _sortedShows(recap);
+    final shows = recapSortedShows(recap);
     final best = shows.fold<int>(
       0,
       (highest, show) => math.max(highest, show.measuredRsvps),
@@ -568,13 +623,8 @@ class AnalyticsScreen extends StatelessWidget {
   }
 
   static RecapVenue? _topRoom(BandRecap recap) {
-    if (recap.venues.rows.isEmpty) return null;
-    final rows = [...recap.venues.rows]
-      ..sort((a, b) {
-        final byAverage = b.avgRsvps.compareTo(a.avgRsvps);
-        return byAverage != 0 ? byAverage : a.venueName.compareTo(b.venueName);
-      });
-    return rows.first;
+    final rooms = recapSortedVenues(recap);
+    return rooms.isEmpty ? null : rooms.first;
   }
 
   static RecapBucket? _topLeadBucket(BandRecap recap) {
@@ -588,13 +638,8 @@ class AnalyticsScreen extends StatelessWidget {
   }
 
   static RecapWeekday? _topNight(BandRecap recap) {
-    if (recap.weekdays.rows.isEmpty) return null;
-    final rows = [...recap.weekdays.rows]
-      ..sort((a, b) {
-        final byAverage = b.avgRsvps.compareTo(a.avgRsvps);
-        return byAverage != 0 ? byAverage : a.weekday.compareTo(b.weekday);
-      });
-    return rows.first;
+    final nights = recapSortedWeekdays(recap);
+    return nights.isEmpty ? null : nights.first;
   }
 
   static String _performanceLabel(num best, num average) {
@@ -604,17 +649,6 @@ class AnalyticsScreen extends StatelessWidget {
     final percent = ((best - average) / average * 100).round();
     if (percent <= 0) return 'at window average';
     return '$percent% above avg';
-  }
-
-  static String _windowLabel(BandRecap recap) {
-    final first = recap.window.firstStartsAt;
-    final last = recap.window.lastStartsAt;
-    final prefix = 'LAST ${recap.window.showsAnalyzed} SHOWS';
-    if (first == null || last == null) return prefix;
-    final firstDate = DateTime.fromMillisecondsSinceEpoch(first);
-    final lastDate = DateTime.fromMillisecondsSinceEpoch(last);
-    return '$prefix · ${monthNamesUpper[firstDate.month - 1]} – '
-        '${monthNamesUpper[lastDate.month - 1]}';
   }
 
   static String _leadTimeLabel(String key) => switch (key) {
@@ -631,12 +665,6 @@ class AnalyticsScreen extends StatelessWidget {
     'fourPlus' => '4+ shows',
     _ => key,
   };
-
-  static String _formatNumber(num value) {
-    final decimal = value.toDouble();
-    if (decimal == decimal.roundToDouble()) return decimal.toInt().toString();
-    return decimal.toStringAsFixed(1);
-  }
 
   static String _unmeasurableLeadTimeNote(int count) {
     if (count == 1) {
@@ -679,7 +707,7 @@ class _TurnoutChart extends StatelessWidget {
                 Expanded(child: Divider(color: context.epColors.accent)),
                 const SizedBox(width: 6),
                 Text(
-                  'AVG ${AnalyticsScreen._formatNumber(average)}',
+                  'AVG ${recapFormatNumber(average)}',
                   style: Theme.of(
                     context,
                   ).textTheme.epMeta.copyWith(color: context.epColors.accent),
@@ -762,95 +790,28 @@ class _TurnoutChart extends StatelessWidget {
   }
 }
 
-class _AnalyticsStackedBar extends StatelessWidget {
-  const _AnalyticsStackedBar({
-    required this.newFans,
-    required this.returningFans,
+class _SeeAllButton extends StatelessWidget {
+  const _SeeAllButton({
+    super.key,
+    required this.total,
+    required this.onPressed,
   });
 
-  final int newFans;
-  final int returningFans;
+  final int total;
+  final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final total = math.max(0, newFans) + math.max(0, returningFans);
-    final newFlex = total == 0
-        ? 0
-        : math.max(1, (newFans / total * 1000).round());
-    final returningFlex = total == 0
-        ? 0
-        : math.max(1, (returningFans / total * 1000).round());
-    return Semantics(
-      label: '$newFans new fans and $returningFans returning fans',
-      excludeSemantics: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: 8,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: context.epColors.surfaceDisabled,
-              border: Border.all(color: context.epColors.border),
-              borderRadius: BorderRadius.circular(99),
-            ),
-            child: total == 0
-                ? null
-                : Row(
-                    children: [
-                      if (newFans > 0)
-                        Expanded(
-                          flex: newFlex,
-                          child: const ColoredBox(color: Ep.brand),
-                        ),
-                      if (returningFans > 0)
-                        Expanded(
-                          flex: returningFlex,
-                          child: ColoredBox(color: context.epColors.accent),
-                        ),
-                    ],
-                  ),
-          ),
-          const SizedBox(height: 7),
-          Wrap(
-            spacing: 12,
-            runSpacing: 5,
-            children: [
-              _ChartLegend(color: Ep.brand, label: 'NEW $newFans'),
-              _ChartLegend(
-                color: context.epColors.accent,
-                label: 'RETURNING $returningFans',
-              ),
-            ],
-          ),
-        ],
+    return TextButton(
+      onPressed: onPressed,
+      child: Text(
+        'SEE ALL $total',
+        maxLines: 2,
+        textAlign: TextAlign.end,
+        style: Theme.of(
+          context,
+        ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .7),
       ),
-    );
-  }
-}
-
-class _ChartLegend extends StatelessWidget {
-  const _ChartLegend({required this.color, required this.label});
-
-  final Color color;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 7,
-          height: 7,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-        const SizedBox(width: 5),
-        Text(label, style: Theme.of(context).textTheme.epCaption),
-      ],
     );
   }
 }
