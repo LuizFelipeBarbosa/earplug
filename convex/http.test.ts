@@ -4,6 +4,8 @@ import { api, internal } from "./_generated/api";
 import schema from "./schema";
 
 const TEST_SECRET = "whsec_" + btoa("earplug-test-signing-key-32bytes!");
+const STRIPE_TEST_SECRET = "whsec_test";
+const STRIPE_CONNECT_TEST_SECRET = "whsec_test_connect";
 
 async function signed(
   body: string,
@@ -35,6 +37,35 @@ async function signed(
     "svix-id": id,
     "svix-timestamp": String(timestampSec),
     "svix-signature": `v1,${signature}`,
+  };
+}
+
+async function signedStripe(
+  body: string,
+  secret: string = STRIPE_TEST_SECRET,
+  opts: { timestampSec?: number; corrupt?: boolean } = {},
+): Promise<HeadersInit> {
+  const timestampSec = opts.timestampSec ?? Math.floor(Date.now() / 1000);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signatureBytes = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`${timestampSec}.${body}`),
+  );
+  const signature = opts.corrupt
+    ? "corrupt"
+    : Array.from(new Uint8Array(signatureBytes), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("");
+  return {
+    "content-type": "application/json",
+    "stripe-signature": `t=${timestampSec},v1=${signature}`,
   };
 }
 
@@ -93,8 +124,14 @@ async function allUsers(t: ReturnType<typeof convexTest>) {
   return await t.run(async (ctx) => ctx.db.query("users").take(20));
 }
 
+async function allStripeEvents(t: ReturnType<typeof convexTest>) {
+  return await t.run(async (ctx) => ctx.db.query("stripeEvents").take(20));
+}
+
 beforeEach(() => {
   vi.stubEnv("CLERK_WEBHOOK_SECRET", TEST_SECRET);
+  vi.stubEnv("STRIPE_WEBHOOK_SECRET", STRIPE_TEST_SECRET);
+  vi.stubEnv("STRIPE_CONNECT_WEBHOOK_SECRET", STRIPE_CONNECT_TEST_SECRET);
 });
 
 afterEach(() => {
@@ -610,5 +647,174 @@ describe("Clerk user deletion tombstones", () => {
       "user_dead_instance",
     );
     expect(rows.some((row) => row.clerkId === "user_live_instance")).toBe(true);
+  });
+});
+
+describe("Stripe webhook verification and recording", () => {
+  test("records a validly signed platform event as ignored", async () => {
+    const t = convexTest(schema);
+    const body = JSON.stringify({
+      id: "evt_platform_valid",
+      type: "payment_intent.succeeded",
+      livemode: false,
+    });
+    const response = await t.fetch("/stripe-webhook", {
+      method: "POST",
+      headers: await signedStripe(body),
+      body,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("recorded");
+    const events = await allStripeEvents(t);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventId: "evt_platform_valid",
+      type: "payment_intent.succeeded",
+      livemode: false,
+      status: "ignored",
+    });
+  });
+
+  test("records and acknowledges a livemode mismatch without retrying", async () => {
+    const t = convexTest(schema);
+    const body = JSON.stringify({
+      id: "evt_platform_livemode_mismatch",
+      type: "payment_intent.succeeded",
+      livemode: true,
+    });
+    const response = await t.fetch("/stripe-webhook", {
+      method: "POST",
+      headers: await signedStripe(body),
+      body,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("ignored-livemode");
+    const events = await allStripeEvents(t);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventId: "evt_platform_livemode_mismatch",
+      livemode: true,
+      status: "ignored",
+      error: "livemode mismatch",
+    });
+  });
+
+  test("acknowledges a duplicate without inserting another row", async () => {
+    const t = convexTest(schema);
+    const body = JSON.stringify({
+      id: "evt_platform_duplicate",
+      type: "checkout.session.completed",
+      livemode: false,
+    });
+    const request = async () =>
+      await t.fetch("/stripe-webhook", {
+        method: "POST",
+        headers: await signedStripe(body),
+        body,
+      });
+
+    const first = await request();
+    const second = await request();
+    expect(first.status).toBe(200);
+    expect(await first.text()).toBe("recorded");
+    expect(second.status).toBe(200);
+    expect(await second.text()).toBe("duplicate");
+    expect(await allStripeEvents(t)).toHaveLength(1);
+  });
+
+  test("rejects a corrupted Stripe signature", async () => {
+    const t = convexTest(schema);
+    const body = JSON.stringify({
+      id: "evt_bad_signature",
+      type: "payment_intent.created",
+      livemode: false,
+    });
+    const response = await t.fetch("/stripe-webhook", {
+      method: "POST",
+      headers: await signedStripe(body, STRIPE_TEST_SECRET, { corrupt: true }),
+      body,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await allStripeEvents(t)).toHaveLength(0);
+  });
+
+  test("rejects a stale Stripe signature timestamp", async () => {
+    const t = convexTest(schema);
+    const body = JSON.stringify({
+      id: "evt_stale_signature",
+      type: "payment_intent.created",
+      livemode: false,
+    });
+    const response = await t.fetch("/stripe-webhook", {
+      method: "POST",
+      headers: await signedStripe(body, STRIPE_TEST_SECRET, {
+        timestampSec: Math.floor(Date.now() / 1000) - 301,
+      }),
+      body,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await allStripeEvents(t)).toHaveLength(0);
+  });
+
+  test("returns 500 when the platform Stripe secret is unset", async () => {
+    vi.stubEnv("STRIPE_WEBHOOK_SECRET", "");
+    const t = convexTest(schema);
+    const body = JSON.stringify({
+      id: "evt_no_secret",
+      type: "payment_intent.created",
+      livemode: false,
+    });
+    const response = await t.fetch("/stripe-webhook", {
+      method: "POST",
+      headers: await signedStripe(body),
+      body,
+    });
+
+    expect(response.status).toBe(500);
+    expect(await allStripeEvents(t)).toHaveLength(0);
+  });
+
+  test("rejects malformed JSON after signature verification", async () => {
+    const t = convexTest(schema);
+    const body = '{"id":"evt_malformed"';
+    const response = await t.fetch("/stripe-webhook", {
+      method: "POST",
+      headers: await signedStripe(body),
+      body,
+    });
+
+    expect(response.status).toBe(400);
+    expect(await allStripeEvents(t)).toHaveLength(0);
+  });
+
+  test("records the account from a valid Connect event", async () => {
+    const t = convexTest(schema);
+    const body = JSON.stringify({
+      id: "evt_connect_valid",
+      type: "account.updated",
+      account: "acct_connect_test",
+      livemode: false,
+    });
+    const response = await t.fetch("/stripe-connect-webhook", {
+      method: "POST",
+      headers: await signedStripe(body, STRIPE_CONNECT_TEST_SECRET),
+      body,
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("recorded");
+    const events = await allStripeEvents(t);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventId: "evt_connect_valid",
+      type: "account.updated",
+      account: "acct_connect_test",
+      livemode: false,
+      status: "ignored",
+    });
   });
 });

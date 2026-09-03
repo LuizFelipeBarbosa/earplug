@@ -13,7 +13,6 @@ import {
   pastShowValidator,
 } from "../schema";
 import { approximateLocation, formatMiles, OAK_CENTER, SF_CENTER } from "./geo";
-import { effectiveAddressDisclosure } from "./venuePrivate";
 
 // ─── Deterministic band identity ────────────────────────────────────────────
 // Every band's colour, initials and slug are derived from its name rather than
@@ -223,7 +222,7 @@ export const gigPublishFieldsValidator = v.object({
 });
 export type GigPublishFields = Infer<typeof gigPublishFieldsValidator>;
 
-function isValidHttpsUrl(value: string | undefined): boolean {
+export function isValidHttpsUrl(value: string | undefined): boolean {
   if (!value) return false;
   try {
     const parsed = new URL(value);
@@ -506,7 +505,7 @@ function resolveArtworkStorageId(
 ): Id<"_storage"> | undefined {
   return overrideStorageId === undefined
     ? legacyStorageId
-    : overrideStorageId ?? undefined;
+    : (overrideStorageId ?? undefined);
 }
 
 // `?? null` on the optional fields is the payload contract (explicit nulls,
@@ -678,6 +677,15 @@ export async function toGigPayload(
   };
 }
 
+export function effectiveAddressDisclosure(
+  venue: Doc<"venues">,
+): "onTicket" | "public" {
+  if (venue.addressDisclosure !== undefined) return venue.addressDisclosure;
+  return venue.status === undefined || venue.status === "legacy"
+    ? "public"
+    : "onTicket";
+}
+
 export function toVenuePayload(venue: Doc<"venues">) {
   const disclosure = effectiveAddressDisclosure(venue);
   const approx =
@@ -712,7 +720,7 @@ export function toVenuePayload(venue: Doc<"venues">) {
   return {
     _id: venue._id,
     name: venue.name,
-    area: venue.area,
+    area: disclosure === "public" ? venue.area : approx.label,
     ...address,
     slug: venue.slug ?? null,
     approxLocation: {
@@ -762,9 +770,12 @@ export function toMediaPayload(
     order: media.order,
     // `isHero` is the legacy name for the band's profile photo. Keep it as an
     // alias of the avatar role for old clients; banners use `isBanner` only.
-    isHero: avatarStorageId !== undefined && avatarStorageId === media.storageId,
-    isAvatar: avatarStorageId !== undefined && avatarStorageId === media.storageId,
-    isBanner: bannerStorageId !== undefined && bannerStorageId === media.storageId,
+    isHero:
+      avatarStorageId !== undefined && avatarStorageId === media.storageId,
+    isAvatar:
+      avatarStorageId !== undefined && avatarStorageId === media.storageId,
+    isBanner:
+      bannerStorageId !== undefined && bannerStorageId === media.storageId,
   };
 }
 
@@ -829,8 +840,8 @@ export const MAX_RSVPS_PER_GIG = 300;
 /** Minimum distinct fans required in every row of a private partition. */
 export const K_ANON_FANS = 5;
 
-/** The venue table is a small curated list, not user-generated, so one read
- * returns all of it. */
+/** The venue list is now user- and organization-generated; `venues:list`
+ * truncates at 500 pending real pagination. */
 export const MAX_VENUES = 500;
 
 // ─── Fan profile limits ────────────────────────────────────────────────────
@@ -941,5 +952,3 @@ export function assertVideoThumbnailAcceptable(meta: {
     throw new Error("Video thumbnails must be JPEG images.");
   }
 }
-
-export * from "./authz";

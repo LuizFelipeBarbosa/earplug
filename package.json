@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
+    "backfill:release": "node tool/run_release_backfills.mjs",
     "check:release-contract": "node tool/check_convex_contract.mjs",
     "dev": "convex dev",
     "deploy": "convex deploy",

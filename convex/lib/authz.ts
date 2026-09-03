@@ -1,6 +1,6 @@
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
-import { currentUser, requireUser } from "./helpers";
+import { requireUser } from "./helpers";
 
 export type OrganizationRole = "owner" | "manager" | "finance" | "door";
 
@@ -24,7 +24,7 @@ export async function isPlatformAdmin(
 }
 
 export async function requirePlatformAdmin(
-  ctx: MutationCtx,
+  ctx: QueryCtx,
 ): Promise<Doc<"users">> {
   const user = await requireUser(ctx);
   if (!(await isPlatformAdmin(ctx, user._id))) {
@@ -33,23 +33,7 @@ export async function requirePlatformAdmin(
   return user;
 }
 
-async function requireQueryUser(ctx: QueryCtx): Promise<Doc<"users">> {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) throw new Error("Not signed in");
-  const user = await currentUser(ctx);
-  if (!user) throw new Error("No user record — call users:ensureUser first");
-  return user;
-}
-
-export async function requirePlatformAdminQuery(
-  ctx: QueryCtx,
-): Promise<Doc<"users">> {
-  const user = await requireQueryUser(ctx);
-  if (!(await isPlatformAdmin(ctx, user._id))) {
-    throw new Error("Not an EarPlug admin");
-  }
-  return user;
-}
+export const requirePlatformAdminQuery = requirePlatformAdmin;
 
 export async function organizationMembershipFor(
   ctx: QueryCtx | MutationCtx,
@@ -100,7 +84,7 @@ async function organizationAccessFor(
 }
 
 export async function requireOrganizationRole(
-  ctx: MutationCtx,
+  ctx: QueryCtx,
   organizationId: Id<"organizations">,
   roles: readonly OrganizationRole[],
 ): Promise<OrganizationAccess> {
@@ -108,11 +92,4 @@ export async function requireOrganizationRole(
   return await organizationAccessFor(ctx, organizationId, roles, user);
 }
 
-export async function requireOrganizationRoleQuery(
-  ctx: QueryCtx,
-  organizationId: Id<"organizations">,
-  roles: readonly OrganizationRole[],
-): Promise<OrganizationAccess> {
-  const user = await requireQueryUser(ctx);
-  return await organizationAccessFor(ctx, organizationId, roles, user);
-}
+export const requireOrganizationRoleQuery = requireOrganizationRole;

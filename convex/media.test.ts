@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
@@ -8,6 +9,7 @@ import {
   assertUploadAcceptable,
   assertVideoThumbnailAcceptable,
 } from "./lib/helpers";
+import { STORAGE_REFERENCE_FIELDS } from "./media";
 import schema from "./schema";
 
 describe("media mutations", () => {
@@ -1052,8 +1054,37 @@ describe("media reads and validation", () => {
   });
 });
 
+describe("media:STORAGE_REFERENCE_FIELDS coverage", () => {
+  test("covers every schema field named StorageId or StorageIds", () => {
+    const source = readFileSync(new URL("./schema.ts", import.meta.url), "utf8");
+    const tableStarts = [
+      ...source.matchAll(/^  ([A-Za-z][A-Za-z0-9]*): defineTable\(\{/gm),
+    ];
+    const schemaFields = new Set<string>();
+    for (let index = 0; index < tableStarts.length; index++) {
+      const table = tableStarts[index][1];
+      const start = tableStarts[index].index ?? 0;
+      const end = tableStarts[index + 1]?.index ?? source.length;
+      const tableSource = source.slice(start, end);
+      for (const match of tableSource.matchAll(
+        /^\s*([A-Za-z]+[sS]torageIds?)\s*:/gm,
+      )) {
+        schemaFields.add(`${table}.${match[1]}`);
+      }
+    }
+
+    const coveredFields = new Set(
+      STORAGE_REFERENCE_FIELDS.map(({ table, field }) => `${table}.${field}`),
+    );
+    const missing = [...schemaFields].filter(
+      (field) => !coveredFields.has(field),
+    );
+    expect(missing).toEqual([]);
+  });
+});
+
 describe("media:sweepOrphanBlobs", () => {
-  test("deletes an orphan and preserves every supported storage reference", async () => {
+  test("deletes an orphan and preserves existing storage references", async () => {
     const t = convexTest(schema);
     const [
       orphanId,
@@ -1152,6 +1183,122 @@ describe("media:sweepOrphanBlobs", () => {
     expect(blobs.hero).not.toBeNull();
     expect(blobs.avatar).not.toBeNull();
     expect(blobs.flyer).not.toBeNull();
+  });
+
+  test("preserves every marketplace storage reference", async () => {
+    const t = convexTest(schema);
+    const [
+      orphanId,
+      organizationPhotoId,
+      organizationDocumentId,
+      applicationDocumentId,
+      venuePhotoId,
+      venueDocumentId,
+    ] = await t.run(async (ctx) => [
+      await ctx.storage.store(new Blob([new Uint8Array([0])])),
+      await ctx.storage.store(new Blob([new Uint8Array([1])])),
+      await ctx.storage.store(new Blob([new Uint8Array([2])])),
+      await ctx.storage.store(new Blob([new Uint8Array([3])])),
+      await ctx.storage.store(new Blob([new Uint8Array([4])])),
+      await ctx.storage.store(new Blob([new Uint8Array([5])])),
+    ]);
+
+    await t.run(async (ctx) => {
+      const ownerUserId = await ctx.db.insert("users", {
+        clerkId: "marketplace_sweep_owner",
+        name: "Marketplace Owner",
+        email: "marketplace-owner@example.com",
+        genres: [],
+        attendedCount: 0,
+      });
+      const organizationId = await ctx.db.insert("organizations", {
+        name: "Sweep Organization",
+        slug: "sweep-organization",
+        orgType: "venueOperator",
+        status: "verified",
+        ownerUserId,
+        photoStorageIds: [organizationPhotoId],
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.insert("organizationPrivateDetails", {
+        organizationId,
+        businessEmail: "bookings@example.com",
+        contactName: "Marketplace Owner",
+        stripeChargesEnabled: false,
+        stripePayoutsEnabled: false,
+        stripeDetailsSubmitted: false,
+        verificationDocStorageIds: [organizationDocumentId],
+        updatedAt: 1,
+      });
+      await ctx.db.insert("organizationApplications", {
+        applicantUserId: ownerUserId,
+        orgName: "Sweep Organization",
+        orgType: "venueOperator",
+        contactName: "Marketplace Owner",
+        businessEmail: "bookings@example.com",
+        verificationDocStorageIds: [applicationDocumentId],
+        status: "submitted",
+        revision: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const venueId = await ctx.db.insert("venues", {
+        name: "Marketplace Sweep Venue",
+        area: "Bay Area",
+        addr: "1 Sweep Street",
+        distSF: "0 mi",
+        distOak: "8 mi",
+        lat: 37.77,
+        lng: -122.42,
+        photoStorageIds: [venuePhotoId],
+      });
+      await ctx.db.insert("venuePrivateDetails", {
+        venueId,
+        addr: "1 Sweep Street",
+        lat: 37.77,
+        lng: -122.42,
+        normalizedAddr: "1 sweep street",
+        verificationDocStorageIds: [venueDocumentId],
+        updatedAt: 1,
+      });
+    });
+
+    const result = await t.mutation(internal.media.sweepOrphanBlobs, {
+      graceMs: 0,
+      dryRun: false,
+    });
+    expect(result).toMatchObject({
+      scanned: 6,
+      deleted: 1,
+      wouldDelete: 0,
+      skipped: 5,
+      aborted: false,
+      done: true,
+    });
+    const blobs = await t.run(async (ctx) => ({
+      orphan: await ctx.db.system.get("_storage", orphanId),
+      organizationPhoto: await ctx.db.system.get(
+        "_storage",
+        organizationPhotoId,
+      ),
+      organizationDocument: await ctx.db.system.get(
+        "_storage",
+        organizationDocumentId,
+      ),
+      applicationDocument: await ctx.db.system.get(
+        "_storage",
+        applicationDocumentId,
+      ),
+      venuePhoto: await ctx.db.system.get("_storage", venuePhotoId),
+      venueDocument: await ctx.db.system.get("_storage", venueDocumentId),
+    }));
+    expect(blobs.orphan).toBeNull();
+    expect(blobs.organizationPhoto).not.toBeNull();
+    expect(blobs.organizationDocument).not.toBeNull();
+    expect(blobs.applicationDocument).not.toBeNull();
+    expect(blobs.venuePhoto).not.toBeNull();
+    expect(blobs.venueDocument).not.toBeNull();
   });
 
   test("defaults to a dry run and leaves an orphan intact", async () => {

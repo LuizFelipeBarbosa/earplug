@@ -31,6 +31,19 @@ export const requiredClientFunctions = Object.freeze({
   "media.js:forBand": "Query",
   "media.js:moveWithinKind": "Mutation",
   "interactions.js:ticketForGig": "Mutation",
+  "organizationApplications.js:mine": "Query",
+  "organizationApplications.js:saveDraft": "Mutation",
+  "organizationApplications.js:submit": "Mutation",
+  "organizationApplications.js:attachDocument": "Mutation",
+  "organizationApplications.js:generateDocumentUploadUrl": "Mutation",
+  "organizations.js:mine": "Query",
+  "organizations.js:bySlug": "Query",
+  "organizations.js:dashboard": "Query",
+  "organizationMembers.js:resolveInvite": "Query",
+  "organizationMembers.js:acceptInvite": "Mutation",
+  "venues.js:resolvePublic": "Query",
+  "venues.js:privateDetail": "Query",
+  "admin.js:me": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -47,6 +60,8 @@ export const requiredClientFields = Object.freeze([
   ["bands.js:archiveStatus", "return", "bandId", false],
   ["bands.js:archiveStatus", "return", "archivedAt", false],
   ["gigs.js:feedV2", "return", "bands", false],
+  ["venues.js:detail", "return", "approxLocation", false],
+  ["venues.js:list", "arrayReturn", "approxLocation", false],
 ]);
 
 export function deploymentNameFromUrl(value) {

@@ -88,6 +88,19 @@ test("reports a deployment missing gigs:feedV2", () => {
   ]);
 });
 
+test("reports a deployment missing venues:resolvePublic", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions)
+    .map(([identifier, functionType]) =>
+      completeFunction(identifier, functionType),
+    )
+    .filter((entry) => entry.identifier !== "venues.js:resolvePublic");
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "missing venues.js:resolvePublic",
+  ]);
+});
+
 test("reports missing, mistyped, and wrong-deployment functions", () => {
   const problems = contractProblems(
     "https://decisive-iguana-759.convex.cloud",
@@ -131,6 +144,19 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing media.js:forBand",
     "missing media.js:moveWithinKind",
     "missing interactions.js:ticketForGig",
+    "missing organizationApplications.js:mine",
+    "missing organizationApplications.js:saveDraft",
+    "missing organizationApplications.js:submit",
+    "missing organizationApplications.js:attachDocument",
+    "missing organizationApplications.js:generateDocumentUploadUrl",
+    "missing organizations.js:mine",
+    "missing organizations.js:bySlug",
+    "missing organizations.js:dashboard",
+    "missing organizationMembers.js:resolveInvite",
+    "missing organizationMembers.js:acceptInvite",
+    "missing venues.js:resolvePublic",
+    "missing venues.js:privateDetail",
+    "missing admin.js:me",
   ]);
 });
 

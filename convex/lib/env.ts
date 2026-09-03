@@ -3,10 +3,8 @@ import { env } from "../_generated/server";
 export const PRODUCTION_DEPLOYMENT = "decisive-iguana-759";
 
 export function deploymentName(): string | null {
-  const cloudUrl = process.env.CONVEX_CLOUD_URL;
-  if (!cloudUrl) return null;
   try {
-    return new URL(cloudUrl).hostname.split(".")[0] || null;
+    return new URL(env.CONVEX_CLOUD_URL).hostname.split(".")[0] || null;
   } catch {
     return null;
   }
@@ -52,9 +50,7 @@ export function bpsSetting(
 ): number {
   const rawValue = env[name];
   const value =
-    rawValue === undefined || rawValue.trim() === ""
-      ? NaN
-      : Number(rawValue);
+    rawValue === undefined || rawValue.trim() === "" ? NaN : Number(rawValue);
   return Number.isInteger(value) && value >= 0 && value <= 10_000
     ? value
     : defaultValue;

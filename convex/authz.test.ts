@@ -1,7 +1,13 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
-import { isPlatformAdmin, requireOrganizationRole } from "./lib/authz";
+import {
+  isPlatformAdmin,
+  requireOrganizationRole,
+  requireOrganizationRoleQuery,
+  requirePlatformAdmin,
+  requirePlatformAdminQuery,
+} from "./lib/authz";
 import schema from "./schema";
 
 describe("platform authorization", () => {
@@ -68,6 +74,18 @@ describe("platform authorization", () => {
     expect(
       await t.run((ctx) => isPlatformAdmin(ctx, users.revokedUser._id)),
     ).toBe(false);
+    await expect(
+      active.run((ctx) => requirePlatformAdmin(ctx)),
+    ).resolves.toMatchObject({ _id: users.activeUser._id });
+    await expect(
+      active.run((ctx) => requirePlatformAdminQuery(ctx)),
+    ).resolves.toMatchObject({ _id: users.activeUser._id });
+    await expect(
+      regular.run((ctx) => requirePlatformAdmin(ctx)),
+    ).rejects.toThrow("Not an EarPlug admin");
+    await expect(
+      regular.run((ctx) => requirePlatformAdminQuery(ctx)),
+    ).rejects.toThrow("Not an EarPlug admin");
   });
 });
 
@@ -184,6 +202,11 @@ describe("organization authorization", () => {
     );
     expect(access.viaPlatformAdmin).toBe(true);
     expect(access.membership).toBeNull();
+    await expect(
+      asAdmin.run((ctx) =>
+        requireOrganizationRoleQuery(ctx, organizationId, ["owner"]),
+      ),
+    ).resolves.toMatchObject({ viaPlatformAdmin: true, membership: null });
   });
 
   test("blocks regular members of suspended organizations but allows admins", async () => {
@@ -243,6 +266,119 @@ describe("organization authorization", () => {
         requireOrganizationRole(ctx, organizationId, ["owner"]),
       ),
     ).resolves.toMatchObject({ viaPlatformAdmin: true });
+    await expect(
+      asMember.run((ctx) =>
+        requireOrganizationRoleQuery(ctx, organizationId, ["owner"]),
+      ),
+    ).rejects.toThrow("Organization suspended");
+    await expect(
+      asAdmin.run((ctx) =>
+        requireOrganizationRoleQuery(ctx, organizationId, ["owner"]),
+      ),
+    ).resolves.toMatchObject({ viaPlatformAdmin: true });
+  });
+
+  test("rejects a signed-in user with no organization membership", async () => {
+    const t = convexTest(schema);
+    const asStranger = t.withIdentity({
+      subject: "no_org_membership",
+      email: "stranger@example.com",
+      name: "Stranger",
+    });
+    await asStranger.mutation(api.users.ensureUser, {});
+    const organizationId = await asStranger.run(async (ctx) => {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) => q.eq("clerkId", "no_org_membership"))
+        .unique();
+      if (!user) throw new Error("Test user missing");
+      return await ctx.db.insert("organizations", {
+        name: "No Membership Group",
+        slug: "no-membership-group",
+        orgType: "venueOperator",
+        status: "verified",
+        ownerUserId: user._id,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
+
+    await expect(
+      asStranger.run((ctx) =>
+        requireOrganizationRole(ctx, organizationId, ["owner", "manager"]),
+      ),
+    ).rejects.toThrow("Not permitted for this organization");
+  });
+
+  test("query guards preserve the deleted-account error", async () => {
+    const t = convexTest(schema);
+    const asDeleted = t.withIdentity({
+      subject: "deleted_guard_user",
+      email: "deleted@example.com",
+      name: "Deleted User",
+    });
+    await asDeleted.mutation(api.users.ensureUser, {});
+    const organizationId = await asDeleted.run(async (ctx) => {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) => q.eq("clerkId", "deleted_guard_user"))
+        .unique();
+      if (!user) throw new Error("Test user missing");
+      const id = await ctx.db.insert("organizations", {
+        name: "Deleted User Group",
+        slug: "deleted-user-group",
+        orgType: "venueOperator",
+        status: "verified",
+        ownerUserId: user._id,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.patch(user._id, { deletedAt: 2 });
+      return id;
+    });
+
+    await expect(
+      asDeleted.run((ctx) => requirePlatformAdminQuery(ctx)),
+    ).rejects.toThrow("Account deleted");
+    await expect(
+      asDeleted.run((ctx) =>
+        requireOrganizationRoleQuery(ctx, organizationId, ["owner"]),
+      ),
+    ).rejects.toThrow("Account deleted");
+  });
+
+  test("query role guard reports a nonexistent organization", async () => {
+    const t = convexTest(schema);
+    const asUser = t.withIdentity({
+      subject: "missing_org_user",
+      email: "missing-org@example.com",
+      name: "Missing Org User",
+    });
+    await asUser.mutation(api.users.ensureUser, {});
+    const missingOrganizationId = await asUser.run(async (ctx) => {
+      const user = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) => q.eq("clerkId", "missing_org_user"))
+        .unique();
+      if (!user) throw new Error("Test user missing");
+      const id = await ctx.db.insert("organizations", {
+        name: "Temporary Group",
+        slug: "temporary-group",
+        orgType: "venueOperator",
+        status: "verified",
+        ownerUserId: user._id,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.delete(id);
+      return id;
+    });
+
+    await expect(
+      asUser.run((ctx) =>
+        requireOrganizationRoleQuery(ctx, missingOrganizationId, ["owner"]),
+      ),
+    ).rejects.toThrow("Organization not found");
   });
 
   test("rejects an unauthenticated caller", async () => {

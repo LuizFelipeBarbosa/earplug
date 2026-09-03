@@ -12,7 +12,7 @@ shared.
 the detail in this file only.
 
 A Convex deployment and a Clerk instance are chosen **together, never
-independently**. The pairing now governs all three deployment secrets:
+independently**. The pairing governs all three Clerk deployment secrets:
 `CLERK_JWT_ISSUER_DOMAIN`, `CLERK_WEBHOOK_SECRET` and `CLERK_SECRET_KEY`. Each
 deployment trusts exactly one issuer via `CLERK_JWT_ISSUER_DOMAIN`, read in
 `convex/auth.config.ts`, so a client holding the other instance's key signs in
@@ -24,6 +24,7 @@ from misconfiguration.
 | Convex | `brilliant-cardinal-773` | `decisive-iguana-759` |
 | Clerk issuer | `premium-sheep-24.clerk.accounts.dev` | `clerk.earplug.app` |
 | Publishable key | `pk_test_…` | `pk_live_…` |
+| Stripe | test mode (`sk_test_…`) | live mode (`sk_live_…`) |
 | Config file | `config/dev.json` | `config/prod.json` |
 
 `Env.configurationError` (`lib/env.dart`) refuses to start on a mismatched
@@ -47,6 +48,32 @@ look for:
   did has been removed). It must still belong to the same Clerk instance as
   the issuer and webhook secret.
 
+### Convex marketplace environment variables
+
+Set each of these independently on both paired Convex deployments with
+`npx convex env set`, using test/service values for development and live values
+for production:
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_CONNECT_WEBHOOK_SECRET`
+- `BOOKING_COMMISSION_BPS`
+- `TICKETING_FEE_BPS`
+- `TICKETING_FEE_FIXED_MINOR`
+- `APP_BASE_URL`
+- `RESEND_API_KEY`
+- `RESEND_SEND_ENABLED`
+- `PAYMENTS_ENABLED`
+- `TICKETS_ENABLED`
+- `PRIVATE_BOOKINGS_ENABLED`
+- `BAND_GIG_WRITES`
+
+`convex/lib/env.ts` enforces the pairing at runtime: it refuses a `sk_live_`
+Stripe key on every deployment except production deployment
+`decisive-iguana-759`. The two Stripe webhook HTTP routes, like the Clerk route
+above, live on the selected deployment's `.convex.site` host, not its
+`.convex.cloud` host.
+
 ## Building
 
 ```sh
@@ -63,6 +90,7 @@ it:
 
 ```sh
 npx convex deploy --typecheck enable
+npm run backfill:release -- --prod
 npm run check:release-contract -- prod
 flutter build web --release --dart-define-from-file=config/prod.json
 ```
@@ -76,9 +104,12 @@ Netlify uses the same config-file mechanism. `netlify.toml` selects production
 configuration for production-context builds and development configuration for
 deploy previews and branch deploys. When Netlify has a production
 `CONVEX_DEPLOY_KEY`, production builds deploy Convex and verify the production
-contract before building Flutter. Without that key, deploy and verify the
-backend separately before triggering the production build; Netlify then uses
-the already-deployed backend. Development builds do not deploy and can be
+contract before building Flutter. Production builds also run the idempotent
+release-backfill runner (`npm run backfill:release -- --prod`) between the
+Convex deploy and contract check; a failed migration fails the build. Without
+that key, deploy, backfill, and verify the backend separately before triggering
+the production build; Netlify then uses the already-deployed backend.
+Development builds do not deploy and can be
 checked against the shared development deployment manually with
 `npm run check:release-contract -- dev`. `EARPLUG_ENV` remains the only Netlify
 environment selector consumed by the web client itself. Netlify intentionally

@@ -116,7 +116,10 @@ describe("venues:list", () => {
 describe("venues:create", () => {
   async function setupAdmin() {
     const t = convexTest(schema);
-    const asAdmin = t.withIdentity({ subject: "venue_admin", email: "venue@x.com" });
+    const asAdmin = t.withIdentity({
+      subject: "venue_admin",
+      email: "venue@x.com",
+    });
     await asAdmin.mutation(api.users.ensureUser, {});
     const { bandId } = await asAdmin.mutation(api.bands.createBand, {
       name: "Venue Makers",
@@ -138,7 +141,10 @@ describe("venues:create", () => {
 
   test("requires a band admin and a valid map coordinate", async () => {
     const { t, asAdmin, bandId } = await setupAdmin();
-    const asStranger = t.withIdentity({ subject: "venue_stranger", email: "s@x.com" });
+    const asStranger = t.withIdentity({
+      subject: "venue_stranger",
+      email: "s@x.com",
+    });
     await asStranger.mutation(api.users.ensureUser, {});
     await expect(
       asStranger.mutation(api.venues.create, { bandId, ...newVenue }),
@@ -159,6 +165,20 @@ describe("venues:create", () => {
       name: "The New Room",
       area: "Downtown Oakland",
       addr: "123 Test Street",
+      lat: newVenue.lat,
+      lng: newVenue.lng,
+      exactAddr: "123 Test Street",
+      slug: "the-new-room",
+    });
+    expect(
+      await t.query(api.venues.privateDetail, { venueId: first.venue._id }),
+    ).toEqual({
+      venueId: first.venue._id,
+      addr: "123 Test Street",
+      lat: newVenue.lat,
+      lng: newVenue.lng,
+      loadInNotes: null,
+      capacity: null,
     });
 
     const duplicate = await asAdmin.mutation(api.venues.create, {
@@ -192,6 +212,197 @@ describe("venues:create", () => {
 
     expect(duplicate.created).toBe(false);
     expect(duplicate.venue._id).toBe(seededVenue!._id);
+  });
+
+  test("creates separately when only an on-ticket venue's private address matches", async () => {
+    const { t, asAdmin, bandId } = await setupAdmin();
+    const hiddenVenueId = await asAdmin.run(async (ctx) => {
+      const owner = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) => q.eq("clerkId", "venue_admin"))
+        .unique();
+      if (!owner) throw new Error("Test user missing");
+      const organizationId = await ctx.db.insert("organizations", {
+        name: "Hidden Venue Organization",
+        slug: "hidden-venue-organization",
+        orgType: "venueOperator",
+        status: "verified",
+        ownerUserId: owner._id,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const venueId = await ctx.db.insert("venues", {
+        ...venueFields("Hidden Organization Room"),
+        area: "Downtown, Oakland",
+        addr: "Downtown, Oakland",
+        normalizedName: "hidden organization room",
+        status: "verified",
+        addressDisclosure: "onTicket",
+        managedByOrganizationId: organizationId,
+        approxLabel: "Downtown, Oakland",
+        approxLat: 37.8044,
+        approxLng: -122.2711,
+      });
+      await ctx.db.insert("venuePrivateDetails", {
+        venueId,
+        addr: "987 Secret Street",
+        lat: 37.806,
+        lng: -122.272,
+        normalizedAddr: "987 secret street",
+        updatedAt: 1,
+      });
+      return venueId;
+    });
+
+    const created = await asAdmin.mutation(api.venues.create, {
+      bandId,
+      name: "A Completely Different Name",
+      area: "Somewhere Else",
+      addr: " 987   SECRET STREET ",
+      lat: 37.806,
+      lng: -122.272,
+    });
+    expect(created.created).toBe(true);
+    expect(created.venue._id).not.toBe(hiddenVenueId);
+    expect(await t.query(api.venues.list, {})).toHaveLength(2);
+  });
+});
+
+describe("venues:resolvePublic", () => {
+  test("resolves by slug and id and hides misses and suspended venues", async () => {
+    const t = convexTest(schema);
+    const { venueId, suspendedId } = await t.run(async (ctx) => ({
+      venueId: await ctx.db.insert("venues", {
+        ...venueFields("Slug Room"),
+        slug: "slug-room",
+        status: "verified",
+        addressDisclosure: "public",
+      }),
+      suspendedId: await ctx.db.insert("venues", {
+        ...venueFields("Suspended Room"),
+        slug: "suspended-room",
+        status: "suspended",
+      }),
+    }));
+
+    const bySlug = await t.query(api.venues.resolvePublic, {
+      ref: "slug-room",
+    });
+    const byId = await t.query(api.venues.resolvePublic, { ref: venueId });
+    expect(bySlug?._id).toBe(venueId);
+    expect(byId).toEqual(bySlug);
+    expect(
+      await t.query(api.venues.resolvePublic, { ref: suspendedId }),
+    ).toBeNull();
+    expect(
+      await t.query(api.venues.resolvePublic, { ref: "does-not-exist" }),
+    ).toBeNull();
+  });
+});
+
+describe("venues:privateDetail", () => {
+  test("gates exact details by disclosure, organization status, and admin access", async () => {
+    const t = convexTest(schema);
+    const asMember = t.withIdentity({
+      subject: "venue_private_member",
+      email: "member-private@example.com",
+    });
+    const asAdmin = t.withIdentity({
+      subject: "venue_private_admin",
+      email: "admin-private@example.com",
+    });
+    await asMember.mutation(api.users.ensureUser, {});
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const { venueId, organizationId } = await t.run(async (ctx) => {
+      const member = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) =>
+          q.eq("clerkId", "venue_private_member"),
+        )
+        .unique();
+      const admin = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) => q.eq("clerkId", "venue_private_admin"))
+        .unique();
+      if (!member || !admin) throw new Error("Test users missing");
+      const organizationId = await ctx.db.insert("organizations", {
+        name: "Private Detail Venues",
+        slug: "private-detail-venues",
+        orgType: "venueOperator",
+        status: "verified",
+        ownerUserId: member._id,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.insert("organizationMembers", {
+        organizationId,
+        userId: member._id,
+        role: "manager",
+        createdAt: 1,
+      });
+      await ctx.db.insert("platformAdmins", {
+        userId: admin._id,
+        grantedAt: 1,
+      });
+      const venueId = await ctx.db.insert("venues", {
+        ...venueFields("Private Detail Room"),
+        area: "Downtown, Oakland",
+        addr: "Downtown, Oakland",
+        status: "verified",
+        addressDisclosure: "onTicket",
+        managedByOrganizationId: organizationId,
+        approxLabel: "Downtown, Oakland",
+        approxLat: 37.8044,
+        approxLng: -122.2711,
+      });
+      await ctx.db.insert("venuePrivateDetails", {
+        venueId,
+        addr: "101 Exact Avenue",
+        lat: 37.81,
+        lng: -122.26,
+        normalizedAddr: "101 exact avenue",
+        loadInNotes: "Use the alley",
+        capacity: 250,
+        updatedAt: 1,
+      });
+      return { venueId, organizationId };
+    });
+    const fullPayload = {
+      venueId,
+      addr: "101 Exact Avenue",
+      lat: 37.81,
+      lng: -122.26,
+      loadInNotes: "Use the alley",
+      capacity: 250,
+    };
+
+    expect(await t.query(api.venues.privateDetail, { venueId })).toBeNull();
+    expect(await asMember.query(api.venues.privateDetail, { venueId })).toEqual(
+      fullPayload,
+    );
+
+    await t.run((ctx) => ctx.db.patch(organizationId, { status: "suspended" }));
+    expect(
+      await asMember.query(api.venues.privateDetail, { venueId }),
+    ).toBeNull();
+    expect(await asAdmin.query(api.venues.privateDetail, { venueId })).toEqual(
+      fullPayload,
+    );
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(organizationId, { status: "verified" });
+      await ctx.db.patch(venueId, { addressDisclosure: "public" });
+    });
+    expect(await t.query(api.venues.privateDetail, { venueId })).toEqual(
+      {
+        ...fullPayload,
+        loadInNotes: null,
+        capacity: null,
+      },
+    );
+    expect(await asMember.query(api.venues.privateDetail, { venueId })).toEqual(
+      fullPayload,
+    );
   });
 });
 
@@ -521,5 +732,261 @@ describe("venue address disclosure", () => {
     expect(venue).toBeDefined();
     expect(venue!.addr).toBe(stored.addr);
     expect(venue!.exactAddr).toBe(stored.addr);
+  });
+
+  test("replaces a smuggled street-address area with the approximate label", async () => {
+    const t = convexTest(schema);
+    const venueId = await t.run((ctx) =>
+      ctx.db.insert("venues", {
+        ...venueFields("No Area Leak Room"),
+        area: "123 Secret St",
+        addr: "123 Secret St",
+        lat: 37.81,
+        lng: -122.26,
+        status: "verified",
+        addressDisclosure: "onTicket",
+        approxLabel: "Downtown, Oakland",
+        approxLat: 37.8044,
+        approxLng: -122.2711,
+      }),
+    );
+
+    const venue = (await t.query(api.venues.list, {})).find(
+      (entry) => entry._id === venueId,
+    );
+    expect(venue).toMatchObject({
+      area: "Downtown, Oakland",
+      addr: "Downtown, Oakland",
+      lat: 37.8044,
+      lng: -122.2711,
+      exactAddr: null,
+    });
+  });
+});
+
+describe("organization-managed venue location mutations", () => {
+  async function setupManagedVenues() {
+    const t = convexTest(schema);
+    const asOwner = t.withIdentity({
+      subject: "managed_venue_owner",
+      email: "managed-owner@example.com",
+    });
+    const asManager = t.withIdentity({
+      subject: "managed_venue_manager",
+      email: "managed-manager@example.com",
+    });
+    await asOwner.mutation(api.users.ensureUser, {});
+    await asManager.mutation(api.users.ensureUser, {});
+    const ids = await t.run(async (ctx) => {
+      const owner = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) => q.eq("clerkId", "managed_venue_owner"))
+        .unique();
+      const manager = await ctx.db
+        .query("users")
+        .withIndex("by_clerk_id", (q) =>
+          q.eq("clerkId", "managed_venue_manager"),
+        )
+        .unique();
+      if (!owner || !manager) throw new Error("Test users missing");
+      const organizationId = await ctx.db.insert("organizations", {
+        name: "Managed Venue Group",
+        slug: "managed-venue-group",
+        orgType: "venueOperator",
+        status: "verified",
+        ownerUserId: owner._id,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      await ctx.db.insert("organizationMembers", {
+        organizationId,
+        userId: owner._id,
+        role: "owner",
+        createdAt: 1,
+      });
+      await ctx.db.insert("organizationMembers", {
+        organizationId,
+        userId: manager._id,
+        role: "manager",
+        createdAt: 1,
+      });
+      const common = {
+        ...venueFields("Managed Room"),
+        area: "Downtown, Oakland",
+        addr: "Downtown, Oakland",
+        status: "verified" as const,
+        managedByOrganizationId: organizationId,
+        approxLabel: "Downtown, Oakland",
+        approxLat: 37.8044,
+        approxLng: -122.2711,
+        neighborhood: "Downtown",
+        city: "Oakland",
+      };
+      const onTicketVenueId = await ctx.db.insert("venues", {
+        ...common,
+        name: "On Ticket Room",
+        slug: "on-ticket-room",
+        addressDisclosure: "onTicket",
+      });
+      const publicVenueId = await ctx.db.insert("venues", {
+        ...common,
+        name: "Public Managed Room",
+        slug: "public-managed-room",
+        addressDisclosure: "public",
+      });
+      for (const venueId of [onTicketVenueId, publicVenueId]) {
+        await ctx.db.insert("venuePrivateDetails", {
+          venueId,
+          addr: "10 Old Exact Street",
+          lat: 37.8,
+          lng: -122.27,
+          normalizedAddr: "10 old exact street",
+          updatedAt: 1,
+        });
+      }
+      return { organizationId, onTicketVenueId, publicVenueId };
+    });
+    return { t, asOwner, asManager, ...ids };
+  }
+
+  test("updatePrivateDetails keeps private venues approximate and public venues exact", async () => {
+    const { t, asOwner, onTicketVenueId, publicVenueId } =
+      await setupManagedVenues();
+    const exact = {
+      addr: "2455 Harrison St, San Francisco",
+      lat: 37.7524,
+      lng: -122.418,
+      loadInNotes: "  Ring the side bell  ",
+      capacity: 300,
+    };
+
+    await asOwner.mutation(api.venues.updatePrivateDetails, {
+      venueId: onTicketVenueId,
+      ...exact,
+    });
+    await asOwner.mutation(api.venues.updatePrivateDetails, {
+      venueId: publicVenueId,
+      ...exact,
+      addr: "2457 Harrison St, San Francisco",
+    });
+
+    const privatePublic = (await t.query(api.venues.detail, {
+      venueId: onTicketVenueId,
+    }))!.venue;
+    expect(privatePublic).toMatchObject({
+      area: "Mission, San Francisco",
+      addr: "Mission, San Francisco",
+      lat: 37.7599,
+      lng: -122.4148,
+      exactAddr: null,
+    });
+    expect(privatePublic.addr).not.toBe(exact.addr);
+
+    const exactPublic = (await t.query(api.venues.detail, {
+      venueId: publicVenueId,
+    }))!.venue;
+    expect(exactPublic).toMatchObject({
+      addr: "2457 Harrison St, San Francisco",
+      lat: exact.lat,
+      lng: exact.lng,
+      exactAddr: "2457 Harrison St, San Francisco",
+    });
+    expect(
+      await asOwner.query(api.venues.privateDetail, {
+        venueId: onTicketVenueId,
+      }),
+    ).toMatchObject({
+      addr: exact.addr,
+      lat: exact.lat,
+      lng: exact.lng,
+      loadInNotes: "Ring the side bell",
+      capacity: 300,
+    });
+  });
+
+  test("updatePrivateDetails never uses a private street address as an approximate fallback", async () => {
+    const { t, asOwner, organizationId } = await setupManagedVenues();
+    const area = "Santa Cruz Area";
+    const exactAddress = "404 Hidden Wharf Street, Santa Cruz, CA";
+    const venueId = await t.run((ctx) =>
+      ctx.db.insert("venues", {
+        ...venueFields("Santa Cruz Fallback Room"),
+        slug: "santa-cruz-fallback-room",
+        area,
+        addr: area,
+        lat: 36.97,
+        lng: -122.03,
+        status: "verified",
+        addressDisclosure: "onTicket",
+        managedByOrganizationId: organizationId,
+      }),
+    );
+
+    await asOwner.mutation(api.venues.updatePrivateDetails, {
+      venueId,
+      addr: exactAddress,
+      lat: 36.9741,
+      lng: -122.0308,
+    });
+
+    const publicVenue = await t.query(api.venues.resolvePublic, {
+      ref: venueId,
+    });
+    expect(publicVenue).toMatchObject({
+      addr: area,
+      area,
+      approxLocation: { label: area },
+    });
+    expect(publicVenue?.addr).not.toContain(exactAddress);
+    expect(publicVenue?.area).not.toContain(exactAddress);
+    expect(publicVenue?.approxLocation.label).not.toContain(exactAddress);
+  });
+
+  test("setAddressDisclosure immediately rewrites public location columns", async () => {
+    const { t, asOwner, asManager, onTicketVenueId } =
+      await setupManagedVenues();
+
+    await asOwner.mutation(api.venues.setAddressDisclosure, {
+      venueId: onTicketVenueId,
+      addressDisclosure: "public",
+    });
+    const publicDetail = await t.query(api.venues.detail, {
+      venueId: onTicketVenueId,
+    });
+    expect(publicDetail?.venue).toMatchObject({
+      addr: "10 Old Exact Street",
+      lat: 37.8,
+      lng: -122.27,
+      exactAddr: "10 Old Exact Street",
+    });
+    const storedPublicVenue = await t.run((ctx) =>
+      ctx.db.get(onTicketVenueId),
+    );
+    expect(storedPublicVenue?.normalizedAddr).toBe("10 old exact street");
+
+    await expect(
+      asManager.mutation(api.venues.setAddressDisclosure, {
+        venueId: onTicketVenueId,
+        addressDisclosure: "onTicket",
+      }),
+    ).rejects.toThrow("Not permitted for this organization");
+
+    await asOwner.mutation(api.venues.setAddressDisclosure, {
+      venueId: onTicketVenueId,
+      addressDisclosure: "onTicket",
+    });
+    const privateListItem = (await t.query(api.venues.list, {})).find(
+      (venue) => venue._id === onTicketVenueId,
+    );
+    expect(privateListItem).toMatchObject({
+      addr: "Downtown, Oakland",
+      lat: 37.8044,
+      lng: -122.2711,
+      exactAddr: null,
+    });
+    const storedPrivateVenue = await t.run((ctx) =>
+      ctx.db.get(onTicketVenueId),
+    );
+    expect(storedPrivateVenue?.normalizedAddr).toBeUndefined();
   });
 });

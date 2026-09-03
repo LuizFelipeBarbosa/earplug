@@ -70,6 +70,7 @@ export const organizationStatusValidator = v.union(
 );
 
 export const organizationApplicationStatusValidator = v.union(
+  v.literal("draft"),
   v.literal("submitted"),
   v.literal("under_review"),
   v.literal("needs_info"),
@@ -207,8 +208,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_organizationId_and_userId", ["organizationId", "userId"])
-    .index("by_userId", ["userId"])
-    .index("by_organizationId", ["organizationId"]),
+    .index("by_userId", ["userId"]),
 
   organizationMemberInvites: defineTable({
     organizationId: v.id("organizations"),
@@ -255,6 +255,10 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_applicantUserId_and_status", ["applicantUserId", "status"])
+    .index("by_applicantUserId_and_createdAt", [
+      "applicantUserId",
+      "createdAt",
+    ])
     .index("by_status_and_createdAt", ["status", "createdAt"]),
 
   bands: defineTable({
