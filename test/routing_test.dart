@@ -32,7 +32,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = DemoRepository(auth: auth);
-      final resolved = AppState(
+      final resolved = AppState.demo(
         repository: repository,
         auth: auth,
         initialBandSlug: 'foghorn-diet',
@@ -42,7 +42,7 @@ void main() {
       expect(resolved.current.screen, Screen.band);
       expect(resolved.current.param, 'b1');
 
-      final missing = AppState(
+      final missing = AppState.demo(
         repository: repository,
         auth: auth,
         initialBandSlug: 'no-such-band',
@@ -55,7 +55,7 @@ void main() {
 
   test('unknown gig references become a friendly missing state', () async {
     final auth = FakeAuthService();
-    final app = AppState(
+    final app = AppState.demo(
       repository: DemoRepository(auth: auth),
       auth: auth,
       initialGigId: 'malformed-reference',
@@ -68,7 +68,7 @@ void main() {
 
   test('in-app back exits a directly opened gig to the Gigs home', () async {
     final auth = FakeAuthService();
-    final app = AppState(
+    final app = AppState.demo(
       repository: DemoRepository(auth: auth),
       auth: auth,
       initialGigId: 'g1',
@@ -85,7 +85,7 @@ void main() {
   test('in-app back pops an internal gig without revisiting auth', () async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final app = AppState(
+    final app = AppState.demo(
       repository: DemoRepository(auth: auth),
       auth: auth,
     );
@@ -106,7 +106,7 @@ void main() {
   test('returning to a gig resubscribes to its public stream', () async {
     final auth = FakeAuthService();
     final repository = _NavigationRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await _flushAsyncWork();
 
@@ -127,7 +127,7 @@ void main() {
   test('revisiting Explore does not fetch another page', () async {
     final auth = FakeAuthService();
     final repository = _NavigationRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await _flushAsyncWork();
 

@@ -81,7 +81,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _PagedRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
       app.go(Screen.explore);
@@ -109,7 +109,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _MergePrecedenceRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
       app.go(Screen.explore);
@@ -131,7 +131,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _QueuedRefreshRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
       app.go(Screen.explore);
@@ -156,7 +156,7 @@ void main() {
   test('venue detail retries, caches, and supports venue navigation', () async {
     final auth = FakeAuthService();
     final repository = _VenueRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
 
     expect(app.venueDetail('v1'), isNull);
@@ -184,7 +184,7 @@ void main() {
   test('knownVenue requests and resolves venues outside the feed', () async {
     final auth = FakeAuthService();
     final repository = _DeferredVenueDirectoryRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await _flushAsyncWork();
     var notifications = 0;
@@ -208,7 +208,7 @@ void main() {
   test('feed changes invalidate only affected venue details', () async {
     final auth = FakeAuthService();
     final repository = _RefreshingVenueRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
       await repository.dispose();
@@ -263,7 +263,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _SilentPublishRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
       await _flushAsyncWork();
@@ -291,7 +291,7 @@ void main() {
   test('save requests require auth and preserve a rejected intent', () async {
     final auth = FakeAuthService();
     final repository = _GatedSaveRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
 
     app.requestSave('g1');
@@ -315,7 +315,7 @@ void main() {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _GatedSaveRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await _flushAsyncWork();
 
@@ -330,7 +330,7 @@ void main() {
 
   test('result type changes do not alter the submitted query', () {
     final auth = FakeAuthService();
-    final app = AppState(
+    final app = AppState.demo(
       repository: DemoRepository(auth: auth),
       auth: auth,
     );

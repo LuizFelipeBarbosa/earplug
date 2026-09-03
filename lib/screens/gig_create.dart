@@ -8,7 +8,7 @@ import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../band_media_state.dart';
-import '../demo_data.dart';
+import '../flyer_styles.dart';
 import '../models.dart';
 import '../services/flyer_text_extractor.dart';
 import '../services/media_picker.dart';
@@ -538,7 +538,7 @@ class _SwatchRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        for (final key in DemoData.flyerPicks) ...[
+        for (final key in flyerPicks) ...[
           Swatch(
             key: ValueKey('press-$key'),
             selected: app.gfFly == key,

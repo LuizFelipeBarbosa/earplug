@@ -11,8 +11,8 @@ import 'data/convex_repository.dart';
 import 'data/demo_repository.dart';
 import 'data/repository.dart';
 import 'date_names.dart';
-import 'demo_data.dart';
 import 'errors.dart';
+import 'flyer_styles.dart';
 import 'models.dart';
 import 'services/auth_service.dart';
 import 'services/browser_history.dart';
@@ -218,8 +218,8 @@ class PendingAuth {
 
 class AppState extends ChangeNotifier {
   AppState({
-    EarplugRepository? repository,
-    AuthService? auth,
+    required EarplugRepository repository,
+    required AuthService auth,
     LocationService? locationService,
     MediaUploadService? mediaUploadService,
     String? initialJoinToken,
@@ -228,7 +228,7 @@ class AppState extends ChangeNotifier {
     String? initialBandSlug,
     DateTime Function()? now,
   }) : this._(
-         auth ?? FakeAuthService(),
+         auth,
          repository,
          locationService ?? GeolocatorLocationService(),
          mediaUploadService,
@@ -239,9 +239,37 @@ class AppState extends ChangeNotifier {
          now ?? DateTime.now,
        );
 
+  /// Offline state over in-memory demo fixtures. The only production caller
+  /// is the `EARPLUG_DEMO` branch of `main()`, so release builds that leave
+  /// the flag off tree-shake [DemoRepository] and [FakeAuthService] away.
+  factory AppState.demo({
+    EarplugRepository? repository,
+    AuthService? auth,
+    LocationService? locationService,
+    MediaUploadService? mediaUploadService,
+    String? initialJoinToken,
+    String? initialPerformerInviteToken,
+    String? initialGigId,
+    String? initialBandSlug,
+    DateTime Function()? now,
+  }) {
+    final resolvedAuth = auth ?? FakeAuthService();
+    return AppState(
+      repository: repository ?? DemoRepository(auth: resolvedAuth),
+      auth: resolvedAuth,
+      locationService: locationService,
+      mediaUploadService: mediaUploadService,
+      initialJoinToken: initialJoinToken,
+      initialPerformerInviteToken: initialPerformerInviteToken,
+      initialGigId: initialGigId,
+      initialBandSlug: initialBandSlug,
+      now: now,
+    );
+  }
+
   AppState._(
-    AuthService resolvedAuth,
-    EarplugRepository? providedRepository,
+    this.auth,
+    this.repository,
     this.locationService,
     MediaUploadService? providedMediaUploader,
     String? initialJoinToken,
@@ -249,11 +277,9 @@ class AppState extends ChangeNotifier {
     String? initialGigId,
     String? initialBandSlug,
     this._now,
-  ) : auth = resolvedAuth,
-      repository = providedRepository ?? DemoRepository(auth: resolvedAuth),
-      // Only a real backend has a connection to wait on; the demo data is
+  ) : // Only a real backend has a connection to wait on; the demo data is
       // already in memory, so it must not show the connecting screen.
-      _dataStatus = providedRepository is ConvexRepository
+      _dataStatus = repository is ConvexRepository
           ? DataStatus.connecting
           : DataStatus.ready {
     mediaUploader =
@@ -2689,7 +2715,7 @@ class AppState extends ChangeNotifier {
   );
 
   FlyerStyle flyer(String key) =>
-      DemoData.flyers[key] ?? DemoData.flyers['paper']!;
+      flyerStyles[key] ?? flyerStyles['paper']!;
 
   double? distanceMilesFromCurrent(Venue venue) {
     final origin = currentPosition;

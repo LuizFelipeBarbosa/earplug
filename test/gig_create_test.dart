@@ -322,7 +322,7 @@ void main() {
   test('18+ to all ages survives save, reopen, and publish', () async {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
     app.startGigCreate();
@@ -343,7 +343,7 @@ void main() {
 
   test('external tickets require an absolute HTTPS URL', () async {
     final auth = FakeAuthService();
-    final app = AppState(
+    final app = AppState.demo(
       repository: DemoRepository(auth: auth),
       auth: auth,
     );
@@ -428,7 +428,7 @@ void main() {
     'new venues are created, deduplicated, refreshed, and selected',
     () async {
       final auth = FakeAuthService();
-      final app = AppState(
+      final app = AppState.demo(
         repository: DemoRepository(auth: auth),
         auth: auth,
       );
@@ -461,7 +461,7 @@ void main() {
     'preview labels distinguish private, live, and unpublished changes',
     () async {
       final auth = FakeAuthService();
-      final app = AppState(
+      final app = AppState.demo(
         repository: DemoRepository(auth: auth),
         auth: auth,
       );
@@ -621,7 +621,7 @@ void main() {
   test('stale draft creation cannot replace a newer editor', () async {
     final auth = FakeAuthService();
     final repository = _GatedDraftRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
 
@@ -648,7 +648,7 @@ void main() {
   test('stale draft saves cannot update or clear a newer editor', () async {
     final auth = FakeAuthService();
     final repository = _GatedSaveRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
 
@@ -677,7 +677,7 @@ void main() {
   test('opening and closing a pristine editor creates no draft', () async {
     final auth = FakeAuthService();
     final repository = _CountingDraftRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
 
@@ -693,7 +693,7 @@ void main() {
   test('managed gig refreshes stay bound to the requested band', () async {
     final auth = FakeAuthService();
     final repository = _GatedManageRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
     final created = await repository.createBand(

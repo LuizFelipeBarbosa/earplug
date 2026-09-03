@@ -217,7 +217,7 @@ void main() {
     );
 
     test('a failed create leaves the form open and says so', () async {
-      final app = AppState(
+      final app = AppState.demo(
         repository: _GatedCreateRepository()..fail = true,
         auth: FakeAuthService(),
       );
@@ -237,7 +237,7 @@ void main() {
 
     test('an in-flight create is visible and blocks a second one', () async {
       final repository = _GatedCreateRepository();
-      final app = AppState(repository: repository, auth: FakeAuthService());
+      final app = AppState.demo(repository: repository, auth: FakeAuthService());
       addTearDown(app.dispose);
       _fillBandForm(app);
 
@@ -258,7 +258,7 @@ void main() {
 
     test('failed RSVP mutation reverts its optimistic update', () async {
       final auth = FakeAuthService();
-      final app = AppState(repository: _FailingRsvpRepository(), auth: auth);
+      final app = AppState.demo(repository: _FailingRsvpRepository(), auth: auth);
       addTearDown(app.dispose);
 
       app.toggleRsvp('g1');
@@ -520,7 +520,7 @@ void main() {
 
 Future<AppState> _demoApp({DemoRepository? repository}) async {
   final auth = FakeAuthService();
-  final app = AppState(
+  final app = AppState.demo(
     repository: repository ?? DemoRepository(auth: auth),
     auth: auth,
   );

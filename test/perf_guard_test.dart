@@ -67,7 +67,7 @@ void main() {
       () async {
         final auth = FakeAuthService();
         await auth.signInDemo();
-        final app = AppState(
+        final app = AppState.demo(
           repository: DemoRepository(auth: auth),
           auth: auth,
         );

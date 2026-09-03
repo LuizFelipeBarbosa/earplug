@@ -13,7 +13,7 @@ void main() {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _FeedTransitionRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
       await _flushAsyncWork();
@@ -46,7 +46,7 @@ void main() {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = _FeedTransitionRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
         await _flushAsyncWork();
@@ -87,7 +87,7 @@ void main() {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = _FeedTransitionRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
         await _flushAsyncWork();
@@ -132,7 +132,7 @@ void main() {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _FeedTransitionRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
       await _flushAsyncWork();
@@ -164,7 +164,7 @@ void main() {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = _FeedTransitionRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
         await _flushAsyncWork();

@@ -74,7 +74,7 @@ void main() {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = _SubscriptionSpyRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
         await _flushAsyncWork();
@@ -101,7 +101,7 @@ void main() {
   test('unchanged feed updates preserve band object identity', () async {
     final auth = FakeAuthService();
     final repository = _SubscriptionSpyRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
       await repository.close();
@@ -121,7 +121,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _SubscriptionSpyRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
         await repository.close();
@@ -178,7 +178,7 @@ void main() {
   test('going counts update RSVP totals without a new feed snapshot', () async {
     final auth = FakeAuthService();
     final repository = _SubscriptionSpyRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
       await repository.close();
@@ -198,7 +198,7 @@ void main() {
   test('equal going count updates notify listeners only once', () async {
     final auth = FakeAuthService();
     final repository = _SubscriptionSpyRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
       await repository.close();
@@ -218,7 +218,7 @@ void main() {
   test('opening a summary band loads the full band exactly once', () async {
     final auth = FakeAuthService();
     final repository = _SummaryBandRepository(auth: auth);
-    final app = AppState(repository: repository, auth: auth);
+    final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(() async {
       app.dispose();
       await repository.close();
@@ -242,7 +242,7 @@ void main() {
     () async {
       final auth = FakeAuthService();
       final repository = _SubscriptionSpyRepository(auth: auth);
-      final app = AppState(repository: repository, auth: auth);
+      final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(() async {
         app.dispose();
         await _flushAsyncWork();
@@ -274,7 +274,7 @@ void main() {
 Future<AppState> _createApp() async {
   final auth = FakeAuthService();
   await auth.signInDemo();
-  final app = AppState(
+  final app = AppState.demo(
     repository: DemoRepository(auth: auth),
     auth: auth,
   );
