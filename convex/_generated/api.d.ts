@@ -11,7 +11,6 @@
 import type * as analytics from "../analytics.js";
 import type * as bandInvites from "../bandInvites.js";
 import type * as bands from "../bands.js";
-import type * as clerkBackfill from "../clerkBackfill.js";
 import type * as crons from "../crons.js";
 import type * as gigs from "../gigs.js";
 import type * as http from "../http.js";
@@ -37,7 +36,6 @@ declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
   bandInvites: typeof bandInvites;
   bands: typeof bands;
-  clerkBackfill: typeof clerkBackfill;
   crons: typeof crons;
   gigs: typeof gigs;
   http: typeof http;

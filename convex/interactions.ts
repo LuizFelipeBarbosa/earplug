@@ -70,16 +70,19 @@ export const myInteractions = query({
       ...saves.map((save) => save.gigId),
     ]);
     const cutoff = feedCutoff();
+    // A fan's upcoming RSVPs and saves share flyers and legacy lineup bands,
+    // so each is read once per invocation rather than once per gig.
+    const cache = docCache(ctx);
     const gigs = [];
     for (const gigId of gigIds) {
-      const gig = await ctx.db.get(gigId);
+      const gig = await cache.get(gigId);
       if (
         gig &&
         gig.startsAt >= cutoff &&
         (gig.lifecycle ?? "published") !== "unpublished" &&
         (gig.lifecycle ?? "published") !== "deleted"
       ) {
-        gigs.push(await toGigPayload(ctx, gig));
+        gigs.push(await toGigPayload(ctx, gig, cache));
       }
     }
     return {

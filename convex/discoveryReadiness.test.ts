@@ -246,7 +246,7 @@ describe("discovery listing readiness", () => {
       projectId: project._id,
     });
     expect(
-      (await fixture.t.query(api.gigs.getPublic, { gigId }))
+      (await fixture.t.query(api.gigs.resolvePublic, { ref: gigId }))
         ?.discoveryListingReady,
     ).toBe(true);
 
@@ -271,7 +271,7 @@ describe("discovery listing readiness", () => {
       cap: published.cap,
     });
     expect(
-      (await fixture.t.query(api.gigs.getPublic, { gigId }))
+      (await fixture.t.query(api.gigs.resolvePublic, { ref: gigId }))
         ?.discoveryListingReady,
     ).toBe(false);
 
@@ -285,7 +285,7 @@ describe("discovery listing readiness", () => {
       projectId: project._id,
     });
     expect(
-      (await fixture.t.query(api.gigs.getPublic, { gigId }))
+      (await fixture.t.query(api.gigs.resolvePublic, { ref: gigId }))
         ?.discoveryListingReady,
     ).toBe(true);
   });
@@ -303,7 +303,7 @@ describe("discovery listing readiness", () => {
       projectId: project._id,
     });
     expect(
-      (await fixture.t.query(api.gigs.getPublic, { gigId }))
+      (await fixture.t.query(api.gigs.resolvePublic, { ref: gigId }))
         ?.discoveryListingReady,
     ).toBe(true);
 
@@ -317,7 +317,7 @@ describe("discovery listing readiness", () => {
       projectId: project._id,
     }));
     expect(
-      (await fixture.t.query(api.gigs.getPublic, { gigId }))
+      (await fixture.t.query(api.gigs.resolvePublic, { ref: gigId }))
         ?.discoveryListingReady,
     ).toBe(false);
   });
@@ -342,7 +342,7 @@ describe("discovery listing readiness", () => {
       projectId: project._id,
     });
     expect(
-      (await fixture.t.query(api.gigs.getPublic, { gigId }))
+      (await fixture.t.query(api.gigs.resolvePublic, { ref: gigId }))
         ?.discoveryListingReady,
     ).toBe(false);
   });
@@ -361,7 +361,7 @@ describe("discovery listing readiness", () => {
       projectId: project._id,
     });
     expect(
-      (await fixture.t.query(api.gigs.getPublic, { gigId }))
+      (await fixture.t.query(api.gigs.resolvePublic, { ref: gigId }))
         ?.discoveryListingReady,
     ).toBe(false);
 
@@ -389,7 +389,7 @@ describe("discovery listing readiness", () => {
       projectId: project._id,
     });
     expect(
-      (await fixture.t.query(api.gigs.getPublic, { gigId }))
+      (await fixture.t.query(api.gigs.resolvePublic, { ref: gigId }))
         ?.discoveryListingReady,
     ).toBe(true);
   });

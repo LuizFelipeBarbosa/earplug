@@ -11,6 +11,7 @@ import {
   mutation,
   query,
 } from "./_generated/server";
+import { docCache } from "./lib/docCache";
 import {
   bandColorFor,
   bandPayloadValidator,
@@ -19,9 +20,7 @@ import {
   hasValidProfileImage,
   initialsFor,
   isBandProfileComplete,
-  requireBandAdmin,
-  requireBandAdminQuery,
-  requireBandMemberMutation,
+  requireBandRole,
   requireUser,
   toBandPayload,
   uniqueSlug,
@@ -181,9 +180,10 @@ export const myBands = query({
       .query("bandMembers")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .take(100);
+    const cache = docCache(ctx);
     const out = [];
     for (const membership of memberships) {
-      const band = await ctx.db.get(membership.bandId);
+      const band = await cache.get(membership.bandId);
       if (band && band.archivedAt === undefined) {
         out.push({
           band: await toBandPayload(ctx, band),
@@ -228,9 +228,10 @@ export const profileDetails = query({
       .query("bandMembers")
       .withIndex("by_band", (q) => q.eq("bandId", args.bandId))
       .take(100);
+    const cache = docCache(ctx);
     const memberNames: string[] = [];
     for (const membership of memberships) {
-      const user = await ctx.db.get(membership.userId);
+      const user = await cache.get(membership.userId);
       if (user && user.deletedAt === undefined && user.name.trim() !== "") {
         memberNames.push(user.name);
       }
@@ -251,7 +252,7 @@ export const setupStatus = query({
   args: { bandId: v.id("bands") },
   returns: setupStatusValidator,
   handler: async (ctx, args) => {
-    const band = await requireBandAdminQuery(ctx, args.bandId);
+    const { band } = await requireBandRole(ctx, args.bandId, { role: "admin" });
     const [video, gigRows, memberships] = await Promise.all([
       ctx.db
         .query("bandMedia")
@@ -301,7 +302,7 @@ export const discoveryReadiness = query({
   args: { bandId: v.id("bands"), now: v.number() },
   returns: discoveryReadinessValidator,
   handler: async (ctx, args) => {
-    const band = await requireBandAdminQuery(ctx, args.bandId);
+    const { band } = await requireBandRole(ctx, args.bandId, { role: "admin" });
     if (!Number.isFinite(args.now)) throw new Error("Invalid now");
 
     const profileComplete = isBandProfileComplete(band);
@@ -395,7 +396,9 @@ export const markPreviewed = mutation({
   args: { bandId: v.id("bands") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { band } = await requireBandMemberMutation(ctx, args.bandId);
+    const { band } = await requireBandRole(ctx, args.bandId, {
+      role: "member",
+    });
     if (band.publicProfilePreviewedAt === undefined) {
       await ctx.db.patch(args.bandId, {
         publicProfilePreviewedAt: Date.now(),
@@ -476,7 +479,7 @@ export const updateProfile = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireBandAdmin(ctx, args.bandId);
+    await requireBandRole(ctx, args.bandId, { role: "admin" });
     const patch: {
       name?: string;
       initials?: string;
@@ -535,7 +538,7 @@ async function artworkPhotoForBand(
   bandId: Id<"bands">,
   mediaId: Id<"bandMedia">,
 ) {
-  await requireBandAdmin(ctx, bandId);
+  await requireBandRole(ctx, bandId, { role: "admin" });
   const media = await ctx.db.get(mediaId);
   if (!media) throw new Error("Media not found");
   if (media.bandId !== bandId) {
@@ -570,7 +573,7 @@ export const clearBandPhoto = mutation({
   args: { bandId: v.id("bands") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireBandAdmin(ctx, args.bandId);
+    await requireBandRole(ctx, args.bandId, { role: "admin" });
     await ctx.db.patch(args.bandId, {
       imageStorageId: undefined,
       avatarStorageId: null,
@@ -597,7 +600,7 @@ export const clearBandAvatar = mutation({
   args: { bandId: v.id("bands") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireBandAdmin(ctx, args.bandId);
+    await requireBandRole(ctx, args.bandId, { role: "admin" });
     await ctx.db.patch(args.bandId, { avatarStorageId: null });
     return null;
   },
@@ -620,7 +623,7 @@ export const clearBandBanner = mutation({
   args: { bandId: v.id("bands") },
   returns: v.null(),
   handler: async (ctx, args) => {
-    await requireBandAdmin(ctx, args.bandId);
+    await requireBandRole(ctx, args.bandId, { role: "admin" });
     await ctx.db.patch(args.bandId, { bannerStorageId: null });
     return null;
   },
@@ -691,18 +694,10 @@ export const archive = mutation({
   args: { bandId: v.id("bands") },
   returns: archiveResultValidator,
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
-    const membership = await ctx.db
-      .query("bandMembers")
-      .withIndex("by_band_user", (q) =>
-        q.eq("bandId", args.bandId).eq("userId", user._id),
-      )
-      .unique();
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not an admin of this band");
-    }
-    const band = await ctx.db.get(args.bandId);
-    if (!band) throw new Error("Band not found");
+    const { band, user } = await requireBandRole(ctx, args.bandId, {
+      role: "admin",
+      allowArchived: true,
+    });
     if (band.archivedAt !== undefined) {
       // Retrying is also a repair operation. It restarts every bounded cleanup
       // so bands archived by an older backend cannot retain legacy visibility.
@@ -729,19 +724,10 @@ export const archiveStatus = query({
   args: { bandId: v.id("bands") },
   returns: archiveStatusValidator,
   handler: async (ctx, args) => {
-    const user = await currentUser(ctx);
-    if (!user) throw new Error("Not signed in");
-    const membership = await ctx.db
-      .query("bandMembers")
-      .withIndex("by_band_user", (q) =>
-        q.eq("bandId", args.bandId).eq("userId", user._id),
-      )
-      .unique();
-    if (!membership || membership.role !== "admin") {
-      throw new Error("Not an admin of this band");
-    }
-    const band = await ctx.db.get(args.bandId);
-    if (!band) throw new Error("Band not found");
+    const { band } = await requireBandRole(ctx, args.bandId, {
+      role: "admin",
+      allowArchived: true,
+    });
     return { bandId: band._id, archivedAt: band.archivedAt ?? null };
   },
 });

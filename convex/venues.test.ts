@@ -94,7 +94,7 @@ describe("venues:list", () => {
     );
 
     // No gigs exist at all, so the feed carries no venues.
-    const feed = await t.query(api.gigs.feed, {});
+    const feed = await t.query(api.gigs.feedV2, {});
     expect(feed.venues).toEqual([]);
 
     const venues = await t.query(api.venues.list, {});

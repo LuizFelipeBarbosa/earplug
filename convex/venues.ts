@@ -7,7 +7,7 @@ import {
   feedCutoff,
   gigPayloadValidator,
   MAX_VENUES,
-  requireBandAdmin,
+  requireBandRole,
   toBandPayload,
   toGigPayload,
   toVenuePayload,
@@ -52,7 +52,7 @@ export const create = mutation({
   },
   returns: v.object({ venue: venuePayloadValidator, created: v.boolean() }),
   handler: async (ctx, args) => {
-    const user = await requireBandAdmin(ctx, args.bandId);
+    const { user } = await requireBandRole(ctx, args.bandId, { role: "admin" });
     const name = args.name.trim();
     const area = args.area.trim();
     const addr = args.addr.trim();
@@ -89,17 +89,6 @@ export const create = mutation({
       existing =
         sameName.find(
           (venue) => normalizeVenueText(venue.area) === normalizeVenueText(area),
-        ) ?? null;
-    }
-    if (!existing) {
-      // Compatibility while the curated legacy directory is being backfilled.
-      const legacy = await ctx.db.query("venues").take(MAX_VENUES);
-      existing =
-        legacy.find(
-          (venue) =>
-            normalizeVenueText(venue.addr) === normalizedAddr ||
-            (normalizeVenueText(venue.name) === normalizedName &&
-              normalizeVenueText(venue.area) === normalizeVenueText(area)),
         ) ?? null;
     }
     if (existing) return { venue: toVenuePayload(existing), created: false };

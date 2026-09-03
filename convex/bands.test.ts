@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
+import { publishGigAsAdmin } from "./gigFixtures.test-helpers";
 import { bandColorFor } from "./lib/helpers";
 import schema from "./schema";
 
@@ -406,11 +407,10 @@ describe("bands:archive", () => {
           lng: -122.27,
         }),
       );
-      const future = await asAdmin.mutation(api.gigs.publishGig, {
+      const future = await publishGigAsAdmin(asAdmin, {
         bandId: archived.bandId,
         title: "Future Owned",
         startsAt: Date.now() + 86_400_000,
-        doorsTime: "8PM / 9PM",
         venueId,
         price: 0,
         flyKey: "xerox",

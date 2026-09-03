@@ -6,7 +6,7 @@ import {
   MAX_RECAP_GIGS,
   MAX_RSVPS_PER_GIG,
   pastGigsForBand,
-  requireBandMember,
+  requireBandRole,
 } from "./lib/helpers";
 
 const leadTimeKeyValidator = v.union(
@@ -214,7 +214,9 @@ export const bandRecap = query({
   args: { bandId: v.id("bands") },
   returns: bandRecapValidator,
   handler: async (ctx, args) => {
-    const band = await requireBandMember(ctx, args.bandId);
+    const { band } = await requireBandRole(ctx, args.bandId, {
+      role: "member",
+    });
     const probed = await pastGigsForBand(ctx, args.bandId, MAX_RECAP_GIGS + 1);
     const truncated = probed.length > MAX_RECAP_GIGS;
     const analyzedGigs = probed.slice(0, MAX_RECAP_GIGS);

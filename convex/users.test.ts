@@ -517,34 +517,6 @@ describe("users:setProfileTutorialCompleted", () => {
   });
 });
 
-describe("users:setGenres", () => {
-  test("requires auth and updates genres", async () => {
-    const t = convexTest(schema);
-    await expect(
-      t.mutation(api.users.setGenres, { genres: ["punk"] }),
-    ).rejects.toThrow();
-    const asSam = t.withIdentity({ subject: "user_sam", email: "s@x.com" });
-    await asSam.mutation(api.users.ensureUser, {});
-    await asSam.mutation(api.users.setGenres, { genres: ["punk", "garage"] });
-    const me = await asSam.query(api.users.me, {});
-    expect(me!.genres).toEqual(["punk", "garage"]);
-    expect(me!.fanOnboarding?.genreChoice).toBe("pending");
-
-    await expect(
-      asSam.mutation(api.users.setGenres, {
-        genres: Array.from({ length: 21 }, (_, index) => `genre-${index}`),
-      }),
-    ).rejects.toThrow("at most 20");
-    await expect(
-      asSam.mutation(api.users.setGenres, { genres: ["punk", "punk"] }),
-    ).rejects.toThrow("Genres cannot be duplicated");
-    expect((await asSam.query(api.users.me, {}))!.genres).toEqual([
-      "punk",
-      "garage",
-    ]);
-  });
-});
-
 describe("users:updateFanOnboarding", () => {
   test("requires auth and rejects accounts that were not enrolled", async () => {
     const t = convexTest(schema);
@@ -587,8 +559,10 @@ describe("users:updateFanOnboarding", () => {
   test("records genres and an explicit choice atomically", async () => {
     const t = convexTest(schema);
     const asSam = t.withIdentity({ subject: "user_sam", email: "s@x.com" });
-    await asSam.mutation(api.users.ensureUser, {});
-    await asSam.mutation(api.users.setGenres, { genres: ["punk"] });
+    const { userId } = await asSam.mutation(api.users.ensureUser, {});
+    await t.run(async (ctx) => {
+      await ctx.db.patch(userId, { genres: ["punk"] });
+    });
 
     await asSam.mutation(api.users.updateFanOnboarding, {
       genreChoice: "open",
