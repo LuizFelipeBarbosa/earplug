@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import { docCache } from "./lib/docCache";
+import { milesBetween, OAK_CENTER, SF_CENTER } from "./lib/geo";
 import {
   bandPayloadValidator,
   feedCutoff,
@@ -18,27 +19,9 @@ const MAX_VENUE_GIGS = 200;
 const MAX_VENUE_NAME = 120;
 const MAX_VENUE_AREA = 120;
 const MAX_VENUE_ADDRESS = 240;
-const SF_CENTER = { lat: 37.7599, lng: -122.4148 };
-const OAK_CENTER = { lat: 37.8378, lng: -122.2628 };
 
 export function normalizeVenueText(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function milesBetween(
-  from: { lat: number; lng: number },
-  to: { lat: number; lng: number },
-) {
-  const radians = (degrees: number) => (degrees * Math.PI) / 180;
-  const earthMiles = 3958.7613;
-  const dLat = radians(to.lat - from.lat);
-  const dLng = radians(to.lng - from.lng);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(radians(from.lat)) *
-      Math.cos(radians(to.lat)) *
-      Math.sin(dLng / 2) ** 2;
-  return earthMiles * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export const create = mutation({

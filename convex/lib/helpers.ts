@@ -4,6 +4,7 @@ import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { DocCache } from "./docCache";
 import {
+  addressDisclosureValidator,
   ageRequirementValidator,
   fanCityValidator,
   fanGenreChoiceValidator,
@@ -11,6 +12,8 @@ import {
   gigPublicPerformerValidator,
   pastShowValidator,
 } from "../schema";
+import { approximateLocation, formatMiles, OAK_CENTER, SF_CENTER } from "./geo";
+import { effectiveAddressDisclosure } from "./venuePrivate";
 
 // ─── Deterministic band identity ────────────────────────────────────────────
 // Every band's colour, initials and slug are derived from its name rather than
@@ -432,6 +435,18 @@ export const venuePayloadValidator = v.object({
   distOak: v.string(),
   lat: v.number(),
   lng: v.number(),
+  slug: v.union(v.string(), v.null()),
+  approxLocation: v.object({
+    lat: v.number(),
+    lng: v.number(),
+    label: v.string(),
+  }),
+  neighborhood: v.union(v.string(), v.null()),
+  city: v.union(v.string(), v.null()),
+  addressDisclosure: addressDisclosureValidator,
+  verified: v.boolean(),
+  managedByOrganizationId: v.union(v.id("organizations"), v.null()),
+  exactAddr: v.union(v.string(), v.null()),
 });
 
 export const mediaKindValidator = v.union(
@@ -664,15 +679,52 @@ export async function toGigPayload(
 }
 
 export function toVenuePayload(venue: Doc<"venues">) {
+  const disclosure = effectiveAddressDisclosure(venue);
+  const approx =
+    venue.approxLat !== undefined && venue.approxLng !== undefined
+      ? {
+          lat: venue.approxLat,
+          lng: venue.approxLng,
+          label: venue.approxLabel ?? venue.area,
+          neighborhood: venue.neighborhood ?? null,
+          city: venue.city ?? null,
+        }
+      : approximateLocation({ lat: venue.lat, lng: venue.lng }, venue.area);
+  const address =
+    disclosure === "public"
+      ? {
+          addr: venue.addr,
+          lat: venue.lat,
+          lng: venue.lng,
+          distSF: venue.distSF,
+          distOak: venue.distOak,
+          exactAddr: venue.addr,
+        }
+      : {
+          addr: approx.label,
+          lat: approx.lat,
+          lng: approx.lng,
+          distSF: formatMiles(SF_CENTER, approx),
+          distOak: formatMiles(OAK_CENTER, approx),
+          exactAddr: null,
+        };
+
   return {
     _id: venue._id,
     name: venue.name,
     area: venue.area,
-    addr: venue.addr,
-    distSF: venue.distSF,
-    distOak: venue.distOak,
-    lat: venue.lat,
-    lng: venue.lng,
+    ...address,
+    slug: venue.slug ?? null,
+    approxLocation: {
+      lat: approx.lat,
+      lng: approx.lng,
+      label: approx.label,
+    },
+    neighborhood: venue.neighborhood ?? approx.neighborhood ?? null,
+    city: venue.city ?? approx.city ?? null,
+    addressDisclosure: disclosure,
+    verified: venue.status === "verified",
+    managedByOrganizationId: venue.managedByOrganizationId ?? null,
   };
 }
 
@@ -889,3 +941,5 @@ export function assertVideoThumbnailAcceptable(meta: {
     throw new Error("Video thumbnails must be JPEG images.");
   }
 }
+
+export * from "./authz";

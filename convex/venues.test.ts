@@ -376,7 +376,9 @@ describe("venues:detail", () => {
       pastShows: [],
     });
 
-    expect(await t.query(api.venues.detail, { venueId: fixture.venueId })).toEqual({
+    expect(
+      await t.query(api.venues.detail, { venueId: fixture.venueId }),
+    ).toEqual({
       venue: {
         _id: fixture.venueId,
         name: "Shared Room",
@@ -386,6 +388,18 @@ describe("venues:detail", () => {
         distOak: "1 mi",
         lat: 37.8,
         lng: -122.27,
+        slug: null,
+        approxLocation: {
+          lat: 37.8044,
+          lng: -122.2711,
+          label: "Downtown, Oakland",
+        },
+        neighborhood: "Downtown",
+        city: "Oakland",
+        addressDisclosure: "public",
+        verified: false,
+        managedByOrganizationId: null,
+        exactAddr: "1 Test Way",
       },
       gigs: [
         {
@@ -439,5 +453,73 @@ describe("venues:detail", () => {
       ],
       truncated: false,
     });
+  });
+});
+
+describe("venue address disclosure", () => {
+  test("uses an approximate public location for a pending venue", async () => {
+    const t = convexTest(schema);
+    const stored = {
+      ...venueFields("Private Room"),
+      status: "pending" as const,
+      addr: "99 Private Lane",
+      lat: 37.8058,
+      lng: -122.2705,
+    };
+    const venueId = await t.run((ctx) => ctx.db.insert("venues", stored));
+
+    const venue = (await t.query(api.venues.list, {})).find(
+      (entry) => entry._id === venueId,
+    );
+    expect(venue).toBeDefined();
+    expect(venue!.addr).toBe(venue!.approxLocation.label);
+    expect(venue!.addr).not.toBe(stored.addr);
+    expect(venue!.lat).not.toBe(stored.lat);
+    expect(venue!.lng).not.toBe(stored.lng);
+    expect(venue!.exactAddr).toBeNull();
+    expect(venue!.verified).toBe(false);
+    expect(venue!.approxLocation).toEqual({
+      lat: expect.any(Number),
+      lng: expect.any(Number),
+      label: expect.any(String),
+    });
+  });
+
+  test("keeps exact coordinates public for a verified public venue", async () => {
+    const t = convexTest(schema);
+    const stored = {
+      ...venueFields("Public Room"),
+      status: "verified" as const,
+      addressDisclosure: "public" as const,
+      addr: "100 Public Plaza",
+      lat: 37.8123,
+      lng: -122.2689,
+    };
+    const venueId = await t.run((ctx) => ctx.db.insert("venues", stored));
+
+    const venue = (await t.query(api.venues.list, {})).find(
+      (entry) => entry._id === venueId,
+    );
+    expect(venue).toBeDefined();
+    expect(venue).toMatchObject({
+      addr: stored.addr,
+      lat: stored.lat,
+      lng: stored.lng,
+      exactAddr: stored.addr,
+      verified: true,
+    });
+  });
+
+  test("keeps legacy venue addresses public", async () => {
+    const t = convexTest(schema);
+    const stored = venueFields("Legacy Room");
+    const venueId = await t.run((ctx) => ctx.db.insert("venues", stored));
+
+    const venue = (await t.query(api.venues.list, {})).find(
+      (entry) => entry._id === venueId,
+    );
+    expect(venue).toBeDefined();
+    expect(venue!.addr).toBe(stored.addr);
+    expect(venue!.exactAddr).toBe(stored.addr);
   });
 });
