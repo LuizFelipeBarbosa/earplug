@@ -289,6 +289,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
                       ).copyWith(textScaler: TextScaler.noScaling),
                       child: EpMap(
                         key: ValueKey(center),
+                        showAttribution: false,
                         options: MapOptions(
                           initialCenter: center,
                           initialZoom: widget.initialZoom,

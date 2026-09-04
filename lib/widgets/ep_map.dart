@@ -22,12 +22,14 @@ class EpMap extends StatefulWidget {
     this.mapController,
     this.layers = const [],
     this.tiles = kIsWeb ? EpMapTiles.raster : EpMapTiles.vector,
+    this.showAttribution = true,
   });
 
   final MapOptions options;
   final MapController? mapController;
   final List<Widget> layers;
   final EpMapTiles tiles;
+  final bool showAttribution;
 
   @override
   State<EpMap> createState() => _EpMapState();
@@ -185,7 +187,8 @@ class _EpMapState extends State<EpMap> {
         ),
         if (!raster && !ready && _error == null) const _MapLoading(),
         if (!raster && !ready && _error != null) _MapError(onRetry: _retry),
-        if (raster || style != null) _MapAttribution(entries: attributions),
+        if (widget.showAttribution && (raster || style != null))
+          _MapAttribution(entries: attributions),
       ],
     );
   }
