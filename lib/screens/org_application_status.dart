@@ -44,12 +44,22 @@ class OrgApplicationStatusScreen extends StatefulWidget {
 
 class _OrgApplicationStatusScreenState
     extends State<OrgApplicationStatusScreen> {
+  bool _redirected = false;
   bool _withdrawing = false;
 
   @override
   void initState() {
     super.initState();
     unawaited(context.read<AppState>().refreshOrganizationApplication());
+  }
+
+  void _scheduleApplyRedirect() {
+    if (_redirected) return;
+    _redirected = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<AppState>().go(Screen.orgApply);
+    });
   }
 
   Future<void> _withdraw(OrganizationApplication application) async {
@@ -125,6 +135,9 @@ class _OrgApplicationStatusScreenState
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final application = app.myOrganizationApplication;
+    if (application?.status == OrganizationApplicationStatus.draft) {
+      _scheduleApplyRedirect();
+    }
     return Material(
       color: context.epColors.background,
       child: Column(
@@ -155,6 +168,8 @@ class _OrgApplicationStatusScreenState
                       ),
                     ),
                   )
+                : application.status == OrganizationApplicationStatus.draft
+                ? const Center(child: CircularProgressIndicator())
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
                     children: [

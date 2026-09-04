@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/org_application_status.dart';
 import 'package:earplug/screens/org_apply.dart';
@@ -100,6 +101,55 @@ void main() {
       OrganizationApplicationStatus.submitted,
     );
     expect(find.text('Submitted'), findsOneWidget);
+  });
+
+  testWidgets('draft application reopens in the editor from the switcher', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    late AppState appUnderTest;
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: _NonOwningAppHost(
+        app: () => appUnderTest,
+        child: const RootShell(),
+      ),
+      beforePump: (app) {
+        appUnderTest = app;
+        app.go(Screen.orgApply);
+      },
+    );
+
+    await tester.enterText(
+      find.byKey(const ValueKey('org-apply-name')),
+      'Night Heron Club',
+    );
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump();
+
+    harness.app.toFanView();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('SWITCH'));
+    await tester.pumpAndSettle();
+    expect(find.text('CONTINUE ORGANIZER APPLICATION'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('switcher-become-organizer')));
+    await tester.pumpAndSettle();
+
+    final nameField = find.byKey(const ValueKey('org-apply-name'));
+    expect(nameField, findsOneWidget);
+    expect(
+      tester.widget<TextField>(nameField).controller?.text,
+      'Night Heron Club',
+    );
+    expect(find.byKey(const Key('org-status-timeline')), findsNothing);
+
+    harness.app.dispose();
   });
 
   testWidgets(
@@ -299,6 +349,17 @@ void main() {
       'https://nightheron.example',
     );
   });
+}
+
+class _NonOwningAppHost extends StatelessWidget {
+  const _NonOwningAppHost({required this.app, required this.child});
+
+  final AppState Function() app;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) =>
+      ChangeNotifierProvider<AppState>.value(value: app(), child: child);
 }
 
 final _licensePhoto = PickedMedia(

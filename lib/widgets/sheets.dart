@@ -478,6 +478,7 @@ void showSwitcherSheet(BuildContext context) {
                 Navigator.pop(ctx);
                 final application = app.myOrganizationApplication;
                 if (application == null ||
+                    application.editable ||
                     application.status ==
                         OrganizationApplicationStatus.withdrawn) {
                   app.openOrganizerApply();
@@ -487,6 +488,10 @@ void showSwitcherSheet(BuildContext context) {
               },
               icon: const Icon(Icons.storefront_outlined),
               label: Text(switch (app.myOrganizationApplication) {
+                OrganizationApplication(
+                  status: OrganizationApplicationStatus.draft,
+                ) =>
+                  'CONTINUE ORGANIZER APPLICATION',
                 OrganizationApplication(status: final status)
                     when status != OrganizationApplicationStatus.withdrawn =>
                   'ORGANIZER APPLICATION · ${_applicationStatusLabel(status).toUpperCase()}',
