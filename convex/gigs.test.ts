@@ -1,13 +1,133 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { publishGigAsAdmin } from "./gigFixtures.test-helpers";
+import { BAND_GIG_WRITE_MESSAGE } from "./lib/gigWritePolicy";
 import {
   insertGigWithBandIndex,
   MAX_FEED_GIGS,
   type KnownFlyKey,
 } from "./lib/helpers";
 import schema from "./schema";
+
+describe("gigs: BAND_GIG_WRITES flag", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  async function setupBand() {
+    const t = convexTest(schema);
+    const asAdmin = t.withIdentity({ subject: "flag_admin", email: "a@x.com" });
+    await asAdmin.mutation(api.users.ensureUser, {});
+    const { bandId } = await asAdmin.mutation(api.bands.createBand, {
+      name: "Flag Band",
+      genres: ["punk"],
+      bio: "",
+      area: "Bay Area",
+      inviteHandles: [],
+    });
+    const venueId = await t.run(async (ctx) =>
+      ctx.db.insert("venues", {
+        name: "Flag Hall",
+        area: "Oakland",
+        addr: "1 Flag Way",
+        distSF: "8 mi",
+        distOak: "1 mi",
+        lat: 37.8,
+        lng: -122.27,
+      }),
+    );
+    const gigArgs = {
+      bandId,
+      venueId,
+      title: "Existing Show",
+      startsAt: Date.now() + 86_400_000,
+      price: 0,
+      flyKey: "xerox" as const,
+      ticketing: "rsvp" as const,
+      ageRequirement: "allAges" as const,
+      cap: "No cap",
+    };
+    return { t, asAdmin, bandId, gigArgs };
+  }
+
+  test("blocks draft creation by an authorized admin when disabled", async () => {
+    const { asAdmin, bandId } = await setupBand();
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+
+    await expect(
+      asAdmin.mutation(api.gigs.createDraft, { bandId }),
+    ).rejects.toThrow(BAND_GIG_WRITE_MESSAGE);
+    expect(await asAdmin.query(api.gigs.manageForBand, { bandId })).toEqual([]);
+  });
+
+  test("allows unpublishing but blocks publishing an existing valid draft when disabled", async () => {
+    const { asAdmin, gigArgs } = await setupBand();
+    const { projectId } = await publishGigAsAdmin(asAdmin, gigArgs);
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+
+    await expect(
+      asAdmin.mutation(api.gigs.unpublish, { projectId }),
+    ).resolves.toBeNull();
+    const draft = await asAdmin.query(api.gigs.getProject, { projectId });
+    expect(draft.status).toBe("draft");
+    await expect(
+      asAdmin.mutation(api.gigs.publishDraft, { projectId }),
+    ).rejects.toThrow(BAND_GIG_WRITE_MESSAGE);
+    expect(await asAdmin.query(api.gigs.getProject, { projectId })).toEqual(
+      draft,
+    );
+  });
+
+  test.each([
+    { mutation: "cancel", status: "cancelled" },
+    { mutation: "deleteGig", status: "deleted" },
+  ] as const)(
+    "allows $mutation on a published project when disabled",
+    async ({ mutation, status }) => {
+      const { t, asAdmin, gigArgs } = await setupBand();
+      const { projectId, gigId } = await publishGigAsAdmin(asAdmin, gigArgs);
+      expect(
+        (await asAdmin.query(api.gigs.getProject, { projectId })).status,
+      ).toBe("published");
+      vi.stubEnv("BAND_GIG_WRITES", "false");
+
+      await expect(
+        asAdmin.mutation(api.gigs[mutation], { projectId }),
+      ).resolves.toBeNull();
+      await t.run(async (ctx) => {
+        expect((await ctx.db.get(projectId))?.status).toBe(status);
+        expect((await ctx.db.get(gigId))?.lifecycle).toBe(status);
+      });
+    },
+  );
+
+  test("exposes the disabled flag without authentication", async () => {
+    const t = convexTest(schema);
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+
+    expect(await t.query(api.gigs.writePolicy, {})).toEqual({
+      bandGigWrites: false,
+    });
+  });
+
+  test("defaults to enabled and allows draft creation when the flag is unset", async () => {
+    const { t, asAdmin, bandId } = await setupBand();
+
+    expect(await t.query(api.gigs.writePolicy, {})).toEqual({
+      bandGigWrites: true,
+    });
+    const draft = await asAdmin.mutation(api.gigs.createDraft, { bandId });
+    expect(draft).toMatchObject({ bandId, status: "draft", revision: 1 });
+    expect(
+      await asAdmin.query(api.gigs.getProject, { projectId: draft._id }),
+    ).toEqual(draft);
+  });
+});
 
 describe("gigs:pastForBand", () => {
   /** A band, a venue, and one gig on each side of the feed cutoff. */
