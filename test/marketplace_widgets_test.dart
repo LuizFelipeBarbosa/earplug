@@ -12,6 +12,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'support/fakes.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -74,8 +75,10 @@ void main() {
     tester,
   ) async {
     var draft = const VenueLocationDraft();
+    final geocoding = FakeGeocodingService();
     final harness = await pumpApp(
       tester,
+      geocoding: geocoding,
       home: Scaffold(
         body: SingleChildScrollView(
           child: VenueLocationEditor(
@@ -95,15 +98,11 @@ void main() {
       find.byKey(const Key('marketplace-venue-address')),
       '9 Pier Street',
     );
-    await tester.enterText(
-      find.byKey(const Key('marketplace-venue-area')),
-      'Oakland',
-    );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(draft.name, 'Harbor Loft');
     expect(draft.address, '9 Pier Street');
-    expect(draft.area, 'Oakland');
+    expect(find.byKey(const Key('marketplace-venue-area')), findsNothing);
     expect(draft.isComplete, isFalse);
 
     final map = tester.widget<EpMap>(

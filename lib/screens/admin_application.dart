@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/approx_area_map.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
+import '../widgets/form_bits.dart';
 import '../widgets/map_view.dart';
 import '../widgets/sheets.dart';
 import 'admin_queue.dart' show organizationTypeLabel;
@@ -677,12 +678,13 @@ class _DecisionNoteSheetState extends State<_DecisionNoteSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            key: const Key('admin-review-note'),
+          EpLabeledField(
+            label: 'NOTE',
+            hint: 'Add a note (optional)',
             controller: _controller,
+            fieldKey: const Key('admin-review-note'),
             minLines: 3,
             maxLines: 5,
-            decoration: epInputDecoration(context, 'Add a note (optional)'),
           ),
           const SizedBox(height: 14),
           EpButton(

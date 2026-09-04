@@ -7,6 +7,7 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 Future<({AppHarness harness, DemoRepository repository})> _pumpAdmin(
@@ -37,6 +38,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('The Knockout'), findsOneWidget);
+    expectNoFieldInCard(tester);
   });
 
   testWidgets('admin application reveals exact venue details', (tester) async {
@@ -88,6 +90,7 @@ void main() {
       find.byKey(const Key('admin-review-note')),
       'Please send proof of venue operation.',
     );
+    expectNoFieldInCard(tester);
     await tester.tap(find.byKey(const Key('admin-review-confirm')));
     await tester.pumpAndSettle();
 

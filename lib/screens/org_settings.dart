@@ -20,6 +20,7 @@ class OrgSettingsScreen extends StatefulWidget {
 }
 
 class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
+  final _scrollController = ScrollController();
   final MediaPicker _mediaPicker = MediaPicker();
   final TextEditingController _name = TextEditingController();
   final TextEditingController _description = TextEditingController();
@@ -32,13 +33,21 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
 
   OrganizationDashboard? _dashboard;
   List<String> _existingPhotoUrls = const [];
-  Object? _error;
+  Object? _loadError;
+  String? _saveError;
   bool _loading = true;
-  bool _savingProfile = false;
-  bool _savingPrivate = false;
+  bool _saving = false;
+  bool _saved = false;
   bool _addingPhoto = false;
-  bool _savingPhotos = false;
   String? _loadedOrganizationId;
+
+  String _loadedName = '';
+  String _loadedDescription = '';
+  String _loadedWebsite = '';
+  String _loadedLegalName = '';
+  String _loadedBusinessEmail = '';
+  String _loadedContactName = '';
+  String _loadedPhone = '';
 
   @override
   void didChangeDependencies() {
@@ -49,11 +58,14 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
     _dashboard = null;
     _existingPhotoUrls = const [];
     _sessionPhotos.clear();
+    _saveError = null;
+    _saved = false;
     _load();
   }
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _name.dispose();
     _description.dispose();
     _website.dispose();
@@ -64,81 +76,138 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
     super.dispose();
   }
 
+  void _seedDashboard(
+    OrganizationDashboard dashboard, {
+    required bool preserveOriginalPhotos,
+  }) {
+    final organization = dashboard.organization;
+    final privateDetails = dashboard.privateDetails;
+    final name = organization.name;
+    final description = organization.description ?? '';
+    final website = organization.website ?? '';
+    final legalName = privateDetails?.legalName ?? '';
+    final businessEmail = privateDetails?.businessEmail ?? '';
+    final contactName = privateDetails?.contactName ?? '';
+    final phone = privateDetails?.phone ?? '';
+
+    _dashboard = dashboard;
+    _name.text = name;
+    _description.text = description;
+    _website.text = website;
+    _legalName.text = legalName;
+    _businessEmail.text = businessEmail;
+    _contactName.text = contactName;
+    _phone.text = phone;
+    _loadedName = name;
+    _loadedDescription = description;
+    _loadedWebsite = website;
+    _loadedLegalName = legalName;
+    _loadedBusinessEmail = businessEmail;
+    _loadedContactName = contactName;
+    _loadedPhone = phone;
+    if (!preserveOriginalPhotos) {
+      _existingPhotoUrls = List.of(organization.photoUrls);
+    }
+  }
+
   Future<void> _load({bool preserveOriginalPhotos = false}) async {
     final app = context.read<AppState>();
     final organizationId = app.organizationId;
     setState(() {
       _loading = true;
-      _error = null;
+      _loadError = null;
     });
     try {
       final dashboard = await app.repository.organizationDashboard(
         organizationId,
       );
       if (!mounted || app.organizationId != organizationId) return;
-      final organization = dashboard.organization;
-      final privateDetails = dashboard.privateDetails;
-      _name.text = organization.name;
-      _description.text = organization.description ?? '';
-      _website.text = organization.website ?? '';
-      _legalName.text = privateDetails?.legalName ?? '';
-      _businessEmail.text = privateDetails?.businessEmail ?? '';
-      _contactName.text = privateDetails?.contactName ?? '';
-      _phone.text = privateDetails?.phone ?? '';
       setState(() {
-        _dashboard = dashboard;
-        if (!preserveOriginalPhotos) {
-          _existingPhotoUrls = List.of(organization.photoUrls);
-        }
+        _seedDashboard(
+          dashboard,
+          preserveOriginalPhotos: preserveOriginalPhotos,
+        );
         _loading = false;
       });
     } catch (error) {
       if (!mounted || app.organizationId != organizationId) return;
       setState(() {
-        _error = error;
+        _loadError = error;
         _loading = false;
       });
     }
   }
 
-  Future<void> _saveProfile() async {
-    if (_savingProfile) return;
+  ({bool publicProfile, bool privateDetails}) get _changesSinceLoad => (
+    publicProfile:
+        _name.text != _loadedName ||
+        _description.text != _loadedDescription ||
+        _website.text != _loadedWebsite,
+    privateDetails:
+        _legalName.text != _loadedLegalName ||
+        _businessEmail.text != _loadedBusinessEmail ||
+        _contactName.text != _loadedContactName ||
+        _phone.text != _loadedPhone,
+  );
+
+  void _draftChanged(String _) {
+    if (!_saved && _saveError == null) return;
+    setState(() {
+      _saved = false;
+      _saveError = null;
+    });
+  }
+
+  Future<void> _save() async {
+    if (_saving) return;
     final app = context.read<AppState>();
-    setState(() => _savingProfile = true);
+    final organizationId = app.organizationId;
+    final role = app.organizerRoleFor(organizationId) ?? _dashboard?.role;
+    final isOwner = role == OrganizationRole.owner;
+    final changes = _changesSinceLoad;
+
+    setState(() {
+      _saving = true;
+      _saved = false;
+      _saveError = null;
+    });
     try {
+      // The public profile is intentionally sent for every save, including a
+      // no-op save, while private details only write when their fields changed.
       await app.repository.updateOrganizationProfile(
-        organizationId: app.organizationId,
+        organizationId: organizationId,
         name: _name.text.trim(),
         description: _description.text.trim(),
         website: _website.text.trim(),
       );
-      await _load(preserveOriginalPhotos: true);
-      if (mounted) app.say('Organization profile saved.');
-    } catch (_) {
-      if (mounted) app.say('Could not save. Please retry.');
-    } finally {
-      if (mounted) setState(() => _savingProfile = false);
-    }
-  }
+      if (isOwner && changes.privateDetails) {
+        await app.repository.updateOrganizationPrivateDetails(
+          organizationId: organizationId,
+          legalName: _legalName.text.trim(),
+          businessEmail: _businessEmail.text.trim(),
+          contactName: _contactName.text.trim(),
+          phone: _phone.text.trim(),
+        );
+      }
 
-  Future<void> _savePrivate() async {
-    if (_savingPrivate) return;
-    final app = context.read<AppState>();
-    setState(() => _savingPrivate = true);
-    try {
-      await app.repository.updateOrganizationPrivateDetails(
-        organizationId: app.organizationId,
-        legalName: _legalName.text.trim(),
-        businessEmail: _businessEmail.text.trim(),
-        contactName: _contactName.text.trim(),
-        phone: _phone.text.trim(),
+      final dashboard = await app.repository.organizationDashboard(
+        organizationId,
       );
-      await _load(preserveOriginalPhotos: true);
-      if (mounted) app.say('Private details saved.');
-    } catch (_) {
-      if (mounted) app.say('Could not save. Please retry.');
+      if (!mounted || app.organizationId != organizationId) return;
+      setState(() {
+        _seedDashboard(dashboard, preserveOriginalPhotos: true);
+        _saved = true;
+      });
+      revealFormFeedback(this, _scrollController);
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _saveError =
+            'Changes could not be saved. Check your connection and retry.';
+      });
+      revealFormFeedback(this, _scrollController);
     } finally {
-      if (mounted) setState(() => _savingPrivate = false);
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -158,29 +227,20 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
         media: media,
       );
       if (!mounted) return;
+      await app.repository.setOrganizationPhotos(
+        organizationId: app.organizationId,
+        storageIds: [
+          for (final photo in _sessionPhotos) photo.storageId,
+          storageId,
+        ],
+      );
+      if (!mounted) return;
       setState(() => _sessionPhotos.add((storageId: storageId, media: media)));
-      app.say('Photo ready to save.');
+      app.say('Organization photo saved.');
     } catch (_) {
       if (mounted) app.say('Could not upload the photo. Please retry.');
     } finally {
       if (mounted) setState(() => _addingPhoto = false);
-    }
-  }
-
-  Future<void> _savePhotos() async {
-    if (_savingPhotos) return;
-    final app = context.read<AppState>();
-    setState(() => _savingPhotos = true);
-    try {
-      await app.repository.setOrganizationPhotos(
-        organizationId: app.organizationId,
-        storageIds: [for (final photo in _sessionPhotos) photo.storageId],
-      );
-      if (mounted) app.say('Organization photos saved.');
-    } catch (_) {
-      if (mounted) app.say('Could not save. Please retry.');
-    } finally {
-      if (mounted) setState(() => _savingPhotos = false);
     }
   }
 
@@ -202,15 +262,19 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
         role == OrganizationRole.owner || role == OrganizationRole.manager;
     final isOwner = role == OrganizationRole.owner;
 
-    return ListView(
+    final listView = ListView(
+      controller: _scrollController,
       padding: EdgeInsets.fromLTRB(
         16,
         headerTopPad(context),
         16,
-        tabBarClearance,
+        tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
       ),
       children: [
-        Text('ORGANIZATION SETTINGS', style: epDisplay(size: 22)),
+        Text(
+          'ORGANIZATION SETTINGS',
+          style: Theme.of(context).textTheme.epPageHeading,
+        ),
         const SizedBox(height: 4),
         Text(
           'Update the organization profile and private business details.',
@@ -221,61 +285,46 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
             padding: EdgeInsets.only(top: 80),
             child: Center(child: CircularProgressIndicator()),
           )
-        else if (_error != null)
+        else if (_loadError != null)
           _LoadError(onRetry: _load)
         else if (dashboard != null) ...[
           FormSection(
             title: 'Public profile',
             description: 'These details are visible to artists and fans.',
+            boxed: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(
-                  key: const Key('org-settings-name'),
+                EpLabeledField(
+                  label: 'NAME',
+                  hint: 'Organization name',
+                  fieldKey: const Key('org-settings-name'),
                   controller: _name,
+                  required: true,
                   enabled: canManage,
-                  decoration: labeledInputDecoration(
-                    context,
-                    'Organization name',
-                    'Organization name',
-                  ),
+                  onChanged: _draftChanged,
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  key: const Key('org-settings-description'),
+                const SizedBox(height: 12),
+                EpLabeledField(
+                  label: 'ABOUT',
+                  hint: 'About the organization',
+                  fieldKey: const Key('org-settings-description'),
                   controller: _description,
                   enabled: canManage,
                   minLines: 3,
                   maxLines: 6,
-                  decoration: labeledInputDecoration(
-                    context,
-                    'Description',
-                    'About the organization',
-                  ),
+                  onChanged: _draftChanged,
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  key: const Key('org-settings-website'),
+                const SizedBox(height: 12),
+                EpLabeledField(
+                  label: 'WEBSITE',
+                  hint: 'https://',
+                  fieldKey: const Key('org-settings-website'),
                   controller: _website,
                   enabled: canManage,
                   keyboardType: TextInputType.url,
-                  decoration: labeledInputDecoration(
-                    context,
-                    'Website',
-                    'https://',
-                  ),
+                  onChanged: _draftChanged,
                 ),
-                if (canManage) ...[
-                  const SizedBox(height: 12),
-                  EpButton(
-                    _savingProfile ? 'SAVING…' : 'SAVE PUBLIC PROFILE',
-                    key: const Key('org-settings-save-profile'),
-                    kind: _savingProfile
-                        ? EpButtonKind.disabled
-                        : EpButtonKind.filled,
-                    onTap: _savingProfile ? null : _saveProfile,
-                  ),
-                ],
               ],
             ),
           ),
@@ -283,6 +332,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
             title: 'Photos',
             description:
                 'Current photos are shown below. Re-saving only keeps photos added in this session because existing photo storage IDs are not available.',
+            boxed: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -337,7 +387,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                   ),
                   const SizedBox(height: 12),
                 ],
-                if (canManage) ...[
+                if (canManage)
                   SlotShell(
                     key: const Key('org-settings-add-photo'),
                     state: SlotState.needed,
@@ -368,76 +418,53 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  EpButton(
-                    _savingPhotos ? 'SAVING…' : 'SAVE PHOTOS',
-                    key: const Key('org-settings-save-photos'),
-                    kind: _savingPhotos
-                        ? EpButtonKind.disabled
-                        : EpButtonKind.outline,
-                    onTap: _savingPhotos ? null : _savePhotos,
-                  ),
-                ],
               ],
             ),
           ),
           if (isOwner)
             FormSection(
               title: 'Private details',
-              description:
-                  'Business and contact information is visible only to authorized operations.',
+              description: 'Only EarPlug and your team see these.',
+              boxed: false,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextField(
-                    key: const Key('org-settings-legal-name'),
+                  EpLabeledField(
+                    label: 'LEGAL NAME',
+                    hint: 'Optional',
+                    fieldKey: const Key('org-settings-legal-name'),
                     controller: _legalName,
-                    decoration: labeledInputDecoration(
-                      context,
-                      'Legal name',
-                      'Optional',
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    key: const Key('org-settings-business-email'),
-                    controller: _businessEmail,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: labeledInputDecoration(
-                      context,
-                      'Business email',
-                      'name@example.com',
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    key: const Key('org-settings-contact-name'),
-                    controller: _contactName,
-                    decoration: labeledInputDecoration(
-                      context,
-                      'Contact name',
-                      'Primary contact',
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    key: const Key('org-settings-phone'),
-                    controller: _phone,
-                    keyboardType: TextInputType.phone,
-                    decoration: labeledInputDecoration(
-                      context,
-                      'Phone',
-                      'Optional',
-                    ),
+                    enabled: canManage,
+                    onChanged: _draftChanged,
                   ),
                   const SizedBox(height: 12),
-                  EpButton(
-                    _savingPrivate ? 'SAVING…' : 'SAVE PRIVATE DETAILS',
-                    key: const Key('org-settings-save-private'),
-                    kind: _savingPrivate
-                        ? EpButtonKind.disabled
-                        : EpButtonKind.filled,
-                    onTap: _savingPrivate ? null : _savePrivate,
+                  EpLabeledField(
+                    label: 'BUSINESS EMAIL',
+                    hint: 'name@example.com',
+                    fieldKey: const Key('org-settings-business-email'),
+                    controller: _businessEmail,
+                    enabled: canManage,
+                    keyboardType: TextInputType.emailAddress,
+                    onChanged: _draftChanged,
+                  ),
+                  const SizedBox(height: 12),
+                  EpLabeledField(
+                    label: 'CONTACT NAME',
+                    hint: 'Primary contact',
+                    fieldKey: const Key('org-settings-contact-name'),
+                    controller: _contactName,
+                    enabled: canManage,
+                    onChanged: _draftChanged,
+                  ),
+                  const SizedBox(height: 12),
+                  EpLabeledField(
+                    label: 'PHONE',
+                    hint: 'Optional',
+                    fieldKey: const Key('org-settings-phone'),
+                    controller: _phone,
+                    enabled: canManage,
+                    keyboardType: TextInputType.phone,
+                    onChanged: _draftChanged,
                   ),
                 ],
               ),
@@ -455,7 +482,35 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
               ),
             ),
           ],
+          if (_saveError != null || _saved) ...[
+            const SizedBox(height: 16),
+            InlineFormFeedback(
+              error: _saveError,
+              success: _saved ? 'Changes saved.' : null,
+              errorKey: const Key('org-settings-save-error'),
+              successKey: const Key('org-settings-save-success'),
+            ),
+          ],
         ],
+      ],
+    );
+
+    if (!canManage || dashboard == null || _loading || _loadError != null) {
+      return listView;
+    }
+    return Stack(
+      children: [
+        Positioned.fill(child: listView),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 66,
+          child: StickyActionBar(
+            key: const Key('org-settings-save'),
+            primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
+            onPrimary: _saving ? null : _save,
+          ),
+        ),
       ],
     );
   }

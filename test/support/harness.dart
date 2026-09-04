@@ -7,6 +7,7 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/services/appearance_controller.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/geocoding_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/services/media_upload_service.dart';
 import 'package:earplug/services/stadia_map_style_repository.dart';
@@ -29,12 +30,14 @@ class AppHarness {
     required this.auth,
     required this.media,
     required this.picker,
+    required this.geocoding,
   });
 
   final AppState app;
   final FakeAuthService auth;
   final BandMediaController media;
   final FakeMediaPicker picker;
+  final GeocodingService geocoding;
 }
 
 /// Pumps [home] the way main.dart hosts a screen: an [AppState] and a
@@ -53,6 +56,7 @@ Future<AppHarness> pumpApp(
   EarplugRepository? repository,
   MediaUploadService? uploader,
   LocationService? locationService,
+  GeocodingService? geocoding,
   DateTime Function()? now,
   FutureOr<void> Function(AppState app)? beforePump,
   Duration? pumpFor,
@@ -64,6 +68,7 @@ Future<AppHarness> pumpApp(
 
   final resolvedAuth = auth ?? FakeAuthService();
   final resolvedRepository = repository ?? DemoRepository(auth: resolvedAuth);
+  final resolvedGeocoding = geocoding ?? FakeGeocodingService();
   final resolvedUploader =
       uploader ??
       MediaUploadService(
@@ -140,6 +145,7 @@ Future<AppHarness> pumpApp(
         ChangeNotifierProvider<AppState>(create: (_) => app),
         ChangeNotifierProvider<AppearanceController>.value(value: appearance),
         Provider<StadiaMapStyleRepository>.value(value: mapStyles),
+        Provider<GeocodingService>.value(value: resolvedGeocoding),
         ChangeNotifierProvider<BandMediaController>(create: (_) => media),
       ],
       child: MaterialApp(theme: buildEpTheme(), home: home),
@@ -151,7 +157,13 @@ Future<AppHarness> pumpApp(
     await tester.pump(pumpFor);
   }
 
-  return AppHarness(app: app, auth: resolvedAuth, media: media, picker: picker);
+  return AppHarness(
+    app: app,
+    auth: resolvedAuth,
+    media: media,
+    picker: picker,
+    geocoding: resolvedGeocoding,
+  );
 }
 
 Future<void> enterOrganizer(

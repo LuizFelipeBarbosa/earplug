@@ -10,11 +10,9 @@ import '../data/repository.dart';
 import '../models.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
+import '../widgets/band_identity_editor.dart';
 import '../widgets/common.dart';
-import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
-import '../widgets/sheets.dart';
-import '../widgets/slot_card.dart';
 import '../widgets/venue_location_editor.dart';
 
 Future<String> _uploadApplicationDocument(
@@ -63,48 +61,79 @@ class OrgApplyScreen extends StatefulWidget {
 }
 
 class _OrgApplyScreenState extends State<OrgApplyScreen> {
+  static const _autosaveDelay = Duration(milliseconds: 600);
+
+  final _scroll = ScrollController();
+  final _orgName = TextEditingController();
+  final _capacity = TextEditingController();
+  final _contactName = TextEditingController();
+  final _businessEmail = TextEditingController();
+  final _phone = TextEditingController();
+  final _website = TextEditingController();
+
+  final _capacityFocus = FocusNode();
+  final _contactNameFocus = FocusNode();
+  final _businessEmailFocus = FocusNode();
+  final _phoneFocus = FocusNode();
+  final _websiteFocus = FocusNode();
+
   String? _applicationId;
   int _revision = 0;
-
-  String _orgName = '';
-  OrganizationType? _orgType;
   String? _kind;
-  String _website = '';
-
   VenueLocationDraft _venueLocation = const VenueLocationDraft();
-  String _neighborhood = '';
-  String _city = '';
-  int? _capacity;
-  VenueType? _venueType;
-
-  String _contactName = '';
-  String _businessEmail = '';
-  String _phone = '';
   List<ApplicationDocument> _documents = const [];
+  bool _venueNameEdited = false;
+  int _venueEditorGeneration = 0;
   bool _agreed = false;
-
-  late final MediaPicker _mediaPicker;
   bool _redirected = false;
 
-  bool get _organizationComplete =>
-      _orgName.trim().isNotEmpty && _orgType != null;
-  bool get _locationComplete => _venueLocation.isComplete;
-  bool get _contactComplete =>
-      _contactName.trim().isNotEmpty &&
-      _businessEmail.trim().isNotEmpty &&
-      _businessEmail.contains('@');
-  bool get _documentsComplete => _documents.isNotEmpty;
-  bool get _readyToSubmit =>
-      _organizationComplete &&
-      _locationComplete &&
-      _contactComplete &&
-      _documentsComplete &&
-      _agreed;
+  late final MediaPicker _mediaPicker;
+  Timer? _autosaveTimer;
+  Completer<bool>? _saveCompleter;
+  bool _saveRequested = false;
+  bool _savingDraft = false;
+  bool _blockingSave = false;
+  bool _documentWorking = false;
+  bool _submitting = false;
+  int _editVersion = 0;
+  int _savedVersion = 0;
+  String? _error;
+
+  bool get _hasUnsavedChanges => _editVersion > _savedVersion;
+  bool get _busy => _blockingSave || _documentWorking || _submitting;
+  bool get _canSubmit =>
+      _orgName.text.trim().isNotEmpty &&
+      _kind != null &&
+      _venueLocation.isComplete &&
+      _venueLocation.isNamed &&
+      _contactName.text.trim().isNotEmpty &&
+      _businessEmail.text.contains('@') &&
+      _documents.isNotEmpty &&
+      _agreed &&
+      !_busy;
+
+  String get _saveState =>
+      _savingDraft ||
+          _documentWorking ||
+          _autosaveTimer?.isActive == true ||
+          _hasUnsavedChanges
+      ? 'Saving…'
+      : 'Draft saved';
 
   @override
   void initState() {
     super.initState();
     _mediaPicker = widget.mediaPicker ?? MediaPicker();
+    for (final node in [
+      _capacityFocus,
+      _contactNameFocus,
+      _businessEmailFocus,
+      _phoneFocus,
+      _websiteFocus,
+    ]) {
+      node.addListener(_saveOnBlur);
+    }
+
     final app = context.read<AppState>();
     final application = app.myOrganizationApplication;
     if (application == null) {
@@ -116,28 +145,56 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
     }
   }
 
+  @override
+  void dispose() {
+    _autosaveTimer?.cancel();
+    _scroll.dispose();
+    _orgName.dispose();
+    _capacity.dispose();
+    _contactName.dispose();
+    _businessEmail.dispose();
+    _phone.dispose();
+    _website.dispose();
+    _capacityFocus.dispose();
+    _contactNameFocus.dispose();
+    _businessEmailFocus.dispose();
+    _phoneFocus.dispose();
+    _websiteFocus.dispose();
+    super.dispose();
+  }
+
   void _loadApplication(OrganizationApplication application) {
     final venue = application.venue;
+    final storedVenueName = venue?.name ?? '';
+    final venueNameEdited =
+        storedVenueName.trim().isNotEmpty &&
+        storedVenueName != application.orgName;
+    _autosaveTimer?.cancel();
     _applicationId = application.id;
     _revision = application.revision;
-    _orgName = application.orgName;
-    _orgType = application.orgType;
-    _kind = venue?.venueType == VenueType.club ? 'club' : 'bar';
-    _website = application.website ?? '';
+    _orgName.text = application.orgName;
+    _kind = switch (venue?.venueType) {
+      VenueType.bar => 'bar',
+      VenueType.club => 'club',
+      _ => null,
+    };
     _venueLocation = VenueLocationDraft(
-      name: venue?.name ?? '',
+      name: venueNameEdited ? storedVenueName : application.orgName,
       address: venue?.addr ?? '',
       area: venue?.area ?? '',
       pin: venue?.point,
     );
-    _neighborhood = venue?.neighborhood ?? '';
-    _city = venue?.city ?? '';
-    _capacity = venue?.capacity;
-    _venueType = venue?.venueType;
-    _contactName = application.contactName;
-    _businessEmail = application.businessEmail;
-    _phone = application.phone ?? '';
+    _venueNameEdited = venueNameEdited;
+    _venueEditorGeneration++;
+    _capacity.text = venue?.capacity?.toString() ?? '';
+    _contactName.text = application.contactName;
+    _businessEmail.text = application.businessEmail;
+    _phone.text = application.phone ?? '';
+    _website.text = application.website ?? '';
     _documents = List.of(application.documents);
+    _editVersion = 0;
+    _savedVersion = 0;
+    _saveRequested = false;
   }
 
   void _scheduleStatusRedirect() {
@@ -151,385 +208,306 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
     });
   }
 
-  ApplicationVenueDraft? _applicationVenue(
-    VenueLocationDraft location,
-    String neighborhood,
-    String city,
-    int? capacity,
-    VenueType? venueType,
-  ) {
+  void _changed(VoidCallback update, {bool immediate = false}) {
+    setState(() {
+      update();
+      _editVersion++;
+    });
+    if (immediate) {
+      _autosaveTimer?.cancel();
+      unawaited(_saveDraft());
+    } else {
+      _autosaveTimer?.cancel();
+      _autosaveTimer = Timer(_autosaveDelay, () => unawaited(_saveDraft()));
+    }
+  }
+
+  void _textChanged([String? _]) => _changed(() {});
+
+  void _organizationNameChanged(String name) {
+    _changed(() {
+      if (!_venueNameEdited) {
+        _venueLocation = _venueLocation.copyWith(name: name);
+        _venueEditorGeneration++;
+      }
+    });
+  }
+
+  void _venueChanged(VenueLocationDraft location) {
+    final pinChanged = location.pin != _venueLocation.pin;
+    final nameChanged = location.name != _venueLocation.name;
+    _changed(() {
+      if (nameChanged) _venueNameEdited = true;
+      _venueLocation = location;
+    }, immediate: pinChanged);
+  }
+
+  void _selectKind(String kind) {
+    if (_kind == kind) return;
+    _changed(() => _kind = kind, immediate: true);
+  }
+
+  void _saveOnBlur() {
+    if (_hasUnsavedChanges) unawaited(_saveDraft());
+  }
+
+  ApplicationVenueDraft? get _applicationVenue {
+    final location = _venueLocation;
     if (!location.isComplete) return null;
     return ApplicationVenueDraft(
       name: location.name.trim(),
       addr: location.address.trim(),
       point: location.pin!,
-      area: location.area.trim(),
-      neighborhood: neighborhood.trim().isEmpty ? null : neighborhood.trim(),
-      city: city.trim().isEmpty ? null : city.trim(),
-      capacity: capacity,
-      venueType: venueType,
+      area: location.areaLabel,
+      capacity: int.tryParse(_capacity.text.trim()),
+      venueType: switch (_kind) {
+        'bar' => VenueType.bar,
+        'club' => VenueType.club,
+        _ => null,
+      },
     );
   }
 
-  Future<bool> _saveDraft({
-    String? orgName,
-    OrganizationType? orgType,
-    String? kind,
-    String? website,
-    VenueLocationDraft? venueLocation,
-    String? neighborhood,
-    String? city,
-    int? capacity,
-    VenueType? venueType,
-    bool replaceVenueDetails = false,
-    String? contactName,
-    String? businessEmail,
-    String? phone,
-  }) async {
-    final nextOrgName = orgName ?? _orgName;
-    final nextOrgType = orgType ?? _orgType;
-    final nextKind = kind ?? _kind;
-    final nextWebsite = website ?? _website;
-    final nextLocation = venueLocation ?? _venueLocation;
-    final nextNeighborhood = neighborhood ?? _neighborhood;
-    final nextCity = city ?? _city;
-    final nextCapacity = replaceVenueDetails ? capacity : capacity ?? _capacity;
-    final nextVenueType = replaceVenueDetails
-        ? venueType
-        : venueType ?? _venueType;
-    final nextContactName = contactName ?? _contactName;
-    final nextBusinessEmail = businessEmail ?? _businessEmail;
-    final nextPhone = phone ?? _phone;
-    final app = context.read<AppState>();
+  Future<bool> _saveDraft() {
+    _autosaveTimer?.cancel();
+    _saveRequested = true;
+    if (_saveCompleter case final active?) return active.future;
 
+    final completer = Completer<bool>();
+    _saveCompleter = completer;
+    unawaited(_runSaveLoop(completer));
+    return completer.future;
+  }
+
+  Future<void> _runSaveLoop(Completer<bool> completer) async {
+    if (mounted) setState(() => _savingDraft = true);
+    var saved = false;
+    while (mounted && _saveRequested) {
+      _saveRequested = false;
+      saved = await _performDraftSave();
+    }
+    if (mounted) setState(() => _savingDraft = false);
+    if (identical(_saveCompleter, completer)) _saveCompleter = null;
+    if (!completer.isCompleted) completer.complete(saved);
+  }
+
+  Future<bool> _performDraftSave() async {
+    final savedEditVersion = _editVersion;
+    final app = context.read<AppState>();
     try {
       final saved = await app.repository.saveOrganizationApplicationDraft(
         applicationId: _applicationId,
         expectedRevision: _applicationId == null ? null : _revision,
-        orgName: nextOrgName.trim(),
-        orgType: nextOrgType ?? OrganizationType.venueOperator,
-        website: nextWebsite.trim().isEmpty ? null : nextWebsite.trim(),
-        contactName: nextContactName.trim(),
-        businessEmail: nextBusinessEmail.trim(),
-        phone: nextPhone.trim().isEmpty ? null : nextPhone.trim(),
-        venue: _applicationVenue(
-          nextLocation,
-          nextNeighborhood,
-          nextCity,
-          nextCapacity,
-          nextVenueType,
-        ),
+        orgName: _orgName.text.trim(),
+        orgType: OrganizationType.venueOperator,
+        website: _website.text.trim().isEmpty ? null : _website.text.trim(),
+        contactName: _contactName.text.trim(),
+        businessEmail: _businessEmail.text.trim(),
+        phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+        venue: _applicationVenue,
       );
       if (!mounted) return false;
       setState(() {
         _applicationId = saved.applicationId;
         _revision = saved.revision;
-        _orgName = nextOrgName.trim();
-        _orgType = nextOrgType;
-        _kind = nextKind;
-        _website = nextWebsite.trim();
-        _venueLocation = nextLocation;
-        _neighborhood = nextNeighborhood.trim();
-        _city = nextCity.trim();
-        _capacity = nextCapacity;
-        _venueType = nextVenueType;
-        _contactName = nextContactName.trim();
-        _businessEmail = nextBusinessEmail.trim();
-        _phone = nextPhone.trim();
+        if (_savedVersion < savedEditVersion) {
+          _savedVersion = savedEditVersion;
+        }
+        _error = null;
       });
       await app.refreshOrganizationApplication();
       return mounted;
     } catch (error) {
-      final message = _extractErrorMessage(error);
-      final changedElsewhere = message.toLowerCase().contains(
-        'changed elsewhere',
-      );
-      if (changedElsewhere) {
-        await _handleMutationError(app, error);
-      } else {
-        if (!mounted) return false;
-        app.say("Couldn't save: $message");
-        setState(() {
-          _orgName = nextOrgName.trim();
-          _orgType = nextOrgType;
-          _kind = nextKind;
-          _website = nextWebsite.trim();
-          _venueLocation = nextLocation;
-          _neighborhood = nextNeighborhood.trim();
-          _city = nextCity.trim();
-          _capacity = nextCapacity;
-          _venueType = nextVenueType;
-          _contactName = nextContactName.trim();
-          _businessEmail = nextBusinessEmail.trim();
-          _phone = nextPhone.trim();
-        });
-      }
+      await _handleMutationError(app, error);
       return false;
     }
   }
 
   Future<void> _handleMutationError(AppState app, Object error) async {
-    final changedElsewhere = _extractErrorMessage(
-      error,
-    ).toLowerCase().contains('changed elsewhere');
-    app.say(
-      changedElsewhere
-          ? 'This application changed elsewhere. Latest details restored.'
-          : 'Could not update the application. Latest details restored.',
+    final message = _extractErrorMessage(error);
+    final changedElsewhere = message.toLowerCase().contains(
+      'changed elsewhere',
     );
-    await app.refreshOrganizationApplication();
-    if (!mounted) return;
-    final current = app.myOrganizationApplication;
-    setState(() {
-      if (current == null ||
-          current.status == OrganizationApplicationStatus.withdrawn) {
-        _applicationId = null;
-        _revision = 0;
-      } else if (current.editable) {
-        _loadApplication(current);
-      }
-    });
+    if (changedElsewhere) {
+      await app.refreshOrganizationApplication();
+      if (!mounted) return;
+      final current = app.myOrganizationApplication;
+      setState(() {
+        if (current == null ||
+            current.status == OrganizationApplicationStatus.withdrawn) {
+          _applicationId = null;
+          _revision = 0;
+        } else if (current.editable) {
+          _loadApplication(current);
+        }
+        _error = message;
+      });
+      return;
+    }
+    if (mounted) setState(() => _error = message);
   }
 
-  Future<ApplicationDocument?> _addDocument() async {
+  Future<void> _addDocument() async {
+    if (_documentWorking) return;
     if (_documents.length >= 5) {
       context.read<AppState>().say('Up to five documents can be attached.');
-      return null;
+      return;
     }
 
+    setState(() => _documentWorking = true);
     final PickedMedia? media;
     try {
       media = await _mediaPicker.pickPhoto();
     } on MediaPickException catch (error) {
       if (mounted) context.read<AppState>().say(error.message);
-      return null;
+      if (mounted) setState(() => _documentWorking = false);
+      return;
     }
-    if (!mounted || media == null) return null;
+    if (!mounted) return;
+    if (media == null) {
+      setState(() => _documentWorking = false);
+      return;
+    }
+    final selectedMedia = media;
 
-    if (_applicationId == null && !await _saveDraft()) return null;
-    if (!mounted || _applicationId == null) return null;
+    if (!await _saveDraft()) {
+      if (mounted) setState(() => _documentWorking = false);
+      return;
+    }
+    if (!mounted || _applicationId == null) return;
+
     final app = context.read<AppState>();
     try {
-      final storageId = await _uploadApplicationDocument(app.repository, media);
+      final storageId = await _uploadApplicationDocument(
+        app.repository,
+        selectedMedia,
+      );
       final revision = await app.repository.attachApplicationDocument(
         applicationId: _applicationId!,
         storageId: storageId,
       );
-      final document = ApplicationDocument(
-        storageId: storageId,
-        contentType: media.contentType,
-        sizeBytes: media.sizeBytes,
-      );
-      if (!mounted) return null;
+      if (!mounted) return;
       setState(() {
         _revision = revision;
-        _documents = [..._documents, document];
+        _documents = [
+          ..._documents,
+          ApplicationDocument(
+            storageId: storageId,
+            contentType: selectedMedia.contentType,
+            sizeBytes: selectedMedia.sizeBytes,
+          ),
+        ];
+        _error = null;
       });
       await app.refreshOrganizationApplication();
-      return mounted ? document : null;
     } catch (error) {
       await _handleMutationError(app, error);
-      return null;
+      if (mounted) revealFormFeedback(this, _scroll);
+    } finally {
+      if (mounted) setState(() => _documentWorking = false);
     }
   }
 
-  Future<bool> _removeDocument(ApplicationDocument document) async {
+  Future<void> _removeDocument(ApplicationDocument document) async {
     final applicationId = _applicationId;
-    if (applicationId == null) return false;
+    if (_documentWorking || applicationId == null) return;
+    setState(() => _documentWorking = true);
+    if (!await _saveDraft()) {
+      if (mounted) setState(() => _documentWorking = false);
+      return;
+    }
+    if (!mounted) return;
     final app = context.read<AppState>();
     try {
       final revision = await app.repository.removeApplicationDocument(
         applicationId: applicationId,
         storageId: document.storageId,
       );
-      if (!mounted) return false;
+      if (!mounted) return;
       setState(() {
         _revision = revision;
         _documents = _documents
             .where((item) => item.storageId != document.storageId)
             .toList();
+        _error = null;
       });
       await app.refreshOrganizationApplication();
-      return mounted;
     } catch (error) {
       await _handleMutationError(app, error);
-      return false;
+      if (mounted) revealFormFeedback(this, _scroll);
+    } finally {
+      if (mounted) setState(() => _documentWorking = false);
     }
   }
 
-  Future<bool> _submit() async {
-    final applicationId = _applicationId;
-    final app = context.read<AppState>();
-    if (applicationId == null) {
-      app.say('Save the application details before submitting.');
-      return false;
+  Future<void> _saveForLater() async {
+    if (_busy) return;
+    setState(() {
+      _blockingSave = true;
+      _error = null;
+    });
+    final saved = await _saveDraft();
+    if (!mounted) return;
+    setState(() => _blockingSave = false);
+    if (!saved) {
+      revealFormFeedback(this, _scroll);
+      return;
     }
+    final app = context.read<AppState>();
+    app.say('Draft saved. Find it in the account switcher.');
+    app.toFanView();
+  }
+
+  Future<void> _submit() async {
+    if (!_canSubmit) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final draftSaved = await _saveDraft();
+    if (!mounted) return;
+    if (!draftSaved || _applicationId == null) {
+      setState(() => _submitting = false);
+      revealFormFeedback(this, _scroll);
+      return;
+    }
+
+    final app = context.read<AppState>();
     try {
       final revision = await app.repository.submitOrganizationApplication(
-        applicationId: applicationId,
+        applicationId: _applicationId!,
         expectedRevision: _revision,
       );
-      if (!mounted) return false;
+      if (!mounted) return;
       setState(() => _revision = revision);
       await app.refreshOrganizationApplication();
-      if (!mounted) return false;
+      if (!mounted) return;
       app.go(Screen.orgApplicationStatus);
-      return true;
     } catch (error) {
       await _handleMutationError(app, error);
-      return false;
+      if (mounted) revealFormFeedback(this, _scroll);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
-  void _openOrganizationSheet() {
-    unawaited(
-      showEpSheet(
-        context,
-        (_) => EpFormSheet(
-          title: 'Organization',
-          child: _OrganizationSheetBody(
-            initialName: _orgName,
-            initialType: _orgType,
-            initialKind: _kind,
-            initialWebsite: _website,
-            onSave:
-                ({
-                  required name,
-                  required orgType,
-                  required kind,
-                  required website,
-                }) => _saveDraft(
-                  orgName: name,
-                  orgType: orgType,
-                  kind: kind,
-                  website: website,
-                ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _openLocationSheet() {
-    unawaited(
-      showEpSheet(
-        context,
-        (_) => EpFormSheet(
-          title: 'Location',
-          child: _LocationSheetBody(
-            initialLocation: _venueLocation,
-            initialNeighborhood: _neighborhood,
-            initialCity: _city,
-            initialCapacity: _capacity,
-            initialVenueType: _venueType,
-            onSave:
-                ({
-                  required location,
-                  required neighborhood,
-                  required city,
-                  required capacity,
-                  required venueType,
-                }) => _saveDraft(
-                  venueLocation: location,
-                  neighborhood: neighborhood,
-                  city: city,
-                  capacity: capacity,
-                  venueType: venueType,
-                  replaceVenueDetails: true,
-                ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _openContactSheet() {
-    unawaited(
-      showEpSheet(
-        context,
-        (_) => EpFormSheet(
-          title: 'Contact',
-          child: _ContactSheetBody(
-            initialName: _contactName,
-            initialEmail: _businessEmail,
-            initialPhone: _phone,
-            onSave: ({required name, required email, required phone}) =>
-                _saveDraft(
-                  contactName: name,
-                  businessEmail: email,
-                  phone: phone,
-                ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _openDocumentsSheet() {
-    unawaited(
-      showEpSheet(
-        context,
-        (_) => EpFormSheet(
-          title: 'Documents',
-          child: _DocumentsSheetBody(
-            initialDocuments: _documents,
-            onAdd: _addDocument,
-            onRemove: _removeDocument,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _openReviewSheet() {
-    unawaited(
-      showEpSheet(
-        context,
-        (_) => EpFormSheet(
-          title: 'Review & submit',
-          child: _ReviewSheetBody(
-            orgName: _orgName,
-            kind: _kind,
-            website: _website,
-            venueLocation: _venueLocation,
-            neighborhood: _neighborhood,
-            city: _city,
-            capacity: _capacity,
-            venueType: _venueType,
-            contactName: _contactName,
-            businessEmail: _businessEmail,
-            phone: _phone,
-            documentCount: _documents.length,
-            initiallyAgreed: _agreed,
-            formComplete:
-                _organizationComplete &&
-                _locationComplete &&
-                _contactComplete &&
-                _documentsComplete,
-            onAgreementChanged: (value) {
-              if (mounted) setState(() => _agreed = value);
-            },
-            onSubmit: _submit,
-          ),
-        ),
-      ),
-    );
-  }
-
-  String get _missingLabel {
-    final missing = <String>[
-      if (!_organizationComplete) 'organization',
-      if (!_locationComplete) 'location',
-      if (!_contactComplete) 'contact',
-      if (!_documentsComplete) 'documents',
-    ];
-    return missing.isEmpty ? '' : 'Still needs ${missing.join(', ')}';
-  }
+  List<String> get _missingItems => [
+    if (_orgName.text.trim().isEmpty) 'organization name',
+    if (_kind == null) 'bar or club selection',
+    if (!_venueLocation.isNamed) 'venue name',
+    if (!_venueLocation.isComplete) 'address and pin',
+    if (_contactName.text.trim().isEmpty) 'contact name',
+    if (!_businessEmail.text.contains('@')) 'a valid email',
+    if (_documents.isEmpty) 'at least one document',
+    if (!_agreed) 'agreement checkbox',
+  ];
 
   @override
   Widget build(BuildContext context) {
     final application = context.watch<AppState>().myOrganizationApplication;
-    if (_applicationId == null && application?.editable == true) {
+    if (_applicationId == null &&
+        !_hasUnsavedChanges &&
+        application?.editable == true) {
       _loadApplication(application!);
     }
 
@@ -540,102 +518,231 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
       return const Material(child: Center(child: CircularProgressIndicator()));
     }
 
+    final missing = _missingItems;
+    final enabled = !_busy;
     return Material(
       color: context.epColors.background,
-      child: Column(
+      child: Stack(
         children: [
-          ScreenHeader(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Positioned.fill(
+            child: ListView(
+              controller: _scroll,
+              padding: EdgeInsets.fromLTRB(
+                16,
+                headerTopPad(context),
+                16,
+                tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+              ),
               children: [
-                CircleIconButton(
-                  icon: Icons.close,
-                  onTap: () => context.read<AppState>().back(),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('BECOME AN ORGANIZER', style: epDisplay(size: 16)),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Bars and clubs that run their own room. Promoters '
-                        'and student orgs are coming next.',
-                        style: Theme.of(context).textTheme.epCaption,
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleIconButton(
+                      icon: Icons.close,
+                      onTap: () => context.read<AppState>().back(),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'BECOME AN ORGANIZER',
+                            style: Theme.of(context).textTheme.epPageHeading,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'For bars and clubs that run their own room. '
+                            'Promoters and student organizations are next.',
+                            style: Theme.of(context).textTheme.epCaption,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _saveState,
+                            key: const ValueKey('org-apply-save-state'),
+                            style: Theme.of(context).textTheme.epCaption,
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Focus(
+                  onFocusChange: (focused) {
+                    if (!focused) _saveOnBlur();
+                  },
+                  child: BandIdentityTextField(
+                    fieldKey: const ValueKey('org-apply-name'),
+                    label: 'ORGANIZATION NAME',
+                    required: true,
+                    hint: 'Night Heron Club',
+                    controller: _orgName,
+                    enabled: enabled,
+                    textCapitalization: TextCapitalization.words,
+                    onChanged: _organizationNameChanged,
                   ),
                 ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
-              children: [
-                SlotCard(
-                  key: const Key('org-apply-step-organization'),
-                  tag: 'ORGANIZATION',
-                  value: _organizationComplete ? _orgName : 'REQUIRED',
-                  sub: _organizationComplete
-                      ? (_kind ?? 'bar').toUpperCase()
-                      : 'Tell us which bar or club is applying.',
-                  state: _organizationComplete
-                      ? SlotState.done
-                      : SlotState.needed,
-                  onTap: _openOrganizationSheet,
+                const SizedBox(height: 14),
+                const FieldLabel('WHAT ARE YOU', required: true),
+                const SizedBox(height: 7),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    EpChip(
+                      key: const ValueKey('org-apply-kind-bar'),
+                      label: 'BAR',
+                      active: _kind == 'bar',
+                      onTap: enabled ? () => _selectKind('bar') : null,
+                    ),
+                    EpChip(
+                      key: const ValueKey('org-apply-kind-club'),
+                      label: 'CLUB',
+                      active: _kind == 'club',
+                      onTap: enabled ? () => _selectKind('club') : null,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Promoters and student organizations are coming next.',
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+                const SizedBox(height: 14),
+                Focus(
+                  onFocusChange: (focused) {
+                    if (!focused) _saveOnBlur();
+                  },
+                  child: VenueLocationEditor(
+                    key: ValueKey(_venueEditorGeneration),
+                    keyPrefix: 'org-apply-venue',
+                    showNameField: true,
+                    initial: _venueLocation,
+                    onChanged: _venueChanged,
+                    helperText:
+                        'Fans only ever see the neighborhood. The exact '
+                        'address stays private.',
+                    enabled: enabled,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                EpLabeledField(
+                  fieldKey: const ValueKey('org-apply-capacity'),
+                  label: 'CAPACITY',
+                  hint: 'Roughly how many people fit',
+                  controller: _capacity,
+                  focusNode: _capacityFocus,
+                  enabled: enabled,
+                  keyboardType: TextInputType.number,
+                  onChanged: _textChanged,
+                  onEditingComplete: _saveOnBlur,
+                ),
+                const SectionBar(label: 'CONTACT'),
+                EpLabeledField(
+                  fieldKey: const ValueKey('org-apply-contact-name'),
+                  label: 'CONTACT NAME',
+                  required: true,
+                  hint: 'Who should we contact?',
+                  controller: _contactName,
+                  focusNode: _contactNameFocus,
+                  enabled: enabled,
+                  textCapitalization: TextCapitalization.words,
+                  onChanged: _textChanged,
+                  onEditingComplete: _saveOnBlur,
+                ),
+                const SizedBox(height: 14),
+                EpLabeledField(
+                  fieldKey: const ValueKey('org-apply-email'),
+                  label: 'BUSINESS EMAIL',
+                  required: true,
+                  hint: 'bookings@example.com',
+                  controller: _businessEmail,
+                  focusNode: _businessEmailFocus,
+                  enabled: enabled,
+                  keyboardType: TextInputType.emailAddress,
+                  onChanged: _textChanged,
+                  onEditingComplete: _saveOnBlur,
+                ),
+                const SizedBox(height: 14),
+                EpLabeledField(
+                  fieldKey: const ValueKey('org-apply-phone'),
+                  label: 'PHONE',
+                  hint: '(415) 555-0101',
+                  controller: _phone,
+                  focusNode: _phoneFocus,
+                  enabled: enabled,
+                  keyboardType: TextInputType.phone,
+                  onChanged: _textChanged,
+                  onEditingComplete: _saveOnBlur,
+                ),
+                const SizedBox(height: 14),
+                EpLabeledField(
+                  fieldKey: const ValueKey('org-apply-website'),
+                  label: 'WEBSITE',
+                  hint: 'https://…',
+                  controller: _website,
+                  focusNode: _websiteFocus,
+                  enabled: enabled,
+                  keyboardType: TextInputType.url,
+                  onChanged: _textChanged,
+                  onEditingComplete: _saveOnBlur,
+                ),
+                SectionBar(
+                  label: 'VERIFICATION DOCUMENTS',
+                  count: _documents.length,
+                ),
+                Text(
+                  'A photo of your business license, lease, or utility bill. '
+                  'Reviewers only.',
+                  style: Theme.of(context).textTheme.epCaption,
                 ),
                 const SizedBox(height: 10),
-                SlotCard(
-                  key: const Key('org-apply-step-location'),
-                  tag: 'LOCATION',
-                  value: _locationComplete ? _venueLocation.name : 'REQUIRED',
-                  sub: _locationComplete
-                      ? _venueLocation.area
-                      : 'Add the room and its private street address.',
-                  state: _locationComplete ? SlotState.done : SlotState.needed,
-                  onTap: _openLocationSheet,
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final document in _documents)
+                      _DocumentTile(
+                        document: document,
+                        enabled: !_documentWorking,
+                        onRemove: () => _removeDocument(document),
+                      ),
+                    if (_documents.length < 5)
+                      _AddDocumentTile(
+                        enabled: !_documentWorking,
+                        onTap: _addDocument,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Material(
+                  color: Colors.transparent,
+                  child: CheckboxListTile(
+                    key: const ValueKey('org-apply-agree'),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: _agreed,
+                    onChanged: enabled
+                        ? (value) => setState(() => _agreed = value ?? false)
+                        : null,
+                    title: const Text(
+                      'I confirm this information is accurate and accept the '
+                      'Organizer Agreement.',
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 10),
-                SlotCard(
-                  key: const Key('org-apply-step-contact'),
-                  tag: 'CONTACT',
-                  value: _contactComplete ? _contactName : 'REQUIRED',
-                  sub: _contactComplete
-                      ? _businessEmail
-                      : 'Who should EarPlug contact about the application?',
-                  state: _contactComplete ? SlotState.done : SlotState.needed,
-                  onTap: _openContactSheet,
+                InlineFormFeedback(
+                  error: _error,
+                  success: null,
+                  errorKey: const ValueKey('org-apply-feedback'),
                 ),
-                const SizedBox(height: 10),
-                SlotCard(
-                  key: const Key('org-apply-step-documents'),
-                  tag: 'DOCUMENTS',
-                  value: _documentsComplete
-                      ? '${_documents.length} ATTACHED'
-                      : 'REQUIRED',
-                  sub: _documentsComplete
-                      ? 'License or lease evidence'
-                      : 'Add a photo of your license or lease.',
-                  state: _documentsComplete ? SlotState.done : SlotState.needed,
-                  onTap: _openDocumentsSheet,
-                ),
-                const SizedBox(height: 10),
-                SlotCard(
-                  key: const Key('org-apply-step-review'),
-                  tag: 'REVIEW & SUBMIT',
-                  value: _agreed ? 'READY' : 'REVIEW REQUIRED',
-                  sub: _readyToSubmit
-                      ? 'Everything is ready to submit.'
-                      : 'Confirm the details and Organizer Agreement.',
-                  state: _agreed ? SlotState.done : SlotState.needed,
-                  onTap: _openReviewSheet,
-                ),
-                if (_missingLabel.isNotEmpty) ...[
-                  const SizedBox(height: 12),
+                if (missing.isNotEmpty) ...[
+                  const SizedBox(height: 14),
                   Text(
-                    _missingLabel,
+                    'Still needs ${missing.join(', ')}.',
+                    key: const ValueKey('org-apply-missing'),
                     style: epText(
                       size: 11,
                       color: context.epColors.contentSecondary,
@@ -645,688 +752,157 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-typedef _OrganizationSave =
-    Future<bool> Function({
-      required String name,
-      required OrganizationType orgType,
-      required String kind,
-      required String website,
-    });
-
-class _OrganizationSheetBody extends StatefulWidget {
-  const _OrganizationSheetBody({
-    required this.initialName,
-    required this.initialType,
-    required this.initialKind,
-    required this.initialWebsite,
-    required this.onSave,
-  });
-
-  final String initialName;
-  final OrganizationType? initialType;
-  final String? initialKind;
-  final String initialWebsite;
-  final _OrganizationSave onSave;
-
-  @override
-  State<_OrganizationSheetBody> createState() => _OrganizationSheetBodyState();
-}
-
-class _OrganizationSheetBodyState extends State<_OrganizationSheetBody> {
-  late final TextEditingController _name;
-  late final TextEditingController _website;
-  late OrganizationType _orgType;
-  late String _kind;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _name = TextEditingController(text: widget.initialName);
-    _website = TextEditingController(text: widget.initialWebsite);
-    _orgType = widget.initialType ?? OrganizationType.venueOperator;
-    _kind = widget.initialKind ?? 'bar';
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _website.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (_name.text.trim().isEmpty) {
-      setState(() => _error = 'Organization name is required.');
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    final saved = await widget.onSave(
-      name: _name.text,
-      orgType: _orgType,
-      kind: _kind,
-      website: _website.text,
-    );
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (saved) Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        TextField(
-          key: const Key('org-apply-name'),
-          controller: _name,
-          maxLength: 120,
-          decoration: sheetInput(context, 'Organization name'),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 4,
-          children: [
-            EpChip(
-              label: 'BAR',
-              active: _kind == 'bar',
-              onTap: () => setState(() {
-                _orgType = OrganizationType.venueOperator;
-                _kind = 'bar';
-              }),
-            ),
-            EpChip(
-              label: 'CLUB',
-              active: _kind == 'club',
-              onTap: () => setState(() {
-                _orgType = OrganizationType.venueOperator;
-                _kind = 'club';
-              }),
-            ),
-            const EpChip(label: 'PROMOTER', active: false, onTap: null),
-            const EpChip(label: 'STUDENT ORG', active: false, onTap: null),
-          ],
-        ),
-        Text(
-          'Promoters and student orgs: Coming soon',
-          style: Theme.of(context).textTheme.epCaption,
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          key: const Key('org-apply-website'),
-          controller: _website,
-          keyboardType: TextInputType.url,
-          decoration: sheetInput(context, 'Website (optional)'),
-        ),
-        if (_error case final error?) ...[
-          const SizedBox(height: 10),
-          Text(error, style: epText(color: context.epColors.warning)),
-        ],
-        const SizedBox(height: 14),
-        EpButton(
-          'DONE',
-          key: const Key('org-apply-organization-done'),
-          kind: _saving ? EpButtonKind.disabled : EpButtonKind.filled,
-          onTap: _saving ? null : _save,
-        ),
-      ],
-    );
-  }
-}
-
-typedef _LocationSave =
-    Future<bool> Function({
-      required VenueLocationDraft location,
-      required String neighborhood,
-      required String city,
-      required int? capacity,
-      required VenueType? venueType,
-    });
-
-class _LocationSheetBody extends StatefulWidget {
-  const _LocationSheetBody({
-    required this.initialLocation,
-    required this.initialNeighborhood,
-    required this.initialCity,
-    required this.initialCapacity,
-    required this.initialVenueType,
-    required this.onSave,
-  });
-
-  final VenueLocationDraft initialLocation;
-  final String initialNeighborhood;
-  final String initialCity;
-  final int? initialCapacity;
-  final VenueType? initialVenueType;
-  final _LocationSave onSave;
-
-  @override
-  State<_LocationSheetBody> createState() => _LocationSheetBodyState();
-}
-
-class _LocationSheetBodyState extends State<_LocationSheetBody> {
-  late VenueLocationDraft _location;
-  late final TextEditingController _neighborhood;
-  late final TextEditingController _city;
-  late final TextEditingController _capacity;
-  VenueType? _venueType;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _location = widget.initialLocation;
-    _neighborhood = TextEditingController(text: widget.initialNeighborhood);
-    _city = TextEditingController(text: widget.initialCity);
-    _capacity = TextEditingController(
-      text: widget.initialCapacity?.toString() ?? '',
-    );
-    _venueType = widget.initialVenueType;
-  }
-
-  @override
-  void dispose() {
-    _neighborhood.dispose();
-    _city.dispose();
-    _capacity.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (!_location.isComplete) {
-      setState(() {
-        _error = 'Venue name, address, area, and map pin are required.';
-      });
-      return;
-    }
-    final capacityText = _capacity.text.trim();
-    final capacity = capacityText.isEmpty ? null : int.tryParse(capacityText);
-    if (capacityText.isNotEmpty && capacity == null) {
-      setState(() => _error = 'Capacity must be a whole number.');
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    final saved = await widget.onSave(
-      location: _location,
-      neighborhood: _neighborhood.text,
-      city: _city.text,
-      capacity: capacity,
-      venueType: _venueType,
-    );
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (saved) Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * .72,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            VenueLocationEditor(
-              initial: widget.initialLocation,
-              onChanged: (location) => setState(() => _location = location),
-              showNameField: true,
-              keyPrefix: 'org-apply-venue',
-              helperText:
-                  'Fans only ever see the neighborhood. The exact address '
-                  'stays private.',
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              key: const Key('org-apply-neighborhood'),
-              controller: _neighborhood,
-              decoration: sheetInput(context, 'Neighborhood (optional)'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              key: const Key('org-apply-city'),
-              controller: _city,
-              decoration: sheetInput(context, 'City (optional)'),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              key: const Key('org-apply-capacity'),
-              controller: _capacity,
-              keyboardType: TextInputType.number,
-              decoration: sheetInput(context, 'Capacity (optional)'),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Stack(
               children: [
-                for (final type in VenueType.values)
-                  EpChip(
-                    label: type.name.toUpperCase(),
-                    active: _venueType == type,
-                    onTap: () => setState(() => _venueType = type),
+                StickyActionBar(
+                  key: const ValueKey('org-apply-submit'),
+                  primaryLabel: 'SUBMIT APPLICATION',
+                  onPrimary: _canSubmit ? _submit : null,
+                  secondaryLabel: 'SAVE FOR LATER',
+                  onSecondary: _busy ? null : _saveForLater,
+                ),
+                Positioned.fill(
+                  child: SafeArea(
+                    top: false,
+                    minimum: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: IgnorePointer(
+                            ignoring: _busy,
+                            child: GestureDetector(
+                              key: const ValueKey('org-apply-save'),
+                              behavior: HitTestBehavior.opaque,
+                              onTap: _saveForLater,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 2,
+                          child: IgnorePointer(child: SizedBox.expand()),
+                        ),
+                      ],
+                    ),
                   ),
+                ),
               ],
             ),
-            if (_error case final error?) ...[
-              const SizedBox(height: 10),
-              Text(error, style: epText(color: context.epColors.warning)),
-            ],
-            const SizedBox(height: 14),
-            EpButton(
-              'DONE',
-              key: const Key('org-apply-location-done'),
-              kind: _saving ? EpButtonKind.disabled : EpButtonKind.filled,
-              onTap: _saving ? null : _save,
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-typedef _ContactSave =
-    Future<bool> Function({
-      required String name,
-      required String email,
-      required String phone,
-    });
-
-class _ContactSheetBody extends StatefulWidget {
-  const _ContactSheetBody({
-    required this.initialName,
-    required this.initialEmail,
-    required this.initialPhone,
-    required this.onSave,
-  });
-
-  final String initialName;
-  final String initialEmail;
-  final String initialPhone;
-  final _ContactSave onSave;
-
-  @override
-  State<_ContactSheetBody> createState() => _ContactSheetBodyState();
-}
-
-class _ContactSheetBodyState extends State<_ContactSheetBody> {
-  late final TextEditingController _name;
-  late final TextEditingController _email;
-  late final TextEditingController _phone;
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _name = TextEditingController(text: widget.initialName);
-    _email = TextEditingController(text: widget.initialEmail);
-    _phone = TextEditingController(text: widget.initialPhone);
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    _email.dispose();
-    _phone.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    final email = _email.text.trim();
-    if (_name.text.trim().isEmpty || email.isEmpty || !email.contains('@')) {
-      setState(() => _error = 'Contact name and a valid email are required.');
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    final saved = await widget.onSave(
-      name: _name.text,
-      email: email,
-      phone: _phone.text,
-    );
-    if (!mounted) return;
-    setState(() => _saving = false);
-    if (saved) Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        TextField(
-          key: const Key('org-apply-contact-name'),
-          controller: _name,
-          decoration: sheetInput(context, 'Contact name'),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          key: const Key('org-apply-email'),
-          controller: _email,
-          keyboardType: TextInputType.emailAddress,
-          decoration: sheetInput(context, 'Business email'),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          key: const Key('org-apply-phone'),
-          controller: _phone,
-          keyboardType: TextInputType.phone,
-          decoration: sheetInput(context, 'Phone (optional)'),
-        ),
-        if (_error case final error?) ...[
-          const SizedBox(height: 10),
-          Text(error, style: epText(color: context.epColors.warning)),
-        ],
-        const SizedBox(height: 14),
-        EpButton(
-          'DONE',
-          key: const Key('org-apply-contact-done'),
-          kind: _saving ? EpButtonKind.disabled : EpButtonKind.filled,
-          onTap: _saving ? null : _save,
-        ),
-      ],
-    );
-  }
-}
-
-class _DocumentsSheetBody extends StatefulWidget {
-  const _DocumentsSheetBody({
-    required this.initialDocuments,
-    required this.onAdd,
+class _DocumentTile extends StatelessWidget {
+  const _DocumentTile({
+    required this.document,
+    required this.enabled,
     required this.onRemove,
   });
 
-  final List<ApplicationDocument> initialDocuments;
-  final Future<ApplicationDocument?> Function() onAdd;
-  final Future<bool> Function(ApplicationDocument document) onRemove;
+  final ApplicationDocument document;
+  final bool enabled;
+  final VoidCallback onRemove;
 
-  @override
-  State<_DocumentsSheetBody> createState() => _DocumentsSheetBodyState();
-}
-
-class _DocumentsSheetBodyState extends State<_DocumentsSheetBody> {
-  late List<ApplicationDocument> _documents;
-  bool _working = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _documents = List.of(widget.initialDocuments);
-  }
-
-  Future<void> _add() async {
-    setState(() => _working = true);
-    final document = await widget.onAdd();
-    if (!mounted) return;
-    setState(() {
-      _working = false;
-      if (document != null) _documents = [..._documents, document];
-    });
-  }
-
-  Future<void> _remove(ApplicationDocument document) async {
-    setState(() => _working = true);
-    final removed = await widget.onRemove(document);
-    if (!mounted) return;
-    setState(() {
-      _working = false;
-      if (removed) {
-        _documents = _documents
-            .where((item) => item.storageId != document.storageId)
-            .toList();
-      }
-    });
+  bool get _isImage {
+    if (document.contentType?.startsWith('image/') == true) return true;
+    final path = Uri.tryParse(document.url ?? '')?.path.toLowerCase() ?? '';
+    return RegExp(r'\.(jpe?g|png|gif|webp|heic)$').hasMatch(path);
   }
 
   @override
   Widget build(BuildContext context) {
-    final canAdd = !_working && _documents.length < 5;
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * .7,
+    final fallback = ColoredBox(
+      color: context.epColors.surface,
+      child: Icon(
+        _isImage ? Icons.image_outlined : Icons.description_outlined,
+        color: context.epColors.contentSecondary,
+        size: 30,
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final document in _documents) ...[
-              Row(
+    );
+    return SizedBox.square(
+      dimension: 92,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: _isImage
+                  ? EpNetworkImage(
+                      url: document.url,
+                      fallback: fallback,
+                      cacheWidth: 92,
+                      cacheHeight: 92,
+                    )
+                  : fallback,
+            ),
+          ),
+          Positioned(
+            top: 2,
+            right: 2,
+            child: IconButton.filled(
+              key: ValueKey('org-apply-doc-remove-${document.storageId}'),
+              tooltip: 'Remove document',
+              onPressed: enabled ? onRemove : null,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+              icon: const Icon(Icons.close, size: 17),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddDocumentTile extends StatelessWidget {
+  const _AddDocumentTile({required this.enabled, required this.onTap});
+
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.square(
+      dimension: 92,
+      child: DashedBox(
+        key: const ValueKey('org-apply-doc-add'),
+        padding: EdgeInsets.zero,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: enabled ? onTap : null,
+            borderRadius: BorderRadius.circular(12),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox.square(
-                    dimension: 48,
-                    child: document.contentType?.startsWith('image/') == true
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: EpNetworkImage(
-                              url: document.url,
-                              fallback: const Icon(
-                                Icons.image_outlined,
-                                size: 28,
-                              ),
-                            ),
-                          )
-                        : const Icon(Icons.description_outlined, size: 28),
+                  Icon(
+                    Icons.add_a_photo_outlined,
+                    color: enabled
+                        ? context.epColors.accent
+                        : context.epColors.contentDisabled,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      document.contentType ?? 'Application document',
-                      style: Theme.of(context).textTheme.epBody,
+                  const SizedBox(height: 7),
+                  Text(
+                    'ADD PHOTO',
+                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
+                      color: enabled
+                          ? context.epColors.accent
+                          : context.epColors.contentDisabled,
                     ),
-                  ),
-                  TextButton(
-                    key: Key('org-apply-doc-remove-${document.storageId}'),
-                    onPressed: _working ? null : () => _remove(document),
-                    child: const Text('REMOVE'),
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-            ],
-            EpButton(
-              'ADD PHOTO OF LICENSE / LEASE',
-              key: const Key('org-apply-doc-add'),
-              kind: canAdd ? EpButtonKind.outline : EpButtonKind.disabled,
-              onTap: canAdd ? _add : null,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Phase 1 accepts photos only — PDF upload is coming later.',
-              style: Theme.of(context).textTheme.epCaption,
-            ),
-            const SizedBox(height: 14),
-            const DoneButton(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ReviewSheetBody extends StatefulWidget {
-  const _ReviewSheetBody({
-    required this.orgName,
-    required this.kind,
-    required this.website,
-    required this.venueLocation,
-    required this.neighborhood,
-    required this.city,
-    required this.capacity,
-    required this.venueType,
-    required this.contactName,
-    required this.businessEmail,
-    required this.phone,
-    required this.documentCount,
-    required this.initiallyAgreed,
-    required this.formComplete,
-    required this.onAgreementChanged,
-    required this.onSubmit,
-  });
-
-  final String orgName;
-  final String? kind;
-  final String website;
-  final VenueLocationDraft venueLocation;
-  final String neighborhood;
-  final String city;
-  final int? capacity;
-  final VenueType? venueType;
-  final String contactName;
-  final String businessEmail;
-  final String phone;
-  final int documentCount;
-  final bool initiallyAgreed;
-  final bool formComplete;
-  final ValueChanged<bool> onAgreementChanged;
-  final Future<bool> Function() onSubmit;
-
-  @override
-  State<_ReviewSheetBody> createState() => _ReviewSheetBodyState();
-}
-
-class _ReviewSheetBodyState extends State<_ReviewSheetBody> {
-  late bool _agreed;
-  bool _submitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _agreed = widget.initiallyAgreed;
-  }
-
-  Future<void> _submit() async {
-    setState(() => _submitting = true);
-    final submitted = await widget.onSubmit();
-    if (!mounted) return;
-    setState(() => _submitting = false);
-    if (submitted && Navigator.canPop(context)) Navigator.pop(context);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = widget.formComplete && _agreed && !_submitting;
-    final venueDetails = [
-      widget.venueLocation.name,
-      widget.venueLocation.address,
-      widget.venueLocation.area,
-      widget.neighborhood,
-      widget.city,
-      if (widget.capacity != null) 'Capacity ${widget.capacity}',
-      widget.venueType?.name.toUpperCase() ?? '',
-    ].where((value) => value.trim().isNotEmpty).join(' · ');
-    final contactDetails = [
-      widget.contactName,
-      widget.businessEmail,
-      widget.phone,
-    ].where((value) => value.trim().isNotEmpty).join(' · ');
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * .7,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _ReviewRow(
-              label: 'ORGANIZATION',
-              value: [
-                widget.orgName,
-                widget.kind?.toUpperCase() ?? '',
-                widget.website,
-              ].where((value) => value.trim().isNotEmpty).join(' · '),
-            ),
-            _ReviewRow(label: 'LOCATION', value: venueDetails),
-            _ReviewRow(label: 'CONTACT', value: contactDetails),
-            _ReviewRow(
-              label: 'DOCUMENTS',
-              value: '${widget.documentCount} attached',
-            ),
-            Material(
-              color: Colors.transparent,
-              child: CheckboxListTile(
-                key: const Key('org-apply-agree'),
-                contentPadding: EdgeInsets.zero,
-                value: _agreed,
-                controlAffinity: ListTileControlAffinity.leading,
-                title: const Text(
-                  'I confirm this information is accurate and accept the '
-                  'Organizer Agreement',
-                ),
-                onChanged: (value) {
-                  final agreed = value ?? false;
-                  setState(() => _agreed = agreed);
-                  widget.onAgreementChanged(agreed);
-                },
-              ),
-            ),
-            const SizedBox(height: 10),
-            EpButton(
-              'SUBMIT',
-              key: const Key('org-apply-submit'),
-              kind: enabled ? EpButtonKind.filled : EpButtonKind.disabled,
-              onTap: enabled ? _submit : null,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ReviewRow extends StatelessWidget {
-  const _ReviewRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: epText(
-              size: 10,
-              weight: FontWeight.w900,
-              letterSpacing: 1,
-              color: context.epColors.contentSecondary,
             ),
           ),
-          const SizedBox(height: 3),
-          Text(
-            value.isEmpty ? 'Not provided' : value,
-            style: Theme.of(context).textTheme.epBody,
-          ),
-        ],
+        ),
       ),
     );
   }

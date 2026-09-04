@@ -28,6 +28,7 @@ enum Screen {
   orgJoin,
   orgDash,
   orgVenues,
+  orgVenueEdit,
   orgTeam,
   orgSettings,
   adminQueue,
@@ -69,6 +70,7 @@ const bandTabScreens = {
 const organizerTabScreens = {
   Screen.orgDash,
   Screen.orgVenues,
+  Screen.orgVenueEdit,
   Screen.orgTeam,
   Screen.orgSettings,
 };

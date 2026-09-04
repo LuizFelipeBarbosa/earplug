@@ -1,15 +1,14 @@
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
+import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/org_dash.dart';
 import 'package:earplug/screens/org_join.dart';
 import 'package:earplug/screens/org_settings.dart';
 import 'package:earplug/screens/org_team.dart';
-import 'package:earplug/screens/org_venues.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
-import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -53,9 +52,7 @@ void main() {
     );
   });
 
-  testWidgets('venue public profile saves and refreshes the venue list', (
-    tester,
-  ) async {
+  testWidgets('venue edit page saves the public profile', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = DemoRepository(auth: auth);
@@ -64,9 +61,12 @@ void main() {
       auth: auth,
       repository: repository,
       beforePump: (app) => app.switchToOrganization('org1'),
-      home: const Scaffold(body: OrgVenuesScreen()),
+      home: const RootShell(),
     );
     await enterOrganizer(tester, harness, 'org1');
+
+    await tester.tap(find.byKey(const Key('organizer-tab-venues')));
+    await tester.pumpAndSettle();
 
     final venueCard = find.byKey(const ValueKey('org-venue-v1'));
     expect(venueCard, findsOneWidget);
@@ -81,6 +81,14 @@ void main() {
     await tester.tap(venueCard);
     await tester.pumpAndSettle();
     final demoVenue = DemoData.venues['v1']!;
+    expect(find.text('The Foghorn Club'), findsWidgets);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('org-venue-public-name')))
+          .controller
+          ?.text,
+      demoVenue.name,
+    );
     expect(
       tester
           .widget<TextField>(
@@ -101,6 +109,10 @@ void main() {
           ?.text,
       demoVenue.capacityPublic!.toString(),
     );
+    expect(
+      find.ancestor(of: find.byType(TextField), matching: find.byType(EpCard)),
+      findsNothing,
+    );
 
     await tester.enterText(
       find.byKey(const Key('org-venue-public-name')),
@@ -111,40 +123,25 @@ void main() {
       find.byKey(const Key('org-venue-public-description')),
       updatedDescription,
     );
-    final sheetScrollable = find
-        .descendant(
-          of: find.byType(EpSheetShell),
-          matching: find.byType(Scrollable),
-        )
-        .first;
     final clubChip = find.byKey(const Key('org-venue-type-club'));
-    await tester.scrollUntilVisible(clubChip, 100, scrollable: sheetScrollable);
     await tester.tap(clubChip);
     await tester.enterText(
       find.byKey(const Key('org-venue-public-capacity')),
       '220',
     );
-    final save = find.byKey(const Key('org-venue-save-public'));
-    await tester.scrollUntilVisible(save, 250, scrollable: sheetScrollable);
-    await tester.pumpAndSettle();
+    final save = find.byKey(const Key('org-venue-save'));
     await tester.tap(save);
     await tester.pumpAndSettle();
-    await tester.tapAt(const Offset(10, 10));
-    await tester.pumpAndSettle();
 
-    final refreshedCard = find.byKey(const ValueKey('org-venue-v1'));
-    expect(
-      find.descendant(of: refreshedCard, matching: find.text('Foghorn Hall')),
-      findsOneWidget,
-    );
     final savedVenue = await repository.resolveVenue('v1');
     expect(savedVenue?.name, 'Foghorn Hall');
     expect(savedVenue?.description, updatedDescription);
     expect(savedVenue?.venueType, VenueType.club);
     expect(savedVenue?.capacityPublic, 220);
+    expect(find.byKey(const Key('org-venue-save-success')), findsOneWidget);
   });
 
-  testWidgets('venue private location is seeded and disclosure can change', (
+  testWidgets('venue location autocomplete saves and disclosure can change', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -155,28 +152,52 @@ void main() {
       auth: auth,
       repository: repository,
       beforePump: (app) => app.switchToOrganization('org1'),
-      home: const Scaffold(body: OrgVenuesScreen()),
+      home: const RootShell(),
     );
     await enterOrganizer(tester, harness, 'org1');
 
+    await tester.tap(find.byKey(const Key('organizer-tab-venues')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('org-venue-v1')));
     await tester.pumpAndSettle();
-    final address = tester.widget<TextField>(
-      find.byKey(const Key('org-venue-private-address')),
+    final pageScrollable = find
+        .descendant(
+          of: find.byType(ListView).first,
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    final addressFinder = find.byKey(const Key('org-venue-private-address'));
+    await tester.scrollUntilVisible(
+      addressFinder,
+      250,
+      scrollable: pageScrollable,
     );
+    final address = tester.widget<TextField>(addressFinder);
     expect(address.controller?.text, DemoData.venuePrivateDetails['v1']!.addr);
+    expect(find.text('Tap the map to adjust the pin'), findsOneWidget);
+
+    await tester.enterText(addressFinder, '22 V');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump();
+    final suggestion = find.byKey(const Key('org-venue-private-suggestion-0'));
+    await tester.ensureVisible(suggestion);
+    await tester.pump();
+    await tester.tap(suggestion);
+    await tester.pump();
+
+    await tester.tap(find.byKey(const Key('org-venue-save')));
+    await tester.pumpAndSettle();
+
+    final privateDetails = await repository.venuePrivateDetails('v1');
+    expect(privateDetails?.addr, '22 Valencia St');
+    expect(privateDetails?.capacity, 180);
 
     final disclosure = find.byKey(const Key('org-venue-disclosure'));
     expect(tester.widget<SwitchRow>(disclosure).value, isFalse);
     await tester.scrollUntilVisible(
       disclosure,
       300,
-      scrollable: find
-          .descendant(
-            of: find.byType(EpSheetShell),
-            matching: find.byType(Scrollable),
-          )
-          .first,
+      scrollable: pageScrollable,
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Show exact address publicly'));
@@ -185,7 +206,7 @@ void main() {
     expect(tester.widget<SwitchRow>(disclosure).value, isTrue);
     final venue = await repository.resolveVenue('v1');
     expect(venue?.disclosure, AddressDisclosure.public);
-    expect(venue?.exactAddress, DemoData.venuePrivateDetails['v1']!.addr);
+    expect(venue?.exactAddress, '22 Valencia St');
   });
 
   testWidgets('team lists members and creates a role-specific invite', (
@@ -255,7 +276,7 @@ void main() {
     expect(harness.app.toast, contains('at least one owner'));
   });
 
-  testWidgets('organization public profile saves through settings', (
+  testWidgets('organization public and private settings save together', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -274,24 +295,33 @@ void main() {
       find.byKey(const Key('org-settings-name')),
       'Foghorn Collective',
     );
-    final save = find.byKey(const Key('org-settings-save-profile'));
-    await tester.scrollUntilVisible(
-      save,
-      250,
-      scrollable: find.byType(Scrollable).first,
+    final pageScrollable = find
+        .descendant(
+          of: find.byType(ListView),
+          matching: find.byType(Scrollable),
+        )
+        .first;
+    final legalName = find.byKey(const Key('org-settings-legal-name'));
+    await tester.scrollUntilVisible(legalName, 250, scrollable: pageScrollable);
+    await tester.enterText(legalName, 'Foghorn Collective LLC');
+    expect(
+      find.ancestor(of: find.byType(TextField), matching: find.byType(EpCard)),
+      findsNothing,
     );
+
+    final save = find.byKey(const Key('org-settings-save'));
     await tester.pumpAndSettle();
     await tester.tap(save);
     await tester.pumpAndSettle();
 
     expect((await repository.organization('org1'))?.name, 'Foghorn Collective');
     expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('org-settings-name')))
-          .controller
-          ?.text,
-      'Foghorn Collective',
+      (await repository.organizationDashboard(
+        'org1',
+      )).privateDetails?.legalName,
+      'Foghorn Collective LLC',
     );
+    expect(find.byKey(const Key('org-settings-save-success')), findsOneWidget);
   });
 
   testWidgets('organization invite can be accepted and opens organizer mode', (

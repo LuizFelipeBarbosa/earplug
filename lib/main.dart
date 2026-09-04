@@ -35,6 +35,7 @@ import 'screens/org_dash.dart';
 import 'screens/org_join.dart';
 import 'screens/org_settings.dart';
 import 'screens/org_team.dart';
+import 'screens/org_venue_edit.dart';
 import 'screens/org_venues.dart';
 import 'screens/settings.dart';
 import 'screens/venue_detail.dart';
@@ -42,6 +43,7 @@ import 'services/appearance_controller.dart';
 import 'services/auth_service.dart';
 import 'services/auth_service_factory.dart';
 import 'services/convex_service.dart';
+import 'services/geocoding_service.dart';
 import 'services/stadia_map_style_repository.dart';
 import 'services/web_shell.dart';
 import 'theme.dart';
@@ -299,6 +301,11 @@ class EarplugApp extends StatelessWidget {
           create: (_) => StadiaMapStyleRepository(apiKey: Env.stadiaMapsApiKey),
           dispose: (_, repository) => repository.dispose(),
         ),
+        Provider<GeocodingService>(
+          create: (_) => StadiaGeocodingService(apiKey: Env.stadiaMapsApiKey),
+          dispose: (_, service) =>
+              (service as StadiaGeocodingService).dispose(),
+        ),
         ChangeNotifierProvider(
           create: (_) =>
               appState ??
@@ -537,6 +544,10 @@ class RootShell extends StatelessWidget {
       Screen.orgJoin => OrgJoinScreen(key: key, token: entry.param!),
       Screen.orgDash => OrgDashScreen(key: key),
       Screen.orgVenues => OrgVenuesScreen(key: key),
+      Screen.orgVenueEdit => OrgVenueEditScreen(
+        key: key,
+        venueId: entry.param!,
+      ),
       Screen.orgTeam => OrgTeamScreen(key: key),
       Screen.orgSettings => OrgSettingsScreen(key: key),
       Screen.adminQueue => AdminQueueScreen(key: key),
