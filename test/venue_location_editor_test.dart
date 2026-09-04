@@ -219,6 +219,167 @@ void main() {
     expect(geocoding.queries, isEmpty);
     harness.app.dispose();
   });
+  testWidgets('compact preview opens a pin sheet and commits only on Done', (
+    tester,
+  ) async {
+    const initial = VenueLocationDraft(
+      address: '22 Valencia St',
+      area: 'Mission',
+      pin: LatLng(37.76, -122.42),
+    );
+    var draft = initial;
+    final geocoding = FakeGeocodingService();
+    final harness = await pumpApp(
+      tester,
+      home: _EditorHost(
+        geocoding: geocoding,
+        compactMap: true,
+        initial: initial,
+        onChanged: (value) => draft = value,
+      ),
+    );
+    expect(find.byKey(const Key('venue-test-map')), findsNothing);
+    final previewMap = tester.widget<EpMap>(find.byType(EpMap));
+    expect(previewMap.layers, isEmpty);
+    expect(previewMap.options.interactionOptions.flags, InteractiveFlag.none);
+    expect(find.text('Mission'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('venue-test-preview')));
+    await tester.pumpAndSettle();
+    var map = tester.widget<EpMap>(find.byKey(const Key('venue-test-pin-map')));
+    const point = LatLng(37.78, -122.43);
+    map.options.onTap!(const TapPosition(Offset.zero, Offset.zero), point);
+    await tester.pump();
+    expect(draft, same(initial));
+    await tester.tap(find.byKey(const Key('venue-test-pin-cancel')));
+    await tester.pumpAndSettle();
+    expect(draft, same(initial));
+    await tester.tap(find.byKey(const Key('venue-test-preview')));
+    await tester.pumpAndSettle();
+    map = tester.widget<EpMap>(find.byKey(const Key('venue-test-pin-map')));
+    expect(map.options.initialCenter, initial.pin);
+    map.options.onTap!(const TapPosition(Offset.zero, Offset.zero), point);
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('venue-test-pin-done')));
+    await tester.pumpAndSettle();
+    expect(draft.pin, point);
+    expect(draft.address, initial.address);
+    expect(find.byKey(const Key('venue-test-pin-map')), findsNothing);
+    harness.app.dispose();
+  });
+
+  testWidgets(
+    'compact editor preserves autocomplete and its neighborhood label',
+    (tester) async {
+      var draft = const VenueLocationDraft();
+      final geocoding = FakeGeocodingService();
+      final harness = await pumpApp(
+        tester,
+        home: _EditorHost(
+          geocoding: geocoding,
+          compactMap: true,
+          onChanged: (value) => draft = value,
+        ),
+      );
+      await tester.enterText(
+        find.byKey(const Key('venue-test-address')),
+        'Valencia',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('venue-test-suggestion-0')));
+      await tester.pumpAndSettle();
+      expect(draft.isComplete, isTrue);
+      expect(find.text('Mission'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('venue-test-preview')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<EpMap>(find.byKey(const Key('venue-test-pin-map')))
+            .options
+            .initialCenter,
+        geocoding.suggestions.first.point,
+      );
+      await tester.tap(find.byKey(const Key('venue-test-pin-cancel')));
+      await tester.pumpAndSettle();
+      harness.app.dispose();
+    },
+  );
+
+  testWidgets(
+    'compact editor shows search errors with privacy copy and supports manual placement',
+    (tester) async {
+      var draft = const VenueLocationDraft();
+      final geocoding = FakeGeocodingService()
+        ..failure = const GeocodingNetworkFailure();
+      final harness = await pumpApp(
+        tester,
+        home: _EditorHost(
+          geocoding: geocoding,
+          compactMap: true,
+          helperText: 'The exact address stays private.',
+          onChanged: (value) => draft = value,
+        ),
+      );
+      await tester.enterText(
+        find.byKey(const Key('venue-test-address')),
+        'Valencia',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(find.text('The exact address stays private.'), findsOneWidget);
+      expect(find.byKey(const Key('venue-test-search-error')), findsOneWidget);
+      geocoding.failure = const GeocodingUnauthorized();
+      await tester.enterText(
+        find.byKey(const Key('venue-test-address')),
+        '22 Valencia St',
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(
+        find.byKey(const Key('venue-test-search-unavailable')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byKey(const Key('venue-test-preview')));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<FilledButton>(find.byKey(const Key('venue-test-pin-done')))
+            .onPressed,
+        isNull,
+      );
+      final map = tester.widget<EpMap>(
+        find.byKey(const Key('venue-test-pin-map')),
+      );
+      map.options.onTap!(
+        const TapPosition(Offset.zero, Offset.zero),
+        const LatLng(37.76, -122.42),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('venue-test-pin-done')));
+      await tester.pumpAndSettle();
+      expect(draft.isComplete, isTrue);
+      harness.app.dispose();
+    },
+  );
+
+  testWidgets('disabled compact editor cannot open the pin sheet', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: _EditorHost(
+        geocoding: FakeGeocodingService(),
+        compactMap: true,
+        enabled: false,
+      ),
+    );
+    final preview = tester.widget<InkWell>(
+      find.byKey(const Key('venue-test-preview')),
+    );
+    expect(preview.onTap, isNull);
+    expect(find.byKey(const Key('venue-test-pin-map')), findsNothing);
+    harness.app.dispose();
+  });
 }
 
 class _EditorHost extends StatelessWidget {
@@ -228,6 +389,8 @@ class _EditorHost extends StatelessWidget {
     this.initial = const VenueLocationDraft(),
     this.enabled = true,
     this.showNameField = false,
+    this.compactMap = false,
+    this.helperText,
   });
 
   final FakeGeocodingService geocoding;
@@ -235,6 +398,8 @@ class _EditorHost extends StatelessWidget {
   final VenueLocationDraft initial;
   final bool enabled;
   final bool showNameField;
+  final bool compactMap;
+  final String? helperText;
 
   @override
   Widget build(BuildContext context) {
@@ -244,6 +409,8 @@ class _EditorHost extends StatelessWidget {
           initial: initial,
           keyPrefix: 'venue-test',
           showNameField: showNameField,
+          compactMap: compactMap,
+          helperText: helperText,
           enabled: enabled,
           geocoding: geocoding,
           onChanged: onChanged ?? (_) {},

@@ -229,8 +229,9 @@ class _MapError extends StatelessWidget {
             border: Border.all(color: context.epColors.border),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 'MAP UNAVAILABLE',
@@ -257,43 +258,47 @@ class _MapAttribution extends StatelessWidget {
 
     return Positioned(
       top: 4,
+      left: 4,
       right: 4,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 280),
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-        decoration: BoxDecoration(
-          color: context.epColors.surface.withValues(alpha: .9),
-          borderRadius: BorderRadius.circular(5),
-        ),
-        child: Wrap(
-          spacing: 4,
-          runSpacing: 1,
-          alignment: WrapAlignment.end,
-          children: [
-            for (final entry in entries)
-              Semantics(
-                link: entry.url != null,
-                label: entry.text,
-                child: InkWell(
-                  onTap: entry.url == null
-                      ? null
-                      : () => launchUrl(
-                          Uri.parse(entry.url!),
-                          mode: LaunchMode.externalApplication,
-                        ),
-                  child: Text(
-                    entry.text,
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      fontSize: 9,
-                      color: context.epColors.contentSecondary,
-                      decoration: entry.url == null
-                          ? TextDecoration.none
-                          : TextDecoration.underline,
+      child: Align(
+        alignment: Alignment.topRight,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 280),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+          decoration: BoxDecoration(
+            color: context.epColors.surface.withValues(alpha: .9),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Wrap(
+            spacing: 4,
+            runSpacing: 1,
+            alignment: WrapAlignment.end,
+            children: [
+              for (final entry in entries)
+                Semantics(
+                  link: entry.url != null,
+                  label: entry.text,
+                  child: InkWell(
+                    onTap: entry.url == null
+                        ? null
+                        : () => launchUrl(
+                            Uri.parse(entry.url!),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                    child: Text(
+                      entry.text,
+                      style: Theme.of(context).textTheme.epCaption.copyWith(
+                        fontSize: 9,
+                        color: context.epColors.contentSecondary,
+                        decoration: entry.url == null
+                            ? TextDecoration.none
+                            : TextDecoration.underline,
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

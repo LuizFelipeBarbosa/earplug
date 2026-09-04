@@ -9,6 +9,8 @@ import '../services/geocoding_service.dart';
 import '../theme.dart';
 import 'common.dart';
 import 'ep_map.dart';
+import 'ep_sheet.dart';
+import 'sheets.dart';
 
 class VenueLocationDraft {
   const VenueLocationDraft({
@@ -54,6 +56,7 @@ class VenueLocationEditor extends StatefulWidget {
     this.initialZoom = 11.5,
     this.helperText,
     this.enabled = true,
+    this.compactMap = false,
     this.geocoding,
   });
 
@@ -65,6 +68,9 @@ class VenueLocationEditor extends StatefulWidget {
   final double initialZoom;
   final String? helperText;
   final bool enabled;
+
+  /// Shows a neighborhood thumbnail and edits the exact pin in a sheet.
+  final bool compactMap;
   final GeocodingService? geocoding;
 
   @override
@@ -208,6 +214,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
   }
 
   void _moveTo(LatLng point, double zoom) {
+    if (widget.compactMap) return;
     if (!_mapReady) {
       _pendingMove = (point: point, zoom: zoom);
       return;
@@ -230,6 +237,108 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
     if (!widget.enabled) return;
     _emit(_draft.copyWith(pin: point));
     setState(() => _suggestions = []);
+  }
+
+  Future<void> _editPin() async {
+    if (!widget.enabled) return;
+    FocusScope.of(context).unfocus();
+    await showEpSheet(
+      context,
+      (sheetContext) => _VenuePinSheet(
+        keyPrefix: widget.keyPrefix,
+        initialPin: _draft.pin,
+        initialCenter: widget.initialCenter,
+        initialZoom: widget.initialZoom,
+        onDone: (pin) {
+          if (mounted && widget.enabled) _setPin(pin);
+          Navigator.pop(sheetContext);
+        },
+      ),
+    );
+  }
+
+  Widget _neighborhoodPreview(BuildContext context) {
+    final pin = _draft.pin;
+    // Keep the preview at neighborhood scale, without an exact-location marker.
+    final center = pin == null
+        ? widget.initialCenter
+        : LatLng(
+            (pin.latitude * 100).round() / 100,
+            (pin.longitude * 100).round() / 100,
+          );
+    return Material(
+      color: context.epColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        key: Key('${widget.keyPrefix}-preview'),
+        onTap: widget.enabled ? _editPin : null,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Row(
+            children: [
+              ExcludeSemantics(
+                child: SizedBox(
+                  width: 104,
+                  height: 80,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: MediaQuery(
+                      data: MediaQuery.of(
+                        context,
+                      ).copyWith(textScaler: TextScaler.noScaling),
+                      child: EpMap(
+                        key: ValueKey(center),
+                        options: MapOptions(
+                          initialCenter: center,
+                          initialZoom: widget.initialZoom,
+                          backgroundColor: context.epColors.background,
+                          interactionOptions: const InteractionOptions(
+                            flags: InteractiveFlag.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FANS WILL SEE',
+                      style: Theme.of(context).textTheme.epLabel.copyWith(
+                        color: context.epColors.contentSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _draft.areaLabel,
+                      key: Key('${widget.keyPrefix}-area-caption'),
+                      style: Theme.of(
+                        context,
+                      ).textTheme.epBody.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      pin == null ? 'Place map pin' : 'Adjust map pin',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.chevron_right,
+                color: context.epColors.contentSecondary,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _suggestionList(BuildContext context) {
@@ -282,17 +391,9 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
   @override
   Widget build(BuildContext context) {
     final initialPin = widget.initial.pin;
-    final statusText =
-        widget.helperText ??
-        _transientError ??
-        (_draft.pin == null
-            ? 'Pick a suggestion or tap the map to place the pin'
-            : 'Tap the map to adjust the pin');
-    final statusColor = widget.helperText != null
-        ? context.epColors.contentDisabled
-        : _draft.pin == null || _transientError != null
-        ? context.epColors.warning
-        : context.epColors.accent;
+    final pinHint = _draft.pin == null
+        ? 'Pick a suggestion or tap the map to place the pin'
+        : 'Tap the map to adjust the pin';
 
     final column = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -330,62 +431,96 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
           _suggestionList(context),
         ],
         const SizedBox(height: 14),
-        Text(
-          'Fans will see: ${_draft.areaLabel}',
-          key: Key('${widget.keyPrefix}-area-caption'),
-          style: Theme.of(context).textTheme.epCaption,
-        ),
-        if (_searchUnavailable) ...[
-          const SizedBox(height: 14),
+        if (widget.helperText case final helper?) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.lock_outline,
+                size: 15,
+                color: context.epColors.contentDisabled,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  helper,
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (_searchUnavailable || _transientError != null) ...[
           Text(
-            'Address search is unavailable. Tap the map to place the pin.',
-            key: Key('${widget.keyPrefix}-search-unavailable'),
+            _searchUnavailable
+                ? widget.compactMap
+                      ? 'Address search is unavailable. Open the neighborhood card to place the pin.'
+                      : 'Address search is unavailable. Tap the map to place the pin.'
+                : _transientError!,
+            key: Key(
+              '${widget.keyPrefix}-${_searchUnavailable ? 'search-unavailable' : 'search-error'}',
+            ),
+            style: Theme.of(
+              context,
+            ).textTheme.epCaption.copyWith(color: context.epColors.warning),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (widget.compactMap)
+          _neighborhoodPreview(context)
+        else ...[
+          Text(
+            'Fans will see: ${_draft.areaLabel}',
+            key: Key('${widget.keyPrefix}-area-caption'),
             style: Theme.of(context).textTheme.epCaption,
           ),
-        ],
-        const SizedBox(height: 14),
-        Text(
-          statusText,
-          style: Theme.of(context).textTheme.epCaption.copyWith(
-            fontWeight: FontWeight.w700,
-            color: statusColor,
-          ),
-        ),
-        const SizedBox(height: 14),
-        SizedBox(
-          key: Key('${widget.keyPrefix}-map'),
-          height: 220,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: EpMap(
-              mapController: _controller,
-              options: MapOptions(
-                initialCenter: initialPin ?? widget.initialCenter,
-                initialZoom: initialPin == null ? widget.initialZoom : 15,
-                backgroundColor: context.epColors.background,
-                onTap: (_, point) => _setPin(point),
-                onMapReady: _onMapReady,
-              ),
-              layers: [
-                if (_draft.pin case final pin?)
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: pin,
-                        width: 40,
-                        height: 40,
-                        child: Icon(
-                          Icons.location_pin,
-                          color: context.epColors.accent,
-                          size: 40,
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
+          const SizedBox(height: 14),
+          Text(
+            pinHint,
+            style: Theme.of(context).textTheme.epCaption.copyWith(
+              fontWeight: FontWeight.w700,
+              color: _draft.pin == null
+                  ? context.epColors.warning
+                  : context.epColors.accent,
             ),
           ),
-        ),
+          const SizedBox(height: 14),
+          SizedBox(
+            key: Key('${widget.keyPrefix}-map'),
+            height: 220,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: EpMap(
+                mapController: _controller,
+                options: MapOptions(
+                  initialCenter: initialPin ?? widget.initialCenter,
+                  initialZoom: initialPin == null ? widget.initialZoom : 15,
+                  backgroundColor: context.epColors.background,
+                  onTap: (_, point) => _setPin(point),
+                  onMapReady: _onMapReady,
+                ),
+                layers: [
+                  if (_draft.pin case final pin?)
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: pin,
+                          width: 40,
+                          height: 40,
+                          child: Icon(
+                            Icons.location_pin,
+                            color: context.epColors.accent,
+                            size: 40,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ],
     );
 
@@ -407,6 +542,98 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
       tooltip: 'Clear address',
       onPressed: widget.enabled ? _clearAddress : null,
       icon: const Icon(Icons.close),
+    );
+  }
+}
+
+class _VenuePinSheet extends StatefulWidget {
+  const _VenuePinSheet({
+    required this.keyPrefix,
+    required this.initialPin,
+    required this.initialCenter,
+    required this.initialZoom,
+    required this.onDone,
+  });
+
+  final String keyPrefix;
+  final LatLng? initialPin;
+  final LatLng initialCenter;
+  final double initialZoom;
+  final ValueChanged<LatLng> onDone;
+
+  @override
+  State<_VenuePinSheet> createState() => _VenuePinSheetState();
+}
+
+class _VenuePinSheetState extends State<_VenuePinSheet> {
+  late LatLng? _pin = widget.initialPin;
+
+  @override
+  Widget build(BuildContext context) {
+    return EpSheetShell(
+      heightFactor: .8,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+      header: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'VENUE MAP PIN',
+              style: Theme.of(context).textTheme.epSection,
+            ),
+          ),
+          CircleIconButton(
+            icon: Icons.close,
+            key: Key('${widget.keyPrefix}-pin-cancel'),
+            onTap: () => Navigator.pop(context),
+          ),
+        ],
+      ),
+      children: [
+        Text(
+          'Tap the map to place or adjust the pin. The exact address stays private.',
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+        const SizedBox(height: 14),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: EpMap(
+              key: Key('${widget.keyPrefix}-pin-map'),
+              options: MapOptions(
+                initialCenter: widget.initialPin ?? widget.initialCenter,
+                initialZoom: widget.initialPin == null
+                    ? widget.initialZoom
+                    : 15,
+                backgroundColor: context.epColors.background,
+                onTap: (_, point) => setState(() => _pin = point),
+              ),
+              layers: [
+                if (_pin case final pin?)
+                  MarkerLayer(
+                    markers: [
+                      Marker(
+                        point: pin,
+                        width: 40,
+                        height: 40,
+                        child: Icon(
+                          Icons.location_pin,
+                          color: context.epColors.accent,
+                          size: 40,
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        FilledButton(
+          key: Key('${widget.keyPrefix}-pin-done'),
+          onPressed: _pin == null ? null : () => widget.onDone(_pin!),
+          child: const Text('DONE'),
+        ),
+      ],
     );
   }
 }

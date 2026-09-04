@@ -60,6 +60,8 @@ class OrgApplyScreen extends StatefulWidget {
   State<OrgApplyScreen> createState() => _OrgApplyScreenState();
 }
 
+enum _ApplicationStep { venue, contact }
+
 class _OrgApplyScreenState extends State<OrgApplyScreen> {
   static const _autosaveDelay = Duration(milliseconds: 600);
 
@@ -84,6 +86,8 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   List<ApplicationDocument> _documents = const [];
   bool _venueNameEdited = false;
   int _venueEditorGeneration = 0;
+  _ApplicationStep _step = _ApplicationStep.venue;
+  bool _contactVisited = false;
   bool _agreed = false;
   bool _redirected = false;
 
@@ -92,6 +96,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   Completer<bool>? _saveCompleter;
   bool _saveRequested = false;
   bool _savingDraft = false;
+  bool _draftSaveFailed = false;
   bool _blockingSave = false;
   bool _documentWorking = false;
   bool _submitting = false;
@@ -101,24 +106,34 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
 
   bool get _hasUnsavedChanges => _editVersion > _savedVersion;
   bool get _busy => _blockingSave || _documentWorking || _submitting;
+  List<({String label, bool complete})> get _venueRequirements => [
+    (label: 'Organization name', complete: _orgName.text.trim().isNotEmpty),
+    (label: 'Bar or club selection', complete: _kind != null),
+    (label: 'Venue name', complete: _venueLocation.isNamed),
+    (label: 'Street address and map pin', complete: _venueLocation.isComplete),
+  ];
+
+  List<({String label, bool complete})> get _contactRequirements => [
+    (label: 'Contact name', complete: _contactName.text.trim().isNotEmpty),
+    (label: 'Business email', complete: _businessEmail.text.contains('@')),
+    (label: 'One verification photo', complete: _documents.isNotEmpty),
+    (label: 'Organizer Agreement', complete: _agreed),
+  ];
+
+  bool get _venueComplete => _venueRequirements.every((item) => item.complete);
   bool get _canSubmit =>
-      _orgName.text.trim().isNotEmpty &&
-      _kind != null &&
-      _venueLocation.isComplete &&
-      _venueLocation.isNamed &&
-      _contactName.text.trim().isNotEmpty &&
-      _businessEmail.text.contains('@') &&
-      _documents.isNotEmpty &&
-      _agreed &&
+      _venueComplete &&
+      _contactRequirements.every((item) => item.complete) &&
       !_busy;
 
-  String get _saveState =>
-      _savingDraft ||
-          _documentWorking ||
-          _autosaveTimer?.isActive == true ||
-          _hasUnsavedChanges
-      ? 'Saving…'
-      : 'Draft saved';
+  String get _saveState {
+    if (_savingDraft || _documentWorking) return 'Saving…';
+    if (_draftSaveFailed) return 'Save failed';
+    if (_autosaveTimer?.isActive == true || _hasUnsavedChanges) {
+      return 'Saving…';
+    }
+    return 'Draft saved';
+  }
 
   @override
   void initState() {
@@ -170,6 +185,8 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         storedVenueName.trim().isNotEmpty &&
         storedVenueName != application.orgName;
     _autosaveTimer?.cancel();
+    _step = _ApplicationStep.venue;
+    _contactVisited = false;
     _applicationId = application.id;
     _revision = application.revision;
     _orgName.text = application.orgName;
@@ -308,6 +325,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
       );
       if (!mounted) return false;
       setState(() {
+        _draftSaveFailed = false;
         _applicationId = saved.applicationId;
         _revision = saved.revision;
         if (_savedVersion < savedEditVersion) {
@@ -318,6 +336,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
       await app.refreshOrganizationApplication();
       return mounted;
     } catch (error) {
+      if (mounted) setState(() => _draftSaveFailed = true);
       await _handleMutationError(app, error);
       return false;
     }
@@ -440,6 +459,32 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
     }
   }
 
+  void _showStep(_ApplicationStep step) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _step = step;
+      if (step == _ApplicationStep.contact) _contactVisited = true;
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
+
+  Future<void> _continue() async {
+    if (!_venueComplete || _busy) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _blockingSave = true;
+      _error = null;
+    });
+    final saved = await _saveDraft();
+    if (!mounted) return;
+    setState(() => _blockingSave = false);
+    if (!saved || !_venueComplete) {
+      revealFormFeedback(this, _scroll);
+      return;
+    }
+    _showStep(_ApplicationStep.contact);
+  }
+
   Future<void> _saveForLater() async {
     if (_busy) return;
     setState(() {
@@ -491,17 +536,6 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
     }
   }
 
-  List<String> get _missingItems => [
-    if (_orgName.text.trim().isEmpty) 'organization name',
-    if (_kind == null) 'bar or club selection',
-    if (!_venueLocation.isNamed) 'venue name',
-    if (!_venueLocation.isComplete) 'address and pin',
-    if (_contactName.text.trim().isEmpty) 'contact name',
-    if (!_businessEmail.text.contains('@')) 'a valid email',
-    if (_documents.isEmpty) 'at least one document',
-    if (!_agreed) 'agreement checkbox',
-  ];
-
   @override
   Widget build(BuildContext context) {
     final application = context.watch<AppState>().myOrganizationApplication;
@@ -518,283 +552,392 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
       return const Material(child: Center(child: CircularProgressIndicator()));
     }
 
-    final missing = _missingItems;
-    final enabled = !_busy;
+    final venueStep = _step == _ApplicationStep.venue;
+    final requirements = venueStep ? _venueRequirements : _contactRequirements;
     return Material(
       color: context.epColors.background,
-      child: Stack(
+      child: Column(
         children: [
-          Positioned.fill(
+          Expanded(
             child: ListView(
               controller: _scroll,
-              padding: EdgeInsets.fromLTRB(
-                16,
-                headerTopPad(context),
-                16,
-                tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
-              ),
+              padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    CircleIconButton(
-                      icon: Icons.close,
-                      onTap: () => context.read<AppState>().back(),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'BECOME AN ORGANIZER',
-                            style: Theme.of(context).textTheme.epPageHeading,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            'For bars and clubs that run their own room. '
-                            'Promoters and student organizations are next.',
-                            style: Theme.of(context).textTheme.epCaption,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _saveState,
-                            key: const ValueKey('org-apply-save-state'),
-                            style: Theme.of(context).textTheme.epCaption,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Focus(
-                  onFocusChange: (focused) {
-                    if (!focused) _saveOnBlur();
-                  },
-                  child: BandIdentityTextField(
-                    fieldKey: const ValueKey('org-apply-name'),
-                    label: 'ORGANIZATION NAME',
-                    required: true,
-                    hint: 'Night Heron Club',
-                    controller: _orgName,
-                    enabled: enabled,
-                    textCapitalization: TextCapitalization.words,
-                    onChanged: _organizationNameChanged,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const FieldLabel('WHAT ARE YOU', required: true),
-                const SizedBox(height: 7),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    EpChip(
-                      key: const ValueKey('org-apply-kind-bar'),
-                      label: 'BAR',
-                      active: _kind == 'bar',
-                      onTap: enabled ? () => _selectKind('bar') : null,
-                    ),
-                    EpChip(
-                      key: const ValueKey('org-apply-kind-club'),
-                      label: 'CLUB',
-                      active: _kind == 'club',
-                      onTap: enabled ? () => _selectKind('club') : null,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  'Promoters and student organizations are coming next.',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-                const SizedBox(height: 14),
-                Focus(
-                  onFocusChange: (focused) {
-                    if (!focused) _saveOnBlur();
-                  },
-                  child: VenueLocationEditor(
-                    key: ValueKey(_venueEditorGeneration),
-                    keyPrefix: 'org-apply-venue',
-                    showNameField: true,
-                    initial: _venueLocation,
-                    onChanged: _venueChanged,
-                    helperText:
-                        'Fans only ever see the neighborhood. The exact '
-                        'address stays private.',
-                    enabled: enabled,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                EpLabeledField(
-                  fieldKey: const ValueKey('org-apply-capacity'),
-                  label: 'CAPACITY',
-                  hint: 'Roughly how many people fit',
-                  controller: _capacity,
-                  focusNode: _capacityFocus,
-                  enabled: enabled,
-                  keyboardType: TextInputType.number,
-                  onChanged: _textChanged,
-                  onEditingComplete: _saveOnBlur,
-                ),
-                const SectionBar(label: 'CONTACT'),
-                EpLabeledField(
-                  fieldKey: const ValueKey('org-apply-contact-name'),
-                  label: 'CONTACT NAME',
-                  required: true,
-                  hint: 'Who should we contact?',
-                  controller: _contactName,
-                  focusNode: _contactNameFocus,
-                  enabled: enabled,
-                  textCapitalization: TextCapitalization.words,
-                  onChanged: _textChanged,
-                  onEditingComplete: _saveOnBlur,
-                ),
-                const SizedBox(height: 14),
-                EpLabeledField(
-                  fieldKey: const ValueKey('org-apply-email'),
-                  label: 'BUSINESS EMAIL',
-                  required: true,
-                  hint: 'bookings@example.com',
-                  controller: _businessEmail,
-                  focusNode: _businessEmailFocus,
-                  enabled: enabled,
-                  keyboardType: TextInputType.emailAddress,
-                  onChanged: _textChanged,
-                  onEditingComplete: _saveOnBlur,
-                ),
-                const SizedBox(height: 14),
-                EpLabeledField(
-                  fieldKey: const ValueKey('org-apply-phone'),
-                  label: 'PHONE',
-                  hint: '(415) 555-0101',
-                  controller: _phone,
-                  focusNode: _phoneFocus,
-                  enabled: enabled,
-                  keyboardType: TextInputType.phone,
-                  onChanged: _textChanged,
-                  onEditingComplete: _saveOnBlur,
-                ),
-                const SizedBox(height: 14),
-                EpLabeledField(
-                  fieldKey: const ValueKey('org-apply-website'),
-                  label: 'WEBSITE',
-                  hint: 'https://…',
-                  controller: _website,
-                  focusNode: _websiteFocus,
-                  enabled: enabled,
-                  keyboardType: TextInputType.url,
-                  onChanged: _textChanged,
-                  onEditingComplete: _saveOnBlur,
-                ),
-                SectionBar(
-                  label: 'VERIFICATION DOCUMENTS',
-                  count: _documents.length,
-                ),
-                Text(
-                  'A photo of your business license, lease, or utility bill. '
-                  'Reviewers only.',
-                  style: Theme.of(context).textTheme.epCaption,
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    for (final document in _documents)
-                      _DocumentTile(
-                        document: document,
-                        enabled: !_documentWorking,
-                        onRemove: () => _removeDocument(document),
-                      ),
-                    if (_documents.length < 5)
-                      _AddDocumentTile(
-                        enabled: !_documentWorking,
-                        onTap: _addDocument,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                Material(
-                  color: Colors.transparent,
-                  child: CheckboxListTile(
-                    key: const ValueKey('org-apply-agree'),
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    value: _agreed,
-                    onChanged: enabled
-                        ? (value) => setState(() => _agreed = value ?? false)
-                        : null,
-                    title: const Text(
-                      'I confirm this information is accurate and accept the '
-                      'Organizer Agreement.',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
+                _header(context),
+                if (venueStep)
+                  ..._venueFields(context)
+                else
+                  ..._contactFields(context),
                 InlineFormFeedback(
                   error: _error,
-                  success: null,
                   errorKey: const ValueKey('org-apply-feedback'),
                 ),
-                if (missing.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    'Still needs ${missing.join(', ')}.',
-                    key: const ValueKey('org-apply-missing'),
-                    style: epText(
-                      size: 11,
-                      color: context.epColors.contentSecondary,
+                if (venueStep &&
+                    _contactVisited &&
+                    _venueComplete &&
+                    _error != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton(
+                      key: const ValueKey('org-apply-edit-contact'),
+                      onPressed: _busy
+                          ? null
+                          : () => _showStep(_ApplicationStep.contact),
+                      child: const Text('EDIT CONTACT DETAILS'),
                     ),
                   ),
+                if (!venueStep || !_venueComplete) ...[
+                  const SizedBox(height: 18),
+                  _RequirementsChecklist(requirements: requirements),
                 ],
               ],
             ),
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: Stack(
+          StickyActionBar(
+            key: ValueKey(
+              venueStep ? 'org-apply-continue' : 'org-apply-submit',
+            ),
+            primaryLabel: _blockingSave
+                ? 'SAVING…'
+                : _submitting
+                ? 'SUBMITTING…'
+                : venueStep
+                ? 'CONTINUE'
+                : 'SUBMIT APPLICATION',
+            onPrimary: venueStep
+                ? (_venueComplete && !_busy ? _continue : null)
+                : (_canSubmit ? _submit : null),
+            secondaryKey: const ValueKey('org-apply-save'),
+            secondaryLabel: 'SAVE FOR LATER',
+            onSecondary: _busy ? null : _saveForLater,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _header(BuildContext context) {
+    final venueStep = _step == _ApplicationStep.venue;
+    final colors = context.epColors;
+    final textTheme = Theme.of(context).textTheme;
+    final saveState = _saveState;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleIconButton(
+              key: const ValueKey('org-apply-back'),
+              icon: venueStep ? Icons.close : Icons.chevron_left,
+              tooltip: venueStep ? 'Close' : 'Back to venue',
+              onTap: _busy
+                  ? null
+                  : venueStep
+                  ? () => context.read<AppState>().back()
+                  : () => _showStep(_ApplicationStep.venue),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'BECOME AN ORGANIZER',
+                style: textTheme.epPageHeading,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Semantics(
+            liveRegion: true,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: colors.surfaceRaised,
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    saveState == 'Save failed'
+                        ? Icons.error_outline
+                        : Icons.circle,
+                    size: 10,
+                    color: saveState == 'Save failed'
+                        ? colors.destructive
+                        : saveState == 'Saving…'
+                        ? colors.warning
+                        : colors.success,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    saveState,
+                    key: const ValueKey('org-apply-save-state'),
+                    style: textTheme.epCaption,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text(
+          venueStep ? 'STEP 1 OF 2 · VENUE' : 'STEP 2 OF 2 · CONTACT',
+          key: const ValueKey('org-apply-step'),
+          style: textTheme.epLabel.copyWith(color: colors.contentSecondary),
+        ),
+        const SizedBox(height: 8),
+        LinearProgressIndicator(
+          value: venueStep ? .5 : 1,
+          minHeight: 4,
+          borderRadius: BorderRadius.circular(99),
+          color: colors.accent,
+          backgroundColor: colors.border,
+          semanticsLabel: venueStep
+              ? 'Step 1 of 2: Venue'
+              : 'Step 2 of 2: Contact',
+        ),
+      ],
+    );
+  }
+
+  List<Widget> _venueFields(BuildContext context) {
+    final enabled = !_busy;
+    return [
+      const SectionBar(label: 'YOUR VENUE'),
+      Focus(
+        onFocusChange: (focused) {
+          if (!focused) _saveOnBlur();
+        },
+        child: BandIdentityTextField(
+          fieldKey: const ValueKey('org-apply-name'),
+          label: 'ORGANIZATION NAME',
+          required: true,
+          hint: 'Night Heron Club',
+          controller: _orgName,
+          enabled: enabled,
+          textCapitalization: TextCapitalization.words,
+          onChanged: _organizationNameChanged,
+        ),
+      ),
+      const SizedBox(height: 14),
+      const FieldLabel('WHAT ARE YOU', required: true),
+      const SizedBox(height: 7),
+      SegmentedButton<String>(
+        expandedInsets: EdgeInsets.zero,
+        emptySelectionAllowed: true,
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment(
+            value: 'bar',
+            label: Text('BAR', key: ValueKey('org-apply-kind-bar')),
+          ),
+          ButtonSegment(
+            value: 'club',
+            label: Text('CLUB', key: ValueKey('org-apply-kind-club')),
+          ),
+        ],
+        selected: {?_kind},
+        onSelectionChanged: enabled
+            ? (selection) {
+                if (selection.isNotEmpty) _selectKind(selection.single);
+              }
+            : null,
+        style: ButtonStyle(
+          minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+          textStyle: WidgetStatePropertyAll(
+            Theme.of(context).textTheme.epLabel,
+          ),
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? context.epColors.surfaceSelected
+                : context.epColors.surface,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.disabled)
+                ? context.epColors.contentDisabled
+                : states.contains(WidgetState.selected)
+                ? context.epColors.contentPrimary
+                : context.epColors.contentSecondary,
+          ),
+          side: WidgetStatePropertyAll(
+            BorderSide(color: context.epColors.border),
+          ),
+        ),
+      ),
+      const SizedBox(height: 5),
+      Text(
+        'Promoters and student organizations are coming next.',
+        style: Theme.of(context).textTheme.epCaption,
+      ),
+      const SizedBox(height: 14),
+      Focus(
+        onFocusChange: (focused) {
+          if (!focused) _saveOnBlur();
+        },
+        child: VenueLocationEditor(
+          key: ValueKey(_venueEditorGeneration),
+          keyPrefix: 'org-apply-venue',
+          compactMap: true,
+          showNameField: true,
+          initial: _venueLocation,
+          onChanged: _venueChanged,
+          helperText:
+              'Fans only ever see the neighborhood. The exact '
+              'address stays private.',
+          enabled: enabled,
+        ),
+      ),
+      const SizedBox(height: 14),
+      EpLabeledField(
+        fieldKey: const ValueKey('org-apply-capacity'),
+        label: 'CAPACITY · OPTIONAL',
+        hint: 'Roughly how many people fit',
+        controller: _capacity,
+        focusNode: _capacityFocus,
+        enabled: enabled,
+        keyboardType: TextInputType.number,
+        onChanged: _textChanged,
+        onEditingComplete: _saveOnBlur,
+      ),
+    ];
+  }
+
+  List<Widget> _contactFields(BuildContext context) {
+    final enabled = !_busy;
+    return [
+      const SectionBar(label: 'CONTACT'),
+      EpLabeledField(
+        fieldKey: const ValueKey('org-apply-contact-name'),
+        label: 'CONTACT NAME',
+        required: true,
+        hint: 'Who should we contact?',
+        controller: _contactName,
+        focusNode: _contactNameFocus,
+        enabled: enabled,
+        textCapitalization: TextCapitalization.words,
+        onChanged: _textChanged,
+        onEditingComplete: _saveOnBlur,
+      ),
+      const SizedBox(height: 14),
+      EpLabeledField(
+        fieldKey: const ValueKey('org-apply-email'),
+        label: 'BUSINESS EMAIL',
+        required: true,
+        hint: 'bookings@example.com',
+        controller: _businessEmail,
+        focusNode: _businessEmailFocus,
+        enabled: enabled,
+        keyboardType: TextInputType.emailAddress,
+        onChanged: _textChanged,
+        onEditingComplete: _saveOnBlur,
+      ),
+      const SizedBox(height: 14),
+      EpLabeledField(
+        fieldKey: const ValueKey('org-apply-phone'),
+        label: 'PHONE · OPTIONAL',
+        hint: '(415) 555-0101',
+        controller: _phone,
+        focusNode: _phoneFocus,
+        enabled: enabled,
+        keyboardType: TextInputType.phone,
+        onChanged: _textChanged,
+        onEditingComplete: _saveOnBlur,
+      ),
+      const SizedBox(height: 14),
+      EpLabeledField(
+        fieldKey: const ValueKey('org-apply-website'),
+        label: 'WEBSITE · OPTIONAL',
+        hint: 'https://…',
+        controller: _website,
+        focusNode: _websiteFocus,
+        enabled: enabled,
+        keyboardType: TextInputType.url,
+        onChanged: _textChanged,
+        onEditingComplete: _saveOnBlur,
+      ),
+      SectionBar(label: 'VERIFICATION', count: _documents.length),
+      if (_documents.isNotEmpty) ...[
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final document in _documents)
+              _DocumentTile(
+                document: document,
+                enabled: enabled,
+                onRemove: () => _removeDocument(document),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (_documents.length < 5)
+        _AddDocumentTile(enabled: enabled, onTap: _addDocument),
+      const SizedBox(height: 14),
+      Material(
+        color: Colors.transparent,
+        child: CheckboxListTile(
+          key: const ValueKey('org-apply-agree'),
+          contentPadding: EdgeInsets.zero,
+          controlAffinity: ListTileControlAffinity.leading,
+          value: _agreed,
+          onChanged: enabled
+              ? (value) => setState(() => _agreed = value ?? false)
+              : null,
+          title: const Text(
+            'I confirm this information is accurate and accept the '
+            'Organizer Agreement.',
+          ),
+        ),
+      ),
+    ];
+  }
+}
+
+class _RequirementsChecklist extends StatelessWidget {
+  const _RequirementsChecklist({required this.requirements});
+  final List<({String label, bool complete})> requirements;
+
+  @override
+  Widget build(BuildContext context) {
+    final completed = requirements.where((item) => item.complete).length;
+    return Column(
+      key: const ValueKey('org-apply-missing'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          completed == requirements.length
+              ? 'READY TO SUBMIT'
+              : '$completed OF ${requirements.length} COMPLETE',
+          style: Theme.of(context).textTheme.epLabel.copyWith(
+            color: context.epColors.contentSecondary,
+          ),
+        ),
+        for (final item in requirements.where((item) => !item.complete))
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                StickyActionBar(
-                  key: const ValueKey('org-apply-submit'),
-                  primaryLabel: 'SUBMIT APPLICATION',
-                  onPrimary: _canSubmit ? _submit : null,
-                  secondaryLabel: 'SAVE FOR LATER',
-                  onSecondary: _busy ? null : _saveForLater,
+                Icon(
+                  Icons.radio_button_unchecked,
+                  size: 16,
+                  color: context.epColors.contentDisabled,
                 ),
-                Positioned.fill(
-                  child: SafeArea(
-                    top: false,
-                    minimum: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: IgnorePointer(
-                            ignoring: _busy,
-                            child: GestureDetector(
-                              key: const ValueKey('org-apply-save'),
-                              behavior: HitTestBehavior.opaque,
-                              onTap: _saveForLater,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          flex: 2,
-                          child: IgnorePointer(child: SizedBox.expand()),
-                        ),
-                      ],
-                    ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    item.label,
+                    style: Theme.of(context).textTheme.epCaption,
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
+      ],
     );
   }
 }
@@ -869,37 +1012,44 @@ class _AddDocumentTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: 92,
-      child: DashedBox(
-        key: const ValueKey('org-apply-doc-add'),
-        padding: EdgeInsets.zero,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: enabled ? onTap : null,
-            borderRadius: BorderRadius.circular(12),
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.add_a_photo_outlined,
-                    color: enabled
-                        ? context.epColors.accent
-                        : context.epColors.contentDisabled,
+    return DashedBox(
+      key: const ValueKey('org-apply-doc-add'),
+      padding: EdgeInsets.zero,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.add_a_photo_outlined,
+                  color: enabled
+                      ? context.epColors.accent
+                      : context.epColors.contentDisabled,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Add a verification photo',
+                        style: Theme.of(context).textTheme.epBody.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Business license, lease, or utility bill. Visible to reviewers only.',
+                        style: Theme.of(context).textTheme.epCaption,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 7),
-                  Text(
-                    'ADD PHOTO',
-                    style: Theme.of(context).textTheme.epChipLabel.copyWith(
-                      color: enabled
-                          ? context.epColors.accent
-                          : context.epColors.contentDisabled,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

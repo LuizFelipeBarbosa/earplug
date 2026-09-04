@@ -541,12 +541,14 @@ class StickyActionBar extends StatelessWidget {
     required this.primaryLabel,
     required this.onPrimary,
     this.secondaryLabel,
+    this.secondaryKey,
     this.onSecondary,
   });
 
   final String primaryLabel;
   final VoidCallback? onPrimary;
   final String? secondaryLabel;
+  final Key? secondaryKey;
   final VoidCallback? onSecondary;
 
   @override
@@ -565,8 +567,12 @@ class StickyActionBar extends StatelessWidget {
               if (secondaryLabel != null) ...[
                 Expanded(
                   child: OutlinedButton(
+                    key: secondaryKey,
                     onPressed: onSecondary,
-                    child: Text(secondaryLabel!.toUpperCase()),
+                    child: Text(
+                      secondaryLabel!.toUpperCase(),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -575,7 +581,10 @@ class StickyActionBar extends StatelessWidget {
                 flex: secondaryLabel == null ? 1 : 2,
                 child: FilledButton(
                   onPressed: onPrimary,
-                  child: Text(primaryLabel.toUpperCase()),
+                  child: Text(
+                    primaryLabel.toUpperCase(),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
             ],
