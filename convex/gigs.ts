@@ -380,10 +380,11 @@ export async function createProjectForGig(
 type UpcomingGigs = { gigs: Doc<"gigs">[]; nextStartsAt: number | null };
 
 async function upcomingGigs(ctx: QueryCtx): Promise<UpcomingGigs> {
+  const cutoff = await feedCutoff(ctx);
   const published = await ctx.db
     .query("gigs")
     .withIndex("by_lifecycle_and_startsAt", (q) =>
-      q.eq("lifecycle", "published").gte("startsAt", feedCutoff()),
+      q.eq("lifecycle", "published").gte("startsAt", cutoff),
     )
     .order("asc")
     .take(MAX_FEED_GIGS + 1);
@@ -392,7 +393,7 @@ async function upcomingGigs(ctx: QueryCtx): Promise<UpcomingGigs> {
   const legacy = await ctx.db
     .query("gigs")
     .withIndex("by_lifecycle_and_startsAt", (q) =>
-      q.eq("lifecycle", undefined).gte("startsAt", feedCutoff()),
+      q.eq("lifecycle", undefined).gte("startsAt", cutoff),
     )
     .order("asc")
     .take(MAX_FEED_GIGS + 1);

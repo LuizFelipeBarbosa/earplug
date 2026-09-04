@@ -12,4 +12,12 @@ crons.interval(
   { dryRun: false },
 );
 
+// Refresh the shared feed cutoff so quiet feeds age out gigs every 15 minutes.
+crons.interval(
+  "feed cutoff heartbeat",
+  { minutes: 15 },
+  internal.clock.heartbeat,
+  {},
+);
+
 export default crons;

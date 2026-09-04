@@ -12,6 +12,7 @@ import type * as admin from "../admin.js";
 import type * as analytics from "../analytics.js";
 import type * as bandInvites from "../bandInvites.js";
 import type * as bands from "../bands.js";
+import type * as clock from "../clock.js";
 import type * as crons from "../crons.js";
 import type * as emails from "../emails.js";
 import type * as gigs from "../gigs.js";
@@ -38,6 +39,7 @@ import type * as organizationMembers from "../organizationMembers.js";
 import type * as organizations from "../organizations.js";
 import type * as seed from "../seed.js";
 import type * as stripeWebhook from "../stripeWebhook.js";
+import type * as talentOpportunities from "../talentOpportunities.js";
 import type * as users from "../users.js";
 import type * as venues from "../venues.js";
 
@@ -52,6 +54,7 @@ declare const fullApi: ApiFromModules<{
   analytics: typeof analytics;
   bandInvites: typeof bandInvites;
   bands: typeof bands;
+  clock: typeof clock;
   crons: typeof crons;
   emails: typeof emails;
   gigs: typeof gigs;
@@ -78,6 +81,7 @@ declare const fullApi: ApiFromModules<{
   organizations: typeof organizations;
   seed: typeof seed;
   stripeWebhook: typeof stripeWebhook;
+  talentOpportunities: typeof talentOpportunities;
   users: typeof users;
   venues: typeof venues;
 }>;

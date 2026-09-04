@@ -214,10 +214,11 @@ export const detail = query({
     const venue = await ctx.db.get(args.venueId);
     if (venue === null || venue.status === "suspended") return null;
 
+    const cutoff = await feedCutoff(ctx);
     const rows = await ctx.db
       .query("gigs")
       .withIndex("by_venueId_and_startsAt", (q) =>
-        q.eq("venueId", args.venueId).gte("startsAt", feedCutoff()),
+        q.eq("venueId", args.venueId).gte("startsAt", cutoff),
       )
       .order("asc")
       .take(MAX_VENUE_GIGS * 4 + 1);
