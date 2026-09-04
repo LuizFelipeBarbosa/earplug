@@ -3,6 +3,10 @@ import { httpRouter } from "convex/server";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import { clerkUserFacts } from "./lib/clerkUser";
+import {
+  handleConnectWebhook,
+  handlePlatformWebhook,
+} from "./stripeWebhook";
 
 const clerkWebhook = httpAction(async (ctx, request) => {
   const secret = process.env.CLERK_WEBHOOK_SECRET;
@@ -77,5 +81,15 @@ const clerkWebhook = httpAction(async (ctx, request) => {
 
 const http = httpRouter();
 http.route({ path: "/clerk-webhook", method: "POST", handler: clerkWebhook });
+http.route({
+  path: "/stripe-webhook",
+  method: "POST",
+  handler: handlePlatformWebhook,
+});
+http.route({
+  path: "/stripe-connect-webhook",
+  method: "POST",
+  handler: handleConnectWebhook,
+});
 
 export default http;

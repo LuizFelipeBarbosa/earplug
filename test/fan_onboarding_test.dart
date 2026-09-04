@@ -92,7 +92,7 @@ void main() {
     expect(find.byKey(const Key('fan-setup-collapsed')), findsNothing);
   });
 
-  testWidgets('zero-band navigation starts creation without profile entries', (
+  testWidgets('zero-band navigation offers creation without profile entries', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -110,9 +110,12 @@ void main() {
     expect(find.byKey(const Key('band-entry')), findsNothing);
     expect(find.byKey(const Key('create-band-from-profile')), findsNothing);
     expect(find.text('PLAY IN A BAND?'), findsNothing);
-    expect(find.text('CREATE BAND'), findsOne);
-    await tester.tap(find.text('CREATE BAND'));
-    await tester.pump();
+    expect(find.text('CREATE'), findsOne);
+    await tester.tap(find.text('CREATE'));
+    await tester.pumpAndSettle();
+    expect(find.text('BECOME AN ORGANIZER'), findsOne);
+    await tester.tap(find.text('START A BAND'));
+    await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandCreate);
   });
 
@@ -129,9 +132,12 @@ void main() {
       ),
     );
 
-    expect(find.text('CREATE BAND'), findsOne);
-    await tester.tap(find.text('CREATE BAND'));
-    await tester.pump();
+    expect(find.text('CREATE'), findsOne);
+    await tester.tap(find.text('CREATE'));
+    await tester.pumpAndSettle();
+    expect(find.text('BECOME AN ORGANIZER'), findsOne);
+    await tester.tap(find.text('START A BAND'));
+    await tester.pumpAndSettle();
 
     expect(harness.app.current.screen, Screen.auth);
     expect(harness.app.pending?.kind, PendingKind.band);
@@ -156,9 +162,9 @@ void main() {
     await harness.app.commitAuth();
     await tester.pump();
 
-    expect(find.text('BANDS'), findsOne);
+    expect(find.text('SWITCH'), findsOne);
     expect(repository.hasMembershipListener, isTrue);
-    await tester.tap(find.text('BANDS'));
+    await tester.tap(find.text('SWITCH'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.home);
 
@@ -169,10 +175,10 @@ void main() {
 
     expect(harness.app.membershipsLoaded, isTrue);
     expect(harness.app.myBands, ['b1']);
-    expect(find.text('SWITCH BAND'), findsOne);
-    await tester.tap(find.text('SWITCH BAND'));
+    expect(find.text('SWITCH'), findsOne);
+    await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('MANAGE BAND'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     await tester.tap(find.text('FOGHORN DIET'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandDash);
@@ -182,7 +188,7 @@ void main() {
     await tester.pump();
     expect(harness.app.myBands, isEmpty);
     expect(harness.app.membershipsLoaded, isFalse);
-    expect(find.text('CREATE BAND'), findsOne);
+    expect(find.text('CREATE'), findsOne);
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -237,10 +243,10 @@ void main() {
       ),
     );
 
-    expect(find.text('SWITCH BAND'), findsOne);
-    await tester.tap(find.text('SWITCH BAND'));
+    expect(find.text('SWITCH'), findsOne);
+    await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('MANAGE BAND'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     expect(find.text('Personal account'), findsOne);
     await tester.tap(find.text('FOGHORN DIET'));
     await tester.pumpAndSettle();
@@ -261,10 +267,10 @@ void main() {
       ),
     );
 
-    expect(find.text('SWITCH BAND'), findsOne);
-    await tester.tap(find.text('SWITCH BAND'));
+    expect(find.text('SWITCH'), findsOne);
+    await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('SWITCH BAND'), findsWidgets);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     expect(find.text('PIGEON COURT'), findsWidgets);
   });
 }
@@ -341,6 +347,10 @@ class _MembershipRepository extends DemoRepository {
   _MembershipRepository({required super.auth, required this.count});
 
   final int count;
+
+  @override
+  Stream<List<OrganizationMembership>> myOrganizations() =>
+      Stream.value(const []);
 
   @override
   Stream<List<BandMembership>> myBands() => Stream.value([

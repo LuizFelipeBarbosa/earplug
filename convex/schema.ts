@@ -49,6 +49,57 @@ export const gigPublicPerformerValidator = v.object({
   bandId: v.optional(v.id("bands")),
 });
 
+export const organizationRoleValidator = v.union(
+  v.literal("owner"),
+  v.literal("manager"),
+  v.literal("finance"),
+  v.literal("door"),
+);
+
+export const organizationTypeValidator = v.union(
+  v.literal("venueOperator"),
+  v.literal("promoter"),
+  v.literal("studentOrg"),
+  v.literal("other"),
+);
+
+export const organizationStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("verified"),
+  v.literal("suspended"),
+);
+
+export const organizationApplicationStatusValidator = v.union(
+  v.literal("draft"),
+  v.literal("submitted"),
+  v.literal("under_review"),
+  v.literal("needs_info"),
+  v.literal("approved"),
+  v.literal("rejected"),
+  v.literal("withdrawn"),
+);
+
+export const venueStatusValidator = v.union(
+  v.literal("legacy"),
+  v.literal("pending"),
+  v.literal("verified"),
+  v.literal("suspended"),
+);
+
+export const addressDisclosureValidator = v.union(
+  v.literal("onTicket"),
+  v.literal("public"),
+);
+
+export const venueTypeValidator = v.union(
+  v.literal("bar"),
+  v.literal("club"),
+  v.literal("hall"),
+  v.literal("house"),
+  v.literal("outdoor"),
+  v.literal("other"),
+);
+
 export const fanCityValidator = v.union(
   v.literal("sf"),
   v.literal("oak"),
@@ -105,6 +156,111 @@ export default defineSchema({
     .index("by_clerk_id", ["clerkId"])
     .index("by_email", ["email"]),
 
+  platformAdmins: defineTable({
+    userId: v.id("users"),
+    grantedBy: v.optional(v.id("users")),
+    grantedAt: v.number(),
+    revokedAt: v.optional(v.number()),
+    note: v.optional(v.string()),
+  }).index("by_userId", ["userId"]),
+
+  organizations: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    orgType: organizationTypeValidator,
+    status: organizationStatusValidator,
+    ownerUserId: v.id("users"),
+    applicationId: v.optional(v.id("organizationApplications")),
+    description: v.optional(v.string()),
+    website: v.optional(v.string()),
+    photoStorageIds: v.optional(v.array(v.id("_storage"))),
+    bookingCommissionBps: v.optional(v.number()),
+    verifiedAt: v.optional(v.number()),
+    suspendedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_status_and_name", ["status", "name"]),
+
+  organizationPrivateDetails: defineTable({
+    organizationId: v.id("organizations"),
+    legalName: v.optional(v.string()),
+    businessEmail: v.string(),
+    contactName: v.string(),
+    phone: v.optional(v.string()),
+    stripeAccountId: v.optional(v.string()),
+    stripeChargesEnabled: v.boolean(),
+    stripePayoutsEnabled: v.boolean(),
+    stripeDetailsSubmitted: v.boolean(),
+    stripeRequirementsDue: v.optional(v.array(v.string())),
+    verificationDocStorageIds: v.array(v.id("_storage")),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId", ["organizationId"])
+    .index("by_stripeAccountId", ["stripeAccountId"]),
+
+  organizationMembers: defineTable({
+    organizationId: v.id("organizations"),
+    userId: v.id("users"),
+    role: organizationRoleValidator,
+    addedBy: v.optional(v.id("users")),
+    createdAt: v.number(),
+  })
+    .index("by_organizationId_and_userId", ["organizationId", "userId"])
+    .index("by_userId", ["userId"]),
+
+  organizationMemberInvites: defineTable({
+    organizationId: v.id("organizations"),
+    token: v.string(),
+    role: organizationRoleValidator,
+    createdBy: v.id("users"),
+    expiresAt: v.number(),
+    revoked: v.boolean(),
+    expired: v.optional(v.boolean()),
+  })
+    .index("by_token", ["token"])
+    .index("by_organizationId", ["organizationId"]),
+
+  organizationApplications: defineTable({
+    applicantUserId: v.id("users"),
+    orgName: v.string(),
+    orgType: organizationTypeValidator,
+    website: v.optional(v.string()),
+    contactName: v.string(),
+    businessEmail: v.string(),
+    phone: v.optional(v.string()),
+    venue: v.optional(
+      v.object({
+        name: v.string(),
+        addr: v.string(),
+        lat: v.number(),
+        lng: v.number(),
+        area: v.string(),
+        neighborhood: v.optional(v.string()),
+        city: v.optional(v.string()),
+        capacity: v.optional(v.number()),
+        venueType: v.optional(venueTypeValidator),
+      }),
+    ),
+    verificationDocStorageIds: v.array(v.id("_storage")),
+    status: organizationApplicationStatusValidator,
+    reviewerUserId: v.optional(v.id("users")),
+    reviewNote: v.optional(v.string()),
+    decidedAt: v.optional(v.number()),
+    resultingOrganizationId: v.optional(v.id("organizations")),
+    resultingVenueId: v.optional(v.id("venues")),
+    revision: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_applicantUserId_and_status", ["applicantUserId", "status"])
+    .index("by_applicantUserId_and_createdAt", [
+      "applicantUserId",
+      "createdAt",
+    ])
+    .index("by_status_and_createdAt", ["status", "createdAt"]),
+
   bands: defineTable({
     name: v.string(),
     genres: v.array(v.string()),
@@ -149,6 +305,9 @@ export default defineSchema({
     .index("by_slug", ["slug"])
     .searchIndex("search_name", { searchField: "name" }),
 
+  // Exact address and coordinates are moving to `venuePrivateDetails`.
+  // `addr`, `lat`, and `lng` remain required during this widen phase and will
+  // be deprecated once every venue has a private-detail row.
   venues: defineTable({
     name: v.string(),
     area: v.string(),
@@ -163,10 +322,55 @@ export default defineSchema({
     distOak: v.string(),
     lat: v.number(),
     lng: v.number(),
+    slug: v.optional(v.string()),
+    status: v.optional(venueStatusValidator),
+    managedByOrganizationId: v.optional(v.id("organizations")),
+    venueType: v.optional(venueTypeValidator),
+    addressDisclosure: v.optional(addressDisclosureValidator),
+    approxLabel: v.optional(v.string()),
+    approxLat: v.optional(v.number()),
+    approxLng: v.optional(v.number()),
+    neighborhood: v.optional(v.string()),
+    city: v.optional(v.string()),
+    capacityPublic: v.optional(v.number()),
+    photoStorageIds: v.optional(v.array(v.id("_storage"))),
+    description: v.optional(v.string()),
   })
     .index("by_name", ["name"])
     .index("by_normalizedName", ["normalizedName"])
+    .index("by_normalizedAddr", ["normalizedAddr"])
+    .index("by_status_and_name", ["status", "name"])
+    .index("by_slug", ["slug"])
+    .index("by_managedByOrganizationId", ["managedByOrganizationId"]),
+
+  venuePrivateDetails: defineTable({
+    venueId: v.id("venues"),
+    addr: v.string(),
+    lat: v.number(),
+    lng: v.number(),
+    normalizedAddr: v.string(),
+    loadInNotes: v.optional(v.string()),
+    capacity: v.optional(v.number()),
+    verificationDocStorageIds: v.optional(v.array(v.id("_storage"))),
+    updatedAt: v.number(),
+  })
+    .index("by_venueId", ["venueId"])
     .index("by_normalizedAddr", ["normalizedAddr"]),
+
+  stripeEvents: defineTable({
+    eventId: v.string(),
+    type: v.string(),
+    account: v.optional(v.string()),
+    livemode: v.boolean(),
+    receivedAt: v.number(),
+    appliedAt: v.optional(v.number()),
+    status: v.union(
+      v.literal("applied"),
+      v.literal("ignored"),
+      v.literal("failed"),
+    ),
+    error: v.optional(v.string()),
+  }).index("by_eventId", ["eventId"]),
 
   gigs: defineTable({
     title: v.string(),

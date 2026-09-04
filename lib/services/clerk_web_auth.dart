@@ -98,7 +98,7 @@ final class ClerkWebAuth implements AuthService {
   /// here falls back to Clerk's hosted account portal (accounts.dev), which
   /// strands new sign-ups outside the app.
   _RedirectCallbackOptions _redirectCallbackToApp() {
-    final url = _rootUrl;
+    final url = _appReturnUrl;
     return _RedirectCallbackOptions(
       signInFallbackRedirectUrl: url,
       signUpFallbackRedirectUrl: url,
@@ -242,8 +242,8 @@ final class ClerkWebAuth implements AuthService {
           .authenticateWithRedirect(
             _OAuthRedirectParams(
               strategy: strategy,
-              redirectUrl: _rootUrl,
-              redirectUrlComplete: _rootUrl,
+              redirectUrl: _appReturnUrl,
+              redirectUrlComplete: _appReturnUrl,
             ),
           )
           .toDart;
@@ -297,10 +297,9 @@ final class ClerkWebAuth implements AuthService {
     _codeSignUp = null;
   }
 
-  String get _rootUrl {
-    final origin = _window.location.origin;
-    return origin.endsWith('/') ? origin : '$origin/';
-  }
+  String get _appReturnUrl => Uri.parse(
+    _window.location.origin,
+  ).replace(path: _window.location.pathname).toString();
 
   void _emitSignedInIfChanged() {
     final current = _clerk.user != null;
@@ -361,6 +360,7 @@ extension type _Window(JSObject _) implements JSObject {
 @JS()
 extension type _Location(JSObject _) implements JSObject {
   external String get origin;
+  external String get pathname;
 }
 
 @JS()

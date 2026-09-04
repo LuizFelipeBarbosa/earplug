@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -10,6 +13,7 @@ import '../theme.dart';
 import '../widgets/band_identity_editor.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/sheets.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key, this.mediaPicker});
@@ -37,14 +41,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   LocationFailure? _homeLocationFailure;
   String? _homeLocationNotice;
   String? _homeLocationValidation;
+  String? _nameValidation;
   var _updatingHomeLocationText = false;
   var _saving = false;
   String? _error;
+
+  // Snapshot of the persisted profile, used to detect unsaved edits.
+  String _initialName = '';
+  String _initialBio = '';
+  FanCity? _initialHomeLocation;
+  Set<String> _initialGenres = const {};
+  var _initialLocationPersonalization = false;
+  var _initialFollowedBandUpdates = true;
 
   @override
   void initState() {
     super.initState();
     final profile = context.read<AppState>().profile;
+    _initialName = profile?.name ?? '';
+    _initialBio = profile?.bio ?? '';
+    _initialHomeLocation = profile?.homeLocation;
+    _initialGenres = Set.of(profile?.genres ?? const []);
+    _initialLocationPersonalization =
+        profile?.locationPersonalizationEnabled ?? false;
+    _initialFollowedBandUpdates = profile?.followedBandUpdatesEnabled ?? true;
     _nameController = TextEditingController(text: profile?.name ?? '');
     _bioController = TextEditingController(text: profile?.bio ?? '');
     _genres = Set.of(profile?.genres ?? const []);
@@ -128,6 +148,82 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  bool get _isDirty =>
+      _nameController.text.trim() != _initialName.trim() ||
+      _bioController.text.trim() != _initialBio.trim() ||
+      _homeLocation != _initialHomeLocation ||
+      !setEquals(_genres, _initialGenres) ||
+      _locationPersonalizationEnabled != _initialLocationPersonalization ||
+      _followedBandUpdatesEnabled != _initialFollowedBandUpdates ||
+      _pickedAvatar != null ||
+      _removeAvatar;
+
+  Future<void> _openAvatarOptions() async {
+    final profile = context.read<AppState>().profile;
+    final hasPhoto =
+        _pickedAvatar != null || (!_removeAvatar && profile?.avatarUrl != null);
+    await showEpActionSheet(
+      context,
+      header: 'Profile photo',
+      items: [
+        EpActionSheetItem(
+          label: 'CHANGE PHOTO',
+          icon: Icons.photo_library_outlined,
+          onPressed: _pickAvatar,
+        ),
+        if (hasPhoto)
+          EpActionSheetItem(
+            label: 'REMOVE PHOTO',
+            icon: Icons.delete_outline,
+            destructive: true,
+            onPressed: () => setState(() {
+              _pickedAvatar = null;
+              _removeAvatar = true;
+            }),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _attemptClose() async {
+    if (_saving) return;
+    final app = context.read<AppState>();
+    if (!_isDirty) {
+      app.back();
+      return;
+    }
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const Key('discard-profile-dialog'),
+        title: Text('DISCARD CHANGES?'),
+        content: Text(
+          'You have unsaved profile edits. Leaving now will lose them.',
+          style: Theme.of(dialogContext).textTheme.epBody,
+        ),
+        actions: [
+          TextButton(
+            key: const Key('keep-editing-profile'),
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text('KEEP EDITING'),
+          ),
+          FilledButton(
+            key: const Key('discard-profile-changes'),
+            style: ButtonStyle(
+              backgroundColor: WidgetStatePropertyAll(
+                dialogContext.epColors.destructive,
+              ),
+              foregroundColor: const WidgetStatePropertyAll(Colors.white),
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text('DISCARD'),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) app.back();
+  }
+
   Future<void> _useCurrentLocation() async {
     if (_locatingHome) return;
     setState(() {
@@ -177,7 +273,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _save() async {
     final name = _nameController.text.trim();
     if (name.isEmpty) {
-      setState(() => _error = 'Add the name you want shown on your profile.');
+      setState(
+        () => _nameValidation = 'Add the name you want shown on your profile.',
+      );
+      if (_scrollController.hasClients) {
+        unawaited(
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOut,
+          ),
+        );
+      }
       return;
     }
     final locationInput = _homeLocationController.text.trim();
@@ -254,7 +361,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               Row(
                 children: [
                   CircleIconButton(
-                    onTap: _saving ? null : app.back,
+                    onTap: _saving ? null : _attemptClose,
                     tooltip: 'Back to profile',
                   ),
                   const SizedBox(width: 10),
@@ -270,7 +377,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 'Shape the identity fans see while keeping your scene and preferences private.',
                 style: Theme.of(context).textTheme.epCaption,
               ),
-              const SizedBox(height: 18),
+              const SectionBar(
+                label: 'Identity',
+                padding: EdgeInsets.only(top: 18, bottom: 12),
+              ),
               ListenableBuilder(
                 listenable: Listenable.merge([_nameController]),
                 builder: (context, _) => _FanIdentityPreview(
@@ -278,20 +388,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   scene: _sceneName(_homeLocation),
                   imageUrl: _removeAvatar ? null : profile?.avatarUrl,
                   picked: _pickedAvatar,
-                  onChooseAvatar: _saving ? null : _pickAvatar,
-                  onRemoveAvatar:
-                      _pickedAvatar != null ||
-                          (!_removeAvatar && profile?.avatarUrl != null)
-                      ? _saving
-                            ? null
-                            : () => setState(() {
-                                _pickedAvatar = null;
-                                _removeAvatar = true;
-                              })
-                      : null,
+                  onEditAvatar: _saving ? null : _openAvatarOptions,
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               BandIdentityTextField(
                 fieldKey: const Key('fan-name-field'),
                 label: 'DISPLAY NAME',
@@ -300,9 +400,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 required: true,
                 enabled: !_saving,
                 textCapitalization: TextCapitalization.words,
+                onChanged: (_) {
+                  if (_nameValidation != null) {
+                    setState(() => _nameValidation = null);
+                  }
+                },
+              ),
+              if (_nameValidation case final nameError?) ...[
+                const SizedBox(height: 6),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    nameError,
+                    key: const Key('fan-name-validation'),
+                    style: Theme.of(context).textTheme.epCaption.copyWith(
+                      color: context.epColors.destructive,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 14),
+              BandIdentityTextField(
+                fieldKey: const Key('fan-bio-field'),
+                label: 'ABOUT',
+                hint: 'A little about your taste in music',
+                controller: _bioController,
+                enabled: !_saving,
+                minLines: 4,
+                maxLines: 6,
+                maxLength: 280,
                 onChanged: (_) {},
               ),
-              const SizedBox(height: 14),
+              const SectionBar(label: 'Scene & Taste'),
               _FanSelectionField(
                 key: const Key('fan-home-location-field'),
                 label: 'HOME LOCATION',
@@ -323,18 +452,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   onRetry: _useCurrentLocation,
                   onRecovery: _openLocationRecovery,
                 ),
-              ),
-              const SizedBox(height: 14),
-              BandIdentityTextField(
-                fieldKey: const Key('fan-bio-field'),
-                label: 'ABOUT',
-                hint: 'A little about your taste in music',
-                controller: _bioController,
-                enabled: !_saving,
-                minLines: 4,
-                maxLines: 6,
-                maxLength: 280,
-                onChanged: (_) {},
               ),
               const SizedBox(height: 14),
               _FanSelectionField(
@@ -675,16 +792,14 @@ class _FanIdentityPreview extends StatelessWidget {
     required this.scene,
     required this.imageUrl,
     required this.picked,
-    required this.onChooseAvatar,
-    required this.onRemoveAvatar,
+    required this.onEditAvatar,
   });
 
   final String name;
   final String scene;
   final String? imageUrl;
   final PickedMedia? picked;
-  final VoidCallback? onChooseAvatar;
-  final VoidCallback? onRemoveAvatar;
+  final VoidCallback? onEditAvatar;
 
   @override
   Widget build(BuildContext context) {
@@ -701,7 +816,7 @@ class _FanIdentityPreview extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'IDENTITY PREVIEW',
+            'LIVE PREVIEW',
             style: Theme.of(context).textTheme.epChipLabel.copyWith(
               color: context.epColors.contentSecondary,
               letterSpacing: 1.3,
@@ -714,15 +829,15 @@ class _FanIdentityPreview extends StatelessWidget {
               Semantics(
                 container: true,
                 button: true,
-                enabled: onChooseAvatar != null,
-                label: 'Change profile image',
+                enabled: onEditAvatar != null,
+                label: 'Edit profile photo',
                 excludeSemantics: true,
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
                     key: const Key('fan-avatar-preview-control'),
                     borderRadius: BorderRadius.circular(24),
-                    onTap: onChooseAvatar,
+                    onTap: onEditAvatar,
                     child: Padding(
                       padding: const EdgeInsets.only(right: 4, bottom: 4),
                       child: _AvatarPreview(
@@ -762,20 +877,12 @@ class _FanIdentityPreview extends StatelessWidget {
                       ),
                     ),
                     TextAction(
-                      'CHANGE PROFILE IMAGE',
-                      key: const Key('choose-fan-avatar'),
+                      'EDIT PHOTO',
+                      key: const Key('fan-avatar-edit-action'),
                       color: context.epColors.contentPrimary,
                       padding: EdgeInsets.zero,
-                      onTap: onChooseAvatar,
+                      onTap: onEditAvatar,
                     ),
-                    if (onRemoveAvatar != null)
-                      TextAction(
-                        'REMOVE PHOTO',
-                        key: const Key('remove-fan-avatar'),
-                        color: context.epColors.destructive,
-                        padding: EdgeInsets.zero,
-                        onTap: onRemoveAvatar,
-                      ),
                   ],
                 ),
               ),

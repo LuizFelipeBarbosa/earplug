@@ -6,13 +6,29 @@ import 'models.dart';
 /// Demo dataset lifted verbatim from the design spec. This is the seam where
 /// Convex queries will plug in later — screens only ever see these shapes.
 abstract final class DemoData {
+  static const demoUserId = 'demo-user';
+
   static const venues = <String, Venue>{
     'v1': Venue(
       id: 'v1',
       name: 'The Foghorn Club',
-      area: 'Mission, SF',
-      addr: '2455 Harrison St, San Francisco',
-      point: LatLng(37.7524, -122.4180),
+      area: 'Mission, San Francisco',
+      addr: 'Mission, San Francisco',
+      point: LatLng(37.7599, -122.4148),
+      slug: 'the-foghorn-club',
+      description: 'An intimate Mission bar with a welcoming live room.',
+      venueType: VenueType.bar,
+      capacityPublic: 180,
+      approx: ApproxLocation(
+        centroid: LatLng(37.7599, -122.4148),
+        label: 'Mission, San Francisco',
+      ),
+      neighborhood: 'Mission',
+      city: 'San Francisco',
+      disclosure: AddressDisclosure.onTicket,
+      verified: true,
+      managedByOrganizationId: 'org1',
+      supportsApproxLocation: true,
     ),
     'v2': Venue(
       id: 'v2',
@@ -50,6 +66,86 @@ abstract final class DemoData {
       point: LatLng(37.7540, -122.5040),
     ),
   };
+
+  static const venuePrivateDetails = <String, VenuePrivateDetails>{
+    'v1': VenuePrivateDetails(
+      venueId: 'v1',
+      addr: '2455 Harrison St, San Francisco',
+      point: LatLng(37.7524, -122.4180),
+      loadInNotes: 'Use the side entrance for load-in.',
+      capacity: 180,
+    ),
+  };
+
+  static final organizations = <String, Organization>{
+    'org1': Organization(
+      id: 'org1',
+      slug: 'the-foghorn-club',
+      name: 'The Foghorn Club',
+      orgType: OrganizationType.venueOperator,
+      status: OrganizationStatus.verified,
+      verified: true,
+      description: 'Independent Mission venue and community room.',
+      website: 'https://example.com/the-foghorn-club',
+      photoUrls: const [],
+      createdAt: DateTime(2025, 1, 15),
+    ),
+  };
+
+  static final organizationMembers = <String, OrganizationMember>{
+    demoUserId: OrganizationMember(
+      userId: demoUserId,
+      name: 'Earplug Fan',
+      email: 'fan@example.com',
+      role: OrganizationRole.owner,
+      createdAt: DateTime(2025, 1, 15),
+    ),
+    'manager1': OrganizationMember(
+      userId: 'manager1',
+      name: 'Mara Kim',
+      email: 'mara@example.com',
+      role: OrganizationRole.manager,
+      createdAt: DateTime(2025, 2, 1),
+    ),
+  };
+
+  static final submittedOrganizationApplication = OrganizationApplication(
+    id: 'application-review-1',
+    status: OrganizationApplicationStatus.submitted,
+    orgName: 'The Knockout',
+    orgType: OrganizationType.venueOperator,
+    website: 'https://example.com/the-knockout',
+    contactName: 'Sam Reyes',
+    businessEmail: 'sam@example.com',
+    phone: null,
+    venue: const ApplicationVenueDraft(
+      name: 'The Knockout',
+      addr: '3223 Mission St, San Francisco',
+      point: LatLng(37.7452, -122.4201),
+      area: 'Mission, San Francisco',
+      neighborhood: 'Mission',
+      city: 'San Francisco',
+      capacity: 140,
+      venueType: VenueType.bar,
+    ),
+    documents: const [],
+    reviewNote: null,
+    decidedAt: null,
+    resultingOrganizationId: null,
+    resultingVenueId: null,
+    revision: 1,
+    createdAt: DateTime(2026, 8, 20),
+    updatedAt: DateTime(2026, 8, 20),
+  );
+
+  static final adminApplicationRows = <AdminApplicationRow>[
+    AdminApplicationRow(
+      application: submittedOrganizationApplication,
+      applicantUserId: 'applicant-sam',
+      applicantName: 'Sam Reyes',
+      applicantEmail: 'sam@example.com',
+    ),
+  ];
 
   static final _demoToday = () {
     final now = DateTime.now();

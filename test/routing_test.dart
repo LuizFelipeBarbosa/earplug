@@ -7,8 +7,11 @@ import 'package:earplug/main.dart'
         bandSlugFromUri,
         gigIdFromUri,
         joinTokenFromUri,
+        orgInviteTokenFromUri,
+        organizerApplyFromUri,
         performerInviteTokenFromUri,
-        shouldEnableWebSemantics;
+        shouldEnableWebSemantics,
+        venueRefFromUri;
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +37,127 @@ void main() {
       isNull,
     );
     expect(bandSlugFromUri(Uri.parse('https://earplug.app/check-in')), isNull);
+  });
+
+  test('venue and organization invitation routes preserve their values', () {
+    expect(
+      venueRefFromUri(Uri.parse('https://earplug.app/venues/the-foghorn-club')),
+      'the-foghorn-club',
+    );
+    expect(
+      orgInviteTokenFromUri(Uri.parse('https://earplug.app/apply/abc')),
+      'abc',
+    );
+  });
+
+  test(
+    'organizer application route is reloadable and distinct from invitations',
+    () {
+      for (final url in [
+        'https://earplug.app/org/apply',
+        'https://earplug.app/org/apply/',
+        'https://earplug.app/org/apply?__clerk_status=verified',
+      ]) {
+        final uri = Uri.parse(url);
+        expect(organizerApplyFromUri(uri), isTrue, reason: url);
+        expect(orgInviteTokenFromUri(uri), isNull, reason: url);
+        expect(bandSlugFromUri(uri), isNull, reason: url);
+      }
+      for (final path in [
+        'org',
+        'apply',
+        'apply/invitation',
+        'org/apply/extra',
+        '#/org/apply',
+      ]) {
+        expect(
+          organizerApplyFromUri(Uri.parse('https://earplug.app/$path')),
+          isFalse,
+        );
+      }
+    },
+  );
+
+  test(
+    'a fresh application route restores sign-in intent after OAuth reload',
+    () async {
+      final auth = FakeAuthService();
+      final app = AppState.demo(
+        auth: auth,
+        initialOrganizerApply: organizerApplyFromUri(
+          Uri.parse('https://earplug.app/org/apply?__clerk_status=verified'),
+        ),
+      );
+      addTearDown(app.dispose);
+      expect(app.current.screen, Screen.auth);
+      expect(app.pending?.kind, PendingKind.orgApply);
+      expect(app.authConfirmationKind, PendingKind.orgApply);
+      expect(app.authStep, 1);
+
+      // Clerk restores its session after the app has reconstructed navigation.
+      await auth.signInDemo();
+      await flushAsyncWork();
+      await app.finishAuth();
+      expect(app.current.screen, Screen.orgApply);
+      expect(app.pending, isNull);
+      app.back();
+      expect(app.current.screen, Screen.home);
+    },
+  );
+
+  test('signed-in startup opens the organizer application directly', () async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final app = AppState.demo(auth: auth, initialOrganizerApply: true);
+    addTearDown(app.dispose);
+    await flushAsyncWork();
+    expect(app.current.screen, Screen.orgApply);
+    expect(app.pending, isNull);
+    app.back();
+    expect(app.current.screen, Screen.home);
+  });
+
+  test('bare marketplace prefixes preserve existing band links', () {
+    for (final segment in const {
+      'venues',
+      'orgs',
+      'apply',
+      't',
+      'org',
+      'band',
+      'checkout',
+      'admin',
+      'opportunities',
+    }) {
+      expect(
+        bandSlugFromUri(Uri.parse('https://earplug.app/$segment')),
+        segment,
+        reason: '$segment remains a valid backend-issued band slug',
+      );
+    }
+  });
+
+  test('marketplace detail routes are not treated as band slugs', () {
+    for (final path in const [
+      'venues/the-foghorn-club',
+      'apply/invite-token',
+    ]) {
+      expect(bandSlugFromUri(Uri.parse('https://earplug.app/$path')), isNull);
+    }
+  });
+
+  test('organization invitation tokens seed the join placeholder', () async {
+    final auth = FakeAuthService();
+    final resolved = AppState.demo(
+      repository: DemoRepository(auth: auth),
+      auth: auth,
+      initialOrgInviteToken: 'tok123',
+    );
+    addTearDown(resolved.dispose);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(resolved.current.screen, Screen.orgJoin);
+    expect(resolved.current.param, 'tok123');
   });
 
   test(

@@ -138,6 +138,131 @@ InputDecoration sheetInput(BuildContext context, String hint) =>
       horizontalPadding: 12,
     );
 
+class EpLabeledField extends StatelessWidget {
+  const EpLabeledField({
+    super.key,
+    required this.label,
+    required this.hint,
+    required this.controller,
+    this.fieldKey,
+    this.required = false,
+    this.enabled = true,
+    this.minLines = 1,
+    this.maxLines = 1,
+    this.maxLength,
+    this.keyboardType,
+    this.textCapitalization = TextCapitalization.none,
+    this.onChanged,
+    this.onEditingComplete,
+    this.focusNode,
+    this.caption,
+    this.autofillHints,
+  });
+
+  final String label;
+  final String hint;
+  final TextEditingController controller;
+  final Key? fieldKey;
+  final bool required;
+  final bool enabled;
+  final int minLines;
+  final int maxLines;
+  final int? maxLength;
+  final TextInputType? keyboardType;
+  final TextCapitalization textCapitalization;
+  final ValueChanged<String>? onChanged;
+  final VoidCallback? onEditingComplete;
+  final FocusNode? focusNode;
+  final String? caption;
+  final Iterable<String>? autofillHints;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          key: fieldKey,
+          controller: controller,
+          enabled: enabled,
+          minLines: minLines,
+          maxLines: maxLines,
+          maxLength: maxLength,
+          keyboardType: keyboardType,
+          textCapitalization: textCapitalization,
+          onChanged: onChanged,
+          onEditingComplete: onEditingComplete,
+          focusNode: focusNode,
+          autofillHints: autofillHints,
+          decoration: labeledInputDecoration(
+            context,
+            required ? '$label · REQUIRED' : label,
+            hint,
+          ),
+        ),
+        if (caption != null) ...[
+          const SizedBox(height: 6),
+          Text(caption!, style: Theme.of(context).textTheme.epCaption),
+        ],
+      ],
+    );
+  }
+}
+
+class FieldLabel extends StatelessWidget {
+  const FieldLabel(this.text, {super.key, this.required = false});
+
+  final String text;
+  final bool required;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      required ? '$text · REQUIRED' : text,
+      style: Theme.of(context).textTheme.epLabel.copyWith(
+        fontSize: 11,
+        fontWeight: FontWeight.w900,
+        letterSpacing: .8,
+        color: context.epColors.contentSecondary,
+      ),
+    );
+  }
+}
+
+class InlineFormFeedback extends StatelessWidget {
+  const InlineFormFeedback({
+    super.key,
+    this.error,
+    this.success,
+    this.errorKey,
+    this.successKey,
+  });
+
+  final String? error;
+  final String? success;
+  final Key? errorKey;
+  final Key? successKey;
+
+  @override
+  Widget build(BuildContext context) {
+    if (error == null && success == null) return const SizedBox.shrink();
+
+    final showingError = error != null;
+    return Semantics(
+      liveRegion: true,
+      child: Text(
+        showingError ? error! : success!,
+        key: showingError ? errorKey : successKey,
+        style: Theme.of(context).textTheme.epBody.copyWith(
+          color: showingError
+              ? context.epColors.warning
+              : context.epColors.success,
+        ),
+      ),
+    );
+  }
+}
+
 /// Dashed placeholder for an empty list: a centred [message] and, when
 /// [actionLabel] is given, a [TextAction] beneath it.
 class EmptyNote extends StatelessWidget {
@@ -416,12 +541,14 @@ class StickyActionBar extends StatelessWidget {
     required this.primaryLabel,
     required this.onPrimary,
     this.secondaryLabel,
+    this.secondaryKey,
     this.onSecondary,
   });
 
   final String primaryLabel;
   final VoidCallback? onPrimary;
   final String? secondaryLabel;
+  final Key? secondaryKey;
   final VoidCallback? onSecondary;
 
   @override
@@ -440,8 +567,12 @@ class StickyActionBar extends StatelessWidget {
               if (secondaryLabel != null) ...[
                 Expanded(
                   child: OutlinedButton(
+                    key: secondaryKey,
                     onPressed: onSecondary,
-                    child: Text(secondaryLabel!.toUpperCase()),
+                    child: Text(
+                      secondaryLabel!.toUpperCase(),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -450,7 +581,10 @@ class StickyActionBar extends StatelessWidget {
                 flex: secondaryLabel == null ? 1 : 2,
                 child: FilledButton(
                   onPressed: onPrimary,
-                  child: Text(primaryLabel.toUpperCase()),
+                  child: Text(
+                    primaryLabel.toUpperCase(),
+                    textAlign: TextAlign.center,
+                  ),
                 ),
               ),
             ],
@@ -505,7 +639,7 @@ class DangerZone extends StatelessWidget {
 }
 
 /// A titled block of a create/edit form: a [SectionBar] heading, a caption,
-/// then [child] — inside a raised card unless [boxed] is false.
+/// then [child] — inside a raised card when [boxed] is true.
 class FormSection extends StatelessWidget {
   const FormSection({
     super.key,
@@ -513,7 +647,7 @@ class FormSection extends StatelessWidget {
     required this.description,
     required this.child,
     this.count,
-    this.boxed = true,
+    this.boxed = false,
     this.spacing = 12,
   });
 

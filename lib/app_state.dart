@@ -37,6 +37,7 @@ part 'app_state/discovery.dart';
 part 'app_state/fan.dart';
 part 'app_state/gig_editor.dart';
 part 'app_state/navigation.dart';
+part 'app_state/organizer.dart';
 part 'app_state/session.dart';
 part 'app_state/venues.dart';
 
@@ -77,6 +78,8 @@ mixin _AppStateCore on ChangeNotifier {
   void _normalizeCustomDateRange();
   void _clearMemberships();
   void _restartMemberships();
+  void _clearOrganizationsState();
+  void _restartOrganizations();
   void _resetBandForm();
   void _clearSessionSensitiveState();
   void _syncPublicGigSubscriptionForCurrentScreen();
@@ -121,6 +124,7 @@ class AppState extends ChangeNotifier
         _DiscoveryState,
         _FanState,
         _BandConsoleState,
+        _OrganizerState,
         _CatalogState,
         _SessionState,
         _NavigationState {
@@ -133,6 +137,9 @@ class AppState extends ChangeNotifier
     String? initialPerformerInviteToken,
     String? initialGigId,
     String? initialBandSlug,
+    String? initialVenueRef,
+    String? initialOrgInviteToken,
+    bool initialOrganizerApply = false,
     DateTime Function()? now,
   }) : this._(
          auth,
@@ -143,6 +150,9 @@ class AppState extends ChangeNotifier
          initialPerformerInviteToken,
          initialGigId,
          initialBandSlug,
+         initialVenueRef,
+         initialOrgInviteToken,
+         initialOrganizerApply,
          now ?? DateTime.now,
        );
 
@@ -158,6 +168,9 @@ class AppState extends ChangeNotifier
     String? initialPerformerInviteToken,
     String? initialGigId,
     String? initialBandSlug,
+    String? initialVenueRef,
+    String? initialOrgInviteToken,
+    bool initialOrganizerApply = false,
     DateTime Function()? now,
   }) {
     final resolvedAuth = auth ?? FakeAuthService();
@@ -170,6 +183,9 @@ class AppState extends ChangeNotifier
       initialPerformerInviteToken: initialPerformerInviteToken,
       initialGigId: initialGigId,
       initialBandSlug: initialBandSlug,
+      initialVenueRef: initialVenueRef,
+      initialOrgInviteToken: initialOrgInviteToken,
+      initialOrganizerApply: initialOrganizerApply,
       now: now,
     );
   }
@@ -183,6 +199,9 @@ class AppState extends ChangeNotifier
     String? initialPerformerInviteToken,
     String? initialGigId,
     String? initialBandSlug,
+    String? initialVenueRef,
+    String? initialOrgInviteToken,
+    bool initialOrganizerApply,
     this._now,
   ) : // Only a real backend has a connection to wait on; the demo data is
       // already in memory, so it must not show the connecting screen.
@@ -216,18 +235,36 @@ class AppState extends ChangeNotifier
     final joinToken = initialJoinToken?.trim();
     final gigId = initialGigId?.trim();
     final bandSlug = initialBandSlug?.trim();
+    final orgInviteToken = initialOrgInviteToken?.trim();
     if (performerToken != null && performerToken.isNotEmpty) {
       _stack = [ScreenEntry(Screen.gigInvite, performerToken)];
       unawaited(_resolvePerformerInvite(performerToken));
     } else if (joinToken != null && joinToken.isNotEmpty) {
       _stack = [ScreenEntry(Screen.bandJoin, joinToken)];
       unawaited(_resolveJoinInvite(joinToken));
+    } else if (orgInviteToken != null && orgInviteToken.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.orgJoin, orgInviteToken)];
+    } else if (initialOrganizerApply) {
+      if (authed) {
+        _stack = const [ScreenEntry(Screen.orgApply)];
+      } else {
+        // Clerk still needs the incoming OAuth callback query parameters.
+        // Seed auth state without changing the browser URL during startup.
+        pending = const PendingAuth(PendingKind.orgApply);
+        _authConfirmationKind = PendingKind.orgApply;
+        _stack = const [ScreenEntry(Screen.home), ScreenEntry(Screen.auth)];
+      }
     } else if (gigId != null && gigId.isNotEmpty) {
       _stack = [ScreenEntry(Screen.gig, gigId)];
       unawaited(_loadPublicGig(gigId));
     } else if (bandSlug != null && bandSlug.isNotEmpty) {
       _stack = [ScreenEntry(Screen.band, bandSlug)];
       unawaited(_loadPublicBand(bandSlug));
+    }
+
+    final venueRef = initialVenueRef?.trim();
+    if (venueRef != null && venueRef.isNotEmpty) {
+      unawaited(_resolveInitialVenue(venueRef));
     }
   }
 
@@ -247,6 +284,8 @@ class AppState extends ChangeNotifier
   @override
   StreamSubscription<List<BandMembership>>? _bandsSubscription;
   @override
+  StreamSubscription<List<OrganizationMembership>>? _organizationsSubscription;
+  @override
   DataStatus _dataStatus;
   DataStatus get dataStatus => _dataStatus;
 
@@ -254,6 +293,7 @@ class AppState extends ChangeNotifier
   void dispose() {
     _disposed = true;
     _membershipsGeneration++;
+    _organizationsGeneration++;
     _gigEditorGeneration++;
     _toastTimer?.cancel();
     _gigAutosaveTimer?.cancel();
@@ -264,8 +304,10 @@ class AppState extends ChangeNotifier
     unawaited(_authSubscription?.cancel());
     unawaited(_feedSubscription?.cancel());
     unawaited(_goingCountsSubscription?.cancel());
+    unawaited(_venueDirectorySubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
     unawaited(_bandsSubscription?.cancel());
+    unawaited(_organizationsSubscription?.cancel());
     unawaited(_publicGigSubscription?.cancel());
     _clearFollowedBandGigSubscriptions();
     super.dispose();
@@ -276,6 +318,8 @@ class AppState extends ChangeNotifier
     _sessionGeneration++;
     authed = false;
     _clearMemberships();
+    _clearOrganizationsState();
+    isPlatformAdmin = false;
     rsvps = {};
     _confirmedRsvps = {};
     _pendingRsvps.clear();

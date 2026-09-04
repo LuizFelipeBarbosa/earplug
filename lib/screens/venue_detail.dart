@@ -245,7 +245,11 @@ class _VenueContentState extends State<_VenueContent> {
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: VenueMiniMap(venue: detail.venue),
+          child: VenueMiniMap(
+            key: const Key('venue-detail-map'),
+            venue: detail.venue,
+            approximate: detail.venue.exactAddress == null,
+          ),
         ),
       ),
       _VenueSectionRow(:final label, :final count) => Padding(
@@ -381,6 +385,13 @@ class _VenueHero extends StatelessWidget {
                   context,
                 ).textTheme.epPosterTitle.copyWith(color: Ep.ink),
               ),
+              if (venue.verified) ...[
+                const SizedBox(height: 8),
+                const StatusPill(
+                  key: Key('venue-detail-verified'),
+                  label: 'VERIFIED',
+                ),
+              ],
             ],
           ),
         ),
@@ -394,12 +405,23 @@ class _VenueHero extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(venue.addr, style: Theme.of(context).textTheme.epBody),
+                  Text(
+                    venue.exactAddress ?? venue.approx.label,
+                    style: Theme.of(context).textTheme.epBody,
+                  ),
+                  if (venue.exactAddress == null) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      'Exact address is shared with booked artists and ticket holders',
+                      key: const Key('venue-detail-approx-note'),
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  ],
                   const SizedBox(height: 5),
                   Text(
                     [
                       if (venue.area.trim().isNotEmpty) venue.area,
-                      distance,
+                      venue.exactAddress == null ? '~$distance' : distance,
                     ].join(' · '),
                     key: const Key('venue-detail-distance'),
                     style: Theme.of(context).textTheme.epCaption,

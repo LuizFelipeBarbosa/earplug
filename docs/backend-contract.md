@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.18)
+# EarPlug Convex function contract (FROZEN — v1.19)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -224,6 +224,68 @@ collapsed into one `requireBandRole(ctx, bandId, { role, allowArchived? })`;
 (previously `"Not signed in"`) and `"Band not found"` for an unknown `bandId`
 (previously `"Not an admin of this band"`). Wire shapes are unchanged in all
 cases.
+
+**v1.19 — marketplace phase 1.** Wire shapes for already-shipped functions are
+otherwise unchanged. An organization is the account/business entity that
+manages bookings and payouts; a venue is a physical location and may optionally
+link to its manager through `managedByOrganizationId`. The schema now includes
+`organizations`, `organizationPrivateDetails`, `organizationMembers`,
+`organizationMemberInvites`, `organizationApplications`,
+`venuePrivateDetails`, and `stripeEvents`; see their modules and schema for the
+exact shapes.
+
+`VenuePayload` adds `slug`, `approxLocation`, `neighborhood`, `city`,
+`addressDisclosure`, `verified`, `managedByOrganizationId`, `exactAddr`,
+`description`, `venueType`, and `capacityPublic`.
+The wire `addr`/`lat`/`lng` fields are always the disclosable location: exact
+for a public venue and approximate for a venue whose `addressDisclosure` is
+`onTicket`.
+
+- `organizationApplications:mine` — Query; see module for exact args and return shape.
+- `organizationApplications:saveDraft` — Mutation; see module for exact args and return shape.
+- `organizationApplications:submit` — Mutation; see module for exact args and return shape.
+- `organizationApplications:attachDocument` — Mutation; see module for exact args and return shape.
+- `organizationApplications:generateDocumentUploadUrl` — Mutation; see module for exact args and return shape.
+- `organizations:mine` — Query; see module for exact args and return shape.
+- `organizations:bySlug` — Query; see module for exact args and return shape.
+- `organizations:dashboard` — Query; see module for exact args and return shape.
+- `organizations:addPhoto` — Mutation; atomically appends one validated photo,
+  preserving existing photos and treating a repeated storage ID as a no-op.
+- `organizationMembers:resolveInvite` — Query; see module for exact args and return shape.
+- `organizationMembers:acceptInvite` — Mutation; see module for exact args and return shape.
+- `venues:resolvePublic` — Query; see module for exact args and return shape.
+- `venues:privateDetail` — Query; see module for exact args and return shape.
+- `admin:me` — Query; see module for exact args and return shape.
+
+`venues:create` deduplicates only against public venue columns and returns the
+existing venue with `created: false` on a name/area or exact-public-address
+match; when the match is an on-ticket venue, its payload remains approximate.
+Matching only another on-ticket venue's private address creates a separate
+legacy venue. Platform-admin `internalMutation`s support the new administration
+and verification workflows; see their modules for exact operations. Two Stripe
+webhook HTTP routes record their received events in `stripeEvents`.
+
+`organizationMembers:createInvite` accepts only `manager`, `finance`, or `door`;
+owners are promoted through `organizationMembers:setRole`. Changing a live
+invite's role rotates its token and expiry instead of mutating it in place.
+
+`organizations:setPhotos` retains its full-list replacement behavior for
+existing callers. The settings photo uploader uses `organizations:addPhoto`
+so adding a photo after reopening settings or from another session preserves
+the organization's existing photos.
+
+Suspended venues and their gigs are excluded from public discovery: the feed,
+going counts, public gig resolver, and public band upcoming/history queries.
+The client subscribes to `venues:list` so directory entries also disappear or
+return when an organization is suspended or restored, including venues with
+no upcoming gigs. Band management projects and personal RSVP history remain
+available.
+
+Legacy venue rows are maintained by the ordered, idempotent
+`migrations:runReleaseBackfills` runner and observed through
+`migrations:releaseBackfillStatus`. `tool/run_release_backfills.mjs`, exposed as
+`npm run backfill:release`, drives that runner to completion during a production
+release.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers

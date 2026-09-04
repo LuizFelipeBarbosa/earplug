@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 
+import 'app_links.dart';
 import 'app_state.dart';
 import 'band_media_state.dart';
 import 'data/convex_repository.dart';
 import 'data/repository.dart';
 import 'env.dart';
 import 'errors.dart';
+import 'screens/admin_application.dart';
+import 'screens/admin_queue.dart';
 import 'screens/analytics.dart';
 import 'screens/auth.dart';
 import 'screens/band_create.dart';
@@ -27,12 +30,21 @@ import 'screens/gig_invite.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
 import 'screens/my_gigs.dart';
+import 'screens/org_application_status.dart';
+import 'screens/org_apply.dart';
+import 'screens/org_dash.dart';
+import 'screens/org_join.dart';
+import 'screens/org_settings.dart';
+import 'screens/org_team.dart';
+import 'screens/org_venue_edit.dart';
+import 'screens/org_venues.dart';
 import 'screens/settings.dart';
 import 'screens/venue_detail.dart';
 import 'services/appearance_controller.dart';
 import 'services/auth_service.dart';
 import 'services/auth_service_factory.dart';
 import 'services/convex_service.dart';
+import 'services/geocoding_service.dart';
 import 'services/stadia_map_style_repository.dart';
 import 'services/web_shell.dart';
 import 'theme.dart';
@@ -86,12 +98,18 @@ Future<void> main() async {
   final performerInviteToken = performerInviteTokenFromUri(Uri.base);
   final gigId = gigIdFromUri(Uri.base);
   final bandSlug = bandSlugFromUri(Uri.base);
+  final venueRef = venueRefFromUri(Uri.base);
+  final orgInviteToken = orgInviteTokenFromUri(Uri.base);
+  final organizerApply = organizerApplyFromUri(Uri.base);
   if (Env.demo) {
     final appState = AppState.demo(
       initialJoinToken: joinToken,
       initialPerformerInviteToken: performerInviteToken,
       initialGigId: gigId,
       initialBandSlug: bandSlug,
+      initialVenueRef: venueRef,
+      initialOrgInviteToken: orgInviteToken,
+      initialOrganizerApply: organizerApply,
     );
     runApp(
       EarplugApp(
@@ -124,6 +142,9 @@ Future<void> main() async {
       initialPerformerInviteToken: performerInviteToken,
       initialGigId: gigId,
       initialBandSlug: bandSlug,
+      initialVenueRef: venueRef,
+      initialOrgInviteToken: orgInviteToken,
+      initialOrganizerApply: organizerApply,
     ),
   );
   _removeSplashAfterFirstFrame();
@@ -168,12 +189,22 @@ String? performerInviteTokenFromUri(Uri uri) =>
 
 String? gigIdFromUri(Uri uri) => _routeValueFromUri(uri, 'g');
 
+String? venueRefFromUri(Uri uri) => _routeValueFromUri(uri, 'venues');
+
+String? orgInviteTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'apply');
+
+bool organizerApplyFromUri(Uri uri) =>
+    uri.path == organizerApplyPath || uri.path == '$organizerApplyPath/';
+
 String? bandSlugFromUri(Uri uri) {
   final segments = uri.pathSegments
       .where((segment) => segment.isNotEmpty)
       .toList();
   if (segments.length != 1) return null;
   final slug = segments.single.trim().toLowerCase();
+  // Marketplace routes include a second segment, so their bare prefixes can
+  // still resolve band slugs issued by the backend (including the `band`
+  // fallback). Only these original roots were excluded from slug allocation.
   if (slug.isEmpty ||
       const {'g', 'join', 'gig-invite', 'check-in'}.contains(slug)) {
     return null;
@@ -242,6 +273,9 @@ class EarplugApp extends StatelessWidget {
     this.initialPerformerInviteToken,
     this.initialGigId,
     this.initialBandSlug,
+    this.initialVenueRef,
+    this.initialOrgInviteToken,
+    this.initialOrganizerApply = false,
   });
 
   final AppearanceController appearance;
@@ -252,6 +286,9 @@ class EarplugApp extends StatelessWidget {
   final String? initialPerformerInviteToken;
   final String? initialGigId;
   final String? initialBandSlug;
+  final String? initialVenueRef;
+  final String? initialOrgInviteToken;
+  final bool initialOrganizerApply;
 
   @override
   Widget build(BuildContext context) {
@@ -261,6 +298,11 @@ class EarplugApp extends StatelessWidget {
         Provider<StadiaMapStyleRepository>(
           create: (_) => StadiaMapStyleRepository(apiKey: Env.stadiaMapsApiKey),
           dispose: (_, repository) => repository.dispose(),
+        ),
+        Provider<GeocodingService>(
+          create: (_) => StadiaGeocodingService(apiKey: Env.stadiaMapsApiKey),
+          dispose: (_, service) =>
+              (service as StadiaGeocodingService).dispose(),
         ),
         ChangeNotifierProvider(
           create: (_) =>
@@ -272,6 +314,9 @@ class EarplugApp extends StatelessWidget {
                 initialPerformerInviteToken: initialPerformerInviteToken,
                 initialGigId: initialGigId,
                 initialBandSlug: initialBandSlug,
+                initialVenueRef: initialVenueRef,
+                initialOrgInviteToken: initialOrgInviteToken,
+                initialOrganizerApply: initialOrganizerApply,
               ),
         ),
         ChangeNotifierProvider<BandMediaController>(
@@ -382,14 +427,6 @@ String? _environmentRibbon() {
   return Env.convexTier == DeploymentTier.development ? 'DEV' : null;
 }
 
-const _fanTabScreens = {Screen.home, Screen.explore, Screen.myGigs};
-const _bandTabScreens = {
-  Screen.bandDash,
-  Screen.bandEdit,
-  Screen.gigMgr,
-  Screen.analytics,
-};
-
 class RootShell extends StatelessWidget {
   const RootShell({super.key});
 
@@ -444,10 +481,17 @@ class RootShell extends StatelessWidget {
       DataStatus.ready => Stack(
         children: [
           Positioned.fill(child: _screenFor(entry)),
-          if (_fanTabScreens.contains(screen))
+          if (fanTabScreens.contains(screen))
             const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-          if (_bandTabScreens.contains(screen))
+          if (bandTabScreens.contains(screen))
             const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
+          if (organizerTabScreens.contains(screen))
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: OrganizerTabBar(),
+            ),
           const _ToastLayer(),
         ],
       ),
@@ -494,6 +538,22 @@ class RootShell extends StatelessWidget {
       Screen.gigMgr => GigManagerScreen(key: key),
       Screen.gigCreate => GigCreateScreen(key: key),
       Screen.analytics => AnalyticsScreen(key: key),
+      Screen.orgApply => OrgApplyScreen(key: key),
+      Screen.orgApplicationStatus => OrgApplicationStatusScreen(key: key),
+      Screen.orgJoin => OrgJoinScreen(key: key, token: entry.param!),
+      Screen.orgDash => OrgDashScreen(key: key),
+      Screen.orgVenues => OrgVenuesScreen(key: key),
+      Screen.orgVenueEdit => OrgVenueEditScreen(
+        key: key,
+        venueId: entry.param!,
+      ),
+      Screen.orgTeam => OrgTeamScreen(key: key),
+      Screen.orgSettings => OrgSettingsScreen(key: key),
+      Screen.adminQueue => AdminQueueScreen(key: key),
+      Screen.adminApplication => AdminApplicationScreen(
+        key: key,
+        applicationId: entry.param!,
+      ),
     };
   }
 }

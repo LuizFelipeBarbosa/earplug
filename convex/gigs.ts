@@ -401,13 +401,20 @@ async function upcomingGigs(ctx: QueryCtx): Promise<UpcomingGigs> {
   };
 }
 
-async function hydrateVenues(ctx: QueryCtx, venueIds: Set<Id<"venues">>) {
+async function hydrateVenues(cache: DocCache, venueIds: Set<Id<"venues">>) {
   const venues = [];
   for (const venueId of venueIds) {
-    const venue = await ctx.db.get(venueId);
-    if (venue) venues.push(toVenuePayload(venue));
+    const venue = await cache.get(venueId);
+    if (venue && venue.status !== "suspended") {
+      venues.push(toVenuePayload(venue));
+    }
   }
   return venues;
+}
+
+async function atSuspendedVenue(cache: DocCache, gig: Doc<"gigs">) {
+  const venue = await cache.get(gig.venueId);
+  return venue?.status === "suspended";
 }
 
 async function ownedByActiveBand(ctx: QueryCtx, gig: Doc<"gigs">) {
@@ -416,8 +423,8 @@ async function ownedByActiveBand(ctx: QueryCtx, gig: Doc<"gigs">) {
   return owner !== null && owner.archivedAt === undefined;
 }
 
-/** `upcomingGigs` minus gigs whose owning band is archived, with the owner
- * reads memoised through `cache` so the caller's band hydration reuses them. */
+/** Excludes archived owners and suspended venues. Reads are memoised so the
+ * caller's band and venue hydration reuse the visibility checks. */
 async function visibleUpcomingGigs(
   ctx: QueryCtx,
   cache: DocCache,
@@ -425,6 +432,7 @@ async function visibleUpcomingGigs(
   const { gigs, nextStartsAt } = await upcomingGigs(ctx);
   const visible = [];
   for (const gig of gigs) {
+    if (await atSuspendedVenue(cache, gig)) continue;
     if (gig.createdByBand) {
       const owner = await cache.get(gig.createdByBand);
       if (owner === null || owner.archivedAt !== undefined) continue;
@@ -470,7 +478,7 @@ export const feedV2 = query({
     }
     return {
       gigs: gigPayloads,
-      venues: await hydrateVenues(ctx, venueIds),
+      venues: await hydrateVenues(cache, venueIds),
       bands,
       nextStartsAt,
     };
@@ -492,7 +500,7 @@ export const goingCounts = query({
 /** Canonical public-page resolver. String validation keeps malformed slugs and
  * ids out of Convex's argument validator and turns them into a normal miss.
  * Cancelled gigs remain resolvable so an old share link explains what
- * happened; unpublished and deleted gigs stay private. */
+ * happened; unpublished, deleted, and suspended-venue gigs stay private. */
 export const resolvePublic = query({
   args: { ref: v.string() },
   returns: v.union(gigPayloadValidator, v.null()),
@@ -511,7 +519,9 @@ export const resolvePublic = query({
       return null;
     }
     if (!(await ownedByActiveBand(ctx, gig))) return null;
-    return await toGigPayload(ctx, gig, docCache(ctx));
+    const cache = docCache(ctx);
+    if (await atSuspendedVenue(cache, gig)) return null;
+    return await toGigPayload(ctx, gig, cache);
   },
 });
 
@@ -529,6 +539,7 @@ export const forBand = query({
     const out = [];
     const cache = docCache(ctx);
     for (const gig of rows) {
+      if (await atSuspendedVenue(cache, gig)) continue;
       if (lifecycle(gig) === "published")
         out.push(await toGigPayload(ctx, gig, cache));
       if (out.length === MAX_UPCOMING_GIGS_PER_BAND) break;
@@ -554,11 +565,12 @@ export const pastForBand = query({
     const cache = docCache(ctx);
     for (const gig of rows) {
       if (lifecycle(gig) !== "published") continue;
+      if (await atSuspendedVenue(cache, gig)) continue;
       gigs.push(await toGigPayload(ctx, gig, cache));
       venueIds.add(gig.venueId);
       if (gigs.length === MAX_PAST_GIGS) break;
     }
-    return { gigs, venues: await hydrateVenues(ctx, venueIds) };
+    return { gigs, venues: await hydrateVenues(cache, venueIds) };
   },
 });
 

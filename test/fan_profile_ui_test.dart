@@ -49,7 +49,9 @@ void main() {
     expect(previewName.style!.fontSize, 25);
     expect(previewScene.style!.color, Ep.contentSecondary);
     expect(previewScene.style!.fontSize, 13);
-    expect(find.bySemanticsLabel('Change profile image'), findsOne);
+    expect(find.bySemanticsLabel('Edit profile photo'), findsOne);
+    expect(find.text('IDENTITY'), findsOne);
+    expect(find.text('SCENE & TASTE'), findsOne);
     expect(find.text('DISPLAY NAME · REQUIRED'), findsOne);
     expect(find.bySemanticsLabel('DISPLAY NAME · REQUIRED'), findsOne);
     expect(find.text('HOME LOCATION'), findsOne);
@@ -63,8 +65,8 @@ void main() {
     final orderedFields = [
       find.byKey(const Key('fan-identity-preview')),
       find.byKey(const Key('fan-name-field')),
-      find.byKey(const Key('fan-home-location-field')),
       find.byKey(const Key('fan-bio-field')),
+      find.byKey(const Key('fan-home-location-field')),
       find.byKey(const Key('fan-favorite-genres-field')),
       find.byKey(const Key('location-personalization')),
     ];
@@ -217,10 +219,17 @@ void main() {
 
     await tester.tap(find.byKey(const Key('fan-avatar-preview-control')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('picked-fan-avatar-preview')), findsOne);
-    expect(find.byKey(const Key('remove-fan-avatar')), findsOne);
+    expect(find.text('PROFILE PHOTO'), findsOne);
+    expect(find.text('REMOVE PHOTO'), findsNothing);
 
-    await tester.tap(find.byKey(const Key('remove-fan-avatar')));
+    await tester.tap(find.text('CHANGE PHOTO'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('picked-fan-avatar-preview')), findsOne);
+
+    await tester.tap(find.byKey(const Key('fan-avatar-edit-action')));
+    await tester.pumpAndSettle();
+    expect(find.text('REMOVE PHOTO'), findsOne);
+    await tester.tap(find.text('REMOVE PHOTO'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('picked-fan-avatar-preview')), findsNothing);
     expect(
@@ -246,6 +255,18 @@ void main() {
     final barTop = tester.getTopLeft(find.byType(StickyActionBar)).dy;
 
     await tester.scrollUntilVisible(
+      find.byKey(const Key('fan-bio-field')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('fan-bio-field')))
+          .maxLength,
+      280,
+    );
+
+    await tester.scrollUntilVisible(
       find.byKey(const Key('followed-band-updates')),
       300,
       scrollable: find.byType(Scrollable).first,
@@ -269,12 +290,6 @@ void main() {
 
     expect(harness.app.profile?.locationPersonalizationEnabled, isTrue);
     expect(harness.app.profile?.followedBandUpdatesEnabled, isFalse);
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const Key('fan-bio-field')))
-          .maxLength,
-      280,
-    );
   });
 
   testWidgets('profile leads with private identity and branded fan fallback', (
@@ -295,13 +310,21 @@ void main() {
     expect(find.byType(EpFanAvatar), findsOne);
     expect(find.text('EF'), findsOne);
     expect(find.byKey(const Key('edit-profile-action')), findsOne);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('fan-profile-header')),
+        matching: find.byKey(const Key('edit-profile-action')),
+      ),
+      findsOne,
+    );
     expect(find.byKey(const Key('share-fan-profile')), findsOne);
     expect(find.byKey(const Key('profile-settings-action')), findsOne);
-    expect(find.byTooltip('Edit profile'), findsOne);
+    expect(find.byTooltip('Edit profile'), findsNothing);
     expect(find.byTooltip('Share profile summary'), findsOne);
     expect(find.byTooltip('Privacy and account settings'), findsOne);
-    expect(find.text('EDIT PROFILE'), findsNothing);
+    expect(find.text('EDIT PROFILE'), findsOne);
     expect(find.text('SHARE PROFILE'), findsNothing);
+    expect(find.byKey(const Key('fan-profile-incomplete-hint')), findsOne);
     expect(find.textContaining('SCENE'), findsOne);
     final profileHeader = tester.widget<Container>(
       find.byKey(const Key('fan-profile-header')),
@@ -328,7 +351,6 @@ void main() {
         .getTopLeft(find.byKey(const Key('fan-profile-header')))
         .dy;
     for (final key in const [
-      Key('edit-profile-action'),
       Key('share-fan-profile'),
       Key('profile-settings-action'),
     ]) {
@@ -397,7 +419,7 @@ void main() {
       'UPCOMING SHOWS FROM FOLLOWED BANDS',
       'SETTINGS',
     ]) {
-      positions.add(tester.getTopLeft(find.text(label)));
+      positions.add(tester.getTopLeft(find.textContaining(label)));
     }
 
     for (var index = 1; index < positions.length; index++) {
@@ -872,6 +894,80 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
+  testWidgets('saving without a name flags the field inline', (tester) async {
+    await pumpApp(tester, home: const Scaffold(body: EditProfileScreen()));
+    tester.view.physicalSize = const Size(402, 1800);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('save-fan-profile')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('fan-name-validation')), findsOne);
+    expect(find.byKey(const Key('edit-profile-error')), findsNothing);
+
+    await tester.enterText(find.byKey(const Key('fan-name-field')), 'A Name');
+    await tester.pump();
+    expect(find.byKey(const Key('fan-name-validation')), findsNothing);
+  });
+
+  testWidgets('leaving with unsaved edits asks before discarding them', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      beforePump: (app) => app.go(Screen.editProfile),
+      home: const Scaffold(body: EditProfileScreen()),
+    );
+
+    // No edits: back leaves immediately without a prompt.
+    await tester.tap(find.byTooltip('Back to profile'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('discard-profile-dialog')), findsNothing);
+    expect(harness.app.current.screen, isNot(Screen.editProfile));
+
+    harness.app.go(Screen.editProfile);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('fan-name-field')), 'New Name');
+    await tester.pump();
+
+    await tester.tap(find.byTooltip('Back to profile'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('discard-profile-dialog')), findsOne);
+    expect(harness.app.current.screen, Screen.editProfile);
+
+    await tester.tap(find.byKey(const Key('keep-editing-profile')));
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.editProfile);
+
+    await tester.tap(find.byTooltip('Back to profile'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('discard-profile-changes')));
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, isNot(Screen.editProfile));
+  });
+
+  testWidgets('profile surfaces favorite genres as a shortcut into editing', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _GenreFanRepository(auth: auth),
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+
+    expect(find.byKey(const Key('fan-profile-genres')), findsOne);
+    expect(find.byKey(const Key('fan-profile-incomplete-hint')), findsOne);
+    await tester.tap(find.byKey(const ValueKey('fan-profile-genre-punk')));
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.editProfile);
+  });
+
   testWidgets('followed-band shows open their gig details', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
@@ -1315,6 +1411,19 @@ class _LegacyProfileRepository extends DemoRepository {
     'name': 'Legacy Fan',
     'email': 'legacy@example.com',
     'genres': <String>[],
+    'attendedCount': 0,
+    'createdAt': 1234,
+  });
+}
+
+class _GenreFanRepository extends DemoRepository {
+  _GenreFanRepository({required super.auth});
+
+  @override
+  Future<UserProfile?> me() async => UserProfile.fromJson({
+    'name': 'Genre Fan',
+    'email': 'genre@example.com',
+    'genres': <String>['punk', 'techno'],
     'attendedCount': 0,
     'createdAt': 1234,
   });

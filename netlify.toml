@@ -13,6 +13,7 @@
     if [ "${EARPLUG_ENV:-dev}" = "prod" ]; then
       if [ -n "${CONVEX_DEPLOY_KEY:-}" ]; then
         npx convex deploy --typecheck enable
+        npm run backfill:release -- --prod --timeout-seconds 480
         npm run check:release-contract -- prod
       else
         echo "CONVEX_DEPLOY_KEY is not configured; using the pre-deployed production backend"
@@ -32,8 +33,10 @@
   EARPLUG_ENV = "dev"
 
   # When a production Convex deploy key is configured in Netlify, production
-  # builds deploy and verify the backend before publishing. Without one, deploy
-  # and verify the backend separately before triggering the Netlify build.
+  # builds deploy, run the idempotent release backfills (observable via
+  # migrations:releaseBackfillStatus; a failed migration fails the build), and
+  # verify the backend before publishing. Without one, deploy, backfill, and
+  # verify the backend separately before triggering the Netlify build.
 
   # Every key here is public by design, so finding its value in the repo or the
   # built main.dart.js is expected: browsers connect straight to CONVEX_URL,

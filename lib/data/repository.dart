@@ -1,3 +1,5 @@
+import 'package:latlong2/latlong.dart';
+
 import '../models.dart';
 
 Map<String, dynamic> _recapMap(Object? value) {
@@ -473,6 +475,7 @@ abstract class EarplugRepository {
   Future<BandHistory> bandHistory(String bandId);
   Future<BandRecap> bandRecap(String bandId);
   Future<List<Venue>> venues();
+  Stream<List<Venue>> watchVenues();
   Future<VenueCreationResult> createVenue({
     required String bandId,
     required String name,
@@ -482,6 +485,133 @@ abstract class EarplugRepository {
     required double longitude,
   });
   Future<VenueDetail?> venueDetail(String venueId);
+  Future<OrganizationApplication?> myOrganizationApplication();
+  Future<({String applicationId, int revision})>
+  saveOrganizationApplicationDraft({
+    String? applicationId,
+    int? expectedRevision,
+    required String orgName,
+    required OrganizationType orgType,
+    String? website,
+    required String contactName,
+    required String businessEmail,
+    String? phone,
+    ApplicationVenueDraft? venue,
+  });
+  Future<int> submitOrganizationApplication({
+    required String applicationId,
+    required int expectedRevision,
+  });
+  Future<void> withdrawOrganizationApplication(String applicationId);
+  Future<String> generateApplicationDocumentUploadUrl();
+  Future<int> attachApplicationDocument({
+    required String applicationId,
+    required String storageId,
+  });
+  Future<int> removeApplicationDocument({
+    required String applicationId,
+    required String storageId,
+  });
+  Future<OrganizationApplication?> organizationApplication(
+    String applicationId,
+  );
+  Future<AdminApplicationPage> applicationsForReview({
+    OrganizationApplicationStatus? status,
+    String? cursor,
+    int numItems = 25,
+  });
+  Future<
+    ({
+      OrganizationApplicationStatus status,
+      String? organizationId,
+      String? venueId,
+    })
+  >
+  decideOrganizationApplication({
+    required String applicationId,
+    required ApplicationDecision decision,
+    String? note,
+  });
+  Stream<List<OrganizationMembership>> myOrganizations();
+  Future<Organization?> organizationBySlug(String slug);
+  Future<Organization?> organization(String organizationId);
+  Future<OrganizationDashboard> organizationDashboard(String organizationId);
+  Future<void> updateOrganizationProfile({
+    required String organizationId,
+    String? name,
+    String? description,
+    String? website,
+  });
+  Future<void> updateOrganizationPrivateDetails({
+    required String organizationId,
+    String? legalName,
+    String? businessEmail,
+    String? contactName,
+    String? phone,
+  });
+  Future<String> generateOrganizationPhotoUploadUrl(String organizationId);
+  Future<void> addOrganizationPhoto({
+    required String organizationId,
+    required String storageId,
+  });
+  Future<void> setOrganizationPhotos({
+    required String organizationId,
+    required List<String> storageIds,
+  });
+  Future<void> deactivateOrganization(String organizationId);
+  Future<List<OrganizationMember>> organizationMembers(String organizationId);
+  Future<void> setOrganizationMemberRole({
+    required String organizationId,
+    required String userId,
+    required OrganizationRole role,
+  });
+  Future<void> removeOrganizationMember({
+    required String organizationId,
+    required String userId,
+  });
+  Future<OrganizationInvite?> organizationInvite(String organizationId);
+  Future<OrganizationInvite> createOrganizationInvite({
+    required String organizationId,
+    required OrganizationRole role,
+  });
+  Future<OrganizationInvite> rotateOrganizationInvite(String organizationId);
+  Future<void> revokeOrganizationInvite(String organizationId);
+  Future<OrganizationInviteResolution?> resolveOrganizationInvite(String token);
+  Future<OrganizationInviteAcceptance> acceptOrganizationInvite(String token);
+  Future<Venue?> resolveVenue(String ref);
+  Future<VenuePrivateDetails?> venuePrivateDetails(String venueId);
+  Future<void> updateVenueProfile({
+    required String venueId,
+    String? name,
+    String? description,
+    VenueType? venueType,
+    int? capacityPublic,
+    String? neighborhood,
+    String? city,
+  });
+  Future<void> updateVenuePrivateDetails({
+    required String venueId,
+    required String addr,
+    required LatLng point,
+    String? loadInNotes,
+    int? capacity,
+  });
+  Future<void> setVenueAddressDisclosure({
+    required String venueId,
+    required AddressDisclosure disclosure,
+  });
+  Future<String> generateVenuePhotoUploadUrl(String venueId);
+  Future<void> setVenuePhotos({
+    required String venueId,
+    required List<String> storageIds,
+  });
+  Future<bool> isPlatformAdmin();
+  Future<AdminOverview> adminOverview();
+  Future<void> setOrganizationSuspended({
+    required String organizationId,
+    required bool suspended,
+    String? note,
+  });
   Future<Band?> band(String bandId);
   Future<Band?> bandBySlug(String slug);
   Future<BandProfileDetails> bandProfileDetails(String bandId);

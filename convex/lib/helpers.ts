@@ -4,13 +4,16 @@ import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { DocCache } from "./docCache";
 import {
+  addressDisclosureValidator,
   ageRequirementValidator,
   fanCityValidator,
   fanGenreChoiceValidator,
   gigLifecycleValidator,
   gigPublicPerformerValidator,
   pastShowValidator,
+  venueTypeValidator,
 } from "../schema";
+import { approximateLocation, formatMiles, OAK_CENTER, SF_CENTER } from "./geo";
 
 // ─── Deterministic band identity ────────────────────────────────────────────
 // Every band's colour, initials and slug are derived from its name rather than
@@ -220,7 +223,7 @@ export const gigPublishFieldsValidator = v.object({
 });
 export type GigPublishFields = Infer<typeof gigPublishFieldsValidator>;
 
-function isValidHttpsUrl(value: string | undefined): boolean {
+export function isValidHttpsUrl(value: string | undefined): boolean {
   if (!value) return false;
   try {
     const parsed = new URL(value);
@@ -432,6 +435,21 @@ export const venuePayloadValidator = v.object({
   distOak: v.string(),
   lat: v.number(),
   lng: v.number(),
+  slug: v.union(v.string(), v.null()),
+  approxLocation: v.object({
+    lat: v.number(),
+    lng: v.number(),
+    label: v.string(),
+  }),
+  neighborhood: v.union(v.string(), v.null()),
+  city: v.union(v.string(), v.null()),
+  description: v.union(v.string(), v.null()),
+  venueType: v.union(venueTypeValidator, v.null()),
+  capacityPublic: v.union(v.number(), v.null()),
+  addressDisclosure: addressDisclosureValidator,
+  verified: v.boolean(),
+  managedByOrganizationId: v.union(v.id("organizations"), v.null()),
+  exactAddr: v.union(v.string(), v.null()),
 });
 
 export const mediaKindValidator = v.union(
@@ -491,7 +509,7 @@ function resolveArtworkStorageId(
 ): Id<"_storage"> | undefined {
   return overrideStorageId === undefined
     ? legacyStorageId
-    : overrideStorageId ?? undefined;
+    : (overrideStorageId ?? undefined);
 }
 
 // `?? null` on the optional fields is the payload contract (explicit nulls,
@@ -663,16 +681,65 @@ export async function toGigPayload(
   };
 }
 
+export function effectiveAddressDisclosure(
+  venue: Doc<"venues">,
+): "onTicket" | "public" {
+  if (venue.addressDisclosure !== undefined) return venue.addressDisclosure;
+  return venue.status === undefined || venue.status === "legacy"
+    ? "public"
+    : "onTicket";
+}
+
 export function toVenuePayload(venue: Doc<"venues">) {
+  const disclosure = effectiveAddressDisclosure(venue);
+  const approx =
+    venue.approxLat !== undefined && venue.approxLng !== undefined
+      ? {
+          lat: venue.approxLat,
+          lng: venue.approxLng,
+          label: venue.approxLabel ?? venue.area,
+          neighborhood: venue.neighborhood ?? null,
+          city: venue.city ?? null,
+        }
+      : approximateLocation({ lat: venue.lat, lng: venue.lng }, venue.area);
+  const address =
+    disclosure === "public"
+      ? {
+          addr: venue.addr,
+          lat: venue.lat,
+          lng: venue.lng,
+          distSF: venue.distSF,
+          distOak: venue.distOak,
+          exactAddr: venue.addr,
+        }
+      : {
+          addr: approx.label,
+          lat: approx.lat,
+          lng: approx.lng,
+          distSF: formatMiles(SF_CENTER, approx),
+          distOak: formatMiles(OAK_CENTER, approx),
+          exactAddr: null,
+        };
+
   return {
     _id: venue._id,
     name: venue.name,
-    area: venue.area,
-    addr: venue.addr,
-    distSF: venue.distSF,
-    distOak: venue.distOak,
-    lat: venue.lat,
-    lng: venue.lng,
+    area: disclosure === "public" ? venue.area : approx.label,
+    ...address,
+    slug: venue.slug ?? null,
+    approxLocation: {
+      lat: approx.lat,
+      lng: approx.lng,
+      label: approx.label,
+    },
+    neighborhood: venue.neighborhood ?? approx.neighborhood ?? null,
+    city: venue.city ?? approx.city ?? null,
+    description: venue.description ?? null,
+    venueType: venue.venueType ?? null,
+    capacityPublic: venue.capacityPublic ?? null,
+    addressDisclosure: disclosure,
+    verified: venue.status === "verified",
+    managedByOrganizationId: venue.managedByOrganizationId ?? null,
   };
 }
 
@@ -710,9 +777,12 @@ export function toMediaPayload(
     order: media.order,
     // `isHero` is the legacy name for the band's profile photo. Keep it as an
     // alias of the avatar role for old clients; banners use `isBanner` only.
-    isHero: avatarStorageId !== undefined && avatarStorageId === media.storageId,
-    isAvatar: avatarStorageId !== undefined && avatarStorageId === media.storageId,
-    isBanner: bannerStorageId !== undefined && bannerStorageId === media.storageId,
+    isHero:
+      avatarStorageId !== undefined && avatarStorageId === media.storageId,
+    isAvatar:
+      avatarStorageId !== undefined && avatarStorageId === media.storageId,
+    isBanner:
+      bannerStorageId !== undefined && bannerStorageId === media.storageId,
   };
 }
 
@@ -777,8 +847,8 @@ export const MAX_RSVPS_PER_GIG = 300;
 /** Minimum distinct fans required in every row of a private partition. */
 export const K_ANON_FANS = 5;
 
-/** The venue table is a small curated list, not user-generated, so one read
- * returns all of it. */
+/** The venue list is now user- and organization-generated; `venues:list`
+ * truncates at 500 pending real pagination. */
 export const MAX_VENUES = 500;
 
 // ─── Fan profile limits ────────────────────────────────────────────────────

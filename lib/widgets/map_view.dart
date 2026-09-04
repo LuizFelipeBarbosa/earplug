@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
+import 'approx_area_map.dart';
 import 'common.dart';
 import 'ep_map.dart';
 
@@ -472,6 +473,7 @@ class _MapGigCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final areaLabel = venue.exactAddress == null ? 'Approx. area' : venue.area;
     return EpCard(
       key: ValueKey('map-gig-card-${gig.id}'),
       variant: EpCardVariant.raised,
@@ -519,7 +521,7 @@ class _MapGigCard extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            '${venue.name} · ${venue.area} · ${gig.dateLine}',
+            '${venue.name} · $areaLabel · ${gig.dateLine}',
             style: Theme.of(context).textTheme.epCaption,
           ),
           const SizedBox(height: 10),
@@ -563,8 +565,15 @@ class _CarouselButton extends StatelessWidget {
 /// Static venue mini-map for the gig page.
 class VenueMiniMap extends StatelessWidget {
   final Venue venue;
+  final bool approximate;
+  final double approxRadiusMeters;
 
-  const VenueMiniMap({super.key, required this.venue});
+  const VenueMiniMap({
+    super.key,
+    required this.venue,
+    this.approximate = false,
+    this.approxRadiusMeters = 600,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -573,26 +582,29 @@ class VenueMiniMap extends StatelessWidget {
       child: EpMap(
         options: MapOptions(
           initialCenter: venue.point,
-          initialZoom: 15,
+          initialZoom: approximate ? 13 : 15,
           backgroundColor: context.epColors.background,
           interactionOptions: const InteractionOptions(
             flags: InteractiveFlag.none,
           ),
         ),
         layers: [
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: venue.point,
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                child: const Center(
-                  child: SizedBox.square(dimension: 16, child: _Pin()),
+          if (approximate)
+            approxAreaRingLayer(venue.point, approxRadiusMeters)
+          else
+            MarkerLayer(
+              markers: [
+                Marker(
+                  point: venue.point,
+                  width: 48,
+                  height: 48,
+                  alignment: Alignment.center,
+                  child: const Center(
+                    child: SizedBox.square(dimension: 16, child: _Pin()),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
         ],
       ),
     );

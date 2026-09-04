@@ -22,12 +22,14 @@ class EpMap extends StatefulWidget {
     this.mapController,
     this.layers = const [],
     this.tiles = kIsWeb ? EpMapTiles.raster : EpMapTiles.vector,
+    this.showAttribution = true,
   });
 
   final MapOptions options;
   final MapController? mapController;
   final List<Widget> layers;
   final EpMapTiles tiles;
+  final bool showAttribution;
 
   @override
   State<EpMap> createState() => _EpMapState();
@@ -185,7 +187,8 @@ class _EpMapState extends State<EpMap> {
         ),
         if (!raster && !ready && _error == null) const _MapLoading(),
         if (!raster && !ready && _error != null) _MapError(onRetry: _retry),
-        if (raster || style != null) _MapAttribution(entries: attributions),
+        if (widget.showAttribution && (raster || style != null))
+          _MapAttribution(entries: attributions),
       ],
     );
   }
@@ -229,8 +232,9 @@ class _MapError extends StatelessWidget {
             border: Border.all(color: context.epColors.border),
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Text(
                 'MAP UNAVAILABLE',
@@ -257,43 +261,47 @@ class _MapAttribution extends StatelessWidget {
 
     return Positioned(
       top: 4,
+      left: 4,
       right: 4,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 280),
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
-        decoration: BoxDecoration(
-          color: context.epColors.surface.withValues(alpha: .9),
-          borderRadius: BorderRadius.circular(5),
-        ),
-        child: Wrap(
-          spacing: 4,
-          runSpacing: 1,
-          alignment: WrapAlignment.end,
-          children: [
-            for (final entry in entries)
-              Semantics(
-                link: entry.url != null,
-                label: entry.text,
-                child: InkWell(
-                  onTap: entry.url == null
-                      ? null
-                      : () => launchUrl(
-                          Uri.parse(entry.url!),
-                          mode: LaunchMode.externalApplication,
-                        ),
-                  child: Text(
-                    entry.text,
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      fontSize: 9,
-                      color: context.epColors.contentSecondary,
-                      decoration: entry.url == null
-                          ? TextDecoration.none
-                          : TextDecoration.underline,
+      child: Align(
+        alignment: Alignment.topRight,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 280),
+          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+          decoration: BoxDecoration(
+            color: context.epColors.surface.withValues(alpha: .9),
+            borderRadius: BorderRadius.circular(5),
+          ),
+          child: Wrap(
+            spacing: 4,
+            runSpacing: 1,
+            alignment: WrapAlignment.end,
+            children: [
+              for (final entry in entries)
+                Semantics(
+                  link: entry.url != null,
+                  label: entry.text,
+                  child: InkWell(
+                    onTap: entry.url == null
+                        ? null
+                        : () => launchUrl(
+                            Uri.parse(entry.url!),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                    child: Text(
+                      entry.text,
+                      style: Theme.of(context).textTheme.epCaption.copyWith(
+                        fontSize: 9,
+                        color: context.epColors.contentSecondary,
+                        decoration: entry.url == null
+                            ? TextDecoration.none
+                            : TextDecoration.underline,
+                      ),
                     ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

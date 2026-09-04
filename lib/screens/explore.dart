@@ -932,9 +932,22 @@ class _VenueRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  venue.name.toUpperCase(),
-                  style: Theme.of(context).textTheme.epLabel,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        venue.name.toUpperCase(),
+                        style: Theme.of(context).textTheme.epLabel,
+                      ),
+                    ),
+                    if (venue.verified) ...[
+                      const SizedBox(width: 8),
+                      StatusPill(
+                        key: Key('explore-venue-verified-${venue.id}'),
+                        label: 'VERIFIED',
+                      ),
+                    ],
+                  ],
                 ),
                 Text(
                   '${venue.addr} · ${venue.area}',

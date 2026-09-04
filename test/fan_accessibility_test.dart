@@ -79,23 +79,29 @@ void main() {
     expect(find.byKey(const Key('fan-following-stat')), findsOne);
     expect(find.byKey(const Key('fan-history-stat')), findsOne);
     for (final key in const [
-      Key('edit-profile-action'),
       Key('share-fan-profile'),
       Key('profile-settings-action'),
     ]) {
       expect(find.byKey(key), findsOne);
       expect(tester.getSize(find.byKey(key)), const Size(48, 48));
     }
-    expect(find.byTooltip('Edit profile'), findsOne);
+    final editAction = find.byKey(const Key('edit-profile-action'));
+    expect(editAction, findsOne);
+    expect(tester.getSize(editAction).height, greaterThanOrEqualTo(48));
+    expect(find.text('EDIT PROFILE'), findsOne);
     expect(find.byTooltip('Share profile summary'), findsOne);
     expect(find.byTooltip('Privacy and account settings'), findsOne);
     await tester.scrollUntilVisible(
-      find.text('UPCOMING RSVPS'),
+      find.textContaining('UPCOMING RSVPS'),
       180,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('UPCOMING RSVPS'), findsOne);
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, 600));
+    expect(find.textContaining('UPCOMING RSVPS'), findsOne);
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('fan-following-stat')),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('fan-following-stat')));
     await tester.pumpAndSettle();
@@ -132,8 +138,14 @@ void main() {
 
       expect(find.byKey(const Key('fan-identity-preview')), findsOne);
       expect(find.byKey(const Key('fan-name-field')), findsOne);
-      expect(find.byKey(const Key('fan-home-location-field')), findsOne);
       expect(find.byKey(const Key('save-fan-profile')), findsOne);
+
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('fan-home-location-field')),
+        240,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(find.byKey(const Key('fan-home-location-field')), findsOne);
 
       await tester.scrollUntilVisible(
         find.byKey(const Key('use-current-home-location')),

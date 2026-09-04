@@ -536,6 +536,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 spacing: 14,
                 description:
                     'Acknowledge producers, artists, labels, and collaborators.',
+                boxed: true,
                 child: Semantics(
                   label: 'Credits',
                   textField: true,
@@ -562,29 +563,13 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 key: _membersKey,
                 child: const _BandMembersSection(),
               ),
-              if (_error case final error?) ...[
+              if (_error != null || _saved) ...[
                 const SizedBox(height: 16),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    error,
-                    key: const ValueKey('profile-save-error'),
-                    style: Theme.of(context).textTheme.epBody.copyWith(
-                      color: context.epColors.warning,
-                    ),
-                  ),
-                ),
-              ] else if (_saved) ...[
-                const SizedBox(height: 16),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    'Changes saved.',
-                    key: const ValueKey('profile-save-success'),
-                    style: Theme.of(context).textTheme.epBody.copyWith(
-                      color: context.epColors.success,
-                    ),
-                  ),
+                InlineFormFeedback(
+                  error: _error,
+                  success: _saved ? 'Changes saved.' : null,
+                  errorKey: const ValueKey('profile-save-error'),
+                  successKey: const ValueKey('profile-save-success'),
                 ),
               ],
               const SizedBox(height: 20),
@@ -605,25 +590,6 @@ class _BandEditScreenState extends State<BandEditScreen> {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      label,
-      style: Theme.of(context).textTheme.epLabel.copyWith(
-        fontSize: 11,
-        fontWeight: FontWeight.w900,
-        letterSpacing: .8,
-        color: context.epColors.contentSecondary,
-      ),
     );
   }
 }
@@ -747,10 +713,11 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
       count: members.length,
       description:
           'Share one secure link. It can be used by multiple members for seven days.',
+      boxed: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _FieldLabel('ACCEPTED MEMBERS'),
+          const FieldLabel('ACCEPTED MEMBERS'),
           const SizedBox(height: 7),
           if (members.isEmpty)
             Text(

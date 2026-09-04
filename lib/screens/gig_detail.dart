@@ -660,7 +660,10 @@ class _VenueCard extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               onTap: interactive ? () => app.openVenue(venue.id) : null,
-              child: VenueMiniMap(venue: venue),
+              child: VenueMiniMap(
+                venue: venue,
+                approximate: venue.exactPoint == null,
+              ),
             ),
           ),
           Padding(
@@ -677,16 +680,30 @@ class _VenueCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              venue.name.toUpperCase(),
-                              style: epText(
-                                size: 13.5,
-                                weight: FontWeight.w800,
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    venue.name.toUpperCase(),
+                                    style: epText(
+                                      size: 13.5,
+                                      weight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                if (venue.verified) ...[
+                                  const SizedBox(width: 8),
+                                  const StatusPill(
+                                    key: Key('gig-venue-verified'),
+                                    label: 'VERIFIED',
+                                  ),
+                                ],
+                              ],
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${venue.addr} · ${venue.area}',
+                              venue.exactAddress ??
+                                  '${venue.area} · Approx. area',
                               style: epText(
                                 size: 11.5,
                                 color: context.epColors.contentSecondary,
@@ -698,9 +715,10 @@ class _VenueCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (interactive) ...[
+                if (interactive && venue.exactPoint != null) ...[
                   const SizedBox(width: 10),
                   OutlinedButton(
+                    key: const Key('gig-venue-directions'),
                     onPressed: () => openExternalForUser(
                       context,
                       'https://www.google.com/maps/search/?api=1&query='

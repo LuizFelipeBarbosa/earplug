@@ -1,10 +1,53 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/geocoding_service.dart';
 import 'package:earplug/services/media_picker.dart';
 import 'package:earplug/services/video_thumbnail_generator_contract.dart';
+import 'package:latlong2/latlong.dart';
+
+class FakeGeocodingService implements GeocodingService {
+  FakeGeocodingService({List<AddressSuggestion>? suggestions})
+    : suggestions = suggestions ?? _defaultSuggestions;
+
+  List<AddressSuggestion> suggestions;
+  final List<String> queries = [];
+  GeocodingFailure? failure;
+  Completer<List<AddressSuggestion>>? gate;
+
+  @override
+  Future<List<AddressSuggestion>> autocomplete(
+    String text, {
+    LatLng? focus,
+  }) async {
+    queries.add(text);
+    if (gate case final gate?) return gate.future;
+    if (failure case final failure?) throw failure;
+    return suggestions;
+  }
+}
+
+final _defaultSuggestions = <AddressSuggestion>[
+  AddressSuggestion(
+    label: '22 Valencia St, San Francisco, CA, USA',
+    address: '22 Valencia St',
+    area: 'Mission',
+    locality: 'San Francisco',
+    region: 'CA',
+    point: const LatLng(37.7676, -122.4220),
+  ),
+  AddressSuggestion(
+    label: '2455 Harrison St, San Francisco, CA, USA',
+    address: '2455 Harrison St',
+    area: 'Mission',
+    locality: 'San Francisco',
+    region: 'CA',
+    point: const LatLng(37.7590, -122.4120),
+  ),
+];
 
 /// Hands back whatever the test staged instead of opening a real picker, and
 /// counts what was asked for.

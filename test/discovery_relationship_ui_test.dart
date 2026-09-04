@@ -133,7 +133,8 @@ void main() {
 
     expect(find.byKey(const Key('venue-detail-hero')), findsOne);
     expect(find.text('THE FOGHORN CLUB'), findsOne);
-    expect(find.textContaining('2455 Harrison St'), findsOne);
+    expect(find.textContaining('2455 Harrison St'), findsNothing);
+    expect(find.textContaining(DemoData.venues['v1']!.addr), findsWidgets);
     expect(find.byKey(const Key('venue-detail-distance')), findsOne);
     expect(find.byType(VenueMiniMap), findsOne);
     expect(find.textContaining('DOOR POLICY'), findsNothing);

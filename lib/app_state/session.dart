@@ -1,6 +1,16 @@
 part of '../app_state.dart';
 
-enum PendingKind { rsvp, follow, save, myGigs, band, join, gigInvite }
+enum PendingKind {
+  rsvp,
+  follow,
+  save,
+  myGigs,
+  band,
+  join,
+  gigInvite,
+  orgApply,
+  orgJoin,
+}
 
 class PendingAuth {
   final PendingKind kind;
@@ -26,11 +36,13 @@ mixin _SessionState on _AppStateCore {
   void go(Screen s, [String? param]);
   void back();
   void resetTo(Screen s);
+  Future<void> refreshOrganizationApplication();
 
   int _sessionGeneration = 0;
 
   // ---- session
   bool authed = false;
+  bool isPlatformAdmin = false;
   PendingAuth? pending;
   PendingKind? _authConfirmationKind;
   PendingKind? get authConfirmationKind => _authConfirmationKind;
@@ -44,6 +56,7 @@ mixin _SessionState on _AppStateCore {
     authed = signedIn;
     if (signedIn) {
       _clearMemberships();
+      _clearOrganizationsState();
       authStep = 2;
       _authReady = _ensureUser();
       unawaited(_authReady);
@@ -67,6 +80,9 @@ mixin _SessionState on _AppStateCore {
       await repository.ensureUser(name: auth.displayName);
       if (!_isCurrentSession(sessionGeneration)) return false;
       _restartMemberships();
+      _restartOrganizations();
+      unawaited(refreshOrganizationApplication());
+      unawaited(_refreshPlatformAdmin(sessionGeneration));
       await _refreshProfile(sessionGeneration: sessionGeneration);
       if (!_isCurrentSession(sessionGeneration)) return false;
       unawaited(_refreshHistory(sessionGeneration: sessionGeneration));
@@ -127,6 +143,20 @@ mixin _SessionState on _AppStateCore {
     }
   }
 
+  Future<void> _refreshPlatformAdmin(int sessionGeneration) async {
+    try {
+      final loaded = await repository.isPlatformAdmin();
+      if (!_isCurrentSession(sessionGeneration)) return;
+      isPlatformAdmin = loaded;
+      notifyListeners();
+    } catch (error) {
+      logError('isPlatformAdmin', error);
+      if (!_isCurrentSession(sessionGeneration)) return;
+      isPlatformAdmin = false;
+      notifyListeners();
+    }
+  }
+
   // ========================= auth =========================
 
   void needAuth(PendingAuth p) {
@@ -136,6 +166,13 @@ mixin _SessionState on _AppStateCore {
     _authCommit = null;
     _postAuthScreen = null;
     go(Screen.auth);
+    if (p.kind == PendingKind.orgJoin) {
+      // Keep the invitation address through a full-page OAuth redirect.
+      replaceBrowserPath('/apply/${Uri.encodeComponent(p.id!)}');
+    } else if (p.kind == PendingKind.orgApply) {
+      // Startup restores the application intent after an OAuth page reload.
+      replaceBrowserPath(organizerApplyPath);
+    }
   }
 
   Future<void> login() async => auth.signInDemo();
@@ -146,6 +183,8 @@ mixin _SessionState on _AppStateCore {
     resetTo(Screen.home);
     say('Signed out.');
   }
+
+  void switchToAdmin() => resetTo(Screen.adminQueue);
 
   Future<bool> deleteAccount() async {
     try {
@@ -225,6 +264,12 @@ mixin _SessionState on _AppStateCore {
         _postAuthScreen = Screen.bandJoin;
       case PendingKind.gigInvite:
         _postAuthScreen = Screen.gigInvite;
+      case PendingKind.orgApply:
+        _postAuthScreen = Screen.orgApply;
+      case PendingKind.orgJoin:
+        // Pop back to the invitation, retaining its token and requiring the
+        // recipient to accept explicitly after authentication.
+        _postAuthScreen = null;
       case null:
         _postAuthScreen = null;
     }

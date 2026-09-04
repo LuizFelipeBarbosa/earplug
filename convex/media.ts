@@ -318,6 +318,31 @@ export const forBand = query({
   },
 });
 
+export const STORAGE_REFERENCE_FIELDS: ReadonlyArray<{
+  table: string;
+  field: string;
+}> = [
+  { table: "bandMedia", field: "storageId" },
+  { table: "bandMedia", field: "thumbnailStorageId" },
+  { table: "bands", field: "imageStorageId" },
+  { table: "bands", field: "avatarStorageId" },
+  { table: "bands", field: "bannerStorageId" },
+  { table: "gigs", field: "flyStorageId" },
+  { table: "gigProjects", field: "flyStorageId" },
+  { table: "users", field: "avatarStorageId" },
+  { table: "organizations", field: "photoStorageIds" },
+  {
+    table: "organizationPrivateDetails",
+    field: "verificationDocStorageIds",
+  },
+  {
+    table: "organizationApplications",
+    field: "verificationDocStorageIds",
+  },
+  { table: "venues", field: "photoStorageIds" },
+  { table: "venuePrivateDetails", field: "verificationDocStorageIds" },
+];
+
 type SweepResult = {
   scanned: number;
   deleted: number;
@@ -326,6 +351,8 @@ type SweepResult = {
   aborted: boolean;
   done: boolean;
 };
+
+const TABLE_READ_GUARD = 1000;
 
 export const sweepOrphanBlobs = internalMutation({
   args: {
@@ -347,33 +374,69 @@ export const sweepOrphanBlobs = internalMutation({
     const mediaRows = await ctx.db
       .query("bandMedia")
       .withIndex("by_band_order")
-      .take(2000);
+      .take(TABLE_READ_GUARD);
     const heroBands = await ctx.db
       .query("bands")
       .withIndex("by_name")
-      .take(2000);
-    const gigs = await ctx.db.query("gigs").withIndex("by_startsAt").take(2000);
+      .take(TABLE_READ_GUARD);
+    const gigs = await ctx.db
+      .query("gigs")
+      .withIndex("by_startsAt")
+      .take(TABLE_READ_GUARD);
     const gigProjects = await ctx.db
       .query("gigProjects")
       .withIndex("by_band_and_status")
-      .take(2000);
+      .take(TABLE_READ_GUARD);
     const users = await ctx.db
       .query("users")
       .withIndex("by_clerk_id")
-      .take(2000);
+      .take(TABLE_READ_GUARD);
+    const organizations = await ctx.db
+      .query("organizations")
+      .withIndex("by_slug")
+      .take(TABLE_READ_GUARD);
+    const organizationPrivateDetails = await ctx.db
+      .query("organizationPrivateDetails")
+      .withIndex("by_organizationId")
+      .take(TABLE_READ_GUARD);
+    const organizationApplications = await ctx.db
+      .query("organizationApplications")
+      .withIndex("by_status_and_createdAt")
+      .take(TABLE_READ_GUARD);
+    const venues = await ctx.db
+      .query("venues")
+      .withIndex("by_name")
+      .take(TABLE_READ_GUARD);
+    const venuePrivateDetails = await ctx.db
+      .query("venuePrivateDetails")
+      .withIndex("by_venueId")
+      .take(TABLE_READ_GUARD);
 
     const cappedTables: string[] = [];
-    if (mediaRows.length === 2000) cappedTables.push("bandMedia");
-    if (heroBands.length === 2000) cappedTables.push("bands");
-    if (gigs.length === 2000) cappedTables.push("gigs");
-    if (gigProjects.length === 2000) cappedTables.push("gigProjects");
-    if (users.length === 2000) cappedTables.push("users");
+    if (mediaRows.length === TABLE_READ_GUARD) cappedTables.push("bandMedia");
+    if (heroBands.length === TABLE_READ_GUARD) cappedTables.push("bands");
+    if (gigs.length === TABLE_READ_GUARD) cappedTables.push("gigs");
+    if (gigProjects.length === TABLE_READ_GUARD) cappedTables.push("gigProjects");
+    if (users.length === TABLE_READ_GUARD) cappedTables.push("users");
+    if (organizations.length === TABLE_READ_GUARD) {
+      cappedTables.push("organizations");
+    }
+    if (organizationPrivateDetails.length === TABLE_READ_GUARD) {
+      cappedTables.push("organizationPrivateDetails");
+    }
+    if (organizationApplications.length === TABLE_READ_GUARD) {
+      cappedTables.push("organizationApplications");
+    }
+    if (venues.length === TABLE_READ_GUARD) cappedTables.push("venues");
+    if (venuePrivateDetails.length === TABLE_READ_GUARD) {
+      cappedTables.push("venuePrivateDetails");
+    }
     if (cappedTables.length > 0) {
-      // A read that hits 2000 may have been silently truncated, omitting a live
-      // blob such as a real user avatar. Deleting against an incomplete
+      // A read that hits the guard may have been silently truncated, omitting
+      // a live blob such as a real user avatar. Deleting against an incomplete
       // reference set is unsafe, so do not guess.
       console.warn(
-        `sweepOrphanBlobs aborted: ${cappedTables.join(", ")} hit the 2000-row guard`,
+        `sweepOrphanBlobs aborted: ${cappedTables.join(", ")} hit the ${TABLE_READ_GUARD}-row guard`,
       );
       return {
         scanned: 0,
@@ -407,6 +470,33 @@ export const sweepOrphanBlobs = internalMutation({
     for (const user of users) {
       if (user.avatarStorageId !== undefined) {
         referenced.add(user.avatarStorageId);
+      }
+    }
+    // These explicit table blocks preserve Convex's per-table types; the
+    // exported field registry and its schema guard test keep them exhaustive.
+    for (const organization of organizations) {
+      for (const storageId of organization.photoStorageIds ?? []) {
+        referenced.add(storageId);
+      }
+    }
+    for (const detail of organizationPrivateDetails) {
+      for (const storageId of detail.verificationDocStorageIds ?? []) {
+        referenced.add(storageId);
+      }
+    }
+    for (const application of organizationApplications) {
+      for (const storageId of application.verificationDocStorageIds) {
+        referenced.add(storageId);
+      }
+    }
+    for (const venue of venues) {
+      for (const storageId of venue.photoStorageIds ?? []) {
+        referenced.add(storageId);
+      }
+    }
+    for (const detail of venuePrivateDetails) {
+      for (const storageId of detail.verificationDocStorageIds ?? []) {
+        referenced.add(storageId);
       }
     }
 

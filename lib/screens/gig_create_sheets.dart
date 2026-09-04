@@ -9,7 +9,6 @@ import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
-import '../widgets/venue_location_editor.dart';
 
 // ---------------------------- age ----------------------------
 
@@ -299,15 +298,6 @@ void showVenueSheet(BuildContext context) {
   showEpSheet(context, (ctx) {
     return EpFormSheet(
       title: 'Where is it',
-      trailing: TextAction(
-        '+ NEW VENUE',
-        onTap: () {
-          Navigator.pop(ctx);
-          if (context.mounted) showNewVenueSheet(context);
-        },
-        size: 11,
-        letterSpacing: .6,
-      ),
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.sizeOf(ctx).height * .6,

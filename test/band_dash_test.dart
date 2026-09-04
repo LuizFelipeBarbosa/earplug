@@ -6,7 +6,6 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_dash.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
-import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -14,12 +13,6 @@ import 'support/accessibility.dart';
 import 'support/harness.dart';
 
 void main() {
-  test('band entry labels follow membership count', () {
-    expect(bandEntryLabel(0), 'Start a band');
-    expect(bandEntryLabel(1), 'Manage band');
-    expect(bandEntryLabel(2), 'Switch band');
-  });
-
   testWidgets('dashboard derives remaining tasks from current band data', (
     tester,
   ) async {
@@ -311,13 +304,19 @@ void main() {
     expect(harness.app.current.screen, Screen.bandPreview);
   });
 
-  testWidgets('single-band switcher uses manage language', (tester) async {
-    await pumpApp(tester, home: const Scaffold(body: BandDashScreen()));
+  testWidgets('single-band switcher lists the managed account', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    await pumpApp(
+      tester,
+      auth: auth,
+      home: const Scaffold(body: BandDashScreen()),
+    );
 
     await tester.tap(find.text('FOGHORN DIET'));
     await tester.pumpAndSettle();
 
-    expect(find.text('MANAGE BAND'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     expect(find.text('Personal account'), findsOne);
     expect(find.text('Manage band · admin'), findsOne);
     expect(find.text('START ANOTHER BAND'), findsOne);
@@ -325,6 +324,7 @@ void main() {
 
   testWidgets('multi-band switcher changes the managed band', (tester) async {
     final auth = FakeAuthService();
+    await auth.signInDemo();
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -335,7 +335,7 @@ void main() {
     await tester.tap(find.text('FOGHORN DIET'));
     await tester.pumpAndSettle();
 
-    expect(find.text('SWITCH BAND'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     expect(find.text('PIGEON COURT'), findsOne);
     await tester.tap(find.text('PIGEON COURT'));
     await tester.pumpAndSettle();
