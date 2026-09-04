@@ -41,6 +41,14 @@ post-show grace. A band can have only one boosted show at a time: choose its
 earliest active qualifying show. A later legitimate show may boost after the
 earlier window ends.
 
+The boost window's six-hour post-show grace boundary uses the same shared
+`feedCutoff` instant as gigs and opportunities. A 15-minute cron heartbeat
+(`convex/clock.ts`) keeps it fresh by writing to a `clock` singleton row,
+instead of each query reading the wall clock directly. Those writes invalidate
+cached query results so they cannot linger indefinitely past the boundary on
+a quiet deployment. Only before the very first heartbeat ever runs, while
+the row does not yet exist, does the read fall back to the wall clock.
+
 ## Ranking cap and labeling
 
 Filters run first. The client establishes its normal nearest-first result,

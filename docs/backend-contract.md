@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.19)
+# EarPlug Convex function contract (FROZEN — v1.20)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -296,6 +296,103 @@ the client subscribes before sign-in); the explicitly band-private
 `bands:discoveryReadiness`, and `bandInvites:manage` queries are the exceptions
 and throw unless the caller has their required band role.
 **All mutations throw when unauthenticated**.
+
+**v1.20 — talent opportunities and artist applications.** Organizers can
+create opportunities with ordered performance slots, band invites, and
+`public` or `inviteOnly` visibility. These opportunities are organizer/artist
+facing only and are never shown to fans; the `gigs` row for a booked event
+arrives only in a later release. Creation currently supports `publicEvent`
+mode (the default); `privateBooking` is reserved for later. All
+`talentOpportunities` mutations require an owner/manager of the verified
+owning organization, and creation requires one of its verified venues.
+
+The declared lifecycle is `draft -> open -> applications_closed -> booking ->
+confirmed -> completed`, with `applications_closed -> open` for reopening and
+`booking -> applications_closed` also allowed. Every non-terminal status can
+transition to `cancelled`; `completed` and `cancelled` are terminal. See
+`convex/lib/opportunityStatus.ts` for the transition rules. Updates require
+`expectedRevision` and are limited to `draft`/`open`; slots and venue changes
+are restricted to drafts. Opening also checks `expectedRevision`, requires
+at least one slot, and requires a future applications deadline before the
+event starts.
+
+Artist applications allow only one active application per opportunity and
+band, across all slots. The full status set is `submitted`, `under_review`,
+`shortlisted`, `offered`, `booked`, `declined`, `withdrawn`, and `expired`;
+`offered` and `booked` become reachable in a later phase and are declared now
+to avoid a schema change. `opportunity.applicationCount` counts active
+applications (`submitted`, `under_review`, `shortlisted`, `offered`): `apply`
+increments it by one; `withdraw` and a `declined` review decrement it by one,
+floored at zero. `closeApplications` and scheduled deadline expiry mark every
+active application `expired` and reset the count to zero; `cancel` marks every
+active application `declined`, resets the count to zero, and cancels open slots.
+
+`browse` is public but returns only `publicEvent`, `public`, `open`
+opportunities with `startsAt >= feedCutoff`, ordered by ascending `startsAt`;
+`inviteOnly` and `privateBooking` never enter that feed. Optional filters are
+`area`, `genre`, `venueType`, and `minGuaranteeMinor`. `invitedFor` requires
+membership in the requested band (otherwise `[]`) and returns only explicit
+invites with `startsAt >= feedCutoff` and an artist-visible status: `open`,
+`applications_closed`, `booking`, or `confirmed`, newest start first.
+`resolvePublic` resolves a slug or raw id using `canViewerSeeOpportunity`:
+public opportunities in that artist-visible status set resolve for anyone;
+otherwise the caller must belong to the owning organization or to the
+referenced, explicitly invited band. Invites never expose `draft` or
+`cancelled` opportunities; those resolve only for organization members.
+The single-opportunity resolver has no feed-cutoff restriction. Band-specific
+invite/application state is returned only to members of the referenced band.
+
+The shared browse item is `{ opportunity: OpportunityPayload, invited: boolean,
+myApplicationStatus: ArtistApplicationStatus | null }`. The exact
+`OpportunityPayload` and `OpportunitySlotPayload` field shapes are defined in
+[`convex/lib/opportunityPayload.ts`](../convex/lib/opportunityPayload.ts);
+`ApplicationPayload` is defined by `applicationPayloadValidator` in
+[`convex/artistApplications.ts`](../convex/artistApplications.ts).
+
+- `talentOpportunities:create` — Mutation; `{ organizationId, venueId, mode?, title, desc?, eventType?, expectedAttendance?, genres?, startsAt, doorsAt?, endsAt?, ageRequirement?, equipment?, requirements?, flyKey?, flyStorageId?, applicationsCloseAt?, visibility?, ticketing?, currency?, externalUrl?, slots? } -> { opportunityId, slug }`; verified organization owner/manager creates a draft at one of its verified venues.
+- `talentOpportunities:update` — Mutation; `{ opportunityId, expectedRevision, venueId?, title?, desc?, eventType?, expectedAttendance?, genres?, startsAt?, doorsAt?, endsAt?, ageRequirement?, equipment?, requirements?, flyKey?, flyStorageId?, applicationsCloseAt?, visibility?, ticketing?, currency?, externalUrl?, slots? } -> { revision }`; organization owner/manager edits a draft/open opportunity with revision checking; slots and venue changes are draft-only.
+- `talentOpportunities:open` — Mutation; `{ opportunityId, expectedRevision } -> { revision, applicationsCloseAt }`; organization owner/manager opens a draft with revision checking, at least one slot, and a valid future deadline before event start.
+- `talentOpportunities:closeApplications` — Mutation; `{ opportunityId } -> null`; organization owner/manager closes applications on an open opportunity and expires all active applications.
+- `talentOpportunities:reopen` — Mutation; `{ opportunityId, applicationsCloseAt } -> null`; organization owner/manager reopens an applications-closed opportunity with a new future deadline before event start.
+- `talentOpportunities:cancel` — Mutation; `{ opportunityId, reason? } -> null`; organization owner/manager cancels any non-terminal opportunity, declines active applications, and cancels open slots.
+- `talentOpportunities:deleteDraft` — Mutation; `{ opportunityId } -> null`; organization owner/manager deletes a draft together with its slots and invites.
+- `talentOpportunities:duplicate` — Mutation; `{ opportunityId } -> { opportunityId, slug }`; organization owner/manager clones an existing opportunity and its slots into a new draft.
+- `talentOpportunities:inviteBand` — Mutation; `{ opportunityId, bandId } -> { invited: boolean }`; organization owner/manager invites a band while draft/open; `invited` is false if the invite already exists.
+- `talentOpportunities:uninviteBand` — Mutation; `{ opportunityId, bandId } -> null`; organization owner/manager removes the band's invite if present.
+- `talentOpportunitiesRead:browse` — Query; `{ paginationOpts, bandId?, filters? } -> PaginationResult<shared browse item>`; public, with the feed visibility, cutoff, filters, and ascending start order described above.
+- `talentOpportunitiesRead:invitedFor` — Query; `{ bandId } -> Array<shared browse item>`; band members receive explicitly invited, artist-visible opportunities within the cutoff, newest start first; nonmembers receive `[]`.
+- `talentOpportunitiesRead:resolvePublic` — Query; `{ ref, bandId? } -> shared browse item | null`; callers receive a slug/raw-id match only under the public, invited-band-member, or organization-member visibility rules above.
+- `talentOpportunitiesRead:manageForOrganization` — Query; `{ organizationId } -> OpportunityPayload[]`; any organization role can list all statuses, drafts first then ascending `startsAt`.
+- `talentOpportunitiesRead:get` — Query; `{ opportunityId } -> OpportunityPayload | null`; owning-organization members only; missing or inaccessible opportunities return null.
+- `artistApplications:apply` — Mutation; `{ opportunityId, slotId, bandId, message, askMinor?, availabilityNote?, lineupNote? } -> { applicationId }`; band admin applies to an open slot belonging to an open `publicEvent` opportunity visible to the band (public or invited), with at most one active application per opportunity/band.
+- `artistApplications:withdraw` — Mutation; `{ applicationId } -> null`; band admin withdraws any active application and decrements the active count.
+- `artistApplications:review` — Mutation; `{ applicationId, action: "under_review" | "shortlisted" | "declined" } -> null`; organization owner/manager reviews through an allowed status transition; declining decrements the active count.
+- `artistApplications:forOpportunity` — Query; `{ opportunityId } -> Array<{ application: ApplicationPayload, band: BandPayload, contactEmail: string | null }>`; any organization role, active applications first then oldest first, skipping archived bands; only owner/manager/platform-admin receives contact email.
+- `artistApplications:forBand` — Query; `{ bandId } -> Array<{ application: ApplicationPayload, opportunity: OpportunityPayload }>`; band members receive all statuses, newest first, capped at 100; nonmembers receive `[]`.
+- `artistApplications:mine` — Query; `{ opportunityId, bandId } -> ApplicationPayload | null`; band-member role required; returns the band's most recent application for that opportunity.
+
+`BAND_GIG_WRITES` defaults to true and gates these existing mutations:
+`gigs:createDraft`, `gigs:saveDraft`, `gigs:addPerformer`,
+`gigs:updatePerformer`, `gigs:removePerformer`, `gigs:reorderPerformers`,
+`gigs:publishDraft`, `gigs:duplicate`, and `gigs:claimPerformerInvite`.
+When false they throw "Bands now get booked through organizations. Find
+opportunities on your Gigs page." `gigs:unpublish`, `gigs:cancel`, and
+`gigs:deleteGig` remain ungated so bands can take down or cancel their existing
+gigs. `gigs:writePolicy` — Query; `{} -> { bandGigWrites: boolean }`;
+no authentication required; returns `bandGigWritesEnabled()` from
+`convex/lib/gigWritePolicy.ts` so clients can read the current policy.
+
+`feedCutoff` now reads `readFeedCutoff` in `convex/clock.ts`. The "feed cutoff
+heartbeat" cron in `convex/crons.ts` runs the internal `clock:heartbeat`
+mutation every 15 minutes, writing
+`Math.floor((Date.now() - FEED_GRACE_MS) / 60000) * 60000` (now minus the
+six-hour grace window, floored to the minute) to the `clock` singleton row
+keyed `feedCutoff`. Gigs, venues, interactions, and opportunity feed queries
+read that row, so heartbeat writes invalidate their cached results even on a
+quiet deployment; results can remain cached between heartbeats until other
+read data changes. Only before the very first heartbeat ever runs, when the
+row does not yet exist, does the read fall back to
+`Date.now() - FEED_GRACE_MS`, preserving cold-start behavior.
 
 ## Reconciliation
 

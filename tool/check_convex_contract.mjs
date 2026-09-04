@@ -45,6 +45,28 @@ export const requiredClientFunctions = Object.freeze({
   "venues.js:resolvePublic": "Query",
   "venues.js:privateDetail": "Query",
   "admin.js:me": "Query",
+  "talentOpportunities.js:create": "Mutation",
+  "talentOpportunities.js:update": "Mutation",
+  "talentOpportunities.js:open": "Mutation",
+  "talentOpportunities.js:closeApplications": "Mutation",
+  "talentOpportunities.js:reopen": "Mutation",
+  "talentOpportunities.js:cancel": "Mutation",
+  "talentOpportunities.js:deleteDraft": "Mutation",
+  "talentOpportunities.js:duplicate": "Mutation",
+  "talentOpportunities.js:inviteBand": "Mutation",
+  "talentOpportunities.js:uninviteBand": "Mutation",
+  "talentOpportunitiesRead.js:browse": "Query",
+  "talentOpportunitiesRead.js:invitedFor": "Query",
+  "talentOpportunitiesRead.js:resolvePublic": "Query",
+  "talentOpportunitiesRead.js:manageForOrganization": "Query",
+  "talentOpportunitiesRead.js:get": "Query",
+  "artistApplications.js:apply": "Mutation",
+  "artistApplications.js:withdraw": "Mutation",
+  "artistApplications.js:review": "Mutation",
+  "artistApplications.js:forOpportunity": "Query",
+  "artistApplications.js:forBand": "Query",
+  "artistApplications.js:mine": "Query",
+  "gigs.js:writePolicy": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -63,6 +85,8 @@ export const requiredClientFields = Object.freeze([
   ["gigs.js:feedV2", "return", "bands", false],
   ["venues.js:list", "arrayReturn", "venueType", false],
   ["venues.js:list", "arrayReturn", "approxLocation", false],
+  ["talentOpportunitiesRead.js:resolvePublic", "return", "opportunity", false],
+  ["gigs.js:writePolicy", "return", "bandGigWrites", false],
 ]);
 
 export function deploymentNameFromUrl(value) {
