@@ -10,6 +10,7 @@
 
 import type * as admin from "../admin.js";
 import type * as analytics from "../analytics.js";
+import type * as artistApplications from "../artistApplications.js";
 import type * as bandInvites from "../bandInvites.js";
 import type * as bands from "../bands.js";
 import type * as clock from "../clock.js";
@@ -28,6 +29,7 @@ import type * as lib_gigWritePolicy from "../lib/gigWritePolicy.js";
 import type * as lib_helpers from "../lib/helpers.js";
 import type * as lib_opportunityPayload from "../lib/opportunityPayload.js";
 import type * as lib_opportunityStatus from "../lib/opportunityStatus.js";
+import type * as lib_opportunityVisibility from "../lib/opportunityVisibility.js";
 import type * as lib_stripeSignature from "../lib/stripeSignature.js";
 import type * as lib_venuePrivate from "../lib/venuePrivate.js";
 import type * as lib_venueSlug from "../lib/venueSlug.js";
@@ -40,6 +42,7 @@ import type * as organizations from "../organizations.js";
 import type * as seed from "../seed.js";
 import type * as stripeWebhook from "../stripeWebhook.js";
 import type * as talentOpportunities from "../talentOpportunities.js";
+import type * as talentOpportunitiesRead from "../talentOpportunitiesRead.js";
 import type * as users from "../users.js";
 import type * as venues from "../venues.js";
 
@@ -52,6 +55,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   analytics: typeof analytics;
+  artistApplications: typeof artistApplications;
   bandInvites: typeof bandInvites;
   bands: typeof bands;
   clock: typeof clock;
@@ -70,6 +74,7 @@ declare const fullApi: ApiFromModules<{
   "lib/helpers": typeof lib_helpers;
   "lib/opportunityPayload": typeof lib_opportunityPayload;
   "lib/opportunityStatus": typeof lib_opportunityStatus;
+  "lib/opportunityVisibility": typeof lib_opportunityVisibility;
   "lib/stripeSignature": typeof lib_stripeSignature;
   "lib/venuePrivate": typeof lib_venuePrivate;
   "lib/venueSlug": typeof lib_venueSlug;
@@ -82,6 +87,7 @@ declare const fullApi: ApiFromModules<{
   seed: typeof seed;
   stripeWebhook: typeof stripeWebhook;
   talentOpportunities: typeof talentOpportunities;
+  talentOpportunitiesRead: typeof talentOpportunitiesRead;
   users: typeof users;
   venues: typeof venues;
 }>;
