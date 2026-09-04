@@ -87,6 +87,132 @@ describe("organization applications", () => {
     ).rejects.toThrow("Application changed elsewhere");
   });
 
+  test("saveDraft accepts a draft with only an organization name", async () => {
+    const { asApplicant } = await setupActors();
+    const created = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      {
+        orgName: "  Night Light LLC  ",
+        orgType: "venueOperator",
+        contactName: "",
+        businessEmail: "",
+      },
+    );
+
+    expect(created.revision).toBe(1);
+    expect(
+      await asApplicant.query(api.organizationApplications.mine, {}),
+    ).toMatchObject({
+      orgName: "Night Light LLC",
+      contactName: "",
+      businessEmail: "",
+      revision: 1,
+    });
+  });
+
+  test("saveDraft accepts contact fields without an organization name", async () => {
+    const { asApplicant } = await setupActors();
+
+    await expect(
+      asApplicant.mutation(api.organizationApplications.saveDraft, {
+        orgName: "",
+        orgType: "venueOperator",
+        contactName: "Riley Owner",
+        businessEmail: "riley@night-light.example",
+      }),
+    ).resolves.toMatchObject({ revision: 1 });
+  });
+
+  test("saveDraft rejects a non-blank malformed business email", async () => {
+    const { asApplicant } = await setupActors();
+
+    await expect(
+      asApplicant.mutation(api.organizationApplications.saveDraft, {
+        ...draftFields,
+        businessEmail: "not-an-email",
+      }),
+    ).rejects.toThrow("Enter a valid business email");
+  });
+
+  test("submit reports the first missing organization detail", async () => {
+    const { asApplicant } = await setupActors();
+    const application = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      {
+        orgName: "Night Light LLC",
+        orgType: "venueOperator",
+        contactName: "",
+        businessEmail: "",
+      },
+    );
+
+    await expect(
+      asApplicant.mutation(api.organizationApplications.submit, {
+        applicationId: application.applicationId,
+        expectedRevision: application.revision,
+      }),
+    ).rejects.toThrow("Contact name is required");
+  });
+
+  test("partial drafts can be completed and submitted", async () => {
+    const { t, asApplicant } = await setupActors();
+    const organizationStep = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      {
+        orgName: "  Night Light LLC  ",
+        orgType: "venueOperator",
+        contactName: "",
+        businessEmail: "",
+      },
+    );
+    expect(organizationStep.revision).toBe(1);
+
+    const contactStep = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      {
+        applicationId: organizationStep.applicationId,
+        expectedRevision: organizationStep.revision,
+        orgName: "Night Light LLC",
+        orgType: "venueOperator",
+        contactName: "Riley Owner",
+        businessEmail: "riley@night-light.example",
+      },
+    );
+    expect(contactStep.revision).toBe(2);
+
+    const venueStep = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      {
+        ...draftFields,
+        venue: venueFields,
+        applicationId: contactStep.applicationId,
+        expectedRevision: contactStep.revision,
+      },
+    );
+    expect(venueStep.revision).toBe(3);
+
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(new Blob(["license"], { type: "application/pdf" })),
+    );
+    const attached = await asApplicant.mutation(
+      api.organizationApplications.attachDocument,
+      { applicationId: venueStep.applicationId, storageId },
+    );
+    expect(attached.revision).toBe(4);
+
+    await expect(
+      asApplicant.mutation(api.organizationApplications.submit, {
+        applicationId: venueStep.applicationId,
+        expectedRevision: attached.revision,
+      }),
+    ).resolves.toEqual({ revision: 5 });
+    expect(
+      await asApplicant.query(api.organizationApplications.get, {
+        applicationId: venueStep.applicationId,
+      }),
+    ).toMatchObject({ status: "submitted", revision: 5 });
+  });
+
   test("saveDraft enforces the phase-one venue operator restriction", async () => {
     const { asApplicant } = await setupActors();
     await expect(

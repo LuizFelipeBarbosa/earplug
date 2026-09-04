@@ -172,15 +172,13 @@ function normalizeAndValidateDraft(args: {
   venue?: Infer<typeof venueInputValidator>;
 }) {
   const orgName = args.orgName.trim();
-  if (!orgName) throw new Error("Organization name is required");
   if (orgName.length > 120) throw new Error("Organization name is too long");
 
   const contactName = args.contactName.trim();
-  if (!contactName) throw new Error("Contact name is required");
   if (contactName.length > 100) throw new Error("Contact name is too long");
 
   const businessEmail = args.businessEmail.trim();
-  if (!businessEmail.includes("@")) {
+  if (businessEmail && !businessEmail.includes("@")) {
     throw new Error("Enter a valid business email");
   }
   if (businessEmail.length > 200) throw new Error("Business email is too long");
@@ -203,9 +201,7 @@ function normalizeAndValidateDraft(args: {
     const name = args.venue.name.trim();
     const addr = args.venue.addr.trim();
     const area = args.venue.area.trim();
-    if (!name) throw new Error("Venue name is required");
     if (name.length > 120) throw new Error("Venue name is too long");
-    if (!addr) throw new Error("Venue address is required");
     if (addr.length > 240) throw new Error("Venue address is too long");
     if (!area) throw new Error("Venue area is required");
     if (area.length > 120) throw new Error("Venue area is too long");
@@ -399,12 +395,17 @@ export const submit = mutation({
     if (args.expectedRevision !== application.revision) {
       throw new Error("Application changed elsewhere");
     }
+    if (!application.orgName.trim()) {
+      throw new Error("Organization name is required");
+    }
+    if (!application.contactName.trim()) {
+      throw new Error("Contact name is required");
+    }
     if (
-      !application.orgName.trim() ||
-      !application.contactName.trim() ||
-      !application.businessEmail.trim()
+      !application.businessEmail.trim() ||
+      !application.businessEmail.trim().includes("@")
     ) {
-      throw new Error("Complete your organization details before submitting");
+      throw new Error("Enter a valid business email");
     }
     if (
       application.orgType === "venueOperator" &&
