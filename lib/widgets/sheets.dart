@@ -319,12 +319,6 @@ Future<void> showEpActionSheet(
 
 // ============================ view switcher ============================
 
-String bandEntryLabel(int bandCount) => switch (bandCount) {
-  0 => 'Start a band',
-  1 => 'Manage band',
-  _ => 'Switch band',
-};
-
 String _roleLabel(OrganizationRole role) => switch (role) {
   OrganizationRole.owner => 'Owner',
   OrganizationRole.manager => 'Manager',
@@ -345,6 +339,7 @@ String _applicationStatusLabel(OrganizationApplicationStatus status) =>
 
 void showSwitcherSheet(BuildContext context) {
   final app = context.read<AppState>();
+  final bandIds = app.authed ? app.myBands : const <String>[];
   showEpSheet(context, (ctx) {
     final profileName = app.profile?.name.trim();
     final displayName = profileName == null || profileName.isEmpty
@@ -356,38 +351,39 @@ void showSwitcherSheet(BuildContext context) {
       scrollable: true,
       mainAxisSize: MainAxisSize.min,
       header: Text(
-        bandEntryLabel(app.myBands.length).toUpperCase(),
+        app.authed ? 'YOUR ACCOUNTS' : 'GET STARTED',
         style: Theme.of(ctx).textTheme.epSectionHeading,
       ),
       children: [
-        _SheetOption(
-          onTap: () {
-            Navigator.pop(ctx);
-            app.toFanView();
-          },
-          leading: Row(
-            children: [
-              EpFanAvatar(
-                name: profileName,
-                imageUrl: app.profile?.avatarUrl,
-                size: 34,
-                radius: 9,
-              ),
-              const SizedBox(width: 11),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(displayName, style: Theme.of(ctx).textTheme.epLabel),
-                  Text(
-                    'Personal account',
-                    style: Theme.of(ctx).textTheme.epCaption,
-                  ),
-                ],
-              ),
-            ],
+        if (app.authed)
+          _SheetOption(
+            onTap: () {
+              Navigator.pop(ctx);
+              app.toFanView();
+            },
+            leading: Row(
+              children: [
+                EpFanAvatar(
+                  name: profileName,
+                  imageUrl: app.profile?.avatarUrl,
+                  size: 34,
+                  radius: 9,
+                ),
+                const SizedBox(width: 11),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(displayName, style: Theme.of(ctx).textTheme.epLabel),
+                    Text(
+                      'Personal account',
+                      style: Theme.of(ctx).textTheme.epCaption,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-        for (final id in app.myBands)
+        for (final id in bandIds)
           if (app.band(id) case final Band band)
             _SheetOption(
               onTap: () {
@@ -416,53 +412,54 @@ void showSwitcherSheet(BuildContext context) {
                 ],
               ),
             ),
-        for (final membership in app.myOrganizations)
-          _SheetOption(
-            key: Key('switcher-org-${membership.organization.id}'),
-            onTap: () {
-              Navigator.pop(ctx);
-              app.switchToOrganization(membership.organization.id);
-            },
-            leading: Row(
-              children: [
-                EpFanAvatar(
-                  name: membership.organization.name,
-                  imageUrl: membership.organization.photoUrls.isEmpty
-                      ? null
-                      : membership.organization.photoUrls.first,
-                  size: 34,
-                  radius: 8,
-                  fontSize: 12,
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        membership.organization.name.toUpperCase(),
-                        style: Theme.of(ctx).textTheme.epLabel,
-                      ),
-                      Text(
-                        'Organizer · ${_roleLabel(membership.role)}',
-                        style: Theme.of(ctx).textTheme.epCaption,
-                      ),
-                    ],
+        if (app.authed)
+          for (final membership in app.myOrganizations)
+            _SheetOption(
+              key: Key('switcher-org-${membership.organization.id}'),
+              onTap: () {
+                Navigator.pop(ctx);
+                app.switchToOrganization(membership.organization.id);
+              },
+              leading: Row(
+                children: [
+                  EpFanAvatar(
+                    name: membership.organization.name,
+                    imageUrl: membership.organization.photoUrls.isEmpty
+                        ? null
+                        : membership.organization.photoUrls.first,
+                    size: 34,
+                    radius: 8,
+                    fontSize: 12,
                   ),
-                ),
-              ],
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          membership.organization.name.toUpperCase(),
+                          style: Theme.of(ctx).textTheme.epLabel,
+                        ),
+                        Text(
+                          'Organizer · ${_roleLabel(membership.role)}',
+                          style: Theme.of(ctx).textTheme.epCaption,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
         Padding(
           padding: const EdgeInsets.only(top: 10),
           child: OutlinedButton.icon(
             onPressed: () {
               Navigator.pop(ctx);
-              app.startBandCreate();
+              app.requestStartBand();
             },
             icon: Icon(Icons.add),
             label: Text(
-              app.myBands.isEmpty ? 'START A BAND' : 'START ANOTHER BAND',
+              bandIds.isEmpty ? 'START A BAND' : 'START ANOTHER BAND',
             ),
           ),
         ),

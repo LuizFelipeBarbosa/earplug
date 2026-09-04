@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:provider/provider.dart';
 
+import 'app_links.dart';
 import 'app_state.dart';
 import 'band_media_state.dart';
 import 'data/convex_repository.dart';
@@ -99,6 +100,7 @@ Future<void> main() async {
   final bandSlug = bandSlugFromUri(Uri.base);
   final venueRef = venueRefFromUri(Uri.base);
   final orgInviteToken = orgInviteTokenFromUri(Uri.base);
+  final organizerApply = organizerApplyFromUri(Uri.base);
   if (Env.demo) {
     final appState = AppState.demo(
       initialJoinToken: joinToken,
@@ -107,6 +109,7 @@ Future<void> main() async {
       initialBandSlug: bandSlug,
       initialVenueRef: venueRef,
       initialOrgInviteToken: orgInviteToken,
+      initialOrganizerApply: organizerApply,
     );
     runApp(
       EarplugApp(
@@ -141,6 +144,7 @@ Future<void> main() async {
       initialBandSlug: bandSlug,
       initialVenueRef: venueRef,
       initialOrgInviteToken: orgInviteToken,
+      initialOrganizerApply: organizerApply,
     ),
   );
   _removeSplashAfterFirstFrame();
@@ -189,28 +193,20 @@ String? venueRefFromUri(Uri uri) => _routeValueFromUri(uri, 'venues');
 
 String? orgInviteTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'apply');
 
+bool organizerApplyFromUri(Uri uri) =>
+    uri.path == organizerApplyPath || uri.path == '$organizerApplyPath/';
+
 String? bandSlugFromUri(Uri uri) {
   final segments = uri.pathSegments
       .where((segment) => segment.isNotEmpty)
       .toList();
   if (segments.length != 1) return null;
   final slug = segments.single.trim().toLowerCase();
+  // Marketplace routes include a second segment, so their bare prefixes can
+  // still resolve band slugs issued by the backend (including the `band`
+  // fallback). Only these original roots were excluded from slug allocation.
   if (slug.isEmpty ||
-      const {
-        'g',
-        'join',
-        'gig-invite',
-        'check-in',
-        'venues',
-        'orgs',
-        'apply',
-        't',
-        'org',
-        'band',
-        'checkout',
-        'admin',
-        'opportunities',
-      }.contains(slug)) {
+      const {'g', 'join', 'gig-invite', 'check-in'}.contains(slug)) {
     return null;
   }
   return slug;
@@ -279,6 +275,7 @@ class EarplugApp extends StatelessWidget {
     this.initialBandSlug,
     this.initialVenueRef,
     this.initialOrgInviteToken,
+    this.initialOrganizerApply = false,
   });
 
   final AppearanceController appearance;
@@ -291,6 +288,7 @@ class EarplugApp extends StatelessWidget {
   final String? initialBandSlug;
   final String? initialVenueRef;
   final String? initialOrgInviteToken;
+  final bool initialOrganizerApply;
 
   @override
   Widget build(BuildContext context) {
@@ -318,6 +316,7 @@ class EarplugApp extends StatelessWidget {
                 initialBandSlug: initialBandSlug,
                 initialVenueRef: initialVenueRef,
                 initialOrgInviteToken: initialOrgInviteToken,
+                initialOrganizerApply: initialOrganizerApply,
               ),
         ),
         ChangeNotifierProvider<BandMediaController>(

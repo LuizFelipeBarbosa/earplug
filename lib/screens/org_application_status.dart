@@ -46,6 +46,7 @@ class _OrgApplicationStatusScreenState
     extends State<OrgApplicationStatusScreen> {
   bool _redirected = false;
   bool _withdrawing = false;
+  bool _startingNewApplication = false;
 
   @override
   void initState() {
@@ -76,6 +77,28 @@ class _OrgApplicationStatusScreenState
       setState(() => _withdrawing = false);
       app.say('Could not withdraw the application. Please try again.');
       await app.refreshOrganizationApplication();
+    }
+  }
+
+  Future<void> _startNewApplication() async {
+    if (_startingNewApplication) return;
+    setState(() => _startingNewApplication = true);
+    final app = context.read<AppState>();
+    try {
+      // A new draft keeps the rejected record and its review history intact.
+      await app.repository.saveOrganizationApplicationDraft(
+        orgName: '',
+        orgType: OrganizationType.venueOperator,
+        contactName: '',
+        businessEmail: '',
+      );
+      await app.refreshOrganizationApplication();
+      if (!mounted) return;
+      app.openOrganizerApply();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _startingNewApplication = false);
+      app.say('Could not start a new application. Please try again.');
     }
   }
 
@@ -135,7 +158,8 @@ class _OrgApplicationStatusScreenState
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final application = app.myOrganizationApplication;
-    if (application?.status == OrganizationApplicationStatus.draft) {
+    if (!_startingNewApplication &&
+        application?.status == OrganizationApplicationStatus.draft) {
       _scheduleApplyRedirect();
     }
     return Material(
@@ -207,8 +231,21 @@ class _OrgApplicationStatusScreenState
                       if (application.status ==
                           OrganizationApplicationStatus.rejected) ...[
                         Text(
-                          'You can apply again later.',
+                          'You can start a new application when you are ready.',
                           style: Theme.of(context).textTheme.epBody,
+                        ),
+                        const SizedBox(height: 12),
+                        EpButton(
+                          _startingNewApplication
+                              ? 'STARTING…'
+                              : 'START NEW APPLICATION',
+                          key: const Key('org-status-reapply'),
+                          kind: _startingNewApplication
+                              ? EpButtonKind.disabled
+                              : EpButtonKind.filled,
+                          onTap: _startingNewApplication
+                              ? null
+                              : _startNewApplication,
                         ),
                         const SizedBox(height: 18),
                       ],

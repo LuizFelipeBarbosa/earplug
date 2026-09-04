@@ -1,5 +1,6 @@
 const publicWebOrigin = 'https://earplug.app';
 const publicWebHost = 'earplug.app';
+const organizerApplyPath = '/org/apply';
 
 String publicWebUrl(String path) =>
     '$publicWebOrigin/${_trimLeadingSlash(path)}';

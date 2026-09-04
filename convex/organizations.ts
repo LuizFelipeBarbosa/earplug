@@ -347,6 +347,37 @@ export const setPhotos = mutation({
   },
 });
 
+export const addPhoto = mutation({
+  args: {
+    organizationId: v.id("organizations"),
+    storageId: v.id("_storage"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const { organization } = await requireOrganizationRole(
+      ctx,
+      args.organizationId,
+      ["owner", "manager"],
+    );
+    const photoStorageIds = organization.photoStorageIds ?? [];
+    if (photoStorageIds.includes(args.storageId)) return null;
+    if (photoStorageIds.length >= 10) {
+      throw new Error("You can upload up to 10 photos");
+    }
+    const upload = await ctx.db.system.get("_storage", args.storageId);
+    if (upload === null) throw new Error("Upload not found");
+    assertUploadAcceptable(
+      { size: upload.size, contentType: upload.contentType },
+      "photo",
+    );
+    await ctx.db.patch(args.organizationId, {
+      photoStorageIds: [...photoStorageIds, args.storageId],
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
 export async function setOrganizationSuspended(
   ctx: MutationCtx,
   organizationId: Id<"organizations">,

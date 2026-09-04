@@ -21,6 +21,76 @@ import 'support/fakes.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets(
+    'rejected applicants start a new draft and retain the rejection',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth)..platformAdmin = true;
+      final saved = await repository.saveOrganizationApplicationDraft(
+        orgName: 'Night Heron Club',
+        orgType: OrganizationType.venueOperator,
+        contactName: 'Rae Booker',
+        businessEmail: 'rae@nightheron.example',
+      );
+      await repository.submitOrganizationApplication(
+        applicationId: saved.applicationId,
+        expectedRevision: saved.revision,
+      );
+      await repository.decideOrganizationApplication(
+        applicationId: saved.applicationId,
+        decision: ApplicationDecision.rejected,
+        note: 'Provide a valid business license when you reapply.',
+      );
+      final rejected = await repository.myOrganizationApplication();
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        beforePump: (app) => app.go(Screen.orgApplicationStatus),
+        home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
+      );
+      addTearDown(() => _disposeApp(harness.app));
+
+      expect(find.textContaining('Provide a valid business license'), findsOne);
+      await tester.tap(find.byKey(const Key('org-status-reapply')));
+      await tester.pumpAndSettle();
+
+      expect(harness.app.current.screen, Screen.orgApply);
+      final newDraft = (await repository.myOrganizationApplication())!;
+      expect(newDraft.id, isNot(saved.applicationId));
+      expect(newDraft.status, OrganizationApplicationStatus.draft);
+      expect(newDraft.orgName, isEmpty);
+      expect(newDraft.documents, isEmpty);
+      expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('org-apply-name')))
+            .controller
+            ?.text,
+        isEmpty,
+      );
+
+      await tester.enterText(
+        find.byKey(const ValueKey('org-apply-name')),
+        'Night Heron Revised',
+      );
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pump();
+      expect((await repository.myOrganizationApplication())!.id, newDraft.id);
+      expect(
+        (await repository.myOrganizationApplication())!.orgName,
+        'Night Heron Revised',
+      );
+      final previous = await repository.organizationApplication(
+        saved.applicationId,
+      );
+      expect(previous?.status, OrganizationApplicationStatus.rejected);
+      expect(previous?.reviewNote, rejected?.reviewNote);
+      expect(previous?.revision, rejected?.revision);
+      expect(previous?.orgName, 'Night Heron Club');
+    },
+  );
+
   testWidgets('full organizer application autosaves and submits', (
     tester,
   ) async {

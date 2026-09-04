@@ -13,7 +13,9 @@ import '../widgets/form_bits.dart';
 import '../widgets/slot_card.dart';
 
 class OrgSettingsScreen extends StatefulWidget {
-  const OrgSettingsScreen({super.key});
+  const OrgSettingsScreen({super.key, this.mediaPicker});
+
+  final MediaPicker? mediaPicker;
 
   @override
   State<OrgSettingsScreen> createState() => _OrgSettingsScreenState();
@@ -21,7 +23,7 @@ class OrgSettingsScreen extends StatefulWidget {
 
 class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
   final _scrollController = ScrollController();
-  final MediaPicker _mediaPicker = MediaPicker();
+  late final MediaPicker _mediaPicker = widget.mediaPicker ?? MediaPicker();
   final TextEditingController _name = TextEditingController();
   final TextEditingController _description = TextEditingController();
   final TextEditingController _website = TextEditingController();
@@ -29,7 +31,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
   final TextEditingController _businessEmail = TextEditingController();
   final TextEditingController _contactName = TextEditingController();
   final TextEditingController _phone = TextEditingController();
-  final List<({String storageId, PickedMedia media})> _sessionPhotos = [];
+  final List<PickedMedia> _sessionPhotos = [];
 
   OrganizationDashboard? _dashboard;
   List<String> _existingPhotoUrls = const [];
@@ -218,24 +220,24 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
     }
     setState(() => _addingPhoto = true);
     final app = context.read<AppState>();
+    final organizationId = app.organizationId;
     try {
       final media = await _mediaPicker.pickPhoto();
-      if (media == null || !mounted) return;
+      if (media == null || !mounted || app.organizationId != organizationId) {
+        return;
+      }
       final storageId = await _uploadOrganizationPhoto(
         app: app,
-        organizationId: app.organizationId,
+        organizationId: organizationId,
         media: media,
       );
-      if (!mounted) return;
-      await app.repository.setOrganizationPhotos(
-        organizationId: app.organizationId,
-        storageIds: [
-          for (final photo in _sessionPhotos) photo.storageId,
-          storageId,
-        ],
+      if (!mounted || app.organizationId != organizationId) return;
+      await app.repository.addOrganizationPhoto(
+        organizationId: organizationId,
+        storageId: storageId,
       );
-      if (!mounted) return;
-      setState(() => _sessionPhotos.add((storageId: storageId, media: media)));
+      if (!mounted || app.organizationId != organizationId) return;
+      setState(() => _sessionPhotos.add(media));
       app.say('Organization photo saved.');
     } catch (_) {
       if (mounted) app.say('Could not upload the photo. Please retry.');
@@ -330,21 +332,13 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
           ),
           FormSection(
             title: 'Photos',
-            description:
-                'Current photos are shown below. Re-saving only keeps photos added in this session because existing photo storage IDs are not available.',
+            description: 'Add up to 10 photos of your organization.',
             boxed: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (_existingPhotoUrls.isNotEmpty) ...[
-                  Text(
-                    'CURRENT PHOTOS',
-                    style: Theme.of(context).textTheme.epLabel.copyWith(
-                      fontSize: 11,
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
+                if (_existingPhotoUrls.isNotEmpty ||
+                    _sessionPhotos.isNotEmpty) ...[
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -358,27 +352,10 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                             fallback: const Icon(Icons.photo_outlined),
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (_sessionPhotos.isNotEmpty) ...[
-                  Text(
-                    'ADDED THIS SESSION',
-                    style: Theme.of(context).textTheme.epLabel.copyWith(
-                      fontSize: 11,
-                      color: context.epColors.contentSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
                       for (final photo in _sessionPhotos)
                         _PhotoTile(
                           child: Image.memory(
-                            photo.media.bytes,
+                            photo.bytes,
                             fit: BoxFit.cover,
                             gaplessPlayback: true,
                           ),

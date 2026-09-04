@@ -552,7 +552,23 @@ class DemoRepository implements EarplugRepository {
 
   @override
   Future<List<Venue>> venues() async =>
-      _venues.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+      _venues.values.where(_venueIsPublic).toList()
+        ..sort((a, b) => a.name.compareTo(b.name));
+
+  @override
+  Stream<List<Venue>> watchVenues() {
+    final initial = Stream.fromFuture(venues());
+    Stream<List<Venue>> snapshots() async* {
+      yield* initial;
+      yield* _feedController.stream.asyncMap((_) => venues());
+    }
+
+    return snapshots();
+  }
+
+  bool _venueIsPublic(Venue venue) =>
+      _organizations[venue.managedByOrganizationId]?.status !=
+      OrganizationStatus.suspended;
 
   @override
   Future<VenueCreationResult> createVenue({
@@ -600,7 +616,7 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<VenueDetail?> venueDetail(String venueId) async {
     final venue = _venues[venueId];
-    if (venue == null) return null;
+    if (venue == null || !_venueIsPublic(venue)) return null;
     final gigs =
         [...DemoData.gigs, ..._publishedGigs]
             .where(
@@ -1013,6 +1029,26 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<void> addOrganizationPhoto({
+    required String organizationId,
+    required String storageId,
+  }) async {
+    final organization = _requireOrganization(organizationId);
+    final photoUrl = 'demo://organization-photo/$storageId';
+    if (organization.photoUrls.contains(photoUrl)) return;
+    if (organization.photoUrls.length >= 10) {
+      throw StateError('You can upload up to 10 photos');
+    }
+    final updated = _copyOrganization(
+      organization,
+      photoUrls: [...organization.photoUrls, photoUrl],
+    );
+    _organizations[organizationId] = updated;
+    _replaceOrganizationInMemberships(updated);
+    _emitOrganizations();
+  }
+
+  @override
   Future<void> setOrganizationPhotos({
     required String organizationId,
     required List<String> storageIds,
@@ -1369,6 +1405,7 @@ class DemoRepository implements EarplugRepository {
     _organizations[organizationId] = updated;
     _replaceOrganizationInMemberships(updated);
     _emitOrganizations();
+    _emitFeed();
   }
 
   @override
@@ -2447,8 +2484,15 @@ class DemoRepository implements EarplugRepository {
   );
 
   FeedSnapshot _currentFeed() => FeedSnapshot(
-    gigs: List<Gig>.unmodifiable([...DemoData.gigs, ..._publishedGigs]),
-    venues: Map<String, Venue>.unmodifiable(_venues),
+    gigs: List<Gig>.unmodifiable([
+      for (final gig in [...DemoData.gigs, ..._publishedGigs])
+        if (_venues[gig.venueId] case final Venue venue)
+          if (_venueIsPublic(venue)) gig,
+    ]),
+    venues: Map<String, Venue>.unmodifiable({
+      for (final venue in _venues.values)
+        if (_venueIsPublic(venue)) venue.id: venue,
+    }),
     bands: Map<String, Band>.unmodifiable(_bands),
     nextStartsAt: null,
   );

@@ -101,6 +101,19 @@ test("reports a deployment missing venues:resolvePublic", () => {
   ]);
 });
 
+test("reports a deployment missing organizations:addPhoto", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions)
+    .map(([identifier, functionType]) =>
+      completeFunction(identifier, functionType),
+    )
+    .filter((entry) => entry.identifier !== "organizations.js:addPhoto");
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "missing organizations.js:addPhoto",
+  ]);
+});
+
 test("reports missing, mistyped, and wrong-deployment functions", () => {
   const problems = contractProblems(
     "https://decisive-iguana-759.convex.cloud",
@@ -152,6 +165,7 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing organizations.js:mine",
     "missing organizations.js:bySlug",
     "missing organizations.js:dashboard",
+    "missing organizations.js:addPhoto",
     "missing organizationMembers.js:resolveInvite",
     "missing organizationMembers.js:acceptInvite",
     "missing venues.js:resolvePublic",

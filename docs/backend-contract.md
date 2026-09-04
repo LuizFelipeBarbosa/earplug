@@ -249,6 +249,8 @@ for a public venue and approximate for a venue whose `addressDisclosure` is
 - `organizations:mine` — Query; see module for exact args and return shape.
 - `organizations:bySlug` — Query; see module for exact args and return shape.
 - `organizations:dashboard` — Query; see module for exact args and return shape.
+- `organizations:addPhoto` — Mutation; atomically appends one validated photo,
+  preserving existing photos and treating a repeated storage ID as a no-op.
 - `organizationMembers:resolveInvite` — Query; see module for exact args and return shape.
 - `organizationMembers:acceptInvite` — Mutation; see module for exact args and return shape.
 - `venues:resolvePublic` — Query; see module for exact args and return shape.
@@ -266,6 +268,18 @@ webhook HTTP routes record their received events in `stripeEvents`.
 `organizationMembers:createInvite` accepts only `manager`, `finance`, or `door`;
 owners are promoted through `organizationMembers:setRole`. Changing a live
 invite's role rotates its token and expiry instead of mutating it in place.
+
+`organizations:setPhotos` retains its full-list replacement behavior for
+existing callers. The settings photo uploader uses `organizations:addPhoto`
+so adding a photo after reopening settings or from another session preserves
+the organization's existing photos.
+
+Suspended venues and their gigs are excluded from public discovery: the feed,
+going counts, public gig resolver, and public band upcoming/history queries.
+The client subscribes to `venues:list` so directory entries also disappear or
+return when an organization is suspended or restored, including venues with
+no upcoming gigs. Band management projects and personal RSVP history remain
+available.
 
 Legacy venue rows are maintained by the ordered, idempotent
 `migrations:runReleaseBackfills` runner and observed through

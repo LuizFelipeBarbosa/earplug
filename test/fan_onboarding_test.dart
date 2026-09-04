@@ -92,7 +92,7 @@ void main() {
     expect(find.byKey(const Key('fan-setup-collapsed')), findsNothing);
   });
 
-  testWidgets('zero-band navigation starts creation without profile entries', (
+  testWidgets('zero-band navigation offers creation without profile entries', (
     tester,
   ) async {
     final auth = FakeAuthService();
@@ -112,7 +112,10 @@ void main() {
     expect(find.text('PLAY IN A BAND?'), findsNothing);
     expect(find.text('CREATE'), findsOne);
     await tester.tap(find.text('CREATE'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('BECOME AN ORGANIZER'), findsOne);
+    await tester.tap(find.text('START A BAND'));
+    await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandCreate);
   });
 
@@ -131,7 +134,10 @@ void main() {
 
     expect(find.text('CREATE'), findsOne);
     await tester.tap(find.text('CREATE'));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('BECOME AN ORGANIZER'), findsOne);
+    await tester.tap(find.text('START A BAND'));
+    await tester.pumpAndSettle();
 
     expect(harness.app.current.screen, Screen.auth);
     expect(harness.app.pending?.kind, PendingKind.band);
@@ -172,7 +178,7 @@ void main() {
     expect(find.text('SWITCH'), findsOne);
     await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('MANAGE BAND'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     await tester.tap(find.text('FOGHORN DIET'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandDash);
@@ -240,7 +246,7 @@ void main() {
     expect(find.text('SWITCH'), findsOne);
     await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('MANAGE BAND'), findsOne);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     expect(find.text('Personal account'), findsOne);
     await tester.tap(find.text('FOGHORN DIET'));
     await tester.pumpAndSettle();
@@ -264,7 +270,7 @@ void main() {
     expect(find.text('SWITCH'), findsOne);
     await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('SWITCH BAND'), findsWidgets);
+    expect(find.text('YOUR ACCOUNTS'), findsOne);
     expect(find.text('PIGEON COURT'), findsWidgets);
   });
 }

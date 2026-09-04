@@ -39,6 +39,7 @@ export const requiredClientFunctions = Object.freeze({
   "organizations.js:mine": "Query",
   "organizations.js:bySlug": "Query",
   "organizations.js:dashboard": "Query",
+  "organizations.js:addPhoto": "Mutation",
   "organizationMembers.js:resolveInvite": "Query",
   "organizationMembers.js:acceptInvite": "Mutation",
   "venues.js:resolvePublic": "Query",

@@ -45,7 +45,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
   bool _loading = true;
   bool _saving = false;
   bool _savingDisclosure = false;
-  bool _saved = false;
+  String? _success;
   int _locationEditorRevision = 0;
 
   @override
@@ -169,22 +169,26 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
   );
 
   void _draftChanged([Object? _]) {
-    if (!_saved && _error == null) return;
+    if (_success == null && _error == null) return;
     setState(() {
-      _saved = false;
+      _success = null;
       _error = null;
     });
   }
 
   Future<void> _save() async {
     final app = context.read<AppState>();
-    if (_saving || !app.canManageOrganization(app.organizationId)) return;
+    if (_saving ||
+        _savingDisclosure ||
+        !app.canManageOrganization(app.organizationId)) {
+      return;
+    }
 
     final organizationId = app.organizationId;
     final changes = _changesSinceLoad;
     setState(() {
       _saving = true;
-      _saved = false;
+      _success = null;
       _error = null;
     });
     try {
@@ -214,7 +218,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
         setState(() => _seed(loaded));
       }
       if (!mounted) return;
-      setState(() => _saved = true);
+      setState(() => _success = 'Changes saved.');
       revealFormFeedback(this, _scrollController);
     } on Object {
       if (!mounted) return;
@@ -232,14 +236,14 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
     final organizationId = app.organizationId;
     final isOwner =
         app.organizerRoleFor(organizationId) == OrganizationRole.owner;
-    if (_savingDisclosure || !isOwner) return;
+    if (_saving || _savingDisclosure || !isOwner) return;
 
     final disclosure = disclosePublicly
         ? AddressDisclosure.public
         : AddressDisclosure.onTicket;
     setState(() {
       _savingDisclosure = true;
-      _saved = false;
+      _success = null;
       _error = null;
     });
     try {
@@ -248,13 +252,9 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
         disclosure: disclosure,
       );
       if (!_requestIsCurrent(organizationId)) return;
-      setState(() => _disclosure = disclosure);
-
-      final loaded = await _fetchVenue(organizationId);
-      if (!_requestIsCurrent(organizationId)) return;
       setState(() {
-        _seed(loaded);
-        _saved = true;
+        _disclosure = disclosure;
+        _success = 'Address disclosure saved.';
       });
       revealFormFeedback(this, _scrollController);
     } on Object {
@@ -417,18 +417,18 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
                 key: const Key('org-venue-disclosure'),
                 label: 'Show exact address publicly',
                 value: _disclosure == AddressDisclosure.public,
-                onChanged: isOwner && !_savingDisclosure
+                onChanged: isOwner && !_saving && !_savingDisclosure
                     ? _setDisclosure
                     : null,
                 caption:
                     'Otherwise the exact address is shared privately with booked artists and ticket holders, not shown publicly.',
               ),
             ),
-          if (_error != null || _saved) ...[
+          if (_error != null || _success != null) ...[
             const SizedBox(height: 16),
             InlineFormFeedback(
               error: _error,
-              success: _saved ? 'Changes saved.' : null,
+              success: _success,
               errorKey: const Key('org-venue-save-error'),
               successKey: const Key('org-venue-save-success'),
             ),
@@ -450,7 +450,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
           child: StickyActionBar(
             key: const Key('org-venue-save'),
             primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
-            onPrimary: _saving ? null : _save,
+            onPrimary: _saving || _savingDisclosure ? null : _save,
           ),
         ),
       ],

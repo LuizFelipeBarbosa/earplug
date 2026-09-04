@@ -98,6 +98,98 @@ describe("organizations", () => {
     expect(organization?.slug).toBe("stable-slug-venues");
   });
 
+  test("adding photos preserves existing uploads and concurrent additions", async () => {
+    const { t, asOwner, organizationId } = await setupOrganization();
+    const storageIds = await t.run(async (ctx) =>
+      Promise.all(
+        [1, 2, 3].map((value) =>
+          ctx.storage.store(
+            new Blob([new Uint8Array([value])], { type: "image/png" }),
+          ),
+        ),
+      ),
+    );
+    await asOwner.mutation(api.organizations.setPhotos, {
+      organizationId,
+      storageIds: [storageIds[0]],
+    });
+
+    await Promise.all(
+      storageIds.slice(1).map((storageId) =>
+        asOwner.mutation(api.organizations.addPhoto, {
+          organizationId,
+          storageId,
+        }),
+      ),
+    );
+    await asOwner.mutation(api.organizations.addPhoto, {
+      organizationId,
+      storageId: storageIds[1],
+    });
+
+    const organization = await t.run((ctx) => ctx.db.get(organizationId));
+    expect(organization?.photoStorageIds).toHaveLength(3);
+    expect(organization?.photoStorageIds?.[0]).toBe(storageIds[0]);
+    expect(organization?.photoStorageIds).toEqual(
+      expect.arrayContaining(storageIds),
+    );
+    expect(
+      (await asOwner.query(api.organizations.dashboard, { organizationId }))
+        .organization.photoUrls,
+    ).toHaveLength(3);
+  });
+
+  test("adding photos requires a manager, acceptable upload, and available space", async () => {
+    const { t, asOwner, asDoor, organizationId } = await setupOrganization();
+    const { storageIds, invalidUpload } = await t.run(async (ctx) => ({
+      storageIds: await Promise.all(
+        Array.from({ length: 11 }, (_, value) =>
+          ctx.storage.store(
+            new Blob([new Uint8Array([value])], { type: "image/png" }),
+          ),
+        ),
+      ),
+      invalidUpload: await ctx.storage.store(
+        new Blob(["text"], { type: "text/plain" }),
+      ),
+    }));
+    await t.run(async (ctx) => {
+      // convex-test omits Blob contentType, unlike deployed storage metadata.
+      const db = ctx.db as unknown as {
+        patch(
+          id: typeof invalidUpload,
+          value: { contentType: string },
+        ): Promise<void>;
+      };
+      await db.patch(invalidUpload, { contentType: "text/plain" });
+    });
+    await expect(
+      asDoor.mutation(api.organizations.addPhoto, {
+        organizationId,
+        storageId: storageIds[0],
+      }),
+    ).rejects.toThrow("Not permitted for this organization");
+    await expect(
+      asOwner.mutation(api.organizations.addPhoto, {
+        organizationId,
+        storageId: invalidUpload,
+      }),
+    ).rejects.toThrow("can't be posted as a photo");
+    await asOwner.mutation(api.organizations.setPhotos, {
+      organizationId,
+      storageIds: storageIds.slice(0, 10),
+    });
+    await expect(
+      asOwner.mutation(api.organizations.addPhoto, {
+        organizationId,
+        storageId: storageIds[10],
+      }),
+    ).rejects.toThrow("up to 10 photos");
+    expect(
+      (await t.run((ctx) => ctx.db.get(organizationId)))?.photoStorageIds,
+    ).toEqual(storageIds.slice(0, 10));
+  });
+
   test("deactivation suspends the organization's managed venues", async () => {
     const { t, asOwner, organizationId } = await setupOrganization();
     const venueId = await t.run((ctx) =>

@@ -475,6 +475,7 @@ abstract class EarplugRepository {
   Future<BandHistory> bandHistory(String bandId);
   Future<BandRecap> bandRecap(String bandId);
   Future<List<Venue>> venues();
+  Stream<List<Venue>> watchVenues();
   Future<VenueCreationResult> createVenue({
     required String bandId,
     required String name,
@@ -549,6 +550,10 @@ abstract class EarplugRepository {
     String? phone,
   });
   Future<String> generateOrganizationPhotoUploadUrl(String organizationId);
+  Future<void> addOrganizationPhoto({
+    required String organizationId,
+    required String storageId,
+  });
   Future<void> setOrganizationPhotos({
     required String organizationId,
     required List<String> storageIds,

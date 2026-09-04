@@ -151,15 +151,8 @@ class FanTabBar extends StatelessWidget {
           compactLabel: switcherLabel,
           selected: false,
           onPressed: () {
-            if (!app.authed) {
-              app.requestStartBand();
-            } else if (!app.membershipsLoaded) {
-              return;
-            } else if (!hasSwitchableIdentity) {
-              app.requestStartBand();
-            } else {
-              showSwitcherSheet(context);
-            }
+            if (app.authed && !app.membershipsLoaded) return;
+            showSwitcherSheet(context);
           },
         ),
       ],

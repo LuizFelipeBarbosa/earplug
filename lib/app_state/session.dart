@@ -1,6 +1,16 @@
 part of '../app_state.dart';
 
-enum PendingKind { rsvp, follow, save, myGigs, band, join, gigInvite }
+enum PendingKind {
+  rsvp,
+  follow,
+  save,
+  myGigs,
+  band,
+  join,
+  gigInvite,
+  orgApply,
+  orgJoin,
+}
 
 class PendingAuth {
   final PendingKind kind;
@@ -156,6 +166,13 @@ mixin _SessionState on _AppStateCore {
     _authCommit = null;
     _postAuthScreen = null;
     go(Screen.auth);
+    if (p.kind == PendingKind.orgJoin) {
+      // Keep the invitation address through a full-page OAuth redirect.
+      replaceBrowserPath('/apply/${Uri.encodeComponent(p.id!)}');
+    } else if (p.kind == PendingKind.orgApply) {
+      // Startup restores the application intent after an OAuth page reload.
+      replaceBrowserPath(organizerApplyPath);
+    }
   }
 
   Future<void> login() async => auth.signInDemo();
@@ -247,6 +264,12 @@ mixin _SessionState on _AppStateCore {
         _postAuthScreen = Screen.bandJoin;
       case PendingKind.gigInvite:
         _postAuthScreen = Screen.gigInvite;
+      case PendingKind.orgApply:
+        _postAuthScreen = Screen.orgApply;
+      case PendingKind.orgJoin:
+        // Pop back to the invitation, retaining its token and requiring the
+        // recipient to accept explicitly after authentication.
+        _postAuthScreen = null;
       case null:
         _postAuthScreen = null;
     }

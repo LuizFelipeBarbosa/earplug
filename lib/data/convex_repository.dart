@@ -205,6 +205,13 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Stream<List<Venue>> watchVenues() => _convexService.subscribe(
+    'venues:list',
+    const {},
+    (result) => [for (final json in _mapList(result)) Venue.fromJson(json)],
+  );
+
+  @override
   Future<VenueCreationResult> createVenue({
     required String bandId,
     required String name,
@@ -461,6 +468,17 @@ class ConvexRepository implements EarplugRepository {
       {'organizationId': organizationId},
     );
     return result as String;
+  }
+
+  @override
+  Future<void> addOrganizationPhoto({
+    required String organizationId,
+    required String storageId,
+  }) async {
+    await _convexService.mutation('organizations:addPhoto', {
+      'organizationId': organizationId,
+      'storageId': storageId,
+    });
   }
 
   @override

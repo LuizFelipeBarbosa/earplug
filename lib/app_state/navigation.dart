@@ -53,7 +53,9 @@ mixin _NavigationState on _AppStateCore {
 
   void back() {
     if (_stack.length <= 1) {
-      if (current.screen == Screen.gig) resetTo(Screen.home);
+      if (current.screen == Screen.gig || current.screen == Screen.orgApply) {
+        resetTo(Screen.home);
+      }
       return;
     }
     _popAppStack();
@@ -85,6 +87,7 @@ mixin _NavigationState on _AppStateCore {
     Screen.band => '/${_bands[param]?.publicRef ?? param ?? ''}',
     Screen.venue => _venueBrowserPath(param),
     Screen.orgJoin => '/apply/${param ?? ''}',
+    Screen.orgApply => organizerApplyPath,
     _ => '/',
   };
 

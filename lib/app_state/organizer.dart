@@ -13,6 +13,7 @@ mixin _OrganizerState on _AppStateCore {
   );
   void go(Screen s, [String? param]);
   void resetTo(Screen s);
+  void needAuth(PendingAuth p);
   void openVenue(String id);
 
   int _organizationsGeneration = 0;
@@ -97,7 +98,13 @@ mixin _OrganizerState on _AppStateCore {
     }
   }
 
-  void openOrganizerApply() => go(Screen.orgApply);
+  void openOrganizerApply() {
+    if (!authed) {
+      needAuth(const PendingAuth(PendingKind.orgApply));
+      return;
+    }
+    go(Screen.orgApply);
+  }
 
   void openOrganizationJoin(String token) => go(Screen.orgJoin, token);
 

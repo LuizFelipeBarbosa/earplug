@@ -139,6 +139,7 @@ class AppState extends ChangeNotifier
     String? initialBandSlug,
     String? initialVenueRef,
     String? initialOrgInviteToken,
+    bool initialOrganizerApply = false,
     DateTime Function()? now,
   }) : this._(
          auth,
@@ -151,6 +152,7 @@ class AppState extends ChangeNotifier
          initialBandSlug,
          initialVenueRef,
          initialOrgInviteToken,
+         initialOrganizerApply,
          now ?? DateTime.now,
        );
 
@@ -168,6 +170,7 @@ class AppState extends ChangeNotifier
     String? initialBandSlug,
     String? initialVenueRef,
     String? initialOrgInviteToken,
+    bool initialOrganizerApply = false,
     DateTime Function()? now,
   }) {
     final resolvedAuth = auth ?? FakeAuthService();
@@ -182,6 +185,7 @@ class AppState extends ChangeNotifier
       initialBandSlug: initialBandSlug,
       initialVenueRef: initialVenueRef,
       initialOrgInviteToken: initialOrgInviteToken,
+      initialOrganizerApply: initialOrganizerApply,
       now: now,
     );
   }
@@ -197,6 +201,7 @@ class AppState extends ChangeNotifier
     String? initialBandSlug,
     String? initialVenueRef,
     String? initialOrgInviteToken,
+    bool initialOrganizerApply,
     this._now,
   ) : // Only a real backend has a connection to wait on; the demo data is
       // already in memory, so it must not show the connecting screen.
@@ -239,6 +244,16 @@ class AppState extends ChangeNotifier
       unawaited(_resolveJoinInvite(joinToken));
     } else if (orgInviteToken != null && orgInviteToken.isNotEmpty) {
       _stack = [ScreenEntry(Screen.orgJoin, orgInviteToken)];
+    } else if (initialOrganizerApply) {
+      if (authed) {
+        _stack = const [ScreenEntry(Screen.orgApply)];
+      } else {
+        // Clerk still needs the incoming OAuth callback query parameters.
+        // Seed auth state without changing the browser URL during startup.
+        pending = const PendingAuth(PendingKind.orgApply);
+        _authConfirmationKind = PendingKind.orgApply;
+        _stack = const [ScreenEntry(Screen.home), ScreenEntry(Screen.auth)];
+      }
     } else if (gigId != null && gigId.isNotEmpty) {
       _stack = [ScreenEntry(Screen.gig, gigId)];
       unawaited(_loadPublicGig(gigId));
@@ -289,6 +304,7 @@ class AppState extends ChangeNotifier
     unawaited(_authSubscription?.cancel());
     unawaited(_feedSubscription?.cancel());
     unawaited(_goingCountsSubscription?.cancel());
+    unawaited(_venueDirectorySubscription?.cancel());
     unawaited(_interactionsSubscription?.cancel());
     unawaited(_bandsSubscription?.cancel());
     unawaited(_organizationsSubscription?.cancel());

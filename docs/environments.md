@@ -161,6 +161,11 @@ its required platform credentials are configured. The flows are implemented
 in `lib/services/clerk_mobile_auth.dart`; native credentials remain a separate
 release task.
 
+Web sign-in preserves the organizer application route (`/org/apply`) or
+organization invitation route (`/apply/<token>`) through Clerk's full-page
+redirect. Startup restores the destination from that route. Invitations still
+require an explicit acceptance after sign-in.
+
 ### Checklist — Google
 
 1. **Google Cloud console → APIs & Services → Credentials.**

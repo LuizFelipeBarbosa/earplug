@@ -17,6 +17,8 @@ mixin _VenueState on _AppStateCore {
   Map<String, Venue> _venueDirectory = const {};
   DataStatus _venueStatus = DataStatus.connecting;
   bool _venueDirectoryRequested = false;
+  Object? _venueDirectoryLoadToken;
+  StreamSubscription<List<Venue>>? _venueDirectorySubscription;
   DataStatus get venueStatus => _venueStatus;
   String? venueError;
 
@@ -28,28 +30,41 @@ mixin _VenueState on _AppStateCore {
   final Map<String, Object> _venueDetailTokens = {};
   final Map<String, String> _venueDetailErrors = {};
 
-  /// One-shot directory refresh, following the `_refreshExploreBands` pattern.
+  /// Keep the directory live even when none of its venues have upcoming gigs.
   void ensureVenueDirectory() {
     if (_venueDirectoryRequested || _disposed) return;
     _venueDirectoryRequested = true;
-    unawaited(_refreshVenueDirectory());
+    _subscribeToVenueDirectory();
   }
 
-  Future<void> _refreshVenueDirectory() async {
-    try {
-      final loaded = await repository.venues();
-      if (_disposed) return;
-      _venueDirectory = {for (final venue in loaded) venue.id: venue};
-      _venueStatus = DataStatus.ready;
-      venueError = null;
-      notifyListeners();
-    } catch (error) {
-      logError('venues', error);
-      if (_disposed) return;
-      _venueStatus = DataStatus.error;
-      venueError = '$error';
-      notifyListeners();
-    }
+  void _subscribeToVenueDirectory() {
+    final token = Object();
+    _venueDirectoryLoadToken = token;
+    unawaited(_venueDirectorySubscription?.cancel());
+    _venueDirectorySubscription = repository.watchVenues().listen(
+      (loaded) {
+        if (_disposed || !identical(_venueDirectoryLoadToken, token)) return;
+        final directory = {for (final venue in loaded) venue.id: venue};
+        final changedVisibility = <String>{
+          for (final id in _venueDirectory.keys)
+            if (!directory.containsKey(id)) id,
+          for (final id in directory.keys)
+            if (!_venueDirectory.containsKey(id)) id,
+        };
+        _invalidateVenueDetails(changedVisibility);
+        _venueDirectory = directory;
+        _venueStatus = DataStatus.ready;
+        venueError = null;
+        notifyListeners();
+      },
+      onError: (Object error) {
+        if (_disposed || !identical(_venueDirectoryLoadToken, token)) return;
+        logError('venues', error);
+        _venueStatus = DataStatus.error;
+        venueError = '$error';
+        notifyListeners();
+      },
+    );
   }
 
   void retryVenues() {
@@ -57,7 +72,7 @@ mixin _VenueState on _AppStateCore {
     _venueStatus = DataStatus.connecting;
     venueError = null;
     notifyListeners();
-    unawaited(_refreshVenueDirectory());
+    _subscribeToVenueDirectory();
   }
 
   Future<VenueCreationResult> createVenue({
@@ -126,6 +141,10 @@ mixin _VenueState on _AppStateCore {
       _venueDetailErrors.remove(id);
       if (detail == null) {
         _missingVenueDetails.add(id);
+        _venueDirectory = Map.of(_venueDirectory)..remove(id);
+        // A directory response already in flight may predate this miss.
+        // Restart it so only a fresh server read can restore this venue.
+        if (_venueDirectoryRequested) _subscribeToVenueDirectory();
         return;
       }
       _missingVenueDetails.remove(id);

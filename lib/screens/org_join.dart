@@ -57,7 +57,11 @@ class _OrgJoinScreenState extends State<OrgJoinScreen> {
 
   Future<void> _accept() async {
     final app = context.read<AppState>();
-    if (_accepting || !app.authed || _resolution == null) return;
+    if (_accepting || _resolution == null) return;
+    if (!app.authed) {
+      app.needAuth(PendingAuth(PendingKind.orgJoin, widget.token));
+      return;
+    }
     setState(() => _accepting = true);
     try {
       final acceptance = await app.repository.acceptOrganizationInvite(
@@ -244,10 +248,8 @@ class _JoinConfirmation extends StatelessWidget {
               ? 'ACCEPT'
               : 'SIGN IN TO JOIN',
           key: const Key('org-join-accept'),
-          kind: accepting || !signedIn
-              ? EpButtonKind.disabled
-              : EpButtonKind.filled,
-          onTap: accepting || !signedIn ? null : onConfirm,
+          kind: accepting ? EpButtonKind.disabled : EpButtonKind.filled,
+          onTap: accepting ? null : onConfirm,
         ),
       ],
     );
