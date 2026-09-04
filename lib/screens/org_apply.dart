@@ -39,6 +39,20 @@ Future<String> _uploadApplicationDocument(
       as String;
 }
 
+String _extractErrorMessage(Object error) {
+  final text = error.toString();
+  const uncaughtErrorPrefix = 'Uncaught Error:';
+  final uncaughtErrorIndex = text.lastIndexOf(uncaughtErrorPrefix);
+  if (uncaughtErrorIndex >= 0) {
+    return text
+        .substring(uncaughtErrorIndex + uncaughtErrorPrefix.length)
+        .trim();
+  }
+  return text
+      .replaceFirst(RegExp(r'^(Bad state: |Exception: |ConvexError: )'), '')
+      .trim();
+}
+
 class OrgApplyScreen extends StatefulWidget {
   const OrgApplyScreen({super.key, this.mediaPicker});
 
@@ -226,15 +240,38 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
       await app.refreshOrganizationApplication();
       return mounted;
     } catch (error) {
-      await _handleMutationError(app, error);
+      final message = _extractErrorMessage(error);
+      final changedElsewhere = message.toLowerCase().contains(
+        'changed elsewhere',
+      );
+      if (changedElsewhere) {
+        await _handleMutationError(app, error);
+      } else {
+        if (!mounted) return false;
+        app.say("Couldn't save: $message");
+        setState(() {
+          _orgName = nextOrgName.trim();
+          _orgType = nextOrgType;
+          _kind = nextKind;
+          _website = nextWebsite.trim();
+          _venueLocation = nextLocation;
+          _neighborhood = nextNeighborhood.trim();
+          _city = nextCity.trim();
+          _capacity = nextCapacity;
+          _venueType = nextVenueType;
+          _contactName = nextContactName.trim();
+          _businessEmail = nextBusinessEmail.trim();
+          _phone = nextPhone.trim();
+        });
+      }
       return false;
     }
   }
 
   Future<void> _handleMutationError(AppState app, Object error) async {
-    final changedElsewhere = error.toString().toLowerCase().contains(
-      'changed elsewhere',
-    );
+    final changedElsewhere = _extractErrorMessage(
+      error,
+    ).toLowerCase().contains('changed elsewhere');
     app.say(
       changedElsewhere
           ? 'This application changed elsewhere. Latest details restored.'

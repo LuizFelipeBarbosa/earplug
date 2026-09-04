@@ -97,6 +97,32 @@ void main() {
     expect(statusHarness.app.current.screen, Screen.home);
   });
 
+  testWidgets('draft validation failure keeps organization edits', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _FailOnceRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const OrgApplyScreen(),
+    );
+    await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+
+    await _fillOrganization(tester);
+
+    expect(harness.app.toast, "Couldn't save: Contact name is required");
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('org-apply-step-organization')),
+        matching: find.text('Night Heron Club'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('needs info shows its note and prefills the editable wizard', (
     tester,
   ) async {
@@ -173,6 +199,42 @@ void main() {
     );
     expect(websiteField.controller?.text, 'https://nightheron.example');
   });
+}
+
+class _FailOnceRepository extends DemoRepository {
+  _FailOnceRepository({required super.auth});
+
+  bool _shouldFail = true;
+
+  @override
+  Future<({String applicationId, int revision})>
+  saveOrganizationApplicationDraft({
+    String? applicationId,
+    int? expectedRevision,
+    required String orgName,
+    required OrganizationType orgType,
+    String? website,
+    required String contactName,
+    required String businessEmail,
+    String? phone,
+    ApplicationVenueDraft? venue,
+  }) {
+    if (_shouldFail) {
+      _shouldFail = false;
+      throw StateError('Contact name is required');
+    }
+    return super.saveOrganizationApplicationDraft(
+      applicationId: applicationId,
+      expectedRevision: expectedRevision,
+      orgName: orgName,
+      orgType: orgType,
+      website: website,
+      contactName: contactName,
+      businessEmail: businessEmail,
+      phone: phone,
+      venue: venue,
+    );
+  }
 }
 
 Future<void> _fillOrganization(WidgetTester tester) async {
