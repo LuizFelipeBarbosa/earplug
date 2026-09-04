@@ -36,6 +36,13 @@ class MyGigsScreen extends StatelessWidget {
     ];
     final followingNoun = app.follows.length == 1 ? 'band' : 'bands';
     final historyNoun = app.history.length == 1 ? 'event' : 'events';
+    final profileIncomplete =
+        profile != null &&
+        (profileName == null ||
+            profileName.isEmpty ||
+            profile.avatarUrl == null ||
+            (profile.bio?.trim().isEmpty ?? true) ||
+            profile.genres.isEmpty);
     const sectionPadding = EdgeInsets.only(top: 16, bottom: 8);
 
     return ListView(
@@ -57,15 +64,6 @@ class MyGigsScreen extends StatelessWidget {
                   style: Theme.of(context).textTheme.epPageHeading,
                 ),
               ),
-            ),
-            IconButton(
-              key: const Key('edit-profile-action'),
-              tooltip: 'Edit profile',
-              onPressed: profile == null ? null : app.openEditProfile,
-              style: const ButtonStyle(
-                fixedSize: WidgetStatePropertyAll(Size.square(48)),
-              ),
-              icon: Icon(Icons.edit_outlined),
             ),
             IconButton(
               key: const Key('share-fan-profile'),
@@ -162,6 +160,25 @@ class MyGigsScreen extends StatelessWidget {
                 const SizedBox(height: 11),
                 Text(bio, style: Theme.of(context).textTheme.epBody),
               ],
+              if (profile != null && profile.genres.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  key: const Key('fan-profile-genres'),
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    for (final genre in profile.genres)
+                      EpChip(
+                        key: ValueKey('fan-profile-genre-$genre'),
+                        label: genre,
+                        active: true,
+                        neutralSelected: true,
+                        semanticLabel: '$genre. Edit favorite genres.',
+                        onTap: app.openEditProfile,
+                      ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 14),
               IntrinsicHeight(
                 child: Row(
@@ -191,6 +208,24 @@ class MyGigsScreen extends StatelessWidget {
                   ],
                 ),
               ),
+              if (profileIncomplete) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Add a photo, bio, and genres so bands and fans recognize you.',
+                  key: const Key('fan-profile-incomplete-hint'),
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+              ],
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                key: const Key('edit-profile-action'),
+                onPressed: profile == null ? null : app.openEditProfile,
+                icon: Icon(Icons.edit_outlined, size: 18),
+                label: const Text('EDIT PROFILE'),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(48),
+                ),
+              ),
             ],
           ),
         ),
@@ -217,7 +252,11 @@ class MyGigsScreen extends StatelessWidget {
                 : null,
           ),
         ],
-        const SectionBar(label: 'UPCOMING RSVPS', padding: sectionPadding),
+        SectionBar(
+          label: 'UPCOMING RSVPS',
+          count: upcoming.isEmpty ? null : upcoming.length,
+          padding: sectionPadding,
+        ),
         if (upcoming.isEmpty)
           EmptyNote(
             message: 'No upcoming RSVPs. Pick a show you want to catch.',
@@ -236,7 +275,11 @@ class MyGigsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 8),
         ],
-        const SectionBar(label: 'SAVED SHOWS', padding: sectionPadding),
+        SectionBar(
+          label: 'SAVED SHOWS',
+          count: savedGigs.isEmpty ? null : savedGigs.length,
+          padding: sectionPadding,
+        ),
         if (savedGigs.isEmpty)
           EmptyNote(
             message: 'Nothing saved. Bookmark a show to keep it handy.',
@@ -247,8 +290,11 @@ class MyGigsScreen extends StatelessWidget {
           FanEventCard(gig: g, app: app),
           const SizedBox(height: 8),
         ],
-        const SectionBar(
+        SectionBar(
           label: 'UPCOMING SHOWS FROM FOLLOWED BANDS',
+          count: app.followedBandShows.isEmpty
+              ? null
+              : app.followedBandShows.length,
           padding: sectionPadding,
         ),
         if (app.followedBandShows.isEmpty)
