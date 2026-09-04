@@ -401,6 +401,19 @@ describe("artist applications: apply", () => {
     },
   );
 
+  test.each(["pending", "suspended"] as const)(
+    "rejects applications to a %s organization",
+    async (status) => {
+      const f = await setupApplications();
+      await f.checked(() =>
+        f.t.run((ctx) => ctx.db.patch(f.organizationId, { status })),
+      );
+      await expect(f.apply()).rejects.toThrow(
+        "This organizer is not accepting applications",
+      );
+    },
+  );
+
   test("rejects private bookings", async () => {
     const f = await setupApplications({ mode: "privateBooking" });
     await expect(f.apply()).rejects.toThrow(

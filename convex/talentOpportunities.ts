@@ -1,6 +1,6 @@
 import { Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { Doc, Id } from "./_generated/dataModel";
+import { Id } from "./_generated/dataModel";
 import { MutationCtx, internalMutation, mutation } from "./_generated/server";
 import { requireOrganizationRole } from "./lib/authz";
 import {
@@ -14,6 +14,7 @@ import {
   APPLICATION_ACTIVE_STATUSES,
   assertOpportunityTransition,
   assertSlotTransition,
+  type ArtistApplicationStatus,
 } from "./lib/opportunityStatus";
 import {
   ageRequirementValidator,
@@ -24,6 +25,10 @@ import {
 } from "./schema";
 
 const APPLICATION_LEAD_TIME_MS = 7 * 24 * 60 * 60 * 1000;
+const APPLICATION_DEADLINE_EXPIRABLE_STATUSES: readonly ArtistApplicationStatus[] = [
+  "submitted",
+  "under_review",
+];
 
 const slotInputValidator = v.object({
   role: gigPerformerRoleValidator,
@@ -52,6 +57,14 @@ const opportunityFieldsValidator = v.object({
   currency: v.optional(v.string()),
   externalUrl: v.optional(v.string()),
 });
+
+function resolveClearable<T>(
+  provided: T | null | undefined,
+  current: T | undefined,
+): T | undefined {
+  if (provided === undefined) return current;
+  return provided === null ? undefined : provided;
+}
 
 async function normalizeAndValidateFields(
   ctx: MutationCtx,
@@ -289,6 +302,14 @@ export const update = mutation({
     expectedRevision: v.number(),
     venueId: v.optional(v.id("venues")),
     ...opportunityFieldsValidator.partial().fields,
+    eventType: v.optional(v.union(v.string(), v.null())),
+    expectedAttendance: v.optional(v.union(v.number(), v.null())),
+    doorsAt: v.optional(v.union(v.number(), v.null())),
+    endsAt: v.optional(v.union(v.number(), v.null())),
+    equipment: v.optional(v.union(v.string(), v.null())),
+    requirements: v.optional(v.union(v.string(), v.null())),
+    externalUrl: v.optional(v.union(v.string(), v.null())),
+    flyStorageId: v.optional(v.union(v.id("_storage"), v.null())),
     slots: v.optional(v.array(slotInputValidator)),
   },
   returns: v.object({ revision: v.number() }),
@@ -321,27 +342,50 @@ export const update = mutation({
           opportunity.organizationId,
         )
       : null;
+    const startsAt = args.startsAt ?? opportunity.startsAt;
+    const applicationsCloseAt =
+      args.applicationsCloseAt ?? opportunity.applicationsCloseAt;
+    // Check open timing first so normalization cannot mask open's error messages.
+    if (opportunity.status === "open") {
+      if (!(startsAt > now)) {
+        throw new Error("The event has already started");
+      }
+      if (!(applicationsCloseAt > now && applicationsCloseAt < startsAt)) {
+        throw new Error("Set an applications deadline before the event starts");
+      }
+    }
+    const effectiveFlyKey = args.flyKey ?? opportunity.flyKey;
     const fields = await normalizeAndValidateFields(ctx, {
       title: args.title ?? opportunity.title,
       desc: args.desc ?? opportunity.desc,
-      eventType: args.eventType ?? opportunity.eventType,
-      expectedAttendance:
-        args.expectedAttendance ?? opportunity.expectedAttendance,
+      eventType: resolveClearable(args.eventType, opportunity.eventType),
+      expectedAttendance: resolveClearable(
+        args.expectedAttendance,
+        opportunity.expectedAttendance,
+      ),
       genres: args.genres ?? opportunity.genres,
-      startsAt: args.startsAt ?? opportunity.startsAt,
-      doorsAt: args.doorsAt ?? opportunity.doorsAt,
-      endsAt: args.endsAt ?? opportunity.endsAt,
+      startsAt,
+      doorsAt: resolveClearable(args.doorsAt, opportunity.doorsAt),
+      endsAt: resolveClearable(args.endsAt, opportunity.endsAt),
       ageRequirement: args.ageRequirement ?? opportunity.ageRequirement,
-      equipment: args.equipment ?? opportunity.equipment,
-      requirements: args.requirements ?? opportunity.requirements,
-      flyKey: args.flyKey ?? opportunity.flyKey,
-      flyStorageId: args.flyStorageId ?? opportunity.flyStorageId,
-      applicationsCloseAt:
-        args.applicationsCloseAt ?? opportunity.applicationsCloseAt,
+      equipment: resolveClearable(args.equipment, opportunity.equipment),
+      requirements: resolveClearable(
+        args.requirements,
+        opportunity.requirements,
+      ),
+      flyKey:
+        args.flyStorageId === null && effectiveFlyKey === "custom"
+          ? "xerox"
+          : effectiveFlyKey,
+      flyStorageId: resolveClearable(
+        args.flyStorageId,
+        opportunity.flyStorageId,
+      ),
+      applicationsCloseAt,
       visibility: args.visibility ?? opportunity.visibility,
       ticketing: args.ticketing ?? opportunity.ticketing,
       currency: args.currency ?? opportunity.currency,
-      externalUrl: args.externalUrl ?? opportunity.externalUrl,
+      externalUrl: resolveClearable(args.externalUrl, opportunity.externalUrl),
     });
     if (args.slots !== undefined) {
       const slots = normalizeAndValidateSlots(args.slots);
@@ -354,9 +398,22 @@ export const update = mutation({
       for (const slot of existing) await ctx.db.delete(slot._id);
       await insertSlots(ctx, opportunity._id, slots);
     }
+    const clearedFields = {
+      ...(args.eventType === null ? { eventType: undefined } : {}),
+      ...(args.expectedAttendance === null
+        ? { expectedAttendance: undefined }
+        : {}),
+      ...(args.doorsAt === null ? { doorsAt: undefined } : {}),
+      ...(args.endsAt === null ? { endsAt: undefined } : {}),
+      ...(args.equipment === null ? { equipment: undefined } : {}),
+      ...(args.requirements === null ? { requirements: undefined } : {}),
+      ...(args.externalUrl === null ? { externalUrl: undefined } : {}),
+      ...(args.flyStorageId === null ? { flyStorageId: undefined } : {}),
+    };
     const revision = opportunity.revision + 1;
     await ctx.db.patch(opportunity._id, {
       ...fields,
+      ...clearedFields,
       ...(venue
         ? {
             venueId: venue._id,
@@ -448,7 +505,10 @@ export const closeApplications = mutation({
       revision: opportunity.revision + 1,
       updatedAt: now,
     });
-    await expireActiveApplications(ctx, opportunity, "expired");
+    await expireActiveApplications(ctx, opportunity._id, {
+      statuses: APPLICATION_DEADLINE_EXPIRABLE_STATUSES,
+      to: "expired",
+    });
     return null;
   },
 });
@@ -509,7 +569,11 @@ export const cancel = mutation({
       revision: opportunity.revision + 1,
       updatedAt: now,
     });
-    await expireActiveApplications(ctx, opportunity, "declined", user._id);
+    await expireActiveApplications(ctx, opportunity._id, {
+      statuses: APPLICATION_ACTIVE_STATUSES,
+      to: "declined",
+      decidedBy: user._id,
+    });
     const slots = await ctx.db
       .query("opportunitySlots")
       .withIndex("by_opportunityId_and_order", (q) =>
@@ -710,33 +774,49 @@ export const expireApplications = internalMutation({
       revision: opportunity.revision + 1,
       updatedAt: now,
     });
-    await expireActiveApplications(ctx, opportunity, "expired");
+    await expireActiveApplications(ctx, opportunity._id, {
+      statuses: APPLICATION_DEADLINE_EXPIRABLE_STATUSES,
+      to: "expired",
+    });
     return null;
   },
 });
 
-export async function expireActiveApplications(
+async function expireActiveApplications(
   ctx: MutationCtx,
-  opportunity: Doc<"talentOpportunities">,
-  to: "expired" | "declined",
-  decidedBy?: Id<"users">,
+  opportunityId: Id<"talentOpportunities">,
+  options: {
+    statuses: readonly ArtistApplicationStatus[];
+    to: "expired" | "declined";
+    decidedBy?: Id<"users">;
+  },
 ): Promise<void> {
   const now = Date.now();
-  for (const status of APPLICATION_ACTIVE_STATUSES) {
-    const applications = await ctx.db
-      .query("artistApplications")
-      .withIndex("by_opportunityId_and_status", (q) =>
-        q.eq("opportunityId", opportunity._id).eq("status", status),
-      )
-      .take(200);
-    for (const application of applications) {
-      await ctx.db.patch(application._id, {
-        status: to,
-        decidedAt: now,
-        updatedAt: now,
-        ...(decidedBy ? { decidedBy } : {}),
-      });
+  let patchedCount = 0;
+  for (const status of options.statuses) {
+    for (;;) {
+      const page = await ctx.db
+        .query("artistApplications")
+        .withIndex("by_opportunityId_and_status", (q) =>
+          q.eq("opportunityId", opportunityId).eq("status", status),
+        )
+        .take(200);
+      for (const application of page) {
+        await ctx.db.patch(application._id, {
+          status: options.to,
+          decidedAt: now,
+          updatedAt: now,
+          ...(options.decidedBy ? { decidedBy: options.decidedBy } : {}),
+        });
+        patchedCount++;
+      }
+      if (page.length < 200) break;
     }
   }
-  await ctx.db.patch(opportunity._id, { applicationCount: 0, updatedAt: now });
+  const opportunity = await ctx.db.get(opportunityId);
+  if (!opportunity) return;
+  await ctx.db.patch(opportunityId, {
+    applicationCount: Math.max(0, opportunity.applicationCount - patchedCount),
+    updatedAt: now,
+  });
 }

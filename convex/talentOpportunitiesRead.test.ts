@@ -2,8 +2,9 @@
 import { ApiFromModules, FunctionArgs } from "convex/server";
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api as generatedApi } from "./_generated/api";
+import { api as generatedApi, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { readFeedCutoff } from "./clock";
 import { ArtistApplicationStatus } from "./lib/opportunityStatus";
 import schema from "./schema";
 import type * as readModule from "./talentOpportunitiesRead";
@@ -256,6 +257,7 @@ describe("talent opportunity browse", () => {
       later.opportunityId,
     ]);
     for (const item of result.page) {
+      expect(item.opportunity).not.toHaveProperty("invitedBandIds");
       expect(item).toMatchObject({
         invited: false,
         myApplicationStatus: null,
@@ -286,6 +288,44 @@ describe("talent opportunity browse", () => {
     expect(page2.page.map((item) => item.opportunity._id)).toEqual([
       third.opportunityId,
     ]);
+  });
+
+  test("pagination keeps raw page boundaries when the heartbeat advances the cutoff", async () => {
+    const { t, createOpen } = await setupOrganization();
+    const opportunities = [];
+    for (const days of [2, 3, 4, 5, 6]) {
+      opportunities.push(await createOpen({ startsAt: NOW + days * DAY_MS }));
+    }
+    await t.mutation(internal.clock.heartbeat, {});
+    const initialCutoff = await t.run(readFeedCutoff);
+    const page1 = await t.query(api.talentOpportunitiesRead.browse, {
+      paginationOpts: { numItems: 2, cursor: null },
+    });
+    expect(page1.page.map((item) => item.opportunity._id)).toEqual(
+      opportunities.slice(0, 2).map((opportunity) => opportunity.opportunityId),
+    );
+    expect(page1.isDone).toBe(false);
+
+    vi.setSystemTime(NOW + 5 * DAY_MS);
+    await t.mutation(internal.clock.heartbeat, {});
+    expect(await t.run(readFeedCutoff)).toBeGreaterThan(initialCutoff);
+    const page2 = await t.query(api.talentOpportunitiesRead.browse, {
+      paginationOpts: { numItems: 2, cursor: page1.continueCursor },
+    });
+    expect(Array.isArray(page2.page)).toBe(true);
+    // convex-test does not validate cursor index ranges. The expired third
+    // row must still consume a raw page position, catching a cutoff in the range.
+    expect(page2.page.map((item) => item.opportunity._id)).toEqual([
+      opportunities[3].opportunityId,
+    ]);
+    expect(page2.isDone).toBe(false);
+    const page3 = await t.query(api.talentOpportunitiesRead.browse, {
+      paginationOpts: { numItems: 2, cursor: page2.continueCursor },
+    });
+    expect(page3.page.map((item) => item.opportunity._id)).toEqual([
+      opportunities[4].opportunityId,
+    ]);
+    expect(page3.isDone).toBe(true);
   });
 
   test("area is a case-insensitive substring filter", async () => {
@@ -397,12 +437,14 @@ describe("talent opportunity browse", () => {
       asArtist,
       asStranger,
       bandId,
+      otherBandId,
       createOpen,
       seedInvite,
       seedApplication,
     } = await setupOrganization();
     const { opportunityId } = await createOpen();
     await seedInvite(opportunityId);
+    await seedInvite(opportunityId, otherBandId);
     const olderApplicationId = await seedApplication(
       opportunityId,
       "shortlisted",
@@ -426,6 +468,7 @@ describe("talent opportunity browse", () => {
         myApplicationStatus: "withdrawn",
       },
     ]);
+    expect(memberResult.page[0].opportunity).not.toHaveProperty("invitedBandIds");
     for (const caller of [asStranger, t]) {
       const result = await caller.query(api.talentOpportunitiesRead.browse, {
         paginationOpts,
@@ -438,8 +481,29 @@ describe("talent opportunity browse", () => {
           myApplicationStatus: null,
         },
       ]);
+      expect(result.page[0].opportunity).not.toHaveProperty("invitedBandIds");
     }
   });
+
+  test.each(["pending", "suspended", "missing"] as const)(
+    "excludes opportunities from a %s organization",
+    async (status) => {
+      const { t, organizationId, createOpen } = await setupOrganization();
+      const { opportunityId } = await createOpen();
+      expect(
+        (await t.query(api.talentOpportunitiesRead.browse, { paginationOpts }))
+          .page,
+      ).toMatchObject([{ opportunity: { _id: opportunityId } }]);
+      await t.run(async (ctx) => {
+        if (status === "missing") await ctx.db.delete(organizationId);
+        else await ctx.db.patch(organizationId, { status });
+      });
+      expect(
+        (await t.query(api.talentOpportunitiesRead.browse, { paginationOpts }))
+          .page,
+      ).toEqual([]);
+    },
+  );
 });
 
 describe("invited talent opportunities", () => {
@@ -469,6 +533,7 @@ describe("invited talent opportunities", () => {
         myApplicationStatus: "shortlisted",
       },
     ]);
+    expect(result[0].opportunity).not.toHaveProperty("invitedBandIds");
     expect(
       await asOtherArtist.query(api.talentOpportunitiesRead.invitedFor, {
         bandId: otherBandId,
@@ -545,12 +610,57 @@ describe("invited talent opportunities", () => {
       result.every((item) => item.invited && item.myApplicationStatus === null),
     ).toBe(true);
   });
+
+  test("reads the newest 100 invites before sorting opportunities by start time", async () => {
+    const { asArtist, bandId, createOpen, seedInvite } =
+      await setupOrganization();
+    const opportunityIds = [];
+    for (let index = 0; index < 101; index++) {
+      vi.setSystemTime(NOW + index * 1000);
+      const { opportunityId } = await createOpen({
+        startsAt: NOW + (102 - index) * DAY_MS,
+        visibility: "inviteOnly",
+      });
+      await seedInvite(opportunityId);
+      opportunityIds.push(opportunityId);
+    }
+    const result = await asArtist.query(
+      api.talentOpportunitiesRead.invitedFor,
+      { bandId },
+    );
+    expect(result.map((item) => item.opportunity._id)).toEqual(
+      opportunityIds.slice(1),
+    );
+  });
+
+  test.each(["pending", "suspended", "missing"] as const)(
+    "excludes invites from a %s organization",
+    async (status) => {
+      const { t, asArtist, organizationId, bandId, createOpen, seedInvite } =
+        await setupOrganization();
+      const { opportunityId } = await createOpen({ visibility: "inviteOnly" });
+      await seedInvite(opportunityId);
+      expect(
+        await asArtist.query(api.talentOpportunitiesRead.invitedFor, { bandId }),
+      ).toMatchObject([{ opportunity: { _id: opportunityId } }]);
+      await t.run(async (ctx) => {
+        if (status === "missing") await ctx.db.delete(organizationId);
+        else await ctx.db.patch(organizationId, { status });
+      });
+      expect(
+        await asArtist.query(api.talentOpportunitiesRead.invitedFor, { bandId }),
+      ).toEqual([]);
+    },
+  );
 });
 
 describe("public talent opportunity resolution", () => {
   test("resolves the same hydrated public opportunity by trimmed slug and ID", async () => {
-    const { t, createOpen, venueId } = await setupOrganization();
+    const { t, createOpen, venueId, seedInvite, otherBandId } =
+      await setupOrganization();
     const { opportunityId, slug } = await createOpen();
+    await seedInvite(opportunityId);
+    await seedInvite(opportunityId, otherBandId);
     const bySlug = await t.query(api.talentOpportunitiesRead.resolvePublic, {
       ref: ` ${slug} `,
     });
@@ -558,6 +668,7 @@ describe("public talent opportunity resolution", () => {
       ref: opportunityId,
     });
     expect(byId).toEqual(bySlug);
+    expect(bySlug?.opportunity).not.toHaveProperty("invitedBandIds");
     expect(bySlug).toMatchObject({
       opportunity: {
         _id: opportunityId,
@@ -624,12 +735,12 @@ describe("public talent opportunity resolution", () => {
         }),
       ).toBeNull();
     }
-    expect(
-      await asArtist.query(api.talentOpportunitiesRead.resolvePublic, {
-        ref: opportunityId,
-        bandId,
-      }),
-    ).toMatchObject({
+    const artistResult = await asArtist.query(
+      api.talentOpportunitiesRead.resolvePublic,
+      { ref: opportunityId, bandId },
+    );
+    expect(artistResult?.opportunity).not.toHaveProperty("invitedBandIds");
+    expect(artistResult).toMatchObject({
       opportunity: { _id: opportunityId },
       invited: true,
       myApplicationStatus: "shortlisted",
@@ -645,6 +756,44 @@ describe("public talent opportunity resolution", () => {
       myApplicationStatus: null,
     });
   });
+
+  test.each(["pending", "suspended", "missing"] as const)(
+    "does not resolve opportunities from a %s organization for artists",
+    async (status) => {
+      const { t, asArtist, organizationId, bandId, createOpen, seedInvite } =
+        await setupOrganization();
+      const publicOpportunity = await createOpen();
+      const invitedOpportunity = await createOpen({ visibility: "inviteOnly" });
+      await seedInvite(invitedOpportunity.opportunityId);
+      expect(
+        await t.query(api.talentOpportunitiesRead.resolvePublic, {
+          ref: publicOpportunity.slug,
+        }),
+      ).not.toBeNull();
+      expect(
+        await asArtist.query(api.talentOpportunitiesRead.resolvePublic, {
+          ref: invitedOpportunity.slug,
+          bandId,
+        }),
+      ).not.toBeNull();
+      await t.run(async (ctx) => {
+        if (status === "missing") await ctx.db.delete(organizationId);
+        else await ctx.db.patch(organizationId, { status });
+      });
+      for (const opportunity of [publicOpportunity, invitedOpportunity]) {
+        for (const ref of [opportunity.slug, opportunity.opportunityId]) {
+          for (const caller of [t, asArtist]) {
+            expect(
+              await caller.query(api.talentOpportunitiesRead.resolvePublic, {
+                ref,
+                bandId,
+              }),
+            ).toBeNull();
+          }
+        }
+      }
+    },
+  );
 
   test.each(["draft", "cancelled"] as const)(
     "%s opportunities resolve only for organization members even when a band is invited",
@@ -833,7 +982,7 @@ describe("organization talent opportunity reads", () => {
     }
   });
 
-  test("get returns a hydrated payload only for organization members and null for missing opportunities", async () => {
+  test("get returns a hydrated payload for organization members and null for missing opportunities", async () => {
     const {
       t,
       asOwner,
@@ -870,5 +1019,41 @@ describe("organization talent opportunity reads", () => {
         opportunityId: deleted.opportunityId,
       }),
     ).toBeNull();
+  });
+
+  test("get allows platform admins without membership and denies members of suspended organizations", async () => {
+    const { t, asOwner, asManager, organizationId, createOpen } =
+      await setupOrganization();
+    const { opportunityId } = await createOpen();
+    await t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        clerkId: "read_platform_admin",
+        name: "Platform Admin",
+        email: "platform_admin@opportunity.test",
+        genres: [],
+        attendedCount: 0,
+      });
+      await ctx.db.insert("platformAdmins", { userId, grantedAt: NOW });
+    });
+    const asPlatformAdmin = t.withIdentity({ subject: "read_platform_admin" });
+    expect(
+      await asPlatformAdmin.query(api.talentOpportunitiesRead.get, {
+        opportunityId,
+      }),
+    ).toMatchObject({ _id: opportunityId, invitedBandIds: [] });
+
+    await t.run(async (ctx) => {
+      await ctx.db.patch(organizationId, { status: "suspended" });
+    });
+    for (const caller of [asOwner, asManager]) {
+      expect(
+        await caller.query(api.talentOpportunitiesRead.get, { opportunityId }),
+      ).toBeNull();
+    }
+    expect(
+      await asPlatformAdmin.query(api.talentOpportunitiesRead.get, {
+        opportunityId,
+      }),
+    ).toMatchObject({ _id: opportunityId, invitedBandIds: [] });
   });
 });

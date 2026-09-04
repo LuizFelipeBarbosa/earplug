@@ -7,12 +7,13 @@ import { Doc, Id } from "./_generated/dataModel";
 import { QueryCtx, query } from "./_generated/server";
 import {
   ALL_ORGANIZATION_ROLES,
-  organizationMembershipFor,
   requireOrganizationRoleQuery,
 } from "./lib/authz";
 import { currentUser, feedCutoff } from "./lib/helpers";
 import {
+  artistOpportunityPayloadValidator,
   opportunityPayloadValidator,
+  toArtistOpportunityPayload,
   toOpportunityPayload,
 } from "./lib/opportunityPayload";
 import {
@@ -27,7 +28,7 @@ import {
 import { artistApplicationStatusValidator, venueTypeValidator } from "./schema";
 
 export const browseItemValidator = v.object({
-  opportunity: opportunityPayloadValidator,
+  opportunity: artistOpportunityPayloadValidator,
   invited: v.boolean(),
   myApplicationStatus: v.union(artistApplicationStatusValidator, v.null()),
 });
@@ -68,8 +69,7 @@ export const browse = query({
         q
           .eq("mode", "publicEvent")
           .eq("visibility", "public")
-          .eq("status", "open")
-          .gte("startsAt", cutoff),
+          .eq("status", "open"),
       )
       .order("asc")
       .paginate(args.paginationOpts);
@@ -80,7 +80,10 @@ export const browse = query({
       (await bandHasMember(ctx, args.bandId, user._id));
     const page: Infer<typeof browseItemValidator>[] = [];
     for (const opportunity of result.page) {
-      const payload = await toOpportunityPayload(ctx, opportunity);
+      if (opportunity.startsAt < cutoff) continue;
+      const organization = await ctx.db.get(opportunity.organizationId);
+      if (!organization || organization.status !== "verified") continue;
+      const payload = await toArtistOpportunityPayload(ctx, opportunity);
       const filters = args.filters;
       if (
         filters?.area !== undefined &&
@@ -131,6 +134,7 @@ export const invitedFor = query({
     const invites = await ctx.db
       .query("opportunityInvites")
       .withIndex("by_bandId", (q) => q.eq("bandId", args.bandId))
+      .order("desc")
       .take(100);
     const items: Infer<typeof browseItemValidator>[] = [];
     for (const invite of invites) {
@@ -142,8 +146,10 @@ export const invitedFor = query({
       ) {
         continue;
       }
+      const organization = await ctx.db.get(opportunity.organizationId);
+      if (!organization || organization.status !== "verified") continue;
       items.push({
-        opportunity: await toOpportunityPayload(ctx, opportunity),
+        opportunity: await toArtistOpportunityPayload(ctx, opportunity),
         invited: true,
         myApplicationStatus: await latestApplicationStatusFor(
           ctx,
@@ -173,6 +179,8 @@ export const resolvePublic = query({
       opportunity = normalized ? await ctx.db.get(normalized) : null;
     }
     if (!opportunity) return null;
+    const organization = await ctx.db.get(opportunity.organizationId);
+    if (!organization || organization.status !== "verified") return null;
     const user = await currentUser(ctx);
     const visible = await canViewerSeeOpportunity(ctx, opportunity, {
       user,
@@ -184,7 +192,7 @@ export const resolvePublic = query({
       user !== null &&
       (await bandHasMember(ctx, args.bandId, user._id));
     return {
-      opportunity: await toOpportunityPayload(ctx, opportunity),
+      opportunity: await toArtistOpportunityPayload(ctx, opportunity),
       invited: canSeeBandState
         ? await bandIsInvited(ctx, opportunity._id, args.bandId!)
         : false,
@@ -244,14 +252,15 @@ export const get = query({
   handler: async (ctx, args) => {
     const opportunity = await ctx.db.get(args.opportunityId);
     if (!opportunity) return null;
-    const user = await currentUser(ctx);
-    if (!user) return null;
-    const membership = await organizationMembershipFor(
-      ctx,
-      opportunity.organizationId,
-      user._id,
-    );
-    if (!membership) return null;
+    try {
+      await requireOrganizationRoleQuery(
+        ctx,
+        opportunity.organizationId,
+        ALL_ORGANIZATION_ROLES,
+      );
+    } catch {
+      return null;
+    }
     return await toOpportunityPayload(ctx, opportunity);
   },
 });

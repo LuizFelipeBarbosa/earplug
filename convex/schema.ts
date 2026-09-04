@@ -356,6 +356,7 @@ export default defineSchema({
       "status",
       "startsAt",
     ])
+    // Reserved for Phase 3 offer/booking lookups.
     .index("by_status_and_applicationsCloseAt", ["status", "applicationsCloseAt"])
     .index("by_venueId_and_startsAt", ["venueId", "startsAt"])
     .index("by_publicGigId", ["publicGigId"])
@@ -400,10 +401,11 @@ export default defineSchema({
     .index("by_opportunityId_and_bandId", ["opportunityId", "bandId"])
     .index("by_opportunityId_and_status", ["opportunityId", "status"])
     .index("by_bandId_and_status", ["bandId", "status"])
+    // Reserved for Phase 3 offer/booking lookups.
     .index("by_slotId_and_status", ["slotId", "status"]),
 
-  // Singleton rows keyed by name. A "feedCutoff" row is written by a heartbeat
-  // process owned by a different lane; this table only declares the shape here.
+  // Singleton rows keyed by name. The heartbeat in convex/clock.ts maintains
+  // the "feedCutoff" row.
   clock: defineTable({
     key: v.string(),
     value: v.number(),

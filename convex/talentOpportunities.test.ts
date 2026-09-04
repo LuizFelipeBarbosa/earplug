@@ -477,6 +477,89 @@ describe("talent opportunity drafts", () => {
     ).rejects.toThrow("Flyer upload not found");
   });
 
+  test("update clears equipment with null and preserves omitted fields", async () => {
+    const { createDraft, asOwner, readOpportunity } = await setupOrganization();
+    const { opportunityId } = await createDraft({
+      equipment: "Backline",
+      requirements: "Bring cables",
+    });
+    await asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision: 1,
+      equipment: null,
+    });
+    const { opportunity } = await readOpportunity(opportunityId);
+    expect(opportunity).not.toHaveProperty("equipment");
+    expect(opportunity).toMatchObject({ requirements: "Bring cables" });
+
+    await asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision: 2,
+      title: "New title",
+    });
+    const updated = (await readOpportunity(opportunityId)).opportunity;
+    expect(updated).not.toHaveProperty("equipment");
+    expect(updated).toMatchObject({
+      title: "New title",
+      requirements: "Bring cables",
+    });
+  });
+
+  test("update clears optional event metadata and can set it again", async () => {
+    const { createDraft, asOwner, readOpportunity } = await setupOrganization();
+    const optionalFields = {
+      eventType: "Showcase",
+      expectedAttendance: 150,
+      doorsAt: NOW + 14 * DAY_MS - 3600000,
+      endsAt: NOW + 14 * DAY_MS + 3600000,
+      requirements: "Bring cables",
+      externalUrl: "https://tickets.test/event",
+    };
+    const { opportunityId } = await createDraft(optionalFields);
+    await asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision: 1,
+      eventType: null,
+      expectedAttendance: null,
+      doorsAt: null,
+      endsAt: null,
+      requirements: null,
+      externalUrl: null,
+    });
+    const { opportunity } = await readOpportunity(opportunityId);
+    for (const field of Object.keys(optionalFields)) {
+      expect(opportunity).not.toHaveProperty(field);
+    }
+    await asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision: 2,
+      ...optionalFields,
+    });
+    expect((await readOpportunity(opportunityId)).opportunity).toMatchObject(
+      optionalFields,
+    );
+  });
+
+  test("clearing a custom flyer removes its storage ID and restores xerox", async () => {
+    const { t, createDraft, asOwner, readOpportunity } =
+      await setupOrganization();
+    const flyStorageId = await t.run((ctx) =>
+      ctx.storage.store(new Blob(["photo"], { type: "image/png" })),
+    );
+    const { opportunityId } = await createDraft({
+      flyKey: "custom",
+      flyStorageId,
+    });
+    await asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision: 1,
+      flyStorageId: null,
+    });
+    const { opportunity } = await readOpportunity(opportunityId);
+    expect(opportunity).not.toHaveProperty("flyStorageId");
+    expect(opportunity).toMatchObject({ flyKey: "xerox" });
+  });
+
   test("custom flyers reject a non-photo upload", async () => {
     const { t, createDraft } = await setupOrganization();
     const flyStorageId = await t.run((ctx) =>
@@ -499,12 +582,15 @@ describe("talent opportunity drafts", () => {
 });
 
 describe("talent opportunity lifecycle", () => {
-  test("open schedules expiry that closes applications and clears their active count", async () => {
+  test("open schedules expiry while preserving shortlisted and offered applications", async () => {
     const { t, createDraft, asOwner, readOpportunity, seedApplications } =
       await setupOrganization();
     const applicationsCloseAt = NOW + DAY_MS;
     const { opportunityId } = await createDraft({ applicationsCloseAt });
-    const [applicationId] = await seedApplications(opportunityId);
+    const [applicationId, shortlistedId, offeredId] = await seedApplications(
+      opportunityId,
+      ["submitted", "shortlisted", "offered"],
+    );
     expect(
       await asOwner.mutation(api.talentOpportunities.open, {
         opportunityId,
@@ -525,11 +611,22 @@ describe("talent opportunity lifecycle", () => {
     expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
       status: "applications_closed",
       revision: 3,
-      applicationCount: 0,
+      applicationCount: 2,
     });
     expect(await t.run((ctx) => ctx.db.get(applicationId))).toMatchObject({
       status: "expired",
     });
+    const survivors = await t.run((ctx) =>
+      Promise.all([shortlistedId, offeredId].map((id) => ctx.db.get(id))),
+    );
+    expect(survivors).toMatchObject([
+      { status: "shortlisted", updatedAt: 1 },
+      { status: "offered", updatedAt: 1 },
+    ]);
+    for (const application of survivors) {
+      expect(application).not.toHaveProperty("decidedAt");
+      expect(application).not.toHaveProperty("decidedBy");
+    }
   });
 
   test("open rejects stale revisions, missing slots, past starts, and invalid deadlines", async () => {
@@ -608,6 +705,114 @@ describe("talent opportunity lifecycle", () => {
     ).toEqual({ revision: 3 });
   });
 
+  test("updating an open opportunity rejects a past start without changing it", async () => {
+    const { t, createDraft, asOwner, readOpportunity } =
+      await setupOrganization();
+    const { opportunityId } = await createDraft();
+    await asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const before = await readOpportunity(opportunityId);
+    const scheduledBefore = await t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").take(10),
+    );
+    await expect(
+      asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 2,
+        startsAt: NOW - DAY_MS,
+      }),
+    ).rejects.toThrow("The event has already started");
+    expect(await readOpportunity(opportunityId)).toEqual(before);
+    expect(
+      await t.run((ctx) => ctx.db.system.query("_scheduled_functions").take(10)),
+    ).toEqual(scheduledBefore);
+  });
+
+  test("updating an open opportunity rejects deadlines outside the future application window", async () => {
+    const { t, createDraft, asOwner, readOpportunity } =
+      await setupOrganization();
+    const { opportunityId } = await createDraft();
+    await asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const before = await readOpportunity(opportunityId);
+    const scheduledBefore = await t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").take(10),
+    );
+    for (const applicationsCloseAt of [
+      NOW,
+      NOW + 14 * DAY_MS,
+      NOW + 15 * DAY_MS,
+    ]) {
+      await expect(
+        asOwner.mutation(api.talentOpportunities.update, {
+          opportunityId,
+          expectedRevision: 2,
+          applicationsCloseAt,
+        }),
+      ).rejects.toThrow("Set an applications deadline before the event starts");
+      expect(await readOpportunity(opportunityId)).toEqual(before);
+      expect(
+        await t.run((ctx) => ctx.db.system.query("_scheduled_functions").take(10)),
+      ).toEqual(scheduledBefore);
+    }
+  });
+
+  test("a title-only edit makes the old expiry revision a no-op", async () => {
+    const { t, createDraft, asOwner, readOpportunity } =
+      await setupOrganization();
+    const applicationsCloseAt = NOW + DAY_MS;
+    const { opportunityId } = await createDraft({ applicationsCloseAt });
+    const { revision: expectedRevision } = await asOwner.mutation(
+      api.talentOpportunities.open,
+      { opportunityId, expectedRevision: 1 },
+    );
+    expect(expectedRevision).toBe(2);
+    const { revision } = await asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision,
+      title: "Updated title",
+    });
+    expect(revision).toBe(3);
+    const scheduled = await t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").take(10),
+    );
+    expect(scheduled).toHaveLength(2);
+    expect(scheduled).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "talentOpportunities:expireApplications",
+          args: [{ opportunityId, expectedRevision }],
+          scheduledTime: applicationsCloseAt,
+        }),
+        expect.objectContaining({
+          name: "talentOpportunities:expireApplications",
+          args: [{ opportunityId, expectedRevision: revision }],
+          scheduledTime: applicationsCloseAt,
+        }),
+      ]),
+    );
+    await t.mutation(internal.talentOpportunities.expireApplications, {
+      opportunityId,
+      expectedRevision,
+    });
+    expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+      status: "open",
+      revision: 3,
+    });
+    await t.mutation(internal.talentOpportunities.expireApplications, {
+      opportunityId,
+      expectedRevision: revision,
+    });
+    expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+      status: "applications_closed",
+      revision: 4,
+    });
+  });
+
   test.each([false, true])(
     "an edit renews scheduled expiry (deadline changed: %s)",
     async (changeDeadline) => {
@@ -641,7 +846,7 @@ describe("talent opportunity lifecycle", () => {
     },
   );
 
-  test("closing expires every active status and leaves terminal applications intact", async () => {
+  test("closing expires submitted and under-review applications and preserves all other statuses", async () => {
     const { t, createDraft, asOwner, readOpportunity, seedApplications } =
       await setupOrganization();
     const { opportunityId } = await createDraft();
@@ -663,7 +868,7 @@ describe("talent opportunity lifecycle", () => {
     const applications = await t.run((ctx) =>
       Promise.all(ids.map((id) => ctx.db.get(id))),
     );
-    for (const application of applications.slice(0, 4)) {
+    for (const application of applications.slice(0, 2)) {
       expect(application).toMatchObject({
         status: "expired",
         decidedAt: NOW,
@@ -671,18 +876,19 @@ describe("talent opportunity lifecycle", () => {
       });
       expect(application).not.toHaveProperty("decidedBy");
     }
-    expect(
-      applications.slice(4).map((application) => application?.status),
-    ).toEqual(statuses.slice(4));
-    expect(
-      applications
-        .slice(4)
-        .every((application) => application?.updatedAt === 1),
-    ).toBe(true);
+    for (const [index, application] of applications.entries()) {
+      if (index < 2) continue;
+      expect(application).toMatchObject({
+        status: statuses[index],
+        updatedAt: 1,
+      });
+      expect(application).not.toHaveProperty("decidedAt");
+      expect(application).not.toHaveProperty("decidedBy");
+    }
     expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
       status: "applications_closed",
       revision: 3,
-      applicationCount: 0,
+      applicationCount: 2,
     });
     await expect(
       asOwner.mutation(api.talentOpportunities.update, {
@@ -691,6 +897,44 @@ describe("talent opportunity lifecycle", () => {
         desc: "Closed",
       }),
     ).rejects.toThrow("Opportunity can no longer be edited");
+  });
+
+  test("closing drains more than 200 submitted applications and counts surviving shortlist entries", async () => {
+    const { t, createDraft, asOwner, readOpportunity, seedApplications } =
+      await setupOrganization();
+    const { opportunityId } = await createDraft();
+    await asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const ids = await seedApplications(opportunityId, [
+      ...Array.from({ length: 250 }, () => "submitted" as const),
+      "shortlisted",
+      "shortlisted",
+    ]);
+    expect(
+      (await readOpportunity(opportunityId)).opportunity?.applicationCount,
+    ).toBe(252);
+    await asOwner.mutation(api.talentOpportunities.closeApplications, {
+      opportunityId,
+    });
+    const applications = await t.run((ctx) =>
+      Promise.all(ids.map((id) => ctx.db.get(id))),
+    );
+    for (const application of applications.slice(0, 250)) {
+      expect(application).toMatchObject({ status: "expired" });
+    }
+    for (const application of applications.slice(250)) {
+      expect(application).toMatchObject({
+        status: "shortlisted",
+        updatedAt: 1,
+      });
+      expect(application).not.toHaveProperty("decidedAt");
+      expect(application).not.toHaveProperty("decidedBy");
+    }
+    expect(
+      (await readOpportunity(opportunityId)).opportunity?.applicationCount,
+    ).toBe(2);
   });
 
   test("reopen checks the deadline and invalidates the prior scheduled run", async () => {

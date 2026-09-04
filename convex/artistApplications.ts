@@ -17,8 +17,8 @@ import {
   toBandPayload,
 } from "./lib/helpers";
 import {
-  opportunityPayloadValidator,
-  toOpportunityPayload,
+  artistOpportunityPayloadValidator,
+  toArtistOpportunityPayload,
 } from "./lib/opportunityPayload";
 import {
   APPLICATION_ACTIVE_STATUSES,
@@ -26,6 +26,7 @@ import {
   ArtistApplicationStatus,
   assertApplicationTransition,
 } from "./lib/opportunityStatus";
+import { bandIsInvited } from "./lib/opportunityVisibility";
 import { artistApplicationStatusValidator } from "./schema";
 
 export const applicationPayloadValidator = v.object({
@@ -51,7 +52,7 @@ export const applicantPayloadValidator = v.object({
 
 export const bandApplicationPayloadValidator = v.object({
   application: applicationPayloadValidator,
-  opportunity: opportunityPayloadValidator,
+  opportunity: artistOpportunityPayloadValidator,
 });
 
 function toApplicationPayload(
@@ -79,13 +80,7 @@ export async function canBandSeeOpportunity(
   bandId: Id<"bands">,
 ): Promise<boolean> {
   if (opportunity.visibility === "public") return true;
-  const invite = await ctx.db
-    .query("opportunityInvites")
-    .withIndex("by_opportunityId_and_bandId", (q) =>
-      q.eq("opportunityId", opportunity._id).eq("bandId", bandId),
-    )
-    .first();
-  return invite !== null;
+  return await bandIsInvited(ctx, opportunity._id, bandId);
 }
 
 function normalizeNote(value: string | undefined, label: string) {
@@ -113,6 +108,10 @@ export const apply = mutation({
     });
     const opportunity = await ctx.db.get(args.opportunityId);
     if (!opportunity) throw new Error("Opportunity not found");
+    const organization = await ctx.db.get(opportunity.organizationId);
+    if (!organization || organization.status !== "verified") {
+      throw new Error("This organizer is not accepting applications");
+    }
     if (opportunity.status !== "open") {
       throw new Error("Opportunity is not accepting applications");
     }
@@ -328,7 +327,7 @@ export const forBand = query({
       if (!opportunity) continue;
       result.push({
         application: toApplicationPayload(application),
-        opportunity: await toOpportunityPayload(ctx, opportunity),
+        opportunity: await toArtistOpportunityPayload(ctx, opportunity),
       });
     }
     return result;

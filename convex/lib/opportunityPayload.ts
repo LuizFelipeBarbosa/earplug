@@ -62,6 +62,18 @@ export const opportunityPayloadValidator = v.object({
   updatedAt: v.number(),
 });
 
+export const artistOpportunityPayloadValidator =
+  opportunityPayloadValidator.omit("invitedBandIds");
+
+export async function toArtistOpportunityPayload(
+  ctx: QueryCtx | MutationCtx,
+  opportunity: Doc<"talentOpportunities">,
+): Promise<Infer<typeof artistOpportunityPayloadValidator>> {
+  const { invitedBandIds: _invitedBandIds, ...payload } =
+    await toOpportunityPayload(ctx, opportunity);
+  return payload;
+}
+
 export async function toOpportunityPayload(
   ctx: QueryCtx | MutationCtx,
   opportunity: Doc<"talentOpportunities">,
