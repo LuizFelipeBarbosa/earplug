@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
@@ -45,7 +48,20 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 
   void _load({bool refresh = false}) {
     final app = context.read<AppState>();
-    _future = app.loadBooking(widget.bookingId, refresh: refresh);
+    _future = app.loadBooking(widget.bookingId, refresh: refresh).then((
+      booking,
+    ) {
+      if (booking != null && mounted && widget.bookingId == booking.id) {
+        unawaited(app.refreshPayments(booking.id));
+        unawaited(app.refreshRefunds(booking.id));
+        if (booking.viewerSide == BookingSide.artist &&
+            (booking.status == BookingStatus.completed ||
+                booking.status == BookingStatus.paid)) {
+          unawaited(app.refreshPayouts(booking.id));
+        }
+      }
+      return booking;
+    });
     // Tie reviews to this load, so rebuilds never start another request.
     _reviews = _future.then((booking) {
       if (booking == null ||
@@ -156,9 +172,40 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     );
   }
 
-  Widget? _stickyBar(Booking booking) {
+  Future<void> _payInstallment(Booking booking, PaymentRecord payment) async {
+    if (_submitting) return;
+    final app = context.read<AppState>();
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await app.payInstallment(payment.id);
+    } catch (error) {
+      if (mounted && widget.bookingId == booking.id) {
+        setState(() {
+          _error = _errorMessage(error);
+          _load(refresh: true);
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Widget? _stickyBar(Booking booking, List<PaymentRecord> payments) {
     final isOffer = booking.status == BookingStatus.offerSent;
-    if (!isOffer && booking.status != BookingStatus.confirmed) return null;
+    final awaitingPayment = booking.status == BookingStatus.awaitingPayment;
+    if (!isOffer &&
+        !awaitingPayment &&
+        booking.status != BookingStatus.confirmed) {
+      return null;
+    }
+    final organizerPayment =
+        awaitingPayment && booking.viewerSide == BookingSide.organizer;
+    final nextPayment = payments
+        .where((record) => record.status.isOpen)
+        .firstOrNull;
     final artistOffer = isOffer && booking.viewerSide == BookingSide.artist;
     final (key, label, VoidCallback onPressed) = isOffer
         ? (
@@ -187,6 +234,18 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
           minimum: const EdgeInsets.all(12),
           child: Row(
             children: [
+              if (organizerPayment) ...[
+                Expanded(
+                  child: FilledButton(
+                    key: const Key('booking-pay-now'),
+                    onPressed: _submitting || nextPayment == null
+                        ? null
+                        : () => _payInstallment(booking, nextPayment),
+                    child: const Text('PAY NOW', textAlign: TextAlign.center),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
               if (artistOffer) ...[
                 Expanded(
                   child: OutlinedButton(
@@ -242,7 +301,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             ),
           );
         }
-        final stickyBar = _stickyBar(booking);
+        final payments = app.paymentsFor(booking.id).toList()
+          ..sort((a, b) => a.installmentIndex.compareTo(b.installmentIndex));
+        final refunds = app.refundsFor(booking.id);
+        final stickyBar = _stickyBar(booking, payments);
         final offerMessage = booking.currentOffer?.message;
         return Stack(
           children: [
@@ -350,7 +412,56 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     ),
                   ),
                   const SectionBar(label: 'FEE'),
-                  _FeeCard(fee: booking.fee),
+                  _FeeCard(fee: booking.fee, paidMinor: booking.paidMinor),
+                  if (booking.fee.grossMinor > 0)
+                    _BookingLedgerSection(
+                      key: const Key('booking-payments'),
+                      label: 'PAYMENTS',
+                      children: [
+                        for (final payment in payments)
+                          _PaymentRow(
+                            key: Key(
+                              'booking-payment-${payment.installmentIndex}',
+                            ),
+                            payment: payment,
+                            showPay:
+                                booking.viewerSide == BookingSide.organizer &&
+                                payment.canPay,
+                            onPay: _submitting
+                                ? null
+                                : () => _payInstallment(booking, payment),
+                          ),
+                        if (booking.viewerSide == BookingSide.artist &&
+                            payments.any((record) => record.status.isOpen))
+                          Text(
+                            "Waiting for the organizer's payment",
+                            style: textTheme.epCaption,
+                          ),
+                      ],
+                    ),
+                  if (booking.viewerSide == BookingSide.artist &&
+                      (booking.status == BookingStatus.completed ||
+                          booking.status == BookingStatus.paid))
+                    _BookingLedgerSection(
+                      key: const Key('booking-payouts'),
+                      label: 'PAYOUTS',
+                      children: [
+                        for (final payout in app.payoutsFor(booking.id))
+                          _PayoutRow(
+                            key: Key('booking-payout-${payout.id}'),
+                            payout: payout,
+                          ),
+                      ],
+                    ),
+                  if (refunds.isNotEmpty)
+                    _BookingLedgerSection(
+                      key: const Key('booking-refunds'),
+                      label: 'REFUNDS',
+                      children: [
+                        for (final refund in refunds)
+                          _RefundRow(refund: refund),
+                      ],
+                    ),
                   const SectionBar(label: 'TERMS'),
                   EpCard(
                     child: Column(
@@ -429,9 +540,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
 }
 
 class _FeeCard extends StatelessWidget {
-  const _FeeCard({required this.fee});
+  const _FeeCard({required this.fee, this.paidMinor = 0});
 
   final FeeBreakdown fee;
+  final int paidMinor;
 
   @override
   Widget build(BuildContext context) {
@@ -453,8 +565,185 @@ class _FeeCard extends StatelessWidget {
                   title: 'Artist receives',
                   trailing: Text(fee.artistNet.label),
                 ),
+                if (paidMinor > 0)
+                  LedgerRow(
+                    title:
+                        'Paid ${Money(paidMinor, fee.currency).label} of ${fee.gross.label}',
+                  ),
               ],
             ),
+    );
+  }
+}
+
+class _BookingLedgerSection extends StatelessWidget {
+  const _BookingLedgerSection({
+    super.key,
+    required this.label,
+    required this.children,
+  });
+
+  final String label;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SectionBar(label: label),
+      EpCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
+        ),
+      ),
+    ],
+  );
+}
+
+class _PaymentRow extends StatelessWidget {
+  const _PaymentRow({
+    super.key,
+    required this.payment,
+    required this.showPay,
+    required this.onPay,
+  });
+
+  final PaymentRecord payment;
+  final bool showPay;
+  final VoidCallback? onPay;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, tone) = switch (payment.status) {
+      PaymentRecordStatus.pending => ('Pending', EpStatusPillTone.neutral),
+      PaymentRecordStatus.checkoutOpen => (
+        'Checkout open',
+        EpStatusPillTone.selected,
+      ),
+      PaymentRecordStatus.paid => (
+        payment.paidAt == null
+            ? 'Paid'
+            : 'Paid ${_fullDate(context, payment.paidAt!)}',
+        EpStatusPillTone.success,
+      ),
+      PaymentRecordStatus.failed => ('Failed', EpStatusPillTone.warning),
+      PaymentRecordStatus.expired => ('Expired', EpStatusPillTone.warning),
+      PaymentRecordStatus.refunded => ('Refunded', EpStatusPillTone.neutral),
+      PaymentRecordStatus.partiallyRefunded => (
+        'Partially refunded',
+        EpStatusPillTone.neutral,
+      ),
+      PaymentRecordStatus.unknown => ('Unknown', EpStatusPillTone.neutral),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          LedgerRow(title: payment.label, trailing: Text(payment.amount.label)),
+          Text(
+            'Due ${_fullDate(context, payment.dueAt)}',
+            style: Theme.of(context).textTheme.epMeta,
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              StatusPill(label: label, tone: tone),
+              if (showPay)
+                TextButton(
+                  key: Key('booking-pay-${payment.installmentIndex}'),
+                  onPressed: onPay,
+                  child: const Text('PAY'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PayoutRow extends StatelessWidget {
+  const _PayoutRow({super.key, required this.payout});
+
+  final Payout payout;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, tone) = switch (payout.status) {
+      PayoutStatus.scheduled => (
+        'Scheduled ${_fullDate(context, payout.scheduledFor)}',
+        EpStatusPillTone.neutral,
+      ),
+      PayoutStatus.held => (
+        payout.holdReason == null ? 'Held' : 'Held: ${payout.holdReason}',
+        EpStatusPillTone.warning,
+      ),
+      PayoutStatus.processing => ('Processing', EpStatusPillTone.selected),
+      PayoutStatus.paid => (
+        payout.paidAt == null
+            ? 'Paid'
+            : 'Paid ${_fullDate(context, payout.paidAt!)}',
+        EpStatusPillTone.success,
+      ),
+      PayoutStatus.failed => ('Failed', EpStatusPillTone.warning),
+      PayoutStatus.reversed => ('Reversed', EpStatusPillTone.warning),
+      PayoutStatus.unknown => ('Unknown', EpStatusPillTone.neutral),
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LedgerRow(
+            title: switch (payout.kind) {
+              PayoutKind.completion => 'Completion',
+              PayoutKind.forfeit => 'Forfeit',
+            },
+            trailing: Text(payout.amount.label),
+          ),
+          StatusPill(label: label, tone: tone),
+        ],
+      ),
+    );
+  }
+}
+
+class _RefundRow extends StatelessWidget {
+  const _RefundRow({required this.refund});
+
+  final RefundRecord refund;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, tone) = switch (refund.status) {
+      RefundStatus.pending => ('Pending', EpStatusPillTone.neutral),
+      RefundStatus.succeeded => ('Succeeded', EpStatusPillTone.success),
+      RefundStatus.failed => ('Failed', EpStatusPillTone.warning),
+      RefundStatus.unknown => ('Unknown', EpStatusPillTone.neutral),
+    };
+    final reason = switch (refund.reason) {
+      RefundReason.organizerCancel => 'Organizer cancellation',
+      RefundReason.artistCancel => 'Artist cancellation',
+      RefundReason.forceMajeure => 'Force majeure',
+      RefundReason.admin => 'Admin',
+      RefundReason.dispute => 'Dispute',
+      RefundReason.latePayment => 'Late payment',
+      RefundReason.unknown => 'Unknown reason',
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          LedgerRow(title: reason, trailing: Text(refund.amount.label)),
+          StatusPill(label: label, tone: tone),
+        ],
+      ),
     );
   }
 }
@@ -553,8 +842,15 @@ class _CancelBookingSheet extends StatefulWidget {
 
 class _CancelBookingSheetState extends State<_CancelBookingSheet> {
   final _reason = TextEditingController();
+  late final Future<RefundPreview?> _preview;
   bool _submitting = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _preview = widget.app.previewCancellation(widget.booking);
+  }
 
   @override
   void dispose() {
@@ -595,6 +891,34 @@ class _CancelBookingSheetState extends State<_CancelBookingSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          FutureBuilder<RefundPreview?>(
+            future: _preview,
+            builder: (context, snapshot) {
+              final preview = snapshot.data;
+              if (preview == null || preview.paidMinor == 0) {
+                return const SizedBox.shrink();
+              }
+              final currency = widget.booking.fee.currency;
+              final recipient = widget.booking.viewerSide == BookingSide.artist
+                  ? 'You would receive'
+                  : 'The artist receives';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Refund: ${Money(preview.refundMinor, currency).label} · Forfeited: ${Money(preview.forfeitedMinor, currency).label}',
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$recipient ${Money(preview.artistPayoutMinor, currency).label}',
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
           EpLabeledField(
             label: 'REASON',
             hint: 'Explain why you need to cancel',
@@ -675,10 +999,18 @@ List<TimelineStep> _timelineSteps(Booking booking) {
 }
 
 String _statusCaption(BuildContext context, Booking booking) {
+  if (booking.status == BookingStatus.awaitingPayment &&
+      booking.viewerSide == BookingSide.artist) {
+    return "Accepted · awaiting the organizer's payment";
+  }
   final (prefix, date) = switch (booking.status) {
     BookingStatus.offerSent => (
       'Offer expires',
       booking.expiresAt ?? booking.currentOffer?.expiresAt,
+    ),
+    BookingStatus.awaitingPayment => (
+      'Awaiting payment · due',
+      booking.paymentDueAt,
     ),
     BookingStatus.confirmed => ('Confirmed', booking.confirmedAt),
     BookingStatus.completed ||

@@ -1533,14 +1533,25 @@ class ConvexRepository implements EarplugRepository {
     required CancellationTemplate cancellationTemplate,
     String? termsNotes,
     String? message,
+    List<OfferInstallmentInput>? installments,
   }) async {
-    final dynamic decoded = await _convexService.mutation('bookings:sendOffer', {
-      'applicationId': applicationId,
-      'grossMinor': grossMinor,
-      'cancellationTemplate': cancellationTemplate.wireValue,
-      'termsNotes': ?termsNotes,
-      'message': ?message,
-    });
+    final dynamic decoded = await _convexService
+        .mutation('bookings:sendOffer', {
+          'applicationId': applicationId,
+          'grossMinor': grossMinor,
+          'cancellationTemplate': cancellationTemplate.wireValue,
+          'termsNotes': ?termsNotes,
+          'message': ?message,
+          if (installments != null && installments.isNotEmpty)
+            'installments': [
+              for (final i in installments)
+                {
+                  'label': i.label,
+                  'amountMinor': i.amountMinor,
+                  'dueAfterAcceptanceDays': i.dueAfterAcceptanceDays,
+                },
+            ],
+        });
     if (decoded is String) throw Exception(decoded);
     if (decoded is! Map) {
       throw Exception('Unexpected sendOffer response: $decoded');
@@ -1607,6 +1618,161 @@ class ConvexRepository implements EarplugRepository {
       status: BookingStatus.fromWire(result['status']),
       revision: (result['revision'] as num).toInt(),
     );
+  }
+
+  @override
+  Future<StripeAccountStatus> bandPayoutStatus(String bandId) async =>
+      StripeAccountStatus.fromJson(
+        _asMap(
+          await _convexService.query('payoutAccounts:bandPayoutStatus', {
+            'bandId': bandId,
+          }),
+        ),
+      );
+
+  @override
+  Future<StripeAccountStatus> organizationStripeStatus(
+    String organizationId,
+  ) async => StripeAccountStatus.fromJson(
+    _asMap(
+      await _convexService.query('payoutAccounts:organizationStripeStatus', {
+        'organizationId': organizationId,
+      }),
+    ),
+  );
+
+  @override
+  Future<String> startBandOnboarding(String bandId) async {
+    final result = _asMap(
+      await _convexService.action('stripeActions:startBandOnboarding', {
+        'bandId': bandId,
+      }),
+    );
+    return result['url'] as String;
+  }
+
+  @override
+  Future<String> startOrganizationOnboarding(String organizationId) async {
+    final result = _asMap(
+      await _convexService.action('stripeActions:startOrganizationOnboarding', {
+        'organizationId': organizationId,
+      }),
+    );
+    return result['url'] as String;
+  }
+
+  @override
+  Future<StripeAccountStatus> refreshBandAccountStatus(String bandId) async =>
+      StripeAccountStatus.fromJson(
+        _asMap(
+          await _convexService.action(
+            'stripeActions:refreshBandAccountStatus',
+            {'bandId': bandId},
+          ),
+        ),
+      );
+
+  @override
+  Future<StripeAccountStatus> refreshOrganizationAccountStatus(
+    String organizationId,
+  ) async => StripeAccountStatus.fromJson(
+    _asMap(
+      await _convexService.action(
+        'stripeActions:refreshOrganizationAccountStatus',
+        {'organizationId': organizationId},
+      ),
+    ),
+  );
+
+  @override
+  Future<String> bandExpressDashboardLink(String bandId) async {
+    final result = _asMap(
+      await _convexService.action('stripeActions:bandExpressDashboardLink', {
+        'bandId': bandId,
+      }),
+    );
+    return result['url'] as String;
+  }
+
+  @override
+  Future<String> organizationExpressDashboardLink(String organizationId) async {
+    final result = _asMap(
+      await _convexService.action(
+        'stripeActions:organizationExpressDashboardLink',
+        {'organizationId': organizationId},
+      ),
+    );
+    return result['url'] as String;
+  }
+
+  @override
+  Future<({String url, String sessionId})> startInstallmentCheckout(
+    String paymentRecordId,
+  ) async {
+    final result = _asMap(
+      await _convexService.action('payments:startInstallmentCheckout', {
+        'paymentRecordId': paymentRecordId,
+      }),
+    );
+    return (
+      url: result['url'] as String,
+      sessionId: result['sessionId'] as String,
+    );
+  }
+
+  @override
+  Future<List<PaymentRecord>> paymentsForBooking(String bookingId) async {
+    final result = await _convexService.query('payments:paymentsForBooking', {
+      'bookingId': bookingId,
+    });
+    return [for (final json in _mapList(result)) PaymentRecord.fromJson(json)];
+  }
+
+  @override
+  Future<CheckoutStatus?> checkoutStatus(String sessionId) async {
+    final decoded = await _convexService.query('payments:checkoutStatus', {
+      'sessionId': sessionId,
+    });
+    return decoded == null ? null : CheckoutStatus.fromJson(_asMap(decoded));
+  }
+
+  @override
+  Future<List<Payout>> payoutsForBooking(String bookingId) async {
+    final result = await _convexService.query('payouts:payoutsForBooking', {
+      'bookingId': bookingId,
+    });
+    return [for (final json in _mapList(result)) Payout.fromJson(json)];
+  }
+
+  @override
+  Future<List<Payout>> payoutsForBand(String bandId) async {
+    final result = await _convexService.query('payouts:payoutsForBand', {
+      'bandId': bandId,
+    });
+    return [for (final json in _mapList(result)) Payout.fromJson(json)];
+  }
+
+  @override
+  Future<RefundPreview> previewCancellation(
+    String bookingId, {
+    BookingSide? side,
+    required DateTime now,
+  }) async => RefundPreview.fromJson(
+    _asMap(
+      await _convexService.query('refunds:previewCancellation', {
+        'bookingId': bookingId,
+        'as': ?side?.wireValue,
+        'now': now.millisecondsSinceEpoch,
+      }),
+    ),
+  );
+
+  @override
+  Future<List<RefundRecord>> refundsForBooking(String bookingId) async {
+    final result = await _convexService.query('refunds:refundsForBooking', {
+      'bookingId': bookingId,
+    });
+    return [for (final json in _mapList(result)) RefundRecord.fromJson(json)];
   }
 
   @override

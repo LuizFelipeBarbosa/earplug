@@ -2,8 +2,8 @@ part of '../app_state.dart';
 
 mixin _BookingState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
-  String get bandId;
-  String get organizationId;
+  abstract String bandId;
+  abstract String organizationId;
   ActiveIdentity get identity;
   Future<bool>? get _authReady;
   OrganizationRole? organizerRoleFor(String organizationId);
@@ -122,6 +122,7 @@ mixin _BookingState on _AppStateCore {
           _bookingById.remove(id);
         } else {
           _bookingById[id] = booking;
+          _adoptBookingIdentity(booking);
         }
         notifyListeners();
       }
@@ -133,6 +134,19 @@ mixin _BookingState on _AppStateCore {
       if (identical(_bookingByIdTokens[id], token)) {
         unawaited(_bookingLoads.remove(id));
       }
+    }
+  }
+
+  void _adoptBookingIdentity(Booking booking) {
+    switch (booking.viewerSide) {
+      case BookingSide.organizer:
+        if (organizationId != booking.organizationId) {
+          organizationId = booking.organizationId;
+        }
+      case BookingSide.artist:
+        if (bandId != booking.bandId) {
+          bandId = booking.bandId;
+        }
     }
   }
 

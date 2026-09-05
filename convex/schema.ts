@@ -142,6 +142,69 @@ export const bookingStatusValidator = v.union(
   v.literal("withdrawn"),
 );
 
+export const paymentRecordStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("checkout_open"),
+  v.literal("paid"),
+  v.literal("failed"),
+  v.literal("expired"),
+  v.literal("refunded"),
+  v.literal("partially_refunded"),
+);
+
+export const payoutStatusValidator = v.union(
+  v.literal("scheduled"),
+  v.literal("held"),
+  v.literal("processing"),
+  v.literal("paid"),
+  v.literal("failed"),
+  v.literal("reversed"),
+);
+
+export const refundStatusValidator = v.union(
+  v.literal("pending"),
+  v.literal("succeeded"),
+  v.literal("failed"),
+);
+
+export const refundReasonValidator = v.union(
+  v.literal("organizer_cancel"),
+  v.literal("artist_cancel"),
+  v.literal("force_majeure"),
+  v.literal("admin"),
+  v.literal("dispute"),
+  // Checkout completes after the booking has gone terminal; charged, then auto-refunded.
+  v.literal("late_payment"),
+);
+
+export const ledgerKindValidator = v.union(
+  v.literal("charge"),
+  v.literal("refund"),
+  v.literal("payout"),
+  v.literal("transfer_reversal"),
+  v.literal("commission"),
+  v.literal("dispute_hold"),
+  v.literal("dispute_release"),
+  v.literal("dispute_loss"),
+  v.literal("dispute_fee"),
+);
+
+export const fundsStateValidator = v.union(
+  v.literal("pending"),
+  v.literal("available"),
+  v.literal("reserved"),
+  v.literal("paid"),
+  v.literal("refunded"),
+  v.literal("disputed"),
+);
+
+export const payoutHoldReasonValidator = v.union(
+  v.literal("unpaid_installment"),
+  v.literal("dispute"),
+  v.literal("no_payout_account"),
+  v.literal("admin"),
+);
+
 export const cancellationTemplateValidator = v.union(
   v.literal("flexible"),
   v.literal("standard"),
@@ -295,11 +358,15 @@ export default defineSchema({
     stripePayoutsEnabled: v.boolean(),
     stripeDetailsSubmitted: v.boolean(),
     stripeRequirementsDue: v.optional(v.array(v.string())),
+    // Stripe Customer used for Checkout, separate from the organization's own
+    // Connect account tracked by the stripeAccountId fields above.
+    stripeCustomerId: v.optional(v.string()),
     verificationDocStorageIds: v.array(v.id("_storage")),
     updatedAt: v.number(),
   })
     .index("by_organizationId", ["organizationId"])
-    .index("by_stripeAccountId", ["stripeAccountId"]),
+    .index("by_stripeAccountId", ["stripeAccountId"])
+    .index("by_stripeCustomerId", ["stripeCustomerId"]),
 
   organizationMembers: defineTable({
     organizationId: v.id("organizations"),
@@ -490,7 +557,13 @@ export default defineSchema({
     cancelReason: v.optional(v.string()),
     // Captures the status immediately before `disputed` so resolution can resume `confirmed`, `completed`, or `paid`.
     disputedFromStatus: v.optional(bookingStatusValidator),
+    // Derived from payoutHoldReasons being non-empty; maintained by later payment writers.
     payoutHold: v.boolean(),
+    payoutHoldReasons: v.optional(v.array(payoutHoldReasonValidator)),
+    paidMinor: v.optional(v.number()),
+    refundedMinor: v.optional(v.number()),
+    paymentDueAt: v.optional(v.number()),
+    autoCancelAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
     createdBy: v.id("users"),
     createdAt: v.number(),
@@ -520,6 +593,9 @@ export default defineSchema({
         label: v.string(),
         amountMinor: v.number(),
         dueAt: v.number(),
+        // Stored dueAt remains authoritative for absolute schedules; this
+        // records a relative schedule for installments based on acceptance time.
+        dueAfterAcceptanceMs: v.optional(v.number()),
       }),
     ),
     message: v.optional(v.string()),
@@ -537,6 +613,114 @@ export default defineSchema({
     respondedAt: v.optional(v.number()),
     respondedBy: v.optional(v.id("users")),
   }).index("by_bookingId_and_revision", ["bookingId", "revision"]),
+
+  bandPayoutAccounts: defineTable({
+    bandId: v.id("bands"),
+    stripeAccountId: v.string(),
+    chargesEnabled: v.boolean(),
+    payoutsEnabled: v.boolean(),
+    detailsSubmitted: v.boolean(),
+    requirementsDue: v.array(v.string()),
+    onboardingStartedAt: v.optional(v.number()),
+    updatedAt: v.number(),
+  })
+    .index("by_bandId", ["bandId"])
+    .index("by_stripeAccountId", ["stripeAccountId"]),
+
+  paymentRecords: defineTable({
+    bookingId: v.id("bookings"),
+    installmentIndex: v.number(),
+    label: v.string(),
+    amountMinor: v.number(),
+    currency: v.string(),
+    dueAt: v.number(),
+    status: paymentRecordStatusValidator,
+    stripeCheckoutSessionId: v.optional(v.string()),
+    stripePaymentIntentId: v.optional(v.string()),
+    stripeChargeId: v.optional(v.string()),
+    checkoutExpiresAt: v.optional(v.number()),
+    attempt: v.number(),
+    paidAt: v.optional(v.number()),
+    refundedMinor: v.number(),
+    // The Stripe event that marked this record paid.
+    stripeEventId: v.optional(v.string()),
+    stripeDisputeId: v.optional(v.string()),
+    disputedMinor: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_bookingId", ["bookingId"])
+    .index("by_stripeCheckoutSessionId", ["stripeCheckoutSessionId"])
+    .index("by_stripePaymentIntentId", ["stripePaymentIntentId"])
+    .index("by_status_and_dueAt", ["status", "dueAt"]),
+
+  payouts: defineTable({
+    bookingId: v.id("bookings"),
+    bandId: v.id("bands"),
+    stripeAccountId: v.optional(v.string()),
+    amountMinor: v.number(),
+    currency: v.string(),
+    status: payoutStatusValidator,
+    scheduledFor: v.number(),
+    stripeTransferId: v.optional(v.string()),
+    attempt: v.number(),
+    error: v.optional(v.string()),
+    paidAt: v.optional(v.number()),
+    holdReason: v.optional(payoutHoldReasonValidator),
+    holdCount: v.optional(v.number()),
+    releasedAt: v.optional(v.number()),
+    // completion is the normal post-show payout; forfeit is the artist's
+    // share of an organizer-cancellation forfeiture.
+    kind: v.union(v.literal("completion"), v.literal("forfeit")),
+    paymentRecordId: v.optional(v.id("paymentRecords")),
+    sourceChargeId: v.optional(v.string()),
+    stripeTransferReversalId: v.optional(v.string()),
+    reversedMinor: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_bookingId", ["bookingId"])
+    .index("by_bandId", ["bandId"])
+    .index("by_status_and_scheduledFor", ["status", "scheduledFor"])
+    .index("by_paymentRecordId", ["paymentRecordId"]),
+
+  refunds: defineTable({
+    bookingId: v.id("bookings"),
+    paymentRecordId: v.id("paymentRecords"),
+    amountMinor: v.number(),
+    currency: v.string(),
+    reason: refundReasonValidator,
+    status: refundStatusValidator,
+    stripeRefundId: v.optional(v.string()),
+    stripePaymentIntentId: v.optional(v.string()),
+    transferReversalId: v.optional(v.string()),
+    stripeEventId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_bookingId", ["bookingId"])
+    .index("by_stripeRefundId", ["stripeRefundId"])
+    .index("by_stripePaymentIntentId", ["stripePaymentIntentId"]),
+
+  ledgerEntries: defineTable({
+    kind: ledgerKindValidator,
+    bookingId: v.optional(v.id("bookings")),
+    organizationId: v.optional(v.id("organizations")),
+    bandId: v.optional(v.id("bands")),
+    // Signed amount: positive credits, negative debits.
+    amountMinor: v.number(),
+    currency: v.string(),
+    fundsState: fundsStateValidator,
+    stripeRef: v.optional(v.string()),
+    stripeEventId: v.optional(v.string()),
+    // Dedupe key for append-only writers; this table is never patched, only inserted.
+    idempotencyKey: v.string(),
+    occurredAt: v.number(),
+  })
+    .index("by_organizationId_and_occurredAt", ["organizationId", "occurredAt"])
+    .index("by_bandId_and_occurredAt", ["bandId", "occurredAt"])
+    .index("by_bookingId", ["bookingId"])
+    .index("by_idempotencyKey", ["idempotencyKey"]),
 
   // One review per (booking, author side). Exactly one subject is set:
   // organizers review bands, and artists review organizations. Submission,

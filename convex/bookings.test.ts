@@ -20,6 +20,7 @@ import {
 } from "./lib/bookingStatus";
 import { feeSnapshot } from "./lib/fees";
 import { APPLICATION_ACTIVE_STATUSES } from "./lib/opportunityStatus";
+import { DEFAULT_PAYMENT_DUE_MS } from "./lib/paymentStatus";
 import schema from "./schema";
 
 // Keep references typed while this lane intentionally leaves codegen untouched.
@@ -480,6 +481,146 @@ describe("booking offers", () => {
     await expect(f.sendOffer({ grossMinor: 10000 })).rejects.toThrow(
       "Paid offers open once payments are enabled",
     );
+  });
+
+  test("stores a custom installment schedule and resolves its deadlines from acceptance", async () => {
+    const f = await setupBookings();
+    vi.stubEnv("PAYMENTS_ENABLED", "true");
+    vi.stubEnv("BOOKING_COMMISSION_BPS", "1000");
+    const { bookingId, offerId } = await f.sendOffer({
+      grossMinor: 10000,
+      installments: [
+        { label: "Deposit", amountMinor: 4000, dueAfterAcceptanceDays: 0 },
+        { label: "Balance", amountMinor: 6000, dueAfterAcceptanceDays: 5 },
+      ],
+    });
+    const offer = await f.t.run((ctx) => ctx.db.get(offerId));
+    expect(offer?.installments).toEqual([
+      {
+        label: "Deposit",
+        amountMinor: 4000,
+        dueAt: 0,
+        dueAfterAcceptanceMs: DEFAULT_PAYMENT_DUE_MS,
+      },
+      {
+        label: "Balance",
+        amountMinor: 6000,
+        dueAt: 0,
+        dueAfterAcceptanceMs: 5 * DAY_MS + DEFAULT_PAYMENT_DUE_MS,
+      },
+    ]);
+    vi.setSystemTime(NOW + DAY_MS);
+    await f.respond(bookingId);
+    expect(
+      await f.t.run((ctx) =>
+        ctx.db
+          .query("paymentRecords")
+          .withIndex("by_bookingId", (q) => q.eq("bookingId", bookingId))
+          .take(5),
+      ),
+    ).toMatchObject([
+      {
+        installmentIndex: 0,
+        label: "Deposit",
+        amountMinor: 4000,
+        dueAt: NOW + DAY_MS + DEFAULT_PAYMENT_DUE_MS,
+      },
+      {
+        installmentIndex: 1,
+        label: "Balance",
+        amountMinor: 6000,
+        dueAt: NOW + 6 * DAY_MS + DEFAULT_PAYMENT_DUE_MS,
+      },
+    ]);
+  });
+
+  test.each([0, 10000])(
+    "accepts an empty custom schedule for a %s minor-unit offer",
+    async (grossMinor) => {
+      const f = await setupBookings();
+      vi.stubEnv("PAYMENTS_ENABLED", "true");
+      vi.stubEnv("BOOKING_COMMISSION_BPS", "1000");
+      const { offerId } = await f.sendOffer({ grossMinor, installments: [] });
+      const offer = await f.t.run((ctx) => ctx.db.get(offerId));
+      expect(offer?.installments).toEqual([]);
+    },
+  );
+
+  test("rejects more than four installments", async () => {
+    const f = await setupBookings();
+    vi.stubEnv("PAYMENTS_ENABLED", "true");
+    await expect(
+      f.sendOffer({
+        grossMinor: 10000,
+        installments: Array.from({ length: 5 }, (_, index) => ({
+          label: `Installment ${index + 1}`,
+          amountMinor: 2000,
+          dueAfterAcceptanceDays: index,
+        })),
+      }),
+    ).rejects.toThrow("At most 4 installments are allowed");
+  });
+
+  test.each([0, 9999])(
+    "rejects installments that do not sum to a gross fee of %s",
+    async (grossMinor) => {
+      const f = await setupBookings();
+      vi.stubEnv("PAYMENTS_ENABLED", "true");
+      await expect(
+        f.sendOffer({
+          grossMinor,
+          installments: [
+            { label: "Payment", amountMinor: 10000, dueAfterAcceptanceDays: 0 },
+          ],
+        }),
+      ).rejects.toThrow("Installments must sum to the booking's gross amount");
+    },
+  );
+
+  test.each([-1, 0, 0.5, NaN, Infinity])(
+    "rejects invalid installment amount %s",
+    async (amountMinor) => {
+      const f = await setupBookings();
+      vi.stubEnv("PAYMENTS_ENABLED", "true");
+      await expect(
+        f.sendOffer({
+          grossMinor: 10000,
+          installments: [
+            { label: "Payment", amountMinor, dueAfterAcceptanceDays: 0 },
+          ],
+        }),
+      ).rejects.toThrow("Each installment amount must be a positive integer");
+    },
+  );
+
+  test.each([-1, 0.5, NaN, Infinity])(
+    "rejects invalid installment due days %s",
+    async (dueAfterAcceptanceDays) => {
+      const f = await setupBookings();
+      vi.stubEnv("PAYMENTS_ENABLED", "true");
+      await expect(
+        f.sendOffer({
+          grossMinor: 10000,
+          installments: [
+            { label: "Payment", amountMinor: 10000, dueAfterAcceptanceDays },
+          ],
+        }),
+      ).rejects.toThrow("Installment due days must be non-negative integers");
+    },
+  );
+
+  test("rejects decreasing installment due days", async () => {
+    const f = await setupBookings();
+    vi.stubEnv("PAYMENTS_ENABLED", "true");
+    await expect(
+      f.sendOffer({
+        grossMinor: 10000,
+        installments: [
+          { label: "Deposit", amountMinor: 4000, dueAfterAcceptanceDays: 5 },
+          { label: "Balance", amountMinor: 6000, dueAfterAcceptanceDays: 2 },
+        ],
+      }),
+    ).rejects.toThrow("Installment due days must be non-decreasing");
   });
 
   test("requires configured commission and snapshots the paid split on both rows", async () => {
@@ -1048,9 +1189,10 @@ describe("booking confirmation and cancellation", () => {
     await f.checked(() =>
       f.t.mutation(internal.bookings.markCompleted, { bookingId }),
     );
+    // A zero-fee booking has nothing to pay out, so completion settles it.
     expect(await f.readBooking(bookingId)).toMatchObject({
-      status: "completed",
-      revision: 4,
+      status: "paid",
+      revision: 5,
       completedAt,
       updatedAt: completedAt,
     });

@@ -6,6 +6,8 @@ import 'package:earplug/main.dart'
     show
         bandSlugFromUri,
         bookingIdFromUri,
+        checkoutCancelBookingFromUri,
+        checkoutSessionFromUri,
         gigIdFromUri,
         joinTokenFromUri,
         opportunityRefFromUri,
@@ -13,6 +15,7 @@ import 'package:earplug/main.dart'
         organizerApplyFromUri,
         performerInviteTokenFromUri,
         shouldEnableWebSemantics,
+        stripeReturnFromUri,
         venueRefFromUri;
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -59,6 +62,114 @@ void main() {
       ),
       'friday-night-live',
     );
+  });
+
+  test('Checkout return and cancellation routes preserve query values', () {
+    expect(
+      checkoutSessionFromUri(
+        Uri.parse(
+          'https://earplug.app/checkout/return?session_id=%20cs_123%20',
+        ),
+      ),
+      'cs_123',
+    );
+    expect(
+      checkoutCancelBookingFromUri(
+        Uri.parse('https://earplug.app/checkout/cancel?booking=%20bk1%20'),
+      ),
+      'bk1',
+    );
+  });
+
+  test('Stripe return and refresh routes preserve both identity prefixes', () {
+    for (final (path, query, expected) in const [
+      ('band/stripe/return', 'band', 'band:b1'),
+      ('band/stripe/refresh', 'band', 'band-refresh:b1'),
+      ('org/stripe/return', 'org', 'org:b1'),
+      ('org/stripe/refresh', 'org', 'org-refresh:b1'),
+    ]) {
+      expect(
+        stripeReturnFromUri(
+          Uri.parse('https://earplug.app/$path?$query=%20b1%20'),
+        ),
+        expected,
+      );
+    }
+  });
+
+  test('payment routes support hash fallback and prefer real path values', () {
+    expect(
+      checkoutSessionFromUri(
+        Uri.parse('https://earplug.app/#/checkout/return?session_id=cs_123'),
+      ),
+      'cs_123',
+    );
+    expect(
+      checkoutCancelBookingFromUri(
+        Uri.parse('https://earplug.app/#checkout/cancel?booking=bk1'),
+      ),
+      'bk1',
+    );
+    expect(
+      stripeReturnFromUri(
+        Uri.parse('https://earplug.app/#/org/stripe/refresh?org=org1'),
+      ),
+      'org-refresh:org1',
+    );
+    expect(
+      checkoutSessionFromUri(
+        Uri.parse(
+          'https://earplug.app/checkout/return?session_id=path'
+          '#/checkout/return?session_id=fragment',
+        ),
+      ),
+      'path',
+    );
+    expect(
+      checkoutSessionFromUri(
+        Uri.parse(
+          'https://earplug.app/checkout/return?session_id=%20'
+          '#/checkout/return?session_id=fragment',
+        ),
+      ),
+      'fragment',
+    );
+  });
+
+  test('payment routes require exact non-empty segments and query values', () {
+    for (final (parser, path, query) in [
+      (checkoutSessionFromUri, 'checkout/return', 'session_id'),
+      (checkoutCancelBookingFromUri, 'checkout/cancel', 'booking'),
+      (stripeReturnFromUri, 'band/stripe/return', 'band'),
+      (stripeReturnFromUri, 'band/stripe/refresh', 'band'),
+      (stripeReturnFromUri, 'org/stripe/return', 'org'),
+      (stripeReturnFromUri, 'org/stripe/refresh', 'org'),
+    ]) {
+      for (final suffix in [
+        path,
+        '$path?$query=',
+        '$path?$query=%20',
+        '$path?wrong=value',
+        'prefix/$path?$query=value',
+        '$path/extra?$query=value',
+        '${path}ing?$query=value',
+      ]) {
+        expect(
+          parser(Uri.parse('https://earplug.app/$suffix')),
+          isNull,
+          reason: suffix,
+        );
+        expect(
+          parser(Uri.parse('https://earplug.app/#/$suffix')),
+          isNull,
+          reason: 'fragment: $suffix',
+        );
+      }
+      expect(
+        parser(Uri.parse('https://earplug.app/$path/?$query=value')),
+        isNotNull,
+      );
+    }
   });
 
   test('signed-out booking links resume after authentication', () async {
@@ -244,6 +355,96 @@ void main() {
     expect(app.current.screen, Screen.bookingDetail);
     expect(app.current.param, 'abc');
   });
+
+  test(
+    'Checkout sessions seed the return placeholder without an auth gate',
+    () async {
+      final app = AppState.demo(initialCheckoutSessionId: ' cs_123 ');
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+
+      expect(app.current.screen, Screen.checkoutReturn);
+      expect(app.current.param, 'cs_123');
+      expect(app.pending, isNull);
+      expect(app.canGoBack, isFalse);
+    },
+  );
+
+  test('Checkout cancellations seed the cancellation placeholder', () async {
+    final app = AppState.demo(initialCheckoutCancelBookingId: ' bk1 ');
+    addTearDown(app.dispose);
+    await flushAsyncWork();
+
+    expect(app.current.screen, Screen.checkoutCancel);
+    expect(app.current.param, 'bk1');
+    expect(app.pending, isNull);
+  });
+
+  test('Stripe returns seed the return placeholder', () async {
+    for (final param in const [
+      'band:b1',
+      'band-refresh:b1',
+      'org:org1',
+      'org-refresh:org1',
+    ]) {
+      final app = AppState.demo(initialStripeReturn: ' $param ');
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+
+      expect(app.current.screen, Screen.stripeReturn);
+      expect(app.current.param, param);
+      expect(app.pending, isNull);
+    }
+  });
+
+  test(
+    'blank payment return parameters leave the home route unchanged',
+    () async {
+      final app = AppState.demo(
+        initialCheckoutSessionId: ' ',
+        initialCheckoutCancelBookingId: ' ',
+        initialStripeReturn: ' ',
+      );
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+
+      expect(app.current.screen, Screen.home);
+    },
+  );
+
+  test(
+    'Stripe return identities use the route instead of ambient context',
+    () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final app = AppState.demo(auth: auth);
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+      app.switchToBand('b1');
+      app.switchToOrganization('org1');
+      await flushAsyncWork();
+
+      for (final prefix in const ['band', 'band-refresh']) {
+        app.go(Screen.stripeReturn, '$prefix:other-band');
+        expect(app.identity, isA<BandIdentity>());
+        expect((app.identity as BandIdentity).bandId, 'other-band');
+      }
+      for (final prefix in const ['org', 'org-refresh']) {
+        app.go(Screen.stripeReturn, '$prefix:other-org');
+        expect(app.identity, isA<OrganizerIdentity>());
+        expect((app.identity as OrganizerIdentity).organizationId, 'other-org');
+        app.go(Screen.stripeReturn, '$prefix:org1');
+        expect(
+          (app.identity as OrganizerIdentity).role,
+          OrganizationRole.owner,
+        );
+      }
+      app.go(Screen.stripeReturn);
+      expect(app.identity, isA<PersonalIdentity>());
+      app.go(Screen.stripeReturn, 'unknown:id');
+      expect(app.identity, isA<PersonalIdentity>());
+    },
+  );
 
   test(
     'a root band slug resolves to its profile and unknown slugs stay missing',

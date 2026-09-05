@@ -160,6 +160,13 @@ class BandDashScreen extends StatelessWidget {
           gigCommandIcon: app.gigWritePolicy ? Icons.add : Icons.search,
           editProfile: isAdmin ? app.openBandEditor : null,
           openAnalytics: () => app.resetTo(Screen.analytics),
+          openPayouts: isAdmin ? () => app.resetTo(Screen.bandPayouts) : null,
+          payoutsCaption: switch (app.bandPayoutStatus?.state) {
+            StripeAccountState.enabled => 'Enabled',
+            StripeAccountState.onboarding ||
+            StripeAccountState.restricted => 'Finish setup',
+            _ => 'Set up payouts',
+          },
         ),
         const SizedBox(height: 10),
         Align(
@@ -565,6 +572,8 @@ class _CommandGrid extends StatelessWidget {
   final IconData gigCommandIcon;
   final VoidCallback? editProfile;
   final VoidCallback openAnalytics;
+  final VoidCallback? openPayouts;
+  final String payoutsCaption;
 
   const _CommandGrid({
     required this.openMedia,
@@ -573,6 +582,8 @@ class _CommandGrid extends StatelessWidget {
     this.gigCommandIcon = Icons.add,
     required this.editProfile,
     required this.openAnalytics,
+    required this.openPayouts,
+    required this.payoutsCaption,
   });
 
   @override
@@ -589,6 +600,14 @@ class _CommandGrid extends StatelessWidget {
       _Command(label: 'ANALYTICS', icon: Icons.bar_chart, onTap: openAnalytics),
       if (editProfile != null)
         _Command(label: 'EDIT PROFILE', icon: Icons.edit, onTap: editProfile!),
+      if (openPayouts != null)
+        _Command(
+          label: 'PAYOUTS',
+          icon: Icons.account_balance_wallet,
+          key: const Key('band-dash-payouts'),
+          caption: payoutsCaption,
+          onTap: openPayouts!,
+        ),
     ];
 
     final singleColumn =
@@ -600,6 +619,9 @@ class _CommandGrid extends StatelessWidget {
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: singleColumn ? 1 : 2,
         childAspectRatio: singleColumn ? 4.5 : 2.35,
+        mainAxisExtent: openPayouts == null
+            ? null
+            : 64 + MediaQuery.textScalerOf(context).scale(36),
         crossAxisSpacing: 10,
         mainAxisSpacing: 10,
       ),
@@ -615,12 +637,16 @@ class _Command {
     required this.icon,
     required this.onTap,
     this.primary = false,
+    this.key,
+    this.caption,
   });
 
   final String label;
   final IconData icon;
   final VoidCallback onTap;
   final bool primary;
+  final Key? key;
+  final String? caption;
 }
 
 class _CommandTile extends StatelessWidget {
@@ -644,9 +670,11 @@ class _CommandTile extends StatelessWidget {
           ),
         ),
         child: InkWell(
-          key: ValueKey(
-            'band-command-${command.label.toLowerCase().replaceAll(' ', '-')}',
-          ),
+          key:
+              command.key ??
+              ValueKey(
+                'band-command-${command.label.toLowerCase().replaceAll(' ', '-')}',
+              ),
           onTap: command.onTap,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
@@ -663,6 +691,15 @@ class _CommandTile extends StatelessWidget {
                     context,
                   ).textTheme.epLabel.copyWith(color: foreground),
                 ),
+                if (command.caption case final caption?)
+                  Text(
+                    caption,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epCaption.copyWith(color: foreground),
+                  ),
               ],
             ),
           ),

@@ -34,12 +34,13 @@ Future<String> _shortlistedApplication(
 Future<Opportunity> _openOpportunity(
   DemoRepository repo, {
   bool optionalSupport = false,
+  DateTime? startsAt,
 }) async {
   final created = await repo.createOpportunity(
     organizationId: 'org1',
     title: 'Testable Gig',
     venueId: 'v1',
-    startsAt: DateTime.now().add(const Duration(days: 30)),
+    startsAt: startsAt ?? DateTime.now().add(const Duration(days: 30)),
     slots: [
       const SlotInput(
         role: SlotRole.headliner,
@@ -61,7 +62,472 @@ Future<Opportunity> _openOpportunity(
   return (await repo.opportunity(created.opportunityId))!;
 }
 
+Future<Booking> _paidBooking(
+  DemoRepository repo, {
+  CancellationTemplate template = CancellationTemplate.standard,
+  DateTime? startsAt,
+}) async {
+  repo.demoPaymentsEnabled = true;
+  repo.demoCommissionBps = 1250;
+  final opportunity = await _openOpportunity(repo, startsAt: startsAt);
+  final applicationId = await _shortlistedApplication(
+    repo,
+    opportunity,
+    opportunity.slots.single.id,
+    'b1',
+  );
+  final sent = await repo.sendOffer(
+    applicationId: applicationId,
+    grossMinor: 10005,
+    cancellationTemplate: template,
+  );
+  await repo.respondToOffer(
+    bookingId: sent.bookingId,
+    accept: true,
+    expectedRevision: sent.revision,
+  );
+  final payment = (await repo.paymentsForBooking(sent.bookingId)).single;
+  final checkout = await repo.startInstallmentCheckout(payment.id);
+  await repo.simulateCheckoutCompleted(checkout.sessionId);
+  return (await repo.booking(sent.bookingId))!;
+}
+
 void main() {
+  test('band Stripe onboarding enables payouts and the dashboard', () async {
+    final repo = DemoRepository(auth: FakeAuthService());
+    final initial = await repo.bandPayoutStatus('b1');
+    expect(initial.state, StripeAccountState.none);
+    expect(initial.hasAccount, isFalse);
+    expect(initial.chargesEnabled, isFalse);
+    expect(initial.payoutsEnabled, isFalse);
+    expect(initial.detailsSubmitted, isFalse);
+    expect(initial.requirementsDue, isEmpty);
+    await expectLater(
+      repo.bandExpressDashboardLink('b1'),
+      _stateError('Finish Stripe setup first'),
+    );
+    expect(
+      await repo.startBandOnboarding('b1'),
+      'https://demo.stripe/onboard/b1',
+    );
+    final onboarding = await repo.bandPayoutStatus('b1');
+    expect(onboarding.state, StripeAccountState.onboarding);
+    expect(onboarding.hasAccount, isTrue);
+    expect(onboarding.chargesEnabled, isFalse);
+    expect(onboarding.payoutsEnabled, isFalse);
+    expect(onboarding.detailsSubmitted, isFalse);
+    expect(onboarding.requirementsDue, isEmpty);
+    await expectLater(
+      repo.bandExpressDashboardLink('b1'),
+      _stateError('Finish Stripe setup first'),
+    );
+    final enabled = await repo.refreshBandAccountStatus('b1');
+    expect(enabled.state, StripeAccountState.enabled);
+    expect(enabled.hasAccount, isTrue);
+    expect(enabled.chargesEnabled, isTrue);
+    expect(enabled.payoutsEnabled, isTrue);
+    expect(enabled.detailsSubmitted, isTrue);
+    expect(enabled.requirementsDue, isEmpty);
+    expect(await repo.bandPayoutStatus('b1'), same(enabled));
+    expect(
+      await repo.bandExpressDashboardLink('b1'),
+      'https://demo.stripe/dashboard/b1',
+    );
+    expect((await repo.bandPayoutStatus('b2')).state, StripeAccountState.none);
+    expect(
+      (await repo.refreshBandAccountStatus('b2')).state,
+      StripeAccountState.enabled,
+    );
+    expect(
+      (await repo.organizationStripeStatus('b1')).state,
+      StripeAccountState.none,
+    );
+  });
+
+  test(
+    'organization Stripe onboarding enables payouts and the dashboard',
+    () async {
+      final repo = DemoRepository(auth: FakeAuthService());
+      expect(
+        (await repo.organizationStripeStatus('org1')).state,
+        StripeAccountState.none,
+      );
+      await expectLater(
+        repo.organizationExpressDashboardLink('org1'),
+        _stateError('Finish Stripe setup first'),
+      );
+      expect(
+        await repo.startOrganizationOnboarding('org1'),
+        'https://demo.stripe/onboard/org1',
+      );
+      final onboarding = await repo.organizationStripeStatus('org1');
+      expect(onboarding.state, StripeAccountState.onboarding);
+      expect(onboarding.hasAccount, isTrue);
+      expect(onboarding.chargesEnabled, isFalse);
+      expect(onboarding.payoutsEnabled, isFalse);
+      expect(onboarding.detailsSubmitted, isFalse);
+      expect(onboarding.requirementsDue, isEmpty);
+      await expectLater(
+        repo.organizationExpressDashboardLink('org1'),
+        _stateError('Finish Stripe setup first'),
+      );
+      final enabled = await repo.refreshOrganizationAccountStatus('org1');
+      expect(enabled.state, StripeAccountState.enabled);
+      expect(enabled.hasAccount, isTrue);
+      expect(enabled.chargesEnabled, isTrue);
+      expect(enabled.payoutsEnabled, isTrue);
+      expect(enabled.detailsSubmitted, isTrue);
+      expect(enabled.requirementsDue, isEmpty);
+      expect(await repo.organizationStripeStatus('org1'), same(enabled));
+      expect(
+        await repo.organizationExpressDashboardLink('org1'),
+        'https://demo.stripe/dashboard/org1',
+      );
+      expect(
+        (await repo.organizationStripeStatus('org2')).state,
+        StripeAccountState.none,
+      );
+      expect(
+        (await repo.refreshOrganizationAccountStatus('org2')).state,
+        StripeAccountState.enabled,
+      );
+    },
+  );
+
+  test(
+    'paid checkout confirms the booking and updates its payment balance',
+    () async {
+      final repo = DemoRepository(auth: FakeAuthService());
+      repo.demoPaymentsEnabled = true;
+      final opportunity = await _openOpportunity(repo);
+      final applicationId = await _shortlistedApplication(
+        repo,
+        opportunity,
+        opportunity.slots.single.id,
+        'b1',
+      );
+      final sent = await repo.sendOffer(
+        applicationId: applicationId,
+        grossMinor: 10005,
+        cancellationTemplate: CancellationTemplate.standard,
+        installments: const [
+          OfferInstallmentInput(
+            label: 'Deposit',
+            amountMinor: 5000,
+            dueAfterAcceptanceDays: 2,
+          ),
+          OfferInstallmentInput(
+            label: 'Balance',
+            amountMinor: 5005,
+            dueAfterAcceptanceDays: 7,
+          ),
+        ],
+      );
+      final offer = (await repo.booking(sent.bookingId))!.currentOffer!;
+      expect(offer.installments.map((i) => i.label), ['Deposit', 'Balance']);
+      expect(offer.installments.map((i) => i.amountMinor), [5000, 5005]);
+      expect(
+        offer.installments[0].dueAt,
+        offer.sentAt.add(const Duration(days: 2)),
+      );
+      expect(
+        offer.installments[1].dueAt,
+        offer.sentAt.add(const Duration(days: 7)),
+      );
+      expect(await repo.paymentsForBooking(sent.bookingId), isEmpty);
+      await repo.respondToOffer(
+        bookingId: sent.bookingId,
+        accept: true,
+        expectedRevision: sent.revision,
+      );
+      final booking = (await repo.booking(sent.bookingId))!;
+      final payments = await repo.paymentsForBooking(booking.id);
+      expect(payments, hasLength(1));
+      final payment = payments.single;
+      expect(payment.id, startsWith('demo-payment-'));
+      expect(payment.installmentIndex, 0);
+      expect(payment.label, 'Full payment');
+      expect(payment.amountMinor, 10005);
+      expect(payment.currency, booking.fee.currency);
+      expect(payment.status, PaymentRecordStatus.pending);
+      expect(payment.canPay, isTrue);
+      expect(payment.paidAt, isNull);
+      expect(booking.paymentDueAt, payment.dueAt);
+      expect(
+        payment.dueAt,
+        booking.artistAcceptedTermsAt!.add(const Duration(hours: 48)),
+      );
+      expect(booking.paidMinor, 0);
+      expect(booking.status, BookingStatus.awaitingPayment);
+      payments.clear();
+      expect(await repo.paymentsForBooking(booking.id), hasLength(1));
+      final checkout = await repo.startInstallmentCheckout(payment.id);
+      expect(checkout.url, 'https://demo.stripe/checkout/${payment.id}');
+      expect(checkout.sessionId, startsWith('demo-session-'));
+      expect(
+        (await repo.paymentsForBooking(booking.id)).single.status,
+        PaymentRecordStatus.checkoutOpen,
+      );
+      final open = (await repo.checkoutStatus(checkout.sessionId))!;
+      expect(open.bookingId, booking.id);
+      expect(open.paymentStatus, PaymentRecordStatus.checkoutOpen);
+      expect(open.bookingStatus, BookingStatus.awaitingPayment);
+      final retry = await repo.startInstallmentCheckout(payment.id);
+      expect(retry.sessionId, isNot(checkout.sessionId));
+      await repo.simulateCheckoutCompleted(checkout.sessionId);
+      final paid = (await repo.paymentsForBooking(booking.id)).single;
+      expect(paid.status, PaymentRecordStatus.paid);
+      expect(paid.paidAt, isNotNull);
+      expect(paid.canPay, isFalse);
+      final confirmed = (await repo.booking(booking.id))!;
+      expect(confirmed.paidMinor, 10005);
+      expect(confirmed.refundedMinor, 0);
+      expect(confirmed.paymentDueAt, booking.paymentDueAt);
+      expect(confirmed.payoutHoldReasons, isEmpty);
+      expect(confirmed.status, BookingStatus.confirmed);
+      expect(confirmed.confirmedAt, isNotNull);
+      expect(confirmed.publicGigId, isNotNull);
+      expect(
+        (await repo.opportunity(opportunity.id))!.slots.single.status,
+        SlotStatus.booked,
+      );
+      final completed = (await repo.checkoutStatus(retry.sessionId))!;
+      expect(completed.paymentStatus, PaymentRecordStatus.paid);
+      expect(completed.bookingStatus, BookingStatus.confirmed);
+      await repo.simulateCheckoutCompleted(retry.sessionId);
+      expect((await repo.booking(booking.id))!.paidMinor, 10005);
+      expect((await repo.booking(booking.id))!.revision, confirmed.revision);
+      await expectLater(
+        repo.startInstallmentCheckout(payment.id),
+        _stateError('This installment is not payable'),
+      );
+    },
+  );
+
+  test(
+    'unknown demo checkout and refund lookups handle missing records',
+    () async {
+      final repo = DemoRepository(auth: FakeAuthService());
+      expect(await repo.checkoutStatus('missing'), isNull);
+      expect(await repo.paymentsForBooking('missing'), isEmpty);
+      expect(await repo.payoutsForBooking('missing'), isEmpty);
+      await expectLater(
+        repo.startInstallmentCheckout('missing'),
+        _stateError('Payment record not found'),
+      );
+      await expectLater(
+        repo.simulateCheckoutCompleted('missing'),
+        _stateError('Unknown checkout session'),
+      );
+      await expectLater(
+        repo.refundsForBooking('missing'),
+        _stateError('Booking not found'),
+      );
+      await expectLater(
+        repo.payoutsForBand('b2'),
+        _stateError('Not permitted for this band'),
+      );
+    },
+  );
+
+  test(
+    'standard cancellation preview rounds half refunds and commission',
+    () async {
+      final repo = DemoRepository(auth: FakeAuthService());
+      final booking = await _paidBooking(repo);
+      final preview = await repo.previewCancellation(
+        booking.id,
+        side: BookingSide.organizer,
+        now: booking.startsAt.subtract(const Duration(days: 10)),
+      );
+      expect(preview.shareBps, 5000);
+      expect(preview.paidMinor, 10005);
+      expect(preview.refundMinor, 5003);
+      expect(preview.forfeitedMinor, 5002);
+      expect(preview.artistPayoutMinor, 4377);
+      expect(preview.template, CancellationTemplate.standard);
+      expect(preview.cancelledBy, BookingSide.organizer);
+      final artist = await repo.previewCancellation(
+        booking.id,
+        side: BookingSide.artist,
+        now: booking.startsAt,
+      );
+      expect(artist.cancelledBy, BookingSide.artist);
+      expect(artist.refundMinor, 10005);
+      expect(artist.forfeitedMinor, 0);
+      expect(artist.artistPayoutMinor, 0);
+      final defaultSide = await repo.previewCancellation(
+        booking.id,
+        now: booking.startsAt,
+      );
+      expect(defaultSide.cancelledBy, BookingSide.organizer);
+      expect(await repo.refundsForBooking(booking.id), isEmpty);
+      expect(await repo.payoutsForBooking(booking.id), isEmpty);
+      expect((await repo.booking(booking.id))!.refundedMinor, 0);
+    },
+  );
+
+  for (final template in CancellationTemplate.values) {
+    test(
+      '${template.wireValue} cancellation preview uses strict time boundaries',
+      () async {
+        final repo = DemoRepository(auth: FakeAuthService());
+        final booking = await _paidBooking(repo, template: template);
+        final boundaries = switch (template) {
+          CancellationTemplate.flexible => [
+            (before: const Duration(hours: 48, milliseconds: 1), share: 10000),
+            (before: const Duration(hours: 48), share: 0),
+          ],
+          CancellationTemplate.standard => [
+            (before: const Duration(days: 14, milliseconds: 1), share: 10000),
+            (before: const Duration(days: 14), share: 5000),
+            (before: const Duration(days: 7, milliseconds: 1), share: 5000),
+            (before: const Duration(days: 7), share: 0),
+          ],
+          CancellationTemplate.strict => [
+            (before: const Duration(days: 14, milliseconds: 1), share: 10000),
+            (before: const Duration(days: 14), share: 0),
+          ],
+        };
+        for (final boundary in [
+          ...boundaries,
+          (before: Duration.zero, share: 0),
+          (before: const Duration(days: -1), share: 0),
+        ]) {
+          final preview = await repo.previewCancellation(
+            booking.id,
+            side: BookingSide.organizer,
+            now: booking.startsAt.subtract(boundary.before),
+          );
+          expect(preview.shareBps, boundary.share);
+          expect(preview.refundMinor, switch (boundary.share) {
+            10000 => 10005,
+            5000 => 5003,
+            _ => 0,
+          });
+        }
+      },
+    );
+  }
+
+  test(
+    'paid cancellation records scoped refunds and forfeit payouts',
+    () async {
+      final repo = DemoRepository(auth: FakeAuthService());
+      final booking = await _paidBooking(
+        repo,
+        startsAt: DateTime.now().add(const Duration(days: 10)),
+      );
+      final otherBand = await repo.createBand(
+        name: 'Other band',
+        genres: ['rock'],
+        bio: '',
+        area: 'Oakland',
+      );
+      await repo.cancelBooking(
+        bookingId: booking.id,
+        reason: 'Schedule conflict',
+        expectedRevision: booking.revision,
+        side: BookingSide.organizer,
+      );
+      final cancelled = (await repo.booking(booking.id))!;
+      expect(cancelled.status, BookingStatus.cancelledByOrganizer);
+      expect(cancelled.paidMinor, 10005);
+      expect(cancelled.refundedMinor, 5003);
+      final refunds = await repo.refundsForBooking(booking.id);
+      final refund = refunds.single;
+      expect(refund.id, startsWith('demo-refund-'));
+      expect(refund.amountMinor, 5003);
+      expect(refund.currency, booking.fee.currency);
+      expect(refund.reason, RefundReason.organizerCancel);
+      expect(refund.status, RefundStatus.succeeded);
+      expect(refund.createdAt, cancelled.cancelledAt);
+      final payouts = await repo.payoutsForBooking(booking.id);
+      final payout = payouts.single;
+      expect(payout.id, startsWith('demo-payout-'));
+      expect(payout.kind, PayoutKind.forfeit);
+      expect(payout.amountMinor, 4377);
+      expect(payout.currency, booking.fee.currency);
+      expect(payout.status, PayoutStatus.paid);
+      expect(payout.scheduledFor, cancelled.cancelledAt);
+      expect(payout.paidAt, cancelled.cancelledAt);
+      expect(payout.holdReason, isNull);
+      final bandPayouts = await repo.payoutsForBand(booking.bandId);
+      expect(bandPayouts.single, same(payout));
+      expect(await repo.refundsForBooking('bk3'), isEmpty);
+      expect(await repo.payoutsForBooking('bk3'), isEmpty);
+      expect(await repo.payoutsForBand(otherBand.band.id), isEmpty);
+      refunds.clear();
+      payouts.clear();
+      bandPayouts.clear();
+      expect(await repo.refundsForBooking(booking.id), hasLength(1));
+      expect(await repo.payoutsForBooking(booking.id), hasLength(1));
+      expect(await repo.payoutsForBand(booking.bandId), hasLength(1));
+      await expectLater(
+        repo.cancelBooking(
+          bookingId: booking.id,
+          reason: 'Again',
+          expectedRevision: cancelled.revision,
+        ),
+        _stateError('Booking cannot go'),
+      );
+      expect(await repo.refundsForBooking(booking.id), hasLength(1));
+      expect(await repo.payoutsForBooking(booking.id), hasLength(1));
+    },
+  );
+
+  test(
+    'artist cancellation refunds all paid money without a forfeit payout',
+    () async {
+      final repo = DemoRepository(auth: FakeAuthService());
+      final booking = await _paidBooking(
+        repo,
+        template: CancellationTemplate.strict,
+        startsAt: DateTime.now().add(const Duration(days: 1)),
+      );
+      await repo.cancelBooking(
+        bookingId: booking.id,
+        reason: 'Unable to play',
+        expectedRevision: booking.revision,
+        side: BookingSide.artist,
+      );
+      final refund = (await repo.refundsForBooking(booking.id)).single;
+      expect(refund.amountMinor, 10005);
+      expect(refund.reason, RefundReason.artistCancel);
+      expect((await repo.booking(booking.id))!.refundedMinor, 10005);
+      expect(await repo.payoutsForBooking(booking.id), isEmpty);
+      expect(await repo.payoutsForBand(booking.bandId), isEmpty);
+    },
+  );
+
+  test(
+    'cancelling before checkout creates no refund or payout records',
+    () async {
+      final repo = DemoRepository(auth: FakeAuthService());
+      repo.demoPaymentsEnabled = true;
+      final sent = await repo.sendOffer(
+        applicationId: 'app2',
+        grossMinor: 10004,
+        cancellationTemplate: CancellationTemplate.strict,
+      );
+      final accepted = await repo.respondToOffer(
+        bookingId: sent.bookingId,
+        accept: true,
+        expectedRevision: sent.revision,
+      );
+      await repo.cancelBooking(
+        bookingId: sent.bookingId,
+        reason: 'No longer available',
+        expectedRevision: accepted.revision,
+      );
+      final cancelled = (await repo.booking(sent.bookingId))!;
+      expect(cancelled.paidMinor, 0);
+      expect(cancelled.refundedMinor, 0);
+      expect(await repo.refundsForBooking(sent.bookingId), isEmpty);
+      expect(await repo.payoutsForBooking(sent.bookingId), isEmpty);
+    },
+  );
+
   test('offered applications must be handled through their booking', () async {
     final repo = DemoRepository(auth: FakeAuthService());
     final sent = await repo.sendOffer(
