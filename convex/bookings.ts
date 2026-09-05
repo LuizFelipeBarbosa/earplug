@@ -1,6 +1,5 @@
-import type { FunctionReference } from "convex/server";
 import { v } from "convex/values";
-import { internal as generatedInternal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
@@ -31,26 +30,6 @@ import {
   cancellationTemplateValidator,
 } from "./schema";
 
-// convex/_generated/api.d.ts has not been regenerated to include this new module yet
-// (regeneration is deliberately deferred to a later step outside this change). This
-// narrow, hand-written augmentation lets the two internal self-references below
-// type-check; it can be deleted once `npx convex dev` regenerates api.d.ts.
-const internal = generatedInternal as typeof generatedInternal & {
-  bookings: {
-    expireOffer: FunctionReference<
-      "mutation",
-      "internal",
-      { bookingId: Id<"bookings">; revision: number },
-      null
-    >;
-    markCompleted: FunctionReference<
-      "mutation",
-      "internal",
-      { bookingId: Id<"bookings"> },
-      null
-    >;
-  };
-};
 
 async function loadBooking(ctx: MutationCtx, bookingId: Id<"bookings">) {
   const booking = await ctx.db.get(bookingId);

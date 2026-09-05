@@ -1,5 +1,4 @@
-import type { FunctionReference } from "convex/server";
-import { internal as generatedInternal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { assertBookingTransition, COMPLETION_DELAY_MS } from "./bookingStatus";
@@ -10,20 +9,6 @@ import {
   assertSlotTransition,
 } from "./opportunityStatus";
 
-// convex/_generated/api.d.ts has not been regenerated to include this new module yet
-// (regeneration is deliberately deferred to a later step outside this change). This
-// narrow, hand-written augmentation lets the internal self-reference below
-// type-check; it can be deleted once `npx convex dev` regenerates api.d.ts.
-const internal = generatedInternal as typeof generatedInternal & {
-  bookings: {
-    markCompleted: FunctionReference<
-      "mutation",
-      "internal",
-      { bookingId: Id<"bookings"> },
-      null
-    >;
-  };
-};
 
 export async function confirmBooking(
   ctx: MutationCtx,
