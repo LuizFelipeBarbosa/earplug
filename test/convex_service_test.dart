@@ -29,20 +29,21 @@ void main() {
     });
 
     test(
-      'mutation throws a typed error and preserves the form message',
+      'mutation and action throw a typed error and preserve the form message',
       () async {
-        transport.mutationResult = jsonEncode(rawError);
-
-        await expectLater(
-          service.mutation('bookings:sendOffer'),
-          throwsA(
-            isA<ConvexFunctionException>()
-                .having((error) => error.message, 'message', rawError)
-                .having((error) => error.requestId, 'requestId', 'abc')
-                .having((error) => error.toString(), 'toString()', rawError)
-                .having(serverErrorMessage, 'serverErrorMessage()', message),
-          ),
+        transport
+          ..mutationResult = jsonEncode(rawError)
+          ..actionResult = jsonEncode(rawError);
+        final errorMatcher = throwsA(
+          isA<ConvexFunctionException>()
+              .having((error) => error.message, 'message', rawError)
+              .having((error) => error.requestId, 'requestId', 'abc')
+              .having((error) => error.toString(), 'toString()', rawError)
+              .having(serverErrorMessage, 'serverErrorMessage()', message),
         );
+
+        await expectLater(service.mutation('bookings:sendOffer'), errorMatcher);
+        await expectLater(service.action('bookings:someAction'), errorMatcher);
       },
     );
 
@@ -81,10 +82,12 @@ void main() {
         ]) {
           transport
             ..queryResult = jsonEncode(value)
-            ..mutationResult = jsonEncode(value);
+            ..mutationResult = jsonEncode(value)
+            ..actionResult = jsonEncode(value);
 
           expect(await service.query('values:get'), value);
           expect(await service.mutation('values:set'), value);
+          expect(await service.action('values:doThing'), value);
         }
       },
     );
@@ -99,7 +102,8 @@ void main() {
         }.entries) {
           transport
             ..queryResult = jsonEncode(entry.key)
-            ..mutationResult = jsonEncode(entry.key);
+            ..mutationResult = jsonEncode(entry.key)
+            ..actionResult = jsonEncode(entry.key);
           final errorMatcher = throwsA(
             isA<ConvexFunctionException>()
                 .having((error) => error.message, 'message', entry.key)
@@ -108,6 +112,7 @@ void main() {
 
           await expectLater(service.query('values:get'), errorMatcher);
           await expectLater(service.mutation('values:set'), errorMatcher);
+          await expectLater(service.action('values:doThing'), errorMatcher);
         }
       },
     );
@@ -121,10 +126,15 @@ void main() {
       ]) {
         transport
           ..queryError = error
-          ..mutationError = error;
+          ..mutationError = error
+          ..actionError = error;
 
         await expectLater(service.query('values:get'), throwsA(same(error)));
         await expectLater(service.mutation('values:set'), throwsA(same(error)));
+        await expectLater(
+          service.action('values:doThing'),
+          throwsA(same(error)),
+        );
       }
     });
   });
@@ -653,8 +663,10 @@ class _FakeConvexTransport implements ConvexTransport {
   int cancelCalls = 0;
   String queryResult = 'null';
   String mutationResult = 'null';
+  String actionResult = 'null';
   Object? queryError;
   Object? mutationError;
+  Object? actionError;
 
   @override
   bool get isConnected => true;
@@ -686,6 +698,16 @@ class _FakeConvexTransport implements ConvexTransport {
     final error = mutationError;
     if (error != null) return Future<String>.error(error);
     return Future<String>.value(mutationResult);
+  }
+
+  @override
+  Future<String> action({
+    required String name,
+    required Map<String, dynamic> args,
+  }) {
+    final error = actionError;
+    if (error != null) return Future<String>.error(error);
+    return Future<String>.value(actionResult);
   }
 
   @override

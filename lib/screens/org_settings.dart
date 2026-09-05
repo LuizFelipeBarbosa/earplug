@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -37,6 +38,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
   List<String> _existingPhotoUrls = const [];
   Object? _loadError;
   String? _saveError;
+  String? _stripeError;
   bool _loading = true;
   bool _saving = false;
   bool _saved = false;
@@ -54,15 +56,21 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final organizationId = context.read<AppState>().organizationId;
+    final app = context.read<AppState>();
+    final organizationId = app.organizationId;
     if (_loadedOrganizationId == organizationId) return;
     _loadedOrganizationId = organizationId;
     _dashboard = null;
     _existingPhotoUrls = const [];
     _sessionPhotos.clear();
     _saveError = null;
+    _stripeError = null;
     _saved = false;
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || app.organizationId != organizationId) return;
+      unawaited(app.refreshOrganizationStripeStatus());
+    });
   }
 
   @override
@@ -137,6 +145,18 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
         _loadError = error;
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _runStripeAction(Future<void> Function() action) async {
+    final app = context.read<AppState>();
+    final organizationId = app.organizationId;
+    setState(() => _stripeError = null);
+    try {
+      await action();
+    } catch (error) {
+      if (!mounted || app.organizationId != organizationId) return;
+      setState(() => _stripeError = error.toString());
     }
   }
 
@@ -443,6 +463,71 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                     keyboardType: TextInputType.phone,
                     onChanged: _draftChanged,
                   ),
+                ],
+              ),
+            ),
+          if (isOwner)
+            FormSection(
+              title: 'Stripe',
+              description:
+                  'Needed to sell tickets later; bookings are paid to EarPlug.',
+              boxed: false,
+              child: Column(
+                key: const Key('org-settings-stripe'),
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(switch (app.organizationStripeStatus?.state) {
+                    StripeAccountState.enabled => 'Connected',
+                    StripeAccountState.onboarding => 'Setup in progress',
+                    StripeAccountState.restricted => 'Needs information',
+                    _ => 'Not connected',
+                  }, style: Theme.of(context).textTheme.epBody),
+                  if (app.organizationStripeStatus?.state ==
+                      StripeAccountState.restricted)
+                    for (final requirement
+                        in app.organizationStripeStatus!.requirementsDue)
+                      Text(
+                        requirement,
+                        style: Theme.of(context).textTheme.epCaption,
+                      ),
+                  const SizedBox(height: 12),
+                  if (app.organizationStripeStatus?.state ==
+                      StripeAccountState.enabled)
+                    EpButton(
+                      'OPEN STRIPE DASHBOARD',
+                      key: const Key('org-settings-stripe-dashboard'),
+                      onTap: () => _runStripeAction(
+                        app.openOrganizationExpressDashboard,
+                      ),
+                    )
+                  else
+                    EpButton(
+                      switch (app.organizationStripeStatus?.state) {
+                        StripeAccountState.onboarding ||
+                        StripeAccountState.restricted => 'CONTINUE SETUP',
+                        _ => 'SET UP STRIPE',
+                      },
+                      key: const Key('org-settings-stripe-setup'),
+                      onTap: () => _runStripeAction(() async {
+                        await app.startOrganizationOnboarding();
+                        await app.refreshOrganizationStripeStatus();
+                      }),
+                    ),
+                  const SizedBox(height: 8),
+                  EpButton(
+                    'REFRESH',
+                    key: const Key('org-settings-stripe-refresh'),
+                    kind: EpButtonKind.outline,
+                    onTap: () =>
+                        _runStripeAction(app.refreshOrganizationStripeStatus),
+                  ),
+                  if (_stripeError != null) ...[
+                    const SizedBox(height: 8),
+                    InlineFormFeedback(
+                      error: _stripeError,
+                      errorKey: const Key('org-settings-stripe-error'),
+                    ),
+                  ],
                 ],
               ),
             ),

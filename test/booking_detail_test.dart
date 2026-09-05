@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
@@ -191,7 +193,7 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
       expect(find.byKey(const Key('booking-accept')), findsNothing);
       expect(find.byKey(const Key('booking-decline')), findsNothing);
-      expect(find.byKey(const Key('booking-cancel')), findsNothing);
+      expect(find.byKey(const Key('booking-cancel')), findsOneWidget);
       await _reveal(tester, find.byType(VenueMiniMap));
       expect(find.byKey(const Key('booking-exact-address')), findsNothing);
 
@@ -222,6 +224,257 @@ void main() {
       harness.app.dispose();
     },
   );
+
+  testWidgets(
+    'organizer launches Checkout, refreshes payment, and previews a refund',
+    (tester) async {
+      final screen = ValueNotifier<Widget>(const SizedBox.shrink());
+      addTearDown(screen.dispose);
+      final harness = await _pumpScreen(tester, screen);
+      await enterOrganizer(tester, harness, 'org1');
+      final repository = harness.app.repository as DemoRepository;
+      final bookingId = await _createAwaitingPaymentBooking(repository);
+      final payment = (await repository.paymentsForBooking(bookingId)).single;
+      final launched = <String>[];
+      final launchPending = Completer<void>();
+      harness.app.hostedUrlLauncher = (url) async {
+        launched.add(url);
+        await launchPending.future;
+      };
+      screen.value = BookingDetailScreen(bookingId: bookingId);
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.app.bookingById(bookingId)?.viewerSide,
+        BookingSide.organizer,
+      );
+      final dates = MaterialLocalizations.of(
+        tester.element(find.byType(BookingDetailScreen)),
+      );
+      expect(
+        find.text(
+          'Awaiting payment · due ${dates.formatFullDate(payment.dueAt.toLocal())}',
+        ),
+        findsOneWidget,
+      );
+      final row = find.byKey(const Key('booking-payment-0'));
+      final pay = find.byKey(const Key('booking-pay-0'));
+      final payNow = find.byKey(const Key('booking-pay-now'));
+      await _reveal(tester, row);
+      expect(find.byKey(const Key('booking-payments')), findsOneWidget);
+      expect(row, findsOneWidget);
+      expect(pay, findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.text('PENDING')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text(payment.label)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text(payment.amount.label)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text(
+            'Due ${dates.formatFullDate(payment.dueAt.toLocal())}',
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      // Both actions share a guard, including taps before the next rebuild.
+      await tester.tap(payNow);
+      await tester.tap(payNow);
+      await tester.pump();
+      expect(launched, ['https://demo.stripe/checkout/${payment.id}']);
+      expect(tester.widget<FilledButton>(payNow).onPressed, isNull);
+      expect(tester.widget<TextButton>(pay).onPressed, isNull);
+      launchPending.complete();
+      await tester.pumpAndSettle();
+      await _reveal(tester, pay);
+      await tester.tap(pay);
+      await tester.pumpAndSettle();
+      expect(
+        launched,
+        List.filled(2, 'https://demo.stripe/checkout/${payment.id}'),
+      );
+
+      // Reopening the same installment provides a session for demo completion.
+      final checkout = await repository.startInstallmentCheckout(payment.id);
+      await repository.simulateCheckoutCompleted(checkout.sessionId);
+      await _reveal(
+        tester,
+        find.byKey(const Key('booking-refresh')),
+        delta: -300,
+      );
+      await tester.tap(find.byKey(const Key('booking-refresh')));
+      await tester.pumpAndSettle();
+      expect(
+        harness.app.bookingById(bookingId)?.status,
+        BookingStatus.confirmed,
+      );
+      expect(payNow, findsNothing);
+      await _reveal(tester, row);
+      final paidPayment = (await repository.paymentsForBooking(
+        bookingId,
+      )).single;
+      expect(
+        tester
+            .widget<StatusPill>(
+              find.descendant(of: row, matching: find.byType(StatusPill)),
+            )
+            .label,
+        'Paid ${dates.formatFullDate(paidPayment.paidAt!.toLocal())}',
+      );
+      expect(pay, findsNothing);
+      await _reveal(tester, find.byKey(const Key('booking-fee')), delta: -300);
+      expect(
+        find.text('Paid ${payment.amount.label} of ${payment.amount.label}'),
+        findsOneWidget,
+      );
+
+      final booking = harness.app.bookingById(bookingId)!;
+      final preview = (await harness.app.previewCancellation(booking))!;
+      await tester.tap(find.byKey(const Key('booking-cancel')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Refund: ${Money(preview.refundMinor, booking.fee.currency).label} · Forfeited: ${Money(preview.forfeitedMinor, booking.fee.currency).label}',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'The artist receives ${Money(preview.artistPayoutMinor, booking.fee.currency).label}',
+        ),
+        findsOneWidget,
+      );
+      expectNoFieldInCard(tester);
+      expect(tester.takeException(), isNull);
+      harness.app.dispose();
+    },
+  );
+
+  testWidgets(
+    'artist sees payment progress, cancellation preview, and refunds without pay actions',
+    (tester) async {
+      final screen = ValueNotifier<Widget>(const SizedBox.shrink());
+      addTearDown(screen.dispose);
+      final harness = await _pumpScreen(tester, screen);
+      await enterOrganizer(tester, harness, 'org1');
+      final repository = harness.app.repository as DemoRepository;
+      final bookingId = await _createAwaitingPaymentBooking(repository);
+      await _enterArtist(tester, harness, 'b1');
+      screen.value = BookingDetailScreen(bookingId: bookingId);
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.app.bookingById(bookingId)?.viewerSide,
+        BookingSide.artist,
+      );
+      expect(
+        find.text("Accepted · awaiting the organizer's payment"),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('booking-pay-now')), findsNothing);
+      expect(find.byKey(const Key('booking-cancel')), findsOneWidget);
+      await _reveal(tester, find.text("Waiting for the organizer's payment"));
+      expect(find.byKey(const Key('booking-payment-0')), findsOneWidget);
+      expect(find.byKey(const Key('booking-pay-0')), findsNothing);
+      expect(find.text('PAY'), findsNothing);
+      expect(find.text("Waiting for the organizer's payment"), findsOneWidget);
+
+      final payment = (await repository.paymentsForBooking(bookingId)).single;
+      final checkout = await repository.startInstallmentCheckout(payment.id);
+      await repository.simulateCheckoutCompleted(checkout.sessionId);
+      await _reveal(
+        tester,
+        find.byKey(const Key('booking-refresh')),
+        delta: -300,
+      );
+      await tester.tap(find.byKey(const Key('booking-refresh')));
+      await tester.pumpAndSettle();
+      final booking = harness.app.bookingById(bookingId)!;
+      final preview = (await harness.app.previewCancellation(booking))!;
+      await tester.tap(find.byKey(const Key('booking-cancel')));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Refund: ${Money(preview.refundMinor, booking.fee.currency).label} · Forfeited: ${Money(preview.forfeitedMinor, booking.fee.currency).label}',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'You would receive ${Money(preview.artistPayoutMinor, booking.fee.currency).label}',
+        ),
+        findsOneWidget,
+      );
+      expectNoFieldInCard(tester);
+      await tester.enterText(
+        find.byKey(const Key('booking-cancel-reason')),
+        'Schedule conflict',
+      );
+      await tester.tap(find.byKey(const Key('booking-cancel-confirm')));
+      await tester.pumpAndSettle();
+      final refunds = find.byKey(const Key('booking-refunds'));
+      await _reveal(tester, refunds);
+      expect(
+        find.descendant(of: refunds, matching: find.text(payment.amount.label)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: refunds, matching: find.text('SUCCEEDED')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: refunds,
+          matching: find.text('Artist cancellation'),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      harness.app.dispose();
+    },
+  );
+
+  testWidgets('Checkout launch failures show feedback and allow retry', (
+    tester,
+  ) async {
+    final screen = ValueNotifier<Widget>(const SizedBox.shrink());
+    addTearDown(screen.dispose);
+    final harness = await _pumpScreen(tester, screen);
+    await enterOrganizer(tester, harness, 'org1');
+    final repository = harness.app.repository as DemoRepository;
+    final bookingId = await _createAwaitingPaymentBooking(repository);
+    harness.app.hostedUrlLauncher = (_) async {
+      throw StateError('Could not open Checkout');
+    };
+    screen.value = BookingDetailScreen(bookingId: bookingId);
+    await tester.pumpAndSettle();
+    final pay = find.byKey(const Key('booking-pay-0'));
+    await _reveal(tester, pay);
+    await tester.tap(pay);
+    await tester.pumpAndSettle();
+    await _reveal(tester, find.byKey(const Key('booking-feedback')));
+    expect(find.text('Could not open Checkout'), findsOneWidget);
+
+    final launched = <String>[];
+    harness.app.hostedUrlLauncher = (url) async {
+      launched.add(url);
+    };
+    await tester.tap(find.byKey(const Key('booking-pay-now')));
+    await tester.pumpAndSettle();
+    expect(launched.single, startsWith('https://demo.stripe/checkout/'));
+    expect(find.byKey(const Key('booking-feedback')), findsNothing);
+    expect(tester.takeException(), isNull);
+    harness.app.dispose();
+  });
 
   testWidgets('artist can keep or decline a pending offer', (tester) async {
     final screen = ValueNotifier<Widget>(const SizedBox.shrink());
@@ -264,6 +517,8 @@ void main() {
       await tester.tap(find.byKey(const Key('booking-cancel')));
       await tester.pumpAndSettle();
       expectNoFieldInCard(tester);
+      expect(find.textContaining('Refund:'), findsNothing);
+      expect(find.textContaining('The artist receives'), findsNothing);
       final confirm = find.byKey(const Key('booking-cancel-confirm'));
       final reason = find.byKey(const Key('booking-cancel-reason'));
       await tester.tap(confirm);
@@ -408,6 +663,25 @@ void main() {
     expect(tester.takeException(), isNull);
     harness.app.dispose();
   });
+}
+
+Future<String> _createAwaitingPaymentBooking(DemoRepository repository) async {
+  repository.demoPaymentsEnabled = true;
+  await repository.reviewApplication(
+    applicationId: 'app1',
+    action: ArtistApplicationReviewAction.shortlisted,
+  );
+  final sent = await repository.sendOffer(
+    applicationId: 'app1',
+    grossMinor: 15000,
+    cancellationTemplate: CancellationTemplate.standard,
+  );
+  await repository.respondToOffer(
+    bookingId: sent.bookingId,
+    accept: true,
+    expectedRevision: sent.revision,
+  );
+  return sent.bookingId;
 }
 
 Future<void> _enterArtist(

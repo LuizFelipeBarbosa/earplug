@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.21)
+# EarPlug Convex function contract (FROZEN — v1.22)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -517,6 +517,139 @@ the flag. Public gig reads use `ownedByActiveOwner` to exclude gigs whose
 referenced organization is missing or suspended when `createdByOrganization`
 is set, and otherwise exclude archived or missing owning bands when
 `createdByBand` is set.
+
+**v1.22 — Stripe Connect, installments, payouts, refunds.** Bands and
+organizations can onboard Stripe Express accounts, organizers can pay booking
+installments through Checkout, and booking parties can read payments, payouts,
+refunds and cancellation previews. Amounts are integer currency minor units;
+timestamps, including the required cancellation-preview `now`, are UTC
+milliseconds since epoch. Optional fields below use `?`; nullable fields are
+required keys whose values may be null.
+
+The shared `StripeAccountStatus` return is `{ state: "none" | "onboarding" |
+"restricted" | "enabled", stripeAccountId: boolean, chargesEnabled: boolean,
+payoutsEnabled: boolean, detailsSubmitted: boolean, requirementsDue: string[] }`,
+defined by `stripeAccountStatusValidator` in
+[`convex/payoutAccounts.ts`](../convex/payoutAccounts.ts). `stripeAccountId`
+reports account presence, not the Stripe account identifier. `PayoutSummary`
+below denotes `{ _id, kind: "completion" | "forfeit", amountMinor, currency,
+status, scheduledFor, paidAt?: number, holdReason?: "unpaid_installment" |
+"dispute" | "no_payout_account" | "admin" }`, defined by
+`payoutSummaryValidator` in [`convex/payouts.ts`](../convex/payouts.ts).
+Payment, payout and refund statuses use the state sets below; booking statuses
+use the v1.21 booking state machine.
+
+- `stripeActions.js:startBandOnboarding` — Action; `{ bandId } -> { url: string }`; band admin creates or reuses an Express account and receives its onboarding link.
+- `stripeActions.js:startOrganizationOnboarding` — Action; `{ organizationId } -> { url: string }`; organization owner creates or reuses an Express account and receives its onboarding link.
+- `stripeActions.js:refreshBandAccountStatus` — Action; `{ bandId } -> StripeAccountStatus`; band admin refreshes an existing account from Stripe and reads its saved status.
+- `stripeActions.js:refreshOrganizationAccountStatus` — Action; `{ organizationId } -> StripeAccountStatus`; organization owner refreshes an existing account from Stripe and reads its saved status.
+- `stripeActions.js:bandExpressDashboardLink` — Action; `{ bandId } -> { url: string }`; band admin receives an Express dashboard login link once an account exists and its details are submitted.
+- `stripeActions.js:organizationExpressDashboardLink` — Action; `{ organizationId } -> { url: string }`; organization owner receives an Express dashboard login link once an account exists and its details are submitted.
+- `payoutAccounts.js:bandPayoutStatus` — Query; `{ bandId } -> StripeAccountStatus`; band members read the band's saved Stripe payout status.
+- `payoutAccounts.js:organizationStripeStatus` — Query; `{ organizationId } -> StripeAccountStatus`; any organization role reads its saved Stripe account status.
+- `payments.js:startInstallmentCheckout` — Action; `{ paymentRecordId } -> { url: string, sessionId: string }`; organization owner/finance starts Checkout for an open installment on an `awaiting_payment` or `confirmed` booking.
+- `payments.js:paymentsForBooking` — Query; `{ bookingId } -> Array<{ _id, installmentIndex, label, amountMinor, currency, dueAt, status, paidAt: number | null, canPay: boolean }>`; organization members or band admins read the booking's installments and payment eligibility.
+- `payments.js:checkoutStatus` — Query; `{ sessionId: string } -> { bookingId, paymentStatus, bookingStatus } | null`; payment readers resolve a Checkout session's saved payment and booking states, with null for an unknown session.
+- `payouts.js:payoutsForBooking` — Query; `{ bookingId } -> PayoutSummary[]`; organization members, band admins or platform admins read up to 50 payouts, with `[]` for a missing or inaccessible booking.
+- `payouts.js:payoutsForBand` — Query; `{ bandId } -> PayoutSummary[]`; band admins read up to 100 payouts, newest first.
+- `refunds.js:previewCancellation` — Query; `{ bookingId, as?: "organizer" | "artist", now: number } -> { refundMinor, forfeitedMinor, artistPayoutMinor, paidMinor, shareBps, template: "flexible" | "standard" | "strict", cancelledBy: "organizer" | "artist" }`; organization owner/manager, band admin or platform admin previews cancellation for an authorized side at the supplied time.
+- `refunds.js:refundsForBooking` — Query; `{ bookingId } -> Array<{ _id, paymentRecordId, amountMinor, currency, reason: "organizer_cancel" | "artist_cancel" | "force_majeure" | "admin" | "dispute" | "late_payment", status, stripeRefundId?: string, createdAt }>`; cancellation readers list up to 50 refunds for a booking.
+
+`paymentsForBooking.canPay` requires an organization owner/finance role and a
+payment status of `pending`, `checkout_open`, `failed`, or `expired`;
+`startInstallmentCheckout` additionally checks the booking status. Restarting
+an open Checkout expires the previous session before creating its replacement.
+The account-status queries, `paymentsForBooking`, `payoutsForBand`, and refund
+queries throw when their required access is absent; `checkoutStatus` also
+checks payment-reader access when the session exists.
+
+The three state machines are declared in
+[`convex/lib/paymentStatus.ts`](../convex/lib/paymentStatus.ts). Each state in
+`PAYMENT_RECORD_TRANSITIONS` has exactly these reachable next states:
+
+- `pending -> [checkout_open, expired]`.
+- `checkout_open -> [paid, failed, expired, pending]`.
+- `failed -> [checkout_open, pending, expired, paid]`.
+- `expired -> [checkout_open, pending, paid]`.
+- `paid -> [partially_refunded, refunded]`.
+- `partially_refunded -> [refunded, partially_refunded]`.
+- `refunded -> []`.
+
+`PAYOUT_TRANSITIONS` has exactly these reachable next states:
+
+- `scheduled -> [processing, held, reversed]`.
+- `held -> [scheduled, processing, reversed]`.
+- `processing -> [paid, failed]`.
+- `failed -> [scheduled, held]`.
+- `paid -> [reversed]`.
+- `reversed -> []`.
+
+`REFUND_TRANSITIONS` has exactly these reachable next states:
+
+- `pending -> [succeeded, failed]`.
+- `failed -> [pending]`.
+- `succeeded -> []`.
+
+The empty-list states `refunded`, `reversed`, and `succeeded` are terminal in
+their respective machines.
+
+`stripeRequest` in [`convex/lib/stripeClient.ts`](../convex/lib/stripeClient.ts)
+throws "Payments are not enabled" for every non-`GET` Stripe API call while
+`flag("PAYMENTS_ENABLED", false)` is off. This is the same money gate used by
+`sendOffer` for positive fees in v1.21. Stripe account refreshes use `GET`;
+onboarding links, dashboard links, Checkout, transfers and refunds require
+the flag. Cancellation settlement still records refund and payout obligations
+while the flag is off; their Stripe writes remain gated.
+
+The platform endpoint `/stripe-webhook` subscribes to
+`checkout.session.completed`, `checkout.session.expired`, and
+`payment_intent.payment_failed` handled by `paymentHandlers`, plus
+`charge.dispute.created` and `charge.dispute.closed` handled by
+`disputeHandlers`. The Connect endpoint `/stripe-connect-webhook` subscribes
+to `account.updated`, handled by `accountHandlers`. Both endpoints use
+`recordAndApply` in [`convex/stripeWebhook.ts`](../convex/stripeWebhook.ts)
+and record outcomes in `stripeEvents`. An event id already marked `applied`
+or `ignored` returns `duplicate` without applying it again. A deployment
+livemode mismatch or unrecognized event type is recorded as `ignored`.
+A successful handler marks the event `applied`; a throwing handler rolls
+back its writes and marks the event `failed`. `applied`, `ignored` and
+`duplicate` return HTTP 200; `failed` returns HTTP 500 so Stripe retries.
+
+Cancellation shares come from `refundShareBps` and `settleCancellation` in
+[`convex/lib/cancellationPolicy.ts`](../convex/lib/cancellationPolicy.ts).
+Every threshold comparison is strictly `>` on `msBeforeStart = startsAt - now`:
+
+| Template | Time before start | Refund share of `paidMinor` |
+| --- | --- | --- |
+| `flexible` | `msBeforeStart > 48h` | 100% (10000 bps) |
+| `flexible` | `msBeforeStart <= 48h` | 0% (0 bps) |
+| `standard` | `msBeforeStart > 14 days` | 100% (10000 bps) |
+| `standard` | `7 days < msBeforeStart <= 14 days` | 50% (5000 bps) |
+| `standard` | `msBeforeStart <= 7 days` | 0% (0 bps) |
+| `strict` | `msBeforeStart > 14 days` | 100% (10000 bps) |
+| `strict` | `msBeforeStart <= 14 days` | 0% (0 bps) |
+
+Only `cancelledBy === "organizer"` applies this partial-forfeiture split.
+Every other cancelling party receives the full `paidMinor` refund, with zero
+forfeiture, artist payout and platform retention. For an organizer
+cancellation, the refund is the template share of `paidMinor`, rounded half
+up; forfeiture is `paidMinor - refundMinor`. The commission rate is
+reconstructed as `roundHalfUp(commissionMinor * 10000 / (artistNetMinor +
+commissionMinor))` basis points, or zero when the denominator is zero.
+The artist receives forfeiture minus
+`roundHalfUp(forfeitedMinor * commissionRateBps / 10000)`, clamped between zero
+and the forfeiture; the platform keeps the remainder.
+
+The preview's `paidMinor` is the remaining unrefunded amount across `paid`
+and `partially_refunded` payment records. Its `shareBps` always reports the
+template/time share, even when an artist cancellation receives a full refund.
+The optional `as` selects a side only if the viewer is authorized for that
+side; otherwise the preview defaults to organizer when permitted, then artist.
+
+The internal `bookings.js:markCompleted` settles a `grossMinor === 0` booking
+through `confirmed -> completed -> paid` in the same call and schedules no
+payouts, since nothing is owed. A booking with `grossMinor > 0` remains
+`completed` and calls `schedulePayoutsForBooking` to schedule its payouts.
 
 ## Reconciliation
 

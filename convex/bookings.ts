@@ -21,6 +21,7 @@ import {
   REVIEW_WINDOW_MS,
   type BookingStatus,
 } from "./lib/bookingStatus";
+import { settleBookingCancellation } from "./lib/cancellationSettlement";
 import { appBaseUrl, flag } from "./lib/env";
 import { feeSnapshot, resolveCommissionBps } from "./lib/fees";
 import { syncGigLineup, unpublishOpportunityGig } from "./lib/gigPublish";
@@ -29,12 +30,20 @@ import {
   assertApplicationTransition,
   assertOpportunityTransition,
 } from "./lib/opportunityStatus";
+import { buildInstallments } from "./lib/paymentSchedule";
+import {
+  AUTO_CANCEL_GRACE_MS,
+  DEFAULT_PAYMENT_DUE_MS,
+  PAYMENT_REMINDER_LEAD_MS,
+} from "./lib/paymentStatus";
 import { recomputeReviewSummary } from "./lib/reviewSummary";
+import { schedulePayoutsForBooking } from "./payouts";
 import {
   bookingStatusValidator,
   cancellationTemplateValidator,
 } from "./schema";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 async function loadBooking(ctx: MutationCtx, bookingId: Id<"bookings">) {
   const booking = await ctx.db.get(bookingId);
@@ -90,13 +99,20 @@ async function resolveEmailRecipients(
     kind === "offerWithdrawn" ||
     kind === "bookingConfirmed" ||
     kind === "reviewRequested" ||
-    (kind === "bookingCancelled" && booking.cancelledBy === "organizer");
+    (kind === "bookingCancelled" &&
+      (booking.cancelledBy === "organizer" ||
+        booking.cancelledBy === "admin" ||
+        booking.cancelledBy === "system"));
   const organizerFacing =
     kind === "offerAccepted" ||
     kind === "offerDeclined" ||
     kind === "offerExpired" ||
+    kind === "bookingConfirmed" ||
     kind === "reviewRequested" ||
-    (kind === "bookingCancelled" && booking.cancelledBy === "artist");
+    (kind === "bookingCancelled" &&
+      (booking.cancelledBy === "artist" ||
+        booking.cancelledBy === "admin" ||
+        booking.cancelledBy === "system"));
   const recipients: string[] = [];
   if (artistFacing) {
     const members = await ctx.db
@@ -129,6 +145,7 @@ export async function sendBookingEmail(
   ctx: MutationCtx,
   booking: Doc<"bookings">,
   kind: BookingEmailKind,
+  options: { reason?: string } = {},
 ) {
   const [opportunity, band, organization] = await Promise.all([
     ctx.db.get(booking.opportunityId),
@@ -156,6 +173,7 @@ export async function sendBookingEmail(
         }
       : {}),
     ...(kind === "bookingCancelled" ? { reason: booking.cancelReason } : {}),
+    ...options,
   });
   const recipients = await resolveEmailRecipients(
     ctx,
@@ -229,6 +247,15 @@ export const sendOffer = mutation({
     applicationId: v.id("artistApplications"),
     grossMinor: v.number(),
     cancellationTemplate: cancellationTemplateValidator,
+    installments: v.optional(
+      v.array(
+        v.object({
+          label: v.string(),
+          amountMinor: v.number(),
+          dueAfterAcceptanceDays: v.number(),
+        }),
+      ),
+    ),
     termsNotes: v.optional(v.string()),
     message: v.optional(v.string()),
   },
@@ -287,6 +314,55 @@ export const sendOffer = mutation({
     if (args.grossMinor > 0 && !flag("PAYMENTS_ENABLED", false)) {
       throw new Error("Paid offers open once payments are enabled");
     }
+    if (args.installments?.length) {
+      if (args.installments.length > 4) {
+        throw new Error("At most 4 installments are allowed");
+      }
+      if (
+        args.installments.some(
+          (installment) =>
+            !Number.isInteger(installment.amountMinor) ||
+            installment.amountMinor <= 0,
+        )
+      ) {
+        throw new Error("Each installment amount must be a positive integer");
+      }
+      const total = args.installments.reduce(
+        (sum, installment) => sum + installment.amountMinor,
+        0,
+      );
+      if (total !== args.grossMinor) {
+        throw new Error("Installments must sum to the booking's gross amount");
+      }
+      if (
+        args.installments.some(
+          (installment) =>
+            !Number.isInteger(installment.dueAfterAcceptanceDays) ||
+            installment.dueAfterAcceptanceDays < 0,
+        )
+      ) {
+        throw new Error("Installment due days must be non-negative integers");
+      }
+      if (
+        args.installments.some(
+          (installment, index, installments) =>
+            index > 0 &&
+            installment.dueAfterAcceptanceDays <
+              installments[index - 1].dueAfterAcceptanceDays,
+        )
+      ) {
+        throw new Error("Installment due days must be non-decreasing");
+      }
+    }
+    const installments = args.installments?.length
+      ? args.installments.map((installment) => ({
+          label: installment.label,
+          amountMinor: installment.amountMinor,
+          dueAt: 0,
+          dueAfterAcceptanceMs:
+            installment.dueAfterAcceptanceDays * DAY_MS + DEFAULT_PAYMENT_DUE_MS,
+        }))
+      : [];
     const termsNotes = normalizeNote(args.termsNotes, "Terms notes", 2000);
     const message = normalizeNote(args.message, "Message", 1000);
     const fees =
@@ -325,7 +401,7 @@ export const sendOffer = mutation({
       bookingId,
       revision: 1,
       ...terms,
-      installments: [],
+      installments,
       ...(message !== undefined ? { message } : {}),
       sentBy: user._id,
       sentAt: now,
@@ -442,12 +518,51 @@ export const respond = mutation({
     if (booking.grossMinor === 0) {
       await confirmBooking(ctx, booking._id);
     } else {
+      const installments = buildInstallments({
+        offer,
+        booking,
+        acceptedAt: now,
+      });
+      const revision = booking.revision + 2;
+      const autoCancelAt = installments[0].dueAt + AUTO_CANCEL_GRACE_MS;
+      for (const installment of installments) {
+        const paymentRecordId = await ctx.db.insert("paymentRecords", {
+          bookingId: booking._id,
+          installmentIndex: installment.index,
+          label: installment.label,
+          amountMinor: installment.amountMinor,
+          currency: booking.currency,
+          dueAt: installment.dueAt,
+          status: "pending",
+          attempt: 0,
+          refundedMinor: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+        await ctx.scheduler.runAt(
+          installment.dueAt - PAYMENT_REMINDER_LEAD_MS,
+          internal.payments.remindPayment,
+          { bookingId: booking._id, paymentRecordId, revision },
+        );
+      }
       assertBookingTransition("artist_accepted", "awaiting_payment");
       await ctx.db.patch(booking._id, {
         status: "awaiting_payment",
-        revision: booking.revision + 2,
+        revision,
+        paymentDueAt: installments[0].dueAt,
+        autoCancelAt,
+        payoutHoldReasons: ["unpaid_installment"],
+        payoutHold: true,
         updatedAt: now,
       });
+      await ctx.scheduler.runAt(
+        autoCancelAt,
+        internal.bookings.autoCancelUnpaid,
+        {
+          bookingId: booking._id,
+          revision,
+        },
+      );
     }
     const finalBooking = await loadBooking(ctx, booking._id);
     await sendBookingEmail(ctx, finalBooking, "offerAccepted");
@@ -523,6 +638,21 @@ export const cancel = mutation({
       revision,
       updatedAt: now,
     });
+    let settlement: Awaited<ReturnType<typeof settleBookingCancellation>> | null =
+      null;
+    if (booking.grossMinor > 0) {
+      settlement = await settleBookingCancellation(ctx, {
+        booking,
+        cancelledBy: side,
+        reason: side === "organizer" ? "organizer_cancel" : "artist_cancel",
+        now,
+      });
+    }
+    if (booking.status === "awaiting_payment") {
+      await ctx.scheduler.runAfter(0, internal.payments.expireOpenSessions, {
+        bookingId: booking._id,
+      });
+    }
     if (booking.status === "confirmed") {
       await releaseBookingSlot(ctx, booking);
       const application = await ctx.db.get(booking.applicationId);
@@ -554,6 +684,12 @@ export const cancel = mutation({
       ctx,
       await loadBooking(ctx, booking._id),
       "bookingCancelled",
+      {
+        reason:
+          settlement && settlement.refundMinor > 0
+            ? `${reason} Refund: ${(settlement.refundMinor / 100).toFixed(2)} ${booking.currency.toUpperCase()}.`
+            : reason,
+      },
     );
     return { status, revision };
   },
@@ -587,6 +723,50 @@ export const expireOffer = internalMutation({
   },
 });
 
+export const autoCancelUnpaid = internalMutation({
+  args: { bookingId: v.id("bookings"), revision: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const booking = await ctx.db.get(args.bookingId);
+    if (
+      !booking ||
+      booking.status !== "awaiting_payment" ||
+      booking.revision !== args.revision
+    ) {
+      return null;
+    }
+    await ctx.scheduler.runAfter(0, internal.payments.expireOpenSessions, {
+      bookingId: booking._id,
+    });
+    const now = Date.now();
+    assertBookingTransition(booking.status, "expired");
+    await ctx.db.patch(booking._id, {
+      status: "expired",
+      cancelledBy: "system",
+      cancelledAt: now,
+      cancelReason: "Payment not received",
+      revision: booking.revision + 1,
+      updatedAt: now,
+    });
+    if ((booking.paidMinor ?? 0) > 0) {
+      await settleBookingCancellation(ctx, {
+        booking,
+        cancelledBy: "system",
+        reason: "admin",
+        now,
+      });
+    }
+    await shortlistApplication(ctx, booking.applicationId, now);
+    await completeOpportunityIfReady(ctx, booking.opportunityId);
+    await sendBookingEmail(
+      ctx,
+      await loadBooking(ctx, booking._id),
+      "bookingCancelled",
+    );
+    return null;
+  },
+});
+
 export const markCompleted = internalMutation({
   args: { bookingId: v.id("bookings") },
   returns: v.null(),
@@ -607,6 +787,18 @@ export const markCompleted = internalMutation({
       revision: booking.revision + 1,
       updatedAt: now,
     });
+    if (booking.grossMinor > 0) {
+      const completedBooking = await ctx.db.get(booking._id);
+      if (!completedBooking) throw new Error("Booking not found");
+      await schedulePayoutsForBooking(ctx, completedBooking);
+    } else {
+      assertBookingTransition("completed", "paid");
+      await ctx.db.patch(booking._id, {
+        status: "paid",
+        revision: booking.revision + 2,
+        updatedAt: now,
+      });
+    }
     await completeOpportunityIfReady(ctx, booking.opportunityId);
     await ctx.scheduler.runAt(
       now + REVIEW_WINDOW_MS,
@@ -665,6 +857,17 @@ export const adminForceState = internalMutation({
           }
         : {}),
     });
+    if (
+      (args.status === "force_majeure" || args.status === "refunded") &&
+      booking.grossMinor > 0
+    ) {
+      await settleBookingCancellation(ctx, {
+        booking,
+        cancelledBy: "admin",
+        reason: args.status === "force_majeure" ? "force_majeure" : "admin",
+        now,
+      });
+    }
     if (isCancellation && BOOKING_LIVE_STATUSES.includes(booking.status)) {
       await releaseBookingSlot(ctx, booking);
       const application = await ctx.db.get(booking.applicationId);

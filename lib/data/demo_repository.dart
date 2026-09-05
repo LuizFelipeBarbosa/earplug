@@ -24,6 +24,67 @@ class _BookingReviewSlot {
   Review? artist;
 }
 
+int _refundShareBps(CancellationTemplate template, int msBeforeStart) {
+  switch (template) {
+    case CancellationTemplate.flexible:
+      return msBeforeStart > const Duration(hours: 48).inMilliseconds
+          ? 10000
+          : 0;
+    case CancellationTemplate.standard:
+      if (msBeforeStart > const Duration(days: 14).inMilliseconds) return 10000;
+      return msBeforeStart > const Duration(days: 7).inMilliseconds ? 5000 : 0;
+    case CancellationTemplate.strict:
+      return msBeforeStart > const Duration(days: 14).inMilliseconds
+          ? 10000
+          : 0;
+  }
+}
+
+({
+  int refundMinor,
+  int forfeitedMinor,
+  int artistPayoutMinor,
+  int platformKeepsMinor,
+})
+_settleCancellation({
+  required CancellationTemplate template,
+  required int msBeforeStart,
+  required BookingSide cancelledBy,
+  required int paidMinor,
+  required int artistNetMinor,
+  required int commissionMinor,
+}) {
+  if (cancelledBy != BookingSide.organizer) {
+    return (
+      refundMinor: paidMinor,
+      forfeitedMinor: 0,
+      artistPayoutMinor: 0,
+      platformKeepsMinor: 0,
+    );
+  }
+
+  // All amounts are non-negative, so round() matches JS half-up rounding.
+  final shareBps = _refundShareBps(template, msBeforeStart);
+  final refundMinor = (paidMinor * shareBps / 10000).round().clamp(
+    0,
+    paidMinor,
+  );
+  final forfeitedMinor = paidMinor - refundMinor;
+  final grossMinor = artistNetMinor + commissionMinor;
+  final commissionRateBps = grossMinor > 0
+      ? (commissionMinor * 10000 / grossMinor).round()
+      : 0;
+  final artistPayoutMinor =
+      (forfeitedMinor - (forfeitedMinor * commissionRateBps / 10000).round())
+          .clamp(0, forfeitedMinor);
+  return (
+    refundMinor: refundMinor,
+    forfeitedMinor: forfeitedMinor,
+    artistPayoutMinor: artistPayoutMinor,
+    platformKeepsMinor: forfeitedMinor - artistPayoutMinor,
+  );
+}
+
 class DemoRepository implements EarplugRepository {
   DemoRepository({required this._auth}) {
     _bands = Map<String, Band>.of(DemoData.bands);
@@ -58,6 +119,13 @@ class DemoRepository implements EarplugRepository {
       DemoData.artistApplications,
     );
     _bookings = Map<String, Booking>.of(DemoData.bookings);
+    _bandStripeStatus = {};
+    _organizationStripeStatus = {};
+    _paymentRecordsByBooking = {};
+    _paymentSessionToRecordKey = {};
+    _payoutsByBooking = {};
+    _payoutsByBand = {};
+    _refundsByBooking = {};
     final visibleAt = DateTime.now().subtract(const Duration(days: 18));
     _bookingReviews['bk3'] = _BookingReviewSlot()
       ..organizer = Review(
@@ -129,6 +197,14 @@ class DemoRepository implements EarplugRepository {
   late final Map<String, Opportunity> _opportunities;
   late final Map<String, ArtistApplication> _artistApplications;
   late final Map<String, Booking> _bookings;
+  late final Map<String, StripeAccountStatus> _bandStripeStatus;
+  late final Map<String, StripeAccountStatus> _organizationStripeStatus;
+  late final Map<String, List<PaymentRecord>> _paymentRecordsByBooking;
+  late final Map<String, ({String bookingId, String paymentRecordId})>
+  _paymentSessionToRecordKey;
+  late final Map<String, List<Payout>> _payoutsByBooking;
+  late final Map<String, List<Payout>> _payoutsByBand;
+  late final Map<String, List<RefundRecord>> _refundsByBooking;
   final Map<String, _BookingReviewSlot> _bookingReviews = {};
   late final Map<String, ({String userId, String name, String email})>
   _applicationApplicants;
@@ -179,6 +255,10 @@ class DemoRepository implements EarplugRepository {
   int _nextArtistApplicationId = 1;
   int _nextOpportunitySlotId = 1;
   int _nextBookingId = 1;
+  int _nextPaymentRecordId = 1;
+  int _nextPayoutId = 1;
+  int _nextRefundId = 1;
+  int _nextCheckoutSessionId = 1;
   int _nextReviewId = 1;
   bool _interactionsSeeded = false;
   Map<String, int> _lastGoingCounts = const {};
@@ -2659,6 +2739,7 @@ class DemoRepository implements EarplugRepository {
     required CancellationTemplate cancellationTemplate,
     String? termsNotes,
     String? message,
+    List<OfferInstallmentInput>? installments,
   }) async {
     final application = _requireArtistApplication(applicationId);
     if (application.status != ArtistApplicationStatus.shortlisted) {
@@ -2735,6 +2816,17 @@ class DemoRepository implements EarplugRepository {
         message: message,
         sentAt: now,
         expiresAt: expiresAt,
+        installments: [
+          for (final installment
+              in installments ?? const <OfferInstallmentInput>[])
+            OfferInstallment(
+              label: installment.label,
+              amountMinor: installment.amountMinor,
+              dueAt: now.add(
+                Duration(days: installment.dueAfterAcceptanceDays),
+              ),
+            ),
+        ],
       ),
       venue: BookingVenue(
         id: venue.id,
@@ -2823,13 +2915,28 @@ class DemoRepository implements EarplugRepository {
         OfferResponse.accepted,
       ),
     );
-    final updated = booking.fee.grossMinor == 0
-        ? _confirmBooking(accepted, now)
-        : _copyBooking(
-            accepted,
-            status: BookingStatus.awaitingPayment,
-            revision: accepted.revision + 1,
-          );
+    final Booking updated;
+    if (booking.fee.grossMinor == 0) {
+      updated = _confirmBooking(accepted, now);
+    } else {
+      final record = PaymentRecord(
+        id: 'demo-payment-${_nextPaymentRecordId++}',
+        installmentIndex: 0,
+        label: 'Full payment',
+        amountMinor: booking.fee.grossMinor,
+        currency: booking.fee.currency,
+        dueAt: now.add(const Duration(hours: 48)),
+        status: PaymentRecordStatus.pending,
+        canPay: true,
+      );
+      _paymentRecordsByBooking[bookingId] = [record];
+      updated = _copyBooking(
+        accepted,
+        status: BookingStatus.awaitingPayment,
+        revision: accepted.revision + 1,
+        paymentDueAt: record.dueAt,
+      );
+    }
     _bookings[bookingId] = updated;
     return (status: updated.status, revision: updated.revision);
   }
@@ -2864,7 +2971,7 @@ class DemoRepository implements EarplugRepository {
       );
     }
     final now = DateTime.now();
-    final updated = _copyBooking(
+    var updated = _copyBooking(
       booking,
       status: status,
       revision: booking.revision + 1,
@@ -2874,6 +2981,50 @@ class DemoRepository implements EarplugRepository {
       cancelledAt: now,
       cancelReason: trimmedReason,
     );
+    if (booking.paidMinor > 0) {
+      final msBeforeStart = booking.startsAt.difference(now).inMilliseconds;
+      final settlement = _settleCancellation(
+        template: booking.cancellationTemplate,
+        msBeforeStart: msBeforeStart < 0 ? 0 : msBeforeStart,
+        cancelledBy: resolvedSide,
+        paidMinor: booking.paidMinor,
+        artistNetMinor: booking.fee.artistNetMinor,
+        commissionMinor: booking.fee.commissionMinor,
+      );
+      if (settlement.refundMinor > 0) {
+        _refundsByBooking
+            .putIfAbsent(bookingId, () => [])
+            .add(
+              RefundRecord(
+                id: 'demo-refund-${_nextRefundId++}',
+                amountMinor: settlement.refundMinor,
+                currency: booking.fee.currency,
+                status: RefundStatus.succeeded,
+                reason: resolvedSide == BookingSide.organizer
+                    ? RefundReason.organizerCancel
+                    : RefundReason.artistCancel,
+                createdAt: now,
+              ),
+            );
+      }
+      if (settlement.artistPayoutMinor > 0) {
+        final payout = Payout(
+          id: 'demo-payout-${_nextPayoutId++}',
+          kind: PayoutKind.forfeit,
+          amountMinor: settlement.artistPayoutMinor,
+          currency: booking.fee.currency,
+          status: PayoutStatus.paid,
+          scheduledFor: now,
+          paidAt: now,
+        );
+        _payoutsByBooking.putIfAbsent(bookingId, () => []).add(payout);
+        _payoutsByBand.putIfAbsent(booking.bandId, () => []).add(payout);
+      }
+      updated = _copyBooking(
+        updated,
+        refundedMinor: booking.refundedMinor + settlement.refundMinor,
+      );
+    }
     _bookings[bookingId] = updated;
     final application = _artistApplications[booking.applicationId];
     if (booking.status == BookingStatus.confirmed) {
@@ -2897,6 +3048,211 @@ class DemoRepository implements EarplugRepository {
       _shortlistBookingApplication(booking, now);
     }
     return (status: updated.status, revision: updated.revision);
+  }
+
+  @override
+  Future<StripeAccountStatus> bandPayoutStatus(String bandId) async =>
+      _bandStripeStatus[bandId] ?? const StripeAccountStatus.none();
+
+  @override
+  Future<StripeAccountStatus> organizationStripeStatus(
+    String organizationId,
+  ) async =>
+      _organizationStripeStatus[organizationId] ??
+      const StripeAccountStatus.none();
+
+  static const _onboardingStripeAccount = StripeAccountStatus(
+    state: StripeAccountState.onboarding,
+    hasAccount: true,
+    chargesEnabled: false,
+    payoutsEnabled: false,
+    detailsSubmitted: false,
+    requirementsDue: [],
+  );
+
+  static const _enabledStripeAccount = StripeAccountStatus(
+    state: StripeAccountState.enabled,
+    hasAccount: true,
+    chargesEnabled: true,
+    payoutsEnabled: true,
+    detailsSubmitted: true,
+    requirementsDue: [],
+  );
+
+  @override
+  Future<String> startBandOnboarding(String bandId) async {
+    _bandStripeStatus[bandId] = _onboardingStripeAccount;
+    return 'https://demo.stripe/onboard/$bandId';
+  }
+
+  @override
+  Future<String> startOrganizationOnboarding(String organizationId) async {
+    _organizationStripeStatus[organizationId] = _onboardingStripeAccount;
+    return 'https://demo.stripe/onboard/$organizationId';
+  }
+
+  @override
+  Future<StripeAccountStatus> refreshBandAccountStatus(String bandId) async {
+    _bandStripeStatus[bandId] = _enabledStripeAccount;
+    return _enabledStripeAccount;
+  }
+
+  @override
+  Future<StripeAccountStatus> refreshOrganizationAccountStatus(
+    String organizationId,
+  ) async {
+    _organizationStripeStatus[organizationId] = _enabledStripeAccount;
+    return _enabledStripeAccount;
+  }
+
+  @override
+  Future<String> bandExpressDashboardLink(String bandId) async {
+    final status =
+        _bandStripeStatus[bandId] ?? const StripeAccountStatus.none();
+    if (!status.payoutsEnabled) throw StateError('Finish Stripe setup first');
+    return 'https://demo.stripe/dashboard/$bandId';
+  }
+
+  @override
+  Future<String> organizationExpressDashboardLink(String organizationId) async {
+    final status =
+        _organizationStripeStatus[organizationId] ??
+        const StripeAccountStatus.none();
+    if (!status.payoutsEnabled) throw StateError('Finish Stripe setup first');
+    return 'https://demo.stripe/dashboard/$organizationId';
+  }
+
+  @override
+  Future<({String url, String sessionId})> startInstallmentCheckout(
+    String paymentRecordId,
+  ) async {
+    for (final entry in _paymentRecordsByBooking.entries) {
+      final index = entry.value.indexWhere(
+        (record) => record.id == paymentRecordId,
+      );
+      if (index == -1) continue;
+      final record = entry.value[index];
+      if (!record.status.isOpen) {
+        throw StateError('This installment is not payable');
+      }
+      final sessionId = 'demo-session-${_nextCheckoutSessionId++}';
+      entry.value[index] = _copyPaymentRecord(
+        record,
+        status: PaymentRecordStatus.checkoutOpen,
+      );
+      _paymentSessionToRecordKey[sessionId] = (
+        bookingId: entry.key,
+        paymentRecordId: paymentRecordId,
+      );
+      return (
+        url: 'https://demo.stripe/checkout/$paymentRecordId',
+        sessionId: sessionId,
+      );
+    }
+    throw StateError('Payment record not found');
+  }
+
+  @override
+  Future<List<PaymentRecord>> paymentsForBooking(String bookingId) async =>
+      List<PaymentRecord>.of(_paymentRecordsByBooking[bookingId] ?? const []);
+
+  @override
+  Future<CheckoutStatus?> checkoutStatus(String sessionId) async {
+    final key = _paymentSessionToRecordKey[sessionId];
+    if (key == null) return null;
+    final record = _paymentRecordsByBooking[key.bookingId]!.firstWhere(
+      (record) => record.id == key.paymentRecordId,
+    );
+    return CheckoutStatus(
+      bookingId: key.bookingId,
+      paymentStatus: record.status,
+      bookingStatus: _requireBooking(key.bookingId).status,
+    );
+  }
+
+  Future<void> simulateCheckoutCompleted(String sessionId) async {
+    final key = _paymentSessionToRecordKey[sessionId];
+    if (key == null) throw StateError('Unknown checkout session');
+    final records = _paymentRecordsByBooking[key.bookingId]!;
+    final index = records.indexWhere(
+      (record) => record.id == key.paymentRecordId,
+    );
+    final record = records[index];
+    // Replaying a demo completion must not charge or confirm the booking twice.
+    if (record.status == PaymentRecordStatus.paid) return;
+    final booking = _requireBooking(key.bookingId);
+    final now = DateTime.now();
+    final updated = record.installmentIndex == 0
+        ? _confirmBooking(booking, now)
+        : booking;
+    records[index] = _copyPaymentRecord(
+      record,
+      status: PaymentRecordStatus.paid,
+      paidAt: now,
+    );
+    _bookings[key.bookingId] = _copyBooking(
+      updated,
+      paidMinor: booking.paidMinor + record.amountMinor,
+    );
+  }
+
+  @override
+  Future<List<Payout>> payoutsForBooking(String bookingId) async =>
+      List<Payout>.of(_payoutsByBooking[bookingId] ?? const []);
+
+  @override
+  Future<List<Payout>> payoutsForBand(String bandId) async {
+    if (!_memberships.any(
+      (membership) =>
+          membership.band.id == bandId && membership.role == 'admin',
+    )) {
+      throw StateError('Not permitted for this band');
+    }
+    return List<Payout>.of(_payoutsByBand[bandId] ?? const []);
+  }
+
+  @override
+  Future<RefundPreview> previewCancellation(
+    String bookingId, {
+    BookingSide? side,
+    required DateTime now,
+  }) async {
+    final booking = _requireBooking(bookingId);
+    final canOrganizer = _holdsBookingSide(booking, BookingSide.organizer);
+    final canArtist = _holdsBookingSide(booking, BookingSide.artist);
+    final BookingSide cancelledBy;
+    if (side == BookingSide.organizer && canOrganizer) {
+      cancelledBy = BookingSide.organizer;
+    } else if (side == BookingSide.artist && canArtist) {
+      cancelledBy = BookingSide.artist;
+    } else {
+      cancelledBy = canOrganizer ? BookingSide.organizer : BookingSide.artist;
+    }
+    final msBeforeStart = booking.startsAt.difference(now).inMilliseconds;
+    final clamped = msBeforeStart < 0 ? 0 : msBeforeStart;
+    final settlement = _settleCancellation(
+      template: booking.cancellationTemplate,
+      msBeforeStart: clamped,
+      cancelledBy: cancelledBy,
+      paidMinor: booking.paidMinor,
+      artistNetMinor: booking.fee.artistNetMinor,
+      commissionMinor: booking.fee.commissionMinor,
+    );
+    return RefundPreview(
+      refundMinor: settlement.refundMinor,
+      forfeitedMinor: settlement.forfeitedMinor,
+      artistPayoutMinor: settlement.artistPayoutMinor,
+      paidMinor: booking.paidMinor,
+      shareBps: _refundShareBps(booking.cancellationTemplate, clamped),
+      template: booking.cancellationTemplate,
+      cancelledBy: cancelledBy,
+    );
+  }
+
+  @override
+  Future<List<RefundRecord>> refundsForBooking(String bookingId) async {
+    _requireBooking(bookingId);
+    return List<RefundRecord>.of(_refundsByBooking[bookingId] ?? const []);
   }
 
   @override
@@ -3464,10 +3820,30 @@ class DemoRepository implements EarplugRepository {
     );
   }
 
+  PaymentRecord _copyPaymentRecord(
+    PaymentRecord record, {
+    required PaymentRecordStatus status,
+    DateTime? paidAt,
+  }) => PaymentRecord(
+    id: record.id,
+    installmentIndex: record.installmentIndex,
+    label: record.label,
+    amountMinor: record.amountMinor,
+    currency: record.currency,
+    dueAt: record.dueAt,
+    status: status,
+    paidAt: paidAt ?? record.paidAt,
+    canPay: record.canPay && status.isOpen,
+  );
+
   Booking _copyBooking(
     Booking booking, {
     BookingStatus? status,
     int? revision,
+    int? paidMinor,
+    int? refundedMinor,
+    DateTime? paymentDueAt,
+    List<String>? payoutHoldReasons,
     DateTime? artistAcceptedTermsAt,
     DateTime? confirmedAt,
     DateTime? cancelledAt,
@@ -3498,6 +3874,10 @@ class DemoRepository implements EarplugRepository {
     startsAt: booking.startsAt,
     doorsAt: booking.doorsAt,
     fee: booking.fee,
+    paidMinor: paidMinor ?? booking.paidMinor,
+    refundedMinor: refundedMinor ?? booking.refundedMinor,
+    paymentDueAt: paymentDueAt ?? booking.paymentDueAt,
+    payoutHoldReasons: payoutHoldReasons ?? booking.payoutHoldReasons,
     cancellationTemplate: booking.cancellationTemplate,
     termsNotes: booking.termsNotes,
     organizerAcceptedTermsAt: booking.organizerAcceptedTermsAt,

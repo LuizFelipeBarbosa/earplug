@@ -28,6 +28,11 @@ void main() {
     expect(find.text('ADD MEDIA'), findsOne);
     expect(find.text('ANALYTICS'), findsOne);
     expect(find.byKey(const Key('band-command-edit-profile')), findsOne);
+    await tester.scrollUntilVisible(
+      find.text('PREVIEW PUBLIC PROFILE →'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.text('PREVIEW PUBLIC PROFILE →'), findsOne);
     await tester.scrollUntilVisible(
       find.text('SETUP CHECKLIST'),

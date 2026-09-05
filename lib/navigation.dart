@@ -39,6 +39,10 @@ enum Screen {
   opportunityDetail,
   bookingDetail,
   reviewCompose,
+  bandPayouts,
+  checkoutReturn,
+  checkoutCancel,
+  stripeReturn,
 }
 
 sealed class ActiveIdentity {
@@ -75,6 +79,8 @@ const bandTabScreens = {
   Screen.opportunityDetail,
   Screen.bookingDetail,
   Screen.reviewCompose,
+  Screen.bandPayouts,
+  Screen.stripeReturn,
 };
 const organizerTabScreens = {
   Screen.orgDash,
@@ -87,6 +93,9 @@ const organizerTabScreens = {
   Screen.opportunityApplicants,
   Screen.bookingDetail,
   Screen.reviewCompose,
+  Screen.checkoutReturn,
+  Screen.checkoutCancel,
+  Screen.stripeReturn,
 };
 const adminScreens = {Screen.adminQueue, Screen.adminApplication};
 

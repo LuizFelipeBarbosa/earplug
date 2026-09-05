@@ -304,13 +304,9 @@ class _VerificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final steps = [
+    final steps = <(String, bool, String?)>[
       ('Verified', verification.verified, null),
-      (
-        'Stripe details',
-        verification.stripeDetailsSubmitted,
-        'Stripe setup arrives with bookings',
-      ),
+      ('Stripe details', verification.stripeDetailsSubmitted, null),
       ('Payouts enabled', verification.stripePayoutsEnabled, null),
       ('Profile complete', verification.profileComplete, null),
       ('Team invited', verification.teamInvited, null),
@@ -326,8 +322,8 @@ class _VerificationCard extends StatelessWidget {
           const SizedBox(height: 11),
           ReadinessSegments(steps: [for (final step in steps) step.$2]),
           const SizedBox(height: 10),
-          for (final step in steps)
-            Padding(
+          ...steps.map((step) {
+            final row = Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,7 +354,19 @@ class _VerificationCard extends StatelessWidget {
                   ),
                 ],
               ),
-            ),
+            );
+            final key = switch (step.$1) {
+              'Stripe details' => const Key('org-dash-readiness-stripe'),
+              'Payouts enabled' => const Key('org-dash-readiness-payouts'),
+              _ => null,
+            };
+            if (step.$2 || key == null) return row;
+            return InkWell(
+              key: key,
+              onTap: () => context.read<AppState>().go(Screen.orgSettings),
+              child: row,
+            );
+          }),
         ],
       ),
     );

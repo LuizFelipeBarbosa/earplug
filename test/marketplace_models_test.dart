@@ -1415,6 +1415,377 @@ void main() {
     });
   });
 
+  group('Phase 3b payment models', () {
+    test(
+      'StripeAccountStatus parses every field, including the account flag',
+      () {
+        final status = StripeAccountStatus.fromJson({
+          'state': 'restricted',
+          'stripeAccountId': true,
+          'chargesEnabled': true,
+          'payoutsEnabled': false,
+          'detailsSubmitted': true,
+          'requirementsDue': ['external_account', 'business_profile.url'],
+        });
+        expect(status.state, StripeAccountState.restricted);
+        expect(status.hasAccount, isTrue);
+        expect(status.chargesEnabled, isTrue);
+        expect(status.payoutsEnabled, isFalse);
+        expect(status.detailsSubmitted, isTrue);
+        expect(status.requirementsDue, [
+          'external_account',
+          'business_profile.url',
+        ]);
+      },
+    );
+
+    test('PaymentRecord parses every field and exposes its Money amount', () {
+      final payment = PaymentRecord.fromJson({
+        '_id': 'payment-1',
+        'installmentIndex': 2,
+        'label': 'Final payment',
+        'amountMinor': 12345,
+        'currency': 'usd',
+        'dueAt': 1800000000000,
+        'status': 'paid',
+        'paidAt': 1799900000000,
+        'canPay': false,
+      });
+      expect(payment.id, 'payment-1');
+      expect(payment.installmentIndex, 2);
+      expect(payment.label, 'Final payment');
+      expect(payment.amountMinor, 12345);
+      expect(payment.currency, 'usd');
+      expect(payment.dueAt, DateTime.fromMillisecondsSinceEpoch(1800000000000));
+      expect(payment.status, PaymentRecordStatus.paid);
+      expect(
+        payment.paidAt,
+        DateTime.fromMillisecondsSinceEpoch(1799900000000),
+      );
+      expect(payment.canPay, isFalse);
+      expect(payment.amount.label, '\$123.45');
+      expect(PaymentRecord.fromJson({'canPay': true}).canPay, isTrue);
+    });
+
+    test('Payout parses every field and exposes its Money amount', () {
+      final payout = Payout.fromJson({
+        '_id': 'payout-1',
+        'kind': 'forfeit',
+        'amountMinor': 8500,
+        'currency': 'usd',
+        'status': 'held',
+        'scheduledFor': 1800000000000,
+        'paidAt': 1800000100000,
+        'holdReason': 'dispute',
+      });
+      expect(payout.id, 'payout-1');
+      expect(payout.kind, PayoutKind.forfeit);
+      expect(payout.amountMinor, 8500);
+      expect(payout.currency, 'usd');
+      expect(payout.status, PayoutStatus.held);
+      expect(
+        payout.scheduledFor,
+        DateTime.fromMillisecondsSinceEpoch(1800000000000),
+      );
+      expect(payout.paidAt, DateTime.fromMillisecondsSinceEpoch(1800000100000));
+      expect(payout.holdReason, 'dispute');
+      expect(payout.amount.label, '\$85.00');
+    });
+
+    test('RefundRecord parses every field and exposes its Money amount', () {
+      final refund = RefundRecord.fromJson({
+        '_id': 'refund-1',
+        'paymentRecordId': 'payment-1',
+        'amountMinor': 5000,
+        'currency': 'usd',
+        'status': 'succeeded',
+        'reason': 'organizer_cancel',
+        'stripeRefundId': 're_demo',
+        'createdAt': 1800000000000,
+      });
+      expect(refund.id, 'refund-1');
+      expect(refund.amountMinor, 5000);
+      expect(refund.currency, 'usd');
+      expect(refund.status, RefundStatus.succeeded);
+      expect(refund.reason, RefundReason.organizerCancel);
+      expect(
+        refund.createdAt,
+        DateTime.fromMillisecondsSinceEpoch(1800000000000),
+      );
+      expect(refund.amount.label, '\$50.00');
+    });
+
+    test('RefundPreview parses every settlement field', () {
+      final preview = RefundPreview.fromJson({
+        'refundMinor': 5000,
+        'forfeitedMinor': 5000,
+        'artistPayoutMinor': 4500,
+        'paidMinor': 10000,
+        'shareBps': 5000,
+        'template': 'standard',
+        'cancelledBy': 'organizer',
+      });
+      expect(preview.refundMinor, 5000);
+      expect(preview.forfeitedMinor, 5000);
+      expect(preview.artistPayoutMinor, 4500);
+      expect(preview.paidMinor, 10000);
+      expect(preview.shareBps, 5000);
+      expect(preview.template, CancellationTemplate.standard);
+      expect(preview.cancelledBy, BookingSide.organizer);
+    });
+
+    test('CheckoutStatus parses both statuses and its booking id', () {
+      final status = CheckoutStatus.fromJson({
+        'bookingId': 'booking-1',
+        'paymentStatus': 'checkout_open',
+        'bookingStatus': 'awaiting_payment',
+      });
+      expect(status.bookingId, 'booking-1');
+      expect(status.paymentStatus, PaymentRecordStatus.checkoutOpen);
+      expect(status.bookingStatus, BookingStatus.awaitingPayment);
+    });
+
+    test(
+      'Booking payment fields default leniently and drop non-string holds',
+      () {
+        for (final json in <Map<String, dynamic>>[
+          const {},
+          {
+            'paidMinor': '500',
+            'refundedMinor': false,
+            'paymentDueAt': 'tomorrow',
+            'payoutHoldReasons': 'dispute',
+          },
+        ]) {
+          final booking = Booking.fromJson(json);
+          expect(booking.paidMinor, 0);
+          expect(booking.refundedMinor, 0);
+          expect(booking.paymentDueAt, isNull);
+          expect(booking.payoutHoldReasons, isEmpty);
+        }
+        final booking = Booking.fromJson({
+          'paidMinor': 500,
+          'refundedMinor': 100,
+          'paymentDueAt': 1800000000000,
+          'payoutHoldReasons': ['dispute', 7, null],
+        });
+        expect(booking.paidMinor, 500);
+        expect(booking.refundedMinor, 100);
+        expect(
+          booking.paymentDueAt,
+          DateTime.fromMillisecondsSinceEpoch(1800000000000),
+        );
+        expect(booking.payoutHoldReasons, ['dispute']);
+      },
+    );
+
+    test('payment models tolerate missing and malformed fields', () {
+      for (final json in <Map<String, dynamic>>[
+        const {},
+        {
+          '_id': 7,
+          'bookingId': false,
+          'installmentIndex': 'first',
+          'label': false,
+          'amountMinor': 'free',
+          'currency': 7,
+          'dueAt': 'tomorrow',
+          'paidAt': false,
+          'scheduledFor': 'tomorrow',
+          'createdAt': 'today',
+          'holdReason': 7,
+          'stripeAccountId': 'acct_demo',
+          'chargesEnabled': 'true',
+          'payoutsEnabled': 1,
+          'detailsSubmitted': 'true',
+          'requirementsDue': 'external_account',
+          'canPay': 'true',
+          'refundMinor': false,
+          'forfeitedMinor': 'none',
+          'artistPayoutMinor': 'none',
+          'paidMinor': 'none',
+          'shareBps': 'half',
+        },
+      ]) {
+        final stripe = StripeAccountStatus.fromJson(json);
+        expect(stripe.state, StripeAccountState.unknown);
+        expect(stripe.hasAccount, isFalse);
+        expect(stripe.chargesEnabled, isFalse);
+        expect(stripe.payoutsEnabled, isFalse);
+        expect(stripe.detailsSubmitted, isFalse);
+        expect(stripe.requirementsDue, isEmpty);
+        final payment = PaymentRecord.fromJson(json);
+        expect(payment.id, '');
+        expect(payment.installmentIndex, 0);
+        expect(payment.label, '');
+        expect(payment.amountMinor, 0);
+        expect(payment.currency, '');
+        expect(payment.dueAt, DateTime.fromMillisecondsSinceEpoch(0));
+        expect(payment.status, PaymentRecordStatus.unknown);
+        expect(payment.paidAt, isNull);
+        expect(payment.canPay, isFalse);
+        final payout = Payout.fromJson(json);
+        expect(payout.id, '');
+        expect(payout.kind, PayoutKind.completion);
+        expect(payout.amountMinor, 0);
+        expect(payout.currency, '');
+        expect(payout.status, PayoutStatus.unknown);
+        expect(payout.scheduledFor, DateTime.fromMillisecondsSinceEpoch(0));
+        expect(payout.paidAt, isNull);
+        expect(payout.holdReason, isNull);
+        final refund = RefundRecord.fromJson(json);
+        expect(refund.id, '');
+        expect(refund.amountMinor, 0);
+        expect(refund.currency, '');
+        expect(refund.status, RefundStatus.unknown);
+        expect(refund.reason, RefundReason.unknown);
+        expect(refund.createdAt, DateTime.fromMillisecondsSinceEpoch(0));
+        final preview = RefundPreview.fromJson(json);
+        expect(preview.refundMinor, 0);
+        expect(preview.forfeitedMinor, 0);
+        expect(preview.artistPayoutMinor, 0);
+        expect(preview.paidMinor, 0);
+        expect(preview.shareBps, 0);
+        expect(preview.template, CancellationTemplate.standard);
+        expect(preview.cancelledBy, BookingSide.artist);
+        final checkout = CheckoutStatus.fromJson(json);
+        expect(checkout.bookingId, '');
+        expect(checkout.paymentStatus, PaymentRecordStatus.unknown);
+        expect(checkout.bookingStatus, BookingStatus.unknown);
+      }
+      expect(
+        StripeAccountStatus.fromJson({
+          'requirementsDue': ['external_account', null, 7],
+        }).requirementsDue,
+        ['external_account'],
+      );
+      expect(PaymentRecord.fromJson({'paidAt': null}).paidAt, isNull);
+    });
+  });
+
+  group('Phase 3b marketplace enum wire values', () {
+    test('StripeAccountState round-trips and tolerates unknown values', () {
+      expect(StripeAccountState.values.map((value) => value.wireValue), [
+        'none',
+        'onboarding',
+        'restricted',
+        'enabled',
+        'unknown',
+      ]);
+      for (final value in StripeAccountState.values) {
+        expect(StripeAccountState.fromWire(value.wireValue), value);
+      }
+      expect(StripeAccountState.fromWire(null), StripeAccountState.unknown);
+      expect(StripeAccountState.fromWire('bogus'), StripeAccountState.unknown);
+    });
+
+    test('PaymentRecordStatus round-trips and tolerates unknown values', () {
+      expect(PaymentRecordStatus.values.map((value) => value.wireValue), [
+        'pending',
+        'checkout_open',
+        'paid',
+        'failed',
+        'expired',
+        'refunded',
+        'partially_refunded',
+        'unknown',
+      ]);
+      for (final value in PaymentRecordStatus.values) {
+        expect(PaymentRecordStatus.fromWire(value.wireValue), value);
+      }
+      expect(PaymentRecordStatus.fromWire(null), PaymentRecordStatus.unknown);
+      expect(
+        PaymentRecordStatus.fromWire('bogus'),
+        PaymentRecordStatus.unknown,
+      );
+    });
+
+    test(
+      'PaymentRecordStatus.isOpen includes retryable failures and expiry',
+      () {
+        for (final status in [
+          PaymentRecordStatus.pending,
+          PaymentRecordStatus.checkoutOpen,
+          PaymentRecordStatus.failed,
+          PaymentRecordStatus.expired,
+        ]) {
+          expect(status.isOpen, isTrue);
+        }
+        for (final status in [
+          PaymentRecordStatus.paid,
+          PaymentRecordStatus.refunded,
+          PaymentRecordStatus.partiallyRefunded,
+          PaymentRecordStatus.unknown,
+        ]) {
+          expect(status.isOpen, isFalse);
+        }
+      },
+    );
+
+    test('PayoutStatus round-trips and tolerates unknown values', () {
+      expect(PayoutStatus.values.map((value) => value.wireValue), [
+        'scheduled',
+        'held',
+        'processing',
+        'paid',
+        'failed',
+        'reversed',
+        'unknown',
+      ]);
+      for (final value in PayoutStatus.values) {
+        expect(PayoutStatus.fromWire(value.wireValue), value);
+      }
+      expect(PayoutStatus.fromWire(null), PayoutStatus.unknown);
+      expect(PayoutStatus.fromWire('bogus'), PayoutStatus.unknown);
+    });
+
+    test(
+      'PayoutKind round-trips and defaults unknown values to completion',
+      () {
+        expect(PayoutKind.values.map((value) => value.wireValue), [
+          'completion',
+          'forfeit',
+        ]);
+        for (final value in PayoutKind.values) {
+          expect(PayoutKind.fromWire(value.wireValue), value);
+        }
+        expect(PayoutKind.fromWire(null), PayoutKind.completion);
+        expect(PayoutKind.fromWire('bogus'), PayoutKind.completion);
+      },
+    );
+
+    test('RefundStatus round-trips and tolerates unknown values', () {
+      expect(RefundStatus.values.map((value) => value.wireValue), [
+        'pending',
+        'succeeded',
+        'failed',
+        'unknown',
+      ]);
+      for (final value in RefundStatus.values) {
+        expect(RefundStatus.fromWire(value.wireValue), value);
+      }
+      expect(RefundStatus.fromWire(null), RefundStatus.unknown);
+      expect(RefundStatus.fromWire('bogus'), RefundStatus.unknown);
+    });
+
+    test('RefundReason round-trips and tolerates unknown values', () {
+      expect(RefundReason.values.map((value) => value.wireValue), [
+        'organizer_cancel',
+        'artist_cancel',
+        'force_majeure',
+        'admin',
+        'dispute',
+        'late_payment',
+        'unknown',
+      ]);
+      for (final value in RefundReason.values) {
+        expect(RefundReason.fromWire(value.wireValue), value);
+      }
+      expect(RefundReason.fromWire(null), RefundReason.unknown);
+      expect(RefundReason.fromWire('bogus'), RefundReason.unknown);
+    });
+  });
+
   group('Phase 3 marketplace enum wire values', () {
     test('BookingStatus round-trips the exact wire values and labels', () {
       expect(BookingStatus.values.map((status) => status.wireValue), [

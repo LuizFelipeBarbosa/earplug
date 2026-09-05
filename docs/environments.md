@@ -59,7 +59,7 @@ for production:
 - `STRIPE_CONNECT_WEBHOOK_SECRET`
 - `BOOKING_COMMISSION_BPS`
 - `TICKETING_FEE_BPS`
-- `TICKETING_FEE_FIXED_MINOR`
+- `TICKETING_FEE_FIXED_MINOR` — reserved for Phase 4 (declared, not yet read by any function).
 - `APP_BASE_URL`
 - `RESEND_API_KEY`
 - `RESEND_SEND_ENABLED`
@@ -73,6 +73,41 @@ Stripe key on every deployment except production deployment
 `decisive-iguana-759`. The two Stripe webhook HTTP routes, like the Clerk route
 above, live on the selected deployment's `.convex.site` host, not its
 `.convex.cloud` host.
+
+Configure the platform endpoint as `POST /stripe-webhook` on that
+deployment's `.convex.site` host, using `STRIPE_WEBHOOK_SECRET`, and subscribe
+it to `checkout.session.completed`, `checkout.session.expired`,
+`payment_intent.payment_failed`, `charge.dispute.created`, and
+`charge.dispute.closed`. Configure the connected-account endpoint as
+`POST /stripe-connect-webhook` on the same host, using
+`STRIPE_CONNECT_WEBHOOK_SECRET`, and subscribe it to `account.updated`.
+
+`APP_BASE_URL` must match the deployed client's origin for the selected
+environment: the development client's origin for development, and
+`https://earplug.app` for production. Checkout and Connect append these paths
+to that origin:
+
+- `/checkout/return?session_id={CHECKOUT_SESSION_ID}` — Checkout success return; Stripe substitutes the session id.
+- `/checkout/cancel?booking=<bookingId>` — Checkout cancellation return.
+- `/band/stripe/return?band=<bandId>` — band Connect onboarding return.
+- `/band/stripe/refresh?band=<bandId>` — band Connect onboarding link refresh.
+- `/org/stripe/return?org=<organizationId>` — organization Connect onboarding return.
+- `/org/stripe/refresh?org=<organizationId>` — organization Connect onboarding link refresh.
+
+A mismatched `APP_BASE_URL` sends these redirects to the wrong environment.
+`appBaseUrl()` defaults to `https://earplug.app` when the variable is absent,
+so development must set its own client origin explicitly. Development
+previews share one Convex deployment and therefore one configured return
+origin.
+
+Before setting `PAYMENTS_ENABLED=true`, also set `BOOKING_COMMISSION_BPS`
+to the intended commission (an integer from 0 to 10000 basis points) and
+enable Stripe Connect on the Stripe account connected to the deployment
+through `STRIPE_SECRET_KEY`. Test mode suffices for development. Live mode
+requires the platform's Stripe account to have accepted the Connect platform
+terms in the Stripe dashboard; this repository does not configure that
+dashboard action. The payments flag defaults to false and blocks all
+non-`GET` Stripe API calls while disabled.
 
 ## Building
 

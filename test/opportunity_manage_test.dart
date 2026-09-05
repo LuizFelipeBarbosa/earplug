@@ -861,6 +861,7 @@ class _WrappedOfferErrorRepository extends DemoRepository {
     required String applicationId,
     required int grossMinor,
     required CancellationTemplate cancellationTemplate,
+    List<OfferInstallmentInput>? installments,
     String? termsNotes,
     String? message,
   }) async {

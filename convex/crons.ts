@@ -33,4 +33,21 @@ crons.interval(
   {},
 );
 
+// Held payouts (no ready payout account, or a booking-level hold) get re-checked daily until
+// HELD_PAYOUT_MAX_DAYS elapses.
+crons.interval(
+  "retry held payouts",
+  { hours: 24 },
+  internal.payouts.retryHeldPayouts,
+  {},
+);
+
+// Failed refunds get another three attempts once payments are enabled.
+crons.interval(
+  "retry failed refunds",
+  { hours: 6 },
+  internal.refunds.retryFailedRefunds,
+  {},
+);
+
 export default crons;

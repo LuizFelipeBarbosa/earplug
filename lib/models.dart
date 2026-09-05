@@ -1953,6 +1953,10 @@ class Booking {
     required this.startsAt,
     this.doorsAt,
     required this.fee,
+    this.paidMinor = 0,
+    this.refundedMinor = 0,
+    this.paymentDueAt,
+    this.payoutHoldReasons = const [],
     required this.cancellationTemplate,
     this.termsNotes,
     required this.organizerAcceptedTermsAt,
@@ -1989,6 +1993,10 @@ class Booking {
   final DateTime startsAt;
   final DateTime? doorsAt;
   final FeeBreakdown fee;
+  final int paidMinor;
+  final int refundedMinor;
+  final DateTime? paymentDueAt;
+  final List<String> payoutHoldReasons;
   final CancellationTemplate cancellationTemplate;
   final String? termsNotes;
   final DateTime organizerAcceptedTermsAt;
@@ -2025,6 +2033,10 @@ class Booking {
     startsAt: _marketplaceDate(json['startsAt']),
     doorsAt: _marketplaceOptionalDate(json['doorsAt']),
     fee: FeeBreakdown.fromJson(_marketplaceMap(json['fee'])),
+    paidMinor: _marketplaceInt(json['paidMinor']),
+    refundedMinor: _marketplaceInt(json['refundedMinor']),
+    paymentDueAt: _marketplaceOptionalDate(json['paymentDueAt']),
+    payoutHoldReasons: _marketplaceStringList(json['payoutHoldReasons']),
     cancellationTemplate: CancellationTemplate.fromWire(
       json['cancellationTemplate'],
     ),
@@ -2052,6 +2064,336 @@ class Booking {
     counterpartyEmail: _marketplaceOptionalString(json['counterpartyEmail']),
     viewerSide: BookingSide.fromWire(json['viewerSide']),
   );
+}
+
+enum StripeAccountState {
+  none('none'),
+  onboarding('onboarding'),
+  restricted('restricted'),
+  enabled('enabled'),
+  unknown('unknown');
+
+  const StripeAccountState(this.wireValue);
+
+  final String wireValue;
+
+  static StripeAccountState fromWire(Object? value) => switch (value) {
+    'none' => StripeAccountState.none,
+    'onboarding' => StripeAccountState.onboarding,
+    'restricted' => StripeAccountState.restricted,
+    'enabled' => StripeAccountState.enabled,
+    _ => StripeAccountState.unknown,
+  };
+}
+
+class StripeAccountStatus {
+  const StripeAccountStatus({
+    required this.state,
+    required this.hasAccount,
+    required this.chargesEnabled,
+    required this.payoutsEnabled,
+    required this.detailsSubmitted,
+    required this.requirementsDue,
+  });
+
+  const StripeAccountStatus.none()
+    : state = StripeAccountState.none,
+      hasAccount = false,
+      chargesEnabled = false,
+      payoutsEnabled = false,
+      detailsSubmitted = false,
+      requirementsDue = const [];
+
+  final StripeAccountState state;
+  final bool hasAccount;
+  final bool chargesEnabled;
+  final bool payoutsEnabled;
+  final bool detailsSubmitted;
+  final List<String> requirementsDue;
+
+  factory StripeAccountStatus.fromJson(Map<String, dynamic> json) =>
+      StripeAccountStatus(
+        state: StripeAccountState.fromWire(json['state']),
+        hasAccount: json['stripeAccountId'] == true,
+        chargesEnabled: json['chargesEnabled'] == true,
+        payoutsEnabled: json['payoutsEnabled'] == true,
+        detailsSubmitted: json['detailsSubmitted'] == true,
+        requirementsDue: _marketplaceStringList(json['requirementsDue']),
+      );
+}
+
+enum PaymentRecordStatus {
+  pending('pending'),
+  checkoutOpen('checkout_open'),
+  paid('paid'),
+  failed('failed'),
+  expired('expired'),
+  refunded('refunded'),
+  partiallyRefunded('partially_refunded'),
+  unknown('unknown');
+
+  const PaymentRecordStatus(this.wireValue);
+
+  final String wireValue;
+
+  static PaymentRecordStatus fromWire(Object? value) => switch (value) {
+    'pending' => PaymentRecordStatus.pending,
+    'checkout_open' => PaymentRecordStatus.checkoutOpen,
+    'paid' => PaymentRecordStatus.paid,
+    'failed' => PaymentRecordStatus.failed,
+    'expired' => PaymentRecordStatus.expired,
+    'refunded' => PaymentRecordStatus.refunded,
+    'partially_refunded' => PaymentRecordStatus.partiallyRefunded,
+    _ => PaymentRecordStatus.unknown,
+  };
+
+  bool get isOpen =>
+      this == PaymentRecordStatus.pending ||
+      this == PaymentRecordStatus.checkoutOpen ||
+      this == PaymentRecordStatus.failed ||
+      this == PaymentRecordStatus.expired;
+}
+
+class PaymentRecord {
+  const PaymentRecord({
+    required this.id,
+    required this.installmentIndex,
+    required this.label,
+    required this.amountMinor,
+    required this.currency,
+    required this.dueAt,
+    required this.status,
+    this.paidAt,
+    required this.canPay,
+  });
+
+  final String id;
+  final int installmentIndex;
+  final String label;
+  final int amountMinor;
+  final String currency;
+  final DateTime dueAt;
+  final PaymentRecordStatus status;
+  final DateTime? paidAt;
+  final bool canPay;
+
+  factory PaymentRecord.fromJson(Map<String, dynamic> json) => PaymentRecord(
+    id: _marketplaceString(json['_id']),
+    installmentIndex: _marketplaceInt(json['installmentIndex']),
+    label: _marketplaceString(json['label']),
+    amountMinor: _marketplaceInt(json['amountMinor']),
+    currency: _marketplaceString(json['currency']),
+    dueAt: _marketplaceDate(json['dueAt']),
+    status: PaymentRecordStatus.fromWire(json['status']),
+    paidAt: _marketplaceOptionalDate(json['paidAt']),
+    canPay: json['canPay'] == true,
+  );
+
+  Money get amount => Money(amountMinor, currency);
+}
+
+enum PayoutStatus {
+  scheduled('scheduled'),
+  held('held'),
+  processing('processing'),
+  paid('paid'),
+  failed('failed'),
+  reversed('reversed'),
+  unknown('unknown');
+
+  const PayoutStatus(this.wireValue);
+
+  final String wireValue;
+
+  static PayoutStatus fromWire(Object? value) => switch (value) {
+    'scheduled' => PayoutStatus.scheduled,
+    'held' => PayoutStatus.held,
+    'processing' => PayoutStatus.processing,
+    'paid' => PayoutStatus.paid,
+    'failed' => PayoutStatus.failed,
+    'reversed' => PayoutStatus.reversed,
+    _ => PayoutStatus.unknown,
+  };
+}
+
+enum PayoutKind {
+  completion('completion'),
+  forfeit('forfeit');
+
+  const PayoutKind(this.wireValue);
+
+  final String wireValue;
+
+  static PayoutKind fromWire(Object? value) => switch (value) {
+    'forfeit' => PayoutKind.forfeit,
+    _ => PayoutKind.completion,
+  };
+}
+
+class Payout {
+  const Payout({
+    required this.id,
+    required this.kind,
+    required this.amountMinor,
+    required this.currency,
+    required this.status,
+    required this.scheduledFor,
+    this.paidAt,
+    this.holdReason,
+  });
+
+  final String id;
+  final PayoutKind kind;
+  final int amountMinor;
+  final String currency;
+  final PayoutStatus status;
+  final DateTime scheduledFor;
+  final DateTime? paidAt;
+  final String? holdReason;
+
+  factory Payout.fromJson(Map<String, dynamic> json) => Payout(
+    id: _marketplaceString(json['_id']),
+    kind: PayoutKind.fromWire(json['kind']),
+    amountMinor: _marketplaceInt(json['amountMinor']),
+    currency: _marketplaceString(json['currency']),
+    status: PayoutStatus.fromWire(json['status']),
+    scheduledFor: _marketplaceDate(json['scheduledFor']),
+    paidAt: _marketplaceOptionalDate(json['paidAt']),
+    holdReason: _marketplaceOptionalString(json['holdReason']),
+  );
+
+  Money get amount => Money(amountMinor, currency);
+}
+
+enum RefundStatus {
+  pending('pending'),
+  succeeded('succeeded'),
+  failed('failed'),
+  unknown('unknown');
+
+  const RefundStatus(this.wireValue);
+
+  final String wireValue;
+
+  static RefundStatus fromWire(Object? value) => switch (value) {
+    'pending' => RefundStatus.pending,
+    'succeeded' => RefundStatus.succeeded,
+    'failed' => RefundStatus.failed,
+    _ => RefundStatus.unknown,
+  };
+}
+
+enum RefundReason {
+  organizerCancel('organizer_cancel'),
+  artistCancel('artist_cancel'),
+  forceMajeure('force_majeure'),
+  admin('admin'),
+  dispute('dispute'),
+  latePayment('late_payment'),
+  unknown('unknown');
+
+  const RefundReason(this.wireValue);
+
+  final String wireValue;
+
+  static RefundReason fromWire(Object? value) => switch (value) {
+    'organizer_cancel' => RefundReason.organizerCancel,
+    'artist_cancel' => RefundReason.artistCancel,
+    'force_majeure' => RefundReason.forceMajeure,
+    'admin' => RefundReason.admin,
+    'dispute' => RefundReason.dispute,
+    'late_payment' => RefundReason.latePayment,
+    _ => RefundReason.unknown,
+  };
+}
+
+class RefundRecord {
+  const RefundRecord({
+    required this.id,
+    required this.amountMinor,
+    required this.currency,
+    required this.status,
+    required this.reason,
+    required this.createdAt,
+  });
+
+  final String id;
+  final int amountMinor;
+  final String currency;
+  final RefundStatus status;
+  final RefundReason reason;
+  final DateTime createdAt;
+
+  factory RefundRecord.fromJson(Map<String, dynamic> json) => RefundRecord(
+    id: _marketplaceString(json['_id']),
+    amountMinor: _marketplaceInt(json['amountMinor']),
+    currency: _marketplaceString(json['currency']),
+    status: RefundStatus.fromWire(json['status']),
+    reason: RefundReason.fromWire(json['reason']),
+    createdAt: _marketplaceDate(json['createdAt']),
+  );
+
+  Money get amount => Money(amountMinor, currency);
+}
+
+class RefundPreview {
+  const RefundPreview({
+    required this.refundMinor,
+    required this.forfeitedMinor,
+    required this.artistPayoutMinor,
+    required this.paidMinor,
+    required this.shareBps,
+    required this.template,
+    required this.cancelledBy,
+  });
+
+  final int refundMinor;
+  final int forfeitedMinor;
+  final int artistPayoutMinor;
+  final int paidMinor;
+  final int shareBps;
+  final CancellationTemplate template;
+  final BookingSide cancelledBy;
+
+  factory RefundPreview.fromJson(Map<String, dynamic> json) => RefundPreview(
+    refundMinor: _marketplaceInt(json['refundMinor']),
+    forfeitedMinor: _marketplaceInt(json['forfeitedMinor']),
+    artistPayoutMinor: _marketplaceInt(json['artistPayoutMinor']),
+    paidMinor: _marketplaceInt(json['paidMinor']),
+    shareBps: _marketplaceInt(json['shareBps']),
+    template: CancellationTemplate.fromWire(json['template']),
+    cancelledBy: BookingSide.fromWire(json['cancelledBy']),
+  );
+}
+
+class CheckoutStatus {
+  const CheckoutStatus({
+    required this.bookingId,
+    required this.paymentStatus,
+    required this.bookingStatus,
+  });
+
+  final String bookingId;
+  final PaymentRecordStatus paymentStatus;
+  final BookingStatus bookingStatus;
+
+  factory CheckoutStatus.fromJson(Map<String, dynamic> json) => CheckoutStatus(
+    bookingId: _marketplaceString(json['bookingId']),
+    paymentStatus: PaymentRecordStatus.fromWire(json['paymentStatus']),
+    bookingStatus: BookingStatus.fromWire(json['bookingStatus']),
+  );
+}
+
+class OfferInstallmentInput {
+  const OfferInstallmentInput({
+    required this.label,
+    required this.amountMinor,
+    required this.dueAfterAcceptanceDays,
+  });
+
+  final String label;
+  final int amountMinor;
+  final int dueAfterAcceptanceDays;
 }
 
 class ReviewSummary {
