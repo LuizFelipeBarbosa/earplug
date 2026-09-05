@@ -151,7 +151,13 @@ class BandDashScreen extends StatelessWidget {
         const SizedBox(height: 10),
         _CommandGrid(
           openMedia: app.openBandMedia,
-          publishGig: isAdmin ? app.startGigCreate : null,
+          publishGig: isAdmin
+              ? app.gigWritePolicy
+                    ? app.startGigCreate
+                    : () => app.resetTo(Screen.gigMgr)
+              : null,
+          gigCommandLabel: app.gigWritePolicy ? 'PUBLISH GIG' : 'FIND GIGS',
+          gigCommandIcon: app.gigWritePolicy ? Icons.add : Icons.search,
           editProfile: isAdmin ? app.openBandEditor : null,
           openAnalytics: () => app.resetTo(Screen.analytics),
         ),
@@ -243,7 +249,7 @@ class _DiscoveryReadinessCard extends StatelessWidget {
       );
     }
 
-    final showAction = readiness.relevantShow == null
+    final showAction = readiness.relevantShow == null && app.gigWritePolicy
         ? app.startGigCreate
         : app.openGigManager;
     final tasks = [
@@ -555,12 +561,16 @@ class _BandTaskRow extends StatelessWidget {
 class _CommandGrid extends StatelessWidget {
   final VoidCallback openMedia;
   final VoidCallback? publishGig;
+  final String gigCommandLabel;
+  final IconData gigCommandIcon;
   final VoidCallback? editProfile;
   final VoidCallback openAnalytics;
 
   const _CommandGrid({
     required this.openMedia,
     required this.publishGig,
+    this.gigCommandLabel = 'PUBLISH GIG',
+    this.gigCommandIcon = Icons.add,
     required this.editProfile,
     required this.openAnalytics,
   });
@@ -570,8 +580,8 @@ class _CommandGrid extends StatelessWidget {
     final actions = [
       if (publishGig != null)
         _Command(
-          label: 'PUBLISH GIG',
-          icon: Icons.add,
+          label: gigCommandLabel,
+          icon: gigCommandIcon,
           onTap: publishGig!,
           primary: true,
         ),
