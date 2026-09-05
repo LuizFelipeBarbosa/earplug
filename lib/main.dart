@@ -22,6 +22,7 @@ import 'screens/band_edit.dart';
 import 'screens/band_join.dart';
 import 'screens/band_media.dart';
 import 'screens/band_profile.dart';
+import 'screens/booking_detail.dart';
 import 'screens/edit_profile.dart';
 import 'screens/explore.dart';
 import 'screens/gig_create.dart';
@@ -42,6 +43,7 @@ import 'screens/org_settings.dart';
 import 'screens/org_team.dart';
 import 'screens/org_venue_edit.dart';
 import 'screens/org_venues.dart';
+import 'screens/review_compose.dart';
 import 'screens/settings.dart';
 import 'screens/venue_detail.dart';
 import 'services/appearance_controller.dart';
@@ -104,6 +106,7 @@ Future<void> main() async {
   final bandSlug = bandSlugFromUri(Uri.base);
   final venueRef = venueRefFromUri(Uri.base);
   final opportunityRef = opportunityRefFromUri(Uri.base);
+  final bookingId = bookingIdFromUri(Uri.base);
   final orgInviteToken = orgInviteTokenFromUri(Uri.base);
   final organizerApply = organizerApplyFromUri(Uri.base);
   if (Env.demo) {
@@ -114,6 +117,7 @@ Future<void> main() async {
       initialBandSlug: bandSlug,
       initialVenueRef: venueRef,
       initialOpportunityRef: opportunityRef,
+      initialBookingId: bookingId,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
     );
@@ -150,6 +154,7 @@ Future<void> main() async {
       initialBandSlug: bandSlug,
       initialVenueRef: venueRef,
       initialOpportunityRef: opportunityRef,
+      initialBookingId: bookingId,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
     ),
@@ -200,6 +205,8 @@ String? venueRefFromUri(Uri uri) => _routeValueFromUri(uri, 'venues');
 
 String? opportunityRefFromUri(Uri uri) =>
     _routeValueFromUri(uri, 'opportunities');
+
+String? bookingIdFromUri(Uri uri) => _routeValueFromUri(uri, 'bookings');
 
 String? orgInviteTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'apply');
 
@@ -285,6 +292,7 @@ class EarplugApp extends StatelessWidget {
     this.initialBandSlug,
     this.initialVenueRef,
     this.initialOpportunityRef,
+    this.initialBookingId,
     this.initialOrgInviteToken,
     this.initialOrganizerApply = false,
   });
@@ -299,6 +307,7 @@ class EarplugApp extends StatelessWidget {
   final String? initialBandSlug;
   final String? initialVenueRef;
   final String? initialOpportunityRef;
+  final String? initialBookingId;
   final String? initialOrgInviteToken;
   final bool initialOrganizerApply;
 
@@ -328,6 +337,7 @@ class EarplugApp extends StatelessWidget {
                 initialBandSlug: initialBandSlug,
                 initialVenueRef: initialVenueRef,
                 initialOpportunityRef: initialOpportunityRef,
+                initialBookingId: initialBookingId,
                 initialOrgInviteToken: initialOrgInviteToken,
                 initialOrganizerApply: initialOrganizerApply,
               ),
@@ -445,24 +455,38 @@ class RootShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (dataStatus, screen, param, canGoBack, dataError, bandId) = context
-        .select<AppState, (DataStatus, Screen, String?, bool, String?, String)>(
-          (app) {
-            final current = app.current;
-            return (
-              app.dataStatus,
-              current.screen,
-              current.param,
-              app.canGoBack,
-              app.dataError,
-              app.bandId,
-            );
-          },
-        );
+    final (
+      dataStatus,
+      screen,
+      param,
+      canGoBack,
+      dataError,
+      bandId,
+      identityIsOrganizer,
+    ) = context
+        .select<
+          AppState,
+          (DataStatus, Screen, String?, bool, String?, String, bool)
+        >((app) {
+          final current = app.current;
+          return (
+            app.dataStatus,
+            current.screen,
+            current.param,
+            app.canGoBack,
+            app.dataError,
+            app.bandId,
+            app.identity is OrganizerIdentity,
+          );
+        });
     final app = context.read<AppState>();
     final entry = ScreenEntry(screen, param);
     final showOpportunityAsFanTab =
         screen == Screen.opportunityDetail && bandId.isEmpty;
+    final isDualBookingScreen =
+        screen == Screen.bookingDetail || screen == Screen.reviewCompose;
+    final showBookingAsOrganizerTab =
+        isDualBookingScreen && identityIsOrganizer;
 
     final body = switch (dataStatus) {
       DataStatus.connecting => ColoredBox(
@@ -501,9 +525,12 @@ class RootShell extends StatelessWidget {
           Positioned.fill(child: _screenFor(entry)),
           if (fanTabScreens.contains(screen) || showOpportunityAsFanTab)
             const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-          if (bandTabScreens.contains(screen) && !showOpportunityAsFanTab)
+          if (bandTabScreens.contains(screen) &&
+              !showOpportunityAsFanTab &&
+              (!isDualBookingScreen || !showBookingAsOrganizerTab))
             const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
-          if (organizerTabScreens.contains(screen))
+          if (organizerTabScreens.contains(screen) &&
+              (!isDualBookingScreen || showBookingAsOrganizerTab))
             const Positioned(
               left: 0,
               right: 0,
@@ -579,6 +606,14 @@ class RootShell extends StatelessWidget {
       Screen.opportunityDetail => OpportunityDetailScreen(
         key: key,
         opportunityRef: entry.param!,
+      ),
+      Screen.bookingDetail => BookingDetailScreen(
+        key: key,
+        bookingId: entry.param!,
+      ),
+      Screen.reviewCompose => ReviewComposeScreen(
+        key: key,
+        bookingId: entry.param!,
       ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(

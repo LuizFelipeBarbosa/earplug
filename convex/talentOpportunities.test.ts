@@ -4,6 +4,8 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
+import { confirmBooking } from "./lib/bookingConfirm";
+import { feeSnapshot } from "./lib/fees";
 import { toVenuePayload } from "./lib/helpers";
 import {
   opportunityPayloadValidator,
@@ -218,6 +220,58 @@ async function setupOrganization() {
       return applicationIds;
     });
   }
+  async function seedBooking(opportunityId: Id<"talentOpportunities">) {
+    const [applicationId] = await seedApplications(opportunityId, ["offered"]);
+    return await t.run(async (ctx) => {
+      const opportunity = await ctx.db.get(opportunityId);
+      const application = await ctx.db.get(applicationId);
+      if (!opportunity || !application) throw new Error("Fixture lineage missing");
+      const artistId = await ctx.db.insert("users", {
+        clerkId: "opportunity_artist",
+        name: "Artist",
+        email: "artist@opportunity.test",
+        genres: [],
+        attendedCount: 0,
+      });
+      await ctx.db.insert("bandMembers", {
+        bandId: ids.bandId,
+        userId: artistId,
+        role: "admin",
+      });
+      const terms = {
+        ...feeSnapshot(0, 0, opportunity.currency),
+        cancellationTemplate: "standard" as const,
+      };
+      const bookingId = await ctx.db.insert("bookings", {
+        opportunityId,
+        slotId: application.slotId,
+        organizationId: ids.organizationId,
+        bandId: ids.bandId,
+        applicationId,
+        status: "offer_sent",
+        revision: 1,
+        startsAt: opportunity.startsAt,
+        ...terms,
+        organizerAcceptedTermsAt: NOW,
+        payoutHold: false,
+        expiresAt: NOW + 3 * DAY_MS,
+        createdBy: ids.ownerId,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      const offerId = await ctx.db.insert("bookingOffers", {
+        bookingId,
+        revision: 1,
+        ...terms,
+        installments: [],
+        sentBy: ids.ownerId,
+        sentAt: NOW,
+        expiresAt: NOW + 3 * DAY_MS,
+      });
+      await ctx.db.patch(bookingId, { currentOfferId: offerId });
+      return { bookingId, offerId, applicationId, artistId };
+    });
+  }
   return {
     t,
     asOwner,
@@ -231,6 +285,7 @@ async function setupOrganization() {
     createDraft,
     readOpportunity,
     seedApplications,
+    seedBooking,
   };
 }
 
@@ -437,6 +492,86 @@ describe("talent opportunity drafts", () => {
       required: false,
     });
   });
+
+  test("update locks date changes while a booking is active but permits other edits", async () => {
+    const { t, createDraft, asOwner, readOpportunity, seedBooking } =
+      await setupOrganization();
+    const { opportunityId } = await createDraft({
+      doorsAt: NOW + 14 * DAY_MS - 3600000,
+    });
+    const { bookingId } = await seedBooking(opportunityId);
+    const before = await readOpportunity(opportunityId);
+    const startsAt = NOW + 15 * DAY_MS;
+    const doorsAt = startsAt - 3600000;
+
+    for (const dateChange of [{ startsAt }, { doorsAt }, { doorsAt: null }]) {
+      await expect(
+        asOwner.mutation(api.talentOpportunities.update, {
+          opportunityId,
+          expectedRevision: 1,
+          title: "Should not be applied",
+          ...dateChange,
+        }),
+      ).rejects.toThrow("Dates are locked while offers or bookings are active");
+    }
+    expect(await readOpportunity(opportunityId)).toEqual(before);
+
+    expect(
+      await asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 1,
+        title: "Revised title",
+      }),
+    ).toEqual({ revision: 2 });
+    expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+      title: "Revised title",
+      startsAt: before.opportunity!.startsAt,
+      doorsAt: before.opportunity!.doorsAt,
+    });
+
+    await t.run((ctx) => ctx.db.patch(bookingId, { status: "declined" }));
+    expect(
+      await asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 2,
+        startsAt,
+        doorsAt,
+      }),
+    ).toEqual({ revision: 3 });
+    expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+      title: "Revised title",
+      startsAt,
+      doorsAt,
+      revision: 3,
+    });
+  });
+
+  test.each([undefined, NOW + 14 * DAY_MS - 3600000])(
+    "update permits unchanged dates with an active booking (doorsAt: %s)",
+    async (doorsAt) => {
+      const { createDraft, createArgs, asOwner, readOpportunity, seedBooking } =
+        await setupOrganization();
+      const { opportunityId } = await createDraft({ doorsAt });
+      await seedBooking(opportunityId);
+
+      expect(
+        await asOwner.mutation(api.talentOpportunities.update, {
+          opportunityId,
+          expectedRevision: 1,
+          startsAt: createArgs.startsAt,
+          doorsAt: doorsAt ?? null,
+          title: "Revised title",
+        }),
+      ).toEqual({ revision: 2 });
+      const { opportunity } = await readOpportunity(opportunityId);
+      expect(opportunity).toMatchObject({
+        title: "Revised title",
+        startsAt: createArgs.startsAt,
+        revision: 2,
+      });
+      expect(opportunity?.doorsAt).toBe(doorsAt);
+    },
+  );
 
   test("update validates merged external ticketing and flyer uploads", async () => {
     const { t, createDraft, asOwner, readOpportunity } =
@@ -976,6 +1111,79 @@ describe("talent opportunity lifecycle", () => {
     });
   });
 
+  test("reopen from booking with an open slot returns to open and reschedules expiry", async () => {
+    const { t, createDraft, asOwner, readOpportunity } =
+      await setupOrganization();
+    const { opportunityId } = await createDraft({
+      applicationsCloseAt: NOW + DAY_MS,
+      slots: [
+        { role: "headliner", guaranteeMinor: 10000 },
+        { role: "support", guaranteeMinor: 5000 },
+      ],
+    });
+    await asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const { slots } = await readOpportunity(opportunityId);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(opportunityId, { status: "booking" });
+      await ctx.db.patch(slots[0]._id, { status: "booked" });
+    });
+
+    await expect(
+      asOwner.mutation(api.talentOpportunities.reopen, {
+        opportunityId,
+        applicationsCloseAt: NOW + 2 * DAY_MS,
+      }),
+    ).resolves.toBeNull();
+    const reopened = await readOpportunity(opportunityId);
+    expect(reopened.opportunity).toMatchObject({
+      status: "open",
+      applicationsCloseAt: NOW + 2 * DAY_MS,
+    });
+    expect(reopened.slots.map((slot) => slot.status)).toEqual([
+      "booked",
+      "open",
+    ]);
+
+    vi.advanceTimersByTime(2 * DAY_MS + 1);
+    await t.finishInProgressScheduledFunctions();
+    expect((await readOpportunity(opportunityId)).opportunity?.status).toBe(
+      "applications_closed",
+    );
+  });
+
+  test("reopen refuses a booking opportunity whose slots are all booked", async () => {
+    const { t, createDraft, asOwner, readOpportunity } =
+      await setupOrganization();
+    const { opportunityId } = await createDraft({
+      applicationsCloseAt: NOW + DAY_MS,
+      slots: [
+        { role: "headliner", guaranteeMinor: 10000 },
+        { role: "support", guaranteeMinor: 5000 },
+      ],
+    });
+    await asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const { slots } = await readOpportunity(opportunityId);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(opportunityId, { status: "booking" });
+      for (const slot of slots) {
+        await ctx.db.patch(slot._id, { status: "booked" });
+      }
+    });
+
+    await expect(
+      asOwner.mutation(api.talentOpportunities.reopen, {
+        opportunityId,
+        applicationsCloseAt: NOW + 2 * DAY_MS,
+      }),
+    ).rejects.toThrow("Every slot is booked");
+  });
+
   test("cancel declines active applications with the caller and cancels only open slots", async () => {
     const {
       t,
@@ -1029,6 +1237,155 @@ describe("talent opportunity lifecycle", () => {
     await expect(
       asOwner.mutation(api.talentOpportunities.cancel, { opportunityId }),
     ).rejects.toThrow("Opportunity cannot go");
+  });
+
+  test.each([
+    ["offer_sent", true],
+    ["offer_sent", false],
+    ["artist_accepted", true],
+    ["awaiting_payment", true],
+  ] as const)(
+    "cancel withdraws a %s booking and declines its application (offer pointer: %s)",
+    async (status, hasOfferPointer) => {
+      const f = await setupOrganization();
+      const { opportunityId } = await f.createDraft();
+      await f.asOwner.mutation(api.talentOpportunities.open, {
+        opportunityId,
+        expectedRevision: 1,
+      });
+      const { bookingId, offerId, applicationId } =
+        await f.seedBooking(opportunityId);
+      await f.t.run((ctx) =>
+        ctx.db.patch(bookingId, {
+          status,
+          currentOfferId: hasOfferPointer ? offerId : undefined,
+        }),
+      );
+      vi.setSystemTime(NOW + 1000);
+      await f.asManager.mutation(api.talentOpportunities.cancel, {
+        opportunityId,
+      });
+      const booking = await f.t.run((ctx) => ctx.db.get(bookingId));
+      expect(booking).toMatchObject({
+        status: "withdrawn",
+        cancelledBy: "organizer",
+        cancelledByUserId: f.managerId,
+        cancelledAt: NOW + 1000,
+        cancelReason: "Opportunity cancelled",
+        revision: 2,
+        updatedAt: NOW + 1000,
+      });
+      expect(await f.t.run((ctx) => ctx.db.get(offerId))).toMatchObject({
+        response: "withdrawn",
+        respondedAt: NOW + 1000,
+        respondedBy: f.managerId,
+      });
+      expect(await f.t.run((ctx) => ctx.db.get(applicationId))).toMatchObject({
+        status: "declined",
+        decidedBy: f.managerId,
+        decidedAt: NOW + 1000,
+        updatedAt: NOW + 1000,
+      });
+      const result = await f.readOpportunity(opportunityId);
+      expect(result.opportunity).toMatchObject({
+        status: "cancelled",
+        revision: 3,
+        applicationCount: 0,
+      });
+      expect(result.slots[0].status).toBe("cancelled");
+      const scheduled = await f.t.run((ctx) =>
+        ctx.db.system.query("_scheduled_functions").take(100),
+      );
+      const emails = scheduled.filter(
+        (job) =>
+          job.name === "emails:send" && job.args[0].kind === "bookingCancelled",
+      );
+      expect(emails.map((job) => job.args[0].to)).toEqual([
+        "artist@opportunity.test",
+      ]);
+      expect(emails[0].scheduledTime).toBe(NOW + 1000);
+      expect(emails[0].args[0].text).toContain("Reason: Opportunity cancelled");
+      await expect(
+        f.asManager.mutation(api.talentOpportunities.cancel, { opportunityId }),
+      ).rejects.toThrow("Opportunity cannot go from cancelled to cancelled");
+      expect(await f.t.run((ctx) => ctx.db.get(bookingId))).toEqual(booking);
+      expect(
+        await f.t.run((ctx) =>
+          ctx.db.system.query("_scheduled_functions").take(100),
+        ),
+      ).toEqual(scheduled);
+    },
+  );
+
+  test("cancel winds down a confirmed booking and cancels its required-slot gig", async () => {
+    const f = await setupOrganization();
+    const { opportunityId } = await f.createDraft();
+    await f.asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const { bookingId, offerId, applicationId, artistId } =
+      await f.seedBooking(opportunityId);
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(bookingId, { status: "artist_accepted", revision: 2 });
+      await ctx.db.patch(offerId, {
+        response: "accepted",
+        respondedAt: NOW,
+        respondedBy: artistId,
+      });
+      await confirmBooking(ctx, bookingId);
+    });
+    const before = await f.readOpportunity(opportunityId);
+    const gigId = before.opportunity!.publicGigId!;
+    expect(before.slots[0]).toMatchObject({
+      status: "booked",
+      required: true,
+      bookingId,
+      bandId: f.bandId,
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(gigId))).toMatchObject({
+      lifecycle: "published",
+    });
+    vi.setSystemTime(NOW + 1000);
+    await f.asOwner.mutation(api.talentOpportunities.cancel, { opportunityId });
+    expect(await f.t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({
+      status: "cancelled_by_organizer",
+      cancelledBy: "organizer",
+      cancelledByUserId: f.ownerId,
+      cancelledAt: NOW + 1000,
+      cancelReason: "Opportunity cancelled",
+      revision: 4,
+      updatedAt: NOW + 1000,
+    });
+    const result = await f.readOpportunity(opportunityId);
+    expect(result.slots[0]).toMatchObject({ status: "cancelled" });
+    expect(result.slots[0].bookingId).toBeUndefined();
+    expect(result.slots[0].bandId).toBeUndefined();
+    expect(await f.t.run((ctx) => ctx.db.get(applicationId))).toMatchObject({
+      status: "declined",
+      updatedAt: NOW + 1000,
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(gigId))).toMatchObject({
+      lifecycle: "cancelled",
+      discoveryListingReady: false,
+    });
+    expect(result.opportunity).toMatchObject({
+      status: "cancelled",
+      publicGigId: gigId,
+      revision: before.opportunity!.revision + 1,
+      applicationCount: 0,
+      updatedAt: NOW + 1000,
+    });
+    const emails = await f.t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").take(100)).filter(
+        (job) =>
+          job.name === "emails:send" && job.args[0].kind === "bookingCancelled",
+      ),
+    );
+    expect(emails.map((job) => job.args[0].to)).toEqual([
+      "artist@opportunity.test",
+    ]);
+    expect(emails[0].args[0].text).toContain("Reason: Opportunity cancelled");
   });
 
   test("scheduled expiry is a no-op for stale revisions, non-open rows, and deleted rows", async () => {

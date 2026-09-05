@@ -103,6 +103,7 @@ export const backfillGigProjects = migrations.define({
   table: "gigs",
   batchSize: 25,
   migrateOne: async (ctx, gig) => {
+    if (gig.ownerKind === "organization") return;
     const ownerBandId = gig.createdByBand ?? gig.lineup[0];
     if (ownerBandId) await createProjectForGig(ctx, gig, ownerBandId);
 
@@ -157,13 +158,19 @@ export const backfillBandHasClip = migrations.define({
   },
 });
 
-/** Rebuilds the public listing projection from the matching private project.
- * Missing projects, missing creators, and any other ambiguous legacy state
- * fail closed rather than receiving visibility optimistically. */
+/** Organization gigs are populated directly by opportunity publishing. Band
+ * gigs rebuild readiness from their private project, failing closed when the
+ * project or creator is missing or legacy state is ambiguous. */
 export const backfillGigDiscoveryListingReady = migrations.define({
   table: "gigs",
   batchSize: 25,
   migrateOne: async (ctx, gig) => {
+    if (gig.ownerKind === "organization") {
+      if (gig.discoveryListingReady !== true) {
+        return { discoveryListingReady: true };
+      }
+      return;
+    }
     const project = await ctx.db
       .query("gigProjects")
       .withIndex("by_public_gig", (q) => q.eq("publicGigId", gig._id))

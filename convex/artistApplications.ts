@@ -193,6 +193,12 @@ export const withdraw = mutation({
     const application = await ctx.db.get(args.applicationId);
     if (!application) throw new Error("Application not found");
     await requireBandRole(ctx, application.bandId, { role: "admin" });
+    if (application.status === "booked") {
+      throw new Error("Cancel the booking instead of withdrawing the application");
+    }
+    if (application.status === "offered") {
+      throw new Error("Respond to the booking offer instead of withdrawing the application");
+    }
     assertApplicationTransition(application.status, "withdrawn");
     const now = Date.now();
     await ctx.db.patch(application._id, {
@@ -230,6 +236,12 @@ export const review = mutation({
       opportunity.organizationId,
       ["owner", "manager"],
     );
+    if (application.status === "booked") {
+      throw new Error("Cancel the booking instead of declining the application");
+    }
+    if (application.status === "offered") {
+      throw new Error("Withdraw the booking offer before reviewing the application");
+    }
     assertApplicationTransition(application.status, args.action);
     const now = Date.now();
     if (args.action === "declined") {

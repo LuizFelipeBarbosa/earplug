@@ -604,6 +604,7 @@ describe("venues:detail", () => {
       profileComplete: false,
       discoveryProfileReady: false,
       pastShows: [],
+      reviewSummary: null,
     });
 
     expect(

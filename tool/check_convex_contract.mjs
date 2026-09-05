@@ -67,6 +67,17 @@ export const requiredClientFunctions = Object.freeze({
   "artistApplications.js:forBand": "Query",
   "artistApplications.js:mine": "Query",
   "gigs.js:writePolicy": "Query",
+  "bookings.js:sendOffer": "Mutation",
+  "bookings.js:withdrawOffer": "Mutation",
+  "bookings.js:respond": "Mutation",
+  "bookings.js:cancel": "Mutation",
+  "bookingsRead.js:get": "Query",
+  "bookingsRead.js:forOrganization": "Query",
+  "bookingsRead.js:forBand": "Query",
+  "reviews.js:submit": "Mutation",
+  "reviews.js:forBooking": "Query",
+  "reviews.js:forBand": "Query",
+  "reviews.js:forOrganization": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -77,6 +88,8 @@ export const requiredClientFields = Object.freeze([
   ["media.js:forBand", "arrayReturn", "isBanner", false],
   ["bands.js:bySlug", "return", "avatarUrl", false],
   ["bands.js:bySlug", "return", "bannerUrl", false],
+  ["bands.js:bySlug", "return", "reviewSummary", false],
+  ["organizations.js:bySlug", "return", "reviewSummary", false],
   ["bands.js:archive", "return", "bandId", false],
   ["bands.js:archive", "return", "archivedAt", false],
   ["bands.js:archive", "return", "alreadyArchived", false],
@@ -87,6 +100,15 @@ export const requiredClientFields = Object.freeze([
   ["venues.js:list", "arrayReturn", "approxLocation", false],
   ["talentOpportunitiesRead.js:resolvePublic", "return", "opportunity", false],
   ["gigs.js:writePolicy", "return", "bandGigWrites", false],
+  ["bookings.js:sendOffer", "args", "grossMinor", false],
+  ["bookings.js:sendOffer", "args", "cancellationTemplate", false],
+  ["bookings.js:respond", "args", "expectedRevision", false],
+  ["bookingsRead.js:get", "return", "fee", false],
+  ["bookingsRead.js:get", "return", "venue", false],
+  ["bookingsRead.js:get", "return", "currentOffer", false],
+  ["bookingsRead.js:forBand", "arrayReturn", "status", false],
+  ["reviews.js:forBooking", "return", "canSubmit", false],
+  ["reviews.js:forBand", "arrayReturn", "monthLabel", false],
 ]);
 
 export function deploymentNameFromUrl(value) {

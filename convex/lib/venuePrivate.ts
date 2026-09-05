@@ -2,6 +2,7 @@ import { Infer, v } from "convex/values";
 import { Doc } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { isPlatformAdmin, organizationMembershipFor } from "./authz";
+import { BOOKING_LIVE_STATUSES } from "./bookingStatus";
 import { effectiveAddressDisclosure } from "./helpers";
 
 export const venuePrivatePayloadValidator = v.object({
@@ -68,8 +69,34 @@ export async function readVenuePrivateFor(
   }
   if (operational) return { details: privateDetails, operational: true };
 
-  // TODO(phase2): Grant access to a confirmed-booking band admin.
-  const isConfirmedBookingBandAdmin = false;
+  let isConfirmedBookingBandAdmin = false;
+  if (user !== null) {
+    const memberships = await ctx.db
+      .query("bandMembers")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .take(50);
+    // The membership cap also bounds the number of bands checked.
+    const adminBandIds = memberships
+      .filter((membership) => membership.role === "admin")
+      .map((membership) => membership.bandId);
+    bookingBands: for (const bandId of adminBandIds) {
+      for (const status of BOOKING_LIVE_STATUSES) {
+        const bookings = await ctx.db
+          .query("bookings")
+          .withIndex("by_bandId_and_status_and_startsAt", (q) =>
+            q.eq("bandId", bandId).eq("status", status),
+          )
+          .take(50);
+        for (const booking of bookings) {
+          const opportunity = await ctx.db.get(booking.opportunityId);
+          if (opportunity !== null && opportunity.venueId === venue._id) {
+            isConfirmedBookingBandAdmin = true;
+            break bookingBands;
+          }
+        }
+      }
+    }
+  }
   // TODO(phase2): Grant access to a ticket or RSVP holder.
   const isTicketOrRsvpHolder = false;
 

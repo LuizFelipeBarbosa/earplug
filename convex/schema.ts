@@ -125,6 +125,58 @@ export const artistApplicationStatusValidator = v.union(
   v.literal("expired"),
 );
 
+export const bookingStatusValidator = v.union(
+  v.literal("offer_sent"),
+  v.literal("artist_accepted"),
+  v.literal("awaiting_payment"),
+  v.literal("confirmed"),
+  v.literal("completed"),
+  v.literal("paid"),
+  v.literal("cancelled_by_organizer"),
+  v.literal("cancelled_by_artist"),
+  v.literal("force_majeure"),
+  v.literal("disputed"),
+  v.literal("refunded"),
+  v.literal("declined"),
+  v.literal("expired"),
+  v.literal("withdrawn"),
+);
+
+export const cancellationTemplateValidator = v.union(
+  v.literal("flexible"),
+  v.literal("standard"),
+  v.literal("strict"),
+);
+
+export const bookingCancelledByValidator = v.union(
+  v.literal("organizer"),
+  v.literal("artist"),
+  v.literal("admin"),
+  v.literal("system"),
+);
+
+// Snapshotted on bookings and offers so later commission changes do not
+// alter the agreed fee split. Amounts are in the currency's minor units.
+export const feeSnapshotFields = {
+  grossMinor: v.number(),
+  commissionBps: v.number(),
+  commissionMinor: v.number(),
+  artistNetMinor: v.number(),
+  currency: v.string(),
+};
+
+export const reviewSideValidator = v.union(
+  v.literal("organizer"),
+  v.literal("artist"),
+);
+
+export const reviewSummaryValidator = v.object({
+  count: v.number(),
+  mean: v.number(),
+  completedBookings: v.number(),
+  cancellations: v.number(),
+});
+
 export const venueStatusValidator = v.union(
   v.literal("legacy"),
   v.literal("pending"),
@@ -221,6 +273,9 @@ export default defineSchema({
     website: v.optional(v.string()),
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
     bookingCommissionBps: v.optional(v.number()),
+    // Denormalized rollup maintained alongside review writes; legacy rows
+    // read as absent.
+    reviewSummary: v.optional(reviewSummaryValidator),
     verifiedAt: v.optional(v.number()),
     suspendedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -356,13 +411,13 @@ export default defineSchema({
       "status",
       "startsAt",
     ])
-    // Reserved for Phase 3 offer/booking lookups.
+    // Opportunity lookups by status and application deadline for offer workflows.
     .index("by_status_and_applicationsCloseAt", ["status", "applicationsCloseAt"])
     .index("by_venueId_and_startsAt", ["venueId", "startsAt"])
     .index("by_publicGigId", ["publicGigId"])
     .index("by_slug", ["slug"]),
 
-  // A `bookingId` field arrives with the `bookings` table in Phase 3.
+  // `bookingId` is set once the slot is booked and links to its owning booking.
   opportunitySlots: defineTable({
     opportunityId: v.id("talentOpportunities"),
     order: v.number(),
@@ -372,6 +427,7 @@ export default defineSchema({
     required: v.boolean(),
     status: opportunitySlotStatusValidator,
     bandId: v.optional(v.id("bands")),
+    bookingId: v.optional(v.id("bookings")),
   }).index("by_opportunityId_and_order", ["opportunityId", "order"]),
 
   opportunityInvites: defineTable({
@@ -393,6 +449,9 @@ export default defineSchema({
     availabilityNote: v.optional(v.string()),
     lineupNote: v.optional(v.string()),
     status: artistApplicationStatusValidator,
+    // Set when another applicant's confirmed booking auto-declines this
+    // application because its slot has been filled.
+    declineReason: v.optional(v.union(v.literal("slot_filled"))),
     decidedBy: v.optional(v.id("users")),
     decidedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -401,8 +460,105 @@ export default defineSchema({
     .index("by_opportunityId_and_bandId", ["opportunityId", "bandId"])
     .index("by_opportunityId_and_status", ["opportunityId", "status"])
     .index("by_bandId_and_status", ["bandId", "status"])
-    // Reserved for Phase 3 offer/booking lookups.
+    // Offer lookups for applications in a slot by status.
     .index("by_slotId_and_status", ["slotId", "status"]),
+
+  // A booking binds an application to a slot and snapshots the agreed terms.
+  // `startsAt` is denormalized for status/date lookups. The public gig remains
+  // reachable through the opportunity's `publicGigId` without a second pointer.
+  bookings: defineTable({
+    opportunityId: v.id("talentOpportunities"),
+    slotId: v.id("opportunitySlots"),
+    organizationId: v.id("organizations"),
+    bandId: v.id("bands"),
+    applicationId: v.id("artistApplications"),
+    status: bookingStatusValidator,
+    currentOfferId: v.optional(v.id("bookingOffers")),
+    revision: v.number(),
+    startsAt: v.number(),
+    ...feeSnapshotFields,
+    cancellationTemplate: cancellationTemplateValidator,
+    termsNotes: v.optional(v.string()),
+    organizerAcceptedTermsAt: v.number(),
+    artistAcceptedTermsAt: v.optional(v.number()),
+    confirmedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    cancelledAt: v.optional(v.number()),
+    // The acting user is recorded separately in `cancelledByUserId`; admin/system may have none or a different user than either side.
+    cancelledBy: v.optional(bookingCancelledByValidator),
+    cancelledByUserId: v.optional(v.id("users")),
+    cancelReason: v.optional(v.string()),
+    // Captures the status immediately before `disputed` so resolution can resume `confirmed`, `completed`, or `paid`.
+    disputedFromStatus: v.optional(bookingStatusValidator),
+    payoutHold: v.boolean(),
+    expiresAt: v.optional(v.number()),
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId_and_status_and_startsAt", [
+      "organizationId",
+      "status",
+      "startsAt",
+    ])
+    .index("by_bandId_and_status_and_startsAt", ["bandId", "status", "startsAt"])
+    .index("by_opportunityId", ["opportunityId"])
+    .index("by_slotId_and_status", ["slotId", "status"])
+    .index("by_applicationId", ["applicationId"])
+    .index("by_status_and_startsAt", ["status", "startsAt"]),
+
+  // One terms snapshot per (booking, revision). Responses are recorded on
+  // that offer while the booking points to its current revision.
+  bookingOffers: defineTable({
+    bookingId: v.id("bookings"),
+    revision: v.number(),
+    ...feeSnapshotFields,
+    cancellationTemplate: cancellationTemplateValidator,
+    termsNotes: v.optional(v.string()),
+    installments: v.array(
+      v.object({
+        label: v.string(),
+        amountMinor: v.number(),
+        dueAt: v.number(),
+      }),
+    ),
+    message: v.optional(v.string()),
+    sentBy: v.id("users"),
+    sentAt: v.number(),
+    expiresAt: v.number(),
+    response: v.optional(
+      v.union(
+        v.literal("accepted"),
+        v.literal("declined"),
+        v.literal("expired"),
+        v.literal("withdrawn"),
+      ),
+    ),
+    respondedAt: v.optional(v.number()),
+    respondedBy: v.optional(v.id("users")),
+  }).index("by_bookingId_and_revision", ["bookingId", "revision"]),
+
+  // One review per (booking, author side). Exactly one subject is set:
+  // organizers review bands, and artists review organizations. Submission,
+  // visibility, and moderation state are tracked separately.
+  reviews: defineTable({
+    bookingId: v.id("bookings"),
+    authorSide: reviewSideValidator,
+    authorUserId: v.id("users"),
+    subjectBandId: v.optional(v.id("bands")),
+    subjectOrganizationId: v.optional(v.id("organizations")),
+    rating: v.number(),
+    categories: v.array(v.string()),
+    text: v.string(),
+    submittedAt: v.number(),
+    visibleAt: v.optional(v.number()),
+    hidden: v.boolean(),
+    hiddenReason: v.optional(v.string()),
+    privateEvent: v.boolean(),
+  })
+    .index("by_bookingId_and_authorSide", ["bookingId", "authorSide"])
+    .index("by_subjectBandId", ["subjectBandId"])
+    .index("by_subjectOrganizationId", ["subjectOrganizationId"]),
 
   // Singleton rows keyed by name. The heartbeat in convex/clock.ts maintains
   // the "feedCutoff" row.
@@ -450,6 +606,9 @@ export default defineSchema({
     // membership references intentionally continue to point at this row.
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.id("users")),
+    // Denormalized rollup maintained alongside review writes; legacy rows
+    // read as absent.
+    reviewSummary: v.optional(reviewSummaryValidator),
   })
     .index("by_name", ["name"])
     .index("by_slug", ["slug"])
@@ -544,6 +703,11 @@ export default defineSchema({
     cap: v.string(),
     goingCount: v.number(),
     createdByBand: v.optional(v.id("bands")),
+    // Gigs can also originate from an organization's booked opportunity.
+    // Optional so existing band-created gigs remain valid.
+    ownerKind: v.optional(v.union(v.literal("band"), v.literal("organization"))),
+    createdByOrganization: v.optional(v.id("organizations")),
+    opportunityId: v.optional(v.id("talentOpportunities")),
     // Band-supplied flyer art, set when flyKey is "custom". The gig owns this
     // blob outright — it is never a bandMedia row, because `lineup` is an array
     // so "whose media is it" would be ambiguous.

@@ -163,6 +163,8 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
         final venue = opportunity.venue;
         final status = item.myApplicationStatus;
         final applied = status != null && status.isActive;
+        final canWithdraw =
+            applied && status != ArtistApplicationStatus.offered;
         return Stack(
           children: [
             Positioned.fill(
@@ -352,9 +354,9 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                     ? 'APPLIED · ${status.wireValue.replaceAll('_', ' ').toUpperCase()}'
                     : 'APPLY',
                 onPrimary: applied ? null : () => _showApply(opportunity),
-                secondaryLabel: applied ? 'WITHDRAW' : null,
+                secondaryLabel: canWithdraw ? 'WITHDRAW' : null,
                 secondaryKey: const Key('opp-detail-withdraw'),
-                onSecondary: applied && !_withdrawing
+                onSecondary: canWithdraw && !_withdrawing
                     ? () => _withdraw(opportunity)
                     : null,
               ),
@@ -583,8 +585,7 @@ class _ApplySheetState extends State<_ApplySheet> {
 String? _optionalNote(TextEditingController controller) =>
     controller.text.trim().isEmpty ? null : controller.text.trim();
 
-String _errorMessage(Object error) =>
-    error is StateError ? error.message : '$error';
+String _errorMessage(Object error) => serverErrorMessage(error) ?? '$error';
 
 String _dateLabel(DateTime date) {
   const months = [

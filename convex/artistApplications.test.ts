@@ -633,7 +633,7 @@ describe("artist applications: apply", () => {
 });
 
 describe("artist applications: withdrawal and review", () => {
-  test.each(APPLICATION_ACTIVE_STATUSES)(
+  test.each(APPLICATION_ACTIVE_STATUSES.filter((status) => status !== "offered"))(
     "can withdraw from %s without changing organizer decision metadata",
     async (status) => {
       const f = await setupApplications();
@@ -788,15 +788,21 @@ describe("artist applications: withdrawal and review", () => {
     async (status) => {
       const f = await setupApplications();
       const [applicationId] = await f.seedApplications([{ status }]);
+      const withdrawMessage =
+        status === "booked"
+          ? "Cancel the booking instead of withdrawing the application"
+          : `Application cannot go from ${status} to withdrawn`;
       await expect(
         f.checked(() =>
           f
             .as("admin")
             .mutation(api.artistApplications.withdraw, { applicationId }),
         ),
-      ).rejects.toThrow(
-        `Application cannot go from ${status} to withdrawn`,
-      );
+      ).rejects.toThrow(withdrawMessage);
+      const reviewMessage =
+        status === "booked"
+          ? "Cancel the booking instead of declining the application"
+          : `Application cannot go from ${status} to declined`;
       await expect(
         f.checked(() =>
           f.as("owner").mutation(api.artistApplications.review, {
@@ -804,7 +810,7 @@ describe("artist applications: withdrawal and review", () => {
             action: "declined",
           }),
         ),
-      ).rejects.toThrow(`Application cannot go from ${status} to declined`);
+      ).rejects.toThrow(reviewMessage);
     },
   );
 
@@ -908,6 +914,7 @@ describe("artist applications: private queries", () => {
           bannerUrl: null,
           profileComplete: true,
           discoveryProfileReady: false,
+          reviewSummary: null,
         },
         contactEmail,
       });

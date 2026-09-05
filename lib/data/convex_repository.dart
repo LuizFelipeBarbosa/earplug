@@ -1525,6 +1525,172 @@ class ConvexRepository implements EarplugRepository {
       }),
     ),
   );
+
+  @override
+  Future<({String bookingId, String offerId, int revision})> sendOffer({
+    required String applicationId,
+    required int grossMinor,
+    required CancellationTemplate cancellationTemplate,
+    String? termsNotes,
+    String? message,
+  }) async {
+    final dynamic decoded = await _convexService.mutation('bookings:sendOffer', {
+      'applicationId': applicationId,
+      'grossMinor': grossMinor,
+      'cancellationTemplate': cancellationTemplate.wireValue,
+      'termsNotes': ?termsNotes,
+      'message': ?message,
+    });
+    if (decoded is String) throw Exception(decoded);
+    if (decoded is! Map) {
+      throw Exception('Unexpected sendOffer response: $decoded');
+    }
+    final result = _asMap(decoded);
+    return (
+      bookingId: result['bookingId'] as String,
+      offerId: result['offerId'] as String,
+      revision: (result['revision'] as num).toInt(),
+    );
+  }
+
+  @override
+  Future<int> withdrawOffer({
+    required String bookingId,
+    required int expectedRevision,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('bookings:withdrawOffer', {
+        'bookingId': bookingId,
+        'expectedRevision': expectedRevision,
+      }),
+    );
+    return (result['revision'] as num).toInt();
+  }
+
+  @override
+  Future<({BookingStatus status, int revision})> respondToOffer({
+    required String bookingId,
+    required bool accept,
+    required int expectedRevision,
+    String? message,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('bookings:respond', {
+        'bookingId': bookingId,
+        'action': accept ? 'accept' : 'decline',
+        'expectedRevision': expectedRevision,
+        'message': ?message,
+      }),
+    );
+    return (
+      status: BookingStatus.fromWire(result['status']),
+      revision: (result['revision'] as num).toInt(),
+    );
+  }
+
+  @override
+  Future<({BookingStatus status, int revision})> cancelBooking({
+    required String bookingId,
+    required String reason,
+    required int expectedRevision,
+    BookingSide? side,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('bookings:cancel', {
+        'bookingId': bookingId,
+        'reason': reason,
+        'expectedRevision': expectedRevision,
+        'as': ?side?.wireValue,
+      }),
+    );
+    return (
+      status: BookingStatus.fromWire(result['status']),
+      revision: (result['revision'] as num).toInt(),
+    );
+  }
+
+  @override
+  Future<Booking?> booking(String bookingId, {BookingSide? viewAs}) async {
+    final json = _asMap(
+      await _convexService.query('bookingsRead:get', {
+        'bookingId': bookingId,
+        'viewAs': ?viewAs?.wireValue,
+      }),
+    );
+    return json.isEmpty ? null : Booking.fromJson(json);
+  }
+
+  @override
+  Future<List<Booking>> organizationBookings(
+    String organizationId, {
+    List<BookingStatus>? statuses,
+  }) async {
+    final result = await _convexService.query('bookingsRead:forOrganization', {
+      'organizationId': organizationId,
+      'statuses': ?statuses?.map((s) => s.wireValue).toList(),
+    });
+    return [for (final json in _mapList(result)) Booking.fromJson(json)];
+  }
+
+  @override
+  Future<List<Booking>> bandBookings(String bandId) async {
+    final result = await _convexService.query('bookingsRead:forBand', {
+      'bandId': bandId,
+    });
+    return [for (final json in _mapList(result)) Booking.fromJson(json)];
+  }
+
+  @override
+  Future<({String reviewId, bool visible})> submitReview({
+    required String bookingId,
+    required int rating,
+    required List<String> categories,
+    required String text,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('reviews:submit', {
+        'bookingId': bookingId,
+        'rating': rating,
+        'categories': categories,
+        'text': text,
+      }),
+    );
+    return (
+      reviewId: result['reviewId'] as String,
+      visible: result['visible'] == true,
+    );
+  }
+
+  @override
+  Future<BookingReviews> reviewsForBooking(String bookingId) async =>
+      BookingReviews.fromJson(
+        _asMap(
+          await _convexService.query('reviews:forBooking', {
+            'bookingId': bookingId,
+          }),
+        ),
+      );
+
+  @override
+  Future<List<PublicReview>> reviewsForBand(String bandId, {int? limit}) async {
+    final result = await _convexService.query('reviews:forBand', {
+      'bandId': bandId,
+      'limit': ?limit,
+    });
+    return [for (final json in _mapList(result)) PublicReview.fromJson(json)];
+  }
+
+  @override
+  Future<List<PublicReview>> reviewsForOrganization(
+    String organizationId, {
+    int? limit,
+  }) async {
+    final result = await _convexService.query('reviews:forOrganization', {
+      'organizationId': organizationId,
+      'limit': ?limit,
+    });
+    return [for (final json in _mapList(result)) PublicReview.fromJson(json)];
+  }
 }
 
 BandPage parseBandPage(dynamic decoded) {

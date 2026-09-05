@@ -25,7 +25,9 @@ function completeFunction(identifier, functionType) {
     } else if (surface === "arrayReturn") {
       entry.returns ??= { type: "array", value: { type: "object", value: {} } };
       entry.returns.value.value[fieldName] = field;
-    } else if (identifier === "bands.js:bySlug") {
+    } else if (
+      identifier === "bands.js:bySlug" || identifier === "bookingsRead.js:get"
+    ) {
       entry.returns ??= {
         type: "union",
         value: [
@@ -206,6 +208,17 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing artistApplications.js:forBand",
     "missing artistApplications.js:mine",
     "missing gigs.js:writePolicy",
+    "missing bookings.js:sendOffer",
+    "missing bookings.js:withdrawOffer",
+    "missing bookings.js:respond",
+    "missing bookings.js:cancel",
+    "missing bookingsRead.js:get",
+    "missing bookingsRead.js:forOrganization",
+    "missing bookingsRead.js:forBand",
+    "missing reviews.js:submit",
+    "missing reviews.js:forBooking",
+    "missing reviews.js:forBand",
+    "missing reviews.js:forOrganization",
   ]);
 });
 
@@ -236,5 +249,20 @@ test("reports missing client fields on nullable union returns", () => {
 
   assert.deepEqual(contractProblems(url, { url, functions }), [
     "bands.js:bySlug is missing return.avatarUrl",
+  ]);
+});
+
+test("reports missing booking fields on nullable union returns", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const booking = functions.find(
+    (entry) => entry.identifier === "bookingsRead.js:get",
+  );
+  delete booking.returns.value[0].value.currentOffer;
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "bookingsRead.js:get is missing return.currentOffer",
   ]);
 });

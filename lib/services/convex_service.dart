@@ -7,6 +7,20 @@ import 'connection_budget.dart';
 import 'convex_debug_stats.dart';
 import 'convex_transport.dart';
 
+class ConvexFunctionException implements Exception {
+  const ConvexFunctionException(this.message, {this.requestId});
+
+  /// The raw server error text, unmodified, so `serverErrorMessage()` in
+  /// form_bits.dart can still find "Uncaught Error:" inside it.
+  final String message;
+
+  /// Parsed from a leading "[Request ID: <id>]" prefix, if present.
+  final String? requestId;
+
+  @override
+  String toString() => message;
+}
+
 class ConvexService {
   ConvexService({ConvexTransport? transport})
     : _transport = transport ?? ConvexClientTransport();
@@ -35,6 +49,7 @@ class ConvexService {
   }
 
   /// Returns the decoded top-level JSON value as-is, including `null`.
+  /// Throws [ConvexFunctionException] if the result contains server error text.
   Future<dynamic> query(String name, [Map<String, dynamic>? args]) async {
     final transport = _requireTransport();
     final result = await _runConnected(
@@ -45,6 +60,7 @@ class ConvexService {
   }
 
   /// Returns the decoded top-level JSON value as-is, including `null`.
+  /// Throws [ConvexFunctionException] if the result contains server error text.
   Future<dynamic> mutation(String name, [Map<String, dynamic>? args]) async {
     final transport = _requireTransport();
     final result = await _runConnected(
@@ -295,7 +311,25 @@ class ConvexService {
     );
   }
 
-  dynamic _decode(String value) => jsonDecode(value);
+  dynamic _decode(String value) {
+    final decoded = jsonDecode(value);
+    final error = _asFunctionError(decoded);
+    if (error != null) throw error;
+    return decoded;
+  }
+
+  /// Convex's web transport sometimes resolves a failed call with the server's
+  /// error text as an ordinary decoded string instead of rejecting the future.
+  /// Turn that shape into a typed exception so callers can trust string results.
+  ConvexFunctionException? _asFunctionError(Object? decoded) {
+    if (decoded is! String) return null;
+    if (!decoded.startsWith('[Request ID:') &&
+        !decoded.contains('Server Error')) {
+      return null;
+    }
+    final match = RegExp(r'^\[Request ID:\s*([^\]]+)\]').firstMatch(decoded);
+    return ConvexFunctionException(decoded, requestId: match?.group(1)?.trim());
+  }
 }
 
 class _SharedSubscription {

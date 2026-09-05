@@ -19,6 +19,11 @@ String _slugify(String value) => value
     .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
     .replaceAll(RegExp(r'^-+|-+$'), '');
 
+class _BookingReviewSlot {
+  Review? organizer;
+  Review? artist;
+}
+
 class DemoRepository implements EarplugRepository {
   DemoRepository({required this._auth}) {
     _bands = Map<String, Band>.of(DemoData.bands);
@@ -52,6 +57,36 @@ class DemoRepository implements EarplugRepository {
     _artistApplications = Map<String, ArtistApplication>.of(
       DemoData.artistApplications,
     );
+    _bookings = Map<String, Booking>.of(DemoData.bookings);
+    final visibleAt = DateTime.now().subtract(const Duration(days: 18));
+    _bookingReviews['bk3'] = _BookingReviewSlot()
+      ..organizer = Review(
+        reviewId: 'demo-review-${_nextReviewId++}',
+        authorSide: BookingSide.organizer,
+        rating: 5,
+        categories: const ['professionalism'],
+        text: 'A prepared band and a wonderful show.',
+        submittedAt: visibleAt,
+        visibleAt: visibleAt,
+      )
+      ..artist = Review(
+        reviewId: 'demo-review-${_nextReviewId++}',
+        authorSide: BookingSide.artist,
+        rating: 4,
+        categories: const ['hospitality'],
+        text: 'A welcoming room and helpful crew.',
+        submittedAt: visibleAt,
+        visibleAt: visibleAt,
+      );
+    _bookingReviews['bk4'] = _BookingReviewSlot()
+      ..artist = Review(
+        reviewId: 'demo-review-${_nextReviewId++}',
+        authorSide: BookingSide.artist,
+        rating: 3,
+        categories: const ['communication'],
+        text: 'Good show, though load-in could have been clearer.',
+        submittedAt: DateTime.now().subtract(const Duration(days: 8)),
+      );
     _applicationApplicants = {
       DemoData.submittedOrganizationApplication.id: (
         userId: 'applicant-sam',
@@ -93,6 +128,8 @@ class DemoRepository implements EarplugRepository {
   late final Map<String, OrganizationApplication> _organizationApplications;
   late final Map<String, Opportunity> _opportunities;
   late final Map<String, ArtistApplication> _artistApplications;
+  late final Map<String, Booking> _bookings;
+  final Map<String, _BookingReviewSlot> _bookingReviews = {};
   late final Map<String, ({String userId, String name, String email})>
   _applicationApplicants;
   late final List<BandMembership> _memberships;
@@ -141,12 +178,16 @@ class DemoRepository implements EarplugRepository {
   int _nextOpportunityId = 1;
   int _nextArtistApplicationId = 1;
   int _nextOpportunitySlotId = 1;
+  int _nextBookingId = 1;
+  int _nextReviewId = 1;
   bool _interactionsSeeded = false;
   Map<String, int> _lastGoingCounts = const {};
   String? _myOrganizationApplicationId;
 
   bool platformAdmin = false;
   bool demoBandGigWrites = true;
+  bool demoPaymentsEnabled = false;
+  int demoCommissionBps = 1000;
 
   /// Nothing to push: the demo data does not check identity.
   @override
@@ -2409,6 +2450,11 @@ class DemoRepository implements EarplugRepository {
     required ArtistApplicationReviewAction action,
   }) async {
     final existing = _requireArtistApplication(applicationId);
+    if (existing.status == ArtistApplicationStatus.offered) {
+      throw StateError(
+        'Withdraw the booking offer before reviewing the application',
+      );
+    }
     final status = switch (action) {
       ArtistApplicationReviewAction.underReview =>
         ArtistApplicationStatus.underReview,
@@ -2569,6 +2615,11 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> withdrawApplication(String applicationId) async {
     final existing = _requireArtistApplication(applicationId);
+    if (existing.status == ArtistApplicationStatus.offered) {
+      throw StateError(
+        'Respond to the booking offer instead of withdrawing the application',
+      );
+    }
     if (!existing.status.isActive) {
       throw StateError('Application is not active');
     }
@@ -2600,6 +2651,388 @@ class DemoRepository implements EarplugRepository {
     required String opportunityId,
     required String bandId,
   }) async => _latestArtistApplication(opportunityId, bandId);
+
+  @override
+  Future<({String bookingId, String offerId, int revision})> sendOffer({
+    required String applicationId,
+    required int grossMinor,
+    required CancellationTemplate cancellationTemplate,
+    String? termsNotes,
+    String? message,
+  }) async {
+    final application = _requireArtistApplication(applicationId);
+    if (application.status != ArtistApplicationStatus.shortlisted) {
+      throw StateError('Shortlist the application before sending an offer');
+    }
+    final opportunity = _requireOpportunity(application.opportunityId);
+    final slot = opportunity.slots.firstWhere(
+      (slot) => slot.id == application.slotId,
+    );
+    if (slot.status != SlotStatus.open) {
+      throw StateError('This slot is already booked');
+    }
+    final slotBookings = _bookings.values.where(
+      (booking) => booking.slotId == slot.id,
+    );
+    if (slotBookings.any(
+      (booking) =>
+          booking.status == BookingStatus.offerSent ||
+          booking.status == BookingStatus.artistAccepted ||
+          booking.status == BookingStatus.awaitingPayment,
+    )) {
+      throw StateError('This slot already has a pending offer');
+    }
+    if (slotBookings.any(
+      (booking) => booking.status == BookingStatus.confirmed,
+    )) {
+      throw StateError('This slot is already booked');
+    }
+    if (grossMinor < 0) {
+      throw StateError('Gross fee must be a non-negative integer');
+    }
+    if (grossMinor > 0 && !demoPaymentsEnabled) {
+      throw StateError('Paid offers open once payments are enabled');
+    }
+    final commissionBps = grossMinor == 0 ? 0 : demoCommissionBps;
+    final commissionMinor = (grossMinor * commissionBps / 10000).round();
+    final venue = _requireVenue(opportunity.venueId!);
+    final organization = _requireOrganization(opportunity.organizationId);
+    final band = _bands[application.bandId]!;
+    final now = DateTime.now();
+    final expiresAt = now.add(const Duration(hours: 72));
+    final bookingId = 'demo-booking-${_nextBookingId++}';
+    _bookings[bookingId] = Booking(
+      id: bookingId,
+      opportunityId: opportunity.id,
+      opportunityTitle: opportunity.title,
+      opportunitySlug: opportunity.slug,
+      slotId: slot.id,
+      slotRole: slot.role,
+      slotRequired: slot.required,
+      organizationId: organization.id,
+      organizationName: organization.name,
+      bandId: band.id,
+      bandName: band.name,
+      bandSlug: band.slug,
+      applicationId: applicationId,
+      status: BookingStatus.offerSent,
+      revision: 1,
+      startsAt: opportunity.startsAt,
+      doorsAt: opportunity.doorsAt,
+      fee: FeeBreakdown(
+        grossMinor: grossMinor,
+        commissionBps: commissionBps,
+        commissionMinor: commissionMinor,
+        artistNetMinor: grossMinor - commissionMinor,
+        currency: opportunity.currency,
+      ),
+      cancellationTemplate: cancellationTemplate,
+      termsNotes: termsNotes,
+      organizerAcceptedTermsAt: now,
+      expiresAt: expiresAt,
+      currentOffer: BookingOffer(
+        revision: 1,
+        message: message,
+        sentAt: now,
+        expiresAt: expiresAt,
+      ),
+      venue: BookingVenue(
+        id: venue.id,
+        name: venue.name,
+        slug: venue.slug,
+        approxLabel: venue.approx.label,
+        exactAddress: venue.disclosure == AddressDisclosure.public
+            ? venue.addr
+            : _venuePrivateDetails[venue.id]?.addr,
+      ),
+      viewerSide: BookingSide.organizer,
+    );
+    _artistApplications[applicationId] = _copyArtistApplication(
+      application,
+      status: ArtistApplicationStatus.offered,
+      decidedAt: application.decidedAt,
+      updatedAt: now,
+    );
+    return (bookingId: bookingId, offerId: '$bookingId-offer-1', revision: 1);
+  }
+
+  @override
+  Future<int> withdrawOffer({
+    required String bookingId,
+    required int expectedRevision,
+  }) async {
+    final booking = _requireBooking(bookingId);
+    _checkBookingRevision(booking, expectedRevision);
+    if (booking.status != BookingStatus.offerSent) {
+      throw StateError(
+        'Booking cannot go from ${booking.status.wireValue} to withdrawn',
+      );
+    }
+    final updated = _copyBooking(
+      booking,
+      status: BookingStatus.withdrawn,
+      revision: booking.revision + 1,
+      currentOffer: _respondedOffer(
+        booking.currentOffer!,
+        OfferResponse.withdrawn,
+      ),
+    );
+    _bookings[bookingId] = updated;
+    _shortlistBookingApplication(booking, DateTime.now());
+    return updated.revision;
+  }
+
+  @override
+  Future<({BookingStatus status, int revision})> respondToOffer({
+    required String bookingId,
+    required bool accept,
+    required int expectedRevision,
+    String? message,
+  }) async {
+    final booking = _requireBooking(bookingId);
+    _checkBookingRevision(booking, expectedRevision);
+    if (booking.status != BookingStatus.offerSent) {
+      throw StateError('Only a pending offer can be accepted or declined');
+    }
+    final now = DateTime.now();
+    if (booking.expiresAt != null && now.isAfter(booking.expiresAt!)) {
+      throw StateError('This offer has expired');
+    }
+    if (!accept) {
+      final updated = _copyBooking(
+        booking,
+        status: BookingStatus.declined,
+        revision: booking.revision + 1,
+        currentOffer: _respondedOffer(
+          booking.currentOffer!,
+          OfferResponse.declined,
+        ),
+      );
+      _bookings[bookingId] = updated;
+      _shortlistBookingApplication(booking, now);
+      return (status: updated.status, revision: updated.revision);
+    }
+
+    final accepted = _copyBooking(
+      booking,
+      status: BookingStatus.artistAccepted,
+      revision: booking.revision + 1,
+      artistAcceptedTermsAt: now,
+      currentOffer: _respondedOffer(
+        booking.currentOffer!,
+        OfferResponse.accepted,
+      ),
+    );
+    final updated = booking.fee.grossMinor == 0
+        ? _confirmBooking(accepted, now)
+        : _copyBooking(
+            accepted,
+            status: BookingStatus.awaitingPayment,
+            revision: accepted.revision + 1,
+          );
+    _bookings[bookingId] = updated;
+    return (status: updated.status, revision: updated.revision);
+  }
+
+  @override
+  Future<({BookingStatus status, int revision})> cancelBooking({
+    required String bookingId,
+    required String reason,
+    required int expectedRevision,
+    BookingSide? side,
+  }) async {
+    final booking = _requireBooking(bookingId);
+    _checkBookingRevision(booking, expectedRevision);
+    final trimmedReason = reason.trim();
+    if (trimmedReason.isEmpty) {
+      throw StateError('Cancellation reason is required');
+    }
+    if (trimmedReason.length > 500) {
+      throw StateError('Cancellation reason must be at most 500 characters');
+    }
+    final resolvedSide = side != null && _holdsBookingSide(booking, side)
+        ? side
+        : _requireBookingSide(booking, 'Not permitted to cancel this booking');
+    final status = resolvedSide == BookingSide.organizer
+        ? BookingStatus.cancelledByOrganizer
+        : BookingStatus.cancelledByArtist;
+    // These are the two states with a party-cancellation transition in Convex.
+    if (booking.status != BookingStatus.confirmed &&
+        booking.status != BookingStatus.awaitingPayment) {
+      throw StateError(
+        'Booking cannot go from ${booking.status.wireValue} to ${status.wireValue}',
+      );
+    }
+    final now = DateTime.now();
+    final updated = _copyBooking(
+      booking,
+      status: status,
+      revision: booking.revision + 1,
+      cancelledBy: resolvedSide == BookingSide.organizer
+          ? BookingCancelledBy.organizer
+          : BookingCancelledBy.artist,
+      cancelledAt: now,
+      cancelReason: trimmedReason,
+    );
+    _bookings[bookingId] = updated;
+    final application = _artistApplications[booking.applicationId];
+    if (booking.status == BookingStatus.confirmed) {
+      _releaseBookingSlot(booking, now);
+      if (application?.status == ArtistApplicationStatus.booked) {
+        _artistApplications[application!.id] = _copyArtistApplication(
+          application,
+          status: resolvedSide == BookingSide.organizer
+              ? ArtistApplicationStatus.declined
+              : ArtistApplicationStatus.withdrawn,
+          decidedAt: application.decidedAt,
+          updatedAt: now,
+        );
+      }
+      if (resolvedSide == BookingSide.organizer) {
+        _recomputeReviewSummary(organizationId: booking.organizationId);
+      } else {
+        _recomputeReviewSummary(bandId: booking.bandId);
+      }
+    } else if (application?.status == ArtistApplicationStatus.offered) {
+      _shortlistBookingApplication(booking, now);
+    }
+    return (status: updated.status, revision: updated.revision);
+  }
+
+  @override
+  Future<Booking?> booking(String bookingId, {BookingSide? viewAs}) async {
+    final stored = _bookings[bookingId];
+    if (stored == null) return null;
+    if (viewAs != null && _holdsBookingSide(stored, viewAs)) {
+      return _bookingPayload(stored, viewAs);
+    }
+    final side = _holdsBookingSide(stored, BookingSide.organizer)
+        ? BookingSide.organizer
+        : BookingSide.artist;
+    return _bookingPayload(stored, side);
+  }
+
+  @override
+  Future<List<Booking>> organizationBookings(
+    String organizationId, {
+    List<BookingStatus>? statuses,
+  }) async => [
+    for (final booking in _bookings.values)
+      if (booking.organizationId == organizationId &&
+          (statuses?.contains(booking.status) ?? booking.status.isActive))
+        _bookingPayload(booking, BookingSide.organizer),
+  ]..sort((a, b) => b.startsAt.compareTo(a.startsAt));
+
+  @override
+  Future<List<Booking>> bandBookings(String bandId) async => [
+    for (final booking in _bookings.values)
+      if (booking.bandId == bandId && booking.status.isActive)
+        _bookingPayload(booking, BookingSide.artist),
+  ]..sort((a, b) => b.startsAt.compareTo(a.startsAt));
+
+  @override
+  Future<({String reviewId, bool visible})> submitReview({
+    required String bookingId,
+    required int rating,
+    required List<String> categories,
+    required String text,
+  }) async {
+    final booking = _requireBooking(bookingId);
+    if (booking.status != BookingStatus.completed &&
+        booking.status != BookingStatus.paid) {
+      throw StateError('Booking has not been completed yet');
+    }
+    final side = _requireBookingSide(
+      booking,
+      'Only booking parties can review',
+    );
+    final now = DateTime.now();
+    if (booking.completedAt != null &&
+        now.isAfter(booking.completedAt!.add(const Duration(days: 14)))) {
+      throw StateError('The review window has closed');
+    }
+    final existing = _bookingReviews[bookingId];
+    final mine = side == BookingSide.organizer
+        ? existing?.organizer
+        : existing?.artist;
+    if (mine != null) {
+      throw StateError('You already reviewed this booking');
+    }
+    if (rating < 1 || rating > 5) {
+      throw StateError('Rating must be an integer between 1 and 5');
+    }
+    if (categories.length > reviewCategories.length) {
+      throw StateError('Review must have at most 6 categories');
+    }
+    for (final category in categories) {
+      if (!reviewCategories.contains(category)) {
+        throw StateError('Unknown review category: $category');
+      }
+    }
+    final trimmedText = text.trim();
+    if (trimmedText.length > 1000) {
+      throw StateError('Review text must be at most 1000 characters');
+    }
+    final review = Review(
+      reviewId: 'demo-review-${_nextReviewId++}',
+      authorSide: side,
+      rating: rating,
+      categories: List<String>.unmodifiable(categories),
+      text: trimmedText,
+      submittedAt: now,
+    );
+    final slot = _bookingReviews.putIfAbsent(bookingId, _BookingReviewSlot.new);
+    if (side == BookingSide.organizer) {
+      slot.organizer = review;
+    } else {
+      slot.artist = review;
+    }
+    final visible = slot.organizer != null && slot.artist != null;
+    if (visible) {
+      slot.organizer = _visibleReview(slot.organizer!, now);
+      slot.artist = _visibleReview(slot.artist!, now);
+      _recomputeReviewSummary(bandId: booking.bandId);
+      _recomputeReviewSummary(organizationId: booking.organizationId);
+    }
+    return (reviewId: review.reviewId, visible: visible);
+  }
+
+  @override
+  Future<BookingReviews> reviewsForBooking(String bookingId) async {
+    final booking = _requireBooking(bookingId);
+    final side = _requireBookingSide(
+      booking,
+      'Only booking parties can review',
+    );
+    final slot = _bookingReviews[bookingId];
+    final mine = side == BookingSide.organizer ? slot?.organizer : slot?.artist;
+    final theirs = side == BookingSide.organizer
+        ? slot?.artist
+        : slot?.organizer;
+    return BookingReviews(
+      mine: mine,
+      theirs: theirs?.visibleAt == null ? null : theirs,
+      windowClosesAt: (booking.completedAt ?? booking.startsAt).add(
+        const Duration(days: 14),
+      ),
+      canSubmit:
+          (booking.status == BookingStatus.completed ||
+              booking.status == BookingStatus.paid) &&
+          mine == null,
+    );
+  }
+
+  @override
+  Future<List<PublicReview>> reviewsForBand(
+    String bandId, {
+    int? limit,
+  }) async => _publicReviews(bandId: bandId, limit: limit);
+
+  @override
+  Future<List<PublicReview>> reviewsForOrganization(
+    String organizationId, {
+    int? limit,
+  }) async => _publicReviews(organizationId: organizationId, limit: limit);
 
   @override
   Future<GigWritePolicy> gigWritePolicy() async =>
@@ -2966,6 +3399,461 @@ class DemoRepository implements EarplugRepository {
     );
   }
 
+  Booking _requireBooking(String bookingId) {
+    final booking = _bookings[bookingId];
+    if (booking == null) throw StateError('Booking not found');
+    return booking;
+  }
+
+  void _checkBookingRevision(Booking booking, int expectedRevision) {
+    if (booking.revision != expectedRevision) {
+      throw StateError('Booking changed elsewhere');
+    }
+  }
+
+  bool _holdsBookingSide(Booking booking, BookingSide side) => switch (side) {
+    BookingSide.organizer => _organizationMemberships.any(
+      (membership) => membership.organization.id == booking.organizationId,
+    ),
+    BookingSide.artist => _memberships.any(
+      (membership) => membership.band.id == booking.bandId,
+    ),
+  };
+
+  BookingSide _requireBookingSide(Booking booking, String errorMessage) {
+    if (_holdsBookingSide(booking, BookingSide.organizer)) {
+      return BookingSide.organizer;
+    }
+    if (_holdsBookingSide(booking, BookingSide.artist)) {
+      return BookingSide.artist;
+    }
+    throw StateError(errorMessage);
+  }
+
+  Booking _bookingPayload(Booking stored, BookingSide side) {
+    final venue = _venues[stored.venue.id];
+    final String? exactAddress;
+    if (venue?.disclosure == AddressDisclosure.public) {
+      exactAddress = venue!.addr;
+    } else if (side == BookingSide.organizer || stored.status.isLive) {
+      exactAddress = _venuePrivateDetails[stored.venue.id]?.addr;
+    } else {
+      exactAddress = null;
+    }
+    final String? counterpartyEmail;
+    if (side == BookingSide.organizer) {
+      counterpartyEmail = stored.bandId == 'b1'
+          ? DemoData.organizationMembers[DemoData.demoUserId]!.email
+          : null;
+    } else {
+      counterpartyEmail = stored.status.isLive
+          ? _organizationPrivateDetails[stored.organizationId]?.businessEmail
+          : null;
+    }
+    return _copyBooking(
+      stored,
+      venue: BookingVenue(
+        id: stored.venue.id,
+        name: stored.venue.name,
+        slug: stored.venue.slug,
+        approxLabel: stored.venue.approxLabel,
+        exactAddress: exactAddress,
+      ),
+      viewerSide: side,
+      counterpartyEmail: counterpartyEmail,
+    );
+  }
+
+  Booking _copyBooking(
+    Booking booking, {
+    BookingStatus? status,
+    int? revision,
+    DateTime? artistAcceptedTermsAt,
+    DateTime? confirmedAt,
+    DateTime? cancelledAt,
+    BookingCancelledBy? cancelledBy,
+    String? cancelReason,
+    BookingOffer? currentOffer,
+    BookingVenue? venue,
+    String? publicGigId,
+    String? publicGigSlug,
+    BookingSide? viewerSide,
+    String? counterpartyEmail,
+  }) => Booking(
+    id: booking.id,
+    opportunityId: booking.opportunityId,
+    opportunityTitle: booking.opportunityTitle,
+    opportunitySlug: booking.opportunitySlug,
+    slotId: booking.slotId,
+    slotRole: booking.slotRole,
+    slotRequired: booking.slotRequired,
+    organizationId: booking.organizationId,
+    organizationName: booking.organizationName,
+    bandId: booking.bandId,
+    bandName: booking.bandName,
+    bandSlug: booking.bandSlug,
+    applicationId: booking.applicationId,
+    status: status ?? booking.status,
+    revision: revision ?? booking.revision,
+    startsAt: booking.startsAt,
+    doorsAt: booking.doorsAt,
+    fee: booking.fee,
+    cancellationTemplate: booking.cancellationTemplate,
+    termsNotes: booking.termsNotes,
+    organizerAcceptedTermsAt: booking.organizerAcceptedTermsAt,
+    artistAcceptedTermsAt:
+        artistAcceptedTermsAt ?? booking.artistAcceptedTermsAt,
+    confirmedAt: confirmedAt ?? booking.confirmedAt,
+    completedAt: booking.completedAt,
+    cancelledAt: cancelledAt ?? booking.cancelledAt,
+    cancelledBy: cancelledBy ?? booking.cancelledBy,
+    cancelReason: cancelReason ?? booking.cancelReason,
+    expiresAt: booking.expiresAt,
+    currentOffer: currentOffer ?? booking.currentOffer,
+    venue: venue ?? booking.venue,
+    publicGigId: publicGigId ?? booking.publicGigId,
+    publicGigSlug: publicGigSlug ?? booking.publicGigSlug,
+    // A query supplying a viewer must be able to explicitly hide the email.
+    counterpartyEmail: viewerSide == null
+        ? booking.counterpartyEmail
+        : counterpartyEmail,
+    viewerSide: viewerSide ?? booking.viewerSide,
+  );
+
+  BookingOffer _respondedOffer(BookingOffer offer, OfferResponse response) =>
+      BookingOffer(
+        revision: offer.revision,
+        message: offer.message,
+        sentAt: offer.sentAt,
+        expiresAt: offer.expiresAt,
+        response: response,
+        installments: offer.installments,
+      );
+
+  void _shortlistBookingApplication(Booking booking, DateTime now) {
+    final application = _artistApplications[booking.applicationId];
+    // The denormalized booking fixtures have no backing application.
+    if (application == null) return;
+    _artistApplications[application.id] = _copyArtistApplication(
+      application,
+      status: ArtistApplicationStatus.shortlisted,
+      decidedAt: null,
+      updatedAt: now,
+    );
+  }
+
+  Booking _confirmBooking(Booking booking, DateTime now) {
+    final opportunity = _requireOpportunity(booking.opportunityId);
+    final application = _requireArtistApplication(booking.applicationId);
+    final slot = opportunity.slots.firstWhere(
+      (slot) => slot.id == booking.slotId,
+    );
+    if (slot.status != SlotStatus.open) {
+      throw StateError('This slot is already booked');
+    }
+    final slots = _replaceBookingSlot(
+      opportunity,
+      booking.slotId,
+      booking.bandId,
+    );
+    _artistApplications[application.id] = _copyArtistApplication(
+      application,
+      status: ArtistApplicationStatus.booked,
+      decidedAt: application.decidedAt,
+      updatedAt: now,
+    );
+    var removedApplications = 1;
+    for (final competitor in _artistApplications.values.toList()) {
+      if (competitor.id != application.id &&
+          competitor.slotId == booking.slotId &&
+          competitor.status.isActive) {
+        _artistApplications[competitor.id] = _copyArtistApplication(
+          competitor,
+          status: ArtistApplicationStatus.declined,
+          decidedAt: now,
+          updatedAt: now,
+        );
+        removedApplications++;
+      }
+    }
+    var updatedOpportunity = _copyOpportunity(
+      opportunity,
+      slots: slots,
+      applicationCount: (opportunity.applicationCount - removedApplications)
+          .clamp(0, opportunity.applicationCount),
+      updatedAt: now,
+    );
+    Gig? gig;
+    if (slots
+        .where((slot) => slot.required)
+        .every((slot) => slot.status == SlotStatus.booked)) {
+      gig = _publishOpportunityGig(updatedOpportunity);
+      updatedOpportunity = _copyOpportunity(
+        updatedOpportunity,
+        status: OpportunityStatus.confirmed,
+        revision: opportunity.status == OpportunityStatus.confirmed
+            ? opportunity.revision
+            : opportunity.revision + 1,
+      );
+    }
+    _opportunities[opportunity.id] = updatedOpportunity;
+    _emitFeed();
+    return _copyBooking(
+      booking,
+      status: BookingStatus.confirmed,
+      revision: booking.revision + 1,
+      confirmedAt: now,
+      publicGigId: gig?.id,
+      publicGigSlug: gig?.slug,
+    );
+  }
+
+  List<OpportunitySlot> _replaceBookingSlot(
+    Opportunity opportunity,
+    String slotId,
+    String? bandId,
+  ) => [
+    for (final slot in opportunity.slots)
+      if (slot.id == slotId)
+        OpportunitySlot(
+          id: slot.id,
+          order: slot.order,
+          role: slot.role,
+          setLengthMin: slot.setLengthMin,
+          guaranteeMinor: slot.guaranteeMinor,
+          required: slot.required,
+          status: bandId == null ? SlotStatus.open : SlotStatus.booked,
+          bandId: bandId,
+        )
+      else
+        slot,
+  ];
+
+  List<GigPerformer> _bookedPerformers(Opportunity opportunity) {
+    final slots =
+        opportunity.slots
+            .where(
+              (slot) => slot.status == SlotStatus.booked && slot.bandId != null,
+            )
+            .toList()
+          ..sort((a, b) => a.order.compareTo(b.order));
+    return [
+      for (final slot in slots)
+        GigPerformer(
+          id: slot.id,
+          kind: GigPerformerKind.band,
+          bandId: slot.bandId,
+          name: _bands[slot.bandId]!.name,
+          role: GigPerformerRole.values.byName(slot.role.name),
+        ),
+    ];
+  }
+
+  Gig _publishOpportunityGig(Opportunity opportunity) {
+    final existing = [
+      ...DemoData.gigs,
+      ..._publishedGigs,
+    ].where((gig) => gig.opportunityId == opportunity.id).firstOrNull;
+    final performers = _bookedPerformers(opportunity);
+    final lineup = [for (final performer in performers) performer.bandId!];
+    final Gig gig;
+    if (existing != null) {
+      gig = existing.copyWith(
+        lineup: lineup,
+        performers: performers,
+        lifecycle: GigLifecycle.published,
+        discoveryListingReady: true,
+      );
+    } else {
+      final startsAt = opportunity.startsAt;
+      final doorsAt = opportunity.doorsAt ?? startsAt;
+      final time =
+          '${timeLabel(TimeOfDay.fromDateTime(doorsAt))} / '
+          '${timeLabel(TimeOfDay.fromDateTime(startsAt))}';
+      gig = Gig(
+        id: 'gx${_nextGigId++}',
+        slug: _uniqueGigSlug(opportunity.title),
+        title: opportunity.title,
+        venueId: opportunity.venueId!,
+        price: 0,
+        startsAt: startsAt,
+        doorsAt: doorsAt,
+        dateShort: Gig.dateShortFor(startsAt.millisecondsSinceEpoch),
+        dateLine: Gig.dateLineFor(startsAt.millisecondsSinceEpoch, time),
+        time: time,
+        when: Gig.whenFor(startsAt.millisecondsSinceEpoch),
+        flyKey: opportunity.flyKey,
+        lineup: lineup,
+        performers: performers,
+        going: 0,
+        genres: opportunity.genres,
+        desc: opportunity.desc,
+        tix: opportunity.ticketing == OpportunityTicketing.external
+            ? Ticketing.external
+            : Ticketing.rsvp,
+        externalUrl: opportunity.externalUrl,
+        flyerUrl: opportunity.flyerUrl,
+        cap: opportunity.expectedAttendance?.toString() ?? 'No cap',
+        ageRequirement: opportunity.ageRequirement,
+        ownerKind: GigOwnerKind.organization,
+        opportunityId: opportunity.id,
+        lifecycle: GigLifecycle.published,
+        discoveryListingReady: true,
+      );
+    }
+    _publishedGigs.removeWhere((candidate) => candidate.id == gig.id);
+    _publishedGigs.add(gig);
+    return gig;
+  }
+
+  void _releaseBookingSlot(Booking booking, DateTime now) {
+    final opportunity = _opportunities[booking.opportunityId];
+    // Fixture bookings carry synthetic links; only live opportunities have
+    // slots and public gigs to update when a booking is cancelled.
+    if (opportunity == null) return;
+    final updated = _copyOpportunity(
+      opportunity,
+      slots: _replaceBookingSlot(opportunity, booking.slotId, null),
+      status: booking.slotRequired
+          ? OpportunityStatus.booking
+          : opportunity.status,
+      revision:
+          booking.slotRequired &&
+              opportunity.status != OpportunityStatus.booking
+          ? opportunity.revision + 1
+          : opportunity.revision,
+      updatedAt: now,
+    );
+    _opportunities[opportunity.id] = updated;
+    final gigIndex = _publishedGigs.indexWhere(
+      (gig) => gig.opportunityId == opportunity.id,
+    );
+    if (gigIndex != -1) {
+      final gig = _publishedGigs[gigIndex];
+      if (booking.slotRequired) {
+        _publishedGigs[gigIndex] = gig.copyWith(
+          lifecycle: GigLifecycle.unpublished,
+          discoveryListingReady: false,
+        );
+      } else {
+        final performers = _bookedPerformers(updated);
+        _publishedGigs[gigIndex] = gig.copyWith(
+          performers: performers,
+          lineup: [for (final performer in performers) performer.bandId!],
+        );
+      }
+    }
+    _emitFeed();
+  }
+
+  Review _visibleReview(Review review, DateTime visibleAt) => Review(
+    reviewId: review.reviewId,
+    authorSide: review.authorSide,
+    rating: review.rating,
+    categories: review.categories,
+    text: review.text,
+    submittedAt: review.submittedAt,
+    visibleAt: visibleAt,
+  );
+
+  List<PublicReview> _publicReviews({
+    String? bandId,
+    String? organizationId,
+    int? limit,
+  }) {
+    assert((bandId == null) != (organizationId == null));
+    final reviews = <({Booking booking, Review review})>[];
+    for (final booking in _bookings.values) {
+      if (bandId != null
+          ? booking.bandId != bandId
+          : booking.organizationId != organizationId) {
+        continue;
+      }
+      final slot = _bookingReviews[booking.id];
+      final review = bandId != null ? slot?.organizer : slot?.artist;
+      if (review != null && review.visibleAt != null) {
+        reviews.add((booking: booking, review: review));
+      }
+    }
+    reviews.sort((a, b) => b.review.visibleAt!.compareTo(a.review.visibleAt!));
+    return [
+      for (final entry in reviews.take(limit ?? 20))
+        PublicReview(
+          reviewId: entry.review.reviewId,
+          rating: entry.review.rating,
+          categories: entry.review.categories,
+          text: entry.review.text,
+          submittedAt: entry.review.submittedAt,
+          monthLabel:
+              '${monthNamesUpper[entry.review.submittedAt.month - 1]} '
+              '${entry.review.submittedAt.year}',
+          counterpartyName: bandId != null
+              ? entry.booking.organizationName
+              : entry.booking.bandName,
+          opportunityTitle: entry.booking.opportunityTitle,
+        ),
+    ];
+  }
+
+  void _recomputeReviewSummary({String? bandId, String? organizationId}) {
+    assert((bandId == null) != (organizationId == null));
+    var count = 0;
+    var sum = 0;
+    var completedBookings = 0;
+    var cancellations = 0;
+    for (final booking in _bookings.values) {
+      if (bandId != null
+          ? booking.bandId != bandId
+          : booking.organizationId != organizationId) {
+        continue;
+      }
+      final slot = _bookingReviews[booking.id];
+      final review = bandId != null ? slot?.organizer : slot?.artist;
+      if (review?.visibleAt != null) {
+        count++;
+        sum += review!.rating;
+      }
+      if (booking.status == BookingStatus.completed ||
+          booking.status == BookingStatus.paid) {
+        completedBookings++;
+      }
+      final cancellationStatus = bandId != null
+          ? BookingStatus.cancelledByArtist
+          : BookingStatus.cancelledByOrganizer;
+      if (booking.status == cancellationStatus) cancellations++;
+    }
+    final summary = ReviewSummary(
+      count: count,
+      mean: count == 0 ? 0 : (sum / count * 100).round() / 100,
+      completedBookings: completedBookings,
+      cancellations: cancellations,
+    );
+    if (bandId != null) {
+      final band = _bands[bandId];
+      if (band == null) return;
+      final updated = band.copyWith(reviewSummary: summary);
+      _bands[bandId] = updated;
+      for (var index = 0; index < _memberships.length; index++) {
+        final membership = _memberships[index];
+        if (membership.band.id == bandId) {
+          _memberships[index] = BandMembership(
+            band: updated,
+            role: membership.role,
+          );
+        }
+      }
+      _bandsController.add(_currentMemberships());
+      _emitFeed();
+    } else {
+      final organization = _organizations[organizationId];
+      if (organization == null) return;
+      final updated = _copyOrganization(organization, reviewSummary: summary);
+      _organizations[organization.id] = updated;
+      _replaceOrganizationInMemberships(updated);
+      _emitOrganizations();
+    }
+  }
+
   Opportunity _requireOpportunity(String opportunityId) {
     final opportunity = _opportunities[opportunityId];
     if (opportunity == null) throw StateError('Opportunity not found.');
@@ -3197,7 +4085,8 @@ class DemoRepository implements EarplugRepository {
     gigs: List<Gig>.unmodifiable([
       for (final gig in [...DemoData.gigs, ..._publishedGigs])
         if (_venues[gig.venueId] case final Venue venue)
-          if (_venueIsPublic(venue)) gig,
+          if (_venueIsPublic(venue) && gig.lifecycle == GigLifecycle.published)
+            gig,
     ]),
     venues: Map<String, Venue>.unmodifiable({
       for (final venue in _venues.values)
@@ -3359,6 +4248,7 @@ class DemoRepository implements EarplugRepository {
     List<String>? photoUrls,
     OrganizationStatus? status,
     bool? verified,
+    ReviewSummary? reviewSummary,
   }) => Organization(
     id: organization.id,
     slug: organization.slug,
@@ -3370,6 +4260,7 @@ class DemoRepository implements EarplugRepository {
     website: website ?? organization.website,
     photoUrls: photoUrls ?? organization.photoUrls,
     createdAt: organization.createdAt,
+    reviewSummary: reviewSummary ?? organization.reviewSummary,
   );
 
   void _replaceOrganizationInMemberships(Organization organization) {

@@ -1148,6 +1148,734 @@ void main() {
     );
   });
 
+  group('Booking.fromJson', () {
+    const feeJson = {
+      'grossMinor': 15000,
+      'commissionBps': 1000,
+      'commissionMinor': 1500,
+      'artistNetMinor': 13500,
+      'currency': 'usd',
+    };
+    const offerJson = {
+      'revision': 2,
+      'message': 'Looking forward to the show.',
+      'sentAt': 1799800000000,
+      'expiresAt': 1799900000000,
+      'response': 'accepted',
+      'installments': [
+        {'label': 'Full payment', 'amountMinor': 15000, 'dueAt': 1799990000000},
+      ],
+    };
+    const venueJson = {
+      '_id': 'venue-1',
+      'name': 'Signal Room',
+      'slug': 'signal-room',
+      'approxLabel': 'Oakland',
+      'exactAddress': '100 Broadway, Oakland',
+    };
+    const bookingJson = {
+      '_id': 'booking-1',
+      'opportunityId': 'opportunity-1',
+      'opportunityTitle': 'Friday Showcase',
+      'opportunitySlug': 'friday-showcase',
+      'slotId': 'slot-1',
+      'slotRole': 'headliner',
+      'slotRequired': true,
+      'organizationId': 'organization-1',
+      'organizationName': 'Signal Collective',
+      'bandId': 'band-1',
+      'bandName': 'The Night Shifts',
+      'bandSlug': 'the-night-shifts',
+      'applicationId': 'application-1',
+      'status': 'cancelled_by_organizer',
+      'revision': 3,
+      'startsAt': 1800000000000,
+      'doorsAt': 1799996400000,
+      'fee': feeJson,
+      'cancellationTemplate': 'standard',
+      'termsNotes': 'House PA provided.',
+      'organizerAcceptedTermsAt': 1799800000000,
+      'artistAcceptedTermsAt': 1799810000000,
+      'confirmedAt': 1799820000000,
+      'completedAt': 1800010000000,
+      'cancelledAt': 1800020000000,
+      'cancelledBy': 'organizer',
+      'cancelReason': 'Venue unavailable.',
+      'expiresAt': 1799900000000,
+      'currentOffer': offerJson,
+      'venue': venueJson,
+      'publicGigId': 'gig-1',
+      'publicGigSlug': 'night-shifts-at-signal-room',
+      'counterpartyEmail': 'band@example.com',
+      'viewerSide': 'organizer',
+    };
+
+    test('parses every field in a full booking payload', () {
+      final booking = Booking.fromJson(bookingJson);
+
+      expect(booking.id, 'booking-1');
+      expect(booking.opportunityId, 'opportunity-1');
+      expect(booking.opportunityTitle, 'Friday Showcase');
+      expect(booking.opportunitySlug, 'friday-showcase');
+      expect(booking.slotId, 'slot-1');
+      expect(booking.slotRole, SlotRole.headliner);
+      expect(booking.slotRequired, isTrue);
+      expect(booking.organizationId, 'organization-1');
+      expect(booking.organizationName, 'Signal Collective');
+      expect(booking.bandId, 'band-1');
+      expect(booking.bandName, 'The Night Shifts');
+      expect(booking.bandSlug, 'the-night-shifts');
+      expect(booking.applicationId, 'application-1');
+      expect(booking.status, BookingStatus.cancelledByOrganizer);
+      expect(booking.revision, 3);
+      expect(
+        booking.startsAt,
+        DateTime.fromMillisecondsSinceEpoch(1800000000000),
+      );
+      expect(
+        booking.doorsAt,
+        DateTime.fromMillisecondsSinceEpoch(1799996400000),
+      );
+      expect(booking.fee.grossMinor, 15000);
+      expect(booking.fee.commissionBps, 1000);
+      expect(booking.fee.commissionMinor, 1500);
+      expect(booking.fee.artistNetMinor, 13500);
+      expect(booking.fee.currency, 'usd');
+      expect(booking.cancellationTemplate, CancellationTemplate.standard);
+      expect(booking.termsNotes, 'House PA provided.');
+      expect(
+        booking.organizerAcceptedTermsAt,
+        DateTime.fromMillisecondsSinceEpoch(1799800000000),
+      );
+      expect(
+        booking.artistAcceptedTermsAt,
+        DateTime.fromMillisecondsSinceEpoch(1799810000000),
+      );
+      expect(
+        booking.confirmedAt,
+        DateTime.fromMillisecondsSinceEpoch(1799820000000),
+      );
+      expect(
+        booking.completedAt,
+        DateTime.fromMillisecondsSinceEpoch(1800010000000),
+      );
+      expect(
+        booking.cancelledAt,
+        DateTime.fromMillisecondsSinceEpoch(1800020000000),
+      );
+      expect(booking.cancelledBy, BookingCancelledBy.organizer);
+      expect(booking.cancelReason, 'Venue unavailable.');
+      expect(
+        booking.expiresAt,
+        DateTime.fromMillisecondsSinceEpoch(1799900000000),
+      );
+      final offer = booking.currentOffer!;
+      expect(offer.revision, 2);
+      expect(offer.message, 'Looking forward to the show.');
+      expect(offer.sentAt, DateTime.fromMillisecondsSinceEpoch(1799800000000));
+      expect(
+        offer.expiresAt,
+        DateTime.fromMillisecondsSinceEpoch(1799900000000),
+      );
+      expect(offer.response, OfferResponse.accepted);
+      final installment = offer.installments.single;
+      expect(installment.label, 'Full payment');
+      expect(installment.amountMinor, 15000);
+      expect(
+        installment.dueAt,
+        DateTime.fromMillisecondsSinceEpoch(1799990000000),
+      );
+      expect(booking.venue.id, 'venue-1');
+      expect(booking.venue.name, 'Signal Room');
+      expect(booking.venue.slug, 'signal-room');
+      expect(booking.venue.approxLabel, 'Oakland');
+      expect(booking.venue.exactAddress, '100 Broadway, Oakland');
+      expect(booking.publicGigId, 'gig-1');
+      expect(booking.publicGigSlug, 'night-shifts-at-signal-room');
+      expect(booking.counterpartyEmail, 'band@example.com');
+      expect(booking.viewerSide, BookingSide.organizer);
+    });
+
+    test('preserves nulls for every nullable booking and venue field', () {
+      final booking = Booking.fromJson({
+        ...bookingJson,
+        'doorsAt': null,
+        'termsNotes': null,
+        'artistAcceptedTermsAt': null,
+        'confirmedAt': null,
+        'completedAt': null,
+        'cancelledAt': null,
+        'cancelledBy': null,
+        'cancelReason': null,
+        'expiresAt': null,
+        'currentOffer': null,
+        'publicGigId': null,
+        'publicGigSlug': null,
+        'counterpartyEmail': null,
+        'venue': {
+          ...venueJson,
+          'slug': null,
+          'approxLabel': null,
+          'exactAddress': null,
+        },
+      });
+
+      expect(booking.doorsAt, isNull);
+      expect(booking.termsNotes, isNull);
+      expect(booking.artistAcceptedTermsAt, isNull);
+      expect(booking.confirmedAt, isNull);
+      expect(booking.completedAt, isNull);
+      expect(booking.cancelledAt, isNull);
+      expect(booking.cancelledBy, isNull);
+      expect(booking.cancelReason, isNull);
+      expect(booking.expiresAt, isNull);
+      expect(booking.currentOffer, isNull);
+      expect(booking.publicGigId, isNull);
+      expect(booking.publicGigSlug, isNull);
+      expect(booking.counterpartyEmail, isNull);
+      expect(booking.venue.slug, isNull);
+      expect(booking.venue.approxLabel, isNull);
+      expect(booking.venue.exactAddress, isNull);
+    });
+
+    test('defaults missing and malformed fields without throwing', () {
+      for (final json in <Map<String, dynamic>>[
+        const {},
+        {
+          '_id': 7,
+          'status': 'something_new',
+          'slotRole': false,
+          'slotRequired': 'true',
+          'startsAt': 'tomorrow',
+          'doorsAt': 'tonight',
+          'revision': 'three',
+          'fee': 'not a map',
+          'venue': ['not a map'],
+          'currentOffer': 42,
+          'termsNotes': false,
+          'counterpartyEmail': 7,
+        },
+      ]) {
+        final booking = Booking.fromJson(json);
+        expect(booking.id, '');
+        expect(booking.status, BookingStatus.unknown);
+        expect(booking.slotRole, SlotRole.support);
+        expect(booking.slotRequired, isFalse);
+        expect(booking.startsAt, DateTime.fromMillisecondsSinceEpoch(0));
+        expect(booking.doorsAt, isNull);
+        expect(booking.revision, 0);
+        expect(booking.fee.grossMinor, 0);
+        expect(booking.fee.currency, '');
+        expect(booking.venue.id, '');
+        expect(booking.currentOffer, isNull);
+        expect(booking.termsNotes, isNull);
+        expect(booking.counterpartyEmail, isNull);
+      }
+    });
+
+    test(
+      'BookingOffer preserves unanswered responses and optional messages',
+      () {
+        final offer = BookingOffer.fromJson({
+          ...offerJson,
+          'message': null,
+          'response': null,
+        });
+        expect(offer.message, isNull);
+        expect(offer.response, isNull);
+        expect(BookingOffer.fromJson(const {}).installments, isEmpty);
+        final malformed = BookingOffer.fromJson({
+          'response': 'something_new',
+          'installments': [
+            null,
+            'invalid',
+            {'label': 5, 'amountMinor': 'free'},
+          ],
+        });
+        expect(malformed.response, OfferResponse.withdrawn);
+        expect(malformed.installments.single.label, '');
+        expect(malformed.installments.single.amountMinor, 0);
+        expect(
+          malformed.installments.single.dueAt,
+          DateTime.fromMillisecondsSinceEpoch(0),
+        );
+      },
+    );
+
+    test('FeeBreakdown exposes snapshot amounts as Money', () {
+      final fee = FeeBreakdown.fromJson(feeJson);
+      expect(fee.grossMinor, 15000);
+      expect(fee.commissionBps, 1000);
+      expect(fee.commissionMinor, 1500);
+      expect(fee.artistNetMinor, 13500);
+      expect(fee.currency, 'usd');
+      expect(fee.gross.label, '\$150.00');
+      expect(fee.commission.label, '\$15.00');
+      expect(fee.artistNet.label, '\$135.00');
+    });
+  });
+
+  group('Phase 3 marketplace enum wire values', () {
+    test('BookingStatus round-trips the exact wire values and labels', () {
+      expect(BookingStatus.values.map((status) => status.wireValue), [
+        'offer_sent',
+        'artist_accepted',
+        'awaiting_payment',
+        'confirmed',
+        'completed',
+        'paid',
+        'cancelled_by_organizer',
+        'cancelled_by_artist',
+        'force_majeure',
+        'disputed',
+        'refunded',
+        'declined',
+        'expired',
+        'withdrawn',
+        'unknown',
+      ]);
+      expect(BookingStatus.values.map((status) => status.label), [
+        'Offer sent',
+        'Artist accepted',
+        'Awaiting payment',
+        'Confirmed',
+        'Completed',
+        'Paid',
+        'Cancelled by organizer',
+        'Cancelled by artist',
+        'Force majeure',
+        'Disputed',
+        'Refunded',
+        'Declined',
+        'Expired',
+        'Withdrawn',
+        'Unknown',
+      ]);
+      for (final status in BookingStatus.values) {
+        expect(BookingStatus.fromWire(status.wireValue), status);
+      }
+      expect(BookingStatus.fromWire('something_new'), BookingStatus.unknown);
+      expect(BookingStatus.fromWire(null), BookingStatus.unknown);
+    });
+
+    test('BookingStatus active and live sets match the backend', () {
+      const active = {
+        BookingStatus.offerSent,
+        BookingStatus.artistAccepted,
+        BookingStatus.awaitingPayment,
+        BookingStatus.confirmed,
+        BookingStatus.completed,
+        BookingStatus.paid,
+        BookingStatus.disputed,
+      };
+      const live = {
+        BookingStatus.confirmed,
+        BookingStatus.completed,
+        BookingStatus.paid,
+      };
+      for (final status in BookingStatus.values) {
+        expect(
+          status.isActive,
+          active.contains(status),
+          reason: status.wireValue,
+        );
+        expect(status.isLive, live.contains(status), reason: status.wireValue);
+      }
+    });
+
+    test('CancellationTemplate round-trips and defaults to standard', () {
+      for (final template in CancellationTemplate.values) {
+        expect(CancellationTemplate.fromWire(template.wireValue), template);
+      }
+      expect(
+        CancellationTemplate.fromWire('something_new'),
+        CancellationTemplate.standard,
+      );
+      expect(
+        CancellationTemplate.fromWire(null),
+        CancellationTemplate.standard,
+      );
+      expect(CancellationTemplate.values.map((value) => value.label), [
+        'Flexible',
+        'Standard',
+        'Strict',
+      ]);
+      expect(CancellationTemplate.values.map((value) => value.description), [
+        'Full refund up to 48 hours before the show.',
+        'Full refund more than 14 days out, 50% refund 7-14 days out, no refund within 7 days.',
+        'No refund within 14 days of the show.',
+      ]);
+    });
+
+    test(
+      'booking side, cancellation actor, and response use safe fallbacks',
+      () {
+        for (final value in BookingSide.values) {
+          expect(BookingSide.fromWire(value.wireValue), value);
+        }
+        for (final value in BookingCancelledBy.values) {
+          expect(BookingCancelledBy.fromWire(value.wireValue), value);
+        }
+        for (final value in OfferResponse.values) {
+          expect(OfferResponse.fromWire(value.wireValue), value);
+        }
+        for (final value in [null, 'something_new', 42]) {
+          expect(BookingSide.fromWire(value), BookingSide.artist);
+          expect(BookingCancelledBy.fromWire(value), BookingCancelledBy.system);
+          expect(OfferResponse.fromWire(value), OfferResponse.withdrawn);
+        }
+      },
+    );
+  });
+
+  group('Gig marketplace ownership', () {
+    const gigJson = {
+      '_id': 'gig-1',
+      'slug': 'friday-showcase',
+      'title': 'Friday Showcase',
+      'venueId': 'venue-1',
+      'price': 0,
+      'startsAt': 1800000000000,
+      'doorsAt': 1799996400000,
+      'doorsTime': '7PM / 8PM',
+      'flyKey': 'paper',
+      'lineup': ['band-1'],
+      'genres': ['indie'],
+      'desc': 'An evening of local bands.',
+      'ticketing': 'rsvp',
+      'cap': '150',
+    };
+
+    test('parses organization ownership and preserves it when copied', () {
+      final gig = Gig.fromJson({
+        ...gigJson,
+        'ownerKind': 'organization',
+        'opportunityId': 'opportunity-1',
+      });
+      expect(gig.ownerKind, GigOwnerKind.organization);
+      expect(gig.opportunityId, 'opportunity-1');
+      final copy = gig.copyWith(going: 12);
+      expect(copy.ownerKind, GigOwnerKind.organization);
+      expect(copy.opportunityId, 'opportunity-1');
+      expect(gig.sameListing(copy), isTrue);
+      expect(
+        gig.sameListing(gig.copyWith(ownerKind: GigOwnerKind.band)),
+        isFalse,
+      );
+      expect(
+        gig.sameListing(gig.copyWith(opportunityId: 'opportunity-2')),
+        isFalse,
+      );
+      final relabeled = gig.relabeled(now: gig.startsAt);
+      expect(relabeled.ownerKind, GigOwnerKind.organization);
+      expect(relabeled.opportunityId, 'opportunity-1');
+    });
+
+    test(
+      'defaults legacy payloads to band ownership without an opportunity',
+      () {
+        final gig = Gig.fromJson(gigJson);
+        expect(gig.ownerKind, GigOwnerKind.band);
+        expect(gig.opportunityId, isNull);
+        expect(gig.tix, Ticketing.rsvp);
+        for (final value in GigOwnerKind.values) {
+          expect(GigOwnerKind.fromWire(value.wireValue), value);
+        }
+        for (final value in [null, 'something_new', 42]) {
+          final malformed = Gig.fromJson({
+            ...gigJson,
+            'ownerKind': value,
+            'opportunityId': 42,
+          });
+          expect(malformed.ownerKind, GigOwnerKind.band);
+          expect(malformed.opportunityId, isNull);
+        }
+      },
+    );
+
+    test('unknown, missing, and null ticketing fall back to RSVP', () {
+      for (final value in [null, 'something_else', 42]) {
+        expect(
+          Gig.fromJson({...gigJson, 'ticketing': value}).tix,
+          Ticketing.rsvp,
+        );
+      }
+      final withoutTicketing = {...gigJson}..remove('ticketing');
+      expect(Gig.fromJson(withoutTicketing).tix, Ticketing.rsvp);
+      expect(
+        Gig.fromJson({...gigJson, 'ticketing': 'external'}).tix,
+        Ticketing.external,
+      );
+    });
+  });
+
+  group('marketplace reviews', () {
+    const publicReviewJson = {
+      'reviewId': 'review-1',
+      'rating': 5,
+      'categories': ['communication', 'sound'],
+      'text': 'Great show and clear communication.',
+      'submittedAt': 1800010000000,
+      'monthLabel': 'January 2027',
+      'opportunityTitle': 'Friday Showcase',
+    };
+
+    test('PublicReview parses both counterparty listing shapes', () {
+      for (final counterparty in [
+        {'organizationName': 'Signal Collective'},
+        {'bandName': 'The Night Shifts'},
+      ]) {
+        final review = PublicReview.fromJson({
+          ...publicReviewJson,
+          ...counterparty,
+        });
+        expect(review.reviewId, 'review-1');
+        expect(review.rating, 5);
+        expect(review.categories, ['communication', 'sound']);
+        expect(review.text, 'Great show and clear communication.');
+        expect(
+          review.submittedAt,
+          DateTime.fromMillisecondsSinceEpoch(1800010000000),
+        );
+        expect(review.monthLabel, 'January 2027');
+        expect(review.opportunityTitle, 'Friday Showcase');
+        expect(review.counterpartyName, counterparty.values.single);
+      }
+      expect(
+        PublicReview.fromJson({
+          ...publicReviewJson,
+          'organizationName': 'Signal Collective',
+          'bandName': 'The Night Shifts',
+        }).counterpartyName,
+        'Signal Collective',
+      );
+      expect(
+        PublicReview.fromJson({
+          ...publicReviewJson,
+          'organizationName': 42,
+          'bandName': 'The Night Shifts',
+        }).counterpartyName,
+        'The Night Shifts',
+      );
+      expect(PublicReview.fromJson(publicReviewJson).counterpartyName, '');
+    });
+
+    test('BookingReviews parses both reviews with their distinct sides', () {
+      final reviews = BookingReviews.fromJson({
+        'mine': {
+          'reviewId': 'review-1',
+          'authorSide': 'organizer',
+          'rating': 5,
+          'categories': ['professionalism', 'punctuality'],
+          'text': 'Ready on time and sounded great.',
+          'submittedAt': 1800010000000,
+          'visibleAt': 1800020000000,
+        },
+        'theirs': {
+          'reviewId': 'review-2',
+          'authorSide': 'artist',
+          'rating': 4,
+          'categories': ['hospitality', 'payment'],
+          'text': 'Welcoming hosts and prompt payment.',
+          'submittedAt': 1800020000000,
+          'visibleAt': null,
+        },
+        'windowClosesAt': 1801000000000,
+        'canSubmit': false,
+      });
+      final mine = reviews.mine!;
+      expect(mine.reviewId, 'review-1');
+      expect(mine.authorSide, BookingSide.organizer);
+      expect(mine.rating, 5);
+      expect(mine.categories, ['professionalism', 'punctuality']);
+      expect(mine.text, 'Ready on time and sounded great.');
+      expect(
+        mine.submittedAt,
+        DateTime.fromMillisecondsSinceEpoch(1800010000000),
+      );
+      expect(
+        mine.visibleAt,
+        DateTime.fromMillisecondsSinceEpoch(1800020000000),
+      );
+      final theirs = reviews.theirs!;
+      expect(theirs.reviewId, 'review-2');
+      expect(theirs.authorSide, BookingSide.artist);
+      expect(theirs.rating, 4);
+      expect(theirs.categories, ['hospitality', 'payment']);
+      expect(theirs.text, 'Welcoming hosts and prompt payment.');
+      expect(
+        theirs.submittedAt,
+        DateTime.fromMillisecondsSinceEpoch(1800020000000),
+      );
+      expect(theirs.visibleAt, isNull);
+      expect(
+        reviews.windowClosesAt,
+        DateTime.fromMillisecondsSinceEpoch(1801000000000),
+      );
+      expect(reviews.canSubmit, isFalse);
+    });
+
+    test(
+      'BookingReviews preserves null reviews before either side submits',
+      () {
+        final reviews = BookingReviews.fromJson({
+          'mine': null,
+          'theirs': null,
+          'windowClosesAt': 1801000000000,
+          'canSubmit': true,
+        });
+        expect(reviews.mine, isNull);
+        expect(reviews.theirs, isNull);
+        expect(
+          reviews.windowClosesAt,
+          DateTime.fromMillisecondsSinceEpoch(1801000000000),
+        );
+        expect(reviews.canSubmit, isTrue);
+      },
+    );
+
+    test('review parsers tolerate missing and malformed fields', () {
+      final review = Review.fromJson({
+        'rating': 'five',
+        'categories': ['sound', 42, null],
+        'visibleAt': 'tomorrow',
+      });
+      expect(review.reviewId, '');
+      expect(review.authorSide, BookingSide.artist);
+      expect(review.rating, 0);
+      expect(review.categories, ['sound']);
+      expect(review.text, '');
+      expect(review.submittedAt, DateTime.fromMillisecondsSinceEpoch(0));
+      expect(review.visibleAt, isNull);
+      final reviews = BookingReviews.fromJson({
+        'mine': 42,
+        'theirs': <Object?>[],
+        'canSubmit': 'true',
+      });
+      expect(reviews.mine, isNull);
+      expect(reviews.theirs, isNull);
+      expect(reviews.canSubmit, isFalse);
+      expect(reviews.windowClosesAt, DateTime.fromMillisecondsSinceEpoch(0));
+      expect(PublicReview.fromJson(const {}).categories, isEmpty);
+    });
+
+    test('review categories retain the backend order', () {
+      expect(reviewCategories, [
+        'professionalism',
+        'punctuality',
+        'communication',
+        'sound',
+        'hospitality',
+        'payment',
+      ]);
+    });
+  });
+
+  group('ReviewSummary', () {
+    const summaryJson = {
+      'count': 4,
+      'mean': 4.75,
+      'completedBookings': 6,
+      'cancellations': 1,
+    };
+    const bandJson = {
+      '_id': 'band-1',
+      'name': 'The Night Shifts',
+      'genres': ['indie'],
+      'area': 'Oakland',
+      'colorHex': '#1435F0',
+      'initials': 'NS',
+      'followerCount': 218,
+      'bio': 'A Bay Area band.',
+    };
+
+    test('parses counts and a fractional mean', () {
+      final summary = ReviewSummary.fromJson(summaryJson);
+      expect(summary.count, 4);
+      expect(summary.mean, 4.75);
+      expect(summary.completedBookings, 6);
+      expect(summary.cancellations, 1);
+    });
+
+    test('null, empty, and malformed summaries default to zero', () {
+      for (final json in <Map<String, dynamic>?>[
+        null,
+        const {},
+        {
+          'count': 'four',
+          'mean': 'five',
+          'completedBookings': false,
+          'cancellations': <Object?>[],
+        },
+      ]) {
+        final summary = ReviewSummary.fromJson(json);
+        expect(summary.count, 0);
+        expect(summary.mean, 0);
+        expect(summary.completedBookings, 0);
+        expect(summary.cancellations, 0);
+      }
+    });
+
+    test('Band and Organization accept summaries when present', () {
+      final band = Band.fromJson({...bandJson, 'reviewSummary': summaryJson});
+      final organization = Organization.fromJson({
+        'reviewSummary': summaryJson,
+      });
+      for (final summary in [
+        band.reviewSummary!,
+        organization.reviewSummary!,
+      ]) {
+        expect(summary.count, 4);
+        expect(summary.mean, 4.75);
+        expect(summary.completedBookings, 6);
+        expect(summary.cancellations, 1);
+      }
+    });
+
+    test(
+      'Band and Organization tolerate payloads without review summaries',
+      () {
+        for (final json in <Map<String, dynamic>>[
+          const {},
+          {'reviewSummary': null},
+          {'reviewSummary': 'not a map'},
+        ]) {
+          expect(Band.fromJson({...bandJson, ...json}).reviewSummary, isNull);
+          expect(Organization.fromJson(json).reviewSummary, isNull);
+        }
+      },
+    );
+
+    test(
+      'Band preserves profile review summaries across copies and feed merges',
+      () {
+        final band = Band.fromJson({...bandJson, 'reviewSummary': summaryJson});
+        final replacement = ReviewSummary.fromJson({
+          ...summaryJson,
+          'count': 5,
+        });
+        expect(
+          band.copyWith(name: 'Updated name').reviewSummary,
+          same(band.reviewSummary),
+        );
+        expect(
+          band.copyWith(reviewSummary: replacement).reviewSummary,
+          same(replacement),
+        );
+        final feedBand = Band.fromJson({...bandJson, 'followerCount': 300});
+        for (final summary in [
+          feedBand,
+          feedBand.copyWith(reviewSummary: replacement),
+        ]) {
+          final merged = band.mergeSummary(summary, upcoming: ['gig-1']);
+          expect(merged.reviewSummary, same(band.reviewSummary));
+          expect(merged.followers, 300);
+          expect(merged.upcoming, ['gig-1']);
+        }
+      },
+    );
+  });
+
   group('marketplace Phase 2 models', () {
     const slotJson = {
       '_id': 'slot-1',

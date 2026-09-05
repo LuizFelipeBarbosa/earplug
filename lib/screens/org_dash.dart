@@ -17,6 +17,7 @@ class OrgDashScreen extends StatefulWidget {
 
 class _OrgDashScreenState extends State<OrgDashScreen> {
   OrganizationDashboard? _dashboard;
+  List<PublicReview> _reviews = const [];
   Object? _error;
   bool _loading = true;
   String? _loadedOrganizationId;
@@ -29,7 +30,23 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
     if (_loadedOrganizationId == organizationId) return;
     _loadedOrganizationId = organizationId;
     _refresh();
+    _loadReviews(organizationId);
     app.refreshOpportunities(organizationId);
+  }
+
+  Future<void> _loadReviews(String organizationId) async {
+    final app = context.read<AppState>();
+    _reviews = const [];
+    try {
+      final reviews = await app.repository.reviewsForOrganization(
+        organizationId,
+        limit: 3,
+      );
+      if (!mounted || app.organizationId != organizationId) return;
+      setState(() => _reviews = reviews);
+    } catch (_) {
+      // Reviews are optional; a failed load must not hide the dashboard.
+    }
   }
 
   Future<void> _refresh() async {
@@ -61,6 +78,7 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final dashboard = _dashboard;
+    final reviewSummary = dashboard?.organization.reviewSummary;
     final membership = app.currentOrganization;
     final organizationName =
         dashboard?.organization.name ??
@@ -137,6 +155,68 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
             onTeam: () => app.go(Screen.orgTeam),
             onSettings: () => app.go(Screen.orgSettings),
           ),
+          const SizedBox(height: 12),
+          EpStatCard(
+            key: const ValueKey('org-dash-stat-rating'),
+            expand: false,
+            label: 'RATING',
+            value: reviewSummary != null && reviewSummary.count > 0
+                ? reviewSummary.mean.toStringAsFixed(1)
+                : '—',
+            caption: reviewSummary != null && reviewSummary.count > 0
+                ? '${reviewSummary.count} reviews'
+                : 'no reviews yet',
+          ),
+          if (_reviews.isNotEmpty)
+            Column(
+              key: const ValueKey('org-dash-reviews'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SectionBar(label: 'REVIEWS'),
+                for (final review in _reviews) ...[
+                  EpCard(
+                    key: ValueKey('org-dash-review-${review.reviewId}'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          review.counterpartyName,
+                          style: Theme.of(context).textTheme.epBody,
+                        ),
+                        const SizedBox(height: 6),
+                        Semantics(
+                          label: '${review.rating} out of 5 stars',
+                          excludeSemantics: true,
+                          child: Row(
+                            children: [
+                              for (var rating = 1; rating <= 5; rating++)
+                                Icon(
+                                  rating <= review.rating
+                                      ? Icons.star
+                                      : Icons.star_border,
+                                  size: 18,
+                                  color: context.epColors.accent,
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          review.monthLabel,
+                          style: Theme.of(context).textTheme.epCaption,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          review.text,
+                          style: Theme.of(context).textTheme.epBody,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ],
+            ),
         ],
       ],
     );

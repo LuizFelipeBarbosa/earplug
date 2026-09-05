@@ -231,10 +231,125 @@ class BandProfileScreen extends StatelessWidget {
                   ],
                 ),
               ],
+              _BandReviewsSection(
+                key: ValueKey('band-reviews-loader-$bandId'),
+                bandId: bandId,
+                summary: band.reviewSummary,
+              ),
             ],
           ),
         ),
       ],
+    );
+  }
+}
+
+class _BandReviewsSection extends StatefulWidget {
+  const _BandReviewsSection({
+    super.key,
+    required this.bandId,
+    required this.summary,
+  });
+
+  final String bandId;
+  final ReviewSummary? summary;
+
+  @override
+  State<_BandReviewsSection> createState() => _BandReviewsSectionState();
+}
+
+class _BandReviewsSectionState extends State<_BandReviewsSection> {
+  late final Future<List<PublicReview>> _reviews;
+
+  @override
+  void initState() {
+    super.initState();
+    _reviews = context.read<AppState>().repository.reviewsForBand(
+      widget.bandId,
+      limit: 5,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<PublicReview>>(
+      future: _reviews,
+      builder: (context, snapshot) {
+        final summary = widget.summary;
+        final reviews = snapshot.data ?? const <PublicReview>[];
+        if (summary == null || (summary.count == 0 && reviews.isEmpty)) {
+          return const SizedBox.shrink();
+        }
+        return Column(
+          key: const ValueKey('band-reviews'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SectionBar(label: 'REVIEWS', count: summary.count),
+            Text(
+              '★ ${summary.mean.toStringAsFixed(1)} · ${summary.count} reviews · '
+              '${summary.completedBookings} completed bookings',
+              style: Theme.of(context).textTheme.epBody,
+            ),
+            for (final review in reviews) ...[
+              const SizedBox(height: 10),
+              EpCard(
+                key: ValueKey('band-review-${review.reviewId}'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Semantics(
+                      label: '${review.rating} out of 5 stars',
+                      excludeSemantics: true,
+                      child: Row(
+                        children: [
+                          for (var rating = 1; rating <= 5; rating++)
+                            Icon(
+                              rating <= review.rating
+                                  ? Icons.star
+                                  : Icons.star_border,
+                              size: 18,
+                              color: context.epColors.accent,
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      review.counterpartyName,
+                      style: Theme.of(context).textTheme.epBody,
+                    ),
+                    Text(
+                      review.monthLabel,
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                    if (review.categories.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final category in review.categories)
+                            EpChip(
+                              label: category.toUpperCase(),
+                              active: true,
+                              onTap: null,
+                              readOnly: true,
+                            ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      review.text,
+                      style: Theme.of(context).textTheme.epBody,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
     );
   }
 }

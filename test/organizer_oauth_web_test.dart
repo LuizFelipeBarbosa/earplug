@@ -10,11 +10,23 @@ import 'support/async.dart';
 
 void main() {
   for (final route in [
-    (path: '/org/apply', inviteToken: null, screen: Screen.auth),
+    (
+      path: '/org/apply',
+      inviteToken: null,
+      bookingId: null,
+      screen: Screen.auth,
+    ),
     (
       path: '/apply/invitation-token',
       inviteToken: 'invitation-token',
+      bookingId: null,
       screen: Screen.orgJoin,
+    ),
+    (
+      path: '/bookings/bk1',
+      inviteToken: null,
+      bookingId: 'bk1',
+      screen: Screen.auth,
     ),
   ]) {
     test(
@@ -31,8 +43,9 @@ void main() {
 
         final app = AppState.demo(
           auth: FakeAuthService(),
-          initialOrganizerApply: route.inviteToken == null,
+          initialOrganizerApply: route.path == '/org/apply',
           initialOrgInviteToken: route.inviteToken,
+          initialBookingId: route.bookingId,
         );
         addTearDown(app.dispose);
         await flushAsyncWork();
@@ -43,7 +56,10 @@ void main() {
           '${web.window.location.pathname}${web.window.location.search}',
           callbackPath,
         );
-        if (route.inviteToken == null) {
+        if (route.bookingId != null) {
+          expect(app.pending?.kind, PendingKind.booking);
+          expect(app.pending?.id, route.bookingId);
+        } else if (route.inviteToken == null) {
           expect(app.pending?.kind, PendingKind.orgApply);
         } else {
           expect(app.current.param, route.inviteToken);

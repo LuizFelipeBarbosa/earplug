@@ -12,6 +12,7 @@ import {
   gigLifecycleValidator,
   gigPublicPerformerValidator,
   pastShowValidator,
+  reviewSummaryValidator,
   venueTypeValidator,
 } from "../schema";
 import { approximateLocation, formatMiles, OAK_CENTER, SF_CENTER } from "./geo";
@@ -187,6 +188,7 @@ export const bandPayloadValidator = v.object({
   discoveryProfileReady: v.boolean(),
   // The wire shape is the stored shape here; reuse it rather than restating it.
   pastShows: v.array(pastShowValidator),
+  reviewSummary: v.union(reviewSummaryValidator, v.null()),
 });
 
 /** The six presses offered by the client's gig-create picker. "custom" means
@@ -576,6 +578,7 @@ export async function toBandPayload(ctx: QueryCtx, band: Doc<"bands">) {
     discoveryProfileReady:
       profileComplete && profileImageReady && band.hasClip === true,
     pastShows: band.pastShows,
+    reviewSummary: band.reviewSummary ?? null,
   };
 }
 
