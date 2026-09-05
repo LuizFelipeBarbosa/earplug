@@ -126,7 +126,7 @@ void main() {
     );
     await enterOrganizer(tester, harness, 'org1');
 
-    await tester.tap(find.byKey(const Key('organizer-tab-venues')));
+    await tester.tap(find.byKey(const Key('org-dash-command-venues')));
     await tester.pumpAndSettle();
 
     final venueCard = find.byKey(const ValueKey('org-venue-v1'));
@@ -217,7 +217,7 @@ void main() {
     );
     await enterOrganizer(tester, harness, 'org1');
 
-    await tester.tap(find.byKey(const Key('organizer-tab-venues')));
+    await tester.tap(find.byKey(const Key('org-dash-command-venues')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('org-venue-v1')));
     await tester.pumpAndSettle();

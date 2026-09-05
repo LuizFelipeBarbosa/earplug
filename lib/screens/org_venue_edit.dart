@@ -446,7 +446,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 66,
+          bottom: 67,
           child: StickyActionBar(
             key: const Key('org-venue-save'),
             primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',

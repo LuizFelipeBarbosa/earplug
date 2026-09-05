@@ -136,6 +136,7 @@ void main() {
     await enterOrganizer(tester, harness, 'org1');
 
     expect(find.byKey(const Key('organizer-tab-dash')), findsOne);
+    expect(find.byKey(const Key('organizer-tab-venues')), findsNothing);
     expect(find.byKey(const Key('org-dash-verification')), findsOne);
     expect(harness.app.identity, isA<OrganizerIdentity>());
 
