@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:convex_flutter/convex_flutter.dart';
 import 'package:earplug/services/convex_service.dart';
 import 'package:earplug/services/convex_transport.dart';
+import 'package:earplug/widgets/form_bits.dart';
 // fake_async is already resolved transitively for deterministic timer tests.
 // ignore: depend_on_referenced_packages
 import 'package:fake_async/fake_async.dart';
@@ -11,6 +13,122 @@ import 'package:flutter_test/flutter_test.dart';
 const _pastGracePeriod = Duration(milliseconds: 251);
 
 void main() {
+  group('ConvexService query/mutation error handling', () {
+    const message = 'Paid offers open once payments are enabled';
+    const rawError =
+        '[Request ID: abc] Server Error\n'
+        'Uncaught Error: $message\n'
+        '    at handler (...)\n';
+    late _FakeConvexTransport transport;
+    late ConvexService service;
+
+    setUp(() async {
+      transport = _FakeConvexTransport();
+      service = ConvexService(transport: transport);
+      await service.init('https://fake.convex.cloud');
+    });
+
+    test(
+      'mutation throws a typed error and preserves the form message',
+      () async {
+        transport.mutationResult = jsonEncode(rawError);
+
+        await expectLater(
+          service.mutation('bookings:sendOffer'),
+          throwsA(
+            isA<ConvexFunctionException>()
+                .having((error) => error.message, 'message', rawError)
+                .having((error) => error.requestId, 'requestId', 'abc')
+                .having((error) => error.toString(), 'toString()', rawError)
+                .having(serverErrorMessage, 'serverErrorMessage()', message),
+          ),
+        );
+      },
+    );
+
+    test(
+      'query throws a typed error with the raw text and request ID',
+      () async {
+        transport.queryResult = jsonEncode(rawError);
+
+        await expectLater(
+          service.query('bookings:get'),
+          throwsA(
+            isA<ConvexFunctionException>()
+                .having((error) => error.message, 'message', rawError)
+                .having((error) => error.requestId, 'requestId', 'abc'),
+          ),
+        );
+      },
+    );
+
+    test(
+      'returns ordinary strings and other decoded JSON values as-is',
+      () async {
+        for (final value in <Object?>[
+          'the-foghorn-club',
+          '',
+          'Uncaught Error: ordinary text without a server error marker',
+          'Text mentioning [Request ID: abc] away from the start',
+          'server error',
+          <String, Object?>{'message': rawError},
+          <Object?>[rawError],
+          42,
+          1.5,
+          true,
+          false,
+          null,
+        ]) {
+          transport
+            ..queryResult = jsonEncode(value)
+            ..mutationResult = jsonEncode(value);
+
+          expect(await service.query('values:get'), value);
+          expect(await service.mutation('values:set'), value);
+        }
+      },
+    );
+
+    test(
+      'recognizes either error marker and parses only a leading ID',
+      () async {
+        for (final entry in <String, String?>{
+          '[Request ID:   abc   ] Uncaught Error: $message': 'abc',
+          'Unexpected Server Error\nUncaught Error: $message': null,
+          'Server Error [Request ID: abc]\nUncaught Error: $message': null,
+        }.entries) {
+          transport
+            ..queryResult = jsonEncode(entry.key)
+            ..mutationResult = jsonEncode(entry.key);
+          final errorMatcher = throwsA(
+            isA<ConvexFunctionException>()
+                .having((error) => error.message, 'message', entry.key)
+                .having((error) => error.requestId, 'requestId', entry.value),
+          );
+
+          await expectLater(service.query('values:get'), errorMatcher);
+          await expectLater(service.mutation('values:set'), errorMatcher);
+        }
+      },
+    );
+
+    test('propagates transport rejections unchanged', () async {
+      for (final error in <Object>[
+        Exception(rawError),
+        rawError,
+        const ConvexFunctionException(rawError, requestId: 'abc'),
+        StateError('connection failed'),
+      ]) {
+        transport
+          ..queryError = error
+          ..mutationError = error;
+
+        await expectLater(service.query('values:get'), throwsA(same(error)));
+        await expectLater(service.mutation('values:set'), throwsA(same(error)));
+      }
+    });
+  });
+
   group('ConvexService shared subscriptions', () {
     test('shares equal canonical args and replays the current value', () {
       fakeAsync((async) {
@@ -533,6 +651,10 @@ class _FakeConvexTransport implements ConvexTransport {
   int initializeCalls = 0;
   int subscribeCalls = 0;
   int cancelCalls = 0;
+  String queryResult = 'null';
+  String mutationResult = 'null';
+  Object? queryError;
+  Object? mutationError;
 
   @override
   bool get isConnected => true;
@@ -551,7 +673,9 @@ class _FakeConvexTransport implements ConvexTransport {
 
   @override
   Future<String> query(String name, Map<String, dynamic> args) {
-    return Future<String>.value('null');
+    final error = queryError;
+    if (error != null) return Future<String>.error(error);
+    return Future<String>.value(queryResult);
   }
 
   @override
@@ -559,7 +683,9 @@ class _FakeConvexTransport implements ConvexTransport {
     required String name,
     required Map<String, dynamic> args,
   }) {
-    return Future<String>.value('null');
+    final error = mutationError;
+    if (error != null) return Future<String>.error(error);
+    return Future<String>.value(mutationResult);
   }
 
   @override
