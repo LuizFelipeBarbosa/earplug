@@ -700,6 +700,84 @@ describe("installment Checkout", () => {
 });
 
 describe("payment webhooks and ledger", () => {
+  test("refunds a stale Checkout intent after settlement and ignores replays", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    await f.open(record);
+    const originalEvent = completedEvent(record);
+    expect(await f.deliver(originalEvent)).toEqual({
+      outcome: "applied",
+    });
+    const settledRecords = await f.records(offer.bookingId);
+    const booking = await f.readBooking(offer.bookingId);
+    const jobsBefore = await f.scheduled();
+    const event = {
+      ...completedEvent(record, {
+        id: "cs_stale",
+        payment_intent: "pi_stale",
+        amount_total: 14000,
+      }),
+      id: "evt_stale",
+    };
+    expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+    const rows = await f.t.run((ctx) => ctx.db.query("refunds").take(50));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      paymentRecordId: record._id,
+      reason: "late_payment",
+      stripePaymentIntentId: "pi_stale",
+      amountMinor: 14000,
+      status: "pending",
+    });
+    const ledger = await f.ledger();
+    expect(ledger).toHaveLength(2);
+    expect(ledger).toContainEqual(
+      expect.objectContaining({
+        kind: "charge",
+        idempotencyKey: "charge:pi_stale",
+        stripeRef: "pi_stale",
+        amountMinor: 14000,
+      }),
+    );
+    const jobs = await f.scheduled();
+    expect(
+      jobs.filter(
+        (job) => !jobsBefore.some((old) => old._id === job._id),
+      ),
+    ).toMatchObject([
+      {
+        name: "refunds:executeRefund",
+        args: [{ refundId: rows[0]._id, attempt: 0 }],
+        scheduledTime: NOW,
+      },
+    ]);
+    expect(await f.deliver(event)).toEqual({ outcome: "duplicate" });
+    // Exercise the handler's own guards for both intents after every settled state.
+    for (const status of [
+      "paid",
+      "partially_refunded",
+      "refunded",
+    ] as const) {
+      await f.t.run((ctx) => ctx.db.patch(record._id, { status }));
+      for (const replay of [event, originalEvent]) {
+        await f.t.mutation(internal.stripeWebhook.applyEventHandler, {
+          eventJson: JSON.stringify(replay),
+        });
+      }
+      expect((await f.records(offer.bookingId))[0]).toEqual({
+        ...settledRecords[0],
+        status,
+      });
+    }
+    expect(
+      await f.t.run((ctx) => ctx.db.query("refunds").take(50)),
+    ).toEqual(rows);
+    expect(await f.ledger()).toEqual(ledger);
+    expect(await f.scheduled()).toEqual(jobs);
+    expect(await f.readBooking(offer.bookingId)).toEqual(booking);
+  });
+
   test("first payment confirms the booking, books the slot, notifies both sides, and replays safely", async () => {
     const f = await setupPayments();
     const offer = await f.accept(INSTALLMENTS);

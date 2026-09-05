@@ -31,7 +31,6 @@ const checkoutCompleted: StripeEventHandler = async (ctx, event) => {
     );
     return;
   }
-  if (record.status === "paid") return;
   const paymentIntent = session.payment_intent;
   const paymentIntentId =
     typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
@@ -46,6 +45,34 @@ const checkoutCompleted: StripeEventHandler = async (ctx, event) => {
     typeof session.amount_total === "number"
       ? session.amount_total
       : record.amountMinor;
+  if (
+    record.status === "paid" ||
+    record.status === "refunded" ||
+    record.status === "partially_refunded"
+  ) {
+    if (paymentIntentId === record.stripePaymentIntentId) return;
+    const booking = await ctx.db.get(record.bookingId);
+    if (!booking) throw new Error("Booking not found");
+    await appendLedgerEntry(ctx, {
+      idempotencyKey: `charge:${paymentIntentId}`,
+      kind: "charge",
+      amountMinor,
+      currency: record.currency,
+      fundsState: "pending",
+      bookingId: booking._id,
+      organizationId: booking.organizationId,
+      stripeRef: paymentIntentId,
+      stripeEventId: event.id,
+      occurredAt: Date.now(),
+    });
+    await ctx.runMutation(internal.refunds.refundLatePaymentIntent, {
+      paymentRecordId: record._id,
+      paymentIntentId,
+      amountMinor,
+      eventId: event.id,
+    });
+    return;
+  }
   await ctx.runMutation(internal.payments.markPaid, {
     paymentRecordId: record._id,
     paymentIntentId,

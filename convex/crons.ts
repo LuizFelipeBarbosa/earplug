@@ -42,4 +42,12 @@ crons.interval(
   {},
 );
 
+// Failed refunds get another three attempts once payments are enabled.
+crons.interval(
+  "retry failed refunds",
+  { hours: 6 },
+  internal.refunds.retryFailedRefunds,
+  {},
+);
+
 export default crons;

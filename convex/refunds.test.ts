@@ -316,6 +316,20 @@ async function setupRefunds() {
         receivedAt: Date.now(),
         livemodeMismatch: false,
       }),
+    addRefund: (fields: Partial<Doc<"refunds">> = {}) =>
+      t.run((ctx) =>
+        ctx.db.insert("refunds", {
+          bookingId: ids.bookingId,
+          paymentRecordId: ids.paymentRecordIds[0],
+          amountMinor: 2000,
+          currency: "usd",
+          reason: "admin",
+          status: "pending",
+          createdAt: NOW,
+          updatedAt: NOW,
+          ...fields,
+        }),
+      ),
     addPayout: (fields: Partial<Doc<"payouts">> = {}) =>
       t.run((ctx) =>
         ctx.db.insert("payouts", {
@@ -355,6 +369,27 @@ function disputeEvent(
         payment_intent: "pi_a",
         amount: 12000,
         ...fields,
+      },
+    },
+  };
+}
+
+function chargeRefundedEvent(
+  entries: unknown = [
+    { id: "re_dashboard", amount: 2000, status: "succeeded" },
+  ],
+  paymentIntent: unknown = "pi_a",
+): StripeEvent {
+  return {
+    id: "evt_charge_refunded",
+    type: "charge.refunded",
+    livemode: false,
+    created: NOW / 1000,
+    data: {
+      object: {
+        id: "ch_a",
+        payment_intent: paymentIntent,
+        refunds: { data: entries },
       },
     },
   };
@@ -471,6 +506,9 @@ describe("cancellation previews and access", () => {
     const f = await setupRefunds();
     await f.cancel();
     const rows = await f.refunds();
+    await f.t.run((ctx) =>
+      ctx.db.patch(rows[0]._id, { stripeRefundId: "re_private" }),
+    );
     for (const actor of [
       "owner",
       "manager",
@@ -775,6 +813,95 @@ describe("cancellation settlement", () => {
 });
 
 describe("refund execution", () => {
+  test("leaves a refund pending without retry when Stripe succeeds but accounting throws", async () => {
+    const f = await setupRefunds();
+    const refundId = await f.addRefund();
+    stripeMock.mockImplementationOnce(async () => {
+      // Force the following success mutation to fail its payment transition.
+      // Its partial writes must roll back while the Stripe POST has succeeded.
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.paymentRecordIds[0], { status: "checkout_open" }),
+      );
+      return { id: "re_post_succeeded" };
+    });
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(
+      f.t.action(internal.refunds.executeRefund, {
+        refundId,
+        attempt: 0,
+      }),
+    ).rejects.toThrow(
+      "Payment cannot go from checkout_open to partially_refunded",
+    );
+    const [refund] = await f.refunds();
+    expect(refund.status).toBe("pending");
+    expect(refund.stripeRefundId).toBeUndefined();
+    expect(await f.scheduled()).toEqual([]);
+    expect(await f.ledger()).toEqual([]);
+    expect(await f.readBooking()).toMatchObject({ refundedMinor: 0 });
+    expect(stripeMock).toHaveBeenCalledTimes(1);
+    expect(log).not.toHaveBeenCalled();
+
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.paymentRecordIds[0], { status: "paid" }),
+    );
+    expect(
+      await f.deliver(
+        chargeRefundedEvent([
+          {
+            id: "re_post_succeeded",
+            amount: 2000,
+            status: "succeeded",
+            metadata: { refundId },
+          },
+        ]),
+      ),
+    ).toEqual({ outcome: "applied" });
+    expect(await f.refunds()).toMatchObject([
+      {
+        _id: refundId,
+        status: "succeeded",
+        stripeRefundId: "re_post_succeeded",
+      },
+    ]);
+    expect(await f.ledger()).toHaveLength(1);
+    expect(await f.readBooking()).toMatchObject({ refundedMinor: 2000 });
+    expect(await f.scheduled()).toEqual([]);
+    expect(stripeMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("re-drives failed refunds only when payments are enabled", async () => {
+    const f = await setupRefunds();
+    const refundId = await f.addRefund({ status: "failed" });
+    const rows = await f.refunds();
+    for (const value of [undefined, "false"]) {
+      vi.stubEnv("PAYMENTS_ENABLED", value);
+      await f.t.mutation(internal.refunds.retryFailedRefunds, {});
+      expect(await f.refunds()).toEqual(rows);
+      expect(await f.scheduled()).toEqual([]);
+    }
+    vi.stubEnv("PAYMENTS_ENABLED", "true");
+    vi.setSystemTime(NOW + 6 * 60 * 60 * 1000);
+    await f.t.mutation(internal.refunds.retryFailedRefunds, {});
+    expect(await f.refunds()).toMatchObject([
+      {
+        _id: refundId,
+        status: "pending",
+        updatedAt: Date.now(),
+      },
+    ]);
+    const jobs = await f.scheduled();
+    expect(jobs).toMatchObject([
+      {
+        name: "refunds:executeRefund",
+        args: [{ refundId, attempt: 0 }],
+        scheduledTime: Date.now(),
+      },
+    ]);
+    await f.t.mutation(internal.refunds.retryFailedRefunds, {});
+    expect(await f.scheduled()).toEqual(jobs);
+  });
+
   test("settles full and partial refunds and ignores success replays", async () => {
     const f = await setupRefunds();
     vi.setSystemTime(STARTS_AT - 10 * DAY_MS);
@@ -812,7 +939,7 @@ describe("refund execution", () => {
             reason: "organizer_cancel",
           },
         },
-        { idempotencyKey: `refund:${refund._id}:0` },
+        { idempotencyKey: `refund:${refund._id}` },
       );
       const ledger = await f.ledger();
       expect(ledger).toContainEqual(
@@ -877,7 +1004,7 @@ describe("refund execution", () => {
     expect(
       stripeMock.mock.calls.map((call) => call[3]?.idempotencyKey),
     ).toEqual(
-      [0, 1, 2].map((attempt) => `refund:${refund._id}:${attempt}`),
+      [0, 1, 2].map(() => `refund:${refund._id}`),
     );
     expect(log).toHaveBeenCalledTimes(3);
     expect(await f.readBooking()).toMatchObject({ refundedMinor: 0 });
@@ -918,9 +1045,11 @@ describe("refund execution", () => {
       "POST",
       "/v1/transfers/tr_paid/reversals",
       { amount: 1800 },
+      { idempotencyKey: `reversal:${payoutId}:1800` },
     );
     expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
       status: "paid",
+      reversedMinor: 1800,
       stripeTransferReversalId: "trr_test",
     });
     expect(
@@ -937,9 +1066,75 @@ describe("refund execution", () => {
     await f.t.mutation(internal.refunds.markTransferReversed, {
       payoutId,
       reversalMinor: 1800,
+      reversedMinor: 1800,
       stripeTransferReversalId: "trr_test",
     });
     expect(await f.ledger()).toEqual(ledger);
+  });
+
+  test("a second partial refund reverses only the additional excess and persists the cumulative total", async () => {
+    const f = await setupRefunds();
+    const payoutId = await f.addPayout({
+      status: "paid",
+      stripeTransferId: "tr_paid",
+      reversedMinor: 1800,
+    });
+    await f.addRefund({
+      status: "succeeded",
+      stripeRefundId: "re_prior",
+    });
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.paymentRecordIds[0], {
+        status: "partially_refunded",
+        refundedMinor: 2000,
+      });
+      await ctx.db.patch(f.bookingId, { refundedMinor: 2000 });
+    });
+    const refundId = await f.addRefund({ amountMinor: 3000 });
+    await f.t.mutation(internal.refunds.markRefundSucceeded, {
+      refundId,
+      stripeRefundId: "re_second",
+    });
+    expect(await f.scheduled()).toMatchObject([
+      {
+        name: "refunds:reverseTransfer",
+        args: [{ payoutId, reversalMinor: 2700 }],
+      },
+    ]);
+    stripeMock.mockResolvedValueOnce({ id: "trr_second" });
+    await f.t.action(internal.refunds.reverseTransfer, {
+      payoutId,
+      reversalMinor: 2700,
+    });
+    expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
+      "POST",
+      "/v1/transfers/tr_paid/reversals",
+      { amount: 2700 },
+      { idempotencyKey: `reversal:${payoutId}:4500` },
+    );
+    expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+      status: "paid",
+      reversedMinor: 4500,
+      stripeTransferReversalId: "trr_second",
+    });
+    expect((await f.records())[0]).toMatchObject({ refundedMinor: 5000 });
+    expect(await f.ledger()).toContainEqual(
+      expect.objectContaining({
+        kind: "transfer_reversal",
+        amountMinor: -2700,
+      }),
+    );
+  });
+
+  test("does not schedule another reversal when the payout is already fully reversed", async () => {
+    const f = await setupRefunds();
+    await f.addPayout({ status: "paid", reversedMinor: 10800 });
+    const refundId = await f.addRefund();
+    await f.t.mutation(internal.refunds.markRefundSucceeded, {
+      refundId,
+      stripeRefundId: "re_no_reversal",
+    });
+    expect(await f.scheduled()).toEqual([]);
   });
 
   test("reversal failures do not retry or change refund accounting", async () => {
@@ -972,6 +1167,62 @@ describe("refund execution", () => {
 });
 
 describe("late payments", () => {
+  test.each(["paid", "partially_refunded", "refunded"] as const)(
+    "refunds the extra intent without changing the original %s installment or payout",
+    async (status) => {
+      const f = await setupRefunds();
+      await f.addPayout({
+        status: "paid",
+        stripeTransferId: "tr_original",
+      });
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.paymentRecordIds[0], { status }),
+      );
+      const records = await f.records();
+      const booking = await f.readBooking();
+      const payouts = await f.payouts();
+      await f.t.mutation(internal.refunds.refundLatePaymentIntent, {
+        paymentRecordId: f.paymentRecordIds[0],
+        paymentIntentId: "pi_extra",
+        amountMinor: 12000,
+        eventId: "evt_extra",
+      });
+      const [refund] = await f.refunds();
+      const jobs = await f.scheduled();
+      await f.t.action(internal.refunds.executeRefund, {
+        refundId: refund._id,
+        attempt: 0,
+      });
+      expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
+        "POST",
+        "/v1/refunds",
+        expect.objectContaining({
+          payment_intent: "pi_extra",
+          amount: 12000,
+        }),
+        { idempotencyKey: `refund:${refund._id}` },
+      );
+      expect(await f.refunds()).toMatchObject([
+        {
+          _id: refund._id,
+          status: "succeeded",
+          stripeRefundId: "re_test_1",
+        },
+      ]);
+      expect(await f.records()).toEqual(records);
+      expect(await f.readBooking()).toEqual(booking);
+      expect(await f.payouts()).toEqual(payouts);
+      expect(await f.scheduled()).toEqual(jobs);
+      expect(await f.ledger()).toMatchObject([
+        {
+          kind: "refund",
+          idempotencyKey: "refund:re_test_1",
+          amountMinor: -12000,
+        },
+      ]);
+    },
+  );
+
   test("refunds Checkout completion after cancellation without reviving the booking", async () => {
     const f = await setupRefunds();
     // Reuse the parties, then exercise a fresh offer/accept/Checkout flow.
@@ -1083,6 +1334,217 @@ describe("late payments", () => {
   });
 });
 
+describe("charge refund reconciliation", () => {
+  test("reconciles a dashboard refund and its proportional reversal exactly once", async () => {
+    const f = await setupRefunds();
+    const payoutId = await f.addPayout({
+      status: "paid",
+      stripeTransferId: "tr_paid",
+    });
+    const event = chargeRefundedEvent(undefined, { id: "pi_a" });
+    expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+    const rows = await f.refunds();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      bookingId: f.bookingId,
+      paymentRecordId: f.paymentRecordIds[0],
+      amountMinor: 2000,
+      reason: "admin",
+      status: "succeeded",
+      stripeRefundId: "re_dashboard",
+      stripePaymentIntentId: "pi_a",
+    });
+    const records = await f.records();
+    expect(records[0]).toMatchObject({
+      status: "partially_refunded",
+      refundedMinor: 2000,
+    });
+    const booking = await f.readBooking();
+    expect(booking).toMatchObject({ refundedMinor: 2000 });
+    const ledger = await f.ledger();
+    expect(ledger).toMatchObject([
+      {
+        kind: "refund",
+        idempotencyKey: "refund:re_dashboard",
+        stripeRef: "re_dashboard",
+        amountMinor: -2000,
+        currency: "usd",
+        fundsState: "refunded",
+        bookingId: f.bookingId,
+        organizationId: f.organizationId,
+        bandId: f.bandId,
+      },
+    ]);
+    const jobs = await f.scheduled();
+    expect(jobs).toMatchObject([
+      {
+        name: "refunds:reverseTransfer",
+        args: [{ payoutId, reversalMinor: 1800 }],
+      },
+    ]);
+    expect(await f.deliver(event)).toEqual({ outcome: "duplicate" });
+    await f.t.mutation(internal.stripeWebhook.applyEventHandler, {
+      eventJson: JSON.stringify(event),
+    });
+    expect(await f.refunds()).toEqual(rows);
+    expect(await f.records()).toEqual(records);
+    expect(await f.readBooking()).toEqual(booking);
+    expect(await f.ledger()).toEqual(ledger);
+    expect(await f.scheduled()).toEqual(jobs);
+    expect(stripeMock).not.toHaveBeenCalled();
+  });
+
+  test("a full dashboard refund reverses scheduled and held payouts across the booking", async () => {
+    const f = await setupRefunds();
+    const scheduledId = await f.addPayout();
+    const heldId = await f.addPayout({
+      status: "held",
+      paymentRecordId: f.paymentRecordIds[1],
+    });
+    expect(
+      await f.deliver(
+        chargeRefundedEvent([
+          {
+            id: "re_full",
+            amount: 12000,
+            status: "succeeded",
+          },
+        ]),
+      ),
+    ).toEqual({ outcome: "applied" });
+    expect(await f.payouts()).toMatchObject([
+      { _id: scheduledId, status: "reversed", updatedAt: NOW },
+      { _id: heldId, status: "reversed", updatedAt: NOW },
+    ]);
+    expect((await f.records())[0]).toMatchObject({
+      status: "refunded",
+      refundedMinor: 12000,
+    });
+    expect(await f.readBooking()).toMatchObject({
+      refundedMinor: 12000,
+    });
+    expect(await f.scheduled()).toEqual([]);
+  });
+
+  test.each(["pending", "failed", "succeeded"] as const)(
+    "reuses a known Stripe refund in %s state without duplicating accounting",
+    async (status) => {
+      const f = await setupRefunds();
+      const refundId = await f.addRefund({
+        stripeRefundId: "re_test_1",
+      });
+      if (status === "succeeded") {
+        await f.t.action(internal.refunds.executeRefund, {
+          refundId,
+          attempt: 0,
+        });
+      } else if (status === "failed") {
+        await f.t.mutation(internal.refunds.markRefundFailed, {
+          refundId,
+          attempt: 2,
+        });
+      }
+      const event = chargeRefundedEvent([
+        {
+          id: "re_test_1",
+          amount: 2000,
+          status: "succeeded",
+        },
+      ]);
+      expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+      expect(await f.refunds()).toMatchObject([
+        {
+          _id: refundId,
+          stripeRefundId: "re_test_1",
+          status: "succeeded",
+        },
+      ]);
+      expect(await f.readBooking()).toMatchObject({
+        refundedMinor: 2000,
+      });
+      expect((await f.records())[0]).toMatchObject({
+        refundedMinor: 2000,
+      });
+      expect(await f.ledger()).toHaveLength(1);
+      const ledger = await f.ledger();
+      await f.t.mutation(internal.stripeWebhook.applyEventHandler, {
+        eventJson: JSON.stringify(event),
+      });
+      expect(await f.refunds()).toHaveLength(1);
+      expect(await f.ledger()).toEqual(ledger);
+      expect(await f.readBooking()).toMatchObject({
+        refundedMinor: 2000,
+      });
+    },
+  );
+
+  test("reconciles a pending extra-intent refund without reversing the original payment's payouts", async () => {
+    const f = await setupRefunds();
+    await f.addPayout();
+    const refundId = await f.addRefund({
+      reason: "late_payment",
+      stripePaymentIntentId: "pi_extra",
+    });
+    const records = await f.records();
+    const booking = await f.readBooking();
+    const payouts = await f.payouts();
+    expect(
+      await f.deliver(
+        chargeRefundedEvent(
+          [
+            {
+              id: "re_extra",
+              amount: 2000,
+              status: "succeeded",
+              metadata: { refundId },
+            },
+          ],
+          "pi_extra",
+        ),
+      ),
+    ).toEqual({ outcome: "applied" });
+    expect(await f.refunds()).toMatchObject([
+      {
+        _id: refundId,
+        stripeRefundId: "re_extra",
+        status: "succeeded",
+      },
+    ]);
+    expect(await f.ledger()).toHaveLength(1);
+    expect(await f.records()).toEqual(records);
+    expect(await f.readBooking()).toEqual(booking);
+    expect(await f.payouts()).toEqual(payouts);
+    expect(await f.scheduled()).toEqual([]);
+  });
+
+  test.each([
+    null,
+    "invalid",
+    [
+      null,
+      {},
+      { id: "re_failed", amount: 2000, status: "failed" },
+      { id: "re_invalid", amount: "invalid", status: "succeeded" },
+    ],
+  ])(
+    "ignores malformed and unsuccessful refund entries: %j",
+    async (entries) => {
+      const f = await setupRefunds();
+      await f.addPayout();
+      const booking = await f.readBooking();
+      const payouts = await f.payouts();
+      expect(await f.deliver(chargeRefundedEvent(entries))).toEqual({
+        outcome: "applied",
+      });
+      expect(await f.refunds()).toEqual([]);
+      expect(await f.ledger()).toEqual([]);
+      expect(await f.scheduled()).toEqual([]);
+      expect(await f.readBooking()).toEqual(booking);
+      expect(await f.payouts()).toEqual(payouts);
+    },
+  );
+});
+
 describe("Stripe disputes", () => {
   test("creation holds the booking and scheduled payouts and replays without duplicating ledger entries", async () => {
     const f = await setupRefunds();
@@ -1188,7 +1650,7 @@ describe("Stripe disputes", () => {
   );
 
   test.each([
-    { balance_transactions: undefined, fee: 1500 },
+    { balance_transactions: undefined, fee: 0 },
     {
       balance_transactions: [
         { fee: 700 },
@@ -1199,14 +1661,16 @@ describe("Stripe disputes", () => {
       fee: 1700,
     },
     { balance_transactions: [{ fee: 0 }], fee: 0 },
-    { balance_transactions: [{ fee: "invalid" }], fee: 1500 },
+    { balance_transactions: [{ fee: "invalid" }], fee: 0 },
   ])(
     "a lost dispute refunds the record, records fee $fee, and reverses paid transfers",
     async ({ balance_transactions, fee }) => {
       const f = await setupRefunds();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const payoutId = await f.addPayout({
         status: "paid",
         stripeTransferId: "tr_paid",
+        reversedMinor: 1800,
       });
       await f.addPayout({
         status: "paid",
@@ -1223,6 +1687,16 @@ describe("Stripe disputes", () => {
         balance_transactions,
       });
       expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+      const hasFee = balance_transactions?.some(
+        (entry) => typeof entry?.fee === "number",
+      );
+      if (hasFee) {
+        expect(warn).not.toHaveBeenCalled();
+      } else {
+        expect(warn).toHaveBeenCalledExactlyOnceWith(
+          "Dispute dp_test: fee data unavailable; recorded a $0 fee for later reconciliation",
+        );
+      }
       const booking = await f.readBooking();
       expect(booking).toMatchObject({
         status: "refunded",
@@ -1259,7 +1733,7 @@ describe("Stripe disputes", () => {
       expect(jobs).toMatchObject([
         {
           name: "refunds:reverseTransfer",
-          args: [{ payoutId, reversalMinor: 10800 }],
+          args: [{ payoutId, reversalMinor: 9000 }],
         },
       ]);
       vi.spyOn(console, "log").mockImplementation(() => {});
@@ -1295,6 +1769,25 @@ describe("Stripe disputes", () => {
     expect(log).toHaveBeenCalledTimes(3);
     expect(await f.readBooking()).toEqual(booking);
     expect(await f.ledger()).toEqual([]);
+    expect(await f.scheduled()).toEqual([]);
+  });
+
+  test("a lost dispute skips transfers already fully reversed", async () => {
+    const f = await setupRefunds();
+    await f.addPayout({
+      status: "paid",
+      stripeTransferId: "tr_reversed",
+      reversedMinor: 10800,
+    });
+    expect(
+      await f.deliver(disputeEvent("charge.dispute.created")),
+    ).toEqual({ outcome: "applied" });
+    expect(
+      await f.deliver(disputeEvent("charge.dispute.closed", {
+        status: "lost",
+        balance_transactions: [{ fee: 0 }],
+      })),
+    ).toEqual({ outcome: "applied" });
     expect(await f.scheduled()).toEqual([]);
   });
 });
