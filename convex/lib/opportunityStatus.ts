@@ -14,8 +14,8 @@ export const OPPORTUNITY_TRANSITIONS: Record<
   readonly OpportunityStatus[]
 > = {
   draft: ["open", "cancelled"],
-  open: ["applications_closed", "cancelled"],
-  applications_closed: ["open", "booking", "cancelled"],
+  open: ["applications_closed", "cancelled", "confirmed"],
+  applications_closed: ["open", "booking", "cancelled", "confirmed"],
   booking: ["confirmed", "applications_closed", "cancelled"],
   confirmed: ["completed", "cancelled", "booking"],
   completed: [],

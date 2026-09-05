@@ -10,6 +10,11 @@ import {
 } from "./_generated/server";
 import { DocCache, docCache } from "./lib/docCache";
 import {
+  formattedTime,
+  replaceGigBandIndex,
+  uniqueGigSlug,
+} from "./lib/gigPublish";
+import {
   assertBandGigWritesEnabled,
   bandGigWritesEnabled,
 } from "./lib/gigWritePolicy";
@@ -25,7 +30,6 @@ import {
   knownFlyKeyValidator,
   pastGigsForBand,
   requireBandRole,
-  slugify,
   toBandSummaryPayload,
   toGigFeedPayload,
   toGigPayload,
@@ -171,35 +175,6 @@ async function markProjectListingStale(
   }
 }
 
-function formattedTime(timestamp: number) {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Los_Angeles",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  })
-    .format(new Date(timestamp))
-    .replace(" ", "")
-    .replace(":00", "")
-    .toUpperCase();
-}
-
-async function replaceGigBandIndex(
-  ctx: MutationCtx,
-  gigId: Id<"gigs">,
-  bandIds: Id<"bands">[],
-  startsAt: number,
-) {
-  const existing = await ctx.db
-    .query("gigBands")
-    .withIndex("by_gig", (q) => q.eq("gigId", gigId))
-    .take(MAX_PERFORMERS + 5);
-  for (const row of existing) await ctx.db.delete(row._id);
-  for (const bandId of new Set(bandIds)) {
-    await ctx.db.insert("gigBands", { gigId, bandId, startsAt });
-  }
-}
-
 async function publicLineup(ctx: MutationCtx, projectId: Id<"gigProjects">) {
   const performers = await projectPerformers(ctx, projectId);
   if (performers.length === 0) throw new Error("Add at least one performer");
@@ -223,19 +198,6 @@ async function publicLineup(ctx: MutationCtx, projectId: Id<"gigProjects">) {
       ...(performer.bandId ? { bandId: performer.bandId } : {}),
     })),
   };
-}
-
-async function uniqueGigSlug(ctx: MutationCtx, title: string) {
-  const generated = slugify(title);
-  const base = generated === "band" ? "gig" : generated;
-  for (let suffix = 1; ; suffix++) {
-    const candidate = suffix === 1 ? base : `${base}-${suffix}`;
-    const existing = await ctx.db
-      .query("gigs")
-      .withIndex("by_slug", (q) => q.eq("slug", candidate))
-      .first();
-    if (!existing) return candidate;
-  }
 }
 
 async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
@@ -422,14 +384,18 @@ async function atSuspendedVenue(cache: DocCache, gig: Doc<"gigs">) {
   return venue?.status === "suspended";
 }
 
-async function ownedByActiveBand(ctx: QueryCtx, gig: Doc<"gigs">) {
+async function ownedByActiveOwner(ctx: QueryCtx, gig: Doc<"gigs">) {
+  if (gig.createdByOrganization) {
+    const org = await ctx.db.get(gig.createdByOrganization);
+    return org !== null && org.status !== "suspended";
+  }
   if (!gig.createdByBand) return true;
   const owner = await ctx.db.get(gig.createdByBand);
   return owner !== null && owner.archivedAt === undefined;
 }
 
-/** Excludes archived owners and suspended venues. Reads are memoised so the
- * caller's band and venue hydration reuse the visibility checks. */
+/** Excludes archived bands, suspended organizations, and suspended venues.
+ * Venue hydration reuses the cached visibility checks. */
 async function visibleUpcomingGigs(
   ctx: QueryCtx,
   cache: DocCache,
@@ -438,10 +404,7 @@ async function visibleUpcomingGigs(
   const visible = [];
   for (const gig of gigs) {
     if (await atSuspendedVenue(cache, gig)) continue;
-    if (gig.createdByBand) {
-      const owner = await cache.get(gig.createdByBand);
-      if (owner === null || owner.archivedAt !== undefined) continue;
-    }
+    if (!(await ownedByActiveOwner(ctx, gig))) continue;
     visible.push(gig);
   }
   return { gigs: visible, nextStartsAt };
@@ -523,7 +486,7 @@ export const resolvePublic = query({
     if (!gig || !["published", "cancelled"].includes(lifecycle(gig))) {
       return null;
     }
-    if (!(await ownedByActiveBand(ctx, gig))) return null;
+    if (!(await ownedByActiveOwner(ctx, gig))) return null;
     const cache = docCache(ctx);
     if (await atSuspendedVenue(cache, gig)) return null;
     return await toGigPayload(ctx, gig, cache);
@@ -545,6 +508,7 @@ export const forBand = query({
     const cache = docCache(ctx);
     for (const gig of rows) {
       if (await atSuspendedVenue(cache, gig)) continue;
+      if (!(await ownedByActiveOwner(ctx, gig))) continue;
       if (lifecycle(gig) === "published")
         out.push(await toGigPayload(ctx, gig, cache));
       if (out.length === MAX_UPCOMING_GIGS_PER_BAND) break;
@@ -571,6 +535,7 @@ export const pastForBand = query({
     for (const gig of rows) {
       if (lifecycle(gig) !== "published") continue;
       if (await atSuspendedVenue(cache, gig)) continue;
+      if (!(await ownedByActiveOwner(ctx, gig))) continue;
       gigs.push(await toGigPayload(ctx, gig, cache));
       venueIds.add(gig.venueId);
       if (gigs.length === MAX_PAST_GIGS) break;
