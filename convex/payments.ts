@@ -161,12 +161,16 @@ export const startInstallmentCheckout = action({
         stripeCustomerId,
       });
     }
+    const attempt: number = await ctx.runMutation(
+      internal.payments.reserveCheckoutAttempt,
+      { paymentRecordId: record._id, expectedAttempt: record.attempt },
+    );
     const checkoutExpiresAt =
       Math.floor((Date.now() + CHECKOUT_TTL_MS) / 1000) * 1000;
     const session = await stripeRequest<{
       id: string;
       url: string;
-      payment_intent?: string;
+      payment_intent?: string | null;
     }>(
       "POST",
       "/v1/checkout/sessions",
@@ -202,19 +206,15 @@ export const startInstallmentCheckout = action({
         },
       },
       {
-        idempotencyKey: stripeIdempotencyKey(
-          "checkout",
-          record._id,
-          record.attempt + 1,
-        ),
+        idempotencyKey: stripeIdempotencyKey("checkout", record._id, attempt),
       },
     );
     await ctx.runMutation(internal.payments.markCheckoutOpen, {
       paymentRecordId: record._id,
       sessionId: session.id,
-      stripePaymentIntentId: session.payment_intent,
+      stripePaymentIntentId: session.payment_intent ?? undefined,
       checkoutExpiresAt,
-      attempt: record.attempt,
+      attempt,
     });
     return { url: session.url, sessionId: session.id };
   },
@@ -236,6 +236,24 @@ export const setOrganizationStripeCustomer = internalMutation({
       updatedAt: Date.now(),
     });
     return null;
+  },
+});
+
+export const reserveCheckoutAttempt = internalMutation({
+  args: { paymentRecordId: v.id("paymentRecords"), expectedAttempt: v.number() },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.paymentRecordId);
+    if (!record) throw new Error("Payment record not found");
+    if (record.attempt !== args.expectedAttempt) {
+      throw new Error("Payment attempt changed elsewhere");
+    }
+    if (!PAYMENT_OPEN_STATUSES.includes(record.status)) {
+      throw new Error("This installment is not payable");
+    }
+    const attempt = args.expectedAttempt + 1;
+    await ctx.db.patch(record._id, { attempt, updatedAt: Date.now() });
+    return attempt;
   },
 });
 
@@ -265,7 +283,6 @@ export const markCheckoutOpen = internalMutation({
       stripeCheckoutSessionId: args.sessionId,
       stripePaymentIntentId: args.stripePaymentIntentId,
       checkoutExpiresAt: args.checkoutExpiresAt,
-      attempt: args.attempt + 1,
       updatedAt: Date.now(),
     });
     return null;

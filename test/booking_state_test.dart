@@ -125,6 +125,82 @@ void main() {
     harness.app.dispose();
   });
 
+  testWidgets('loadBooking adopts the organizer without navigating', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledBookingRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    expect(harness.app.organizationId, isEmpty);
+    final current = harness.app.current;
+
+    final booking = await harness.app.loadBooking(repository.bookingResult.id);
+
+    expect(booking, same(repository.bookingResult));
+    expect(harness.app.organizationId, 'org1');
+    expect(harness.app.current, same(current));
+    expect(harness.app.current.screen, Screen.home);
+    expect(harness.app.canGoBack, isFalse);
+    harness.app.dispose();
+  });
+
+  testWidgets('loadBooking adopts the band without navigating', (tester) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledBookingRepository(auth: auth)
+      ..bookingResult = _booking(viewerSide: BookingSide.artist);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    // Demo memberships preselect a band; model an empty selection on startup.
+    harness.app.bandId = '';
+    expect(harness.app.bandId, isEmpty);
+    final current = harness.app.current;
+
+    final booking = await harness.app.loadBooking(repository.bookingResult.id);
+
+    expect(booking, same(repository.bookingResult));
+    expect(harness.app.bandId, 'b1');
+    expect(harness.app.current, same(current));
+    expect(harness.app.current.screen, Screen.home);
+    expect(harness.app.canGoBack, isFalse);
+    harness.app.dispose();
+  });
+
+  testWidgets('loadBooking keeps an already selected organizer', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledBookingRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+    harness.app.switchToOrganization('org1');
+    await tester.pumpAndSettle();
+    expect(harness.app.organizationId, 'org1');
+    final current = harness.app.current;
+
+    final booking = await harness.app.loadBooking(repository.bookingResult.id);
+
+    expect(booking, same(repository.bookingResult));
+    expect(harness.app.organizationId, 'org1');
+    expect(harness.app.current, same(current));
+    expect(harness.app.current.screen, Screen.orgDash);
+    harness.app.dispose();
+  });
+
   testWidgets('shared booking screens follow the cached viewer identity', (
     tester,
   ) async {

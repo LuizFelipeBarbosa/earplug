@@ -313,11 +313,13 @@ async function setupPayments() {
     record: Doc<"paymentRecords">,
     sessionId = `cs_installment_${record.installmentIndex}`,
   ) {
+    const attempt = record.attempt + 1;
+    await t.run((ctx) => ctx.db.patch(record._id, { attempt }));
     await t.mutation(internal.payments.markCheckoutOpen, {
       paymentRecordId: record._id,
       sessionId,
       checkoutExpiresAt: NOW + CHECKOUT_TTL_MS,
-      attempt: record.attempt,
+      attempt,
     });
     return sessionId;
   }
@@ -573,6 +575,81 @@ describe("installment Checkout", () => {
       {
         status: "checkout_open",
         stripeCheckoutSessionId: "cs_test_2",
+        attempt: 2,
+      },
+    ]);
+  });
+
+  test("opens Checkout when Stripe returns a null payment intent", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    vi.mocked(stripeRequest)
+      .mockResolvedValueOnce({ id: "cus_test_1", object: "customer" })
+      .mockResolvedValueOnce({
+        id: "cs_null_intent",
+        object: "checkout.session",
+        url: "https://checkout.stripe.com/c/pay/cs_null_intent",
+        payment_intent: null,
+      });
+    expect(
+      await f.as("finance").action(api.payments.startInstallmentCheckout, {
+        paymentRecordId: record._id,
+      }),
+    ).toEqual({
+      sessionId: "cs_null_intent",
+      url: "https://checkout.stripe.com/c/pay/cs_null_intent",
+    });
+    const [openedRecord] = await f.records(offer.bookingId);
+    expect(openedRecord).toMatchObject({
+      status: "checkout_open",
+      stripeCheckoutSessionId: "cs_null_intent",
+    });
+    expect(openedRecord.stripePaymentIntentId).toBeUndefined();
+    expect(openedRecord).not.toHaveProperty("stripePaymentIntentId");
+  });
+
+  test("preserves the reserved attempt after a Checkout failure and retries with a fresh key", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    vi.mocked(stripeRequest)
+      .mockResolvedValueOnce({ id: "cus_test_1", object: "customer" })
+      .mockRejectedValueOnce(new Error("network blip"));
+    await expect(
+      f.as("finance").action(api.payments.startInstallmentCheckout, {
+        paymentRecordId: record._id,
+      }),
+    ).rejects.toThrow("network blip");
+    expect(await f.records(offer.bookingId)).toMatchObject([
+      { status: "pending", attempt: 1 },
+    ]);
+    expect(stripeRequest).toHaveBeenNthCalledWith(
+      2,
+      "POST",
+      "/v1/checkout/sessions",
+      expect.objectContaining({ expires_at: (NOW + CHECKOUT_TTL_MS) / 1000 }),
+      { idempotencyKey: `checkout:${record._id}:1` },
+    );
+
+    vi.setSystemTime(NOW + 1000);
+    const session = await f.as("finance").action(
+      api.payments.startInstallmentCheckout,
+      { paymentRecordId: record._id },
+    );
+    expect(stripeRequest).toHaveBeenNthCalledWith(
+      3,
+      "POST",
+      "/v1/checkout/sessions",
+      expect.objectContaining({
+        expires_at: (NOW + 1000 + CHECKOUT_TTL_MS) / 1000,
+      }),
+      { idempotencyKey: `checkout:${record._id}:2` },
+    );
+    expect(await f.records(offer.bookingId)).toMatchObject([
+      {
+        status: "checkout_open",
+        stripeCheckoutSessionId: session.sessionId,
         attempt: 2,
       },
     ]);
