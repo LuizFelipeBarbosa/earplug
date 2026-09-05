@@ -99,6 +99,7 @@ Future<void> main() async {
   final gigId = gigIdFromUri(Uri.base);
   final bandSlug = bandSlugFromUri(Uri.base);
   final venueRef = venueRefFromUri(Uri.base);
+  final opportunityRef = opportunityRefFromUri(Uri.base);
   final orgInviteToken = orgInviteTokenFromUri(Uri.base);
   final organizerApply = organizerApplyFromUri(Uri.base);
   if (Env.demo) {
@@ -108,6 +109,7 @@ Future<void> main() async {
       initialGigId: gigId,
       initialBandSlug: bandSlug,
       initialVenueRef: venueRef,
+      initialOpportunityRef: opportunityRef,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
     );
@@ -143,6 +145,7 @@ Future<void> main() async {
       initialGigId: gigId,
       initialBandSlug: bandSlug,
       initialVenueRef: venueRef,
+      initialOpportunityRef: opportunityRef,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
     ),
@@ -190,6 +193,9 @@ String? performerInviteTokenFromUri(Uri uri) =>
 String? gigIdFromUri(Uri uri) => _routeValueFromUri(uri, 'g');
 
 String? venueRefFromUri(Uri uri) => _routeValueFromUri(uri, 'venues');
+
+String? opportunityRefFromUri(Uri uri) =>
+    _routeValueFromUri(uri, 'opportunities');
 
 String? orgInviteTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'apply');
 
@@ -274,6 +280,7 @@ class EarplugApp extends StatelessWidget {
     this.initialGigId,
     this.initialBandSlug,
     this.initialVenueRef,
+    this.initialOpportunityRef,
     this.initialOrgInviteToken,
     this.initialOrganizerApply = false,
   });
@@ -287,6 +294,7 @@ class EarplugApp extends StatelessWidget {
   final String? initialGigId;
   final String? initialBandSlug;
   final String? initialVenueRef;
+  final String? initialOpportunityRef;
   final String? initialOrgInviteToken;
   final bool initialOrganizerApply;
 
@@ -315,6 +323,7 @@ class EarplugApp extends StatelessWidget {
                 initialGigId: initialGigId,
                 initialBandSlug: initialBandSlug,
                 initialVenueRef: initialVenueRef,
+                initialOpportunityRef: initialOpportunityRef,
                 initialOrgInviteToken: initialOrgInviteToken,
                 initialOrganizerApply: initialOrganizerApply,
               ),
@@ -432,19 +441,24 @@ class RootShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (dataStatus, screen, param, canGoBack, dataError) = context
-        .select<AppState, (DataStatus, Screen, String?, bool, String?)>((app) {
-          final current = app.current;
-          return (
-            app.dataStatus,
-            current.screen,
-            current.param,
-            app.canGoBack,
-            app.dataError,
-          );
-        });
+    final (dataStatus, screen, param, canGoBack, dataError, bandId) = context
+        .select<AppState, (DataStatus, Screen, String?, bool, String?, String)>(
+          (app) {
+            final current = app.current;
+            return (
+              app.dataStatus,
+              current.screen,
+              current.param,
+              app.canGoBack,
+              app.dataError,
+              app.bandId,
+            );
+          },
+        );
     final app = context.read<AppState>();
     final entry = ScreenEntry(screen, param);
+    final showOpportunityAsFanTab =
+        screen == Screen.opportunityDetail && bandId.isEmpty;
 
     final body = switch (dataStatus) {
       DataStatus.connecting => ColoredBox(
@@ -481,9 +495,9 @@ class RootShell extends StatelessWidget {
       DataStatus.ready => Stack(
         children: [
           Positioned.fill(child: _screenFor(entry)),
-          if (fanTabScreens.contains(screen))
+          if (fanTabScreens.contains(screen) || showOpportunityAsFanTab)
             const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-          if (bandTabScreens.contains(screen))
+          if (bandTabScreens.contains(screen) && !showOpportunityAsFanTab)
             const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
           if (organizerTabScreens.contains(screen))
             const Positioned(
@@ -549,12 +563,66 @@ class RootShell extends StatelessWidget {
       ),
       Screen.orgTeam => OrgTeamScreen(key: key),
       Screen.orgSettings => OrgSettingsScreen(key: key),
+      Screen.orgOpportunities => const _PlaceholderScreen(
+        key: Key('placeholder-orgOpportunities'),
+        title: 'OPPORTUNITIES',
+      ),
+      Screen.opportunityEdit => _PlaceholderScreen(
+        key: const Key('placeholder-opportunityEdit'),
+        title: 'EDIT OPPORTUNITY',
+        param: entry.param,
+      ),
+      Screen.opportunityApplicants => _PlaceholderScreen(
+        key: const Key('placeholder-opportunityApplicants'),
+        title: 'APPLICANTS',
+        param: entry.param,
+      ),
+      Screen.opportunityDetail => _PlaceholderScreen(
+        key: const Key('placeholder-opportunityDetail'),
+        title: 'OPPORTUNITY',
+        param: entry.param,
+      ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,
         applicationId: entry.param!,
       ),
     };
+  }
+}
+
+class _PlaceholderScreen extends StatelessWidget {
+  const _PlaceholderScreen({super.key, required this.title, this.param});
+
+  final String title;
+  final String? param;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: context.epColors.background,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title, style: epDisplay(size: 20)),
+              if (param != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  param!,
+                  style: epText(
+                    size: 13,
+                    color: context.epColors.contentSecondary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

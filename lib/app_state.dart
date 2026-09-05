@@ -37,6 +37,7 @@ part 'app_state/discovery.dart';
 part 'app_state/fan.dart';
 part 'app_state/gig_editor.dart';
 part 'app_state/navigation.dart';
+part 'app_state/opportunities.dart';
 part 'app_state/organizer.dart';
 part 'app_state/session.dart';
 part 'app_state/venues.dart';
@@ -81,6 +82,12 @@ mixin _AppStateCore on ChangeNotifier {
   void _clearOrganizationsState();
   void _restartOrganizations();
   void _resetBandForm();
+  // Implemented by _OpportunityState and called from _NavigationState.resetTo.
+  void _onBandChanged();
+  // Implemented by _OpportunityState and called by AppState's session cleanup.
+  // AppState resolves the concrete implementation rather than this declaration.
+  // ignore: unused_element
+  void _clearOpportunityState();
   void _clearSessionSensitiveState();
   void _syncPublicGigSubscriptionForCurrentScreen();
   Future<void> _loadPublicGig(String id);
@@ -124,6 +131,7 @@ class AppState extends ChangeNotifier
         _DiscoveryState,
         _FanState,
         _BandConsoleState,
+        _OpportunityState,
         _OrganizerState,
         _CatalogState,
         _SessionState,
@@ -138,6 +146,7 @@ class AppState extends ChangeNotifier
     String? initialGigId,
     String? initialBandSlug,
     String? initialVenueRef,
+    String? initialOpportunityRef,
     String? initialOrgInviteToken,
     bool initialOrganizerApply = false,
     DateTime Function()? now,
@@ -151,6 +160,7 @@ class AppState extends ChangeNotifier
          initialGigId,
          initialBandSlug,
          initialVenueRef,
+         initialOpportunityRef,
          initialOrgInviteToken,
          initialOrganizerApply,
          now ?? DateTime.now,
@@ -169,6 +179,7 @@ class AppState extends ChangeNotifier
     String? initialGigId,
     String? initialBandSlug,
     String? initialVenueRef,
+    String? initialOpportunityRef,
     String? initialOrgInviteToken,
     bool initialOrganizerApply = false,
     DateTime Function()? now,
@@ -184,6 +195,7 @@ class AppState extends ChangeNotifier
       initialGigId: initialGigId,
       initialBandSlug: initialBandSlug,
       initialVenueRef: initialVenueRef,
+      initialOpportunityRef: initialOpportunityRef,
       initialOrgInviteToken: initialOrgInviteToken,
       initialOrganizerApply: initialOrganizerApply,
       now: now,
@@ -200,6 +212,7 @@ class AppState extends ChangeNotifier
     String? initialGigId,
     String? initialBandSlug,
     String? initialVenueRef,
+    String? initialOpportunityRef,
     String? initialOrgInviteToken,
     bool initialOrganizerApply,
     this._now,
@@ -265,6 +278,11 @@ class AppState extends ChangeNotifier
     final venueRef = initialVenueRef?.trim();
     if (venueRef != null && venueRef.isNotEmpty) {
       unawaited(_resolveInitialVenue(venueRef));
+    }
+    final opportunityRef = initialOpportunityRef?.trim();
+    if (opportunityRef != null && opportunityRef.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.opportunityDetail, opportunityRef)];
+      unawaited(resolveOpportunity(opportunityRef));
     }
   }
 
@@ -362,6 +380,7 @@ class AppState extends ChangeNotifier
     _scheduleDiscoveryBoundaryRefresh();
     _media?.clearForSignOut();
     _resetBandForm();
+    _clearOpportunityState();
     _resetGigForm();
   }
 }

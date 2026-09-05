@@ -218,6 +218,14 @@ class OrganizerTabBar extends StatelessWidget {
           selected: scr == Screen.orgDash,
           onPressed: () => app.resetTo(Screen.orgDash),
         ),
+        if (canManage)
+          EpNavigationItem(
+            key: const Key('organizer-tab-opportunities'),
+            icon: Icons.campaign_outlined,
+            label: 'OPPORTUNITIES',
+            selected: scr == Screen.orgOpportunities,
+            onPressed: () => app.resetTo(Screen.orgOpportunities),
+          ),
         EpNavigationItem(
           key: const Key('organizer-tab-venues'),
           icon: Icons.storefront_outlined,

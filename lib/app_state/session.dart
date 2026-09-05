@@ -37,6 +37,7 @@ mixin _SessionState on _AppStateCore {
   void back();
   void resetTo(Screen s);
   Future<void> refreshOrganizationApplication();
+  Future<void> refreshGigWritePolicy();
 
   int _sessionGeneration = 0;
 
@@ -82,6 +83,7 @@ mixin _SessionState on _AppStateCore {
       _restartMemberships();
       _restartOrganizations();
       unawaited(refreshOrganizationApplication());
+      unawaited(refreshGigWritePolicy());
       unawaited(_refreshPlatformAdmin(sessionGeneration));
       await _refreshProfile(sessionGeneration: sessionGeneration);
       if (!_isCurrentSession(sessionGeneration)) return false;

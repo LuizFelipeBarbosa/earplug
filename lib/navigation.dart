@@ -33,6 +33,10 @@ enum Screen {
   orgSettings,
   adminQueue,
   adminApplication,
+  orgOpportunities,
+  opportunityEdit,
+  opportunityApplicants,
+  opportunityDetail,
 }
 
 sealed class ActiveIdentity {
@@ -66,6 +70,7 @@ const bandTabScreens = {
   Screen.bandEdit,
   Screen.gigMgr,
   Screen.analytics,
+  Screen.opportunityDetail,
 };
 const organizerTabScreens = {
   Screen.orgDash,
@@ -73,6 +78,9 @@ const organizerTabScreens = {
   Screen.orgVenueEdit,
   Screen.orgTeam,
   Screen.orgSettings,
+  Screen.orgOpportunities,
+  Screen.opportunityEdit,
+  Screen.opportunityApplicants,
 };
 const adminScreens = {Screen.adminQueue, Screen.adminApplication};
 
