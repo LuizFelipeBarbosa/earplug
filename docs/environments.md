@@ -104,11 +104,15 @@ Netlify uses the same config-file mechanism. `netlify.toml` selects production
 configuration for production-context builds and development configuration for
 deploy previews and branch deploys. When Netlify has a production
 `CONVEX_DEPLOY_KEY`, production builds deploy Convex and verify the production
-contract before building Flutter. Production builds also run the idempotent
-release-backfill runner (`npm run backfill:release -- --prod`) between the
-Convex deploy and contract check; a failed migration fails the build. Without
-that key, deploy, backfill, and verify the backend separately before triggering
-the production build; Netlify then uses the already-deployed backend.
+contract before building Flutter. The build does not run the release-backfill
+runner itself. Instead, the deployment's own cron ("apply release backfills" in
+`convex/crons.ts`) applies the idempotent release backfills within roughly 30
+minutes of any deploy, without needing the
+`deployment:functions:runInternalMutations` permission that a Netlify deploy key
+lacks. `npm run backfill:release -- --prod` remains available to apply them
+immediately from an authenticated admin session instead of waiting for the cron.
+Without that key, deploy and verify the backend separately before triggering the
+production build; Netlify then uses the already-deployed backend.
 Development builds do not deploy and can be
 checked against the shared development deployment manually with
 `npm run check:release-contract -- dev`. `EARPLUG_ENV` remains the only Netlify
