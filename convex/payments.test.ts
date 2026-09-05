@@ -509,6 +509,7 @@ describe("installment Checkout", () => {
       "/v1/checkout/sessions",
       {
         mode: "payment",
+        payment_method_types: ["card"],
         customer: "cus_test_1",
         client_reference_id: record._id,
         line_items: [
@@ -582,7 +583,6 @@ describe("installment Checkout", () => {
     "door",
     "admin",
     "member",
-    "platformAdmin",
     "stranger",
   ] as const)("%s cannot start a payment", async (actor) => {
     const f = await setupPayments();
@@ -592,7 +592,41 @@ describe("installment Checkout", () => {
       f.as(actor).action(api.payments.startInstallmentCheckout, {
         paymentRecordId: record._id,
       }),
-    ).rejects.toThrow("Not permitted to start a payment");
+    ).rejects.toThrow("Not permitted for this organization");
+    expect(stripeRequest).not.toHaveBeenCalled();
+  });
+
+  test("a platform admin can start a payment without organization membership", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    expect(
+      await f.as("platformAdmin").action(api.payments.startInstallmentCheckout, {
+        paymentRecordId: record._id,
+      }),
+    ).toEqual({
+      sessionId: "cs_test_1",
+      url: "https://checkout.stripe.com/c/pay/cs_test_1",
+    });
+    expect(await f.records(offer.bookingId)).toMatchObject([
+      { status: "checkout_open", stripeCheckoutSessionId: "cs_test_1" },
+    ]);
+  });
+
+  test("a suspended organization's owner and finance members cannot start a payment", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.organizationId, { status: "suspended" }),
+    );
+    for (const actor of ["owner", "finance"] as const) {
+      await expect(
+        f.as(actor).action(api.payments.startInstallmentCheckout, {
+          paymentRecordId: record._id,
+        }),
+      ).rejects.toThrow("Organization suspended");
+    }
     expect(stripeRequest).not.toHaveBeenCalled();
   });
 
@@ -700,6 +734,32 @@ describe("installment Checkout", () => {
 });
 
 describe("payment webhooks and ledger", () => {
+  test("an unpaid Checkout completion is applied without changing payment or booking state", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    await f.open(record);
+    const records = await f.records(offer.bookingId);
+    const booking = await f.readBooking(offer.bookingId);
+    const jobs = await f.scheduled();
+    const slot = await f.t.run((ctx) => ctx.db.get(f.slotId));
+    expect(records[0].status).toBe("checkout_open");
+    expect(booking).toMatchObject({
+      status: "awaiting_payment",
+      payoutHold: true,
+      payoutHoldReasons: ["unpaid_installment"],
+    });
+    vi.setSystemTime(NOW + 1000);
+    expect(
+      await f.deliver(completedEvent(record, { payment_status: "unpaid" })),
+    ).toEqual({ outcome: "applied" });
+    expect(await f.records(offer.bookingId)).toEqual(records);
+    expect(await f.readBooking(offer.bookingId)).toEqual(booking);
+    expect(await f.ledger()).toEqual([]);
+    expect(await f.scheduled()).toEqual(jobs);
+    expect(await f.t.run((ctx) => ctx.db.get(f.slotId))).toEqual(slot);
+  });
+
   test("refunds a stale Checkout intent after settlement and ignores replays", async () => {
     const f = await setupPayments();
     const offer = await f.accept();
@@ -1249,6 +1309,36 @@ describe("payment access and scheduled jobs", () => {
     ).toMatchObject([{ canPay: false, paidAt: NOW, status: "paid" }]);
   });
 
+  test("only the earliest open installment can be paid, then the balance becomes payable", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept(INSTALLMENTS);
+    const [deposit, balance] = await f.records(offer.bookingId);
+    await f.open(deposit);
+    await f.open(balance);
+    expect(
+      await f.as("finance").query(api.payments.paymentsForBooking, {
+        bookingId: offer.bookingId,
+      }),
+    ).toMatchObject([
+      { installmentIndex: 0, status: "checkout_open", canPay: true },
+      { installmentIndex: 1, status: "checkout_open", canPay: false },
+    ]);
+    expect(await f.deliver(completedEvent(deposit))).toEqual({
+      outcome: "applied",
+    });
+    expect(await f.readBooking(offer.bookingId)).toMatchObject({
+      status: "confirmed",
+    });
+    expect(
+      await f.as("finance").query(api.payments.paymentsForBooking, {
+        bookingId: offer.bookingId,
+      }),
+    ).toMatchObject([
+      { installmentIndex: 0, status: "paid", canPay: false },
+      { installmentIndex: 1, status: "checkout_open", canPay: true },
+    ]);
+  });
+
   test("reminders email the organizer with the deadline and ignore settled payments", async () => {
     const f = await setupPayments();
     const offer = await f.accept();
@@ -1378,6 +1468,63 @@ describe("payment access and scheduled jobs", () => {
     );
     expect(await f.readBooking(offer.bookingId)).toEqual(booking);
     expect(await f.scheduled()).toEqual(jobs);
+  });
+
+  test("auto-cancellation fully refunds a balance paid before the unpaid deposit", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept(INSTALLMENTS);
+    const [deposit, balance] = await f.records(offer.bookingId);
+    await f.open(balance);
+    expect(await f.deliver(completedEvent(balance))).toEqual({
+      outcome: "applied",
+    });
+    expect(await f.readBooking(offer.bookingId)).toMatchObject({
+      status: "awaiting_payment",
+      revision: offer.revision,
+      paidMinor: balance.amountMinor,
+      autoCancelAt: deposit.dueAt + AUTO_CANCEL_GRACE_MS,
+    });
+    const records = await f.records(offer.bookingId);
+    expect(records).toMatchObject([
+      { installmentIndex: 0, status: "pending" },
+      { installmentIndex: 1, status: "paid" },
+    ]);
+    const ledger = await f.ledger();
+    expect(ledger).toMatchObject([
+      { kind: "charge", amountMinor: balance.amountMinor },
+    ]);
+
+    vi.setSystemTime(deposit.dueAt + AUTO_CANCEL_GRACE_MS);
+    await f.checked(() =>
+      f.t.mutation(internal.bookings.autoCancelUnpaid, {
+        bookingId: offer.bookingId,
+        revision: offer.revision,
+      }),
+    );
+    expect(await f.readBooking(offer.bookingId)).toMatchObject({
+      status: "expired",
+      cancelledBy: "system",
+      paidMinor: balance.amountMinor,
+    });
+    const refunds = await f.t.run((ctx) => ctx.db.query("refunds").take(50));
+    expect(refunds).toHaveLength(1);
+    expect(refunds[0]).toMatchObject({
+      bookingId: offer.bookingId,
+      paymentRecordId: balance._id,
+      amountMinor: balance.amountMinor,
+      status: "pending",
+    });
+    expect(
+      (await f.scheduled()).filter((job) => job.name === "refunds:executeRefund"),
+    ).toMatchObject([
+      {
+        args: [{ refundId: refunds[0]._id, attempt: 0 }],
+        scheduledTime: Date.now(),
+      },
+    ]);
+    expect(await f.records(offer.bookingId)).toEqual(records);
+    expect(await f.ledger()).toEqual(ledger);
+    expect(await f.t.run((ctx) => ctx.db.query("payouts").take(50))).toEqual([]);
   });
 
   test("a stale auto-cancel does nothing while the booking is still awaiting payment", async () => {

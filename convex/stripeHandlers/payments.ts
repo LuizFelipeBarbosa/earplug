@@ -31,6 +31,12 @@ const checkoutCompleted: StripeEventHandler = async (ctx, event) => {
     );
     return;
   }
+  if (session.payment_status !== "paid") {
+    console.log(
+      `checkout.session.completed ignored: payment_status ${session.payment_status} for session ${session.id} (async payment methods are not handled in this phase — a later checkout.session.async_payment_succeeded event is not currently processed)`,
+    );
+    return;
+  }
   const paymentIntent = session.payment_intent;
   const paymentIntentId =
     typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;

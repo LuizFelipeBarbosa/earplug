@@ -155,6 +155,25 @@ export const attachBandAccount = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
+    const existing = await ctx.db
+      .query("bandPayoutAccounts")
+      .withIndex("by_bandId", (q) => q.eq("bandId", args.bandId))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        stripeAccountId: args.stripeAccountId,
+        updatedAt: now,
+        ...(existing.stripeAccountId !== args.stripeAccountId
+          ? {
+              chargesEnabled: false,
+              payoutsEnabled: false,
+              detailsSubmitted: false,
+              requirementsDue: [],
+            }
+          : {}),
+      });
+      return null;
+    }
     await ctx.db.insert("bandPayoutAccounts", {
       bandId: args.bandId,
       stripeAccountId: args.stripeAccountId,

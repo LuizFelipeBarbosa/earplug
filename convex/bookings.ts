@@ -33,6 +33,7 @@ import {
 import { buildInstallments } from "./lib/paymentSchedule";
 import {
   AUTO_CANCEL_GRACE_MS,
+  DEFAULT_PAYMENT_DUE_MS,
   PAYMENT_REMINDER_LEAD_MS,
 } from "./lib/paymentStatus";
 import { recomputeReviewSummary } from "./lib/reviewSummary";
@@ -41,6 +42,8 @@ import {
   bookingStatusValidator,
   cancellationTemplateValidator,
 } from "./schema";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 async function loadBooking(ctx: MutationCtx, bookingId: Id<"bookings">) {
   const booking = await ctx.db.get(bookingId);
@@ -244,6 +247,15 @@ export const sendOffer = mutation({
     applicationId: v.id("artistApplications"),
     grossMinor: v.number(),
     cancellationTemplate: cancellationTemplateValidator,
+    installments: v.optional(
+      v.array(
+        v.object({
+          label: v.string(),
+          amountMinor: v.number(),
+          dueAfterAcceptanceDays: v.number(),
+        }),
+      ),
+    ),
     termsNotes: v.optional(v.string()),
     message: v.optional(v.string()),
   },
@@ -302,6 +314,55 @@ export const sendOffer = mutation({
     if (args.grossMinor > 0 && !flag("PAYMENTS_ENABLED", false)) {
       throw new Error("Paid offers open once payments are enabled");
     }
+    if (args.installments?.length) {
+      if (args.installments.length > 4) {
+        throw new Error("At most 4 installments are allowed");
+      }
+      if (
+        args.installments.some(
+          (installment) =>
+            !Number.isInteger(installment.amountMinor) ||
+            installment.amountMinor <= 0,
+        )
+      ) {
+        throw new Error("Each installment amount must be a positive integer");
+      }
+      const total = args.installments.reduce(
+        (sum, installment) => sum + installment.amountMinor,
+        0,
+      );
+      if (total !== args.grossMinor) {
+        throw new Error("Installments must sum to the booking's gross amount");
+      }
+      if (
+        args.installments.some(
+          (installment) =>
+            !Number.isInteger(installment.dueAfterAcceptanceDays) ||
+            installment.dueAfterAcceptanceDays < 0,
+        )
+      ) {
+        throw new Error("Installment due days must be non-negative integers");
+      }
+      if (
+        args.installments.some(
+          (installment, index, installments) =>
+            index > 0 &&
+            installment.dueAfterAcceptanceDays <
+              installments[index - 1].dueAfterAcceptanceDays,
+        )
+      ) {
+        throw new Error("Installment due days must be non-decreasing");
+      }
+    }
+    const installments = args.installments?.length
+      ? args.installments.map((installment) => ({
+          label: installment.label,
+          amountMinor: installment.amountMinor,
+          dueAt: 0,
+          dueAfterAcceptanceMs:
+            installment.dueAfterAcceptanceDays * DAY_MS + DEFAULT_PAYMENT_DUE_MS,
+        }))
+      : [];
     const termsNotes = normalizeNote(args.termsNotes, "Terms notes", 2000);
     const message = normalizeNote(args.message, "Message", 1000);
     const fees =
@@ -340,7 +401,7 @@ export const sendOffer = mutation({
       bookingId,
       revision: 1,
       ...terms,
-      installments: [],
+      installments,
       ...(message !== undefined ? { message } : {}),
       sentBy: user._id,
       sentAt: now,
@@ -687,6 +748,14 @@ export const autoCancelUnpaid = internalMutation({
       revision: booking.revision + 1,
       updatedAt: now,
     });
+    if ((booking.paidMinor ?? 0) > 0) {
+      await settleBookingCancellation(ctx, {
+        booking,
+        cancelledBy: "system",
+        reason: "admin",
+        now,
+      });
+    }
     await shortlistApplication(ctx, booking.applicationId, now);
     await completeOpportunityIfReady(ctx, booking.opportunityId);
     await sendBookingEmail(

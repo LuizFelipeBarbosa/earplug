@@ -10,7 +10,10 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { sendBookingEmail } from "./bookings";
-import { organizationMembershipFor } from "./lib/authz";
+import {
+  organizationMembershipFor,
+  requireOrganizationRole,
+} from "./lib/authz";
 import { appBaseUrl } from "./lib/env";
 import { requireUser } from "./lib/helpers";
 import { paymentRecordsForBooking } from "./lib/paymentSchedule";
@@ -56,18 +59,13 @@ export const loadCheckoutContext = internalQuery({
     ) {
       throw new Error("This booking is not accepting payments");
     }
-    const user = await requireUser(ctx);
-    const membership = await organizationMembershipFor(
+    const { organization } = await requireOrganizationRole(
       ctx,
       booking.organizationId,
-      user._id,
+      ["owner", "finance"],
     );
-    if (membership?.role !== "owner" && membership?.role !== "finance") {
-      throw new Error("Not permitted to start a payment");
-    }
-    const [opportunity, organization, details] = await Promise.all([
+    const [opportunity, details] = await Promise.all([
       ctx.db.get(booking.opportunityId),
-      ctx.db.get(booking.organizationId),
       ctx.db
         .query("organizationPrivateDetails")
         .withIndex("by_organizationId", (q) =>
@@ -76,7 +74,6 @@ export const loadCheckoutContext = internalQuery({
         .unique(),
     ]);
     if (!opportunity) throw new Error("Opportunity not found");
-    if (!organization) throw new Error("Organization not found");
     if (!details) throw new Error("Organization private details not found");
     return {
       record,
@@ -162,6 +159,7 @@ export const startInstallmentCheckout = action({
       "/v1/checkout/sessions",
       {
         mode: "payment",
+        payment_method_types: ["card"],
         customer: stripeCustomerId,
         client_reference_id: record._id,
         line_items: [
@@ -371,6 +369,10 @@ export const paymentsForBooking = query({
     const canPay =
       membership?.role === "owner" || membership?.role === "finance";
     const records = await paymentRecordsForBooking(ctx, booking._id);
+    const openIndexes = records
+      .filter((record) => PAYMENT_OPEN_STATUSES.includes(record.status))
+      .map((record) => record.installmentIndex);
+    const lowestOpenIndex = openIndexes.length ? Math.min(...openIndexes) : null;
     return records.map((record) => ({
       _id: record._id,
       installmentIndex: record.installmentIndex,
@@ -380,7 +382,10 @@ export const paymentsForBooking = query({
       dueAt: record.dueAt,
       status: record.status,
       paidAt: record.paidAt ?? null,
-      canPay: canPay && PAYMENT_OPEN_STATUSES.includes(record.status),
+      canPay:
+        canPay &&
+        PAYMENT_OPEN_STATUSES.includes(record.status) &&
+        record.installmentIndex === lowestOpenIndex,
     }));
   },
 });

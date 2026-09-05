@@ -1276,6 +1276,7 @@ describe("late payments", () => {
       created: NOW / 1000,
       data: {
         object: {
+          payment_status: "paid",
           id: "cs_late",
           amount_total: 20000,
           currency: "usd",
