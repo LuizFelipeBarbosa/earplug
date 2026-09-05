@@ -5,6 +5,7 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/main.dart'
     show
         bandSlugFromUri,
+        bookingIdFromUri,
         gigIdFromUri,
         joinTokenFromUri,
         opportunityRefFromUri,
@@ -58,6 +59,18 @@ void main() {
       ),
       'friday-night-live',
     );
+  });
+
+  test('booking routes preserve their ids in path and hash URLs', () {
+    expect(
+      bookingIdFromUri(Uri.parse('https://earplug.app/bookings/abc')),
+      'abc',
+    );
+    expect(
+      bookingIdFromUri(Uri.parse('https://earplug.app/#/bookings/abc')),
+      'abc',
+    );
+    expect(bookingIdFromUri(Uri.parse('https://earplug.app/bookings')), isNull);
   });
 
   test(
@@ -183,6 +196,20 @@ void main() {
 
     expect(app.current.screen, Screen.opportunityDetail);
     expect(app.current.param, 'friday-night-live');
+  });
+
+  test('booking references seed the detail placeholder', () async {
+    final auth = FakeAuthService();
+    final app = AppState.demo(
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      initialBookingId: 'abc',
+    );
+    addTearDown(app.dispose);
+    await flushAsyncWork();
+
+    expect(app.current.screen, Screen.bookingDetail);
+    expect(app.current.param, 'abc');
   });
 
   test(

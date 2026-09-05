@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import 'app_links.dart';
 import 'date_names.dart';
+import 'money.dart';
 
 String _marketplaceString(Object? value) => value is String ? value : '';
 
@@ -347,6 +348,7 @@ class Organization {
     this.website,
     required this.photoUrls,
     required this.createdAt,
+    this.reviewSummary,
   });
 
   final String id;
@@ -359,6 +361,7 @@ class Organization {
   final String? website;
   final List<String> photoUrls;
   final DateTime createdAt;
+  final ReviewSummary? reviewSummary;
 
   factory Organization.fromJson(Map<String, dynamic> json) {
     final status = OrganizationStatus.fromWire(json['status']);
@@ -375,6 +378,9 @@ class Organization {
       website: _marketplaceOptionalString(json['website']),
       photoUrls: _marketplaceStringList(json['photoUrls']),
       createdAt: _marketplaceDate(json['createdAt']),
+      reviewSummary: json['reviewSummary'] is Map
+          ? ReviewSummary.fromJson(_marketplaceMap(json['reviewSummary']))
+          : null,
     );
   }
 }
@@ -1687,6 +1693,491 @@ class OpportunityFilters {
   };
 }
 
+enum BookingStatus {
+  offerSent('offer_sent', 'Offer sent'),
+  artistAccepted('artist_accepted', 'Artist accepted'),
+  awaitingPayment('awaiting_payment', 'Awaiting payment'),
+  confirmed('confirmed', 'Confirmed'),
+  completed('completed', 'Completed'),
+  paid('paid', 'Paid'),
+  cancelledByOrganizer('cancelled_by_organizer', 'Cancelled by organizer'),
+  cancelledByArtist('cancelled_by_artist', 'Cancelled by artist'),
+  forceMajeure('force_majeure', 'Force majeure'),
+  disputed('disputed', 'Disputed'),
+  refunded('refunded', 'Refunded'),
+  declined('declined', 'Declined'),
+  expired('expired', 'Expired'),
+  withdrawn('withdrawn', 'Withdrawn'),
+  unknown('unknown', 'Unknown');
+
+  const BookingStatus(this.wireValue, this.label);
+
+  final String wireValue;
+  final String label;
+
+  /// Unrecognized statuses remain readable while the client catches up.
+  static BookingStatus fromWire(Object? value) => switch (value) {
+    'offer_sent' => BookingStatus.offerSent,
+    'artist_accepted' => BookingStatus.artistAccepted,
+    'awaiting_payment' => BookingStatus.awaitingPayment,
+    'confirmed' => BookingStatus.confirmed,
+    'completed' => BookingStatus.completed,
+    'paid' => BookingStatus.paid,
+    'cancelled_by_organizer' => BookingStatus.cancelledByOrganizer,
+    'cancelled_by_artist' => BookingStatus.cancelledByArtist,
+    'force_majeure' => BookingStatus.forceMajeure,
+    'disputed' => BookingStatus.disputed,
+    'refunded' => BookingStatus.refunded,
+    'declined' => BookingStatus.declined,
+    'expired' => BookingStatus.expired,
+    'withdrawn' => BookingStatus.withdrawn,
+    _ => BookingStatus.unknown,
+  };
+
+  bool get isActive =>
+      this == BookingStatus.offerSent ||
+      this == BookingStatus.artistAccepted ||
+      this == BookingStatus.awaitingPayment ||
+      this == BookingStatus.confirmed ||
+      this == BookingStatus.completed ||
+      this == BookingStatus.paid ||
+      this == BookingStatus.disputed;
+
+  bool get isLive =>
+      this == BookingStatus.confirmed ||
+      this == BookingStatus.completed ||
+      this == BookingStatus.paid;
+}
+
+enum CancellationTemplate {
+  flexible(
+    'flexible',
+    'Flexible',
+    'Full refund up to 48 hours before the show.',
+  ),
+  standard(
+    'standard',
+    'Standard',
+    'Full refund more than 14 days out, 50% refund 7-14 days out, '
+        'no refund within 7 days.',
+  ),
+  strict('strict', 'Strict', 'No refund within 14 days of the show.');
+
+  const CancellationTemplate(this.wireValue, this.label, this.description);
+
+  final String wireValue;
+  final String label;
+  final String description;
+
+  /// Use the standard policy as the display fallback for missing/new values.
+  static CancellationTemplate fromWire(Object? value) => switch (value) {
+    'flexible' => CancellationTemplate.flexible,
+    'strict' => CancellationTemplate.strict,
+    _ => CancellationTemplate.standard,
+  };
+}
+
+enum BookingSide {
+  organizer('organizer'),
+  artist('artist');
+
+  const BookingSide(this.wireValue);
+
+  final String wireValue;
+
+  /// The backend supplies a side; use artist when that value is missing/new.
+  static BookingSide fromWire(Object? value) => switch (value) {
+    'organizer' => BookingSide.organizer,
+    _ => BookingSide.artist,
+  };
+}
+
+enum BookingCancelledBy {
+  organizer('organizer'),
+  artist('artist'),
+  admin('admin'),
+  system('system');
+
+  const BookingCancelledBy(this.wireValue);
+
+  final String wireValue;
+
+  /// Missing/new values default to system without attributing them to a user.
+  static BookingCancelledBy fromWire(Object? value) => switch (value) {
+    'organizer' => BookingCancelledBy.organizer,
+    'artist' => BookingCancelledBy.artist,
+    'admin' => BookingCancelledBy.admin,
+    _ => BookingCancelledBy.system,
+  };
+}
+
+enum OfferResponse {
+  accepted('accepted'),
+  declined('declined'),
+  expired('expired'),
+  withdrawn('withdrawn');
+
+  const OfferResponse(this.wireValue);
+
+  final String wireValue;
+
+  /// Treat unrecognized responses as withdrawn, never as an acceptance.
+  static OfferResponse fromWire(Object? value) => switch (value) {
+    'accepted' => OfferResponse.accepted,
+    'declined' => OfferResponse.declined,
+    'expired' => OfferResponse.expired,
+    _ => OfferResponse.withdrawn,
+  };
+}
+
+class FeeBreakdown {
+  const FeeBreakdown({
+    required this.grossMinor,
+    required this.commissionBps,
+    required this.commissionMinor,
+    required this.artistNetMinor,
+    required this.currency,
+  });
+
+  final int grossMinor;
+  final int commissionBps;
+  final int commissionMinor;
+  final int artistNetMinor;
+  final String currency;
+
+  factory FeeBreakdown.fromJson(Map<String, dynamic> json) => FeeBreakdown(
+    grossMinor: _marketplaceInt(json['grossMinor']),
+    commissionBps: _marketplaceInt(json['commissionBps']),
+    commissionMinor: _marketplaceInt(json['commissionMinor']),
+    artistNetMinor: _marketplaceInt(json['artistNetMinor']),
+    currency: _marketplaceString(json['currency']),
+  );
+
+  Money get gross => Money(grossMinor, currency);
+  Money get commission => Money(commissionMinor, currency);
+  Money get artistNet => Money(artistNetMinor, currency);
+}
+
+class OfferInstallment {
+  const OfferInstallment({
+    required this.label,
+    required this.amountMinor,
+    required this.dueAt,
+  });
+
+  final String label;
+  final int amountMinor;
+  final DateTime dueAt;
+
+  factory OfferInstallment.fromJson(Map<String, dynamic> json) =>
+      OfferInstallment(
+        label: _marketplaceString(json['label']),
+        amountMinor: _marketplaceInt(json['amountMinor']),
+        dueAt: _marketplaceDate(json['dueAt']),
+      );
+}
+
+class BookingOffer {
+  const BookingOffer({
+    required this.revision,
+    this.message,
+    required this.sentAt,
+    required this.expiresAt,
+    this.response,
+    this.installments = const [],
+  });
+
+  final int revision;
+  final String? message;
+  final DateTime sentAt;
+  final DateTime expiresAt;
+  final OfferResponse? response;
+  final List<OfferInstallment> installments;
+
+  factory BookingOffer.fromJson(Map<String, dynamic> json) => BookingOffer(
+    revision: _marketplaceInt(json['revision']),
+    message: _marketplaceOptionalString(json['message']),
+    sentAt: _marketplaceDate(json['sentAt']),
+    expiresAt: _marketplaceDate(json['expiresAt']),
+    response: json['response'] == null
+        ? null
+        : OfferResponse.fromWire(json['response']),
+    installments: [
+      for (final installment in _marketplaceMapList(json['installments']))
+        OfferInstallment.fromJson(installment),
+    ],
+  );
+}
+
+class BookingVenue {
+  const BookingVenue({
+    required this.id,
+    required this.name,
+    this.slug,
+    this.approxLabel,
+    this.exactAddress,
+  });
+
+  final String id;
+  final String name;
+  final String? slug;
+  final String? approxLabel;
+  final String? exactAddress;
+
+  factory BookingVenue.fromJson(Map<String, dynamic> json) => BookingVenue(
+    id: _marketplaceString(json['_id']),
+    name: _marketplaceString(json['name']),
+    slug: _marketplaceOptionalString(json['slug']),
+    approxLabel: _marketplaceOptionalString(json['approxLabel']),
+    exactAddress: _marketplaceOptionalString(json['exactAddress']),
+  );
+}
+
+class Booking {
+  const Booking({
+    required this.id,
+    required this.opportunityId,
+    required this.opportunityTitle,
+    required this.opportunitySlug,
+    required this.slotId,
+    required this.slotRole,
+    required this.slotRequired,
+    required this.organizationId,
+    required this.organizationName,
+    required this.bandId,
+    required this.bandName,
+    required this.bandSlug,
+    required this.applicationId,
+    required this.status,
+    required this.revision,
+    required this.startsAt,
+    this.doorsAt,
+    required this.fee,
+    required this.cancellationTemplate,
+    this.termsNotes,
+    required this.organizerAcceptedTermsAt,
+    this.artistAcceptedTermsAt,
+    this.confirmedAt,
+    this.completedAt,
+    this.cancelledAt,
+    this.cancelledBy,
+    this.cancelReason,
+    this.expiresAt,
+    this.currentOffer,
+    required this.venue,
+    this.publicGigId,
+    this.publicGigSlug,
+    this.counterpartyEmail,
+    required this.viewerSide,
+  });
+
+  final String id;
+  final String opportunityId;
+  final String opportunityTitle;
+  final String opportunitySlug;
+  final String slotId;
+  final SlotRole slotRole;
+  final bool slotRequired;
+  final String organizationId;
+  final String organizationName;
+  final String bandId;
+  final String bandName;
+  final String bandSlug;
+  final String applicationId;
+  final BookingStatus status;
+  final int revision;
+  final DateTime startsAt;
+  final DateTime? doorsAt;
+  final FeeBreakdown fee;
+  final CancellationTemplate cancellationTemplate;
+  final String? termsNotes;
+  final DateTime organizerAcceptedTermsAt;
+  final DateTime? artistAcceptedTermsAt;
+  final DateTime? confirmedAt;
+  final DateTime? completedAt;
+  final DateTime? cancelledAt;
+  final BookingCancelledBy? cancelledBy;
+  final String? cancelReason;
+  final DateTime? expiresAt;
+  final BookingOffer? currentOffer;
+  final BookingVenue venue;
+  final String? publicGigId;
+  final String? publicGigSlug;
+  final String? counterpartyEmail;
+  final BookingSide viewerSide;
+
+  factory Booking.fromJson(Map<String, dynamic> json) => Booking(
+    id: _marketplaceString(json['_id']),
+    opportunityId: _marketplaceString(json['opportunityId']),
+    opportunityTitle: _marketplaceString(json['opportunityTitle']),
+    opportunitySlug: _marketplaceString(json['opportunitySlug']),
+    slotId: _marketplaceString(json['slotId']),
+    slotRole: SlotRole.fromWire(json['slotRole']),
+    slotRequired: json['slotRequired'] == true,
+    organizationId: _marketplaceString(json['organizationId']),
+    organizationName: _marketplaceString(json['organizationName']),
+    bandId: _marketplaceString(json['bandId']),
+    bandName: _marketplaceString(json['bandName']),
+    bandSlug: _marketplaceString(json['bandSlug']),
+    applicationId: _marketplaceString(json['applicationId']),
+    status: BookingStatus.fromWire(json['status']),
+    revision: _marketplaceInt(json['revision']),
+    startsAt: _marketplaceDate(json['startsAt']),
+    doorsAt: _marketplaceOptionalDate(json['doorsAt']),
+    fee: FeeBreakdown.fromJson(_marketplaceMap(json['fee'])),
+    cancellationTemplate: CancellationTemplate.fromWire(
+      json['cancellationTemplate'],
+    ),
+    termsNotes: _marketplaceOptionalString(json['termsNotes']),
+    organizerAcceptedTermsAt: _marketplaceDate(
+      json['organizerAcceptedTermsAt'],
+    ),
+    artistAcceptedTermsAt: _marketplaceOptionalDate(
+      json['artistAcceptedTermsAt'],
+    ),
+    confirmedAt: _marketplaceOptionalDate(json['confirmedAt']),
+    completedAt: _marketplaceOptionalDate(json['completedAt']),
+    cancelledAt: _marketplaceOptionalDate(json['cancelledAt']),
+    cancelledBy: json['cancelledBy'] == null
+        ? null
+        : BookingCancelledBy.fromWire(json['cancelledBy']),
+    cancelReason: _marketplaceOptionalString(json['cancelReason']),
+    expiresAt: _marketplaceOptionalDate(json['expiresAt']),
+    currentOffer: json['currentOffer'] is Map
+        ? BookingOffer.fromJson(_marketplaceMap(json['currentOffer']))
+        : null,
+    venue: BookingVenue.fromJson(_marketplaceMap(json['venue'])),
+    publicGigId: _marketplaceOptionalString(json['publicGigId']),
+    publicGigSlug: _marketplaceOptionalString(json['publicGigSlug']),
+    counterpartyEmail: _marketplaceOptionalString(json['counterpartyEmail']),
+    viewerSide: BookingSide.fromWire(json['viewerSide']),
+  );
+}
+
+class ReviewSummary {
+  const ReviewSummary({
+    required this.count,
+    required this.mean,
+    required this.completedBookings,
+    required this.cancellations,
+  });
+
+  final int count;
+  final double mean;
+  final int completedBookings;
+  final int cancellations;
+
+  factory ReviewSummary.fromJson(Map<String, dynamic>? json) {
+    final mean = json?['mean'];
+    return ReviewSummary(
+      count: _marketplaceInt(json?['count']),
+      mean: mean is num ? mean.toDouble() : 0,
+      completedBookings: _marketplaceInt(json?['completedBookings']),
+      cancellations: _marketplaceInt(json?['cancellations']),
+    );
+  }
+}
+
+class Review {
+  const Review({
+    required this.reviewId,
+    required this.authorSide,
+    required this.rating,
+    required this.categories,
+    required this.text,
+    required this.submittedAt,
+    this.visibleAt,
+  });
+
+  final String reviewId;
+  final BookingSide authorSide;
+  final int rating;
+  final List<String> categories;
+  final String text;
+  final DateTime submittedAt;
+  final DateTime? visibleAt;
+
+  factory Review.fromJson(Map<String, dynamic> json) => Review(
+    reviewId: _marketplaceString(json['reviewId']),
+    authorSide: BookingSide.fromWire(json['authorSide']),
+    rating: _marketplaceInt(json['rating']),
+    categories: _marketplaceStringList(json['categories']),
+    text: _marketplaceString(json['text']),
+    submittedAt: _marketplaceDate(json['submittedAt']),
+    visibleAt: _marketplaceOptionalDate(json['visibleAt']),
+  );
+}
+
+class BookingReviews {
+  const BookingReviews({
+    this.mine,
+    this.theirs,
+    required this.windowClosesAt,
+    required this.canSubmit,
+  });
+
+  final Review? mine;
+  final Review? theirs;
+  final DateTime windowClosesAt;
+  final bool canSubmit;
+
+  factory BookingReviews.fromJson(Map<String, dynamic> json) => BookingReviews(
+    mine: json['mine'] is Map
+        ? Review.fromJson(_marketplaceMap(json['mine']))
+        : null,
+    theirs: json['theirs'] is Map
+        ? Review.fromJson(_marketplaceMap(json['theirs']))
+        : null,
+    windowClosesAt: _marketplaceDate(json['windowClosesAt']),
+    canSubmit: json['canSubmit'] == true,
+  );
+}
+
+class PublicReview {
+  const PublicReview({
+    required this.reviewId,
+    required this.rating,
+    required this.categories,
+    required this.text,
+    required this.submittedAt,
+    required this.monthLabel,
+    required this.counterpartyName,
+    required this.opportunityTitle,
+  });
+
+  final String reviewId;
+  final int rating;
+  final List<String> categories;
+  final String text;
+  final DateTime submittedAt;
+  final String monthLabel;
+  final String counterpartyName;
+  final String opportunityTitle;
+
+  factory PublicReview.fromJson(Map<String, dynamic> json) => PublicReview(
+    reviewId: _marketplaceString(json['reviewId']),
+    rating: _marketplaceInt(json['rating']),
+    categories: _marketplaceStringList(json['categories']),
+    text: _marketplaceString(json['text']),
+    submittedAt: _marketplaceDate(json['submittedAt']),
+    monthLabel: _marketplaceString(json['monthLabel']),
+    counterpartyName:
+        _marketplaceOptionalString(json['organizationName']) ??
+        _marketplaceOptionalString(json['bandName']) ??
+        '',
+    opportunityTitle: _marketplaceString(json['opportunityTitle']),
+  );
+}
+
+const List<String> reviewCategories = [
+  'professionalism',
+  'punctuality',
+  'communication',
+  'sound',
+  'hospitality',
+  'payment',
+];
+
 class GigWritePolicy {
   const GigWritePolicy({required this.bandGigWrites});
 
@@ -1842,6 +2333,21 @@ enum AgeRequirement {
   };
 }
 
+enum GigOwnerKind {
+  band('band'),
+  organization('organization');
+
+  const GigOwnerKind(this.wireValue);
+
+  final String wireValue;
+
+  /// Legacy payloads omit ownership; keep treating them as band-owned gigs.
+  static GigOwnerKind fromWire(Object? value) => switch (value) {
+    'organization' => GigOwnerKind.organization,
+    _ => GigOwnerKind.band,
+  };
+}
+
 class Gig {
   final String id;
   final String slug;
@@ -1867,6 +2373,8 @@ class Gig {
   final AgeRequirement ageRequirement;
   final GigLifecycle lifecycle;
   final String? createdByBand;
+  final GigOwnerKind ownerKind;
+  final String? opportunityId;
   final bool discoveryListingReady;
 
   const Gig({
@@ -1894,6 +2402,8 @@ class Gig {
     this.ageRequirement = AgeRequirement.allAges,
     this.lifecycle = GigLifecycle.published,
     this.createdByBand,
+    this.ownerKind = GigOwnerKind.band,
+    this.opportunityId,
     this.discoveryListingReady = false,
   });
 
@@ -1940,7 +2450,10 @@ class Gig {
       going: (json['goingCount'] as num?)?.toInt() ?? 0,
       genres: List<String>.from(json['genres'] as List),
       desc: json['desc'] as String,
-      tix: Ticketing.values.byName(json['ticketing'] as String),
+      tix: switch (json['ticketing']) {
+        'external' => Ticketing.external,
+        _ => Ticketing.rsvp,
+      },
       externalUrl: json['externalUrl'] as String?,
       flyerUrl: json['flyerUrl'] as String?,
       cap: json['cap'] as String,
@@ -1949,6 +2462,8 @@ class Gig {
         (json['lifecycle'] as String?) ?? 'published',
       ),
       createdByBand: json['createdByBand'] as String?,
+      ownerKind: GigOwnerKind.fromWire(json['ownerKind']),
+      opportunityId: _marketplaceOptionalString(json['opportunityId']),
       discoveryListingReady: json['discoveryListingReady'] == true,
     );
   }
@@ -2038,6 +2553,8 @@ class Gig {
         ageRequirement != other.ageRequirement ||
         lifecycle != other.lifecycle ||
         createdByBand != other.createdByBand ||
+        ownerKind != other.ownerKind ||
+        opportunityId != other.opportunityId ||
         discoveryListingReady != other.discoveryListingReady) {
       return false;
     }
@@ -2086,6 +2603,8 @@ class Gig {
     AgeRequirement? ageRequirement,
     GigLifecycle? lifecycle,
     String? createdByBand,
+    GigOwnerKind? ownerKind,
+    String? opportunityId,
     bool? discoveryListingReady,
   }) => Gig(
     id: id,
@@ -2112,6 +2631,8 @@ class Gig {
     ageRequirement: ageRequirement ?? this.ageRequirement,
     lifecycle: lifecycle ?? this.lifecycle,
     createdByBand: createdByBand ?? this.createdByBand,
+    ownerKind: ownerKind ?? this.ownerKind,
+    opportunityId: opportunityId ?? this.opportunityId,
     discoveryListingReady: discoveryListingReady ?? this.discoveryListingReady,
   );
 }
@@ -2182,6 +2703,7 @@ class Band {
   final String? linkBc;
   final String? linkYt;
   final String? credits;
+  final ReviewSummary? reviewSummary;
   final String? avatarUrl;
   final String? bannerUrl;
   final bool _avatarUrlResolved;
@@ -2209,6 +2731,7 @@ class Band {
     this.linkBc,
     this.linkYt,
     this.credits,
+    this.reviewSummary,
     this.avatarUrl,
     this.bannerUrl,
     this._avatarUrlResolved = false,
@@ -2242,6 +2765,9 @@ class Band {
       linkBc: json['linkBc'] as String?,
       linkYt: json['linkYt'] as String?,
       credits: json['credits'] as String?,
+      reviewSummary: json['reviewSummary'] is Map
+          ? ReviewSummary.fromJson(_marketplaceMap(json['reviewSummary']))
+          : null,
       avatarUrl: json['avatarUrl'] as String?,
       bannerUrl: json['bannerUrl'] as String?,
       avatarUrlResolved: json.containsKey('avatarUrl'),
@@ -2283,6 +2809,7 @@ class Band {
       linkBc: linkBc,
       linkYt: linkYt,
       credits: credits,
+      reviewSummary: reviewSummary,
       avatarUrl: summaryResolvesAvatar ? summary.avatarUrl : avatarUrl,
       bannerUrl: bannerUrl,
       avatarUrlResolved: summaryResolvesAvatar
@@ -2311,6 +2838,7 @@ class Band {
     String? linkBc,
     String? linkYt,
     String? credits,
+    ReviewSummary? reviewSummary,
     String? avatarUrl,
     String? bannerUrl,
     bool? avatarUrlResolved,
@@ -2334,6 +2862,7 @@ class Band {
     linkBc: linkBc ?? this.linkBc,
     linkYt: linkYt ?? this.linkYt,
     credits: credits ?? this.credits,
+    reviewSummary: reviewSummary ?? this.reviewSummary,
     avatarUrl: avatarUrl ?? this.avatarUrl,
     bannerUrl: bannerUrl ?? this.bannerUrl,
     avatarUrlResolved: avatarUrlResolved ?? _avatarUrlResolved,

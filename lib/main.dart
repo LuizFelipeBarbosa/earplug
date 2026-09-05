@@ -104,6 +104,7 @@ Future<void> main() async {
   final bandSlug = bandSlugFromUri(Uri.base);
   final venueRef = venueRefFromUri(Uri.base);
   final opportunityRef = opportunityRefFromUri(Uri.base);
+  final bookingId = bookingIdFromUri(Uri.base);
   final orgInviteToken = orgInviteTokenFromUri(Uri.base);
   final organizerApply = organizerApplyFromUri(Uri.base);
   if (Env.demo) {
@@ -114,6 +115,7 @@ Future<void> main() async {
       initialBandSlug: bandSlug,
       initialVenueRef: venueRef,
       initialOpportunityRef: opportunityRef,
+      initialBookingId: bookingId,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
     );
@@ -150,6 +152,7 @@ Future<void> main() async {
       initialBandSlug: bandSlug,
       initialVenueRef: venueRef,
       initialOpportunityRef: opportunityRef,
+      initialBookingId: bookingId,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
     ),
@@ -200,6 +203,8 @@ String? venueRefFromUri(Uri uri) => _routeValueFromUri(uri, 'venues');
 
 String? opportunityRefFromUri(Uri uri) =>
     _routeValueFromUri(uri, 'opportunities');
+
+String? bookingIdFromUri(Uri uri) => _routeValueFromUri(uri, 'bookings');
 
 String? orgInviteTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'apply');
 
@@ -285,6 +290,7 @@ class EarplugApp extends StatelessWidget {
     this.initialBandSlug,
     this.initialVenueRef,
     this.initialOpportunityRef,
+    this.initialBookingId,
     this.initialOrgInviteToken,
     this.initialOrganizerApply = false,
   });
@@ -299,6 +305,7 @@ class EarplugApp extends StatelessWidget {
   final String? initialBandSlug;
   final String? initialVenueRef;
   final String? initialOpportunityRef;
+  final String? initialBookingId;
   final String? initialOrgInviteToken;
   final bool initialOrganizerApply;
 
@@ -328,6 +335,7 @@ class EarplugApp extends StatelessWidget {
                 initialBandSlug: initialBandSlug,
                 initialVenueRef: initialVenueRef,
                 initialOpportunityRef: initialOpportunityRef,
+                initialBookingId: initialBookingId,
                 initialOrgInviteToken: initialOrgInviteToken,
                 initialOrganizerApply: initialOrganizerApply,
               ),
@@ -445,24 +453,38 @@ class RootShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (dataStatus, screen, param, canGoBack, dataError, bandId) = context
-        .select<AppState, (DataStatus, Screen, String?, bool, String?, String)>(
-          (app) {
-            final current = app.current;
-            return (
-              app.dataStatus,
-              current.screen,
-              current.param,
-              app.canGoBack,
-              app.dataError,
-              app.bandId,
-            );
-          },
-        );
+    final (
+      dataStatus,
+      screen,
+      param,
+      canGoBack,
+      dataError,
+      bandId,
+      organizationId,
+    ) = context
+        .select<
+          AppState,
+          (DataStatus, Screen, String?, bool, String?, String, String)
+        >((app) {
+          final current = app.current;
+          return (
+            app.dataStatus,
+            current.screen,
+            current.param,
+            app.canGoBack,
+            app.dataError,
+            app.bandId,
+            app.organizationId,
+          );
+        });
     final app = context.read<AppState>();
     final entry = ScreenEntry(screen, param);
     final showOpportunityAsFanTab =
         screen == Screen.opportunityDetail && bandId.isEmpty;
+    final isDualBookingScreen =
+        screen == Screen.bookingDetail || screen == Screen.reviewCompose;
+    final showBookingAsOrganizerTab =
+        isDualBookingScreen && organizationId.isNotEmpty;
 
     final body = switch (dataStatus) {
       DataStatus.connecting => ColoredBox(
@@ -501,9 +523,12 @@ class RootShell extends StatelessWidget {
           Positioned.fill(child: _screenFor(entry)),
           if (fanTabScreens.contains(screen) || showOpportunityAsFanTab)
             const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-          if (bandTabScreens.contains(screen) && !showOpportunityAsFanTab)
+          if (bandTabScreens.contains(screen) &&
+              !showOpportunityAsFanTab &&
+              (!isDualBookingScreen || !showBookingAsOrganizerTab))
             const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
-          if (organizerTabScreens.contains(screen))
+          if (organizerTabScreens.contains(screen) &&
+              (!isDualBookingScreen || showBookingAsOrganizerTab))
             const Positioned(
               left: 0,
               right: 0,
@@ -580,12 +605,57 @@ class RootShell extends StatelessWidget {
         key: key,
         opportunityRef: entry.param!,
       ),
+      Screen.bookingDetail => _PlaceholderScreen(
+        key: const Key('placeholder-bookingDetail'),
+        title: 'BOOKING',
+        param: entry.param,
+      ),
+      Screen.reviewCompose => _PlaceholderScreen(
+        key: const Key('placeholder-reviewCompose'),
+        title: 'REVIEW',
+        param: entry.param,
+      ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,
         applicationId: entry.param!,
       ),
     };
+  }
+}
+
+class _PlaceholderScreen extends StatelessWidget {
+  const _PlaceholderScreen({super.key, required this.title, this.param});
+
+  final String title;
+  final String? param;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: context.epColors.background,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title, style: epDisplay(size: 20)),
+              if (param != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  param!,
+                  style: epText(
+                    size: 13,
+                    color: context.epColors.contentSecondary,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

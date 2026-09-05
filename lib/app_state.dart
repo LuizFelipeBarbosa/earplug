@@ -32,6 +32,7 @@ export 'navigation.dart';
 
 part 'app_state/band_console.dart';
 part 'app_state/band_create.dart';
+part 'app_state/bookings.dart';
 part 'app_state/catalog.dart';
 part 'app_state/discovery.dart';
 part 'app_state/fan.dart';
@@ -132,6 +133,7 @@ class AppState extends ChangeNotifier
         _FanState,
         _BandConsoleState,
         _OpportunityState,
+        _BookingState,
         _OrganizerState,
         _CatalogState,
         _SessionState,
@@ -147,6 +149,7 @@ class AppState extends ChangeNotifier
     String? initialBandSlug,
     String? initialVenueRef,
     String? initialOpportunityRef,
+    String? initialBookingId,
     String? initialOrgInviteToken,
     bool initialOrganizerApply = false,
     DateTime Function()? now,
@@ -161,6 +164,7 @@ class AppState extends ChangeNotifier
          initialBandSlug,
          initialVenueRef,
          initialOpportunityRef,
+         initialBookingId,
          initialOrgInviteToken,
          initialOrganizerApply,
          now ?? DateTime.now,
@@ -180,6 +184,7 @@ class AppState extends ChangeNotifier
     String? initialBandSlug,
     String? initialVenueRef,
     String? initialOpportunityRef,
+    String? initialBookingId,
     String? initialOrgInviteToken,
     bool initialOrganizerApply = false,
     DateTime Function()? now,
@@ -196,6 +201,7 @@ class AppState extends ChangeNotifier
       initialBandSlug: initialBandSlug,
       initialVenueRef: initialVenueRef,
       initialOpportunityRef: initialOpportunityRef,
+      initialBookingId: initialBookingId,
       initialOrgInviteToken: initialOrgInviteToken,
       initialOrganizerApply: initialOrganizerApply,
       now: now,
@@ -213,6 +219,7 @@ class AppState extends ChangeNotifier
     String? initialBandSlug,
     String? initialVenueRef,
     String? initialOpportunityRef,
+    String? initialBookingId,
     String? initialOrgInviteToken,
     bool initialOrganizerApply,
     this._now,
@@ -283,6 +290,11 @@ class AppState extends ChangeNotifier
     if (opportunityRef != null && opportunityRef.isNotEmpty) {
       _stack = [ScreenEntry(Screen.opportunityDetail, opportunityRef)];
       unawaited(resolveOpportunity(opportunityRef));
+    }
+    final bookingId = initialBookingId?.trim();
+    if (bookingId != null && bookingId.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.bookingDetail, bookingId)];
+      unawaited(loadBooking(bookingId));
     }
   }
 
@@ -381,6 +393,7 @@ class AppState extends ChangeNotifier
     _media?.clearForSignOut();
     _resetBandForm();
     _clearOpportunityState();
+    _clearBookingState();
     _resetGigForm();
   }
 }
