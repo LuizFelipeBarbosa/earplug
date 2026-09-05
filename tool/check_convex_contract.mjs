@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+// Values are "Query" | "Mutation" | "Action", as reported by npx convex function-spec.
 export const requiredClientFunctions = Object.freeze({
   "users.js:setProfileTutorialCompleted": "Mutation",
   "users.js:updateFanOnboarding": "Mutation",
@@ -78,6 +79,21 @@ export const requiredClientFunctions = Object.freeze({
   "reviews.js:forBooking": "Query",
   "reviews.js:forBand": "Query",
   "reviews.js:forOrganization": "Query",
+  "stripeActions.js:startBandOnboarding": "Action",
+  "stripeActions.js:startOrganizationOnboarding": "Action",
+  "stripeActions.js:refreshBandAccountStatus": "Action",
+  "stripeActions.js:refreshOrganizationAccountStatus": "Action",
+  "stripeActions.js:bandExpressDashboardLink": "Action",
+  "stripeActions.js:organizationExpressDashboardLink": "Action",
+  "payoutAccounts.js:bandPayoutStatus": "Query",
+  "payoutAccounts.js:organizationStripeStatus": "Query",
+  "payments.js:startInstallmentCheckout": "Action",
+  "payments.js:paymentsForBooking": "Query",
+  "payments.js:checkoutStatus": "Query",
+  "payouts.js:payoutsForBooking": "Query",
+  "payouts.js:payoutsForBand": "Query",
+  "refunds.js:previewCancellation": "Query",
+  "refunds.js:refundsForBooking": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -109,6 +125,10 @@ export const requiredClientFields = Object.freeze([
   ["bookingsRead.js:forBand", "arrayReturn", "status", false],
   ["reviews.js:forBooking", "return", "canSubmit", false],
   ["reviews.js:forBand", "arrayReturn", "monthLabel", false],
+  ["payments.js:paymentsForBooking", "arrayReturn", "canPay", false],
+  ["payments.js:startInstallmentCheckout", "return", "url", false],
+  ["refunds.js:previewCancellation", "return", "refundMinor", false],
+  ["payoutAccounts.js:bandPayoutStatus", "return", "state", false],
 ]);
 
 export function deploymentNameFromUrl(value) {

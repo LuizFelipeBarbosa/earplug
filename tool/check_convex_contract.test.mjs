@@ -219,6 +219,21 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing reviews.js:forBooking",
     "missing reviews.js:forBand",
     "missing reviews.js:forOrganization",
+    "missing stripeActions.js:startBandOnboarding",
+    "missing stripeActions.js:startOrganizationOnboarding",
+    "missing stripeActions.js:refreshBandAccountStatus",
+    "missing stripeActions.js:refreshOrganizationAccountStatus",
+    "missing stripeActions.js:bandExpressDashboardLink",
+    "missing stripeActions.js:organizationExpressDashboardLink",
+    "missing payoutAccounts.js:bandPayoutStatus",
+    "missing payoutAccounts.js:organizationStripeStatus",
+    "missing payments.js:startInstallmentCheckout",
+    "missing payments.js:paymentsForBooking",
+    "missing payments.js:checkoutStatus",
+    "missing payouts.js:payoutsForBooking",
+    "missing payouts.js:payoutsForBand",
+    "missing refunds.js:previewCancellation",
+    "missing refunds.js:refundsForBooking",
   ]);
 });
 
@@ -264,5 +279,50 @@ test("reports missing booking fields on nullable union returns", () => {
 
   assert.deepEqual(contractProblems(url, { url, functions }), [
     "bookingsRead.js:get is missing return.currentOffer",
+  ]);
+});
+
+test("reports an installment checkout with the wrong function type", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const checkout = functions.find(
+    (entry) => entry.identifier === "payments.js:startInstallmentCheckout",
+  );
+  checkout.functionType = "Mutation";
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "payments.js:startInstallmentCheckout is Mutation, expected Action",
+  ]);
+});
+
+test("reports missing and wrongly optional Phase 3b payment fields", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const payments = functions.find(
+    (entry) => entry.identifier === "payments.js:paymentsForBooking",
+  );
+  payments.returns.value.value.canPay.optional = true;
+  const checkout = functions.find(
+    (entry) => entry.identifier === "payments.js:startInstallmentCheckout",
+  );
+  delete checkout.returns.value.url;
+  const cancellation = functions.find(
+    (entry) => entry.identifier === "refunds.js:previewCancellation",
+  );
+  cancellation.returns.value.refundMinor.optional = true;
+  const payoutStatus = functions.find(
+    (entry) => entry.identifier === "payoutAccounts.js:bandPayoutStatus",
+  );
+  delete payoutStatus.returns.value.state;
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "payments.js:paymentsForBooking arrayReturn.canPay optional=true, expected false",
+    "payments.js:startInstallmentCheckout is missing return.url",
+    "refunds.js:previewCancellation return.refundMinor optional=true, expected false",
+    "payoutAccounts.js:bandPayoutStatus is missing return.state",
   ]);
 });
