@@ -709,7 +709,7 @@ describe("Stripe webhook verification and recording", () => {
     const t = convexTest(schema);
     const body = JSON.stringify({
       id: "evt_platform_duplicate",
-      type: "checkout.session.completed",
+      type: "payment_intent.succeeded",
       livemode: false,
       created: Math.floor(Date.now() / 1000),
       data: { object: { id: "cs_platform_duplicate" } },

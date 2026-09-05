@@ -1,5 +1,10 @@
+import type {
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
+} from "convex/server";
 import { v } from "convex/values";
-import { internal } from "./_generated/api";
+import { internal as generatedInternal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
@@ -29,12 +34,24 @@ import {
   assertApplicationTransition,
   assertOpportunityTransition,
 } from "./lib/opportunityStatus";
+import { buildInstallments } from "./lib/paymentSchedule";
+import {
+  AUTO_CANCEL_GRACE_MS,
+  PAYMENT_REMINDER_LEAD_MS,
+} from "./lib/paymentStatus";
 import { recomputeReviewSummary } from "./lib/reviewSummary";
+import type * as payments from "./payments";
 import {
   bookingStatusValidator,
   cancellationTemplateValidator,
 } from "./schema";
 
+// Keep the new module typed without changing generated files in this lane.
+const internal = generatedInternal as typeof generatedInternal &
+  FilterApi<
+    ApiFromModules<{ payments: typeof payments }>,
+    FunctionReference<"query" | "mutation" | "action", "internal">
+  >;
 
 async function loadBooking(ctx: MutationCtx, bookingId: Id<"bookings">) {
   const booking = await ctx.db.get(bookingId);
@@ -90,13 +107,20 @@ async function resolveEmailRecipients(
     kind === "offerWithdrawn" ||
     kind === "bookingConfirmed" ||
     kind === "reviewRequested" ||
-    (kind === "bookingCancelled" && booking.cancelledBy === "organizer");
+    (kind === "bookingCancelled" &&
+      (booking.cancelledBy === "organizer" ||
+        booking.cancelledBy === "admin" ||
+        booking.cancelledBy === "system"));
   const organizerFacing =
     kind === "offerAccepted" ||
     kind === "offerDeclined" ||
     kind === "offerExpired" ||
+    kind === "bookingConfirmed" ||
     kind === "reviewRequested" ||
-    (kind === "bookingCancelled" && booking.cancelledBy === "artist");
+    (kind === "bookingCancelled" &&
+      (booking.cancelledBy === "artist" ||
+        booking.cancelledBy === "admin" ||
+        booking.cancelledBy === "system"));
   const recipients: string[] = [];
   if (artistFacing) {
     const members = await ctx.db
@@ -129,6 +153,7 @@ export async function sendBookingEmail(
   ctx: MutationCtx,
   booking: Doc<"bookings">,
   kind: BookingEmailKind,
+  options: { reason?: string } = {},
 ) {
   const [opportunity, band, organization] = await Promise.all([
     ctx.db.get(booking.opportunityId),
@@ -156,6 +181,7 @@ export async function sendBookingEmail(
         }
       : {}),
     ...(kind === "bookingCancelled" ? { reason: booking.cancelReason } : {}),
+    ...options,
   });
   const recipients = await resolveEmailRecipients(
     ctx,
@@ -442,12 +468,51 @@ export const respond = mutation({
     if (booking.grossMinor === 0) {
       await confirmBooking(ctx, booking._id);
     } else {
+      const installments = buildInstallments({
+        offer,
+        booking,
+        acceptedAt: now,
+      });
+      const revision = booking.revision + 2;
+      const autoCancelAt = installments[0].dueAt + AUTO_CANCEL_GRACE_MS;
+      for (const installment of installments) {
+        const paymentRecordId = await ctx.db.insert("paymentRecords", {
+          bookingId: booking._id,
+          installmentIndex: installment.index,
+          label: installment.label,
+          amountMinor: installment.amountMinor,
+          currency: booking.currency,
+          dueAt: installment.dueAt,
+          status: "pending",
+          attempt: 0,
+          refundedMinor: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+        await ctx.scheduler.runAt(
+          installment.dueAt - PAYMENT_REMINDER_LEAD_MS,
+          internal.payments.remindPayment,
+          { bookingId: booking._id, paymentRecordId, revision },
+        );
+      }
       assertBookingTransition("artist_accepted", "awaiting_payment");
       await ctx.db.patch(booking._id, {
         status: "awaiting_payment",
-        revision: booking.revision + 2,
+        revision,
+        paymentDueAt: installments[0].dueAt,
+        autoCancelAt,
+        payoutHoldReasons: ["unpaid_installment"],
+        payoutHold: true,
         updatedAt: now,
       });
+      await ctx.scheduler.runAt(
+        autoCancelAt,
+        internal.bookings.autoCancelUnpaid,
+        {
+          bookingId: booking._id,
+          revision,
+        },
+      );
     }
     const finalBooking = await loadBooking(ctx, booking._id);
     await sendBookingEmail(ctx, finalBooking, "offerAccepted");
@@ -523,6 +588,12 @@ export const cancel = mutation({
       revision,
       updatedAt: now,
     });
+    if (booking.status === "awaiting_payment") {
+      await ctx.scheduler.runAfter(0, internal.payments.expireOpenSessions, {
+        bookingId: booking._id,
+      });
+      // TODO(b3b-refunds): refund any paid installments when cancelling from awaiting_payment.
+    }
     if (booking.status === "confirmed") {
       await releaseBookingSlot(ctx, booking);
       const application = await ctx.db.get(booking.applicationId);
@@ -583,6 +654,42 @@ export const expireOffer = internalMutation({
     await shortlistApplication(ctx, booking.applicationId, now);
     await completeOpportunityIfReady(ctx, booking.opportunityId);
     await sendBookingEmail(ctx, booking, "offerExpired");
+    return null;
+  },
+});
+
+export const autoCancelUnpaid = internalMutation({
+  args: { bookingId: v.id("bookings"), revision: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const booking = await ctx.db.get(args.bookingId);
+    if (
+      !booking ||
+      booking.status !== "awaiting_payment" ||
+      booking.revision !== args.revision
+    ) {
+      return null;
+    }
+    await ctx.scheduler.runAfter(0, internal.payments.expireOpenSessions, {
+      bookingId: booking._id,
+    });
+    const now = Date.now();
+    assertBookingTransition(booking.status, "expired");
+    await ctx.db.patch(booking._id, {
+      status: "expired",
+      cancelledBy: "system",
+      cancelledAt: now,
+      cancelReason: "Payment not received",
+      revision: booking.revision + 1,
+      updatedAt: now,
+    });
+    await shortlistApplication(ctx, booking.applicationId, now);
+    await completeOpportunityIfReady(ctx, booking.opportunityId);
+    await sendBookingEmail(
+      ctx,
+      await loadBooking(ctx, booking._id),
+      "bookingCancelled",
+    );
     return null;
   },
 });
