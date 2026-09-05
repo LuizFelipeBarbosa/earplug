@@ -1,5 +1,11 @@
-import { describe, expect, test } from "vitest";
+/// <reference types="vite/client" />
+import { convexTest } from "convex-test";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { internal } from "./_generated/api";
 import { bookingEmail, type BookingEmailKind } from "./emails";
+import schema from "./schema";
+
+const modules = import.meta.glob("./**/*.ts");
 
 const kinds: BookingEmailKind[] = [
   "offerSent",
@@ -55,5 +61,35 @@ describe("bookingEmail", () => {
 
     expect(text).toContain(reason);
     expect(text.split("\n").at(-1)).toBe(input.link);
+  });
+});
+
+describe("send", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  test("disabled sending logs the kind and subject without the recipient address", async () => {
+    vi.stubEnv("RESEND_API_KEY", undefined);
+    vi.stubEnv("RESEND_SEND_ENABLED", undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+    const to = "someone-private@example.test";
+    await expect(
+      t.action(internal.emails.send, {
+        kind: "bookingConfirmed",
+        to,
+        subject: "Booking confirmed",
+        text: "Your booking is confirmed.",
+      }),
+    ).resolves.toBeNull();
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("bookingConfirmed"),
+    );
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("Booking confirmed"),
+    );
+    expect(JSON.stringify(log.mock.calls)).not.toContain(to);
   });
 });

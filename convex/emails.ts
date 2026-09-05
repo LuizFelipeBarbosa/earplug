@@ -140,7 +140,7 @@ export const send = internalAction({
     const key = env.RESEND_API_KEY;
     const enabled = flag("RESEND_SEND_ENABLED", false);
     if (!key || !enabled) {
-      console.log(`email skipped (${args.kind}) to ${args.to}: ${args.subject}`);
+      console.log(`email skipped (${args.kind}): ${args.subject}`);
       return null;
     }
     const response = await fetch("https://api.resend.com/emails", {

@@ -7,13 +7,16 @@ import {
   type OrganizationRole,
 } from "./lib/authz";
 import {
+  BOOKING_ACTIVE_STATUSES,
   BOOKING_LIVE_STATUSES,
-  BOOKING_TRANSITIONS,
-  type BookingStatus,
 } from "./lib/bookingStatus";
 import { docCache, type DocCache } from "./lib/docCache";
-import { currentUser, requireBandRole, requireUser } from "./lib/helpers";
-import { readVenuePrivateFor } from "./lib/venuePrivate";
+import {
+  currentUser,
+  effectiveAddressDisclosure,
+  requireBandRole,
+  requireUser,
+} from "./lib/helpers";
 import {
   bookingCancelledByValidator,
   bookingStatusValidator,
@@ -124,8 +127,19 @@ export async function toBookingPayload(
   if (!venue) {
     throw new Error(`Booking ${booking._id} references a missing venue`);
   }
-  const user = await cache.get(viewer.userId);
-  const venuePrivate = await readVenuePrivateFor(ctx, venue, user);
+  let exactAddress: string | null = null;
+  if (effectiveAddressDisclosure(venue) === "public") {
+    exactAddress = venue.addr;
+  } else if (
+    viewer.side === "organizer" ||
+    (viewer.side === "artist" && BOOKING_LIVE_STATUSES.includes(booking.status))
+  ) {
+    const venuePrivate = await ctx.db
+      .query("venuePrivateDetails")
+      .withIndex("by_venueId", (q) => q.eq("venueId", venue._id))
+      .unique();
+    exactAddress = venuePrivate?.addr ?? null;
+  }
 
   const offer = booking.currentOfferId
     ? await cache.get(booking.currentOfferId)
@@ -146,7 +160,7 @@ export async function toBookingPayload(
       viewer.organizationRole === "owner" ||
       viewer.organizationRole === "manager" ||
       viewer.organizationRole === undefined;
-    if (canReadContact) {
+    if (canReadContact && organization.status !== "suspended") {
       const application = await cache.get(booking.applicationId);
       const submitter = application
         ? await cache.get(application.submittedBy)
@@ -213,7 +227,7 @@ export async function toBookingPayload(
       name: venue.name,
       slug: venue.slug ?? null,
       approxLabel: venue.approxLabel ?? null,
-      exactAddress: venuePrivate?.details.addr ?? null,
+      exactAddress,
     },
     publicGigId: opportunity.publicGigId ?? null,
     publicGigSlug: publicGig?.slug ?? null,
@@ -269,6 +283,7 @@ export const forOrganization = query({
   args: {
     organizationId: v.id("organizations"),
     statuses: v.optional(v.array(bookingStatusValidator)),
+    limit: v.optional(v.number()),
   },
   returns: v.array(bookingPayloadValidator),
   handler: async (ctx, args) => {
@@ -285,8 +300,8 @@ export const forOrganization = query({
     }
 
     // Members retain access to booking history while their org is suspended.
-    const statuses =
-      args.statuses ?? (Object.keys(BOOKING_TRANSITIONS) as BookingStatus[]);
+    // Terminal statuses must be requested explicitly.
+    const statuses = args.statuses ?? BOOKING_ACTIVE_STATUSES;
     const cache = docCache(ctx);
     const bookings: Doc<"bookings">[] = [];
     for (const status of statuses) {
@@ -297,35 +312,58 @@ export const forOrganization = query({
             q.eq("organizationId", args.organizationId).eq("status", status),
           )
           .order("desc")
-          .take(200)),
+          .take(100)),
       );
     }
     bookings.sort((a, b) => b.startsAt - a.startsAt);
-    return await Promise.all(
-      bookings.map((booking) =>
-        toBookingPayload(
-          ctx,
-          booking,
-          {
-            userId: user._id,
-            side: "organizer",
-            organizationRole: membership?.role,
-          },
-          cache,
-        ),
-      ),
+    const effectiveLimit = Math.min(args.limit ?? 100, 200);
+    const payloads = await Promise.all(
+      bookings.slice(0, effectiveLimit).map(async (booking) => {
+        try {
+          return await toBookingPayload(
+            ctx,
+            booking,
+            {
+              userId: user._id,
+              side: "organizer",
+              organizationRole: membership?.role,
+            },
+            cache,
+          );
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            /references a missing|has an opportunity without a venue/.test(
+              error.message,
+            )
+          ) {
+            return null;
+          }
+          throw error;
+        }
+      }),
+    );
+    return payloads.filter(
+      (payload): payload is Infer<typeof bookingPayloadValidator> =>
+        payload !== null,
     );
   },
 });
 
 export const forBand = query({
-  args: { bandId: v.id("bands") },
+  args: {
+    bandId: v.id("bands"),
+    statuses: v.optional(v.array(bookingStatusValidator)),
+    limit: v.optional(v.number()),
+  },
   returns: v.array(bookingPayloadValidator),
   handler: async (ctx, args) => {
     const { user } = await requireBandRole(ctx, args.bandId, { role: "admin" });
+    // Terminal statuses must be requested explicitly.
+    const statuses = args.statuses ?? BOOKING_ACTIVE_STATUSES;
     const cache = docCache(ctx);
     const bookings: Doc<"bookings">[] = [];
-    for (const status of Object.keys(BOOKING_TRANSITIONS) as BookingStatus[]) {
+    for (const status of statuses) {
       bookings.push(
         ...(await ctx.db
           .query("bookings")
@@ -333,19 +371,36 @@ export const forBand = query({
             q.eq("bandId", args.bandId).eq("status", status),
           )
           .order("desc")
-          .take(200)),
+          .take(100)),
       );
     }
     bookings.sort((a, b) => b.startsAt - a.startsAt);
-    return await Promise.all(
-      bookings.map((booking) =>
-        toBookingPayload(
-          ctx,
-          booking,
-          { userId: user._id, side: "artist" },
-          cache,
-        ),
-      ),
+    const effectiveLimit = Math.min(args.limit ?? 100, 200);
+    const payloads = await Promise.all(
+      bookings.slice(0, effectiveLimit).map(async (booking) => {
+        try {
+          return await toBookingPayload(
+            ctx,
+            booking,
+            { userId: user._id, side: "artist" },
+            cache,
+          );
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            /references a missing|has an opportunity without a venue/.test(
+              error.message,
+            )
+          ) {
+            return null;
+          }
+          throw error;
+        }
+      }),
+    );
+    return payloads.filter(
+      (payload): payload is Infer<typeof bookingPayloadValidator> =>
+        payload !== null,
     );
   },
 });

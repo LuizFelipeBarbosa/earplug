@@ -212,6 +212,14 @@ export const submit = mutation({
       });
       return { reviewId, visible: true };
     }
+    if (other && other.visibleAt !== undefined) {
+      await ctx.db.patch(reviewId, { visibleAt: now });
+      await recomputeReviewSummary(ctx, { bandId: booking.bandId });
+      await recomputeReviewSummary(ctx, {
+        organizationId: booking.organizationId,
+      });
+      return { reviewId, visible: true };
+    }
     return { reviewId, visible: false };
   },
 });
@@ -222,6 +230,9 @@ export const closeReviewWindow = internalMutation({
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) return null;
+    if (booking.status !== "completed" && booking.status !== "paid") {
+      return null;
+    }
     const reviews = await ctx.db
       .query("reviews")
       .withIndex("by_bookingId_and_authorSide", (q) =>
@@ -293,8 +304,7 @@ export const forBooking = query({
           ),
       )
       .unique();
-    const now = Date.now();
-    const windowClosesAt = (booking.completedAt ?? now) + REVIEW_WINDOW_MS;
+    const windowClosesAt = (booking.completedAt ?? 0) + REVIEW_WINDOW_MS;
     return {
       mine: mine ? toReviewPayload(mine) : null,
       theirs:
@@ -304,7 +314,6 @@ export const forBooking = query({
       windowClosesAt,
       canSubmit:
         (booking.status === "completed" || booking.status === "paid") &&
-        now <= windowClosesAt &&
         mine === null,
     };
   },

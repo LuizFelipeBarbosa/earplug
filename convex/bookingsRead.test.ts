@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api as generatedApi } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import * as bookingsRead from "./bookingsRead";
-import { BOOKING_TRANSITIONS, type BookingStatus } from "./lib/bookingStatus";
+import {
+  BOOKING_ACTIVE_STATUSES,
+  BOOKING_TRANSITIONS,
+  type BookingStatus,
+} from "./lib/bookingStatus";
 import schema from "./schema";
 
 // Keep references typed while intentionally leaving codegen untouched.
@@ -421,7 +425,7 @@ describe("bookings read: get", () => {
     expect(await f.as("owner").query(api.bookingsRead.get, args)).toBeNull();
   });
 
-  test("uses the venue helper's grant from another live booking at the same venue", async () => {
+  test("does not use a different live booking at the same venue to disclose this booking's address", async () => {
     const f = await setupBookings({ status: "offer_sent" });
     await f.t.run((ctx) =>
       ctx.db.insert("bookings", {
@@ -434,7 +438,7 @@ describe("bookings read: get", () => {
         .as("bandAdmin")
         .query(api.bookingsRead.get, { bookingId: f.bookingId }),
     ).toMatchObject({
-      venue: { exactAddress: EXACT_ADDRESS },
+      venue: { exactAddress: null },
       counterpartyEmail: null,
     });
   });
@@ -442,7 +446,10 @@ describe("bookings read: get", () => {
   test("a public venue discloses its address before confirmation but keeps business email private", async () => {
     const f = await setupBookings({ status: "offer_sent" });
     await f.t.run((ctx) =>
-      ctx.db.patch(f.venueId, { addressDisclosure: "public" }),
+      ctx.db.patch(f.venueId, {
+        addressDisclosure: "public",
+        addr: EXACT_ADDRESS,
+      }),
     );
     expect(
       await f
@@ -451,6 +458,26 @@ describe("bookings read: get", () => {
     ).toMatchObject({
       venue: { exactAddress: EXACT_ADDRESS },
       counterpartyEmail: null,
+    });
+  });
+
+  test("a public venue uses its own address before confirmation without private details", async () => {
+    const f = await setupBookings({ status: "offer_sent" });
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.venueId, {
+        addressDisclosure: "public",
+        addr: EXACT_ADDRESS,
+      });
+      await ctx.db.delete(f.venuePrivateId);
+    });
+    expect(
+      await f
+        .as("bandAdmin")
+        .query(api.bookingsRead.get, { bookingId: f.bookingId }),
+    ).toMatchObject({
+      venue: { exactAddress: EXACT_ADDRESS },
+      counterpartyEmail: null,
+      viewerSide: "artist",
     });
   });
 
@@ -659,8 +686,8 @@ describe("bookings read: lists", () => {
     ).toEqual([]);
   });
 
-  test.each(["owner", "manager", "finance", "door"] as const)(
-    "suspended organization remains readable by %s while its private address stays hidden",
+  test.each(["owner", "manager", "finance", "door", "platformAdmin"] as const)(
+    "suspended organization remains readable by %s, sees its own venue address, but never the counterparty email",
     async (actor) => {
       const f = await setupBookings();
       await f.t.run((ctx) =>
@@ -671,9 +698,8 @@ describe("bookings read: lists", () => {
         .query(api.bookingsRead.get, { bookingId: f.bookingId });
       expect(payload).toMatchObject({
         viewerSide: "organizer",
-        venue: { exactAddress: null },
-        counterpartyEmail:
-          actor === "owner" || actor === "manager" ? APPLICANT_EMAIL : null,
+        venue: { exactAddress: EXACT_ADDRESS },
+        counterpartyEmail: null,
       });
       expect(
         await f
@@ -684,6 +710,24 @@ describe("bookings read: lists", () => {
       ).toEqual([payload]);
     },
   );
+
+  test("a suspended organization does not change the artist's live-booking contact access", async () => {
+    const f = await setupBookings();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.organizationId, { status: "suspended" }),
+    );
+    expect(
+      await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+        bandId: f.bandId,
+      }),
+    ).toMatchObject([
+      {
+        _id: f.bookingId,
+        venue: { exactAddress: EXACT_ADDRESS },
+        counterpartyEmail: BUSINESS_EMAIL,
+      },
+    ]);
+  });
 
   test("platform admin can list bookings without organization membership", async () => {
     const f = await setupBookings();
@@ -731,14 +775,13 @@ describe("bookings read: lists", () => {
     ).toEqual([]);
   });
 
-  test("both lists include every status, sort across statuses, and exclude unrelated bookings", async () => {
+  test("both lists include every status on request, default to active statuses, and exclude unrelated bookings", async () => {
     const f = await setupBookings();
+    const statuses = Object.keys(BOOKING_TRANSITIONS) as BookingStatus[];
     const ids = await f.t.run(async (ctx) => {
       await ctx.db.delete(f.bookingId);
       const ids: Id<"bookings">[] = [];
-      for (const [index, status] of (
-        Object.keys(BOOKING_TRANSITIONS) as BookingStatus[]
-      ).entries()) {
+      for (const [index, status] of statuses.entries()) {
         ids.push(
           await ctx.db.insert("bookings", {
             ...f.bookingFields,
@@ -768,21 +811,35 @@ describe("bookings read: lists", () => {
       .as("owner")
       .query(api.bookingsRead.forOrganization, {
         organizationId: f.organizationId,
+        statuses,
       });
     const bandBookings = await f
       .as("bandAdmin")
-      .query(api.bookingsRead.forBand, { bandId: f.bandId });
+      .query(api.bookingsRead.forBand, { bandId: f.bandId, statuses });
     expect(organizationBookings.map((row) => row._id)).toEqual(
       [...ids].reverse(),
     );
     expect(bandBookings.map((row) => row._id)).toEqual([...ids].reverse());
+    const activeIds = ids
+      .filter((_, index) => BOOKING_ACTIVE_STATUSES.includes(statuses[index]))
+      .reverse();
+    const defaultOrganizationBookings = await f
+      .as("owner")
+      .query(api.bookingsRead.forOrganization, {
+        organizationId: f.organizationId,
+      });
+    const defaultBandBookings = await f
+      .as("bandAdmin")
+      .query(api.bookingsRead.forBand, { bandId: f.bandId });
+    expect(defaultOrganizationBookings.map((row) => row._id)).toEqual(activeIds);
+    expect(defaultBandBookings.map((row) => row._id)).toEqual(activeIds);
   });
 
-  test("both lists keep the newest 200 per status without applying a combined cap", async () => {
+  test("both lists keep the newest 100 per status, including explicitly requested terminal statuses", async () => {
     const f = await setupBookings({ status: "offer_sent" });
     const ids = await f.t.run(async (ctx) => {
       const ids: Id<"bookings">[] = [];
-      for (let index = 1; index <= 200; index++) {
+      for (let index = 1; index <= 100; index++) {
         ids.push(
           await ctx.db.insert("bookings", {
             ...f.bookingFields,
@@ -794,24 +851,124 @@ describe("bookings read: lists", () => {
         await ctx.db.insert("bookings", {
           ...f.bookingFields,
           status: "expired",
-          startsAt: STARTS_AT + 201,
+          startsAt: STARTS_AT + 101,
         }),
       );
       return ids;
     });
+    const args = {
+      statuses: ["offer_sent", "expired"] as BookingStatus[],
+      limit: 200,
+    };
     const organizationBookings = await f
       .as("owner")
       .query(api.bookingsRead.forOrganization, {
         organizationId: f.organizationId,
+        ...args,
       });
     const bandBookings = await f
       .as("bandAdmin")
-      .query(api.bookingsRead.forBand, { bandId: f.bandId });
+      .query(api.bookingsRead.forBand, { bandId: f.bandId, ...args });
     expect(organizationBookings.map((row) => row._id)).toEqual(
       [...ids].reverse(),
     );
     expect(bandBookings.map((row) => row._id)).toEqual([...ids].reverse());
   });
+
+  test.each(["forOrganization", "forBand"] as const)(
+    "%s limits the merged active bookings to the newest 5, defaults to 100, and clamps to 200",
+    async (query) => {
+      const f = await setupBookings({ status: "offer_sent" });
+      const ids = await f.t.run(async (ctx) => {
+        const ids = [f.bookingId];
+        const statuses = [
+          "offer_sent",
+          "artist_accepted",
+          "awaiting_payment",
+        ] as const;
+        // Interleave statuses to catch limiting before the merge and sort.
+        for (let index = 1; index < 225; index++) {
+          ids.push(
+            await ctx.db.insert("bookings", {
+              ...f.bookingFields,
+              status: statuses[index % statuses.length],
+              startsAt: STARTS_AT + index,
+            }),
+          );
+        }
+        return ids.reverse();
+      });
+      const list = (limit?: number) =>
+        query === "forOrganization"
+          ? f.as("owner").query(api.bookingsRead.forOrganization, {
+              organizationId: f.organizationId,
+              limit,
+            })
+          : f.as("bandAdmin").query(api.bookingsRead.forBand, {
+              bandId: f.bandId,
+              limit,
+            });
+      expect((await list(5)).map((row) => row._id)).toEqual(ids.slice(0, 5));
+      expect((await list()).map((row) => row._id)).toEqual(ids.slice(0, 100));
+      expect((await list(500)).map((row) => row._id)).toEqual(ids.slice(0, 200));
+    },
+  );
+
+  test.each(["forOrganization", "forBand"] as const)(
+    "%s skips a booking with a deleted opportunity and returns the remaining bookings",
+    async (query) => {
+      const f = await setupBookings();
+      const olderId = await f.t.run(async (ctx) => {
+        const opportunity = (await ctx.db.get(f.opportunityId))!;
+        const { _id, _creationTime, ...fields } = opportunity;
+        const deletedOpportunityId = await ctx.db.insert(
+          "talentOpportunities",
+          { ...fields, slug: "deleted-opportunity" },
+        );
+        await ctx.db.insert("bookings", {
+          ...f.bookingFields,
+          opportunityId: deletedOpportunityId,
+          startsAt: STARTS_AT + DAY_MS,
+        });
+        const olderId = await ctx.db.insert("bookings", {
+          ...f.bookingFields,
+          startsAt: STARTS_AT - DAY_MS,
+        });
+        await ctx.db.delete(deletedOpportunityId);
+        return olderId;
+      });
+      const result =
+        query === "forOrganization"
+          ? await f.as("owner").query(api.bookingsRead.forOrganization, {
+              organizationId: f.organizationId,
+            })
+          : await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+              bandId: f.bandId,
+            });
+      expect(result.map((row) => row._id)).toEqual([f.bookingId, olderId]);
+    },
+  );
+
+  test.each(["forOrganization", "forBand"] as const)(
+    "%s propagates errors other than missing booking references",
+    async (query) => {
+      const f = await setupBookings();
+      await f.t.run(async (ctx) => {
+        const details = (await ctx.db.get(f.venuePrivateId))!;
+        const { _id, _creationTime, ...fields } = details;
+        await ctx.db.insert("venuePrivateDetails", fields);
+      });
+      const result =
+        query === "forOrganization"
+          ? f.as("owner").query(api.bookingsRead.forOrganization, {
+              organizationId: f.organizationId,
+            })
+          : f.as("bandAdmin").query(api.bookingsRead.forBand, {
+              bandId: f.bandId,
+            });
+      await expect(result).rejects.toThrow();
+    },
+  );
 
   test("forOrganization rejects outsiders", async () => {
     const f = await setupBookings();

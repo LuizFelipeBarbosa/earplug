@@ -366,7 +366,8 @@ describe("reviews: review window", () => {
     const f = await setupReviews();
     vi.setSystemTime(NOW + REVIEW_WINDOW_MS + 1);
     await expect(f.submit()).rejects.toThrow("The review window has closed");
-    expect((await f.forBooking("manager")).canSubmit).toBe(false);
+    // The client must compare windowClosesAt to its own clock.
+    expect((await f.forBooking("manager")).canSubmit).toBe(true);
   });
 
   test("accepts submission exactly at the window deadline", async () => {
@@ -375,6 +376,82 @@ describe("reviews: review window", () => {
     expect((await f.forBooking("manager")).canSubmit).toBe(true);
     expect((await f.submit()).visible).toBe(false);
   });
+
+  test("the review deadline and submission eligibility do not change with the query's clock", async () => {
+    const f = await setupReviews();
+    const initial = await f.forBooking("manager");
+    expect(initial.windowClosesAt).toBe(
+      f.bookingFields.completedAt + REVIEW_WINDOW_MS,
+    );
+    vi.setSystemTime(NOW + 10 * REVIEW_WINDOW_MS);
+    expect(await f.forBooking("manager")).toEqual(initial);
+  });
+
+  test("a missing completion timestamp uses a fixed deadline instead of the query's clock", async () => {
+    const f = await setupReviews();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, { completedAt: undefined }),
+    );
+    expect((await f.forBooking("manager")).windowClosesAt).toBe(REVIEW_WINDOW_MS);
+    vi.setSystemTime(NOW + 10 * REVIEW_WINDOW_MS);
+    expect((await f.forBooking("manager")).windowClosesAt).toBe(REVIEW_WINDOW_MS);
+  });
+
+  test.each(["manager", "bandAdmin"] as const)(
+    "reveals the second review when %s's review is already visible",
+    async (firstActor) => {
+      const f = await setupReviews();
+      const first = await f.submit(firstActor, {
+        rating: firstActor === "manager" ? 5 : 3,
+      });
+      // At the inclusive deadline, the closer can run before submission.
+      const deadline = NOW + REVIEW_WINDOW_MS;
+      vi.setSystemTime(deadline);
+      await f.t.mutation(internal.reviews.closeReviewWindow, {
+        bookingId: f.bookingId,
+      });
+      expect(await f.t.run((ctx) => ctx.db.get(first.reviewId))).toMatchObject({
+        visibleAt: deadline,
+      });
+      const secondActor = firstActor === "manager" ? "bandAdmin" : "manager";
+      const second = await f.submit(secondActor, {
+        rating: secondActor === "manager" ? 5 : 3,
+      });
+      expect(second).toEqual({ reviewId: second.reviewId, visible: true });
+      expect(await f.t.run((ctx) => ctx.db.get(second.reviewId))).toMatchObject({
+        visibleAt: deadline,
+      });
+      expect(await f.summaries()).toEqual({
+        band: { count: 1, mean: 5, completedBookings: 1, cancellations: 0 },
+        organization: {
+          count: 1,
+          mean: 3,
+          completedBookings: 1,
+          cancellations: 0,
+        },
+      });
+    },
+  );
+
+  test.each(["disputed", "cancelled_by_artist", "confirmed"] as const)(
+    "closing the review window for a %s booking leaves pending reviews and summaries untouched",
+    async (status) => {
+      const f = await setupReviews();
+      const { reviewId } = await f.submit();
+      const summaries = await f.summaries();
+      await f.t.run((ctx) => ctx.db.patch(f.bookingId, { status }));
+      vi.setSystemTime(NOW + REVIEW_WINDOW_MS + 1);
+      await expect(
+        f.t.mutation(internal.reviews.closeReviewWindow, {
+          bookingId: f.bookingId,
+        }),
+      ).resolves.toBeNull();
+      expect(await f.t.run((ctx) => ctx.db.get(reviewId))).not.toHaveProperty(
+        "visibleAt",
+      );
+      expect(await f.summaries()).toEqual(summaries);
+    },
+  );
 
   test.each(["manager", "bandAdmin"] as const)(
     "closing the window reveals a lone %s review and is idempotent",
