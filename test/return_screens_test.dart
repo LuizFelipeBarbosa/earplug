@@ -212,6 +212,62 @@ void main() {
       expect(band ? harness.app.bandId : harness.app.organizationId, id);
     });
 
+    testWidgets('StripeReturn $kind shows refresh errors and retries', (
+      tester,
+    ) async {
+      final pending = Completer<void>();
+      repository.pendingAccountRefresh = pending;
+      final launched = <String>[];
+      final harness = await pumpApp(
+        tester,
+        home: StripeReturnScreen(param: '$kind:$id'),
+        auth: auth,
+        repository: repository,
+        beforePump: (app) {
+          if (band) {
+            app.switchToBand(id);
+          } else {
+            app.switchToOrganization(id);
+          }
+          app.go(Screen.stripeReturn, '$kind:$id');
+          app.hostedUrlLauncher = (url) async {
+            launched.add(url);
+          };
+        },
+        pumpFor: Duration.zero,
+      );
+
+      pending.completeError(StateError('Stripe setup could not be refreshed.'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Stripe setup could not be refreshed.'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.text('Checking your Stripe setup…'), findsNothing);
+      expect(harness.app.current.screen, Screen.stripeReturn);
+      expect(tester.takeException(), isNull);
+
+      final retry = Completer<void>();
+      repository.pendingAccountRefresh = retry;
+      await tester.tap(find.byKey(const Key('stripe-return-retry')));
+      await tester.pump();
+
+      expect(find.text('Checking your Stripe setup…'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('Stripe setup could not be refreshed.'), findsNothing);
+      expect(
+        band
+            ? repository.bandAccountRequests
+            : repository.organizationAccountRequests,
+        [id, id],
+      );
+
+      retry.complete();
+      // The fixed home keeps its spinner even after AppState has navigated.
+      await tester.pump();
+      expect(harness.app.current.screen, destination);
+      expect(launched, isEmpty);
+    });
+
     testWidgets(
       'StripeReturn $kind refresh waits for a tap and blocks repeats',
       (tester) async {

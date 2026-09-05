@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../app_state.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/form_bits.dart';
 
 class StripeReturnScreen extends StatefulWidget {
   const StripeReturnScreen({super.key, required this.param});
@@ -19,6 +20,7 @@ class StripeReturnScreen extends StatefulWidget {
 class _StripeReturnScreenState extends State<StripeReturnScreen> {
   ({bool band, bool refresh, String id})? _link;
   bool _continuing = false;
+  Object? _error;
 
   @override
   void initState() {
@@ -41,9 +43,27 @@ class _StripeReturnScreenState extends State<StripeReturnScreen> {
       unawaited(
         Future<void>.microtask(() async {
           if (!mounted) return;
-          await app.handleStripeReturn(band: link.band, id: link.id);
+          try {
+            await app.handleStripeReturn(band: link.band, id: link.id);
+          } catch (error) {
+            if (!mounted) return;
+            setState(() => _error = error);
+          }
         }),
       );
+    }
+  }
+
+  Future<void> _retrySetup() async {
+    final link = _link;
+    if (_error == null || link == null) return;
+    setState(() => _error = null);
+    final app = context.read<AppState>();
+    try {
+      await app.handleStripeReturn(band: link.band, id: link.id);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error);
     }
   }
 
@@ -106,6 +126,18 @@ class _StripeReturnScreenState extends State<StripeReturnScreen> {
                           ? EpButtonKind.disabled
                           : EpButtonKind.filled,
                       onTap: _continuing ? null : _continueSetup,
+                    ),
+                  ] else if (_error != null) ...[
+                    Text(
+                      serverErrorMessage(_error!) ??
+                          'Something went wrong finishing Stripe setup.',
+                      style: textTheme.epPageHeading,
+                    ),
+                    const SizedBox(height: 24),
+                    EpButton(
+                      'RETRY',
+                      key: const Key('stripe-return-retry'),
+                      onTap: _retrySetup,
                     ),
                   ] else ...[
                     const Center(child: CircularProgressIndicator()),

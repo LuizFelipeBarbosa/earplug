@@ -4,6 +4,7 @@ mixin _PaymentState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   String get bandId;
   String get organizationId;
+  Future<bool>? get _authReady;
   void switchToBand(String id);
   void switchToOrganization(String id);
   void resetTo(Screen s);
@@ -112,6 +113,8 @@ mixin _PaymentState on _AppStateCore {
       if (bandId != id) switchToBand(id);
       final token = Object();
       _bandPayoutStatusLoadToken = token;
+      // Stripe redirects back before the Clerk session reattaches to Convex.
+      await _authReady;
       final status = await repository.refreshBandAccountStatus(id);
       if (_disposed ||
           bandId != id ||
@@ -124,6 +127,8 @@ mixin _PaymentState on _AppStateCore {
       if (organizationId != id) switchToOrganization(id);
       final token = Object();
       _organizationStripeStatusLoadToken = token;
+      // Stripe redirects back before the Clerk session reattaches to Convex.
+      await _authReady;
       final status = await repository.refreshOrganizationAccountStatus(id);
       if (_disposed ||
           organizationId != id ||

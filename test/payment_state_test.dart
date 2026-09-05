@@ -228,6 +228,74 @@ void main() {
     },
   );
 
+  for (final band in [true, false]) {
+    final kind = band ? 'band' : 'organization';
+    final id = band ? 'b1' : 'org1';
+    final param = band ? 'band:$id' : 'org:$id';
+    final destination = band ? Screen.bandPayouts : Screen.orgSettings;
+
+    test('$kind Stripe return waits for the restored session token', () async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = _ControlledPaymentRepository(auth: auth)
+        ..pendingAuth = Completer<void>();
+      final app = AppState.demo(
+        auth: auth,
+        repository: repository,
+        initialStripeReturn: param,
+        now: () => DateTime(2020),
+      );
+      addTearDown(app.dispose);
+
+      final refresh = app.handleStripeReturn(band: band, id: id);
+      await flushAsyncWork();
+
+      final requests = band
+          ? repository.bandAccountRequests
+          : repository.organizationAccountRequests;
+      expect(requests, isEmpty);
+      expect(app.current.screen, isNot(destination));
+
+      repository.pendingAuth!.complete();
+      await refresh;
+      await flushAsyncWork();
+
+      expect(requests, [id]);
+      expect(app.current.screen, destination);
+    });
+
+    test('$kind Stripe return errors preserve the route and status', () async {
+      if (band) {
+        app.switchToBand(id);
+      } else {
+        app.switchToOrganization(id);
+      }
+      app.go(Screen.stripeReturn, param);
+      await flushAsyncWork();
+      final status = band ? app.bandPayoutStatus : app.organizationStripeStatus;
+      repository.failLoads = true;
+
+      await expectLater(
+        app.handleStripeReturn(band: band, id: id),
+        throwsStateError,
+      );
+      await flushAsyncWork();
+
+      expect(
+        band
+            ? repository.bandAccountRequests
+            : repository.organizationAccountRequests,
+        [id],
+      );
+      expect(app.current.screen, Screen.stripeReturn);
+      expect(app.current.param, param);
+      expect(
+        band ? app.bandPayoutStatus : app.organizationStripeStatus,
+        same(status),
+      );
+    });
+  }
+
   test(
     'band changes preserve the booking and opportunity hook chain',
     () async {
@@ -404,6 +472,7 @@ class _ControlledPaymentRepository extends DemoRepository {
   int? completeCheckoutAfter;
   int failedCheckoutCalls = 0;
   bool failLoads = false;
+  Completer<void>? pendingAuth;
   Completer<void>? pendingLoads;
   Completer<CheckoutStatus?>? pendingCheckout;
   ({String bookingId, BookingSide? side, DateTime now})? previewRequest;
@@ -441,6 +510,9 @@ class _ControlledPaymentRepository extends DemoRepository {
   ];
 
   @override
+  Future<void> refreshAuth() => pendingAuth?.future ?? super.refreshAuth();
+
+  @override
   Future<String> startBandOnboarding(String bandId) {
     bandOnboardingRequests.add(bandId);
     return super.startBandOnboarding(bandId);
@@ -475,6 +547,7 @@ class _ControlledPaymentRepository extends DemoRepository {
   @override
   Future<StripeAccountStatus> refreshBandAccountStatus(String bandId) {
     bandAccountRequests.add(bandId);
+    if (failLoads) throw StateError('refreshBandAccountStatus failed');
     return super.refreshBandAccountStatus(bandId);
   }
 
@@ -483,6 +556,7 @@ class _ControlledPaymentRepository extends DemoRepository {
     String organizationId,
   ) {
     organizationAccountRequests.add(organizationId);
+    if (failLoads) throw StateError('refreshOrganizationAccountStatus failed');
     return super.refreshOrganizationAccountStatus(organizationId);
   }
 
