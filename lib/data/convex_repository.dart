@@ -1535,7 +1535,6 @@ class ConvexRepository implements EarplugRepository {
     String? message,
     List<OfferInstallmentInput>? installments,
   }) async {
-    // Not sent: bookings:sendOffer's validator does not accept `installments` yet.
     final dynamic decoded = await _convexService
         .mutation('bookings:sendOffer', {
           'applicationId': applicationId,
@@ -1543,6 +1542,15 @@ class ConvexRepository implements EarplugRepository {
           'cancellationTemplate': cancellationTemplate.wireValue,
           'termsNotes': ?termsNotes,
           'message': ?message,
+          if (installments != null && installments.isNotEmpty)
+            'installments': [
+              for (final i in installments)
+                {
+                  'label': i.label,
+                  'amountMinor': i.amountMinor,
+                  'dueAfterAcceptanceDays': i.dueAfterAcceptanceDays,
+                },
+            ],
         });
     if (decoded is String) throw Exception(decoded);
     if (decoded is! Map) {
