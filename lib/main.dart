@@ -22,6 +22,7 @@ import 'screens/band_edit.dart';
 import 'screens/band_join.dart';
 import 'screens/band_media.dart';
 import 'screens/band_profile.dart';
+import 'screens/booking_detail.dart';
 import 'screens/edit_profile.dart';
 import 'screens/explore.dart';
 import 'screens/gig_create.dart';
@@ -42,6 +43,7 @@ import 'screens/org_settings.dart';
 import 'screens/org_team.dart';
 import 'screens/org_venue_edit.dart';
 import 'screens/org_venues.dart';
+import 'screens/review_compose.dart';
 import 'screens/settings.dart';
 import 'screens/venue_detail.dart';
 import 'services/appearance_controller.dart';
@@ -460,11 +462,11 @@ class RootShell extends StatelessWidget {
       canGoBack,
       dataError,
       bandId,
-      organizationId,
+      identityIsOrganizer,
     ) = context
         .select<
           AppState,
-          (DataStatus, Screen, String?, bool, String?, String, String)
+          (DataStatus, Screen, String?, bool, String?, String, bool)
         >((app) {
           final current = app.current;
           return (
@@ -474,7 +476,7 @@ class RootShell extends StatelessWidget {
             app.canGoBack,
             app.dataError,
             app.bandId,
-            app.organizationId,
+            app.identity is OrganizerIdentity,
           );
         });
     final app = context.read<AppState>();
@@ -484,7 +486,7 @@ class RootShell extends StatelessWidget {
     final isDualBookingScreen =
         screen == Screen.bookingDetail || screen == Screen.reviewCompose;
     final showBookingAsOrganizerTab =
-        isDualBookingScreen && organizationId.isNotEmpty;
+        isDualBookingScreen && identityIsOrganizer;
 
     final body = switch (dataStatus) {
       DataStatus.connecting => ColoredBox(
@@ -605,15 +607,13 @@ class RootShell extends StatelessWidget {
         key: key,
         opportunityRef: entry.param!,
       ),
-      Screen.bookingDetail => _PlaceholderScreen(
-        key: const Key('placeholder-bookingDetail'),
-        title: 'BOOKING',
-        param: entry.param,
+      Screen.bookingDetail => BookingDetailScreen(
+        key: key,
+        bookingId: entry.param!,
       ),
-      Screen.reviewCompose => _PlaceholderScreen(
-        key: const Key('placeholder-reviewCompose'),
-        title: 'REVIEW',
-        param: entry.param,
+      Screen.reviewCompose => ReviewComposeScreen(
+        key: key,
+        bookingId: entry.param!,
       ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
@@ -621,41 +621,6 @@ class RootShell extends StatelessWidget {
         applicationId: entry.param!,
       ),
     };
-  }
-}
-
-class _PlaceholderScreen extends StatelessWidget {
-  const _PlaceholderScreen({super.key, required this.title, this.param});
-
-  final String title;
-  final String? param;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: context.epColors.background,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(title, style: epDisplay(size: 20)),
-              if (param != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  param!,
-                  style: epText(
-                    size: 13,
-                    color: context.epColors.contentSecondary,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

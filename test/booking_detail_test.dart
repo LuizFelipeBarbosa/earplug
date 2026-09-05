@@ -1,6 +1,7 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
+import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/money.dart';
 import 'package:earplug/screens/booking_detail.dart';
@@ -20,11 +21,9 @@ void main() {
   testWidgets('organizer sees the fee and can confirm withdrawal', (
     tester,
   ) async {
-    final screen = ValueNotifier<Widget>(const SizedBox.shrink());
-    addTearDown(screen.dispose);
-    final harness = await _pumpScreen(tester, screen, withTabBar: true);
+    final harness = await pumpApp(tester, home: const RootShell());
     await enterOrganizer(tester, harness, 'org1');
-    screen.value = const BookingDetailScreen(bookingId: 'bk1');
+    harness.app.openBooking('bk1');
     await tester.pumpAndSettle();
 
     expect(
@@ -50,7 +49,7 @@ void main() {
       ],
     );
 
-    // Reproduce RootShell's bottom tab placement while pumping detail directly.
+    // The sticky action stays above RootShell's organizer tab bar.
     final sticky = find
         .ancestor(
           of: find.byKey(const Key('booking-withdraw')),
@@ -99,7 +98,28 @@ void main() {
     expect(terminalStep.label, BookingStatus.withdrawn.label);
     expect(terminalStep.state, TimelineStepState.blocked);
     expect(tester.takeException(), isNull);
-    harness.app.dispose();
+  });
+
+  testWidgets('band sees its own tab bar for a shared booking screen', (
+    tester,
+  ) async {
+    final harness = await pumpApp(tester, home: const RootShell());
+    await enterOrganizer(tester, harness, 'org1');
+    await (harness.app.repository as DemoRepository).removeOrganizationMember(
+      organizationId: 'org1',
+      userId: DemoData.demoUserId,
+    );
+    harness.app.switchToBand('b1');
+    await tester.pumpAndSettle();
+    harness.app.openBooking('bk2');
+    await tester.pumpAndSettle();
+
+    // The cached viewer side wins even with an organization still selected.
+    expect(harness.app.organizationId, 'org1');
+    expect(find.byType(BandTabBar), findsOneWidget);
+    expect(find.byType(OrganizerTabBar), findsNothing);
+    expect(harness.app.identity, isA<BandIdentity>());
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -393,9 +413,8 @@ Future<void> _reveal(
 // Shadow the harness's lazy owning provider: these tests dispose AppState.
 Future<AppHarness> _pumpScreen(
   WidgetTester tester,
-  ValueNotifier<Widget> screen, {
-  bool withTabBar = false,
-}) {
+  ValueNotifier<Widget> screen,
+) {
   late AppState app;
   return pumpApp(
     tester,
@@ -412,13 +431,6 @@ Future<AppHarness> _pumpScreen(
                   builder: (_, child, _) => child,
                 ),
               ),
-              if (withTabBar)
-                const Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: OrganizerTabBar(),
-                ),
             ],
           ),
         ),

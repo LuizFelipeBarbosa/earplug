@@ -13,6 +13,8 @@ mixin _NavigationState on _AppStateCore {
   Venue? knownVenue(String id);
   bool isAdminOf(String id);
   OrganizationRole? organizerRoleFor(String organizationId);
+  Booking? bookingById(String id);
+  ActiveIdentity identityForBooking(Booking booking);
   void ensureExploreBands();
   void needAuth(PendingAuth p);
   Future<void> loadBandProfileDetails(String id, {bool refresh = false});
@@ -29,6 +31,18 @@ mixin _NavigationState on _AppStateCore {
   bool get canGoBack => _stack.length > 1;
   ActiveIdentity get identity {
     final screen = current.screen;
+    if (screen == Screen.bookingDetail || screen == Screen.reviewCompose) {
+      final booking = bookingById(current.param ?? '');
+      if (booking != null) return identityForBooking(booking);
+      if (organizationId.isNotEmpty) {
+        return OrganizerIdentity(
+          organizationId,
+          organizerRoleFor(organizationId),
+        );
+      }
+      if (bandId.isNotEmpty) return BandIdentity(bandId);
+      return const PersonalIdentity();
+    }
     if (organizerTabScreens.contains(screen)) {
       return OrganizerIdentity(
         organizationId,

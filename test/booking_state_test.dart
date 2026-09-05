@@ -102,6 +102,43 @@ void main() {
     harness.app.dispose();
   });
 
+  testWidgets('shared booking screens follow the cached viewer identity', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledBookingRepository(auth: auth)
+      ..bookingResult = _booking(viewerSide: BookingSide.organizer);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+    harness.app.switchToOrganization('org1');
+    await tester.pumpAndSettle();
+    final bookingId = repository.bookingResult.id;
+    await harness.app.loadBooking(bookingId);
+
+    harness.app.openBooking(bookingId);
+    expect(harness.app.identity, isA<OrganizerIdentity>());
+    harness.app.openReviewCompose(bookingId);
+    expect(harness.app.identity, isA<OrganizerIdentity>());
+
+    harness.app.switchToBand('b1');
+    await tester.pumpAndSettle();
+    repository.bookingResult = _booking(viewerSide: BookingSide.artist);
+    await harness.app.loadBooking(bookingId, refresh: true);
+
+    harness.app.openBooking(bookingId);
+    expect(harness.app.organizationId, 'org1');
+    expect(harness.app.identity, isA<BandIdentity>());
+    harness.app.openReviewCompose(bookingId);
+    expect(harness.app.identity, isA<BandIdentity>());
+    harness.app.dispose();
+  });
+
   testWidgets('sendOffer refreshes the organizer list', (tester) async {
     final auth = FakeAuthService();
     final bookings = [_booking()];
