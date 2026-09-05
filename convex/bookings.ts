@@ -41,6 +41,7 @@ import {
 } from "./lib/paymentStatus";
 import { recomputeReviewSummary } from "./lib/reviewSummary";
 import type * as payments from "./payments";
+import { schedulePayoutsForBooking } from "./payouts";
 import {
   bookingStatusValidator,
   cancellationTemplateValidator,
@@ -714,6 +715,18 @@ export const markCompleted = internalMutation({
       revision: booking.revision + 1,
       updatedAt: now,
     });
+    if (booking.grossMinor > 0) {
+      const completedBooking = await ctx.db.get(booking._id);
+      if (!completedBooking) throw new Error("Booking not found");
+      await schedulePayoutsForBooking(ctx, completedBooking);
+    } else {
+      assertBookingTransition("completed", "paid");
+      await ctx.db.patch(booking._id, {
+        status: "paid",
+        revision: booking.revision + 2,
+        updatedAt: now,
+      });
+    }
     await completeOpportunityIfReady(ctx, booking.opportunityId);
     await ctx.scheduler.runAt(
       now + REVIEW_WINDOW_MS,

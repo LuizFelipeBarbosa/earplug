@@ -1,5 +1,17 @@
 import { cronJobs } from "convex/server";
-import { internal } from "./_generated/api";
+import type {
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
+} from "convex/server";
+import { internal as generatedInternal } from "./_generated/api";
+import type * as payouts from "./payouts";
+
+const internal = generatedInternal as typeof generatedInternal &
+  FilterApi<
+    ApiFromModules<{ payouts: typeof payouts }>,
+    FunctionReference<"query" | "mutation" | "action", "internal">
+  >;
 
 const crons = cronJobs();
 
@@ -30,6 +42,15 @@ crons.interval(
   "apply release backfills",
   { minutes: 30 },
   internal.migrations.runReleaseBackfills,
+  {},
+);
+
+// Held payouts (no ready payout account, or a booking-level hold) get re-checked daily until
+// HELD_PAYOUT_MAX_DAYS elapses.
+crons.interval(
+  "retry held payouts",
+  { hours: 24 },
+  internal.payouts.retryHeldPayouts,
   {},
 );
 

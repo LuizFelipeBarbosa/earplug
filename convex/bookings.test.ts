@@ -1048,9 +1048,10 @@ describe("booking confirmation and cancellation", () => {
     await f.checked(() =>
       f.t.mutation(internal.bookings.markCompleted, { bookingId }),
     );
+    // A zero-fee booking has nothing to pay out, so completion settles it.
     expect(await f.readBooking(bookingId)).toMatchObject({
-      status: "completed",
-      revision: 4,
+      status: "paid",
+      revision: 5,
       completedAt,
       updatedAt: completedAt,
     });
