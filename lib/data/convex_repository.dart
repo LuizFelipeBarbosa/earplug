@@ -1593,12 +1593,14 @@ class ConvexRepository implements EarplugRepository {
     required String bookingId,
     required String reason,
     required int expectedRevision,
+    BookingSide? side,
   }) async {
     final result = _asMap(
       await _convexService.mutation('bookings:cancel', {
         'bookingId': bookingId,
         'reason': reason,
         'expectedRevision': expectedRevision,
+        'as': ?side?.wireValue,
       }),
     );
     return (

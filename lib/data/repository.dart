@@ -898,6 +898,7 @@ abstract class EarplugRepository {
     required String bookingId,
     required String reason,
     required int expectedRevision,
+    BookingSide? side,
   }) {
     // TODO(marketplace-phase3): demo lane implements this.
     throw UnimplementedError('cancelBooking');

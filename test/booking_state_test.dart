@@ -190,6 +190,58 @@ void main() {
     harness.app.dispose();
   });
 
+  testWidgets('cancelBooking forwards the cached viewer side and refreshes', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final booking = _booking(viewerSide: BookingSide.artist);
+    final cancelled = _booking(
+      viewerSide: BookingSide.artist,
+      status: BookingStatus.cancelledByArtist,
+      revision: 2,
+    );
+    final repository = _ControlledBookingRepository(auth: auth)
+      ..bookingResult = booking
+      ..bandResults = [booking]
+      ..cancelledBooking = cancelled;
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+    harness.app.switchToBand('b1');
+    await tester.pumpAndSettle();
+    harness.app.openBooking(booking.id);
+    await tester.pumpAndSettle();
+    expect(repository.viewAsCalls, [BookingSide.artist]);
+
+    final refreshed = await harness.app.cancelBooking(
+      booking,
+      reason: 'conflict',
+    );
+
+    expect(repository.cancelRequest, (
+      bookingId: booking.id,
+      reason: 'conflict',
+      expectedRevision: booking.revision,
+      side: BookingSide.artist,
+    ));
+    expect(refreshed, same(cancelled));
+    expect(harness.app.bookingById(booking.id), same(cancelled));
+    expect(
+      harness.app.bookingById(booking.id)?.status,
+      BookingStatus.cancelledByArtist,
+    );
+    expect(repository.bookingCalls, 2);
+    expect(repository.viewAsCalls, [BookingSide.artist, BookingSide.artist]);
+    expect(harness.app.bandBookings, [cancelled]);
+    expect(repository.bandRequests, ['b1', 'b1']);
+    harness.app.dispose();
+  });
+
   testWidgets('respondToOffer accept updates the cached booking', (
     tester,
   ) async {
@@ -373,6 +425,7 @@ class _ControlledBookingRepository extends DemoRepository {
   List<Booking> postOfferBookings = const [];
   Booking bookingResult = _booking();
   Booking? acceptedBooking;
+  Booking? cancelledBooking;
   Completer<List<Booking>>? pendingOrganization;
   Completer<List<Booking>>? pendingBand;
   Completer<Booking?>? pendingBooking;
@@ -386,6 +439,8 @@ class _ControlledBookingRepository extends DemoRepository {
   offerRequest;
   ({String bookingId, bool accept, int expectedRevision, String? message})?
   responseRequest;
+  ({String bookingId, String reason, int expectedRevision, BookingSide? side})?
+  cancelRequest;
 
   @override
   Future<List<Booking>> organizationBookings(
@@ -453,5 +508,24 @@ class _ControlledBookingRepository extends DemoRepository {
     bookingResult = accepted;
     bandResults = [accepted];
     return (status: accepted.status, revision: accepted.revision);
+  }
+
+  @override
+  Future<({BookingStatus status, int revision})> cancelBooking({
+    required String bookingId,
+    required String reason,
+    required int expectedRevision,
+    BookingSide? side,
+  }) async {
+    cancelRequest = (
+      bookingId: bookingId,
+      reason: reason,
+      expectedRevision: expectedRevision,
+      side: side,
+    );
+    final cancelled = cancelledBooking!;
+    bookingResult = cancelled;
+    bandResults = [cancelled];
+    return (status: cancelled.status, revision: cancelled.revision);
   }
 }

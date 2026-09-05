@@ -183,6 +183,7 @@ mixin _BookingState on _AppStateCore {
       bookingId: booking.id,
       reason: reason,
       expectedRevision: booking.revision,
+      side: booking.viewerSide,
     );
     return _refreshAfterAction(booking);
   }

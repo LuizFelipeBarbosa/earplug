@@ -804,6 +804,44 @@ void main() {
   );
 
   test(
+    'explicit artist cancellation takes precedence when both roles are held',
+    () async {
+      final repo = DemoRepository(auth: FakeAuthService());
+
+      expect(
+        await repo.cancelBooking(
+          bookingId: 'bk2',
+          reason: 'Band has a scheduling conflict',
+          expectedRevision: 3,
+          side: BookingSide.artist,
+        ),
+        (status: BookingStatus.cancelledByArtist, revision: 4),
+      );
+      expect(
+        (await repo.booking('bk2'))!.status,
+        BookingStatus.cancelledByArtist,
+      );
+    },
+  );
+
+  test(
+    'explicit organizer cancellation is honored when both roles are held',
+    () async {
+      final repo = DemoRepository(auth: FakeAuthService());
+
+      expect(
+        await repo.cancelBooking(
+          bookingId: 'bk2',
+          reason: 'Venue is unavailable on the scheduled date',
+          expectedRevision: 3,
+          side: BookingSide.organizer,
+        ),
+        (status: BookingStatus.cancelledByOrganizer, revision: 4),
+      );
+    },
+  );
+
+  test(
     'party precedence, artist cancellation, and unauthorized review access',
     () async {
       final repo = DemoRepository(auth: FakeAuthService());

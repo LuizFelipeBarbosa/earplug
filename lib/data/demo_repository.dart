@@ -2829,6 +2829,7 @@ class DemoRepository implements EarplugRepository {
     required String bookingId,
     required String reason,
     required int expectedRevision,
+    BookingSide? side,
   }) async {
     final booking = _requireBooking(bookingId);
     _checkBookingRevision(booking, expectedRevision);
@@ -2839,11 +2840,10 @@ class DemoRepository implements EarplugRepository {
     if (trimmedReason.length > 500) {
       throw StateError('Cancellation reason must be at most 500 characters');
     }
-    final side = _requireBookingSide(
-      booking,
-      'Not permitted to cancel this booking',
-    );
-    final status = side == BookingSide.organizer
+    final resolvedSide = side != null && _holdsBookingSide(booking, side)
+        ? side
+        : _requireBookingSide(booking, 'Not permitted to cancel this booking');
+    final status = resolvedSide == BookingSide.organizer
         ? BookingStatus.cancelledByOrganizer
         : BookingStatus.cancelledByArtist;
     // These are the two states with a party-cancellation transition in Convex.
@@ -2858,7 +2858,7 @@ class DemoRepository implements EarplugRepository {
       booking,
       status: status,
       revision: booking.revision + 1,
-      cancelledBy: side == BookingSide.organizer
+      cancelledBy: resolvedSide == BookingSide.organizer
           ? BookingCancelledBy.organizer
           : BookingCancelledBy.artist,
       cancelledAt: now,
@@ -2871,14 +2871,14 @@ class DemoRepository implements EarplugRepository {
       if (application?.status == ArtistApplicationStatus.booked) {
         _artistApplications[application!.id] = _copyArtistApplication(
           application,
-          status: side == BookingSide.organizer
+          status: resolvedSide == BookingSide.organizer
               ? ArtistApplicationStatus.declined
               : ArtistApplicationStatus.withdrawn,
           decidedAt: application.decidedAt,
           updatedAt: now,
         );
       }
-      if (side == BookingSide.organizer) {
+      if (resolvedSide == BookingSide.organizer) {
         _recomputeReviewSummary(organizationId: booking.organizationId);
       } else {
         _recomputeReviewSummary(bandId: booking.bandId);
