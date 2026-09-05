@@ -107,6 +107,9 @@ Future<void> main() async {
   final venueRef = venueRefFromUri(Uri.base);
   final opportunityRef = opportunityRefFromUri(Uri.base);
   final bookingId = bookingIdFromUri(Uri.base);
+  final checkoutSessionId = checkoutSessionFromUri(Uri.base);
+  final checkoutCancelBookingId = checkoutCancelBookingFromUri(Uri.base);
+  final stripeReturn = stripeReturnFromUri(Uri.base);
   final orgInviteToken = orgInviteTokenFromUri(Uri.base);
   final organizerApply = organizerApplyFromUri(Uri.base);
   if (Env.demo) {
@@ -118,6 +121,9 @@ Future<void> main() async {
       initialVenueRef: venueRef,
       initialOpportunityRef: opportunityRef,
       initialBookingId: bookingId,
+      initialCheckoutSessionId: checkoutSessionId,
+      initialCheckoutCancelBookingId: checkoutCancelBookingId,
+      initialStripeReturn: stripeReturn,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
     );
@@ -155,6 +161,9 @@ Future<void> main() async {
       initialVenueRef: venueRef,
       initialOpportunityRef: opportunityRef,
       initialBookingId: bookingId,
+      initialCheckoutSessionId: checkoutSessionId,
+      initialCheckoutCancelBookingId: checkoutCancelBookingId,
+      initialStripeReturn: stripeReturn,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
     ),
@@ -177,22 +186,32 @@ Future<void> main() async {
   });
 }
 
-String? _routeValueFromUri(Uri uri, String route) {
-  String? fromSegments(List<String> segments) {
-    final routeIndex = segments.indexOf(route);
-    if (routeIndex == -1 || routeIndex + 1 >= segments.length) return null;
-    final value = segments[routeIndex + 1].trim();
-    return value.isEmpty ? null : value;
-  }
-
-  final pathValue = fromSegments(uri.pathSegments);
+String? _routeFromUri(Uri uri, String? Function(Uri) resolve) {
+  final pathValue = resolve(uri);
   if (pathValue != null) return pathValue;
   final fragment = uri.fragment;
   if (fragment.isEmpty) return null;
-  return fromSegments(
-    Uri.parse(fragment.startsWith('/') ? fragment : '/$fragment').pathSegments,
-  );
+  return resolve(Uri.parse(fragment.startsWith('/') ? fragment : '/$fragment'));
 }
+
+String? _routeValueFromUri(Uri uri, String route) =>
+    _routeFromUri(uri, (routeUri) {
+      final segments = routeUri.pathSegments;
+      final routeIndex = segments.indexOf(route);
+      if (routeIndex == -1 || routeIndex + 1 >= segments.length) return null;
+      final value = segments[routeIndex + 1].trim();
+      return value.isEmpty ? null : value;
+    });
+
+String? _queryRouteValueFromUri(Uri uri, List<String> path, String queryKey) =>
+    _routeFromUri(uri, (routeUri) {
+      final segments = routeUri.pathSegments
+          .where((segment) => segment.isNotEmpty)
+          .toList();
+      if (!listEquals(segments, path)) return null;
+      final value = routeUri.queryParameters[queryKey]?.trim();
+      return value == null || value.isEmpty ? null : value;
+    });
 
 String? joinTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'join');
 
@@ -207,6 +226,28 @@ String? opportunityRefFromUri(Uri uri) =>
     _routeValueFromUri(uri, 'opportunities');
 
 String? bookingIdFromUri(Uri uri) => _routeValueFromUri(uri, 'bookings');
+
+String? checkoutSessionFromUri(Uri uri) =>
+    _queryRouteValueFromUri(uri, const ['checkout', 'return'], 'session_id');
+
+String? checkoutCancelBookingFromUri(Uri uri) =>
+    _queryRouteValueFromUri(uri, const ['checkout', 'cancel'], 'booking');
+
+String? stripeReturnFromUri(Uri uri) => _routeFromUri(uri, (routeUri) {
+  final segments = routeUri.pathSegments
+      .where((segment) => segment.isNotEmpty)
+      .toList();
+  final (prefix, queryKey) = switch (segments) {
+    ['band', 'stripe', 'return'] => ('band', 'band'),
+    ['band', 'stripe', 'refresh'] => ('band-refresh', 'band'),
+    ['org', 'stripe', 'return'] => ('org', 'org'),
+    ['org', 'stripe', 'refresh'] => ('org-refresh', 'org'),
+    _ => ('', ''),
+  };
+  if (prefix.isEmpty) return null;
+  final value = routeUri.queryParameters[queryKey]?.trim();
+  return value == null || value.isEmpty ? null : '$prefix:$value';
+});
 
 String? orgInviteTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'apply');
 
@@ -293,6 +334,9 @@ class EarplugApp extends StatelessWidget {
     this.initialVenueRef,
     this.initialOpportunityRef,
     this.initialBookingId,
+    this.initialCheckoutSessionId,
+    this.initialCheckoutCancelBookingId,
+    this.initialStripeReturn,
     this.initialOrgInviteToken,
     this.initialOrganizerApply = false,
   });
@@ -308,6 +352,9 @@ class EarplugApp extends StatelessWidget {
   final String? initialVenueRef;
   final String? initialOpportunityRef;
   final String? initialBookingId;
+  final String? initialCheckoutSessionId;
+  final String? initialCheckoutCancelBookingId;
+  final String? initialStripeReturn;
   final String? initialOrgInviteToken;
   final bool initialOrganizerApply;
 
@@ -338,6 +385,9 @@ class EarplugApp extends StatelessWidget {
                 initialVenueRef: initialVenueRef,
                 initialOpportunityRef: initialOpportunityRef,
                 initialBookingId: initialBookingId,
+                initialCheckoutSessionId: initialCheckoutSessionId,
+                initialCheckoutCancelBookingId: initialCheckoutCancelBookingId,
+                initialStripeReturn: initialStripeReturn,
                 initialOrgInviteToken: initialOrgInviteToken,
                 initialOrganizerApply: initialOrganizerApply,
               ),
@@ -483,10 +533,11 @@ class RootShell extends StatelessWidget {
     final entry = ScreenEntry(screen, param);
     final showOpportunityAsFanTab =
         screen == Screen.opportunityDetail && bandId.isEmpty;
-    final isDualBookingScreen =
-        screen == Screen.bookingDetail || screen == Screen.reviewCompose;
-    final showBookingAsOrganizerTab =
-        isDualBookingScreen && identityIsOrganizer;
+    final isDualIdentityScreen =
+        screen == Screen.bookingDetail ||
+        screen == Screen.reviewCompose ||
+        screen == Screen.stripeReturn;
+    final showAsOrganizerTab = isDualIdentityScreen && identityIsOrganizer;
 
     final body = switch (dataStatus) {
       DataStatus.connecting => ColoredBox(
@@ -527,10 +578,10 @@ class RootShell extends StatelessWidget {
             const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
           if (bandTabScreens.contains(screen) &&
               !showOpportunityAsFanTab &&
-              (!isDualBookingScreen || !showBookingAsOrganizerTab))
+              (!isDualIdentityScreen || !showAsOrganizerTab))
             const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
           if (organizerTabScreens.contains(screen) &&
-              (!isDualBookingScreen || showBookingAsOrganizerTab))
+              (!isDualIdentityScreen || showAsOrganizerTab))
             const Positioned(
               left: 0,
               right: 0,
@@ -615,6 +666,26 @@ class RootShell extends StatelessWidget {
         key: key,
         bookingId: entry.param!,
       ),
+      Screen.bandPayouts => _PaymentPlaceholderScreen(
+        key: const ValueKey('placeholder-bandPayouts'),
+        label: 'Band payouts',
+        param: entry.param,
+      ),
+      Screen.checkoutReturn => _PaymentPlaceholderScreen(
+        key: const ValueKey('placeholder-checkoutReturn'),
+        label: 'Checkout return',
+        param: entry.param,
+      ),
+      Screen.checkoutCancel => _PaymentPlaceholderScreen(
+        key: const ValueKey('placeholder-checkoutCancel'),
+        label: 'Checkout cancelled',
+        param: entry.param,
+      ),
+      Screen.stripeReturn => _PaymentPlaceholderScreen(
+        key: const ValueKey('placeholder-stripeReturn'),
+        label: 'Stripe return',
+        param: entry.param,
+      ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,
@@ -622,6 +693,18 @@ class RootShell extends StatelessWidget {
       ),
     };
   }
+}
+
+class _PaymentPlaceholderScreen extends StatelessWidget {
+  const _PaymentPlaceholderScreen({super.key, required this.label, this.param});
+
+  final String label;
+  final String? param;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(child: Text(param == null ? label : '$label: $param')),
+  );
 }
 
 class _ToastLayer extends StatelessWidget {

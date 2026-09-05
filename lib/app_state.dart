@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show DateTimeRange, TimeOfDay;
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'app_links.dart';
 import 'band_identity.dart';
@@ -40,6 +41,7 @@ part 'app_state/gig_editor.dart';
 part 'app_state/navigation.dart';
 part 'app_state/opportunities.dart';
 part 'app_state/organizer.dart';
+part 'app_state/payments.dart';
 part 'app_state/session.dart';
 part 'app_state/venues.dart';
 
@@ -134,6 +136,7 @@ class AppState extends ChangeNotifier
         _BandConsoleState,
         _OpportunityState,
         _BookingState,
+        _PaymentState,
         _OrganizerState,
         _CatalogState,
         _SessionState,
@@ -150,6 +153,9 @@ class AppState extends ChangeNotifier
     String? initialVenueRef,
     String? initialOpportunityRef,
     String? initialBookingId,
+    String? initialCheckoutSessionId,
+    String? initialCheckoutCancelBookingId,
+    String? initialStripeReturn,
     String? initialOrgInviteToken,
     bool initialOrganizerApply = false,
     DateTime Function()? now,
@@ -165,6 +171,9 @@ class AppState extends ChangeNotifier
          initialVenueRef,
          initialOpportunityRef,
          initialBookingId,
+         initialCheckoutSessionId,
+         initialCheckoutCancelBookingId,
+         initialStripeReturn,
          initialOrgInviteToken,
          initialOrganizerApply,
          now ?? DateTime.now,
@@ -185,6 +194,9 @@ class AppState extends ChangeNotifier
     String? initialVenueRef,
     String? initialOpportunityRef,
     String? initialBookingId,
+    String? initialCheckoutSessionId,
+    String? initialCheckoutCancelBookingId,
+    String? initialStripeReturn,
     String? initialOrgInviteToken,
     bool initialOrganizerApply = false,
     DateTime Function()? now,
@@ -202,6 +214,9 @@ class AppState extends ChangeNotifier
       initialVenueRef: initialVenueRef,
       initialOpportunityRef: initialOpportunityRef,
       initialBookingId: initialBookingId,
+      initialCheckoutSessionId: initialCheckoutSessionId,
+      initialCheckoutCancelBookingId: initialCheckoutCancelBookingId,
+      initialStripeReturn: initialStripeReturn,
       initialOrgInviteToken: initialOrgInviteToken,
       initialOrganizerApply: initialOrganizerApply,
       now: now,
@@ -220,6 +235,9 @@ class AppState extends ChangeNotifier
     String? initialVenueRef,
     String? initialOpportunityRef,
     String? initialBookingId,
+    String? initialCheckoutSessionId,
+    String? initialCheckoutCancelBookingId,
+    String? initialStripeReturn,
     String? initialOrgInviteToken,
     bool initialOrganizerApply,
     this._now,
@@ -306,6 +324,18 @@ class AppState extends ChangeNotifier
         _stack.add(const ScreenEntry(Screen.auth));
       }
     }
+    final checkoutSessionId = initialCheckoutSessionId?.trim();
+    if (checkoutSessionId != null && checkoutSessionId.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.checkoutReturn, checkoutSessionId)];
+    }
+    final checkoutCancelBookingId = initialCheckoutCancelBookingId?.trim();
+    if (checkoutCancelBookingId != null && checkoutCancelBookingId.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.checkoutCancel, checkoutCancelBookingId)];
+    }
+    final stripeReturn = initialStripeReturn?.trim();
+    if (stripeReturn != null && stripeReturn.isNotEmpty) {
+      _stack = [ScreenEntry(Screen.stripeReturn, stripeReturn)];
+    }
   }
 
   @override
@@ -318,6 +348,23 @@ class AppState extends ChangeNotifier
   final DateTime Function() _now;
   @override
   late final MediaUploadService mediaUploader;
+
+  @override
+  ActiveIdentity get identity {
+    if (current.screen == Screen.stripeReturn) {
+      final param = current.param ?? '';
+      if (param.startsWith('band')) {
+        final id = param.substring(param.indexOf(':') + 1);
+        return BandIdentity(id);
+      }
+      if (param.startsWith('org')) {
+        final id = param.substring(param.indexOf(':') + 1);
+        return OrganizerIdentity(id, organizerRoleFor(id));
+      }
+      return const PersonalIdentity();
+    }
+    return super.identity;
+  }
 
   StreamSubscription<bool>? _authSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
@@ -404,6 +451,7 @@ class AppState extends ChangeNotifier
     _resetBandForm();
     _clearOpportunityState();
     _clearBookingState();
+    _clearPaymentState();
     _resetGigForm();
   }
 }
