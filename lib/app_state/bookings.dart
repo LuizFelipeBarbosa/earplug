@@ -4,6 +4,7 @@ mixin _BookingState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   String get bandId;
   String get organizationId;
+  ActiveIdentity get identity;
   OrganizationRole? organizerRoleFor(String organizationId);
   void go(Screen s, [String? param]);
 
@@ -70,18 +71,30 @@ mixin _BookingState on _AppStateCore {
 
   // ---- detail cache
   final Map<String, Booking> _bookingById = {};
+  final Map<String, BookingSide> _bookingSides = {};
   final Map<String, Object> _bookingByIdTokens = {};
 
   Booking? bookingById(String id) => _bookingById[id];
 
-  Future<Booking?> loadBooking(String id, {bool refresh = false}) async {
+  Future<Booking?> loadBooking(
+    String id, {
+    bool refresh = false,
+    BookingSide? viewAs,
+  }) async {
     if (_disposed) return null;
     final cached = _bookingById[id];
-    if (!refresh && cached != null) return cached;
+    final sideMatches = viewAs == null || cached?.viewerSide == viewAs;
+    if (!refresh && cached != null && sideMatches) return cached;
+    final side = viewAs ?? _bookingSides[id];
+    if (side != null) {
+      _bookingSides[id] = side;
+    } else {
+      _bookingSides.remove(id);
+    }
     final token = Object();
     _bookingByIdTokens[id] = token;
     try {
-      final booking = await repository.booking(id);
+      final booking = await repository.booking(id, viewAs: side);
       if (_disposed || !identical(_bookingByIdTokens[id], token)) {
         return null;
       }
@@ -96,7 +109,17 @@ mixin _BookingState on _AppStateCore {
     }
   }
 
-  void openBooking(String id) => go(Screen.bookingDetail, id);
+  void openBooking(String id, {BookingSide? viewAs}) {
+    final side =
+        viewAs ??
+        switch (identity) {
+          BandIdentity() => BookingSide.artist,
+          OrganizerIdentity() => BookingSide.organizer,
+          _ => null,
+        };
+    unawaited(loadBooking(id, viewAs: side));
+    go(Screen.bookingDetail, id);
+  }
 
   void openReviewCompose(String bookingId) =>
       go(Screen.reviewCompose, bookingId);
@@ -211,6 +234,7 @@ mixin _BookingState on _AppStateCore {
     _organizationBookingsLoadToken = null;
     _bandBookingsLoadToken = null;
     _bookingByIdTokens.clear();
+    _bookingSides.clear();
     _bookingById.clear();
     organizationBookings = const [];
     bandBookings = const [];

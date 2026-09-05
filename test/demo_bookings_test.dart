@@ -344,6 +344,24 @@ void main() {
         booking.venue.exactAddress,
         DemoData.venuePrivateDetails['v1']!.addr,
       );
+      final artistBooking = (await repo.booking(
+        'bk2',
+        viewAs: BookingSide.artist,
+      ))!;
+      expect(artistBooking.viewerSide, BookingSide.artist);
+      // Confirmed bookings disclose the exact address to both parties.
+      expect(artistBooking.venue.exactAddress, booking.venue.exactAddress);
+      final organizerBooking = (await repo.booking(
+        'bk2',
+        viewAs: BookingSide.organizer,
+      ))!;
+      expect(organizerBooking.viewerSide, BookingSide.organizer);
+      expect(organizerBooking.venue.exactAddress, isNotNull);
+      // The user does not hold bk1's artist role (band b2).
+      expect(
+        (await repo.booking('bk1', viewAs: BookingSide.artist))!.viewerSide,
+        BookingSide.organizer,
+      );
       expect((await repo.organization('org1'))!.reviewSummary!.count, 1);
       expect((await repo.band('b1'))!.reviewSummary!.mean, 5);
       expect(await repo.booking('missing'), isNull);
@@ -387,6 +405,36 @@ void main() {
           isFalse,
         );
       }
+    },
+  );
+
+  test(
+    'pending offers honor held sides and hide the address from artists',
+    () async {
+      final repo = DemoRepository(auth: FakeAuthService());
+      await repo.reviewApplication(
+        applicationId: 'app1',
+        action: ArtistApplicationReviewAction.shortlisted,
+      );
+      final sent = await repo.sendOffer(
+        applicationId: 'app1',
+        grossMinor: 0,
+        cancellationTemplate: CancellationTemplate.standard,
+      );
+      final artistBooking = (await repo.booking(
+        sent.bookingId,
+        viewAs: BookingSide.artist,
+      ))!;
+      expect(artistBooking.organizationId, 'org1');
+      expect(artistBooking.bandId, 'b1');
+      expect(artistBooking.viewerSide, BookingSide.artist);
+      expect(artistBooking.venue.exactAddress, isNull);
+      final organizerBooking = (await repo.booking(
+        sent.bookingId,
+        viewAs: BookingSide.organizer,
+      ))!;
+      expect(organizerBooking.viewerSide, BookingSide.organizer);
+      expect(organizerBooking.venue.exactAddress, isNotNull);
     },
   );
 

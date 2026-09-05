@@ -903,7 +903,7 @@ abstract class EarplugRepository {
     throw UnimplementedError('cancelBooking');
   }
 
-  Future<Booking?> booking(String bookingId) {
+  Future<Booking?> booking(String bookingId, {BookingSide? viewAs}) {
     // TODO(marketplace-phase3): demo lane implements this.
     throw UnimplementedError('booking');
   }

@@ -149,7 +149,8 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
               _BookingCard(
                 key: ValueKey('band-booking-${booking.id}'),
                 booking: booking,
-                onTap: () => app.openBooking(booking.id),
+                onTap: () =>
+                    app.openBooking(booking.id, viewAs: BookingSide.artist),
               ),
               const SizedBox(height: 12),
             ],
@@ -171,7 +172,8 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
               _BookingCard(
                 key: ValueKey('band-booking-${booking.id}'),
                 booking: booking,
-                onTap: () => app.openBooking(booking.id),
+                onTap: () =>
+                    app.openBooking(booking.id, viewAs: BookingSide.artist),
               ),
               const SizedBox(height: 12),
             ],
@@ -481,7 +483,10 @@ class _AppliedSectionState extends State<_AppliedSection> {
                             'band-app-${row.application.id}-'
                             '${row.application.status == ArtistApplicationStatus.offered ? 'respond' : 'booking'}',
                           ),
-                          onPressed: () => app.openBooking(booking.id),
+                          onPressed: () => app.openBooking(
+                            booking.id,
+                            viewAs: BookingSide.artist,
+                          ),
                           child: Text(
                             row.application.status ==
                                     ArtistApplicationStatus.offered

@@ -350,6 +350,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bookingDetail);
     expect(harness.app.current.param, sent.bookingId);
+    expect(
+      harness.app.bookingById(sent.bookingId)?.viewerSide,
+      BookingSide.artist,
+    );
     harness.app.dispose();
   });
 

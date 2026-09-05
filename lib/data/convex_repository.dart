@@ -1608,9 +1608,12 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<Booking?> booking(String bookingId) async {
+  Future<Booking?> booking(String bookingId, {BookingSide? viewAs}) async {
     final json = _asMap(
-      await _convexService.query('bookingsRead:get', {'bookingId': bookingId}),
+      await _convexService.query('bookingsRead:get', {
+        'bookingId': bookingId,
+        'viewAs': ?viewAs?.wireValue,
+      }),
     );
     return json.isEmpty ? null : Booking.fromJson(json);
   }

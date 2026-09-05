@@ -369,7 +369,10 @@ class _ApplicantCard extends StatelessWidget {
                     booking != null)
                   TextButton(
                     key: ValueKey('applicant-${application.id}-booking'),
-                    onPressed: () => app.openBooking(booking.id),
+                    onPressed: () => app.openBooking(
+                      booking.id,
+                      viewAs: BookingSide.organizer,
+                    ),
                     child: const Text('VIEW BOOKING'),
                   ),
               ],

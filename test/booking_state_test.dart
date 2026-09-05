@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
-import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/material.dart';
@@ -97,6 +96,7 @@ void main() {
     final refreshed = await harness.app.loadBooking(booking.id, refresh: true);
 
     expect(repository.bookingCalls, 2);
+    expect(repository.viewAsCalls, [null, null]);
     expect(refreshed, same(updated));
     expect(harness.app.bookingById(booking.id), same(updated));
     harness.app.dispose();
@@ -119,22 +119,34 @@ void main() {
     harness.app.switchToOrganization('org1');
     await tester.pumpAndSettle();
     final bookingId = repository.bookingResult.id;
-    await harness.app.loadBooking(bookingId);
 
     harness.app.openBooking(bookingId);
+    await tester.pumpAndSettle();
+    expect(repository.viewAsCalls, [BookingSide.organizer]);
     expect(harness.app.identity, isA<OrganizerIdentity>());
     harness.app.openReviewCompose(bookingId);
     expect(harness.app.identity, isA<OrganizerIdentity>());
 
     harness.app.switchToBand('b1');
     await tester.pumpAndSettle();
-    repository.bookingResult = _booking(viewerSide: BookingSide.artist);
-    await harness.app.loadBooking(bookingId, refresh: true);
+    repository.bookingResult = _booking(
+      id: 'booking2',
+      viewerSide: BookingSide.artist,
+    );
+    final bandBookingId = repository.bookingResult.id;
 
-    harness.app.openBooking(bookingId);
+    harness.app.openBooking(bandBookingId);
+    expect(harness.app.current.screen, Screen.bookingDetail);
+    expect(harness.app.current.param, bandBookingId);
+    expect(repository.viewAsCalls, [BookingSide.organizer, BookingSide.artist]);
+    await tester.pumpAndSettle();
+    expect(
+      harness.app.bookingById(bandBookingId)?.viewerSide,
+      BookingSide.artist,
+    );
     expect(harness.app.organizationId, 'org1');
     expect(harness.app.identity, isA<BandIdentity>());
-    harness.app.openReviewCompose(bookingId);
+    harness.app.openReviewCompose(bandBookingId);
     expect(harness.app.identity, isA<BandIdentity>());
     harness.app.dispose();
   });
@@ -202,7 +214,9 @@ void main() {
     await tester.pumpAndSettle();
     harness.app.switchToBand('b1');
     await tester.pumpAndSettle();
-    await harness.app.loadBooking(booking.id);
+    harness.app.openBooking(booking.id);
+    await tester.pumpAndSettle();
+    expect(repository.viewAsCalls, [BookingSide.artist]);
 
     final refreshed = await harness.app.respondToOffer(
       booking,
@@ -223,6 +237,7 @@ void main() {
       BookingStatus.artistAccepted,
     );
     expect(repository.bookingCalls, 2);
+    expect(repository.viewAsCalls, [BookingSide.artist, BookingSide.artist]);
     expect(harness.app.bandBookings, [accepted]);
     expect(repository.bandRequests, ['b1', 'b1']);
     expect(repository.organizationRequests, isEmpty);
@@ -232,11 +247,10 @@ void main() {
   testWidgets('sign-out clears booking state', (tester) async {
     final auth = FakeAuthService();
     final booking = _booking();
-    final EarplugRepository repository =
-        _ControlledBookingRepository(auth: auth)
-          ..bookingResult = booking
-          ..organizationResults = [booking]
-          ..bandResults = [_booking(viewerSide: BookingSide.artist)];
+    final repository = _ControlledBookingRepository(auth: auth)
+      ..bookingResult = booking
+      ..organizationResults = [booking]
+      ..bandResults = [_booking(viewerSide: BookingSide.artist)];
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -248,7 +262,7 @@ void main() {
     harness.app.switchToBand('b1');
     await tester.pumpAndSettle();
     await harness.app.refreshOrganizationBookings('org1');
-    await harness.app.loadBooking(booking.id);
+    await harness.app.loadBooking(booking.id, viewAs: BookingSide.artist);
     expect(harness.app.organizationBookings, isNotEmpty);
     expect(harness.app.bandBookings, isNotEmpty);
     expect(harness.app.bookingById(booking.id), same(booking));
@@ -260,6 +274,10 @@ void main() {
     expect(harness.app.bookingById(booking.id), isNull);
     expect(harness.app.organizationBookingsStatus, DataStatus.connecting);
     expect(harness.app.bandBookingsStatus, DataStatus.connecting);
+    await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+    await harness.app.loadBooking(booking.id);
+    expect(repository.viewAsCalls, [BookingSide.artist, null]);
     harness.app.dispose();
   });
 
@@ -307,11 +325,12 @@ void main() {
 }
 
 Booking _booking({
+  String id = 'booking1',
   BookingSide viewerSide = BookingSide.organizer,
   BookingStatus status = BookingStatus.offerSent,
   int revision = 1,
 }) => Booking(
-  id: 'booking1',
+  id: id,
   opportunityId: 'opportunity1',
   opportunityTitle: 'Friday Night Live',
   opportunitySlug: 'friday-night-live',
@@ -345,6 +364,7 @@ class _ControlledBookingRepository extends DemoRepository {
 
   bool failLoads = false;
   int bookingCalls = 0;
+  final viewAsCalls = <BookingSide?>[];
   final organizationRequests = <String>[];
   final bandRequests = <String>[];
   List<BookingStatus>? requestedStatuses;
@@ -386,8 +406,9 @@ class _ControlledBookingRepository extends DemoRepository {
   }
 
   @override
-  Future<Booking?> booking(String bookingId) {
+  Future<Booking?> booking(String bookingId, {BookingSide? viewAs}) {
     bookingCalls++;
+    viewAsCalls.add(viewAs);
     if (failLoads) throw StateError('booking failed');
     return pendingBooking?.future ?? Future.value(bookingResult);
   }

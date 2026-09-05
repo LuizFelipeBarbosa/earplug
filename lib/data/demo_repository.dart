@@ -2890,13 +2890,13 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
-  Future<Booking?> booking(String bookingId) async {
+  Future<Booking?> booking(String bookingId, {BookingSide? viewAs}) async {
     final stored = _bookings[bookingId];
     if (stored == null) return null;
-    final side =
-        _organizationMemberships.any(
-          (membership) => membership.organization.id == stored.organizationId,
-        )
+    if (viewAs != null && _holdsBookingSide(stored, viewAs)) {
+      return _bookingPayload(stored, viewAs);
+    }
+    final side = _holdsBookingSide(stored, BookingSide.organizer)
         ? BookingSide.organizer
         : BookingSide.artist;
     return _bookingPayload(stored, side);
@@ -3401,15 +3401,20 @@ class DemoRepository implements EarplugRepository {
     }
   }
 
-  BookingSide _requireBookingSide(Booking booking, String errorMessage) {
-    if (_organizationMemberships.any(
+  bool _holdsBookingSide(Booking booking, BookingSide side) => switch (side) {
+    BookingSide.organizer => _organizationMemberships.any(
       (membership) => membership.organization.id == booking.organizationId,
-    )) {
+    ),
+    BookingSide.artist => _memberships.any(
+      (membership) => membership.band.id == booking.bandId,
+    ),
+  };
+
+  BookingSide _requireBookingSide(Booking booking, String errorMessage) {
+    if (_holdsBookingSide(booking, BookingSide.organizer)) {
       return BookingSide.organizer;
     }
-    if (_memberships.any(
-      (membership) => membership.band.id == booking.bandId,
-    )) {
+    if (_holdsBookingSide(booking, BookingSide.artist)) {
       return BookingSide.artist;
     }
     throw StateError(errorMessage);
