@@ -286,6 +286,11 @@ Legacy venue rows are maintained by the ordered, idempotent
 `migrations:releaseBackfillStatus`. `tool/run_release_backfills.mjs`, exposed as
 `npm run backfill:release`, drives that runner to completion during a production
 release.
+Release backfills for v1.19 are applied by the deployment's own 30-minute cron
+(`convex/crons.ts`, "apply release backfills", `migrations:runReleaseBackfills`)
+rather than by the Netlify build, since the Netlify deploy key lacks permission
+to run internal mutations directly; an authenticated admin session can apply
+them immediately with `npm run backfill:release -- --prod`.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers

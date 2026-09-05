@@ -17,6 +17,7 @@ import {
   SF_CENTER,
   approximateLocation,
   formatMiles,
+  milesBetween,
 } from "./lib/geo";
 import {
   currentUser,
@@ -69,6 +70,58 @@ const venueInputValidator = v.object({
   capacity: v.optional(v.number()),
   venueType: v.optional(venueTypeValidator),
 });
+
+async function findVenueAtAddress(
+  ctx: QueryCtx,
+  venue: Infer<typeof venueInputValidator>,
+): Promise<Doc<"venues"> | null> {
+  const normalizedAddr = normalizeVenueText(venue.addr);
+  const [privateMatches, publicMatches] = await Promise.all([
+    ctx.db
+      .query("venuePrivateDetails")
+      .withIndex("by_normalizedAddr", (q) =>
+        q.eq("normalizedAddr", normalizedAddr),
+      )
+      .take(51),
+    ctx.db
+      .query("venues")
+      .withIndex("by_normalizedAddr", (q) =>
+        q.eq("normalizedAddr", normalizedAddr),
+      )
+      .take(51),
+  ]);
+  if (privateMatches.length > 50 || publicMatches.length > 50) {
+    throw new Error(
+      "Too many venues share this address; provide a more specific address",
+    );
+  }
+
+  // A street line can recur in different cities. Allow small pin/geocoder
+  // differences (about 160 metres), but never match by address alone.
+  const nearby = new Map<Id<"venues">, Doc<"venues">>();
+  for (const details of privateMatches) {
+    if (milesBetween(venue, details) > 0.1) continue;
+    const existing = await ctx.db.get(details.venueId);
+    if (existing !== null) nearby.set(existing._id, existing);
+  }
+  for (const existing of publicMatches) {
+    const details = await ctx.db
+      .query("venuePrivateDetails")
+      .withIndex("by_venueId", (q) => q.eq("venueId", existing._id))
+      .unique();
+    // Private details are authoritative; the public row may contain an
+    // approximate location or an address left over from before an edit.
+    if (details !== null) continue;
+    if (milesBetween(venue, existing) <= 0.1)
+      nearby.set(existing._id, existing);
+  }
+  if (nearby.size > 1) {
+    throw new Error(
+      "Multiple venues match this address and location; resolve the duplicate venues before approval",
+    );
+  }
+  return nearby.values().next().value ?? null;
+}
 
 export const organizationApplicationPayloadValidator = v.object({
   _id: v.id("organizationApplications"),
@@ -361,7 +414,11 @@ export const saveDraft = mutation({
         throw new Error("Application changed elsewhere");
       }
       const revision = application.revision + 1;
-      await ctx.db.patch(application._id, { ...fields, revision, updatedAt: now });
+      await ctx.db.patch(application._id, {
+        ...fields,
+        revision,
+        updatedAt: now,
+      });
       return { applicationId: application._id, revision };
     }
 
@@ -718,22 +775,7 @@ export const decide = mutation({
     let venueId: Id<"venues"> | null = null;
     if (application.venue !== undefined) {
       const normalizedAddr = normalizeVenueText(application.venue.addr);
-      const privateMatch = await ctx.db
-        .query("venuePrivateDetails")
-        .withIndex("by_normalizedAddr", (q) =>
-          q.eq("normalizedAddr", normalizedAddr),
-        )
-        .first();
-      let existingVenue =
-        privateMatch === null ? null : await ctx.db.get(privateMatch.venueId);
-      if (privateMatch === null) {
-        existingVenue = await ctx.db
-          .query("venues")
-          .withIndex("by_normalizedAddr", (q) =>
-            q.eq("normalizedAddr", normalizedAddr),
-          )
-          .first();
-      }
+      const existingVenue = await findVenueAtAddress(ctx, application.venue);
 
       const approx = approximateLocation(
         { lat: application.venue.lat, lng: application.venue.lng },

@@ -51,13 +51,16 @@ void main() {
         });
 
         expect(suggestions, hasLength(2));
-        expect(suggestions.first.address, '22 Valencia St');
+        expect(
+          suggestions.first.address,
+          '22 Valencia St, San Francisco, CA, 94103',
+        );
         expect(suggestions.first.area, 'Mission');
         expect(suggestions.first.locality, 'San Francisco');
         expect(suggestions.first.region, 'CA');
         expect(suggestions.first.postalCode, '94103');
         expect(suggestions.first.point, const LatLng(37.7676, -122.4220));
-        expect(suggestions[1].address, 'Fox Theater');
+        expect(suggestions[1].address, 'Fox Theater, Oakland, CA, USA');
         expect(suggestions[1].area, 'Oakland');
       },
     );

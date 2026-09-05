@@ -391,7 +391,7 @@ void main() {
           (await repository.invitedOpportunities(
             'b1',
           )).map((item) => item.opportunity.id),
-          ['opp3'],
+          ['opp1', 'opp3'],
         );
       },
     );

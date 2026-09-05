@@ -162,6 +162,10 @@ class _OpenSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final browse = app.browse;
+    final opportunities = <String, BrowseItem>{};
+    for (final item in [...browse.invited, ...browse.items]) {
+      opportunities.putIfAbsent(item.opportunity.id, () => item);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -181,7 +185,7 @@ class _OpenSection extends StatelessWidget {
           EmptyNote(message: browse.error ?? 'Could not load opportunities.'),
           TextButton(onPressed: app.refreshBrowse, child: const Text('RETRY')),
         ],
-        for (final item in [...browse.invited, ...browse.items]) ...[
+        for (final item in opportunities.values) ...[
           _OpportunityCard(
             key: ValueKey('opp-card-${item.opportunity.id}'),
             item: item,
@@ -729,8 +733,8 @@ class _ProjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final canWrite =
-        !readOnly && app.gigWritePolicy && app.isAdminOf(app.bandId);
+    final canManage = !readOnly && app.isAdminOf(app.bandId);
+    final canWrite = canManage && app.gigWritePolicy;
     final venue = project.venueId == null ? null : app.venue(project.venueId!);
     final cachedGig = project.publicGigId == null
         ? null
@@ -792,7 +796,7 @@ class _ProjectCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (canWrite)
+                if (canManage)
                   IconButton(
                     key: ValueKey('gig-actions-${project.id}'),
                     tooltip: 'More actions for ${_projectTitle(project)}',
@@ -892,19 +896,19 @@ void _showProjectActions(
   AppState app,
   GigProject project,
 ) {
-  if (!app.gigWritePolicy ||
-      !app.isAdminOf(app.bandId) ||
+  if (!app.isAdminOf(app.bandId) ||
       project.status == GigProjectStatus.cancelled) {
     return;
   }
   final items = <EpActionSheetItem>[
-    EpActionSheetItem(
-      label: 'Duplicate',
-      icon: Icons.copy,
-      onPressed: () => unawaited(
-        _runProjectAction(context, app, project, _ProjectAction.duplicate),
+    if (app.gigWritePolicy)
+      EpActionSheetItem(
+        label: 'Duplicate',
+        icon: Icons.copy,
+        onPressed: () => unawaited(
+          _runProjectAction(context, app, project, _ProjectAction.duplicate),
+        ),
       ),
-    ),
     if (project.status == GigProjectStatus.published)
       EpActionSheetItem(
         label: 'Unpublish…',
@@ -945,8 +949,8 @@ Future<void> _runProjectAction(
       (project.status == GigProjectStatus.cancelled ||
           !app.isAdminOf(app.bandId) ||
           (!app.gigWritePolicy &&
-              !(project.status == GigProjectStatus.draft &&
-                  action == _ProjectAction.delete)))) {
+              (action == _ProjectAction.edit ||
+                  action == _ProjectAction.duplicate)))) {
     return;
   }
   switch (action) {

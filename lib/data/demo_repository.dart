@@ -2484,7 +2484,6 @@ class DemoRepository implements EarplugRepository {
         _opportunities.values
             .where(
               (opportunity) =>
-                  opportunity.visibility == OpportunityVisibility.inviteOnly &&
                   opportunity.status == OpportunityStatus.open &&
                   opportunity.invitedBandIds.contains(bandId),
             )

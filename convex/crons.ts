@@ -20,4 +20,17 @@ crons.interval(
   {},
 );
 
+// The runner is idempotent: the migrations component skips completed jobs and
+// resumes interrupted jobs from their stored cursor, so running every 30 minutes
+// is a no-op once a release's backfills are fully applied. The cron applies new
+// release backfills within 30 minutes of deploy without requiring the
+// `deployment:functions:runInternalMutations` permission that Netlify's deploy
+// key lacks.
+crons.interval(
+  "apply release backfills",
+  { minutes: 30 },
+  internal.migrations.runReleaseBackfills,
+  {},
+);
+
 export default crons;

@@ -126,7 +126,12 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
   }
 
   void _back() {
-    if (Navigator.canPop(context)) Navigator.pop(context);
+    final app = context.read<AppState>();
+    if (app.canGoBack) {
+      app.back();
+    } else {
+      app.toFanView();
+    }
   }
 
   @override
@@ -392,7 +397,7 @@ class _ApplySheetState extends State<_ApplySheet> {
     super.initState();
     _bands = widget.app.myBands.where(widget.app.isAdminOf).toList();
     _bandId = widget.app.bandId;
-    if (_bands.length > 1 && !_bands.contains(_bandId)) _bandId = _bands.first;
+    if (_bands.isNotEmpty && !_bands.contains(_bandId)) _bandId = _bands.first;
     _slot = widget.opportunity.slots
         .where((slot) => slot.status == SlotStatus.open)
         .firstOrNull;

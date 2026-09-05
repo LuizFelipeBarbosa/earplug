@@ -15,6 +15,78 @@ import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets(
+    'public invitations appear once and retain the invitation label',
+    (tester) async {
+      final harness = await pumpApp(tester, home: const RootShell());
+      await _signInBand(tester, harness);
+      await harness.app.repository.inviteBandToOpportunity(
+        opportunityId: 'opp1',
+        bandId: 'b1',
+      );
+      harness.app.resetTo(Screen.gigMgr);
+      await harness.app.refreshBrowse();
+      await tester.pumpAndSettle();
+
+      expect(
+        harness.app.browse.invited.any((item) => item.opportunity.id == 'opp1'),
+        isTrue,
+      );
+      expect(
+        harness.app.browse.items.any((item) => item.opportunity.id == 'opp1'),
+        isTrue,
+      );
+      final card = find.byKey(const Key('opp-card-opp1'));
+      expect(card, findsOneWidget);
+      expect(
+        find.descendant(of: card, matching: find.text('INVITED')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'opportunity back returns to the Gigs page through app navigation',
+    (tester) async {
+      final harness = await pumpApp(tester, home: const RootShell());
+      await _signInBand(tester, harness);
+      harness.app.resetTo(Screen.gigMgr);
+      harness.app.openOpportunity('friday-night-live');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(BackButton));
+      await tester.pumpAndSettle();
+      expect(harness.app.current.screen, Screen.gigMgr);
+      expect(find.byType(GigManagerScreen), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'apply selects the only administered band when another band is active',
+    (tester) async {
+      final harness = await pumpApp(tester, home: const RootShell());
+      await _signInNonAdminMember(tester, harness);
+      await harness.app.repository.withdrawApplication('app1');
+      await harness.app.repository.withdrawApplication('app2');
+      harness.app.openOpportunity('friday-night-live');
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('opp-detail-apply')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('opp-apply-submit')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Choose a band you manage to apply.'), findsNothing);
+      final applications = await harness.app.repository.myApplications('b1');
+      expect(
+        applications.where((row) => row.application.status.isActive),
+        hasLength(1),
+      );
+      expect(harness.app.toast, 'Application sent');
+    },
+  );
+
   testWidgets('opportunity apply action stays above the band tab bar', (
     tester,
   ) async {
@@ -263,12 +335,24 @@ void main() {
       isNull,
     );
     expect(find.byKey(Key('gig-edit-${draft.id}')), findsNothing);
-    expect(find.byKey(Key('gig-actions-${draft.id}')), findsNothing);
+    expect(find.byKey(Key('gig-actions-${draft.id}')), findsOneWidget);
     expect(find.byKey(Key('gig-preview-${draft.id}')), findsOneWidget);
     expect(find.byKey(Key('gig-door-${draft.id}')), findsOneWidget);
 
-    await repository.cancelGig(draft.id);
-    await harness.app.refreshManagedGigs();
+    await tester.tap(find.byKey(Key('gig-actions-${draft.id}')));
+    await tester.pumpAndSettle();
+    expect(find.text('Duplicate'), findsNothing);
+    expect(find.text('Unpublish…'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
+    await tester.tap(find.text('Cancel gig…'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cancel gig?'), findsOneWidget);
+    await tester.tap(find.text('CONFIRM'));
+    await tester.pumpAndSettle();
+    expect(
+      harness.app.managedGigProjects.single.status,
+      GigProjectStatus.cancelled,
+    );
     // PAST remains read-only even when the write policy is enabled again.
     repository.demoBandGigWrites = true;
     await harness.app.refreshGigWritePolicy();
@@ -471,18 +555,17 @@ void main() {
   testWidgets('unavailable detail has a safe back action at the root', (
     tester,
   ) async {
-    final harness = await _pumpScreen(
+    final harness = await pumpApp(
       tester,
-      home: const Scaffold(
-        body: OpportunityDetailScreen(opportunityRef: 'missing'),
-      ),
+      home: const RootShell(),
+      initialOpportunityRef: 'missing',
     );
     expect(find.text("This opportunity isn't available."), findsOneWidget);
     await tester.tap(find.text('BACK'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    expect(find.text("This opportunity isn't available."), findsOneWidget);
-    harness.app.dispose();
+    expect(harness.app.current.screen, Screen.home);
+    expect(find.byType(OpportunityDetailScreen), findsNothing);
   });
 }
 
