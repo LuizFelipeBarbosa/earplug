@@ -15,6 +15,11 @@ abstract interface class ConvexTransport {
     required Map<String, dynamic> args,
   });
 
+  Future<String> action({
+    required String name,
+    required Map<String, dynamic> args,
+  });
+
   Future<ConvexTransportSubscription> subscribe({
     required String name,
     required Map<String, dynamic> args,
@@ -56,6 +61,14 @@ class ConvexClientTransport implements ConvexTransport {
     required Map<String, dynamic> args,
   }) {
     return _requireClient().mutation(name: name, args: args);
+  }
+
+  @override
+  Future<String> action({
+    required String name,
+    required Map<String, dynamic> args,
+  }) {
+    return _requireClient().action(name: name, args: args);
   }
 
   @override

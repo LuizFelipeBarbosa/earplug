@@ -70,6 +70,17 @@ class ConvexService {
     return _decode(result);
   }
 
+  /// Returns the decoded top-level JSON value as-is, including `null`.
+  /// Throws [ConvexFunctionException] if the result contains server error text.
+  Future<dynamic> action(String name, [Map<String, dynamic>? args]) async {
+    final transport = _requireTransport();
+    final result = await _runConnected(
+      transport,
+      () => transport.action(name: name, args: args ?? {}),
+    );
+    return _decode(result);
+  }
+
   /// Passes each decoded payload directly to [parse].
   ///
   /// A JSON `null` payload is passed through as `null`, so parsers may handle
