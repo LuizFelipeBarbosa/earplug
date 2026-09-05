@@ -293,8 +293,18 @@ class AppState extends ChangeNotifier
     }
     final bookingId = initialBookingId?.trim();
     if (bookingId != null && bookingId.isNotEmpty) {
-      _stack = [ScreenEntry(Screen.bookingDetail, bookingId)];
-      unawaited(loadBooking(bookingId));
+      _stack = [
+        const ScreenEntry(Screen.home),
+        ScreenEntry(Screen.bookingDetail, bookingId),
+      ];
+      if (authed) {
+        unawaited(loadBooking(bookingId));
+      } else {
+        // Preserve the incoming URL, including Clerk's OAuth callback params.
+        pending = PendingAuth(PendingKind.booking, bookingId);
+        _authConfirmationKind = PendingKind.booking;
+        _stack.add(const ScreenEntry(Screen.auth));
+      }
     }
   }
 

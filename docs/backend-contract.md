@@ -408,6 +408,20 @@ Completed bookings support one double-blind review per side. The exact
 [`convex/bookingsRead.ts`](../convex/bookingsRead.ts); the booking and listing
 review payload validators are in [`convex/reviews.ts`](../convex/reviews.ts).
 
+While an application is `offered`, direct application withdrawal and review
+are rejected. The artist must respond to the booking offer, or the organizer
+must withdraw the offer before reviewing the application again.
+
+A confirmed opportunity becomes `completed` after at least one booking
+completes and no booking remains `offer_sent`, `artist_accepted`, `awaiting_payment`,
+`confirmed`, or `disputed`. Completing one performer does not complete an
+opportunity with another active booking or offer. Empty optional slots do not
+block completion, and the published gig remains available as event history.
+
+Full band and organization payloads include a nullable `reviewSummary` with
+the aggregate rating and count of released, non-hidden reviews. The field is
+null until a summary has been computed.
+
 - `bookings:sendOffer` — Mutation; `{ applicationId, grossMinor, cancellationTemplate, termsNotes?, message? } -> { bookingId, offerId, revision }`; organization owner/manager or platform admin sends an offer to a shortlisted application for an available slot.
 - `bookings:withdrawOffer` — Mutation; `{ bookingId, expectedRevision } -> { revision }`; organization owner/manager or platform admin withdraws a pending offer and returns its application to `shortlisted`.
 - `bookings:respond` — Mutation; `{ bookingId, action: "accept" | "decline", expectedRevision, message? } -> { status, revision }`; band admin accepts or declines a pending, unexpired offer with revision checking.

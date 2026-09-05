@@ -10,6 +10,7 @@ enum PendingKind {
   gigInvite,
   orgApply,
   orgJoin,
+  booking,
 }
 
 class PendingAuth {
@@ -174,6 +175,8 @@ mixin _SessionState on _AppStateCore {
     } else if (p.kind == PendingKind.orgApply) {
       // Startup restores the application intent after an OAuth page reload.
       replaceBrowserPath(organizerApplyPath);
+    } else if (p.kind == PendingKind.booking) {
+      replaceBrowserPath('/bookings/${Uri.encodeComponent(p.id!)}');
     }
   }
 
@@ -269,8 +272,8 @@ mixin _SessionState on _AppStateCore {
       case PendingKind.orgApply:
         _postAuthScreen = Screen.orgApply;
       case PendingKind.orgJoin:
-        // Pop back to the invitation, retaining its token and requiring the
-        // recipient to accept explicitly after authentication.
+      case PendingKind.booking:
+        // Pop back to the requested invitation or booking after authentication.
         _postAuthScreen = null;
       case null:
         _postAuthScreen = null;

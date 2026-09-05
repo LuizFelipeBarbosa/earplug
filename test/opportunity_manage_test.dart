@@ -567,7 +567,7 @@ void main() {
         );
         expect(
           find.byKey(const ValueKey('applicant-app2-decline')),
-          accepted ? findsNothing : findsOneWidget,
+          findsNothing,
         );
         final viewBooking = find.byKey(
           const ValueKey('applicant-app2-booking'),
@@ -766,7 +766,8 @@ Future<AppHarness> _pumpOrganizerScreen(
 }) async {
   final auth = FakeAuthService();
   await auth.signInDemo();
-  final repository = repositoryBuilder?.call(auth) ?? DemoRepository(auth: auth);
+  final repository =
+      repositoryBuilder?.call(auth) ?? DemoRepository(auth: auth);
   final app = AppState(repository: repository, auth: auth);
   final picker = FakeMediaPicker();
   final media = BandMediaController(

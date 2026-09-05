@@ -5,6 +5,7 @@ mixin _BookingState on _AppStateCore {
   String get bandId;
   String get organizationId;
   ActiveIdentity get identity;
+  Future<bool>? get _authReady;
   OrganizationRole? organizerRoleFor(String organizationId);
   void go(Screen s, [String? param]);
 
@@ -73,6 +74,7 @@ mixin _BookingState on _AppStateCore {
   final Map<String, Booking> _bookingById = {};
   final Map<String, BookingSide> _bookingSides = {};
   final Map<String, Object> _bookingByIdTokens = {};
+  final Map<String, Future<Booking?>> _bookingLoads = {};
 
   Booking? bookingById(String id) => _bookingById[id];
 
@@ -80,12 +82,16 @@ mixin _BookingState on _AppStateCore {
     String id, {
     bool refresh = false,
     BookingSide? viewAs,
-  }) async {
-    if (_disposed) return null;
-    final cached = _bookingById[id];
-    final sideMatches = viewAs == null || cached?.viewerSide == viewAs;
-    if (!refresh && cached != null && sideMatches) return cached;
+  }) {
+    if (_disposed) return Future.value(null);
     final side = viewAs ?? _bookingSides[id];
+    final pendingLoad = _bookingLoads[id];
+    if (!refresh && pendingLoad != null && side == _bookingSides[id]) {
+      return pendingLoad;
+    }
+    final cached = _bookingById[id];
+    final sideMatches = side == null || cached?.viewerSide == side;
+    if (!refresh && cached != null && sideMatches) return Future.value(cached);
     if (side != null) {
       _bookingSides[id] = side;
     } else {
@@ -93,19 +99,40 @@ mixin _BookingState on _AppStateCore {
     }
     final token = Object();
     _bookingByIdTokens[id] = token;
+    final load = _fetchBooking(id, side, token);
+    _bookingLoads[id] = load;
+    return load;
+  }
+
+  Future<Booking?> _fetchBooking(
+    String id,
+    BookingSide? side,
+    Object token,
+  ) async {
     try {
+      // Startup can restore a Clerk session before Convex has its token.
+      await _authReady;
+      if (_disposed || !identical(_bookingByIdTokens[id], token)) return null;
       final booking = await repository.booking(id, viewAs: side);
       if (_disposed || !identical(_bookingByIdTokens[id], token)) {
         return null;
       }
-      if (booking != null && !identical(_bookingById[id], booking)) {
-        _bookingById[id] = booking;
+      if (!identical(_bookingById[id], booking)) {
+        if (booking == null) {
+          _bookingById.remove(id);
+        } else {
+          _bookingById[id] = booking;
+        }
         notifyListeners();
       }
       return booking;
     } catch (error) {
       logError('booking', error);
       return null;
+    } finally {
+      if (identical(_bookingByIdTokens[id], token)) {
+        unawaited(_bookingLoads.remove(id));
+      }
     }
   }
 
@@ -117,7 +144,7 @@ mixin _BookingState on _AppStateCore {
           OrganizerIdentity() => BookingSide.organizer,
           _ => null,
         };
-    unawaited(loadBooking(id, viewAs: side));
+    unawaited(loadBooking(id, refresh: true, viewAs: side));
     go(Screen.bookingDetail, id);
   }
 
@@ -235,6 +262,7 @@ mixin _BookingState on _AppStateCore {
     _organizationBookingsLoadToken = null;
     _bandBookingsLoadToken = null;
     _bookingByIdTokens.clear();
+    _bookingLoads.clear();
     _bookingSides.clear();
     _bookingById.clear();
     organizationBookings = const [];

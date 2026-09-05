@@ -209,6 +209,26 @@ async function setupReviews() {
 }
 
 describe("reviews: double-blind submission", () => {
+  test("band profiles and organizer payloads expose released review summaries", async () => {
+    const f = await setupReviews();
+    expect(await f.t.query(api.bands.get, { bandId: f.bandId }))
+      .toMatchObject({ reviewSummary: null });
+    expect(await f.t.query(api.organizations.get, { organizationId: f.organizationId }))
+      .toMatchObject({ reviewSummary: null });
+
+    await f.submit("manager");
+    await f.submit("bandAdmin", { rating: 3 });
+    const summaries = await f.summaries();
+    expect(await f.t.query(api.bands.get, { bandId: f.bandId }))
+      .toMatchObject({ reviewSummary: summaries.band });
+    expect(await f.t.query(api.organizations.get, { organizationId: f.organizationId }))
+      .toMatchObject({ reviewSummary: summaries.organization });
+    const dashboard = await f.as("owner").query(api.organizations.dashboard, {
+      organizationId: f.organizationId,
+    });
+    expect(dashboard.organization.reviewSummary).toEqual(summaries.organization);
+  });
+
   test("a manager's first review is private to its author", async () => {
     const f = await setupReviews();
     const result = await f.submit();

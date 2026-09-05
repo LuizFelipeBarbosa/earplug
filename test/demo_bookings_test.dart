@@ -62,6 +62,38 @@ Future<Opportunity> _openOpportunity(
 }
 
 void main() {
+  test('offered applications must be handled through their booking', () async {
+    final repo = DemoRepository(auth: FakeAuthService());
+    final sent = await repo.sendOffer(
+      applicationId: 'app2',
+      grossMinor: 0,
+      cancellationTemplate: CancellationTemplate.standard,
+    );
+    await expectLater(
+      repo.withdrawApplication('app2'),
+      _stateError('Respond to the booking offer'),
+    );
+    await expectLater(
+      repo.reviewApplication(
+        applicationId: 'app2',
+        action: ArtistApplicationReviewAction.declined,
+      ),
+      _stateError('Withdraw the booking offer'),
+    );
+    await repo.withdrawOffer(
+      bookingId: sent.bookingId,
+      expectedRevision: sent.revision,
+    );
+    await repo.withdrawApplication('app2');
+    expect(
+      (await repo.myApplicationFor(
+        opportunityId: 'opp1',
+        bandId: 'b2',
+      ))?.status,
+      ArtistApplicationStatus.withdrawn,
+    );
+  });
+
   test('A: payments gate, fee snapshot, and duplicate pending offer', () async {
     final repo = DemoRepository(auth: FakeAuthService());
     await repo.reviewApplication(

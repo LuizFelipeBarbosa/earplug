@@ -163,6 +163,8 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
         final venue = opportunity.venue;
         final status = item.myApplicationStatus;
         final applied = status != null && status.isActive;
+        final canWithdraw =
+            applied && status != ArtistApplicationStatus.offered;
         return Stack(
           children: [
             Positioned.fill(
@@ -352,9 +354,9 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                     ? 'APPLIED · ${status.wireValue.replaceAll('_', ' ').toUpperCase()}'
                     : 'APPLY',
                 onPrimary: applied ? null : () => _showApply(opportunity),
-                secondaryLabel: applied ? 'WITHDRAW' : null,
+                secondaryLabel: canWithdraw ? 'WITHDRAW' : null,
                 secondaryKey: const Key('opp-detail-withdraw'),
-                onSecondary: applied && !_withdrawing
+                onSecondary: canWithdraw && !_withdrawing
                     ? () => _withdraw(opportunity)
                     : null,
               ),

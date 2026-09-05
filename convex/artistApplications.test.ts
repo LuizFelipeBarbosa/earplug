@@ -633,7 +633,7 @@ describe("artist applications: apply", () => {
 });
 
 describe("artist applications: withdrawal and review", () => {
-  test.each(APPLICATION_ACTIVE_STATUSES)(
+  test.each(APPLICATION_ACTIVE_STATUSES.filter((status) => status !== "offered"))(
     "can withdraw from %s without changing organizer decision metadata",
     async (status) => {
       const f = await setupApplications();
@@ -914,6 +914,7 @@ describe("artist applications: private queries", () => {
           bannerUrl: null,
           profileComplete: true,
           discoveryProfileReady: false,
+          reviewSummary: null,
         },
         contactEmail,
       });

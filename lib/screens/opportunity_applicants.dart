@@ -355,7 +355,8 @@ class _ApplicantCard extends StatelessWidget {
                     onPressed: reviewing ? null : () => onSendOffer(slot),
                     child: const Text('SEND OFFER'),
                   ),
-                if (application.status.isActive)
+                if (application.status.isActive &&
+                    application.status != ArtistApplicationStatus.offered)
                   TextButton(
                     key: ValueKey('applicant-${application.id}-decline'),
                     onPressed: reviewing

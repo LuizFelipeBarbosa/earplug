@@ -136,7 +136,10 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       _reload();
     } catch (error) {
       if (mounted && widget.bookingId == booking.id) {
-        setState(() => _error = _errorMessage(error));
+        setState(() {
+          _error = _errorMessage(error);
+          _load(refresh: true);
+        });
       }
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -252,11 +255,17 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
                 ),
                 children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: BackButton(
-                      onPressed: () => context.read<AppState>().back(),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      BackButton(onPressed: app.back),
+                      IconButton(
+                        key: const Key('booking-refresh'),
+                        tooltip: 'Refresh booking',
+                        onPressed: _submitting ? null : _reload,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ],
                   ),
                   Text(
                     booking.opportunityTitle,

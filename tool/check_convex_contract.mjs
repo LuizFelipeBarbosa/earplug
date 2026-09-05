@@ -88,6 +88,8 @@ export const requiredClientFields = Object.freeze([
   ["media.js:forBand", "arrayReturn", "isBanner", false],
   ["bands.js:bySlug", "return", "avatarUrl", false],
   ["bands.js:bySlug", "return", "bannerUrl", false],
+  ["bands.js:bySlug", "return", "reviewSummary", false],
+  ["organizations.js:bySlug", "return", "reviewSummary", false],
   ["bands.js:archive", "return", "bandId", false],
   ["bands.js:archive", "return", "archivedAt", false],
   ["bands.js:archive", "return", "alreadyArchived", false],

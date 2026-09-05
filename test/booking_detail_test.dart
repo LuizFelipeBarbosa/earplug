@@ -18,6 +18,34 @@ import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('refresh shows booking changes made elsewhere', (tester) async {
+    final harness = await pumpApp(tester, home: const RootShell());
+    await enterOrganizer(tester, harness, 'org1');
+    harness.app.openBooking('bk1');
+    await tester.pumpAndSettle();
+
+    final booking = harness.app.bookingById('bk1')!;
+    await harness.app.repository.withdrawOffer(
+      bookingId: booking.id,
+      expectedRevision: booking.revision,
+    );
+    expect(find.byKey(const Key('booking-withdraw')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('booking-refresh')));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.bookingById('bk1')?.status, BookingStatus.withdrawn);
+    expect(find.byKey(const Key('booking-withdraw')), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(StatusPill),
+        matching: find.text('WITHDRAWN'),
+      ),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('organizer sees the fee and can confirm withdrawal', (
     tester,
   ) async {

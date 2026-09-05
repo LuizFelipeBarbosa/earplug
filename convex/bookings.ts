@@ -25,7 +25,10 @@ import { appBaseUrl, flag } from "./lib/env";
 import { feeSnapshot, resolveCommissionBps } from "./lib/fees";
 import { syncGigLineup, unpublishOpportunityGig } from "./lib/gigPublish";
 import { requireBandRole, requireUser } from "./lib/helpers";
-import { assertApplicationTransition } from "./lib/opportunityStatus";
+import {
+  assertApplicationTransition,
+  assertOpportunityTransition,
+} from "./lib/opportunityStatus";
 import { recomputeReviewSummary } from "./lib/reviewSummary";
 import {
   bookingStatusValidator,
@@ -187,6 +190,40 @@ async function releaseBookingSlot(ctx: MutationCtx, booking: Doc<"bookings">) {
   }
 }
 
+async function completeOpportunityIfReady(
+  ctx: MutationCtx,
+  opportunityId: Id<"talentOpportunities">,
+) {
+  const opportunity = await ctx.db.get(opportunityId);
+  if (!opportunity || opportunity.status !== "confirmed") return;
+
+  let hasCompletedBooking = false;
+  const bookings = ctx.db
+    .query("bookings")
+    .withIndex("by_opportunityId", (q) => q.eq("opportunityId", opportunityId));
+  for await (const booking of bookings) {
+    if (booking.status === "completed" || booking.status === "paid") {
+      hasCompletedBooking = true;
+    } else if (
+      booking.status === "offer_sent" ||
+      booking.status === "artist_accepted" ||
+      booking.status === "awaiting_payment" ||
+      booking.status === "confirmed" ||
+      booking.status === "disputed"
+    ) {
+      return;
+    }
+  }
+  if (!hasCompletedBooking) return;
+
+  assertOpportunityTransition(opportunity.status, "completed");
+  await ctx.db.patch(opportunityId, {
+    status: "completed",
+    revision: opportunity.revision + 1,
+    updatedAt: Date.now(),
+  });
+}
+
 export const sendOffer = mutation({
   args: {
     applicationId: v.id("artistApplications"),
@@ -336,6 +373,7 @@ export const withdrawOffer = mutation({
       respondedBy: user._id,
     });
     await shortlistApplication(ctx, booking.applicationId, now);
+    await completeOpportunityIfReady(ctx, booking.opportunityId);
     await sendBookingEmail(ctx, booking, "offerWithdrawn");
     return { revision };
   },
@@ -379,6 +417,7 @@ export const respond = mutation({
         respondedBy: user._id,
       });
       await shortlistApplication(ctx, booking.applicationId, now);
+      await completeOpportunityIfReady(ctx, booking.opportunityId);
       await sendBookingEmail(ctx, booking, "offerDeclined");
       return { status: "declined" as const, revision };
     }
@@ -510,6 +549,7 @@ export const cancel = mutation({
         await shortlistApplication(ctx, booking.applicationId, now);
       }
     }
+    await completeOpportunityIfReady(ctx, booking.opportunityId);
     await sendBookingEmail(
       ctx,
       await loadBooking(ctx, booking._id),
@@ -541,6 +581,7 @@ export const expireOffer = internalMutation({
     });
     await ctx.db.patch(offer._id, { response: "expired", respondedAt: now });
     await shortlistApplication(ctx, booking.applicationId, now);
+    await completeOpportunityIfReady(ctx, booking.opportunityId);
     await sendBookingEmail(ctx, booking, "offerExpired");
     return null;
   },
@@ -566,6 +607,7 @@ export const markCompleted = internalMutation({
       revision: booking.revision + 1,
       updatedAt: now,
     });
+    await completeOpportunityIfReady(ctx, booking.opportunityId);
     await ctx.scheduler.runAt(
       now + REVIEW_WINDOW_MS,
       internal.reviews.closeReviewWindow,
@@ -635,6 +677,7 @@ export const adminForceState = internalMutation({
         });
       }
     }
+    await completeOpportunityIfReady(ctx, booking.opportunityId);
     return { from: booking.status, to: args.status, applied: true };
   },
 });

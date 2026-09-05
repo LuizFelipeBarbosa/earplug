@@ -10,6 +10,29 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('booking links wait for the restored session token', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _ControlledBookingRepository(auth: auth)
+      ..pendingAuth = Completer<void>();
+    final app = AppState.demo(
+      auth: auth,
+      repository: repository,
+      initialBookingId: 'booking1',
+    );
+
+    await tester.pump();
+    expect(repository.bookingCalls, 0);
+    repository.pendingAuth!.complete();
+    await tester.pumpAndSettle();
+
+    expect(repository.bookingCalls, 1);
+    expect(app.bookingById('booking1'), same(repository.bookingResult));
+    app.dispose();
+  });
+
   testWidgets('organizer list loads and keeps previous values on error', (
     tester,
   ) async {
@@ -138,8 +161,8 @@ void main() {
     harness.app.openBooking(bandBookingId);
     expect(harness.app.current.screen, Screen.bookingDetail);
     expect(harness.app.current.param, bandBookingId);
-    expect(repository.viewAsCalls, [BookingSide.organizer, BookingSide.artist]);
     await tester.pumpAndSettle();
+    expect(repository.viewAsCalls, [BookingSide.organizer, BookingSide.artist]);
     expect(
       harness.app.bookingById(bandBookingId)?.viewerSide,
       BookingSide.artist,
@@ -150,6 +173,46 @@ void main() {
     expect(harness.app.identity, isA<BandIdentity>());
     harness.app.dispose();
   });
+
+  testWidgets(
+    'reopening a booking refreshes it and shares the pending detail load',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = _ControlledBookingRepository(auth: auth);
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const SizedBox.shrink(),
+      );
+      harness.app.openBooking('booking1');
+      await tester.pumpAndSettle();
+      expect(
+        harness.app.bookingById('booking1')!.status,
+        BookingStatus.offerSent,
+      );
+      harness.app.back();
+
+      final updated = _booking(status: BookingStatus.confirmed, revision: 3);
+      repository.pendingBooking = Completer<Booking?>();
+      harness.app.openBooking('booking1');
+      final detail = harness.app.loadBooking('booking1');
+      await tester.pump();
+      expect(repository.bookingCalls, 2);
+      repository.pendingBooking!.complete(updated);
+      expect(await detail, same(updated));
+      expect(harness.app.bookingById('booking1'), same(updated));
+      expect(repository.bookingCalls, 2);
+
+      // A lost membership must also evict an earlier authorized payload.
+      repository.pendingBooking = Completer<Booking?>();
+      final removed = harness.app.loadBooking('booking1', refresh: true);
+      repository.pendingBooking!.complete(null);
+      expect(await removed, isNull);
+      expect(harness.app.bookingById('booking1'), isNull);
+      harness.app.dispose();
+    },
+  );
 
   testWidgets('sendOffer refreshes the organizer list', (tester) async {
     final auth = FakeAuthService();
@@ -426,6 +489,7 @@ class _ControlledBookingRepository extends DemoRepository {
   Booking bookingResult = _booking();
   Booking? acceptedBooking;
   Booking? cancelledBooking;
+  Completer<void>? pendingAuth;
   Completer<List<Booking>>? pendingOrganization;
   Completer<List<Booking>>? pendingBand;
   Completer<Booking?>? pendingBooking;
@@ -441,6 +505,9 @@ class _ControlledBookingRepository extends DemoRepository {
   responseRequest;
   ({String bookingId, String reason, int expectedRevision, BookingSide? side})?
   cancelRequest;
+
+  @override
+  Future<void> refreshAuth() => pendingAuth?.future ?? super.refreshAuth();
 
   @override
   Future<List<Booking>> organizationBookings(

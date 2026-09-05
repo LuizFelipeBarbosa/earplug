@@ -2450,6 +2450,11 @@ class DemoRepository implements EarplugRepository {
     required ArtistApplicationReviewAction action,
   }) async {
     final existing = _requireArtistApplication(applicationId);
+    if (existing.status == ArtistApplicationStatus.offered) {
+      throw StateError(
+        'Withdraw the booking offer before reviewing the application',
+      );
+    }
     final status = switch (action) {
       ArtistApplicationReviewAction.underReview =>
         ArtistApplicationStatus.underReview,
@@ -2610,6 +2615,11 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> withdrawApplication(String applicationId) async {
     final existing = _requireArtistApplication(applicationId);
+    if (existing.status == ArtistApplicationStatus.offered) {
+      throw StateError(
+        'Respond to the booking offer instead of withdrawing the application',
+      );
+    }
     if (!existing.status.isActive) {
       throw StateError('Application is not active');
     }

@@ -61,6 +61,38 @@ void main() {
     );
   });
 
+  test('signed-out booking links resume after authentication', () async {
+    final auth = FakeAuthService();
+    final app = AppState.demo(auth: auth, initialBookingId: 'bk1');
+    addTearDown(app.dispose);
+    expect(app.current.screen, Screen.auth);
+    expect(app.pending?.kind, PendingKind.booking);
+    expect(app.pending?.id, 'bk1');
+    expect(app.bookingById('bk1'), isNull);
+
+    await auth.signInDemo();
+    await flushAsyncWork();
+    await app.finishAuth();
+    expect(app.current.screen, Screen.bookingDetail);
+    expect(app.current.param, 'bk1');
+    expect(app.pending, isNull);
+    expect(await app.loadBooking('bk1'), isNotNull);
+    app.back();
+    expect(app.current.screen, Screen.home);
+  });
+
+  test('signed-in booking links wait for authentication setup', () async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final app = AppState.demo(auth: auth, initialBookingId: 'bk1');
+    addTearDown(app.dispose);
+    expect(app.current.screen, Screen.bookingDetail);
+    expect(app.current.param, 'bk1');
+    expect(app.pending, isNull);
+    await flushAsyncWork();
+    expect(app.bookingById('bk1'), isNotNull);
+  });
+
   test('booking routes preserve their ids in path and hash URLs', () {
     expect(
       bookingIdFromUri(Uri.parse('https://earplug.app/bookings/abc')),
@@ -198,8 +230,9 @@ void main() {
     expect(app.current.param, 'friday-night-live');
   });
 
-  test('booking references seed the detail placeholder', () async {
+  test('signed-in unknown bookings seed the detail placeholder', () async {
     final auth = FakeAuthService();
+    await auth.signInDemo();
     final app = AppState.demo(
       auth: auth,
       repository: DemoRepository(auth: auth),

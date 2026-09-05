@@ -108,6 +108,7 @@ mixin _NavigationState on _AppStateCore {
     Screen.venue => _venueBrowserPath(param),
     Screen.orgJoin => '/apply/${param ?? ''}',
     Screen.opportunityDetail => '/opportunities/${param ?? ''}',
+    Screen.bookingDetail => '/bookings/${param ?? ''}',
     Screen.orgApply => organizerApplyPath,
     _ => '/',
   };

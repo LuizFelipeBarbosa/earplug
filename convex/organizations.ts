@@ -17,6 +17,7 @@ import {
   organizationRoleValidator,
   organizationStatusValidator,
   organizationTypeValidator,
+  reviewSummaryValidator,
 } from "./schema";
 
 export const organizationPayloadValidator = v.object({
@@ -30,6 +31,7 @@ export const organizationPayloadValidator = v.object({
   website: v.union(v.string(), v.null()),
   photoUrls: v.array(v.string()),
   createdAt: v.number(),
+  reviewSummary: v.union(reviewSummaryValidator, v.null()),
 });
 
 export async function toOrganizationPayload(
@@ -52,6 +54,7 @@ export async function toOrganizationPayload(
     website: organization.website ?? null,
     photoUrls,
     createdAt: organization.createdAt,
+    reviewSummary: organization.reviewSummary ?? null,
   };
 }
 

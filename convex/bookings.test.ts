@@ -329,6 +329,50 @@ async function setupBookings() {
 }
 
 describe("booking offers", () => {
+  test.each(["withdraw", "decline", "expire"] as const)(
+    "offered applications cannot bypass booking responses; %s still releases the offer",
+    async (response) => {
+      const f = await setupBookings();
+      const offer = await f.sendOffer();
+      await expect(
+        f.as("admin").mutation(api.artistApplications.withdraw, {
+          applicationId: f.applicationId,
+        }),
+      ).rejects.toThrow("Respond to the booking offer");
+      for (const action of ["under_review", "shortlisted", "declined"] as const) {
+        await expect(
+          f.as("owner").mutation(api.artistApplications.review, {
+            applicationId: f.applicationId,
+            action,
+          }),
+        ).rejects.toThrow("Withdraw the booking offer");
+      }
+      expect(await f.readApplication()).toMatchObject({ status: "offered" });
+      expect(await f.readBooking(offer.bookingId)).toMatchObject({
+        status: "offer_sent",
+        revision: 1,
+      });
+      if (response === "withdraw") {
+        await f.as("owner").mutation(api.bookings.withdrawOffer, {
+          bookingId: offer.bookingId,
+          expectedRevision: 1,
+        });
+      } else if (response === "decline") {
+        await f.respond(offer.bookingId, "decline");
+      } else {
+        vi.setSystemTime(NOW + OFFER_TTL_MS);
+        await f.t.mutation(internal.bookings.expireOffer, {
+          bookingId: offer.bookingId,
+          revision: 1,
+        });
+      }
+      await f.as("admin").mutation(api.artistApplications.withdraw, {
+        applicationId: f.applicationId,
+      });
+      await f.sendOffer({ applicationId: f.otherApplicationId });
+    },
+  );
+
   test("sends a zero-fee offer, snapshots terms and schedules expiration without changing the count", async () => {
     const f = await setupBookings();
     const { bookingId, offerId, revision } = await f.sendOffer({
@@ -1010,6 +1054,10 @@ describe("booking confirmation and cancellation", () => {
       completedAt,
       updatedAt: completedAt,
     });
+    expect(await f.readOpportunity()).toMatchObject({
+      status: "completed",
+      updatedAt: completedAt,
+    });
     expect(await f.scheduled()).toContainEqual(
       expect.objectContaining({
         name: "reviews:closeReviewWindow",
@@ -1037,6 +1085,54 @@ describe("booking confirmation and cancellation", () => {
       f.t.mutation(internal.bookings.markCompleted, { bookingId }),
     );
     expect(await f.scheduled()).toEqual(before);
+  });
+
+  test("the opportunity completes only after every booked performer finishes", async () => {
+    const f = await setupBookings();
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.supportSlotId, { required: true });
+      await ctx.db.patch(f.otherApplicationId, { slotId: f.supportSlotId });
+    });
+    const headliner = await f.confirm();
+    const support = await f.sendOffer({ applicationId: f.otherApplicationId });
+    await f.respond(support.bookingId, "accept", 1, "otherAdmin");
+    const confirmed = await f.readOpportunity();
+    vi.setSystemTime(STARTS_AT + COMPLETION_DELAY_MS);
+
+    await f.t.mutation(internal.bookings.markCompleted, {
+      bookingId: headliner.bookingId,
+    });
+    expect(await f.readOpportunity()).toMatchObject({ status: "confirmed" });
+    await f.t.mutation(internal.bookings.markCompleted, {
+      bookingId: support.bookingId,
+    });
+    expect(await f.readOpportunity()).toMatchObject({
+      status: "completed",
+      revision: confirmed!.revision + 1,
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(confirmed!.publicGigId!)))
+      .toMatchObject({ lifecycle: "published", lineup: [f.bandId, f.otherBandId] });
+  });
+
+  test("expiring the last pending offer completes an otherwise finished opportunity", async () => {
+    const f = await setupBookings();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.otherApplicationId, { slotId: f.supportSlotId }),
+    );
+    const headliner = await f.confirm();
+    vi.setSystemTime(STARTS_AT - 60 * 60 * 1000);
+    const support = await f.sendOffer({ applicationId: f.otherApplicationId });
+    vi.setSystemTime(STARTS_AT + COMPLETION_DELAY_MS);
+    await f.t.mutation(internal.bookings.markCompleted, {
+      bookingId: headliner.bookingId,
+    });
+    expect(await f.readOpportunity()).toMatchObject({ status: "confirmed" });
+    vi.setSystemTime(STARTS_AT + OFFER_TTL_MS);
+    await f.t.mutation(internal.bookings.expireOffer, {
+      bookingId: support.bookingId,
+      revision: 1,
+    });
+    expect(await f.readOpportunity()).toMatchObject({ status: "completed" });
   });
 
   test("admin completion keeps the confirmed booking's slot", async () => {
