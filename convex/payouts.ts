@@ -1,10 +1,5 @@
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
 import { type Infer, v } from "convex/values";
-import { internal as generatedInternal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalAction,
@@ -29,18 +24,10 @@ import {
   stripeIdempotencyKey,
   stripeRequest,
 } from "./lib/stripeClient";
-import type * as payouts from "./payouts";
 import schema, {
   payoutHoldReasonValidator,
   payoutStatusValidator,
 } from "./schema";
-
-// Keep references typed until the shared generated API includes this module.
-const internal = generatedInternal as typeof generatedInternal &
-  FilterApi<
-    ApiFromModules<{ payouts: typeof payouts }>,
-    FunctionReference<"query" | "mutation" | "action", "internal">
-  >;
 
 const payoutValidator = schema.tables.payouts.validator.extend({
   _id: v.id("payouts"),

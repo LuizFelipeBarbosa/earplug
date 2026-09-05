@@ -1,24 +1,11 @@
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
-import { internal as generatedInternal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { sendBookingEmail } from "../bookings";
 import { confirmBooking } from "../lib/bookingConfirm";
 import { BOOKING_ACTIVE_STATUSES } from "../lib/bookingStatus";
 import { appendLedgerEntry } from "../lib/ledger";
 import { recomputePayoutHold } from "../lib/paymentSchedule";
-import type * as payments from "../payments";
-import type * as refunds from "../refunds";
 import type { StripeEventHandler, StripeHandlerMap } from "../stripeWebhook";
-
-const internal = generatedInternal as typeof generatedInternal &
-  FilterApi<
-    ApiFromModules<{ payments: typeof payments; refunds: typeof refunds }>,
-    FunctionReference<"query" | "mutation" | "action", "internal">
-  >;
 
 const checkoutCompleted: StripeEventHandler = async (ctx, event) => {
   const session = event.data.object;

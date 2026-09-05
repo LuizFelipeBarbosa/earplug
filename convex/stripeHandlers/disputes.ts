@@ -1,9 +1,4 @@
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
-import { internal as generatedInternal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { MutationCtx } from "../_generated/server";
 import {
   assertBookingTransition,
@@ -14,19 +9,11 @@ import {
   assertPaymentRecordTransition,
   assertPayoutTransition,
 } from "../lib/paymentStatus";
-import type * as payouts from "../payouts";
-import type * as refunds from "../refunds";
 import type {
   StripeEvent,
   StripeEventHandler,
   StripeHandlerMap,
 } from "../stripeWebhook";
-
-const internal = generatedInternal as typeof generatedInternal &
-  FilterApi<
-    ApiFromModules<{ payouts: typeof payouts; refunds: typeof refunds }>,
-    FunctionReference<"query" | "mutation" | "action", "internal">
-  >;
 
 async function paymentRecordForDispute(
   ctx: MutationCtx,

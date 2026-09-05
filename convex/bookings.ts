@@ -1,10 +1,5 @@
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
 import { v } from "convex/values";
-import { internal as generatedInternal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
@@ -41,19 +36,11 @@ import {
   PAYMENT_REMINDER_LEAD_MS,
 } from "./lib/paymentStatus";
 import { recomputeReviewSummary } from "./lib/reviewSummary";
-import type * as payments from "./payments";
 import { schedulePayoutsForBooking } from "./payouts";
 import {
   bookingStatusValidator,
   cancellationTemplateValidator,
 } from "./schema";
-
-// Keep the new module typed without changing generated files in this lane.
-const internal = generatedInternal as typeof generatedInternal &
-  FilterApi<
-    ApiFromModules<{ payments: typeof payments }>,
-    FunctionReference<"query" | "mutation" | "action", "internal">
-  >;
 
 async function loadBooking(ctx: MutationCtx, bookingId: Id<"bookings">) {
   const booking = await ctx.db.get(bookingId);

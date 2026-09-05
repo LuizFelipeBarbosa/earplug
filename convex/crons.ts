@@ -1,17 +1,5 @@
 import { cronJobs } from "convex/server";
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
-import { internal as generatedInternal } from "./_generated/api";
-import type * as payouts from "./payouts";
-
-const internal = generatedInternal as typeof generatedInternal &
-  FilterApi<
-    ApiFromModules<{ payouts: typeof payouts }>,
-    FunctionReference<"query" | "mutation" | "action", "internal">
-  >;
+import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 

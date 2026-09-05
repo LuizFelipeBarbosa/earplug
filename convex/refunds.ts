@@ -1,10 +1,5 @@
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
 import { type Infer, v } from "convex/values";
-import { internal as generatedInternal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import {
   internalAction,
@@ -22,7 +17,6 @@ import {
   assertRefundTransition,
 } from "./lib/paymentStatus";
 import { stripeIdempotencyKey, stripeRequest } from "./lib/stripeClient";
-import type * as refunds from "./refunds";
 import schema, {
   cancellationTemplateValidator,
   refundReasonValidator,
@@ -33,12 +27,6 @@ import schema, {
 // so obligations are retained. Only executeRefund/reverseTransfer call Stripe;
 // POST throws while disabled. markRefundFailed retries refunds hourly, up to
 // three total attempts. Transfer reversals are best-effort and do not retry.
-const internal = generatedInternal as typeof generatedInternal &
-  FilterApi<
-    ApiFromModules<{ refunds: typeof refunds }>,
-    FunctionReference<"query" | "mutation" | "action", "internal">
-  >;
-
 const cancellationSideValidator = v.union(
   v.literal("organizer"),
   v.literal("artist"),

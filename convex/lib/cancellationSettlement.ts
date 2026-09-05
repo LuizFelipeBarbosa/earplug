@@ -1,14 +1,7 @@
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
 import type { Infer } from "convex/values";
-import { internal as generatedInternal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import type * as payouts from "../payouts";
-import type * as refunds from "../refunds";
 import type { refundReasonValidator } from "../schema";
 import {
   refundShareBps,
@@ -19,12 +12,6 @@ import {
 import { appendLedgerEntry } from "./ledger";
 import { paymentRecordsForBooking } from "./paymentSchedule";
 import { PAYOUT_DELAY_MS } from "./paymentStatus";
-
-const internal = generatedInternal as typeof generatedInternal &
-  FilterApi<
-    ApiFromModules<{ payouts: typeof payouts; refunds: typeof refunds }>,
-    FunctionReference<"query" | "mutation" | "action", "internal">
-  >;
 
 type CancellationSettlement = {
   refundMinor: number;
