@@ -277,7 +277,12 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                     runSpacing: 7,
                     children: [
                       for (final genre in opportunity.genres)
-                        EpChip(label: genre, active: true, onTap: null),
+                        EpChip(
+                          label: genre,
+                          active: true,
+                          onTap: null,
+                          readOnly: true,
+                        ),
                     ],
                   ),
                   const SizedBox(height: 8),
