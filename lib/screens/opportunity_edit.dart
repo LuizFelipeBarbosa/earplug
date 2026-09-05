@@ -560,12 +560,17 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
 
     return Scaffold(
       backgroundColor: context.epColors.background,
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
+          Positioned.fill(
             child: ListView(
               controller: _scroll,
-              padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                headerTopPad(context),
+                16,
+                tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+              ),
               children: [
                 Row(
                   children: [
@@ -855,24 +860,29 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
             ),
           ),
           if (!_loading && _loadError == null && _editable && canManage)
-            StickyActionBar(
-              key: ValueKey(switch (_status) {
-                OpportunityStatus.draft => 'opp-edit-open',
-                OpportunityStatus.open => 'opp-edit-close',
-                _ => 'opp-edit-reopen',
-              }),
-              primaryLabel: switch (_status) {
-                OpportunityStatus.draft => 'OPEN FOR APPLICATIONS',
-                OpportunityStatus.open => 'CLOSE APPLICATIONS',
-                _ => 'REOPEN',
-              },
-              onPrimary:
-                  enabled && _savedId != null && (!draft || needs.isEmpty)
-                  ? _transition
-                  : null,
-              secondaryKey: const ValueKey('opp-edit-save'),
-              secondaryLabel: draft ? 'SAVE DRAFT' : 'SAVE CHANGES',
-              onSecondary: enabled ? _save : null,
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 67,
+              child: StickyActionBar(
+                key: ValueKey(switch (_status) {
+                  OpportunityStatus.draft => 'opp-edit-open',
+                  OpportunityStatus.open => 'opp-edit-close',
+                  _ => 'opp-edit-reopen',
+                }),
+                primaryLabel: switch (_status) {
+                  OpportunityStatus.draft => 'OPEN FOR APPLICATIONS',
+                  OpportunityStatus.open => 'CLOSE APPLICATIONS',
+                  _ => 'REOPEN',
+                },
+                onPrimary:
+                    enabled && _savedId != null && (!draft || needs.isEmpty)
+                    ? _transition
+                    : null,
+                secondaryKey: const ValueKey('opp-edit-save'),
+                secondaryLabel: draft ? 'SAVE DRAFT' : 'SAVE CHANGES',
+                onSecondary: enabled ? _save : null,
+              ),
             ),
         ],
       ),

@@ -1,10 +1,12 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/opportunity_edit.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
+import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +14,22 @@ import 'package:provider/provider.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('draft save action stays above the organizer tab bar', (
+    tester,
+  ) async {
+    final harness = await pumpApp(tester, home: const RootShell());
+    await enterOrganizer(tester, harness, 'org1');
+    harness.app.openOpportunityEditor('opp2');
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OpportunityEditScreen), findsOneWidget);
+    expect(find.byType(OrganizerTabBar), findsOneWidget);
+    expect(
+      tester.getRect(find.byKey(const ValueKey('opp-edit-save'))).bottom,
+      lessThanOrEqualTo(tester.getRect(find.byType(OrganizerTabBar)).top),
+    );
+  });
+
   testWidgets('new draft saves explicitly, then opens and locks slots', (
     tester,
   ) async {

@@ -158,11 +158,16 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
         final venue = opportunity.venue;
         final status = item.myApplicationStatus;
         final applied = status != null && status.isActive;
-        return Column(
+        return Stack(
           children: [
-            Expanded(
+            Positioned.fill(
               child: ListView(
-                padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  headerTopPad(context),
+                  16,
+                  tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+                ),
                 children: [
                   Align(
                     alignment: Alignment.centerLeft,
@@ -319,25 +324,30 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                     'Verified organizer',
                     style: Theme.of(context).textTheme.epMeta,
                   ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: InlineFormFeedback(error: _error),
+                    ),
                 ],
               ),
             ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: InlineFormFeedback(error: _error),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 67,
+              child: StickyActionBar(
+                key: applied ? null : const Key('opp-detail-apply'),
+                primaryLabel: applied
+                    ? 'APPLIED · ${status.wireValue.replaceAll('_', ' ').toUpperCase()}'
+                    : 'APPLY',
+                onPrimary: applied ? null : () => _showApply(opportunity),
+                secondaryLabel: applied ? 'WITHDRAW' : null,
+                secondaryKey: const Key('opp-detail-withdraw'),
+                onSecondary: applied && !_withdrawing
+                    ? () => _withdraw(opportunity)
+                    : null,
               ),
-            StickyActionBar(
-              key: applied ? null : const Key('opp-detail-apply'),
-              primaryLabel: applied
-                  ? 'APPLIED · ${status.wireValue.replaceAll('_', ' ').toUpperCase()}'
-                  : 'APPLY',
-              onPrimary: applied ? null : () => _showApply(opportunity),
-              secondaryLabel: applied ? 'WITHDRAW' : null,
-              secondaryKey: const Key('opp-detail-withdraw'),
-              onSecondary: applied && !_withdrawing
-                  ? () => _withdraw(opportunity)
-                  : null,
             ),
           ],
         );

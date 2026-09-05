@@ -1,5 +1,6 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_manager.dart';
 import 'package:earplug/screens/opportunity_detail.dart';
@@ -14,6 +15,22 @@ import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('opportunity apply action stays above the band tab bar', (
+    tester,
+  ) async {
+    final harness = await pumpApp(tester, home: const RootShell());
+    await _signInBand(tester, harness);
+    harness.app.openOpportunity('private-preview');
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OpportunityDetailScreen), findsOneWidget);
+    expect(find.byType(BandTabBar), findsOneWidget);
+    expect(
+      tester.getRect(find.byKey(const ValueKey('opp-detail-apply'))).bottom,
+      lessThanOrEqualTo(tester.getRect(find.byType(BandTabBar)).top),
+    );
+  });
+
   testWidgets('non-admin members can browse gigs without write actions', (
     tester,
   ) async {
