@@ -65,7 +65,7 @@ testStatusTransitions(
 
 testStatusTransitions("ticket", TICKET_TRANSITIONS, assertTicketTransition, {
   valid: ["used", "refunded", "cancelled"],
-  used: [],
+  used: ["refunded"],
   refunded: [],
   cancelled: [],
 });

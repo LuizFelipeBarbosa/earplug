@@ -52,7 +52,7 @@ export const TICKET_TRANSITIONS: Record<
   readonly TicketStatus[]
 > = {
   valid: ["used", "refunded", "cancelled"],
-  used: [],
+  used: ["refunded"],
   refunded: [],
   cancelled: [],
 };
