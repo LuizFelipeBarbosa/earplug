@@ -21,8 +21,10 @@ import 'screens/band_dash.dart';
 import 'screens/band_edit.dart';
 import 'screens/band_join.dart';
 import 'screens/band_media.dart';
+import 'screens/band_payouts.dart';
 import 'screens/band_profile.dart';
 import 'screens/booking_detail.dart';
+import 'screens/checkout_return.dart';
 import 'screens/edit_profile.dart';
 import 'screens/explore.dart';
 import 'screens/gig_create.dart';
@@ -45,6 +47,7 @@ import 'screens/org_venue_edit.dart';
 import 'screens/org_venues.dart';
 import 'screens/review_compose.dart';
 import 'screens/settings.dart';
+import 'screens/stripe_return.dart';
 import 'screens/venue_detail.dart';
 import 'services/appearance_controller.dart';
 import 'services/auth_service.dart';
@@ -666,26 +669,16 @@ class RootShell extends StatelessWidget {
         key: key,
         bookingId: entry.param!,
       ),
-      Screen.bandPayouts => _PaymentPlaceholderScreen(
-        key: const ValueKey('placeholder-bandPayouts'),
-        label: 'Band payouts',
-        param: entry.param,
+      Screen.bandPayouts => BandPayoutsScreen(key: key),
+      Screen.checkoutReturn => CheckoutReturnScreen(
+        key: key,
+        sessionId: entry.param!,
       ),
-      Screen.checkoutReturn => _PaymentPlaceholderScreen(
-        key: const ValueKey('placeholder-checkoutReturn'),
-        label: 'Checkout return',
-        param: entry.param,
+      Screen.checkoutCancel => CheckoutCancelScreen(
+        key: key,
+        bookingId: entry.param!,
       ),
-      Screen.checkoutCancel => _PaymentPlaceholderScreen(
-        key: const ValueKey('placeholder-checkoutCancel'),
-        label: 'Checkout cancelled',
-        param: entry.param,
-      ),
-      Screen.stripeReturn => _PaymentPlaceholderScreen(
-        key: const ValueKey('placeholder-stripeReturn'),
-        label: 'Stripe return',
-        param: entry.param,
-      ),
+      Screen.stripeReturn => StripeReturnScreen(key: key, param: entry.param!),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,
@@ -693,18 +686,6 @@ class RootShell extends StatelessWidget {
       ),
     };
   }
-}
-
-class _PaymentPlaceholderScreen extends StatelessWidget {
-  const _PaymentPlaceholderScreen({super.key, required this.label, this.param});
-
-  final String label;
-  final String? param;
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    body: Center(child: Text(param == null ? label : '$label: $param')),
-  );
 }
 
 class _ToastLayer extends StatelessWidget {

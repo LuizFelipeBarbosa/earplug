@@ -349,23 +349,6 @@ class AppState extends ChangeNotifier
   @override
   late final MediaUploadService mediaUploader;
 
-  @override
-  ActiveIdentity get identity {
-    if (current.screen == Screen.stripeReturn) {
-      final param = current.param ?? '';
-      if (param.startsWith('band')) {
-        final id = param.substring(param.indexOf(':') + 1);
-        return BandIdentity(id);
-      }
-      if (param.startsWith('org')) {
-        final id = param.substring(param.indexOf(':') + 1);
-        return OrganizerIdentity(id, organizerRoleFor(id));
-      }
-      return const PersonalIdentity();
-    }
-    return super.identity;
-  }
-
   StreamSubscription<bool>? _authSubscription;
   StreamSubscription<Interactions>? _interactionsSubscription;
   @override

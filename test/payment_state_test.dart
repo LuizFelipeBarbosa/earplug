@@ -171,6 +171,24 @@ void main() {
     expect(repository.paymentRequests, isEmpty);
   });
 
+  test('Stripe return route selects the band or organizer identity', () {
+    app.go(Screen.stripeReturn, 'band:b1');
+    expect(
+      app.identity,
+      isA<BandIdentity>().having((identity) => identity.bandId, 'bandId', 'b1'),
+    );
+
+    app.go(Screen.stripeReturn, 'org:org1');
+    expect(
+      app.identity,
+      isA<OrganizerIdentity>().having(
+        (identity) => identity.organizationId,
+        'organizationId',
+        'org1',
+      ),
+    );
+  });
+
   test(
     'band Stripe return switches identity, refreshes status, and routes',
     () async {

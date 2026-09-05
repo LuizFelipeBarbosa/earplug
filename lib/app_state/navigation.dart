@@ -43,6 +43,18 @@ mixin _NavigationState on _AppStateCore {
       if (bandId.isNotEmpty) return BandIdentity(bandId);
       return const PersonalIdentity();
     }
+    if (current.screen == Screen.stripeReturn) {
+      final param = current.param ?? '';
+      if (param.startsWith('band')) {
+        final id = param.substring(param.indexOf(':') + 1);
+        return BandIdentity(id);
+      }
+      if (param.startsWith('org')) {
+        final id = param.substring(param.indexOf(':') + 1);
+        return OrganizerIdentity(id, organizerRoleFor(id));
+      }
+      return const PersonalIdentity();
+    }
     if (organizerTabScreens.contains(screen)) {
       return OrganizerIdentity(
         organizationId,
