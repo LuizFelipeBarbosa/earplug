@@ -667,6 +667,7 @@ export default defineSchema({
     error: v.optional(v.string()),
     paidAt: v.optional(v.number()),
     holdReason: v.optional(payoutHoldReasonValidator),
+    holdCount: v.optional(v.number()),
     releasedAt: v.optional(v.number()),
     // completion is the normal post-show payout; forfeit is the artist's
     // share of an organizer-cancellation forfeiture.
@@ -674,6 +675,7 @@ export default defineSchema({
     paymentRecordId: v.optional(v.id("paymentRecords")),
     sourceChargeId: v.optional(v.string()),
     stripeTransferReversalId: v.optional(v.string()),
+    reversedMinor: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -690,13 +692,15 @@ export default defineSchema({
     reason: refundReasonValidator,
     status: refundStatusValidator,
     stripeRefundId: v.optional(v.string()),
+    stripePaymentIntentId: v.optional(v.string()),
     transferReversalId: v.optional(v.string()),
     stripeEventId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_bookingId", ["bookingId"])
-    .index("by_stripeRefundId", ["stripeRefundId"]),
+    .index("by_stripeRefundId", ["stripeRefundId"])
+    .index("by_stripePaymentIntentId", ["stripePaymentIntentId"]),
 
   ledgerEntries: defineTable({
     kind: ledgerKindValidator,

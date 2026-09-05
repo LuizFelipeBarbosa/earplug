@@ -571,7 +571,7 @@ describe("cancellation previews and access", () => {
 });
 
 describe("cancellation settlement", () => {
-  test("allocates refunds LIFO and schedules the artist forfeiture against the earliest charge", async () => {
+  test("allocates refunds LIFO and splits the artist forfeiture across paid charges", async () => {
     const f = await setupRefunds();
     vi.setSystemTime(STARTS_AT - 10 * DAY_MS);
     await f.cancel();
@@ -592,16 +592,25 @@ describe("cancellation settlement", () => {
       },
     ]);
     const payouts = await f.payouts();
-    expect(payouts).toHaveLength(1);
+    expect(payouts).toHaveLength(2);
     expect(payouts[0]).toMatchObject({
       kind: "forfeit",
-      amountMinor: 9000,
+      amountMinor: 3600,
       status: "scheduled",
+      paymentRecordId: f.paymentRecordIds[1],
+      sourceChargeId: "ch_b",
+      scheduledFor: Date.now() + PAYOUT_DELAY_MS,
+      attempt: 0,
+    });
+    expect(payouts[1]).toMatchObject({
+      kind: "forfeit",
+      amountMinor: 5400,
+      status: "scheduled",
+      paymentRecordId: f.paymentRecordIds[0],
       sourceChargeId: "ch_a",
       scheduledFor: Date.now() + PAYOUT_DELAY_MS,
       attempt: 0,
     });
-    expect(payouts[0].paymentRecordId).toBeUndefined();
     expect(await f.ledger()).toMatchObject([
       {
         kind: "commission",
@@ -627,19 +636,23 @@ describe("cancellation settlement", () => {
     );
     expect(
       jobs.filter((job) => job.name === "payouts:releasePayout"),
-    ).toMatchObject([
-      {
-        args: [{ payoutId: payouts[0]._id }],
+    ).toMatchObject(
+      payouts.map((payout) => ({
+        args: [{ payoutId: payout._id }],
         scheduledTime: Date.now() + PAYOUT_DELAY_MS,
-      },
-    ]);
+      })),
+    );
     expect(
       jobs.find((job) => job.name === "emails:send")?.args[0].text,
     ).toContain("Show cancelled Refund: 100.00 USD.");
-    await f.t.mutation(internal.payouts.releasePayout, {
-      payoutId: payouts[0]._id,
-    });
-    expect((await f.payouts())[0].status).toBe("processing");
+    for (const payout of payouts) {
+      await f.t.mutation(internal.payouts.releasePayout, {
+        payoutId: payout._id,
+      });
+      expect(await f.t.run((ctx) => ctx.db.get(payout._id))).toMatchObject({
+        status: "processing",
+      });
+    }
   });
 
   test("artist cancellation schedules full refunds and no forfeiture", async () => {
@@ -736,7 +749,7 @@ describe("cancellation settlement", () => {
     vi.setSystemTime(STARTS_AT - 10 * DAY_MS);
     await f.cancel();
     expect(await f.refunds()).toHaveLength(2);
-    expect(await f.payouts()).toHaveLength(1);
+    expect(await f.payouts()).toHaveLength(2);
     const actual = await vi.importActual<
       typeof import("./lib/stripeClient")
     >("./lib/stripeClient");

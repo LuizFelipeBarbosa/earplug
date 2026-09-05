@@ -49,6 +49,10 @@ const payoutSummaryValidator = v.object({
   holdReason: v.optional(payoutHoldReasonValidator),
 });
 
+export function reversibleMinor(payout: Doc<"payouts">): number {
+  return payout.amountMinor - (payout.reversedMinor ?? 0);
+}
+
 export async function schedulePayoutsForBooking(
   ctx: MutationCtx,
   booking: Doc<"bookings">,
@@ -127,15 +131,27 @@ async function releaseOrHold(
   }
   const booking = await ctx.db.get(payout.bookingId);
   if (!booking) throw new Error("Booking not found");
+  const now = Date.now();
+  const disputed = booking.status === "disputed";
+  if (
+    !disputed &&
+    payout.kind === "completion" &&
+    booking.status !== "confirmed" &&
+    booking.status !== "completed" &&
+    booking.status !== "paid"
+  ) {
+    assertPayoutTransition(payout.status, "reversed");
+    await ctx.db.patch(payoutId, { status: "reversed", updatedAt: now });
+    return;
+  }
   const reasons = booking.payoutHoldReasons ?? [];
   const account = await ctx.db
     .query("bandPayoutAccounts")
     .withIndex("by_bandId", (q) => q.eq("bandId", payout.bandId))
     .unique();
   const accountReady = account?.payoutsEnabled === true;
-  const now = Date.now();
-  if (reasons.length > 0 || !accountReady) {
-    const holdReason = reasons.includes("dispute")
+  if (disputed || reasons.length > 0 || !accountReady) {
+    const holdReason = disputed || reasons.includes("dispute")
       ? "dispute"
       : reasons.includes("unpaid_installment")
         ? "unpaid_installment"
@@ -147,7 +163,7 @@ async function releaseOrHold(
     await ctx.db.patch(payoutId, {
       status: "held",
       holdReason,
-      attempt: payout.attempt + 1,
+      holdCount: (payout.holdCount ?? 0) + 1,
       updatedAt: now,
     });
     if (now - payout.createdAt < HELD_PAYOUT_MAX_DAYS * 24 * 60 * 60 * 1000) {
@@ -207,6 +223,7 @@ export const executePayout = internalAction({
   args: { payoutId: v.id("payouts"), attempt: v.number() },
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
+    let transferId: string;
     try {
       const context: Infer<typeof executionContextValidator> =
         await ctx.runQuery(internal.payouts.loadExecutionContext, {
@@ -222,12 +239,7 @@ export const executePayout = internalAction({
         sourceChargeId = intent.latest_charge ?? undefined;
       }
       if (!sourceChargeId) {
-        await ctx.runMutation(internal.payouts.markPayoutFailed, {
-          payoutId: args.payoutId,
-          error: "No source charge found for this payout's payment record",
-          attempt: args.attempt,
-        });
-        return null;
+        throw new Error("No source charge found for this payout's payment record");
       }
       const transfer = await stripeRequest<{ id: string }>(
         "POST",
@@ -245,24 +257,24 @@ export const executePayout = internalAction({
           },
         },
         {
-          idempotencyKey: stripeIdempotencyKey(
-            "payout",
-            payout._id,
-            args.attempt,
-          ),
+          idempotencyKey: stripeIdempotencyKey("payout", payout._id),
         },
       );
-      await ctx.runMutation(internal.payouts.markPayoutPaid, {
-        payoutId: args.payoutId,
-        transferId: transfer.id,
-      });
+      transferId = transfer.id;
     } catch (error) {
       await ctx.runMutation(internal.payouts.markPayoutFailed, {
         payoutId: args.payoutId,
         error: error instanceof StripeApiError ? error.message : String(error),
         attempt: args.attempt,
       });
+      return null;
     }
+    // Deliberately unguarded: retrying after money moved could double-transfer
+    // or permanently wedge the payout. Leave processing for admin reconciliation.
+    await ctx.runMutation(internal.payouts.markPayoutPaid, {
+      payoutId: args.payoutId,
+      transferId,
+    });
     return null;
   },
 });

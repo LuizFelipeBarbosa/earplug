@@ -11,7 +11,7 @@ import {
 } from "./cancellationPolicy";
 import { appendLedgerEntry } from "./ledger";
 import { paymentRecordsForBooking } from "./paymentSchedule";
-import { PAYOUT_DELAY_MS } from "./paymentStatus";
+import { assertPayoutTransition, PAYOUT_DELAY_MS } from "./paymentStatus";
 
 type CancellationSettlement = {
   refundMinor: number;
@@ -74,6 +74,16 @@ export async function settleBookingCancellation(
   },
 ): Promise<CancellationSettlement> {
   const { booking, now } = args;
+  const existingPayouts = await ctx.db
+    .query("payouts")
+    .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
+    .take(50);
+  for (const payout of existingPayouts) {
+    if (payout.status === "scheduled" || payout.status === "held") {
+      assertPayoutTransition(payout.status, "reversed");
+      await ctx.db.patch(payout._id, { status: "reversed", updatedAt: now });
+    }
+  }
   const settlement = await computeCancellationSettlement(ctx, {
     bookingId: booking._id,
     template: booking.cancellationTemplate,
@@ -113,26 +123,36 @@ export async function settleBookingCancellation(
   }
   if (settlement.artistPayoutMinor > 0) {
     const scheduledFor = now + PAYOUT_DELAY_MS;
-    const payoutId = await ctx.db.insert("payouts", {
-      bookingId: booking._id,
-      bandId: booking.bandId,
-      amountMinor: settlement.artistPayoutMinor,
-      currency: booking.currency,
-      status: "scheduled",
-      scheduledFor,
-      attempt: 0,
-      kind: "forfeit",
-      sourceChargeId: records.at(-1)?.stripeChargeId,
-      createdAt: now,
-      updatedAt: now,
-    });
-    await ctx.scheduler.runAt(
-      scheduledFor,
-      internal.payouts.releasePayout,
-      {
+    let remaining = settlement.artistPayoutMinor;
+    for (const [index, record] of records.entries()) {
+      const available = record.amountMinor - record.refundedMinor;
+      // The last charge absorbs rounding so the shares sum to the forfeited payout.
+      const amountMinor =
+        index === records.length - 1
+          ? remaining
+          : Math.floor(
+              (settlement.artistPayoutMinor * available) / settlement.paidMinor +
+                0.5,
+            );
+      remaining -= amountMinor;
+      const payoutId = await ctx.db.insert("payouts", {
+        bookingId: booking._id,
+        bandId: booking.bandId,
+        amountMinor,
+        currency: booking.currency,
+        status: "scheduled",
+        scheduledFor,
+        attempt: 0,
+        kind: "forfeit",
+        paymentRecordId: record._id,
+        sourceChargeId: record.stripeChargeId,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await ctx.scheduler.runAt(scheduledFor, internal.payouts.releasePayout, {
         payoutId,
-      },
-    );
+      });
+    }
   }
   if (settlement.platformKeepsMinor > 0) {
     await appendLedgerEntry(ctx, {

@@ -23,6 +23,7 @@ import {
   stripeRequest,
 } from "./lib/stripeClient";
 import type * as payouts from "./payouts";
+import { reversibleMinor } from "./payouts";
 import schema from "./schema";
 
 vi.mock("./lib/stripeClient", async (importOriginal) => {
@@ -411,6 +412,87 @@ describe("completion payout scheduling", () => {
 });
 
 describe("payout release and holds", () => {
+  test("reverses a stale completion payout after the booking is refunded", async () => {
+    const f = await setupPayouts();
+    await f.addAccount();
+    await f.complete();
+    const [payout] = await f.payouts();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, { status: "refunded" }),
+    );
+    const jobs = await f.scheduled();
+    await f.t.mutation(internal.payouts.releasePayout, {
+      payoutId: payout._id,
+    });
+    expect((await f.payouts())[0]).toMatchObject({ status: "reversed" });
+    expect(stripeMock).not.toHaveBeenCalled();
+    expect(await f.scheduled()).toEqual(jobs);
+  });
+
+  test("cancellation reverses scheduled and held completion payouts before refunds", async () => {
+    const f = await setupPayouts([9000, 6000]);
+    await f.addAccount();
+    await f.complete();
+    const payouts = await f.payouts();
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(payouts[1]._id, { status: "held" });
+      await ctx.db.patch(f.bookingId, { status: "disputed" });
+    });
+    await f.t.mutation(internal.bookings.adminForceState, {
+      bookingId: f.bookingId,
+      status: "refunded",
+      reason: "Refund after dispute",
+      dryRun: false,
+    });
+    expect((await f.payouts()).map((payout) => payout.status)).toEqual([
+      "reversed",
+      "reversed",
+    ]);
+    const refunds = await f.t.run((ctx) =>
+      ctx.db
+        .query("refunds")
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", f.bookingId))
+        .take(50),
+    );
+    expect(refunds.map((refund) => refund.amountMinor)).toEqual([6000, 9000]);
+    const jobs = await f.scheduled();
+    for (const payout of payouts) {
+      await f.t.mutation(internal.payouts.releasePayout, {
+        payoutId: payout._id,
+      });
+    }
+    expect(stripeMock).not.toHaveBeenCalled();
+    expect(await f.scheduled()).toEqual(jobs);
+  });
+
+  test("holds a disputed booking even without a dispute hold reason", async () => {
+    const f = await setupPayouts();
+    await f.addAccount();
+    await f.complete();
+    const [payout] = await f.payouts();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, {
+        status: "disputed",
+        payoutHoldReasons: [],
+      }),
+    );
+    await f.t.mutation(internal.payouts.releasePayout, {
+      payoutId: payout._id,
+    });
+    expect((await f.payouts())[0]).toMatchObject({
+      status: "held",
+      holdReason: "dispute",
+      holdCount: 1,
+      attempt: 0,
+    });
+    expect(stripeMock).not.toHaveBeenCalled();
+    expect(
+      (await f.scheduled()).filter(
+        (job) => job.name === "payouts:executePayout",
+      ),
+    ).toEqual([]);
+  });
+
   test("a ready account starts processing and schedules execution once", async () => {
     const f = await setupPayouts();
     await f.addAccount();
@@ -465,7 +547,8 @@ describe("payout release and holds", () => {
     expect((await f.payouts())[0]).toMatchObject({
       status: "held",
       holdReason: expected,
-      attempt: 1,
+      holdCount: 1,
+      attempt: 0,
     });
     expect(
       (await f.scheduled()).filter(
@@ -495,7 +578,8 @@ describe("payout release and holds", () => {
       expect((await f.payouts())[0]).toMatchObject({
         status: "held",
         holdReason: "no_payout_account",
-        attempt: 1,
+        holdCount: 1,
+        attempt: 0,
         scheduledFor: Date.now() + HELD_PAYOUT_RETRY_MS,
       });
       expect(await f.scheduled()).toContainEqual(
@@ -509,7 +593,8 @@ describe("payout release and holds", () => {
       await f.t.mutation(internal.payouts.retryHeldPayouts, {});
       expect((await f.payouts())[0]).toMatchObject({
         status: "held",
-        attempt: 2,
+        holdCount: 2,
+        attempt: 0,
       });
       const emails = (await f.scheduled()).filter(
         (job) =>
@@ -543,7 +628,8 @@ describe("payout release and holds", () => {
     await f.t.mutation(internal.payouts.retryHeldPayouts, {});
     expect((await f.payouts())[0]).toMatchObject({
       status: "held",
-      attempt: 2,
+      holdCount: 2,
+      attempt: 0,
       scheduledFor: held.scheduledFor,
     });
     expect(await f.scheduled()).toEqual(jobs);
@@ -572,12 +658,136 @@ describe("payout release and holds", () => {
     expect((await f.payouts())[0]).toMatchObject({ status: "paid" });
     expect(stripeMock).toHaveBeenCalledTimes(1);
     expect(stripeMock.mock.calls[0][3]).toEqual({
-      idempotencyKey: stripeIdempotencyKey("payout", payout._id, 1),
+      idempotencyKey: stripeIdempotencyKey("payout", payout._id),
+    });
+  });
+
+  test("keeps all three execution attempts after repeated holds", async () => {
+    const f = await setupPayouts();
+    await f.complete();
+    const [payout] = await f.payouts();
+    for (let hold = 0; hold < 3; hold++) {
+      vi.setSystemTime(NOW + PAYOUT_DELAY_MS + hold * HELD_PAYOUT_RETRY_MS);
+      await f.t.mutation(internal.payouts.releasePayout, {
+        payoutId: payout._id,
+      });
+    }
+    expect((await f.payouts())[0]).toMatchObject({
+      status: "held",
+      holdCount: 3,
+      attempt: 0,
+    });
+    expect(stripeMock).not.toHaveBeenCalled();
+    await f.addAccount();
+    stripeMock
+      .mockRejectedValueOnce(new Error("First transfer failure"))
+      .mockRejectedValueOnce(new Error("Second transfer failure"));
+    await f.t.finishAllScheduledFunctions(() => vi.runAllTimers());
+    expect(stripeMock).toHaveBeenCalledTimes(3);
+    expect((await f.payouts())[0]).toMatchObject({
+      status: "paid",
+      holdCount: 3,
+      attempt: 2,
     });
   });
 });
 
 describe("Stripe execution and settlement", () => {
+  test("executes forfeit payouts on a cancelled booking using each payment intent's charge", async () => {
+    const f = await setupPayouts([9000, 6000]);
+    await f.addAccount();
+    await f.t.run(async (ctx) => {
+      for (const recordId of f.paymentRecordIds) {
+        await ctx.db.patch(recordId, { stripeChargeId: undefined });
+      }
+    });
+    await f.as("owner").mutation(api.bookings.cancel, {
+      bookingId: f.bookingId,
+      expectedRevision: 3,
+      reason: "Show cancelled",
+    });
+    const payouts = await f.payouts();
+    expect(payouts).toMatchObject([
+      {
+        kind: "forfeit",
+        paymentRecordId: f.paymentRecordIds[1],
+        amountMinor: 5400,
+      },
+      {
+        kind: "forfeit",
+        paymentRecordId: f.paymentRecordIds[0],
+        amountMinor: 8100,
+      },
+    ]);
+    for (const [index, payout] of payouts.entries()) {
+      const installment = 2 - index;
+      stripeMock
+        .mockResolvedValueOnce({ latest_charge: `ch_recovered_${installment}` })
+        .mockResolvedValueOnce({ id: `tr_forfeit_${installment}` });
+      await f.t.mutation(internal.payouts.releasePayout, {
+        payoutId: payout._id,
+      });
+      await f.t.action(internal.payouts.executePayout, {
+        payoutId: payout._id,
+        attempt: 0,
+      });
+      expect(stripeMock).toHaveBeenNthCalledWith(
+        index * 2 + 1,
+        "GET",
+        `/v1/payment_intents/pi_test_${installment}`,
+      );
+      expect(stripeMock).toHaveBeenNthCalledWith(
+        index * 2 + 2,
+        "POST",
+        "/v1/transfers",
+        expect.objectContaining({
+          amount: payout.amountMinor,
+          source_transaction: `ch_recovered_${installment}`,
+        }),
+        { idempotencyKey: stripeIdempotencyKey("payout", payout._id) },
+      );
+      expect(await f.t.run((ctx) => ctx.db.get(payout._id))).toMatchObject({
+        status: "paid",
+        stripeTransferId: `tr_forfeit_${installment}`,
+      });
+    }
+    expect(stripeMock).toHaveBeenCalledTimes(4);
+    expect(await f.readBooking()).toMatchObject({
+      status: "cancelled_by_organizer",
+    });
+  });
+
+  test("propagates settlement failure after a successful transfer without retrying", async () => {
+    const f = await setupPayouts();
+    await f.addAccount();
+    await f.complete();
+    const [payout] = await f.payouts();
+    await f.t.mutation(internal.payouts.releasePayout, {
+      payoutId: payout._id,
+    });
+    await f.t.run((ctx) => ctx.db.delete(f.bookingId));
+    const jobs = await f.scheduled();
+    await expect(
+      f.t.action(internal.payouts.executePayout, {
+        payoutId: payout._id,
+        attempt: 0,
+      }),
+    ).rejects.toThrow("Booking not found");
+    expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
+      "POST",
+      "/v1/transfers",
+      expect.objectContaining({ amount: payout.amountMinor }),
+      { idempotencyKey: stripeIdempotencyKey("payout", payout._id) },
+    );
+    expect((await f.payouts())[0]).toMatchObject({
+      status: "processing",
+      attempt: 0,
+    });
+    expect(await f.scheduled()).toEqual(jobs);
+    await f.t.mutation(internal.payouts.retryHeldPayouts, {});
+    expect(await f.scheduled()).toEqual(jobs);
+  });
+
   test("transfers the net with a source charge and records payout and commission once", async () => {
     const f = await setupPayouts();
     await f.addAccount();
@@ -599,7 +809,7 @@ describe("Stripe execution and settlement", () => {
           paymentRecordId: f.paymentRecordIds[0],
         },
       },
-      { idempotencyKey: stripeIdempotencyKey("payout", payout._id, 0) },
+      { idempotencyKey: stripeIdempotencyKey("payout", payout._id) },
     );
     const paid = (await f.payouts())[0];
     expect(paid).toMatchObject({
@@ -725,7 +935,7 @@ describe("Stripe execution and settlement", () => {
         source_transaction: "ch_fallback",
         destination: "acct_current",
       }),
-      { idempotencyKey: stripeIdempotencyKey("payout", payout._id, 0) },
+      { idempotencyKey: stripeIdempotencyKey("payout", payout._id) },
     );
     expect((await f.payouts())[0]).toMatchObject({
       status: "paid",
@@ -821,9 +1031,7 @@ describe("Stripe execution and settlement", () => {
     expect(
       stripeMock.mock.calls.map((call) => call[3]?.idempotencyKey),
     ).toEqual(
-      [0, 1, 2].map((attempt) =>
-        stripeIdempotencyKey("payout", payout._id, attempt),
-      ),
+      Array(3).fill(stripeIdempotencyKey("payout", payout._id)),
     );
     expect((await f.payouts())[0]).toMatchObject({
       status: "failed",
@@ -843,6 +1051,17 @@ describe("Stripe execution and settlement", () => {
     });
     await f.t.mutation(internal.payouts.retryHeldPayouts, {});
     expect(await f.scheduled()).toEqual(jobs);
+  });
+});
+
+describe("reversible payout amount", () => {
+  test("deducts recorded reversals and defaults missing reversals to zero", async () => {
+    const f = await setupPayouts();
+    await f.complete();
+    const [payout] = await f.payouts();
+    expect(reversibleMinor(payout)).toBe(13500);
+    expect(reversibleMinor({ ...payout, reversedMinor: 4500 })).toBe(9000);
+    expect(reversibleMinor({ ...payout, reversedMinor: 13500 })).toBe(0);
   });
 });
 
