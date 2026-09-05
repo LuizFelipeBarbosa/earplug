@@ -340,6 +340,28 @@ describe("opportunity gig publishing", () => {
     expect(await f.t.query(api.gigs.resolvePublic, { ref: gigId })).toBeNull();
   });
 
+  test("marks the published gig as cancelled when the opportunity is cancelled", async () => {
+    const f = await setupGigPublish();
+    await f.bookSlot(f.slotA, f.bandA);
+    const gigId = await f.publish();
+
+    await f.t.run(async (ctx) => {
+      await unpublishOpportunityGig(ctx, f.opportunityId, "opportunity_cancelled");
+      expect(await ctx.db.get(gigId)).toMatchObject({
+        lifecycle: "cancelled",
+        discoveryListingReady: false,
+      });
+      expect(await ctx.db.get(f.opportunityId)).toMatchObject({
+        status: "cancelled",
+        publicGigId: gigId,
+        revision: 4,
+      });
+    });
+    expect(await f.t.query(api.gigs.resolvePublic, { ref: gigId })).toMatchObject({
+      lifecycle: "cancelled",
+    });
+  });
+
   test("unpublishes consecutive required-slot cancellations without repeating the transition", async () => {
     const f = await setupGigPublish();
     await f.t.run((ctx) => ctx.db.patch(f.slotB, { required: true }));

@@ -5,7 +5,10 @@ import { MutationCtx, internalMutation, mutation } from "./_generated/server";
 import { loadCurrentOffer, sendBookingEmail } from "./bookings";
 import { requireOrganizationRole } from "./lib/authz";
 import { releaseSlot } from "./lib/bookingConfirm";
-import { assertBookingTransition } from "./lib/bookingStatus";
+import {
+  BOOKING_ACTIVE_STATUSES,
+  assertBookingTransition,
+} from "./lib/bookingStatus";
 import { unpublishOpportunityGig } from "./lib/gigPublish";
 import {
   assertUploadAcceptable,
@@ -347,6 +350,23 @@ export const update = mutation({
           opportunity.organizationId,
         )
       : null;
+    const startsAtChanged =
+      args.startsAt !== undefined && args.startsAt !== opportunity.startsAt;
+    const doorsAtChanged =
+      args.doorsAt !== undefined &&
+      args.doorsAt !== (opportunity.doorsAt ?? null);
+    if (startsAtChanged || doorsAtChanged) {
+      const bookings = ctx.db
+        .query("bookings")
+        .withIndex("by_opportunityId", (q) =>
+          q.eq("opportunityId", opportunity._id),
+        );
+      for await (const booking of bookings) {
+        if (BOOKING_ACTIVE_STATUSES.includes(booking.status)) {
+          throw new Error("Dates are locked while offers or bookings are active");
+        }
+      }
+    }
     const startsAt = args.startsAt ?? opportunity.startsAt;
     const applicationsCloseAt =
       args.applicationsCloseAt ?? opportunity.applicationsCloseAt;

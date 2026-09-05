@@ -174,7 +174,7 @@ export async function unpublishOpportunityGig(
   if (!opportunity) throw new Error("Opportunity not found");
   if (opportunity.publicGigId === undefined) return;
   await ctx.db.patch(opportunity.publicGigId, {
-    lifecycle: "unpublished",
+    lifecycle: reason === "opportunity_cancelled" ? "cancelled" : "unpublished",
     discoveryListingReady: false,
   });
   const status = reason === "required_slot_cancelled" ? "booking" : "cancelled";
