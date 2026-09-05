@@ -46,7 +46,7 @@ const bandRecapValidator = v.object({
       startsAt: v.number(),
       venueName: v.string(),
       price: v.number(),
-      ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+      ticketing: v.union(v.literal("rsvp"), v.literal("external"), v.literal("paid")),
       goingCount: v.number(),
       measuredRsvps: v.number(),
       newFans: v.union(v.number(), v.null()),

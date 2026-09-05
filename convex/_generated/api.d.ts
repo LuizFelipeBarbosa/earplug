@@ -45,6 +45,8 @@ import type * as lib_reviewSummary from "../lib/reviewSummary.js";
 import type * as lib_stripeAccountSync from "../lib/stripeAccountSync.js";
 import type * as lib_stripeClient from "../lib/stripeClient.js";
 import type * as lib_stripeSignature from "../lib/stripeSignature.js";
+import type * as lib_ticketFees from "../lib/ticketFees.js";
+import type * as lib_ticketStatus from "../lib/ticketStatus.js";
 import type * as lib_venuePrivate from "../lib/venuePrivate.js";
 import type * as lib_venueSlug from "../lib/venueSlug.js";
 import type * as maintenance from "../maintenance.js";
@@ -113,6 +115,8 @@ declare const fullApi: ApiFromModules<{
   "lib/stripeAccountSync": typeof lib_stripeAccountSync;
   "lib/stripeClient": typeof lib_stripeClient;
   "lib/stripeSignature": typeof lib_stripeSignature;
+  "lib/ticketFees": typeof lib_ticketFees;
+  "lib/ticketStatus": typeof lib_ticketStatus;
   "lib/venuePrivate": typeof lib_venuePrivate;
   "lib/venueSlug": typeof lib_venueSlug;
   maintenance: typeof maintenance;
