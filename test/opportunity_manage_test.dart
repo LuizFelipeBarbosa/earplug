@@ -329,6 +329,29 @@ void main() {
     harness.app.dispose();
   });
 
+  testWidgets('wrapped paid offer failure shows only the server message', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+      repositoryBuilder: (auth) => _WrappedOfferErrorRepository(auth: auth),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('send-offer-feedback')))
+          .data,
+      'Paid offers open once payments are enabled',
+    );
+    harness.app.dispose();
+  });
+
   testWidgets('sending an offer updates the applicant and opens its booking', (
     tester,
   ) async {
@@ -709,11 +732,12 @@ void main() {
 
 Future<AppHarness> _pumpOrganizerScreen(
   WidgetTester tester,
-  Widget screen,
-) async {
+  Widget screen, {
+  DemoRepository Function(FakeAuthService auth)? repositoryBuilder,
+}) async {
   final auth = FakeAuthService();
   await auth.signInDemo();
-  final repository = DemoRepository(auth: auth);
+  final repository = repositoryBuilder?.call(auth) ?? DemoRepository(auth: auth);
   final app = AppState(repository: repository, auth: auth);
   final picker = FakeMediaPicker();
   final media = BandMediaController(
@@ -750,6 +774,25 @@ Future<AppHarness> _pumpOrganizerScreen(
   await tester.pumpAndSettle();
   await enterOrganizer(tester, harness, 'org1');
   return harness;
+}
+
+class _WrappedOfferErrorRepository extends DemoRepository {
+  _WrappedOfferErrorRepository({required super.auth});
+
+  @override
+  Future<({String bookingId, String offerId, int revision})> sendOffer({
+    required String applicationId,
+    required int grossMinor,
+    required CancellationTemplate cancellationTemplate,
+    String? termsNotes,
+    String? message,
+  }) async {
+    throw Exception(
+      '[Request ID: abc123] Server Error\n'
+      'Uncaught Error: Paid offers open once payments are enabled\n'
+      ' at handler (../../convex/bookings.ts:251:23)\n',
+    );
+  }
 }
 
 Future<void> _chooseOpportunityAction(

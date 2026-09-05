@@ -229,6 +229,39 @@ class FieldLabel extends StatelessWidget {
   }
 }
 
+/// Extracts a clean, user-facing message from a thrown error.
+///
+/// Convex mutations that throw an uncaught server-side error surface to the
+/// client as an exception whose message looks like:
+///
+/// ```text
+///   [Request ID: …] Server Error
+///   Uncaught Error: <message>
+///    at handler (<file>:<line>:<col>)
+/// ```
+///
+/// This strips that wrapper and any trailing stack-trace lines, returning
+/// just `<message>`. It also strips the common local prefixes Dart adds
+/// (`Bad state: `, `Exception: `, `ConvexError: `) when the wrapper isn't
+/// present. Returns `null` when [error]'s text doesn't match any recognized
+/// shape, so callers can substitute their own generic fallback message.
+String? serverErrorMessage(Object error) {
+  final text = error.toString();
+  const marker = 'Uncaught Error:';
+  final index = text.lastIndexOf(marker);
+  if (index >= 0) {
+    for (final line in text.substring(index + marker.length).split('\n')) {
+      final message = line.trim();
+      if (message.isNotEmpty) return message;
+    }
+    return null;
+  }
+  for (final prefix in const ['Bad state: ', 'Exception: ', 'ConvexError: ']) {
+    if (text.startsWith(prefix)) return text.substring(prefix.length).trim();
+  }
+  return null;
+}
+
 class InlineFormFeedback extends StatelessWidget {
   const InlineFormFeedback({
     super.key,

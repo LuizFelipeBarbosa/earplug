@@ -1099,12 +1099,5 @@ String _dateLabel(BuildContext context, DateTime? date) => date == null
     ? 'CHOOSE'
     : MaterialLocalizations.of(context).formatMediumDate(date);
 
-String _extractErrorMessage(Object error) {
-  final text = error.toString();
-  const prefix = 'Uncaught Error:';
-  final index = text.lastIndexOf(prefix);
-  if (index >= 0) return text.substring(index + prefix.length).trim();
-  return text
-      .replaceFirst(RegExp(r'^(Bad state: |Exception: |ConvexError: )'), '')
-      .trim();
-}
+String _extractErrorMessage(Object error) =>
+    serverErrorMessage(error) ?? error.toString();

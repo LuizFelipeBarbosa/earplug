@@ -583,8 +583,7 @@ class _ApplySheetState extends State<_ApplySheet> {
 String? _optionalNote(TextEditingController controller) =>
     controller.text.trim().isEmpty ? null : controller.text.trim();
 
-String _errorMessage(Object error) =>
-    error is StateError ? error.message : '$error';
+String _errorMessage(Object error) => serverErrorMessage(error) ?? '$error';
 
 String _dateLabel(DateTime date) {
   const months = [

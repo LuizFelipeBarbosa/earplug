@@ -219,4 +219,4 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
 }
 
 String _errorMessage(Object error) =>
-    error is StateError ? error.message : '$error';
+    serverErrorMessage(error) ?? 'Could not send the offer. Please retry.';

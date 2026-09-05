@@ -1534,15 +1534,18 @@ class ConvexRepository implements EarplugRepository {
     String? termsNotes,
     String? message,
   }) async {
-    final result = _asMap(
-      await _convexService.mutation('bookings:sendOffer', {
-        'applicationId': applicationId,
-        'grossMinor': grossMinor,
-        'cancellationTemplate': cancellationTemplate.wireValue,
-        'termsNotes': ?termsNotes,
-        'message': ?message,
-      }),
-    );
+    final dynamic decoded = await _convexService.mutation('bookings:sendOffer', {
+      'applicationId': applicationId,
+      'grossMinor': grossMinor,
+      'cancellationTemplate': cancellationTemplate.wireValue,
+      'termsNotes': ?termsNotes,
+      'message': ?message,
+    });
+    if (decoded is String) throw Exception(decoded);
+    if (decoded is! Map) {
+      throw Exception('Unexpected sendOffer response: $decoded');
+    }
+    final result = _asMap(decoded);
     return (
       bookingId: result['bookingId'] as String,
       offerId: result['offerId'] as String,
