@@ -74,7 +74,7 @@ testStatusTransitions(
     under_review: ["shortlisted", "declined", "withdrawn", "expired"],
     shortlisted: ["offered", "declined", "withdrawn", "expired"],
     offered: ["booked", "declined", "withdrawn", "expired", "shortlisted"],
-    booked: [],
+    booked: ["declined", "withdrawn"],
     declined: [],
     withdrawn: [],
     expired: [],
