@@ -41,6 +41,7 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
         if (!mounted) return;
         unawaited(app.refreshBrowse());
         unawaited(app.refreshMyApplications());
+        unawaited(app.refreshBandBookings());
       });
     }
   }
@@ -69,12 +70,25 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
     final app = context.watch<AppState>();
     _partition(app.managedGigProjects);
     if (app.isAdminOf(app.bandId)) app.ensureManagedGigs();
+    final now = DateTime.now();
+    final confirmedBookings = app.bandBookings
+        .where(
+          (booking) => booking.status.isLive && booking.startsAt.isAfter(now),
+        )
+        .toList();
+    final pastBookings = app.bandBookings.where(
+      (booking) =>
+          booking.status == BookingStatus.completed ||
+          booking.status == BookingStatus.paid ||
+          (booking.status.isLive && booking.startsAt.isBefore(now)),
+    );
 
     return RefreshIndicator(
       onRefresh: () async {
         await Future.wait([
           app.refreshBrowse(),
           app.refreshMyApplications(),
+          app.refreshBandBookings(),
           app.refreshManagedGigs(),
           app.refreshGigWritePolicy(),
         ]);
@@ -122,9 +136,25 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
           if (_segment == _GigSegment.open) _OpenSection(app: app),
           if (_segment == _GigSegment.applied) _AppliedSection(app: app),
           if (_segment == _GigSegment.booked) ...[
-            const EmptyNote(
-              message: 'Confirmed bookings appear here once offers launch.',
-            ),
+            if (app.bandBookingsStatus == DataStatus.connecting)
+              const LinearProgressIndicator(),
+            if (app.bandBookingsStatus == DataStatus.error) ...[
+              const EmptyNote(message: 'Could not load bookings.'),
+              TextButton(
+                onPressed: app.refreshBandBookings,
+                child: const Text('RETRY'),
+              ),
+            ],
+            for (final booking in confirmedBookings) ...[
+              _BookingCard(
+                key: ValueKey('band-booking-${booking.id}'),
+                booking: booking,
+                onTap: () => app.openBooking(booking.id),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (confirmedBookings.isEmpty && _published.isEmpty)
+              const EmptyNote(message: 'No confirmed bookings yet.'),
             if (app.managedGigsLoading) const LinearProgressIndicator(),
             _ProjectSection(
               title: 'PUBLISHED',
@@ -137,6 +167,14 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
             ],
           ],
           if (_segment == _GigSegment.past) ...[
+            for (final booking in pastBookings) ...[
+              _BookingCard(
+                key: ValueKey('band-booking-${booking.id}'),
+                booking: booking,
+                onTap: () => app.openBooking(booking.id),
+              ),
+              const SizedBox(height: 12),
+            ],
             _PastSection(app: app),
             const SizedBox(height: 20),
             _ProjectSection(
@@ -153,6 +191,57 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
 }
 
 enum _GigSegment { open, applied, booked, past }
+
+class _BookingCard extends StatelessWidget {
+  const _BookingCard({super.key, required this.booking, required this.onTap});
+
+  final Booking booking;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final approxLabel = booking.venue.approxLabel;
+    return EpCard(
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DateBlock.forDate(booking.startsAt),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  booking.opportunityTitle,
+                  style: textTheme.epSectionHeading,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  approxLabel == null || approxLabel.isEmpty
+                      ? booking.venue.name
+                      : '${booking.venue.name} · $approxLabel',
+                  style: textTheme.epMeta,
+                ),
+                Text(slotRoleLabel(booking.slotRole), style: textTheme.epMeta),
+                const SizedBox(height: 8),
+                Text(
+                  booking.fee.grossMinor > 0
+                      ? 'Artist receives ${booking.fee.artistNet.label}'
+                      : 'No fee',
+                  style: textTheme.epCaption,
+                ),
+                const SizedBox(height: 8),
+                StatusPill(label: booking.status.label),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _OpenSection extends StatelessWidget {
   const _OpenSection({required this.app});
@@ -315,7 +404,8 @@ class _AppliedSectionState extends State<_AppliedSection> {
 
   @override
   Widget build(BuildContext context) {
-    final applications = widget.app.myApplications;
+    final app = widget.app;
+    final applications = app.myApplications;
     if (applications.isEmpty) {
       return const EmptyNote(message: 'Your applications will appear here.');
     }
@@ -369,9 +459,39 @@ class _AppliedSectionState extends State<_AppliedSection> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     StatusPill(
-                      label: applicationStatusLabel(row.application.status),
+                      label:
+                          row.application.status ==
+                              ArtistApplicationStatus.offered
+                          ? 'Offer received'
+                          : applicationStatusLabel(row.application.status),
                     ),
-                    if (row.application.status.isActive)
+                    if (row.application.status ==
+                            ArtistApplicationStatus.offered ||
+                        row.application.status ==
+                            ArtistApplicationStatus.booked)
+                      if (app.bandBookings
+                              .where(
+                                (booking) =>
+                                    booking.applicationId == row.application.id,
+                              )
+                              .firstOrNull
+                          case final booking?)
+                        TextButton(
+                          key: ValueKey(
+                            'band-app-${row.application.id}-'
+                            '${row.application.status == ArtistApplicationStatus.offered ? 'respond' : 'booking'}',
+                          ),
+                          onPressed: () => app.openBooking(booking.id),
+                          child: Text(
+                            row.application.status ==
+                                    ArtistApplicationStatus.offered
+                                ? 'RESPOND'
+                                : 'VIEW BOOKING',
+                          ),
+                        ),
+                    if (row.application.status.isActive &&
+                        row.application.status !=
+                            ArtistApplicationStatus.offered)
                       TextButton(
                         key: ValueKey(
                           'band-app-${row.application.id}-withdraw',

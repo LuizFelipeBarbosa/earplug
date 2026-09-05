@@ -4,6 +4,7 @@ import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_manager.dart';
 import 'package:earplug/screens/opportunity_detail.dart';
+import 'package:earplug/screens/org_opportunities.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/tab_bars.dart';
@@ -248,6 +249,206 @@ void main() {
     expect(
       harness.app.browse.items.single.myApplicationStatus?.isActive ?? false,
       isFalse,
+    );
+    harness.app.dispose();
+  });
+
+  testWidgets('BOOKED lists confirmed bookings and opens booking detail', (
+    tester,
+  ) async {
+    final harness = await _pumpScreen(
+      tester,
+      home: const Scaffold(body: GigManagerScreen()),
+    );
+    await _signInBand(tester, harness);
+    await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const ValueKey('band-booking-bk2'));
+    expect(card, findsOneWidget);
+    expect(
+      find.descendant(of: card, matching: find.text('The Foghorn Club')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('No fee')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('band-booking-bk1')), findsNothing);
+    expect(find.byKey(const ValueKey('band-booking-bk3')), findsNothing);
+
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.bookingDetail);
+    expect(harness.app.current.param, 'bk2');
+    harness.app.dispose();
+  });
+
+  testWidgets('PAST lists completed bookings and opens booking detail', (
+    tester,
+  ) async {
+    final harness = await _pumpScreen(
+      tester,
+      home: const Scaffold(body: GigManagerScreen()),
+    );
+    await _signInBand(tester, harness);
+    await tester.tap(find.byKey(const Key('band-gigs-seg-past')));
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const ValueKey('band-booking-bk3'));
+    expect(card, findsOneWidget);
+    expect(find.byKey(const ValueKey('band-booking-bk2')), findsNothing);
+
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.bookingDetail);
+    expect(harness.app.current.param, 'bk3');
+    harness.app.dispose();
+  });
+
+  testWidgets('APPLIED offers show RESPOND once their booking is loaded', (
+    tester,
+  ) async {
+    final harness = await _pumpScreen(
+      tester,
+      home: const Scaffold(body: GigManagerScreen()),
+    );
+    await _signInBand(tester, harness);
+    final repository = harness.app.repository as DemoRepository;
+    repository.demoPaymentsEnabled = true;
+    await repository.reviewApplication(
+      applicationId: 'app1',
+      action: ArtistApplicationReviewAction.shortlisted,
+    );
+    final sent = await repository.sendOffer(
+      applicationId: 'app1',
+      grossMinor: 0,
+      cancellationTemplate: CancellationTemplate.standard,
+    );
+    await harness.app.refreshMyApplications();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('band-gigs-seg-applied')));
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(const Key('band-app-app1'));
+    final respond = find.byKey(const ValueKey('band-app-app1-respond'));
+    expect(
+      find.descendant(of: row, matching: find.text('OFFER RECEIVED')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('band-app-app1-withdraw')), findsNothing);
+    expect(respond, findsNothing);
+
+    await harness.app.refreshBandBookings();
+    await tester.pumpAndSettle();
+    expect(respond, findsOneWidget);
+    expect(
+      find.descendant(of: respond, matching: find.text('RESPOND')),
+      findsOneWidget,
+    );
+    await tester.tap(respond);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.bookingDetail);
+    expect(harness.app.current.param, sent.bookingId);
+    harness.app.dispose();
+  });
+
+  testWidgets('APPLIED booked applications open their matching booking', (
+    tester,
+  ) async {
+    final harness = await _pumpScreen(
+      tester,
+      home: const Scaffold(body: GigManagerScreen()),
+    );
+    await _signInBand(tester, harness);
+    final repository = harness.app.repository as DemoRepository;
+    await repository.reviewApplication(
+      applicationId: 'app1',
+      action: ArtistApplicationReviewAction.shortlisted,
+    );
+    final sent = await repository.sendOffer(
+      applicationId: 'app1',
+      grossMinor: 0,
+      cancellationTemplate: CancellationTemplate.standard,
+    );
+    await repository.respondToOffer(
+      bookingId: sent.bookingId,
+      accept: true,
+      expectedRevision: sent.revision,
+    );
+    await harness.app.refreshMyApplications();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('band-gigs-seg-applied')));
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(const Key('band-app-app1'));
+    final viewBooking = find.byKey(const ValueKey('band-app-app1-booking'));
+    expect(
+      find.descendant(of: row, matching: find.text('BOOKED')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('band-app-app1-withdraw')), findsNothing);
+    expect(find.byKey(const Key('band-app-app1-respond')), findsNothing);
+    expect(viewBooking, findsNothing);
+
+    await harness.app.refreshBandBookings();
+    await tester.pumpAndSettle();
+    expect(viewBooking, findsOneWidget);
+    expect(
+      find.descendant(of: viewBooking, matching: find.text('VIEW BOOKING')),
+      findsOneWidget,
+    );
+    await tester.tap(viewBooking);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.bookingDetail);
+    expect(harness.app.current.param, sent.bookingId);
+    harness.app.dispose();
+  });
+
+  testWidgets('organizer opportunities count booked slots and omit drafts', (
+    tester,
+  ) async {
+    final harness = await _pumpScreen(
+      tester,
+      home: const Scaffold(body: OrgOpportunitiesScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+    final openCard = find.byKey(const ValueKey('org-opp-opp1'));
+    final draftCard = find.byKey(const ValueKey('org-opp-opp2'));
+    expect(openCard, findsOneWidget);
+    expect(draftCard, findsOneWidget);
+    expect(
+      find.descendant(of: openCard, matching: find.text('0/2 slots booked')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: draftCard,
+        matching: find.textContaining('slots booked'),
+      ),
+      findsNothing,
+    );
+
+    final repository = harness.app.repository as DemoRepository;
+    await repository.reviewApplication(
+      applicationId: 'app1',
+      action: ArtistApplicationReviewAction.shortlisted,
+    );
+    final sent = await repository.sendOffer(
+      applicationId: 'app1',
+      grossMinor: 0,
+      cancellationTemplate: CancellationTemplate.standard,
+    );
+    await repository.respondToOffer(
+      bookingId: sent.bookingId,
+      accept: true,
+      expectedRevision: sent.revision,
+    );
+    await harness.app.refreshOpportunities('org1');
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: openCard, matching: find.text('1/2 slots booked')),
+      findsOneWidget,
     );
     harness.app.dispose();
   });

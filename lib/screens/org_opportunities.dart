@@ -303,6 +303,18 @@ class _OpportunityCard extends StatelessWidget {
                     style: textTheme.epCaption,
                   ),
                 ],
+                if (opportunity.status == OpportunityStatus.open ||
+                    opportunity.status ==
+                        OpportunityStatus.applicationsClosed ||
+                    opportunity.status == OpportunityStatus.booking ||
+                    opportunity.status == OpportunityStatus.confirmed) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '${opportunity.slots.where((slot) => slot.bandId != null).length}/'
+                    '${opportunity.slots.length} slots booked',
+                    style: textTheme.epCaption,
+                  ),
+                ],
                 const SizedBox(height: 8),
                 StatusPill(
                   label: opportunityStatusLabel(opportunity.status),
