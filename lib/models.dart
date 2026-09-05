@@ -1187,6 +1187,515 @@ class FlyerStyle {
 
 enum GigWhen { tonight, week, later }
 
+enum OpportunityMode {
+  publicEvent('publicEvent'),
+  privateBooking('privateBooking');
+
+  const OpportunityMode(this.wireValue);
+
+  final String wireValue;
+
+  static OpportunityMode fromWire(Object? value) => switch (value) {
+    'privateBooking' => OpportunityMode.privateBooking,
+    _ => OpportunityMode.publicEvent,
+  };
+}
+
+enum OpportunityVisibility {
+  publicListing('public'),
+  inviteOnly('inviteOnly');
+
+  const OpportunityVisibility(this.wireValue);
+
+  final String wireValue;
+
+  static OpportunityVisibility fromWire(Object? value) => switch (value) {
+    'inviteOnly' => OpportunityVisibility.inviteOnly,
+    _ => OpportunityVisibility.publicListing,
+  };
+}
+
+enum OpportunityTicketing {
+  none('none'),
+  rsvp('rsvp'),
+  external('external'),
+  paid('paid');
+
+  const OpportunityTicketing(this.wireValue);
+
+  final String wireValue;
+
+  static OpportunityTicketing fromWire(Object? value) => switch (value) {
+    'rsvp' => OpportunityTicketing.rsvp,
+    'external' => OpportunityTicketing.external,
+    'paid' => OpportunityTicketing.paid,
+    _ => OpportunityTicketing.none,
+  };
+}
+
+enum OpportunityStatus {
+  draft('draft'),
+  open('open'),
+  applicationsClosed('applications_closed'),
+  booking('booking'),
+  confirmed('confirmed'),
+  completed('completed'),
+  cancelled('cancelled');
+
+  const OpportunityStatus(this.wireValue);
+
+  final String wireValue;
+
+  static OpportunityStatus fromWire(Object? value) => switch (value) {
+    'open' => OpportunityStatus.open,
+    'applications_closed' => OpportunityStatus.applicationsClosed,
+    'booking' => OpportunityStatus.booking,
+    'confirmed' => OpportunityStatus.confirmed,
+    'completed' => OpportunityStatus.completed,
+    'cancelled' => OpportunityStatus.cancelled,
+    _ => OpportunityStatus.draft,
+  };
+}
+
+enum SlotRole {
+  headliner('headliner'),
+  support('support'),
+  opener('opener');
+
+  const SlotRole(this.wireValue);
+
+  final String wireValue;
+
+  static SlotRole fromWire(Object? value) => switch (value) {
+    'headliner' => SlotRole.headliner,
+    'opener' => SlotRole.opener,
+    _ => SlotRole.support,
+  };
+}
+
+enum SlotStatus {
+  open('open'),
+  booked('booked'),
+  cancelled('cancelled');
+
+  const SlotStatus(this.wireValue);
+
+  final String wireValue;
+
+  static SlotStatus fromWire(Object? value) => switch (value) {
+    'booked' => SlotStatus.booked,
+    'cancelled' => SlotStatus.cancelled,
+    _ => SlotStatus.open,
+  };
+}
+
+enum ArtistApplicationStatus {
+  submitted('submitted'),
+  underReview('under_review'),
+  shortlisted('shortlisted'),
+  offered('offered'),
+  booked('booked'),
+  declined('declined'),
+  withdrawn('withdrawn'),
+  expired('expired');
+
+  const ArtistApplicationStatus(this.wireValue);
+
+  final String wireValue;
+
+  static ArtistApplicationStatus fromWire(Object? value) => switch (value) {
+    'under_review' => ArtistApplicationStatus.underReview,
+    'shortlisted' => ArtistApplicationStatus.shortlisted,
+    'offered' => ArtistApplicationStatus.offered,
+    'booked' => ArtistApplicationStatus.booked,
+    'declined' => ArtistApplicationStatus.declined,
+    'withdrawn' => ArtistApplicationStatus.withdrawn,
+    'expired' => ArtistApplicationStatus.expired,
+    _ => ArtistApplicationStatus.submitted,
+  };
+
+  bool get isActive =>
+      this == ArtistApplicationStatus.submitted ||
+      this == ArtistApplicationStatus.underReview ||
+      this == ArtistApplicationStatus.shortlisted ||
+      this == ArtistApplicationStatus.offered;
+}
+
+enum ArtistApplicationReviewAction {
+  underReview('under_review'),
+  shortlisted('shortlisted'),
+  declined('declined');
+
+  const ArtistApplicationReviewAction(this.wireValue);
+
+  final String wireValue;
+
+  static ArtistApplicationReviewAction fromWire(Object? value) =>
+      switch (value) {
+        'shortlisted' => ArtistApplicationReviewAction.shortlisted,
+        'declined' => ArtistApplicationReviewAction.declined,
+        _ => ArtistApplicationReviewAction.underReview,
+      };
+}
+
+class OpportunitySlot {
+  const OpportunitySlot({
+    required this.id,
+    required this.order,
+    required this.role,
+    this.setLengthMin,
+    required this.guaranteeMinor,
+    required this.required,
+    required this.status,
+    this.bandId,
+  });
+
+  final String id;
+  final int order;
+  final SlotRole role;
+  final int? setLengthMin;
+  final int guaranteeMinor;
+  final bool required;
+  final SlotStatus status;
+  final String? bandId;
+
+  factory OpportunitySlot.fromJson(Map<String, dynamic> json) =>
+      OpportunitySlot(
+        id: _marketplaceString(json['_id']),
+        order: _marketplaceInt(json['order']),
+        role: SlotRole.fromWire(json['role']),
+        setLengthMin: _marketplaceOptionalInt(json['setLengthMin']),
+        guaranteeMinor: _marketplaceInt(json['guaranteeMinor']),
+        required: json['required'] == true,
+        status: SlotStatus.fromWire(json['status']),
+        bandId: _marketplaceOptionalString(json['bandId']),
+      );
+}
+
+class Opportunity {
+  const Opportunity({
+    required this.id,
+    required this.organizationId,
+    required this.mode,
+    this.venueId,
+    this.venue,
+    required this.title,
+    required this.desc,
+    this.eventType,
+    this.expectedAttendance,
+    required this.genres,
+    required this.startsAt,
+    this.doorsAt,
+    this.endsAt,
+    required this.ageRequirement,
+    this.equipment,
+    this.requirements,
+    required this.flyKey,
+    this.flyerUrl,
+    required this.applicationsCloseAt,
+    required this.visibility,
+    required this.ticketing,
+    this.externalUrl,
+    required this.status,
+    required this.slug,
+    required this.revision,
+    required this.applicationCount,
+    required this.slots,
+    required this.invitedBandIds,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.area,
+    this.venueType,
+    required this.currency,
+  });
+
+  final String id;
+  final String organizationId;
+  final OpportunityMode mode;
+  final String? venueId;
+  final Venue? venue;
+  final String title;
+  final String desc;
+  final String? eventType;
+  final int? expectedAttendance;
+  final List<String> genres;
+  final DateTime startsAt;
+  final DateTime? doorsAt;
+  final DateTime? endsAt;
+  final AgeRequirement ageRequirement;
+  final String? equipment;
+  final String? requirements;
+  final String flyKey;
+  final String? flyerUrl;
+  final DateTime applicationsCloseAt;
+  final OpportunityVisibility visibility;
+  final OpportunityTicketing ticketing;
+  final String? externalUrl;
+  final OpportunityStatus status;
+  final String slug;
+  final int revision;
+  final int applicationCount;
+  final List<OpportunitySlot> slots;
+  final List<String> invitedBandIds;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final String area;
+  final VenueType? venueType;
+  final String currency;
+
+  factory Opportunity.fromJson(Map<String, dynamic> json) => Opportunity(
+    id: _marketplaceString(json['_id']),
+    organizationId: _marketplaceString(json['organizationId']),
+    mode: OpportunityMode.fromWire(json['mode']),
+    venueId: _marketplaceOptionalString(json['venueId']),
+    venue: json['venue'] is Map
+        ? Venue.fromJson(_marketplaceMap(json['venue']))
+        : null,
+    title: _marketplaceString(json['title']),
+    desc: _marketplaceString(json['desc']),
+    eventType: _marketplaceOptionalString(json['eventType']),
+    expectedAttendance: _marketplaceOptionalInt(json['expectedAttendance']),
+    genres: _marketplaceStringList(json['genres']),
+    startsAt: _marketplaceDate(json['startsAt']),
+    doorsAt: _marketplaceOptionalDate(json['doorsAt']),
+    endsAt: _marketplaceOptionalDate(json['endsAt']),
+    ageRequirement: AgeRequirement.fromJson(json['ageRequirement']),
+    equipment: _marketplaceOptionalString(json['equipment']),
+    requirements: _marketplaceOptionalString(json['requirements']),
+    flyKey: _marketplaceString(json['flyKey']),
+    flyerUrl: _marketplaceOptionalString(json['flyerUrl']),
+    applicationsCloseAt: _marketplaceDate(json['applicationsCloseAt']),
+    visibility: OpportunityVisibility.fromWire(json['visibility']),
+    ticketing: OpportunityTicketing.fromWire(json['ticketing']),
+    externalUrl: _marketplaceOptionalString(json['externalUrl']),
+    status: OpportunityStatus.fromWire(json['status']),
+    slug: _marketplaceString(json['slug']),
+    revision: _marketplaceInt(json['revision']),
+    applicationCount: _marketplaceInt(json['applicationCount']),
+    slots: [
+      for (final slot in _marketplaceMapList(json['slots']))
+        OpportunitySlot.fromJson(slot),
+    ],
+    invitedBandIds: _marketplaceStringList(json['invitedBandIds']),
+    createdAt: _marketplaceDate(json['createdAt']),
+    updatedAt: _marketplaceDate(json['updatedAt']),
+    area: _marketplaceString(json['area']),
+    venueType: json['venueType'] is String
+        ? VenueType.fromWire(json['venueType'])
+        : null,
+    currency: _marketplaceString(json['currency']),
+  );
+}
+
+class SlotInput {
+  const SlotInput({
+    required this.role,
+    this.setLengthMin,
+    required this.guaranteeMinor,
+    required this.required,
+  });
+
+  final SlotRole role;
+  final int? setLengthMin;
+  final int guaranteeMinor;
+  final bool required;
+
+  Map<String, dynamic> toJson() => {
+    'role': role.wireValue,
+    'setLengthMin': ?setLengthMin,
+    'guaranteeMinor': guaranteeMinor,
+    'required': required,
+  };
+}
+
+class ArtistApplication {
+  const ArtistApplication({
+    required this.id,
+    required this.opportunityId,
+    required this.slotId,
+    required this.bandId,
+    required this.status,
+    required this.message,
+    this.askMinor,
+    this.availabilityNote,
+    this.lineupNote,
+    this.decidedAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String opportunityId;
+  final String slotId;
+  final String bandId;
+  final ArtistApplicationStatus status;
+  final String message;
+  final int? askMinor;
+  final String? availabilityNote;
+  final String? lineupNote;
+  final DateTime? decidedAt;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory ArtistApplication.fromJson(Map<String, dynamic> json) =>
+      ArtistApplication(
+        id: _marketplaceString(json['_id']),
+        opportunityId: _marketplaceString(json['opportunityId']),
+        slotId: _marketplaceString(json['slotId']),
+        bandId: _marketplaceString(json['bandId']),
+        status: ArtistApplicationStatus.fromWire(json['status']),
+        message: _marketplaceString(json['message']),
+        askMinor: _marketplaceOptionalInt(json['askMinor']),
+        availabilityNote: _marketplaceOptionalString(json['availabilityNote']),
+        lineupNote: _marketplaceOptionalString(json['lineupNote']),
+        decidedAt: _marketplaceOptionalDate(json['decidedAt']),
+        createdAt: _marketplaceDate(json['createdAt']),
+        updatedAt: _marketplaceDate(json['updatedAt']),
+      );
+}
+
+class ApplicantRow {
+  const ApplicantRow({
+    required this.application,
+    required this.band,
+    this.contactEmail,
+  });
+
+  final ArtistApplication application;
+  final Band band;
+  final String? contactEmail;
+
+  factory ApplicantRow.fromJson(Map<String, dynamic> json) => ApplicantRow(
+    application: ArtistApplication.fromJson(
+      _marketplaceMap(json['application']),
+    ),
+    band: _bandFromJson(_marketplaceMap(json['band'])),
+    contactEmail: _marketplaceOptionalString(json['contactEmail']),
+  );
+
+  // Band's legacy parser expects complete payloads. Normalize this nested
+  // payload so marketplace rows keep the same tolerant parsing contract.
+  static Band _bandFromJson(Map<String, dynamic> json) {
+    final colorHex = _marketplaceString(json['colorHex']);
+    final hex = colorHex.startsWith('#') ? colorHex.substring(1) : colorHex;
+    return Band.fromJson({
+      ...json,
+      '_id': _marketplaceString(json['_id']),
+      'slug': _marketplaceString(json['slug']),
+      'name': _marketplaceString(json['name']),
+      'genres': _marketplaceStringList(json['genres']),
+      'area': _marketplaceString(json['area']),
+      'colorHex': int.tryParse(hex, radix: 16) == null ? '000000' : hex,
+      'initials': _marketplaceString(json['initials']),
+      'followerCount': _marketplaceInt(json['followerCount']),
+      if (json.containsKey('bio')) 'bio': _marketplaceString(json['bio']),
+      'linkIg': _marketplaceOptionalString(json['linkIg']),
+      'linkBc': _marketplaceOptionalString(json['linkBc']),
+      'linkYt': _marketplaceOptionalString(json['linkYt']),
+      'credits': _marketplaceOptionalString(json['credits']),
+      if (json.containsKey('avatarUrl'))
+        'avatarUrl': _marketplaceOptionalString(json['avatarUrl']),
+      if (json.containsKey('bannerUrl'))
+        'bannerUrl': _marketplaceOptionalString(json['bannerUrl']),
+      'heroUrl': _marketplaceOptionalString(json['heroUrl']),
+      'pastShows': [
+        for (final show in _marketplaceMapList(json['pastShows']))
+          {
+            'title': _marketplaceString(show['title']),
+            'meta': _marketplaceString(show['meta']),
+          },
+      ],
+    });
+  }
+}
+
+class BandApplication {
+  const BandApplication({required this.application, required this.opportunity});
+
+  final ArtistApplication application;
+  final Opportunity opportunity;
+
+  factory BandApplication.fromJson(Map<String, dynamic> json) =>
+      BandApplication(
+        application: ArtistApplication.fromJson(
+          _marketplaceMap(json['application']),
+        ),
+        opportunity: Opportunity.fromJson(_marketplaceMap(json['opportunity'])),
+      );
+}
+
+class BrowseItem {
+  const BrowseItem({
+    required this.opportunity,
+    required this.invited,
+    this.myApplicationStatus,
+  });
+
+  final Opportunity opportunity;
+  final bool invited;
+  final ArtistApplicationStatus? myApplicationStatus;
+
+  factory BrowseItem.fromJson(Map<String, dynamic> json) => BrowseItem(
+    opportunity: Opportunity.fromJson(_marketplaceMap(json['opportunity'])),
+    invited: json['invited'] == true,
+    myApplicationStatus: json['myApplicationStatus'] == null
+        ? null
+        : ArtistApplicationStatus.fromWire(json['myApplicationStatus']),
+  );
+}
+
+class OpportunityPage {
+  const OpportunityPage({
+    required this.items,
+    required this.continueCursor,
+    required this.isDone,
+  });
+
+  final List<BrowseItem> items;
+  final String? continueCursor;
+  final bool isDone;
+
+  factory OpportunityPage.fromJson(Map<String, dynamic> json) =>
+      OpportunityPage(
+        items: [
+          for (final row in _marketplaceMapList(json['page'] ?? json['items']))
+            BrowseItem.fromJson(row),
+        ],
+        continueCursor: _marketplaceOptionalString(json['continueCursor']),
+        isDone: json['isDone'] == true,
+      );
+}
+
+class OpportunityFilters {
+  const OpportunityFilters({
+    this.area,
+    this.genre,
+    this.venueType,
+    this.minGuaranteeMinor,
+  });
+
+  final String? area;
+  final String? genre;
+  final VenueType? venueType;
+  final int? minGuaranteeMinor;
+
+  Map<String, dynamic> toJson() => {
+    'area': ?area,
+    'genre': ?genre,
+    'venueType': ?venueType?.wireValue,
+    'minGuaranteeMinor': ?minGuaranteeMinor,
+  };
+}
+
+class GigWritePolicy {
+  const GigWritePolicy({required this.bandGigWrites});
+
+  final bool bandGigWrites;
+
+  factory GigWritePolicy.fromJson(Map<String, dynamic> json) =>
+      GigWritePolicy(bandGigWrites: json['bandGigWrites'] == true);
+}
+
 enum Ticketing { rsvp, external }
 
 enum GigLifecycle { published, cancelled, unpublished, deleted }

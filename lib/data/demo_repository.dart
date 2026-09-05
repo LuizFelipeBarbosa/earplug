@@ -48,6 +48,10 @@ class DemoRepository implements EarplugRepository {
       DemoData.submittedOrganizationApplication.id:
           DemoData.submittedOrganizationApplication,
     };
+    _opportunities = Map<String, Opportunity>.of(DemoData.opportunities);
+    _artistApplications = Map<String, ArtistApplication>.of(
+      DemoData.artistApplications,
+    );
     _applicationApplicants = {
       DemoData.submittedOrganizationApplication.id: (
         userId: 'applicant-sam',
@@ -87,6 +91,8 @@ class DemoRepository implements EarplugRepository {
   late final Map<String, OrganizationPrivateDetails>
   _organizationPrivateDetails;
   late final Map<String, OrganizationApplication> _organizationApplications;
+  late final Map<String, Opportunity> _opportunities;
+  late final Map<String, ArtistApplication> _artistApplications;
   late final Map<String, ({String userId, String name, String email})>
   _applicationApplicants;
   late final List<BandMembership> _memberships;
@@ -132,11 +138,15 @@ class DemoRepository implements EarplugRepository {
   int _nextOrganizationId = 1;
   int _nextOrganizationApplicationId = 1;
   int _nextOrganizationInviteId = 1;
+  int _nextOpportunityId = 1;
+  int _nextArtistApplicationId = 1;
+  int _nextOpportunitySlotId = 1;
   bool _interactionsSeeded = false;
   Map<String, int> _lastGoingCounts = const {};
   String? _myOrganizationApplicationId;
 
   bool platformAdmin = false;
+  bool demoBandGigWrites = true;
 
   /// Nothing to push: the demo data does not check identity.
   @override
@@ -1605,6 +1615,7 @@ class DemoRepository implements EarplugRepository {
 
   final Set<String> _issuedSlugs = {};
   final Set<String> _issuedGigSlugs = {};
+  final Set<String> _issuedOpportunitySlugs = {};
 
   String _uniqueGigSlug(String title) {
     var base = _slugify(title);
@@ -1618,6 +1629,23 @@ class DemoRepository implements EarplugRepository {
       final candidate = suffix == 1 ? base : '$base-$suffix';
       if (taken.add(candidate)) {
         _issuedGigSlugs.add(candidate);
+        return candidate;
+      }
+    }
+  }
+
+  String _uniqueOpportunitySlug(String title) {
+    var base = _slugify(title);
+    if (base.isEmpty) base = 'opportunity';
+    final taken = {
+      ..._issuedOpportunitySlugs,
+      for (final opportunity in DemoData.opportunities.values) opportunity.slug,
+      for (final opportunity in _opportunities.values) opportunity.slug,
+    };
+    for (var suffix = 1; ; suffix++) {
+      final candidate = suffix == 1 ? base : '$base-$suffix';
+      if (taken.add(candidate)) {
+        _issuedOpportunitySlugs.add(candidate);
         return candidate;
       }
     }
@@ -2045,6 +2073,540 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<({String opportunityId, String slug})> createOpportunity({
+    required String organizationId,
+    required String title,
+    String? desc,
+    required String venueId,
+    String? eventType,
+    int? expectedAttendance,
+    List<String>? genres,
+    required DateTime startsAt,
+    DateTime? doorsAt,
+    DateTime? endsAt,
+    AgeRequirement? ageRequirement,
+    String? equipment,
+    String? requirements,
+    String? flyKey,
+    String? flyStorageId,
+    DateTime? applicationsCloseAt,
+    OpportunityVisibility? visibility,
+    OpportunityTicketing? ticketing,
+    String? externalUrl,
+    List<SlotInput>? slots,
+  }) async {
+    final venue = _requireVenue(venueId);
+    final now = DateTime.now();
+    final id = 'demo-opportunity-${_nextOpportunityId++}';
+    final slug = _uniqueOpportunitySlug(title);
+    _opportunities[id] = Opportunity(
+      id: id,
+      organizationId: organizationId,
+      mode: OpportunityMode.publicEvent,
+      venueId: venueId,
+      venue: venue,
+      title: title,
+      desc: desc ?? '',
+      eventType: eventType,
+      expectedAttendance: expectedAttendance,
+      genres: genres == null ? const [] : List<String>.of(genres),
+      startsAt: startsAt,
+      doorsAt: doorsAt,
+      endsAt: endsAt,
+      ageRequirement: ageRequirement ?? AgeRequirement.allAges,
+      equipment: equipment,
+      requirements: requirements,
+      flyKey: flyKey ?? 'xerox',
+      flyerUrl: flyStorageId == null ? null : 'demo://flyer/$flyStorageId',
+      applicationsCloseAt:
+          applicationsCloseAt ?? startsAt.subtract(const Duration(days: 7)),
+      visibility: visibility ?? OpportunityVisibility.publicListing,
+      ticketing: ticketing ?? OpportunityTicketing.rsvp,
+      externalUrl: externalUrl,
+      status: OpportunityStatus.draft,
+      slug: slug,
+      revision: 1,
+      applicationCount: 0,
+      slots: _newOpportunitySlots(
+        slots == null || slots.isEmpty
+            ? const [
+                SlotInput(
+                  role: SlotRole.headliner,
+                  guaranteeMinor: 0,
+                  required: true,
+                ),
+              ]
+            : slots,
+      ),
+      invitedBandIds: const [],
+      createdAt: now,
+      updatedAt: now,
+      area: venue.approx.label.isEmpty ? venue.area : venue.approx.label,
+      venueType: venue.venueType,
+      currency: 'usd',
+    );
+    return (opportunityId: id, slug: slug);
+  }
+
+  @override
+  Future<int> updateOpportunity({
+    required String opportunityId,
+    required int expectedRevision,
+    String? title,
+    String? desc,
+    String? venueId,
+    String? eventType,
+    int? expectedAttendance,
+    List<String>? genres,
+    DateTime? startsAt,
+    DateTime? doorsAt,
+    DateTime? endsAt,
+    AgeRequirement? ageRequirement,
+    String? equipment,
+    String? requirements,
+    String? flyKey,
+    String? flyStorageId,
+    DateTime? applicationsCloseAt,
+    OpportunityVisibility? visibility,
+    OpportunityTicketing? ticketing,
+    String? externalUrl,
+    List<SlotInput>? slots,
+  }) async {
+    final existing = _requireOpportunity(opportunityId);
+    _checkOpportunityRevision(existing, expectedRevision);
+    if (slots != null && existing.status != OpportunityStatus.draft) {
+      throw StateError('Slots are locked once applications are open');
+    }
+    if (venueId != null) _requireVenue(venueId);
+    final updated = _copyOpportunity(
+      existing,
+      title: title,
+      desc: desc,
+      venueId: venueId,
+      eventType: eventType,
+      expectedAttendance: expectedAttendance,
+      genres: genres,
+      startsAt: startsAt,
+      doorsAt: doorsAt,
+      endsAt: endsAt,
+      ageRequirement: ageRequirement,
+      equipment: equipment,
+      requirements: requirements,
+      flyKey: flyKey,
+      flyerUrl: flyStorageId == null ? null : 'demo://flyer/$flyStorageId',
+      applicationsCloseAt: applicationsCloseAt,
+      visibility: visibility,
+      ticketing: ticketing,
+      externalUrl: externalUrl,
+      slots: slots == null ? null : _newOpportunitySlots(slots),
+      revision: existing.revision + 1,
+      updatedAt: DateTime.now(),
+    );
+    _opportunities[opportunityId] = updated;
+    return updated.revision;
+  }
+
+  @override
+  Future<({int revision, DateTime applicationsCloseAt})> openOpportunity({
+    required String opportunityId,
+    required int expectedRevision,
+  }) async {
+    final existing = _requireOpportunity(opportunityId);
+    _checkOpportunityRevision(existing, expectedRevision);
+    if (existing.status != OpportunityStatus.draft) {
+      throw StateError('Only draft opportunities can be opened');
+    }
+    if (existing.slots.isEmpty) {
+      throw StateError('Add at least one slot before opening');
+    }
+    if (!existing.applicationsCloseAt.isBefore(existing.startsAt)) {
+      throw StateError('Applications must close before the event starts');
+    }
+    final updated = _copyOpportunity(
+      existing,
+      status: OpportunityStatus.open,
+      revision: existing.revision + 1,
+      updatedAt: DateTime.now(),
+    );
+    _opportunities[opportunityId] = updated;
+    return (
+      revision: updated.revision,
+      applicationsCloseAt: existing.applicationsCloseAt,
+    );
+  }
+
+  @override
+  Future<void> closeOpportunityApplications(String opportunityId) async {
+    final existing = _requireOpportunity(opportunityId);
+    final now = DateTime.now();
+    var expiredCount = 0;
+    for (final application in _artistApplications.values.toList()) {
+      if (application.opportunityId == opportunityId &&
+          (application.status == ArtistApplicationStatus.submitted ||
+              application.status == ArtistApplicationStatus.underReview)) {
+        _artistApplications[application.id] = _copyArtistApplication(
+          application,
+          status: ArtistApplicationStatus.expired,
+          decidedAt: null,
+          updatedAt: now,
+        );
+        expiredCount++;
+      }
+    }
+    _opportunities[opportunityId] = _copyOpportunity(
+      existing,
+      status: OpportunityStatus.applicationsClosed,
+      applicationCount: existing.applicationCount - expiredCount,
+      revision: existing.revision + 1,
+      updatedAt: now,
+    );
+  }
+
+  @override
+  Future<void> reopenOpportunity({
+    required String opportunityId,
+    required DateTime applicationsCloseAt,
+  }) async {
+    final existing = _requireOpportunity(opportunityId);
+    _opportunities[opportunityId] = _copyOpportunity(
+      existing,
+      status: OpportunityStatus.open,
+      applicationsCloseAt: applicationsCloseAt,
+      revision: existing.revision + 1,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> cancelOpportunity(String opportunityId, {String? reason}) async {
+    final existing = _requireOpportunity(opportunityId);
+    final now = DateTime.now();
+    for (final application in _artistApplications.values.toList()) {
+      if (application.opportunityId == opportunityId &&
+          application.status.isActive) {
+        _artistApplications[application.id] = _copyArtistApplication(
+          application,
+          status: ArtistApplicationStatus.declined,
+          decidedAt: now,
+          updatedAt: now,
+        );
+      }
+    }
+    _opportunities[opportunityId] = _copyOpportunity(
+      existing,
+      status: OpportunityStatus.cancelled,
+      applicationCount: 0,
+      revision: existing.revision + 1,
+      updatedAt: now,
+    );
+  }
+
+  @override
+  Future<void> deleteOpportunityDraft(String opportunityId) async {
+    final existing = _requireOpportunity(opportunityId);
+    if (existing.status != OpportunityStatus.draft) {
+      throw StateError('Only draft opportunities can be deleted');
+    }
+    _opportunities.remove(opportunityId);
+  }
+
+  @override
+  Future<({String opportunityId, String slug})> duplicateOpportunity(
+    String opportunityId,
+  ) async {
+    final source = _requireOpportunity(opportunityId);
+    final id = 'demo-opportunity-${_nextOpportunityId++}';
+    final slug = _uniqueOpportunitySlug(source.title);
+    final now = DateTime.now();
+    _opportunities[id] = _copyOpportunity(
+      source,
+      id: id,
+      slug: slug,
+      status: OpportunityStatus.draft,
+      revision: 1,
+      applicationCount: 0,
+      invitedBandIds: const [],
+      slots: _newOpportunitySlots([
+        for (final slot in source.slots)
+          SlotInput(
+            role: slot.role,
+            setLengthMin: slot.setLengthMin,
+            guaranteeMinor: slot.guaranteeMinor,
+            required: slot.required,
+          ),
+      ]),
+      createdAt: now,
+      updatedAt: now,
+    );
+    return (opportunityId: id, slug: slug);
+  }
+
+  @override
+  Future<bool> inviteBandToOpportunity({
+    required String opportunityId,
+    required String bandId,
+  }) async {
+    final existing = _requireOpportunity(opportunityId);
+    if (existing.invitedBandIds.contains(bandId)) return true;
+    _opportunities[opportunityId] = _copyOpportunity(
+      existing,
+      invitedBandIds: [...existing.invitedBandIds, bandId],
+    );
+    return true;
+  }
+
+  @override
+  Future<void> uninviteBandFromOpportunity({
+    required String opportunityId,
+    required String bandId,
+  }) async {
+    final existing = _requireOpportunity(opportunityId);
+    _opportunities[opportunityId] = _copyOpportunity(
+      existing,
+      invitedBandIds: existing.invitedBandIds
+          .where((invitedBandId) => invitedBandId != bandId)
+          .toList(),
+    );
+  }
+
+  @override
+  Future<List<Opportunity>> manageOpportunities(String organizationId) async {
+    final drafts = <Opportunity>[];
+    final rest = <Opportunity>[];
+    for (final opportunity in _opportunities.values) {
+      if (opportunity.organizationId != organizationId) continue;
+      if (opportunity.status == OpportunityStatus.draft) {
+        drafts.add(opportunity);
+      } else {
+        rest.add(opportunity);
+      }
+    }
+    drafts.sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    rest.sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    return [...drafts, ...rest];
+  }
+
+  @override
+  Future<Opportunity?> opportunity(String opportunityId) async =>
+      _opportunities[opportunityId];
+
+  @override
+  Future<List<ApplicantRow>> applicantsFor(String opportunityId) async => [
+    for (final application in _artistApplications.values)
+      if (application.opportunityId == opportunityId)
+        ApplicantRow(
+          application: application,
+          band: _bands[application.bandId]!,
+          contactEmail: application.bandId == 'b1'
+              ? DemoData.organizationMembers[DemoData.demoUserId]!.email
+              : null,
+        ),
+  ]..sort((a, b) => b.application.createdAt.compareTo(a.application.createdAt));
+
+  @override
+  Future<void> reviewApplication({
+    required String applicationId,
+    required ArtistApplicationReviewAction action,
+  }) async {
+    final existing = _requireArtistApplication(applicationId);
+    final status = switch (action) {
+      ArtistApplicationReviewAction.underReview =>
+        ArtistApplicationStatus.underReview,
+      ArtistApplicationReviewAction.shortlisted =>
+        ArtistApplicationStatus.shortlisted,
+      ArtistApplicationReviewAction.declined =>
+        ArtistApplicationStatus.declined,
+    };
+    final now = DateTime.now();
+    _artistApplications[applicationId] = _copyArtistApplication(
+      existing,
+      status: status,
+      decidedAt: action == ArtistApplicationReviewAction.declined
+          ? now
+          : existing.decidedAt,
+      updatedAt: now,
+    );
+    // Count transitions across the active boundary, including a renewed review.
+    final countChange =
+        (status.isActive ? 1 : 0) - (existing.status.isActive ? 1 : 0);
+    if (countChange != 0) {
+      final opportunity = _requireOpportunity(existing.opportunityId);
+      _opportunities[opportunity.id] = _copyOpportunity(
+        opportunity,
+        applicationCount: opportunity.applicationCount + countChange,
+      );
+    }
+  }
+
+  @override
+  Future<OpportunityPage> browseOpportunities({
+    String? cursor,
+    int numItems = 25,
+    String? bandId,
+    OpportunityFilters? filters,
+  }) async {
+    final now = DateTime.now();
+    final opportunities = _opportunities.values.where((opportunity) {
+      if (opportunity.status != OpportunityStatus.open ||
+          opportunity.visibility != OpportunityVisibility.publicListing ||
+          opportunity.mode != OpportunityMode.publicEvent ||
+          opportunity.startsAt.isBefore(now)) {
+        return false;
+      }
+      if (filters?.area != null && opportunity.area != filters!.area) {
+        return false;
+      }
+      if (filters?.genre != null &&
+          !opportunity.genres.contains(filters!.genre)) {
+        return false;
+      }
+      if (filters?.venueType != null &&
+          opportunity.venueType != filters!.venueType) {
+        return false;
+      }
+      final minGuarantee = filters?.minGuaranteeMinor;
+      return minGuarantee == null ||
+          opportunity.slots.any((slot) => slot.guaranteeMinor >= minGuarantee);
+    }).toList()..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    return OpportunityPage(
+      items: [
+        for (final opportunity in opportunities)
+          _browseItem(opportunity, bandId),
+      ],
+      continueCursor: null,
+      isDone: true,
+    );
+  }
+
+  @override
+  Future<List<BrowseItem>> invitedOpportunities(String bandId) async {
+    final opportunities =
+        _opportunities.values
+            .where(
+              (opportunity) =>
+                  opportunity.visibility == OpportunityVisibility.inviteOnly &&
+                  opportunity.status == OpportunityStatus.open &&
+                  opportunity.invitedBandIds.contains(bandId),
+            )
+            .toList()
+          ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    return [
+      for (final opportunity in opportunities) _browseItem(opportunity, bandId),
+    ];
+  }
+
+  @override
+  Future<BrowseItem?> resolveOpportunity(String ref, {String? bandId}) async {
+    final opportunity = _opportunities.values
+        .where(
+          (opportunity) => opportunity.id == ref || opportunity.slug == ref,
+        )
+        .firstOrNull;
+    if (opportunity == null) return null;
+    if ((opportunity.status == OpportunityStatus.draft ||
+            opportunity.status == OpportunityStatus.cancelled) &&
+        !_organizationMemberships.any(
+          (membership) =>
+              membership.organization.id == opportunity.organizationId,
+        )) {
+      return null;
+    }
+    if (opportunity.visibility == OpportunityVisibility.inviteOnly &&
+        (bandId == null || !opportunity.invitedBandIds.contains(bandId))) {
+      return null;
+    }
+    return _browseItem(opportunity, bandId);
+  }
+
+  @override
+  Future<String> applyToOpportunity({
+    required String opportunityId,
+    required String slotId,
+    required String bandId,
+    required String message,
+    int? askMinor,
+    String? availabilityNote,
+    String? lineupNote,
+  }) async {
+    final existing = _requireOpportunity(opportunityId);
+    if (existing.status != OpportunityStatus.open) {
+      throw StateError('This opportunity is not accepting applications');
+    }
+    final slot = existing.slots.where((slot) => slot.id == slotId).firstOrNull;
+    if (slot == null || slot.status != SlotStatus.open) {
+      throw StateError('This slot is no longer available');
+    }
+    if (_artistApplications.values.any(
+      (application) =>
+          application.opportunityId == opportunityId &&
+          application.bandId == bandId &&
+          application.status.isActive,
+    )) {
+      throw StateError('You already applied to this opportunity');
+    }
+    final now = DateTime.now();
+    final id = 'demo-artist-application-${_nextArtistApplicationId++}';
+    _artistApplications[id] = ArtistApplication(
+      id: id,
+      opportunityId: opportunityId,
+      slotId: slotId,
+      bandId: bandId,
+      status: ArtistApplicationStatus.submitted,
+      message: message,
+      askMinor: askMinor,
+      availabilityNote: availabilityNote,
+      lineupNote: lineupNote,
+      decidedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _opportunities[opportunityId] = _copyOpportunity(
+      existing,
+      applicationCount: existing.applicationCount + 1,
+    );
+    return id;
+  }
+
+  @override
+  Future<void> withdrawApplication(String applicationId) async {
+    final existing = _requireArtistApplication(applicationId);
+    if (!existing.status.isActive) {
+      throw StateError('Application is not active');
+    }
+    _artistApplications[applicationId] = _copyArtistApplication(
+      existing,
+      status: ArtistApplicationStatus.withdrawn,
+      decidedAt: null,
+      updatedAt: DateTime.now(),
+    );
+    final opportunity = _requireOpportunity(existing.opportunityId);
+    _opportunities[opportunity.id] = _copyOpportunity(
+      opportunity,
+      applicationCount: opportunity.applicationCount - 1,
+    );
+  }
+
+  @override
+  Future<List<BandApplication>> myApplications(String bandId) async => [
+    for (final application in _artistApplications.values)
+      if (application.bandId == bandId)
+        BandApplication(
+          application: application,
+          opportunity: _opportunities[application.opportunityId]!,
+        ),
+  ]..sort((a, b) => b.application.createdAt.compareTo(a.application.createdAt));
+
+  @override
+  Future<ArtistApplication?> myApplicationFor({
+    required String opportunityId,
+    required String bandId,
+  }) async => _latestArtistApplication(opportunityId, bandId);
+
+  @override
+  Future<GigWritePolicy> gigWritePolicy() async =>
+      GigWritePolicy(bandGigWrites: demoBandGigWrites);
+
+  @override
   Future<List<GigProject>> manageGigs(String bandId) async => [
     for (final project in _gigProjects.values)
       if (project.bandId == bandId &&
@@ -2404,6 +2966,155 @@ class DemoRepository implements EarplugRepository {
       checkedInAt: DateTime.now(),
     );
   }
+
+  Opportunity _requireOpportunity(String opportunityId) {
+    final opportunity = _opportunities[opportunityId];
+    if (opportunity == null) throw StateError('Opportunity not found.');
+    return opportunity;
+  }
+
+  ArtistApplication _requireArtistApplication(String applicationId) {
+    final application = _artistApplications[applicationId];
+    if (application == null) throw StateError('Artist application not found.');
+    return application;
+  }
+
+  void _checkOpportunityRevision(
+    Opportunity opportunity,
+    int expectedRevision,
+  ) {
+    if (opportunity.revision != expectedRevision) {
+      throw StateError('Opportunity changed elsewhere');
+    }
+  }
+
+  List<OpportunitySlot> _newOpportunitySlots(List<SlotInput> inputs) => [
+    for (final (index, input) in inputs.indexed)
+      OpportunitySlot(
+        id: 'demo-slot-${_nextOpportunitySlotId++}',
+        order: index,
+        role: input.role,
+        setLengthMin: input.setLengthMin,
+        guaranteeMinor: input.guaranteeMinor,
+        required: input.required,
+        status: SlotStatus.open,
+        bandId: null,
+      ),
+  ];
+
+  Opportunity _copyOpportunity(
+    Opportunity opportunity, {
+    String? id,
+    String? slug,
+    String? title,
+    String? desc,
+    String? venueId,
+    String? eventType,
+    int? expectedAttendance,
+    List<String>? genres,
+    DateTime? startsAt,
+    DateTime? doorsAt,
+    DateTime? endsAt,
+    AgeRequirement? ageRequirement,
+    String? equipment,
+    String? requirements,
+    String? flyKey,
+    String? flyerUrl,
+    DateTime? applicationsCloseAt,
+    OpportunityVisibility? visibility,
+    OpportunityTicketing? ticketing,
+    String? externalUrl,
+    OpportunityStatus? status,
+    int? revision,
+    int? applicationCount,
+    List<OpportunitySlot>? slots,
+    List<String>? invitedBandIds,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    final venue = _venues[venueId ?? opportunity.venueId];
+    return Opportunity(
+      id: id ?? opportunity.id,
+      organizationId: opportunity.organizationId,
+      mode: opportunity.mode,
+      venueId: venueId ?? opportunity.venueId,
+      venue: venue,
+      title: title ?? opportunity.title,
+      desc: desc ?? opportunity.desc,
+      eventType: eventType ?? opportunity.eventType,
+      expectedAttendance: expectedAttendance ?? opportunity.expectedAttendance,
+      genres: genres == null ? opportunity.genres : List<String>.of(genres),
+      startsAt: startsAt ?? opportunity.startsAt,
+      doorsAt: doorsAt ?? opportunity.doorsAt,
+      endsAt: endsAt ?? opportunity.endsAt,
+      ageRequirement: ageRequirement ?? opportunity.ageRequirement,
+      equipment: equipment ?? opportunity.equipment,
+      requirements: requirements ?? opportunity.requirements,
+      flyKey: flyKey ?? opportunity.flyKey,
+      flyerUrl: flyerUrl ?? opportunity.flyerUrl,
+      applicationsCloseAt:
+          applicationsCloseAt ?? opportunity.applicationsCloseAt,
+      visibility: visibility ?? opportunity.visibility,
+      ticketing: ticketing ?? opportunity.ticketing,
+      externalUrl: externalUrl ?? opportunity.externalUrl,
+      status: status ?? opportunity.status,
+      slug: slug ?? opportunity.slug,
+      revision: revision ?? opportunity.revision,
+      applicationCount: applicationCount ?? opportunity.applicationCount,
+      slots: slots ?? opportunity.slots,
+      invitedBandIds: invitedBandIds ?? opportunity.invitedBandIds,
+      createdAt: createdAt ?? opportunity.createdAt,
+      updatedAt: updatedAt ?? opportunity.updatedAt,
+      area: venueId == null
+          ? opportunity.area
+          : (venue!.approx.label.isEmpty ? venue.area : venue.approx.label),
+      venueType: venueId == null ? opportunity.venueType : venue?.venueType,
+      currency: opportunity.currency,
+    );
+  }
+
+  ArtistApplication _copyArtistApplication(
+    ArtistApplication application, {
+    required ArtistApplicationStatus status,
+    required DateTime? decidedAt,
+    required DateTime updatedAt,
+  }) => ArtistApplication(
+    id: application.id,
+    opportunityId: application.opportunityId,
+    slotId: application.slotId,
+    bandId: application.bandId,
+    status: status,
+    message: application.message,
+    askMinor: application.askMinor,
+    availabilityNote: application.availabilityNote,
+    lineupNote: application.lineupNote,
+    decidedAt: decidedAt,
+    createdAt: application.createdAt,
+    updatedAt: updatedAt,
+  );
+
+  ArtistApplication? _latestArtistApplication(
+    String opportunityId,
+    String bandId,
+  ) {
+    ArtistApplication? latest;
+    for (final application in _artistApplications.values) {
+      if (application.opportunityId == opportunityId &&
+          application.bandId == bandId &&
+          (latest == null || application.createdAt.isAfter(latest.createdAt))) {
+        latest = application;
+      }
+    }
+    return latest;
+  }
+
+  BrowseItem _browseItem(Opportunity opportunity, String? bandId) => BrowseItem(
+    opportunity: opportunity,
+    invited: bandId != null && opportunity.invitedBandIds.contains(bandId),
+    myApplicationStatus: bandId == null
+        ? null
+        : _latestArtistApplication(opportunity.id, bandId)?.status,
+  );
 
   GigProject _requireGigProject(String projectId) {
     final project = _gigProjects[projectId];
