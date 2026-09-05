@@ -657,6 +657,8 @@ describe("Stripe webhook verification and recording", () => {
       id: "evt_platform_valid",
       type: "payment_intent.succeeded",
       livemode: false,
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: "pi_platform_valid" } },
     });
     const response = await t.fetch("/stripe-webhook", {
       method: "POST",
@@ -665,7 +667,7 @@ describe("Stripe webhook verification and recording", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe("recorded");
+    expect(await response.text()).toBe("ignored");
     const events = await allStripeEvents(t);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
@@ -682,6 +684,8 @@ describe("Stripe webhook verification and recording", () => {
       id: "evt_platform_livemode_mismatch",
       type: "payment_intent.succeeded",
       livemode: true,
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: "pi_platform_livemode_mismatch" } },
     });
     const response = await t.fetch("/stripe-webhook", {
       method: "POST",
@@ -707,6 +711,8 @@ describe("Stripe webhook verification and recording", () => {
       id: "evt_platform_duplicate",
       type: "checkout.session.completed",
       livemode: false,
+      created: Math.floor(Date.now() / 1000),
+      data: { object: { id: "cs_platform_duplicate" } },
     });
     const request = async () =>
       await t.fetch("/stripe-webhook", {
@@ -718,7 +724,7 @@ describe("Stripe webhook verification and recording", () => {
     const first = await request();
     const second = await request();
     expect(first.status).toBe(200);
-    expect(await first.text()).toBe("recorded");
+    expect(await first.text()).toBe("ignored");
     expect(second.status).toBe(200);
     expect(await second.text()).toBe("duplicate");
     expect(await allStripeEvents(t)).toHaveLength(1);
@@ -798,6 +804,16 @@ describe("Stripe webhook verification and recording", () => {
       type: "account.updated",
       account: "acct_connect_test",
       livemode: false,
+      created: Math.floor(Date.now() / 1000),
+      data: {
+        object: {
+          id: "acct_connect_test",
+          charges_enabled: true,
+          payouts_enabled: true,
+          details_submitted: true,
+          requirements: { currently_due: [], past_due: [] },
+        },
+      },
     });
     const response = await t.fetch("/stripe-connect-webhook", {
       method: "POST",
@@ -806,7 +822,7 @@ describe("Stripe webhook verification and recording", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe("recorded");
+    expect(await response.text()).toBe("applied");
     const events = await allStripeEvents(t);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
@@ -814,7 +830,7 @@ describe("Stripe webhook verification and recording", () => {
       type: "account.updated",
       account: "acct_connect_test",
       livemode: false,
-      status: "ignored",
+      status: "applied",
     });
   });
 });
