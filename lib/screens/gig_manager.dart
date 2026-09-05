@@ -11,6 +11,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/opportunity_labels.dart';
 import '../widgets/sheets.dart';
 import 'door_mode.dart';
 
@@ -66,20 +67,8 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    if (!app.isAdminOf(app.bandId)) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'Only band admins can create and manage gigs.',
-            textAlign: TextAlign.center,
-            style: epText(color: context.epColors.contentSecondary),
-          ),
-        ),
-      );
-    }
     _partition(app.managedGigProjects);
-    app.ensureManagedGigs();
+    if (app.isAdminOf(app.bandId)) app.ensureManagedGigs();
 
     return RefreshIndicator(
       onRefresh: () async {
@@ -108,7 +97,7 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
                   style: Theme.of(context).textTheme.epPageHeading,
                 ),
               ),
-              if (app.gigWritePolicy)
+              if (app.gigWritePolicy && app.isAdminOf(app.bandId))
                 FilledButton(
                   onPressed: app.startGigCreate,
                   child: Text('+ NEW GIG'),
@@ -276,7 +265,7 @@ class _OpportunityCard extends StatelessWidget {
                     tone: EpStatusPillTone.selected,
                   ),
                 if (item.myApplicationStatus case final status?)
-                  StatusPill(label: _applicationStatusLabel(status)),
+                  StatusPill(label: applicationStatusLabel(status)),
               ],
             ),
           ],
@@ -376,7 +365,7 @@ class _AppliedSectionState extends State<_AppliedSection> {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     StatusPill(
-                      label: _applicationStatusLabel(row.application.status),
+                      label: applicationStatusLabel(row.application.status),
                     ),
                     if (row.application.status.isActive)
                       TextButton(
@@ -399,9 +388,6 @@ class _AppliedSectionState extends State<_AppliedSection> {
     );
   }
 }
-
-String _applicationStatusLabel(ArtistApplicationStatus status) =>
-    status.wireValue.replaceAll('_', ' ').toUpperCase();
 
 String _opportunityDate(DateTime date) {
   const months = [
@@ -607,6 +593,7 @@ class _DraftSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    final canWrite = app.gigWritePolicy && app.isAdminOf(app.bandId);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -638,13 +625,13 @@ class _DraftSection extends StatelessWidget {
                       child: GhostDraftRow(
                         title: _projectTitle(projects[index]),
                         missing: _draftMissing(projects[index]),
-                        onResume: app.gigWritePolicy
+                        onResume: canWrite
                             ? () => app.editGigProject(projects[index].id)
                             : null,
-                        actionLabel: app.gigWritePolicy ? 'RESUME →' : '',
+                        actionLabel: canWrite ? 'RESUME →' : '',
                       ),
                     ),
-                    if (app.gigWritePolicy)
+                    if (canWrite)
                       IconButton(
                         key: ValueKey('gig-actions-${projects[index].id}'),
                         tooltip:
@@ -655,7 +642,7 @@ class _DraftSection extends StatelessWidget {
                       ),
                   ],
                 ),
-                if (!app.gigWritePolicy)
+                if (app.isAdminOf(app.bandId) && !app.gigWritePolicy)
                   _FeatureAction(
                     key: ValueKey('gig-delete-${projects[index].id}'),
                     icon: Icons.delete_outline,
@@ -667,7 +654,7 @@ class _DraftSection extends StatelessWidget {
                       _ProjectAction.delete,
                     ),
                   )
-                else
+                else if (canWrite)
                   Row(
                     children: [
                       Expanded(
@@ -742,7 +729,8 @@ class _ProjectCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final canWrite = !readOnly && app.gigWritePolicy;
+    final canWrite =
+        !readOnly && app.gigWritePolicy && app.isAdminOf(app.bandId);
     final venue = project.venueId == null ? null : app.venue(project.venueId!);
     final cachedGig = project.publicGigId == null
         ? null
@@ -904,7 +892,9 @@ void _showProjectActions(
   AppState app,
   GigProject project,
 ) {
-  if (!app.gigWritePolicy || project.status == GigProjectStatus.cancelled) {
+  if (!app.gigWritePolicy ||
+      !app.isAdminOf(app.bandId) ||
+      project.status == GigProjectStatus.cancelled) {
     return;
   }
   final items = <EpActionSheetItem>[
@@ -953,6 +943,7 @@ Future<void> _runProjectAction(
 ) async {
   if (action != _ProjectAction.preview &&
       (project.status == GigProjectStatus.cancelled ||
+          !app.isAdminOf(app.bandId) ||
           (!app.gigWritePolicy &&
               !(project.status == GigProjectStatus.draft &&
                   action == _ProjectAction.delete)))) {

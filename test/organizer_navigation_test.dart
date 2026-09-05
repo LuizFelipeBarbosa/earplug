@@ -3,6 +3,10 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
+import 'package:earplug/screens/opportunity_applicants.dart';
+import 'package:earplug/screens/opportunity_detail.dart';
+import 'package:earplug/screens/opportunity_edit.dart';
+import 'package:earplug/screens/org_opportunities.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
@@ -162,28 +166,19 @@ void main() {
     await tester.tap(opportunitiesTab);
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('placeholder-orgOpportunities')),
-      findsOneWidget,
-    );
+    expect(find.byType(OrgOpportunitiesScreen), findsOneWidget);
     expect(harness.app.current.screen, Screen.orgOpportunities);
 
     harness.app.openOpportunityEditor();
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('placeholder-opportunityEdit')),
-      findsOneWidget,
-    );
-    expect(find.text('new'), findsOneWidget);
+    expect(find.byType(OpportunityEditScreen), findsOneWidget);
+    expect(harness.app.current.param, 'new');
     expect(find.byType(OrganizerTabBar), findsOneWidget);
 
     harness.app.openOpportunityApplicants('opp1');
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('placeholder-opportunityApplicants')),
-      findsOneWidget,
-    );
-    expect(find.text('opp1'), findsOneWidget);
+    expect(find.byType(OpportunityApplicantsScreen), findsOneWidget);
+    expect(harness.app.current.param, 'opp1');
     expect(harness.app.identity, isA<OrganizerIdentity>());
   });
 
@@ -197,11 +192,8 @@ void main() {
     harness.app.openOpportunity('friday-night-live');
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('placeholder-opportunityDetail')),
-      findsOneWidget,
-    );
-    expect(find.text('friday-night-live'), findsOneWidget);
+    expect(find.byType(OpportunityDetailScreen), findsOneWidget);
+    expect(harness.app.current.param, 'friday-night-live');
     expect(find.byType(FanTabBar), findsOneWidget);
     expect(find.byType(BandTabBar), findsNothing);
     expect(harness.app.identity, isA<PersonalIdentity>());

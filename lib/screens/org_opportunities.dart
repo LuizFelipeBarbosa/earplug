@@ -8,6 +8,7 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/opportunity_labels.dart';
 import '../widgets/sheets.dart';
 
 class OrgOpportunitiesScreen extends StatefulWidget {
@@ -263,7 +264,7 @@ class _OpportunityCard extends StatelessWidget {
     final slotSummary = slots
         .map(
           (slot) =>
-              '${_slotRoleLabel(slot.role)} '
+              '${slotRoleLabel(slot.role)} '
               '${Money(slot.guaranteeMinor, opportunity.currency).label}',
         )
         .join(' · ');
@@ -304,8 +305,8 @@ class _OpportunityCard extends StatelessWidget {
                 ],
                 const SizedBox(height: 8),
                 StatusPill(
-                  label: _opportunityStatusLabel(opportunity.status),
-                  tone: _opportunityStatusTone(opportunity.status),
+                  label: opportunityStatusLabel(opportunity.status),
+                  tone: opportunityStatusTone(opportunity.status),
                 ),
               ],
             ),
@@ -322,31 +323,6 @@ class _OpportunityCard extends StatelessWidget {
 }
 
 enum _OpportunityAction { duplicate, close, reopen, cancel, delete }
-
-String _slotRoleLabel(SlotRole role) => switch (role) {
-  SlotRole.headliner => 'Headliner',
-  SlotRole.support => 'Support',
-  SlotRole.opener => 'Opener',
-};
-
-String _opportunityStatusLabel(OpportunityStatus status) => switch (status) {
-  OpportunityStatus.draft => 'Draft',
-  OpportunityStatus.open => 'Open',
-  OpportunityStatus.applicationsClosed => 'Applications closed',
-  OpportunityStatus.booking => 'Booking',
-  OpportunityStatus.confirmed => 'Confirmed',
-  OpportunityStatus.completed => 'Completed',
-  OpportunityStatus.cancelled => 'Cancelled',
-};
-
-EpStatusPillTone _opportunityStatusTone(OpportunityStatus status) =>
-    switch (status) {
-      OpportunityStatus.open ||
-      OpportunityStatus.confirmed => EpStatusPillTone.success,
-      OpportunityStatus.applicationsClosed ||
-      OpportunityStatus.booking => EpStatusPillTone.warning,
-      _ => EpStatusPillTone.neutral,
-    };
 
 Future<bool> _confirm(BuildContext context, String title, String body) async =>
     await showDialog<bool>(

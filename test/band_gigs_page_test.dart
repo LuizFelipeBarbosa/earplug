@@ -5,6 +5,7 @@ import 'package:earplug/screens/gig_manager.dart';
 import 'package:earplug/screens/opportunity_detail.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
+import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -13,6 +14,59 @@ import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('non-admin members can browse gigs without write actions', (
+    tester,
+  ) async {
+    final harness = await _pumpScreen(
+      tester,
+      home: const Scaffold(
+        body: GigManagerScreen(),
+        bottomNavigationBar: BandTabBar(),
+      ),
+    );
+    await _signInNonAdminMember(tester, harness);
+    expect(harness.app.isAdminOf('b2'), isFalse);
+    expect(harness.app.gigWritePolicy, isTrue);
+
+    await tester.tap(find.byIcon(Icons.table_rows_outlined));
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.gigMgr);
+    for (final segment in ['open', 'applied', 'booked', 'past']) {
+      expect(
+        find.widgetWithText(EpChip, segment.toUpperCase()),
+        findsOneWidget,
+      );
+    }
+    expect(find.text('+ NEW GIG'), findsNothing);
+    expect(find.byKey(const Key('opp-card-opp1')), findsOneWidget);
+
+    // Seed a legacy draft so the member's write checks cover a visible row.
+    final repository = harness.app.repository as DemoRepository;
+    final draft = await repository.createGigDraft('b2');
+    await harness.app.refreshManagedGigs();
+    await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
+    await tester.pumpAndSettle();
+
+    for (final writesEnabled in [true, false]) {
+      repository.demoBandGigWrites = writesEnabled;
+      await harness.app.refreshGigWritePolicy();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GhostDraftRow), findsOneWidget);
+      expect(
+        tester.widget<GhostDraftRow>(find.byType(GhostDraftRow)).onResume,
+        isNull,
+      );
+      expect(find.text('RESUME →'), findsNothing);
+      expect(find.byIcon(Icons.more_horiz), findsNothing);
+      expect(find.byKey(Key('gig-actions-${draft.id}')), findsNothing);
+      expect(find.byKey(Key('gig-edit-${draft.id}')), findsNothing);
+      expect(find.byKey(Key('gig-preview-${draft.id}')), findsNothing);
+      expect(find.byKey(Key('gig-delete-${draft.id}')), findsNothing);
+    }
+    harness.app.dispose();
+  });
+
   testWidgets('OPEN shows invitations first and excludes drafts', (
     tester,
   ) async {
@@ -419,6 +473,19 @@ Future<void> _signInBand(WidgetTester tester, AppHarness harness) async {
   await harness.auth.signInDemo();
   await tester.pumpAndSettle();
   harness.app.switchToBand('b1');
+  await tester.pumpAndSettle();
+}
+
+Future<void> _signInNonAdminMember(
+  WidgetTester tester,
+  AppHarness harness,
+) async {
+  await harness.auth.signInDemo();
+  await tester.pumpAndSettle();
+  final invite = await harness.app.repository.createBandInvite('b2');
+  await harness.app.repository.acceptBandInvite(invite.token);
+  await tester.pumpAndSettle();
+  harness.app.switchToBand('b2');
   await tester.pumpAndSettle();
 }
 

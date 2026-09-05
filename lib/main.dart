@@ -30,10 +30,14 @@ import 'screens/gig_invite.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
 import 'screens/my_gigs.dart';
+import 'screens/opportunity_applicants.dart';
+import 'screens/opportunity_detail.dart';
+import 'screens/opportunity_edit.dart';
 import 'screens/org_application_status.dart';
 import 'screens/org_apply.dart';
 import 'screens/org_dash.dart';
 import 'screens/org_join.dart';
+import 'screens/org_opportunities.dart';
 import 'screens/org_settings.dart';
 import 'screens/org_team.dart';
 import 'screens/org_venue_edit.dart';
@@ -563,24 +567,18 @@ class RootShell extends StatelessWidget {
       ),
       Screen.orgTeam => OrgTeamScreen(key: key),
       Screen.orgSettings => OrgSettingsScreen(key: key),
-      Screen.orgOpportunities => const _PlaceholderScreen(
-        key: Key('placeholder-orgOpportunities'),
-        title: 'OPPORTUNITIES',
+      Screen.orgOpportunities => OrgOpportunitiesScreen(key: key),
+      Screen.opportunityEdit => OpportunityEditScreen(
+        key: key,
+        opportunityId: entry.param!,
       ),
-      Screen.opportunityEdit => _PlaceholderScreen(
-        key: const Key('placeholder-opportunityEdit'),
-        title: 'EDIT OPPORTUNITY',
-        param: entry.param,
+      Screen.opportunityApplicants => OpportunityApplicantsScreen(
+        key: key,
+        opportunityId: entry.param!,
       ),
-      Screen.opportunityApplicants => _PlaceholderScreen(
-        key: const Key('placeholder-opportunityApplicants'),
-        title: 'APPLICANTS',
-        param: entry.param,
-      ),
-      Screen.opportunityDetail => _PlaceholderScreen(
-        key: const Key('placeholder-opportunityDetail'),
-        title: 'OPPORTUNITY',
-        param: entry.param,
+      Screen.opportunityDetail => OpportunityDetailScreen(
+        key: key,
+        opportunityRef: entry.param!,
       ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
@@ -588,41 +586,6 @@ class RootShell extends StatelessWidget {
         applicationId: entry.param!,
       ),
     };
-  }
-}
-
-class _PlaceholderScreen extends StatelessWidget {
-  const _PlaceholderScreen({super.key, required this.title, this.param});
-
-  final String title;
-  final String? param;
-
-  @override
-  Widget build(BuildContext context) {
-    return ColoredBox(
-      color: context.epColors.background,
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(title, style: epDisplay(size: 20)),
-              if (param != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  param!,
-                  style: epText(
-                    size: 13,
-                    color: context.epColors.contentSecondary,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }
 

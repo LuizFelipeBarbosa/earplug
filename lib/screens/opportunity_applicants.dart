@@ -8,6 +8,7 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/opportunity_labels.dart';
 
 class OpportunityApplicantsScreen extends StatefulWidget {
   const OpportunityApplicantsScreen({super.key, required this.opportunityId});
@@ -150,8 +151,8 @@ class _OpportunityApplicantsScreenState
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               StatusPill(
-                label: _opportunityStatusLabel(opportunity.status),
-                tone: _opportunityStatusTone(opportunity.status),
+                label: opportunityStatusLabel(opportunity.status),
+                tone: opportunityStatusTone(opportunity.status),
               ),
               Text(
                 '${opportunity.applicationCount} applicants',
@@ -173,7 +174,7 @@ class _OpportunityApplicantsScreenState
               for (final slot in slots)
                 EpChip(
                   key: ValueKey('applicants-slot-${slot.id}'),
-                  label: _slotRoleLabel(slot.role),
+                  label: slotRoleLabel(slot.role),
                   active: _selectedSlotId == slot.id,
                   onTap: () => setState(() => _selectedSlotId = slot.id),
                 ),
@@ -291,8 +292,8 @@ class _ApplicantCard extends StatelessWidget {
           Text(application.message, style: textTheme.epBody),
           const SizedBox(height: 10),
           StatusPill(
-            label: _applicationStatusLabel(application.status),
-            tone: _applicationStatusTone(application.status),
+            label: applicationStatusLabel(application.status),
+            tone: applicationStatusTone(application.status),
           ),
           if (row.contactEmail != null) ...[
             const SizedBox(height: 8),
@@ -340,52 +341,6 @@ class _ApplicantCard extends StatelessWidget {
     );
   }
 }
-
-String _slotRoleLabel(SlotRole role) => switch (role) {
-  SlotRole.headliner => 'Headliner',
-  SlotRole.support => 'Support',
-  SlotRole.opener => 'Opener',
-};
-
-String _opportunityStatusLabel(OpportunityStatus status) => switch (status) {
-  OpportunityStatus.draft => 'Draft',
-  OpportunityStatus.open => 'Open',
-  OpportunityStatus.applicationsClosed => 'Applications closed',
-  OpportunityStatus.booking => 'Booking',
-  OpportunityStatus.confirmed => 'Confirmed',
-  OpportunityStatus.completed => 'Completed',
-  OpportunityStatus.cancelled => 'Cancelled',
-};
-
-EpStatusPillTone _opportunityStatusTone(OpportunityStatus status) =>
-    switch (status) {
-      OpportunityStatus.open ||
-      OpportunityStatus.confirmed => EpStatusPillTone.success,
-      OpportunityStatus.applicationsClosed ||
-      OpportunityStatus.booking => EpStatusPillTone.warning,
-      _ => EpStatusPillTone.neutral,
-    };
-
-String _applicationStatusLabel(ArtistApplicationStatus status) =>
-    switch (status) {
-      ArtistApplicationStatus.submitted => 'Submitted',
-      ArtistApplicationStatus.underReview => 'Under review',
-      ArtistApplicationStatus.shortlisted => 'Shortlisted',
-      ArtistApplicationStatus.offered => 'Offered',
-      ArtistApplicationStatus.booked => 'Booked',
-      ArtistApplicationStatus.declined => 'Declined',
-      ArtistApplicationStatus.withdrawn => 'Withdrawn',
-      ArtistApplicationStatus.expired => 'Expired',
-    };
-
-EpStatusPillTone _applicationStatusTone(ArtistApplicationStatus status) =>
-    switch (status) {
-      ArtistApplicationStatus.shortlisted => EpStatusPillTone.selected,
-      ArtistApplicationStatus.offered ||
-      ArtistApplicationStatus.booked => EpStatusPillTone.success,
-      ArtistApplicationStatus.declined => EpStatusPillTone.warning,
-      _ => EpStatusPillTone.neutral,
-    };
 
 Future<bool> _confirm(BuildContext context, String title, String body) async =>
     await showDialog<bool>(
