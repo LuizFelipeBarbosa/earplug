@@ -1024,6 +1024,335 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<({String opportunityId, String slug})> createOpportunity({
+    required String organizationId,
+    required String title,
+    String? desc,
+    required String venueId,
+    String? eventType,
+    int? expectedAttendance,
+    List<String>? genres,
+    required DateTime startsAt,
+    DateTime? doorsAt,
+    DateTime? endsAt,
+    AgeRequirement? ageRequirement,
+    String? equipment,
+    String? requirements,
+    String? flyKey,
+    String? flyStorageId,
+    DateTime? applicationsCloseAt,
+    OpportunityVisibility? visibility,
+    OpportunityTicketing? ticketing,
+    String? externalUrl,
+    List<SlotInput>? slots,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('talentOpportunities:create', {
+        'organizationId': organizationId,
+        'title': title,
+        'desc': ?desc,
+        'venueId': venueId,
+        'eventType': ?eventType,
+        'expectedAttendance': ?expectedAttendance,
+        'genres': ?genres,
+        'startsAt': startsAt.millisecondsSinceEpoch,
+        'doorsAt': ?doorsAt?.millisecondsSinceEpoch,
+        'endsAt': ?endsAt?.millisecondsSinceEpoch,
+        'ageRequirement': ?ageRequirement?.wireValue,
+        'equipment': ?equipment,
+        'requirements': ?requirements,
+        'flyKey': ?flyKey,
+        'flyStorageId': ?flyStorageId,
+        'applicationsCloseAt': ?applicationsCloseAt?.millisecondsSinceEpoch,
+        'visibility': ?visibility?.wireValue,
+        'ticketing': ?ticketing?.wireValue,
+        'externalUrl': ?externalUrl,
+        if (slots != null) 'slots': [for (final slot in slots) slot.toJson()],
+      }),
+    );
+    return (
+      opportunityId: result['opportunityId'] as String,
+      slug: result['slug'] as String,
+    );
+  }
+
+  @override
+  Future<int> updateOpportunity({
+    required String opportunityId,
+    required int expectedRevision,
+    String? title,
+    String? desc,
+    String? venueId,
+    String? eventType,
+    int? expectedAttendance,
+    List<String>? genres,
+    DateTime? startsAt,
+    DateTime? doorsAt,
+    DateTime? endsAt,
+    AgeRequirement? ageRequirement,
+    String? equipment,
+    String? requirements,
+    String? flyKey,
+    String? flyStorageId,
+    DateTime? applicationsCloseAt,
+    OpportunityVisibility? visibility,
+    OpportunityTicketing? ticketing,
+    String? externalUrl,
+    List<SlotInput>? slots,
+  }) async => _revisionFrom(
+    await _convexService.mutation('talentOpportunities:update', {
+      'opportunityId': opportunityId,
+      'expectedRevision': expectedRevision,
+      'title': ?title,
+      'desc': ?desc,
+      'venueId': ?venueId,
+      'eventType': ?eventType,
+      'expectedAttendance': ?expectedAttendance,
+      'genres': ?genres,
+      'startsAt': ?startsAt?.millisecondsSinceEpoch,
+      'doorsAt': ?doorsAt?.millisecondsSinceEpoch,
+      'endsAt': ?endsAt?.millisecondsSinceEpoch,
+      'ageRequirement': ?ageRequirement?.wireValue,
+      'equipment': ?equipment,
+      'requirements': ?requirements,
+      'flyKey': ?flyKey,
+      'flyStorageId': ?flyStorageId,
+      'applicationsCloseAt': ?applicationsCloseAt?.millisecondsSinceEpoch,
+      'visibility': ?visibility?.wireValue,
+      'ticketing': ?ticketing?.wireValue,
+      'externalUrl': ?externalUrl,
+      if (slots != null) 'slots': [for (final slot in slots) slot.toJson()],
+    }),
+  );
+
+  @override
+  Future<({int revision, DateTime applicationsCloseAt})> openOpportunity({
+    required String opportunityId,
+    required int expectedRevision,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('talentOpportunities:open', {
+        'opportunityId': opportunityId,
+        'expectedRevision': expectedRevision,
+      }),
+    );
+    return (
+      revision: (result['revision'] as num).toInt(),
+      applicationsCloseAt: DateTime.fromMillisecondsSinceEpoch(
+        (result['applicationsCloseAt'] as num).toInt(),
+      ),
+    );
+  }
+
+  @override
+  Future<void> closeOpportunityApplications(String opportunityId) async {
+    await _convexService.mutation('talentOpportunities:closeApplications', {
+      'opportunityId': opportunityId,
+    });
+  }
+
+  @override
+  Future<void> reopenOpportunity({
+    required String opportunityId,
+    required DateTime applicationsCloseAt,
+  }) async {
+    await _convexService.mutation('talentOpportunities:reopen', {
+      'opportunityId': opportunityId,
+      'applicationsCloseAt': applicationsCloseAt.millisecondsSinceEpoch,
+    });
+  }
+
+  @override
+  Future<void> cancelOpportunity(String opportunityId, {String? reason}) async {
+    await _convexService.mutation('talentOpportunities:cancel', {
+      'opportunityId': opportunityId,
+      'reason': ?reason,
+    });
+  }
+
+  @override
+  Future<void> deleteOpportunityDraft(String opportunityId) async {
+    await _convexService.mutation('talentOpportunities:deleteDraft', {
+      'opportunityId': opportunityId,
+    });
+  }
+
+  @override
+  Future<({String opportunityId, String slug})> duplicateOpportunity(
+    String opportunityId,
+  ) async {
+    final result = _asMap(
+      await _convexService.mutation('talentOpportunities:duplicate', {
+        'opportunityId': opportunityId,
+      }),
+    );
+    return (
+      opportunityId: result['opportunityId'] as String,
+      slug: result['slug'] as String,
+    );
+  }
+
+  @override
+  Future<bool> inviteBandToOpportunity({
+    required String opportunityId,
+    required String bandId,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('talentOpportunities:inviteBand', {
+        'opportunityId': opportunityId,
+        'bandId': bandId,
+      }),
+    );
+    return result['invited'] == true;
+  }
+
+  @override
+  Future<void> uninviteBandFromOpportunity({
+    required String opportunityId,
+    required String bandId,
+  }) async {
+    await _convexService.mutation('talentOpportunities:uninviteBand', {
+      'opportunityId': opportunityId,
+      'bandId': bandId,
+    });
+  }
+
+  @override
+  Future<List<Opportunity>> manageOpportunities(String organizationId) async {
+    final result = await _convexService.query(
+      'talentOpportunitiesRead:manageForOrganization',
+      {'organizationId': organizationId},
+    );
+    return [for (final json in _mapList(result)) Opportunity.fromJson(json)];
+  }
+
+  @override
+  Future<Opportunity?> opportunity(String opportunityId) async {
+    final json = _asMap(
+      await _convexService.query('talentOpportunitiesRead:get', {
+        'opportunityId': opportunityId,
+      }),
+    );
+    return json.isEmpty ? null : Opportunity.fromJson(json);
+  }
+
+  @override
+  Future<List<ApplicantRow>> applicantsFor(String opportunityId) async {
+    final result = await _convexService.query(
+      'artistApplications:forOpportunity',
+      {'opportunityId': opportunityId},
+    );
+    return [for (final json in _mapList(result)) ApplicantRow.fromJson(json)];
+  }
+
+  @override
+  Future<void> reviewApplication({
+    required String applicationId,
+    required ArtistApplicationReviewAction action,
+  }) async {
+    await _convexService.mutation('artistApplications:review', {
+      'applicationId': applicationId,
+      'action': action.wireValue,
+    });
+  }
+
+  @override
+  Future<OpportunityPage> browseOpportunities({
+    String? cursor,
+    int numItems = 25,
+    String? bandId,
+    OpportunityFilters? filters,
+  }) async {
+    final result = await _convexService.query(
+      'talentOpportunitiesRead:browse',
+      {
+        'paginationOpts': {'numItems': numItems, 'cursor': cursor},
+        'bandId': ?bandId,
+        'filters': ?filters?.toJson(),
+      },
+    );
+    return OpportunityPage.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<List<BrowseItem>> invitedOpportunities(String bandId) async {
+    final result = await _convexService.query(
+      'talentOpportunitiesRead:invitedFor',
+      {'bandId': bandId},
+    );
+    return [for (final json in _mapList(result)) BrowseItem.fromJson(json)];
+  }
+
+  @override
+  Future<BrowseItem?> resolveOpportunity(String ref, {String? bandId}) async {
+    final json = _asMap(
+      await _convexService.query('talentOpportunitiesRead:resolvePublic', {
+        'ref': ref,
+        'bandId': ?bandId,
+      }),
+    );
+    return json.isEmpty ? null : BrowseItem.fromJson(json);
+  }
+
+  @override
+  Future<String> applyToOpportunity({
+    required String opportunityId,
+    required String slotId,
+    required String bandId,
+    required String message,
+    int? askMinor,
+    String? availabilityNote,
+    String? lineupNote,
+  }) async {
+    final result = await _convexService.mutation('artistApplications:apply', {
+      'opportunityId': opportunityId,
+      'slotId': slotId,
+      'bandId': bandId,
+      'message': message,
+      'askMinor': ?askMinor,
+      'availabilityNote': ?availabilityNote,
+      'lineupNote': ?lineupNote,
+    });
+    return _asMap(result)['applicationId'] as String;
+  }
+
+  @override
+  Future<void> withdrawApplication(String applicationId) async {
+    await _convexService.mutation('artistApplications:withdraw', {
+      'applicationId': applicationId,
+    });
+  }
+
+  @override
+  Future<List<BandApplication>> myApplications(String bandId) async {
+    final result = await _convexService.query('artistApplications:forBand', {
+      'bandId': bandId,
+    });
+    return [
+      for (final json in _mapList(result)) BandApplication.fromJson(json),
+    ];
+  }
+
+  @override
+  Future<ArtistApplication?> myApplicationFor({
+    required String opportunityId,
+    required String bandId,
+  }) async {
+    final json = _asMap(
+      await _convexService.query('artistApplications:mine', {
+        'opportunityId': opportunityId,
+        'bandId': bandId,
+      }),
+    );
+    return json.isEmpty ? null : ArtistApplication.fromJson(json);
+  }
+
+  @override
+  Future<GigWritePolicy> gigWritePolicy() async => GigWritePolicy.fromJson(
+    _asMap(await _convexService.query('gigs:writePolicy')),
+  );
+
+  @override
   Future<List<GigProject>> manageGigs(String bandId) async {
     final result = await _convexService.query('gigs:manageForBand', {
       'bandId': bandId,

@@ -1194,6 +1194,7 @@ describe("media:sweepOrphanBlobs", () => {
       applicationDocumentId,
       venuePhotoId,
       venueDocumentId,
+      opportunityFlyerId,
     ] = await t.run(async (ctx) => [
       await ctx.storage.store(new Blob([new Uint8Array([0])])),
       await ctx.storage.store(new Blob([new Uint8Array([1])])),
@@ -1201,6 +1202,7 @@ describe("media:sweepOrphanBlobs", () => {
       await ctx.storage.store(new Blob([new Uint8Array([3])])),
       await ctx.storage.store(new Blob([new Uint8Array([4])])),
       await ctx.storage.store(new Blob([new Uint8Array([5])])),
+      await ctx.storage.store(new Blob([new Uint8Array([6])])),
     ]);
 
     await t.run(async (ctx) => {
@@ -1262,6 +1264,29 @@ describe("media:sweepOrphanBlobs", () => {
         verificationDocStorageIds: [venueDocumentId],
         updatedAt: 1,
       });
+      await ctx.db.insert("talentOpportunities", {
+        organizationId,
+        mode: "publicEvent",
+        title: "Sweep Opportunity",
+        area: "Mission, San Francisco",
+        desc: "",
+        genres: ["punk"],
+        startsAt: Date.now() + 1_000,
+        ageRequirement: "allAges",
+        flyKey: "custom",
+        flyStorageId: opportunityFlyerId,
+        applicationsCloseAt: Date.now() + 500,
+        visibility: "public",
+        ticketing: "none",
+        currency: "usd",
+        status: "open",
+        slug: "sweep-opportunity",
+        createdBy: ownerUserId,
+        revision: 1,
+        applicationCount: 0,
+        createdAt: 1,
+        updatedAt: 1,
+      });
     });
 
     const result = await t.mutation(internal.media.sweepOrphanBlobs, {
@@ -1269,10 +1294,10 @@ describe("media:sweepOrphanBlobs", () => {
       dryRun: false,
     });
     expect(result).toMatchObject({
-      scanned: 6,
+      scanned: 7,
       deleted: 1,
       wouldDelete: 0,
-      skipped: 5,
+      skipped: 6,
       aborted: false,
       done: true,
     });
@@ -1292,6 +1317,7 @@ describe("media:sweepOrphanBlobs", () => {
       ),
       venuePhoto: await ctx.db.system.get("_storage", venuePhotoId),
       venueDocument: await ctx.db.system.get("_storage", venueDocumentId),
+      opportunityFlyer: await ctx.db.system.get("_storage", opportunityFlyerId),
     }));
     expect(blobs.orphan).toBeNull();
     expect(blobs.organizationPhoto).not.toBeNull();
@@ -1299,6 +1325,7 @@ describe("media:sweepOrphanBlobs", () => {
     expect(blobs.applicationDocument).not.toBeNull();
     expect(blobs.venuePhoto).not.toBeNull();
     expect(blobs.venueDocument).not.toBeNull();
+    expect(blobs.opportunityFlyer).not.toBeNull();
   });
 
   test("defaults to a dry run and leaves an orphan intact", async () => {

@@ -4,10 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../genres.dart';
 import '../models.dart';
+import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/opportunity_labels.dart';
 import '../widgets/sheets.dart';
 import 'door_mode.dart';
 
@@ -19,6 +23,8 @@ class GigManagerScreen extends StatefulWidget {
 }
 
 class _GigManagerScreenState extends State<GigManagerScreen> {
+  _GigSegment _segment = _GigSegment.open;
+  bool _requestedDiscovery = false;
   List<GigProject>? _partitionedProjects;
   List<GigProject> _drafts = const [];
   List<GigProject> _published = const [];
@@ -29,6 +35,14 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
     super.didChangeDependencies();
     final app = context.read<AppState>();
     if (app.isAdminOf(app.bandId)) app.ensureManagedGigs();
+    if (!_requestedDiscovery) {
+      _requestedDiscovery = true;
+      scheduleMicrotask(() {
+        if (!mounted) return;
+        unawaited(app.refreshBrowse());
+        unawaited(app.refreshMyApplications());
+      });
+    }
   }
 
   /// Splits the projects by status once per list instance; unrelated
@@ -53,23 +67,21 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    if (!app.isAdminOf(app.bandId)) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'Only band admins can create and manage gigs.',
-            textAlign: TextAlign.center,
-            style: epText(color: context.epColors.contentSecondary),
-          ),
-        ),
-      );
-    }
     _partition(app.managedGigProjects);
+    if (app.isAdminOf(app.bandId)) app.ensureManagedGigs();
 
     return RefreshIndicator(
-      onRefresh: app.refreshManagedGigs,
+      onRefresh: () async {
+        await Future.wait([
+          app.refreshBrowse(),
+          app.refreshMyApplications(),
+          app.refreshManagedGigs(),
+          app.refreshGigWritePolicy(),
+        ]);
+      },
       child: ListView(
+        key: ValueKey(_segment),
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: EdgeInsets.fromLTRB(
           16,
           headerTopPad(context),
@@ -81,36 +93,457 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
             children: [
               Expanded(
                 child: Text(
-                  'Gigs',
+                  'GIGS',
                   style: Theme.of(context).textTheme.epPageHeading,
                 ),
               ),
-              FilledButton(
-                onPressed: app.startGigCreate,
-                child: Text('+ NEW GIG'),
+              if (app.gigWritePolicy && app.isAdminOf(app.bandId))
+                FilledButton(
+                  onPressed: app.startGigCreate,
+                  child: Text('+ NEW GIG'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final segment in _GigSegment.values)
+                EpChip(
+                  key: ValueKey('band-gigs-seg-${segment.name}'),
+                  label: segment.name.toUpperCase(),
+                  active: _segment == segment,
+                  onTap: () => setState(() => _segment = segment),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          if (_segment == _GigSegment.open) _OpenSection(app: app),
+          if (_segment == _GigSegment.applied) _AppliedSection(app: app),
+          if (_segment == _GigSegment.booked) ...[
+            const EmptyNote(
+              message: 'Confirmed bookings appear here once offers launch.',
+            ),
+            if (app.managedGigsLoading) const LinearProgressIndicator(),
+            _ProjectSection(
+              title: 'PUBLISHED',
+              projects: _published,
+              empty: 'No live gigs yet.',
+            ),
+            if (_drafts.isNotEmpty) ...[
+              const SizedBox(height: 20),
+              _DraftSection(projects: _drafts),
+            ],
+          ],
+          if (_segment == _GigSegment.past) ...[
+            _PastSection(app: app),
+            const SizedBox(height: 20),
+            _ProjectSection(
+              title: 'CANCELLED',
+              projects: _cancelled,
+              empty: 'No cancelled gigs.',
+              readOnly: true,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+enum _GigSegment { open, applied, booked, past }
+
+class _OpenSection extends StatelessWidget {
+  const _OpenSection({required this.app});
+
+  final AppState app;
+
+  @override
+  Widget build(BuildContext context) {
+    final browse = app.browse;
+    final opportunities = <String, BrowseItem>{};
+    for (final item in [...browse.invited, ...browse.items]) {
+      opportunities.putIfAbsent(item.opportunity.id, () => item);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: OutlinedButton(
+            key: const Key('band-gigs-filters'),
+            onPressed: () =>
+                showEpSheet(context, (_) => _OpportunityFiltersSheet(app: app)),
+            child: const Text('FILTERS'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (browse.status == DataStatus.connecting)
+          const LinearProgressIndicator(),
+        if (browse.status == DataStatus.error) ...[
+          EmptyNote(message: browse.error ?? 'Could not load opportunities.'),
+          TextButton(onPressed: app.refreshBrowse, child: const Text('RETRY')),
+        ],
+        for (final item in opportunities.values) ...[
+          _OpportunityCard(
+            key: ValueKey('opp-card-${item.opportunity.id}'),
+            item: item,
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (browse.status == DataStatus.ready &&
+            browse.invited.isEmpty &&
+            browse.items.isEmpty)
+          const EmptyNote(message: 'Nothing open right now.'),
+        if (!browse.isDone)
+          OutlinedButton(
+            key: const Key('band-gigs-load-more'),
+            onPressed: app.loadMoreOpportunities,
+            child: const Text('LOAD MORE'),
+          ),
+      ],
+    );
+  }
+}
+
+class _OpportunityCard extends StatelessWidget {
+  const _OpportunityCard({super.key, required this.item});
+
+  final BrowseItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final opportunity = item.opportunity;
+    final venue = opportunity.venue;
+    return EpCard(
+      onTap: () => context.read<AppState>().openOpportunity(opportunity.slug),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DateBlock.forDate(opportunity.startsAt),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      opportunity.title,
+                      style: Theme.of(context).textTheme.epSectionHeading,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      venue == null
+                          ? opportunity.area
+                          : '${venue.name} · ${venue.area}',
+                      style: Theme.of(context).textTheme.epMeta,
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          if (app.managedGigsLoading) ...[
-            const SizedBox(height: 12),
-            const LinearProgressIndicator(),
+          const SizedBox(height: 12),
+          for (final slot in opportunity.slots)
+            Text(
+              '${slot.role.name.toUpperCase()} · ${Money(slot.guaranteeMinor, opportunity.currency).label}',
+              style: Theme.of(context).textTheme.epMeta,
+            ),
+          const SizedBox(height: 8),
+          Text(
+            'Apply by ${_opportunityDate(opportunity.applicationsCloseAt)}',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+          if (item.invited || item.myApplicationStatus != null) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                if (item.invited)
+                  const StatusPill(
+                    label: 'INVITED',
+                    tone: EpStatusPillTone.selected,
+                  ),
+                if (item.myApplicationStatus case final status?)
+                  StatusPill(label: applicationStatusLabel(status)),
+              ],
+            ),
           ],
-          const SizedBox(height: 20),
-          _DraftSection(projects: _drafts),
-          const SizedBox(height: 20),
-          _ProjectSection(
-            title: 'PUBLISHED',
-            projects: _published,
-            empty: 'No live gigs yet.',
+        ],
+      ),
+    );
+  }
+}
+
+class _AppliedSection extends StatefulWidget {
+  const _AppliedSection({required this.app});
+
+  final AppState app;
+
+  @override
+  State<_AppliedSection> createState() => _AppliedSectionState();
+}
+
+class _AppliedSectionState extends State<_AppliedSection> {
+  final Set<String> _withdrawing = {};
+
+  Future<void> _withdraw(ArtistApplication application) async {
+    if (!_withdrawing.add(application.id)) return;
+    setState(() {});
+    final app = widget.app;
+    try {
+      if (!await _confirm(
+        context,
+        'Withdraw application?',
+        'Your band will no longer be considered for this opportunity.',
+      )) {
+        return;
+      }
+      await app.repository.withdrawApplication(application.id);
+      await app.refreshMyApplications();
+      await app.refreshBrowse();
+    } catch (error) {
+      app.say(error is StateError ? error.message : '$error');
+    } finally {
+      if (mounted) setState(() => _withdrawing.remove(application.id));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final applications = widget.app.myApplications;
+    if (applications.isEmpty) {
+      return const EmptyNote(message: 'Your applications will appear here.');
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final row in applications) ...[
+          EpCard(
+            key: ValueKey('band-app-${row.application.id}'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    DateBlock.forDate(row.opportunity.startsAt),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            row.opportunity.title,
+                            style: Theme.of(context).textTheme.epSectionHeading,
+                          ),
+                          Text(
+                            _opportunityDate(row.opportunity.startsAt),
+                            style: Theme.of(context).textTheme.epMeta,
+                          ),
+                          Text(
+                            row.opportunity.slots
+                                    .where(
+                                      (slot) =>
+                                          slot.id == row.application.slotId,
+                                    )
+                                    .firstOrNull
+                                    ?.role
+                                    .name
+                                    .toUpperCase() ??
+                                'Slot unavailable',
+                            style: Theme.of(context).textTheme.epMeta,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    StatusPill(
+                      label: applicationStatusLabel(row.application.status),
+                    ),
+                    if (row.application.status.isActive)
+                      TextButton(
+                        key: ValueKey(
+                          'band-app-${row.application.id}-withdraw',
+                        ),
+                        onPressed: _withdrawing.contains(row.application.id)
+                            ? null
+                            : () => _withdraw(row.application),
+                        child: const Text('WITHDRAW'),
+                      ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 20),
-          _ProjectSection(
-            title: 'CANCELLED',
-            projects: _cancelled,
-            empty: 'No cancelled gigs.',
+          const SizedBox(height: 12),
+        ],
+      ],
+    );
+  }
+}
+
+String _opportunityDate(DateTime date) {
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final local = date.toLocal();
+  return '${months[local.month - 1]} ${local.day}';
+}
+
+class _OpportunityFiltersSheet extends StatefulWidget {
+  const _OpportunityFiltersSheet({required this.app});
+
+  final AppState app;
+
+  @override
+  State<_OpportunityFiltersSheet> createState() =>
+      _OpportunityFiltersSheetState();
+}
+
+class _OpportunityFiltersSheetState extends State<_OpportunityFiltersSheet> {
+  late final _area = TextEditingController(text: widget.app.browseFilters.area);
+  late final _minimum = TextEditingController(
+    text: widget.app.browseFilters.minGuaranteeMinor == null
+        ? ''
+        : (widget.app.browseFilters.minGuaranteeMinor! / 100).toStringAsFixed(
+            2,
           ),
-          const SizedBox(height: 20),
-          _PastSection(app: app),
+  );
+  late String? _genre = widget.app.browseFilters.genre;
+  late VenueType? _venueType = widget.app.browseFilters.venueType;
+  String? _error;
+
+  @override
+  void dispose() {
+    _area.dispose();
+    _minimum.dispose();
+    super.dispose();
+  }
+
+  void _apply() {
+    final amount = double.tryParse(_minimum.text.trim());
+    if (_minimum.text.trim().isNotEmpty &&
+        (amount == null || !amount.isFinite || amount < 0)) {
+      setState(() => _error = 'Enter a valid minimum guarantee.');
+      return;
+    }
+    widget.app.setBrowseFilters(
+      OpportunityFilters(
+        area: _area.text.trim().isEmpty ? null : _area.text.trim(),
+        genre: _genre,
+        venueType: _venueType,
+        minGuaranteeMinor: amount == null ? null : (amount * 100).round(),
+      ),
+    );
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: EpSheetShell(
+        heightFactor: .88,
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+        header: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'FILTERS',
+                style: Theme.of(context).textTheme.epSectionHeading,
+              ),
+            ),
+            IconButton(
+              tooltip: 'Close',
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close),
+            ),
+          ],
+        ),
+        children: [
+          Expanded(
+            child: ListView(
+              children: [
+                EpLabeledField(
+                  label: 'AREA',
+                  hint: 'Any area',
+                  controller: _area,
+                  fieldKey: const Key('band-gigs-filter-area'),
+                ),
+                const SizedBox(height: 18),
+                const SectionBar(label: 'GENRE'),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    for (final genre in kGenres)
+                      EpChip(
+                        label: genre,
+                        active: _genre == genre,
+                        onTap: () => setState(
+                          () => _genre = _genre == genre ? null : genre,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                const SectionBar(label: 'VENUE TYPE'),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    for (final type in VenueType.values)
+                      EpChip(
+                        label: type.name.toUpperCase(),
+                        active: _venueType == type,
+                        onTap: () => setState(
+                          () => _venueType = _venueType == type ? null : type,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                EpLabeledField(
+                  label: 'MINIMUM GUARANTEE (DOLLARS)',
+                  hint: 'Any guarantee',
+                  controller: _minimum,
+                  fieldKey: const Key('band-gigs-filter-minimum'),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_error != null) InlineFormFeedback(error: _error),
+          const SizedBox(height: 12),
+          FilledButton(
+            key: const Key('band-gigs-filter-apply'),
+            onPressed: _apply,
+            child: const Text('APPLY'),
+          ),
         ],
       ),
     );
@@ -122,11 +555,13 @@ class _ProjectSection extends StatelessWidget {
     required this.title,
     required this.projects,
     required this.empty,
+    this.readOnly = false,
   });
 
   final String title;
   final List<GigProject> projects;
   final String empty;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -146,7 +581,7 @@ class _ProjectSection extends StatelessWidget {
           )
         else
           for (var index = 0; index < projects.length; index++) ...[
-            _ProjectCard(project: projects[index]),
+            _ProjectCard(project: projects[index], readOnly: readOnly),
             if (index < projects.length - 1) const SizedBox(height: 10),
           ],
       ],
@@ -161,15 +596,18 @@ class _DraftSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final app = context.read<AppState>();
+    final app = context.watch<AppState>();
+    final canWrite = app.gigWritePolicy && app.isAdminOf(app.bandId);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SectionBar(
-          label: 'DRAFTS',
+          label: 'LEGACY DRAFTS',
           count: projects.isEmpty ? null : projects.length,
         ),
         const SizedBox(height: 10),
+        if (!app.gigWritePolicy)
+          const EmptyNote(message: 'Drafts are read-only now'),
         if (projects.isEmpty)
           DashedBox(
             padding: const EdgeInsets.all(18),
@@ -191,49 +629,66 @@ class _DraftSection extends StatelessWidget {
                       child: GhostDraftRow(
                         title: _projectTitle(projects[index]),
                         missing: _draftMissing(projects[index]),
-                        onResume: () => app.editGigProject(projects[index].id),
+                        onResume: canWrite
+                            ? () => app.editGigProject(projects[index].id)
+                            : null,
+                        actionLabel: canWrite ? 'RESUME →' : '',
                       ),
                     ),
-                    IconButton(
-                      key: ValueKey('gig-actions-${projects[index].id}'),
-                      tooltip:
-                          'More actions for ${_projectTitle(projects[index])}',
-                      onPressed: () =>
-                          _showProjectActions(context, app, projects[index]),
-                      icon: Icon(Icons.more_horiz),
-                    ),
+                    if (canWrite)
+                      IconButton(
+                        key: ValueKey('gig-actions-${projects[index].id}'),
+                        tooltip:
+                            'More actions for ${_projectTitle(projects[index])}',
+                        onPressed: () =>
+                            _showProjectActions(context, app, projects[index]),
+                        icon: Icon(Icons.more_horiz),
+                      ),
                   ],
                 ),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _FeatureAction(
-                        key: ValueKey('gig-preview-${projects[index].id}'),
-                        icon: Icons.visibility,
-                        label: 'PREVIEW',
-                        onTap: () => _runProjectAction(
-                          context,
-                          app,
-                          projects[index],
-                          _ProjectAction.preview,
+                if (app.isAdminOf(app.bandId) && !app.gigWritePolicy)
+                  _FeatureAction(
+                    key: ValueKey('gig-delete-${projects[index].id}'),
+                    icon: Icons.delete_outline,
+                    label: 'DELETE',
+                    onTap: () => _runProjectAction(
+                      context,
+                      app,
+                      projects[index],
+                      _ProjectAction.delete,
+                    ),
+                  )
+                else if (canWrite)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _FeatureAction(
+                          key: ValueKey('gig-preview-${projects[index].id}'),
+                          icon: Icons.visibility,
+                          label: 'PREVIEW',
+                          onTap: () => _runProjectAction(
+                            context,
+                            app,
+                            projects[index],
+                            _ProjectAction.preview,
+                          ),
                         ),
                       ),
-                    ),
-                    Expanded(
-                      child: _FeatureAction(
-                        key: ValueKey('gig-edit-${projects[index].id}'),
-                        icon: Icons.edit,
-                        label: 'EDIT',
-                        onTap: () => _runProjectAction(
-                          context,
-                          app,
-                          projects[index],
-                          _ProjectAction.edit,
+                      Expanded(
+                        child: _FeatureAction(
+                          key: ValueKey('gig-edit-${projects[index].id}'),
+                          icon: Icons.edit,
+                          label: 'EDIT',
+                          onTap: () => _runProjectAction(
+                            context,
+                            app,
+                            projects[index],
+                            _ProjectAction.edit,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
+                    ],
+                  ),
               ],
             ),
             if (index < projects.length - 1) const SizedBox(height: 8),
@@ -270,13 +725,16 @@ class _PastSection extends StatelessWidget {
 }
 
 class _ProjectCard extends StatelessWidget {
-  const _ProjectCard({required this.project});
+  const _ProjectCard({required this.project, this.readOnly = false});
 
   final GigProject project;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
-    final app = context.read<AppState>();
+    final app = context.watch<AppState>();
+    final canManage = !readOnly && app.isAdminOf(app.bandId);
+    final canWrite = canManage && app.gigWritePolicy;
     final venue = project.venueId == null ? null : app.venue(project.venueId!);
     final cachedGig = project.publicGigId == null
         ? null
@@ -299,7 +757,7 @@ class _ProjectCard extends StatelessWidget {
     return EpCard(
       key: ValueKey('gig-project-${project.id}'),
       padding: EdgeInsets.zero,
-      onTap: () => app.editGigProject(project.id),
+      onTap: canWrite ? () => app.editGigProject(project.id) : null,
       child: Column(
         children: [
           Padding(
@@ -338,12 +796,13 @@ class _ProjectCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                IconButton(
-                  key: ValueKey('gig-actions-${project.id}'),
-                  tooltip: 'More actions for ${_projectTitle(project)}',
-                  onPressed: () => _showProjectActions(context, app, project),
-                  icon: Icon(Icons.more_horiz),
-                ),
+                if (canManage)
+                  IconButton(
+                    key: ValueKey('gig-actions-${project.id}'),
+                    tooltip: 'More actions for ${_projectTitle(project)}',
+                    onPressed: () => _showProjectActions(context, app, project),
+                    icon: Icon(Icons.more_horiz),
+                  ),
               ],
             ),
           ),
@@ -372,19 +831,20 @@ class _ProjectCard extends StatelessWidget {
                   ),
                 ),
               ),
-              Expanded(
-                child: _FeatureAction(
-                  key: ValueKey('gig-edit-${project.id}'),
-                  icon: Icons.edit,
-                  label: 'EDIT',
-                  onTap: () => _runProjectAction(
-                    context,
-                    app,
-                    project,
-                    _ProjectAction.edit,
+              if (canWrite)
+                Expanded(
+                  child: _FeatureAction(
+                    key: ValueKey('gig-edit-${project.id}'),
+                    icon: Icons.edit,
+                    label: 'EDIT',
+                    onTap: () => _runProjectAction(
+                      context,
+                      app,
+                      project,
+                      _ProjectAction.edit,
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ],
@@ -436,14 +896,19 @@ void _showProjectActions(
   AppState app,
   GigProject project,
 ) {
+  if (!app.isAdminOf(app.bandId) ||
+      project.status == GigProjectStatus.cancelled) {
+    return;
+  }
   final items = <EpActionSheetItem>[
-    EpActionSheetItem(
-      label: 'Duplicate',
-      icon: Icons.copy,
-      onPressed: () => unawaited(
-        _runProjectAction(context, app, project, _ProjectAction.duplicate),
+    if (app.gigWritePolicy)
+      EpActionSheetItem(
+        label: 'Duplicate',
+        icon: Icons.copy,
+        onPressed: () => unawaited(
+          _runProjectAction(context, app, project, _ProjectAction.duplicate),
+        ),
       ),
-    ),
     if (project.status == GigProjectStatus.published)
       EpActionSheetItem(
         label: 'Unpublish…',
@@ -480,6 +945,14 @@ Future<void> _runProjectAction(
   GigProject project,
   _ProjectAction action,
 ) async {
+  if (action != _ProjectAction.preview &&
+      (project.status == GigProjectStatus.cancelled ||
+          !app.isAdminOf(app.bandId) ||
+          (!app.gigWritePolicy &&
+              (action == _ProjectAction.edit ||
+                  action == _ProjectAction.duplicate)))) {
+    return;
+  }
   switch (action) {
     case _ProjectAction.edit:
       await app.editGigProject(project.id);

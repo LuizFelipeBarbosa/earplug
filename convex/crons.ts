@@ -12,6 +12,14 @@ crons.interval(
   { dryRun: false },
 );
 
+// Refresh the shared feed cutoff so quiet feeds age out gigs every 15 minutes.
+crons.interval(
+  "feed cutoff heartbeat",
+  { minutes: 15 },
+  internal.clock.heartbeat,
+  {},
+);
+
 // The runner is idempotent: the migrations component skips completed jobs and
 // resumes interrupted jobs from their stored cursor, so running every 30 minutes
 // is a no-op once a release's backfills are fully applied. The cron applies new

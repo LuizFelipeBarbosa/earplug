@@ -3,7 +3,12 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
+import 'package:earplug/screens/opportunity_applicants.dart';
+import 'package:earplug/screens/opportunity_detail.dart';
+import 'package:earplug/screens/opportunity_edit.dart';
+import 'package:earplug/screens/org_opportunities.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -131,6 +136,7 @@ void main() {
     await enterOrganizer(tester, harness, 'org1');
 
     expect(find.byKey(const Key('organizer-tab-dash')), findsOne);
+    expect(find.byKey(const Key('organizer-tab-venues')), findsNothing);
     expect(find.byKey(const Key('org-dash-verification')), findsOne);
     expect(harness.app.identity, isA<OrganizerIdentity>());
 
@@ -142,6 +148,65 @@ void main() {
     expect(find.text('EXPLORE'), findsOne);
     expect(find.text('PROFILE'), findsOne);
     expect(harness.app.identity, isA<PersonalIdentity>());
+  });
+
+  testWidgets('organizers can open the opportunities tab', (tester) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      home: const RootShell(),
+    );
+
+    await enterOrganizer(tester, harness, 'org1');
+    final opportunitiesTab = find.byKey(
+      const Key('organizer-tab-opportunities'),
+    );
+    expect(opportunitiesTab, findsOneWidget);
+    await tester.tap(opportunitiesTab);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OrgOpportunitiesScreen), findsOneWidget);
+    expect(harness.app.current.screen, Screen.orgOpportunities);
+
+    harness.app.openOpportunityEditor();
+    await tester.pumpAndSettle();
+    expect(find.byType(OpportunityEditScreen), findsOneWidget);
+    expect(harness.app.current.param, 'new');
+    expect(find.byType(OrganizerTabBar), findsOneWidget);
+
+    harness.app.openOpportunityApplicants('opp1');
+    await tester.pumpAndSettle();
+    expect(find.byType(OpportunityApplicantsScreen), findsOneWidget);
+    expect(harness.app.current.param, 'opp1');
+    expect(harness.app.identity, isA<OrganizerIdentity>());
+  });
+
+  testWidgets('opportunity details use the selected fan or band shell', (
+    tester,
+  ) async {
+    final harness = await pumpApp(tester, home: const RootShell());
+    // Demo memberships preload b1 even while signed out; model a public visitor.
+    harness.app.bandId = '';
+    expect(harness.app.bandId, isEmpty);
+    harness.app.openOpportunity('friday-night-live');
+    await tester.pumpAndSettle();
+
+    expect(find.byType(OpportunityDetailScreen), findsOneWidget);
+    expect(harness.app.current.param, 'friday-night-live');
+    expect(find.byType(FanTabBar), findsOneWidget);
+    expect(find.byType(BandTabBar), findsNothing);
+    expect(harness.app.identity, isA<PersonalIdentity>());
+
+    // Membership loading changes bandId while the detail route stays open.
+    await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+    expect(harness.app.bandId, 'b1');
+    expect(harness.app.current.screen, Screen.opportunityDetail);
+    expect(find.byType(FanTabBar), findsNothing);
+    expect(find.byType(BandTabBar), findsOneWidget);
+    expect(harness.app.identity, isA<BandIdentity>());
   });
 
   testWidgets('platform admins can enter the admin shell from the switcher', (

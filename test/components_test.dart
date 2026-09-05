@@ -468,6 +468,62 @@ void main() {
       expect(removed, 1);
     });
 
+    testWidgets('locked and read-only chips keep selected labels legible', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          const Wrap(
+            children: [
+              EpChip(label: 'Locked', active: true, onTap: null),
+              EpChip(label: 'Shown', active: true, onTap: null, readOnly: true),
+            ],
+          ),
+        ),
+      );
+
+      final locked = tester.widget<FilterChip>(find.byType(FilterChip).first);
+      final lockedLabelColor = tester
+          .widget<Text>(find.text('LOCKED'))
+          .style!
+          .color;
+      expect(lockedLabelColor, isNot(equals(locked.selectedColor)));
+      expect(lockedLabelColor, Ep.dark);
+      expect(locked.selectedColor!.a, lessThan(1.0));
+      expect(locked.selectedColor, Ep.volt.withValues(alpha: .55));
+      expect(locked.side!.color, Ep.volt.withValues(alpha: .55));
+      expect(locked.onSelected, isNotNull);
+
+      final shown = tester.widget<FilterChip>(find.byType(FilterChip).at(1));
+      expect(tester.widget<Text>(find.text('SHOWN')).style!.color, Ep.dark);
+      expect(shown.selectedColor, Ep.volt);
+      expect(shown.selectedColor!.a, 1.0);
+      expect(shown.side!.color, Ep.volt);
+      expect(shown.onSelected, isNotNull);
+
+      for (final label in ['LOCKED', 'SHOWN']) {
+        final chip = find.widgetWithText(EpChip, label);
+        final rawChip = tester.widget<RawChip>(
+          find.descendant(of: chip, matching: find.byType(RawChip)),
+        );
+        expect(rawChip.isEnabled, isTrue);
+        expect(chip.hitTestable(), findsNothing);
+        expect(
+          Focus.of(tester.element(find.text(label))).canRequestFocus,
+          isFalse,
+        );
+        await tester.tap(find.text(label), warnIfMissed: false);
+      }
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(
+        tester
+            .widgetList<FilterChip>(find.byType(FilterChip))
+            .every((chip) => chip.selected),
+        isTrue,
+      );
+    });
+
     testWidgets('form grammar remains keyboard-sized and callback-only', (
       tester,
     ) async {

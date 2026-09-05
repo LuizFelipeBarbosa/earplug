@@ -189,6 +189,25 @@ void main() {
     expect(app.current.screen, Screen.bandDash);
   });
 
+  testWidgets(
+    'created view omits gig publishing when gig writes are disabled',
+    (tester) async {
+      final repository = DemoRepository(auth: FakeAuthService());
+      repository.demoBandGigWrites = false;
+      final harness = await _pumpBandCreate(tester, repository: repository);
+      await _fillAndCreate(tester);
+      if (harness.app.gigWritePolicy) {
+        await harness.app.refreshGigWritePolicy();
+        await tester.pumpAndSettle();
+      }
+
+      expect(find.text("YOU'RE LIVE"), findsOne);
+      expect(find.text('PUBLISH A GIG'), findsNothing);
+      expect(find.text('POST A MUSIC CLIP'), findsOne);
+      expect(find.text('INVITE BAND MEMBERS'), findsOne);
+    },
+  );
+
   testWidgets('start another clears the rendered form and backing draft', (
     tester,
   ) async {

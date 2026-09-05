@@ -329,6 +329,7 @@ export const STORAGE_REFERENCE_FIELDS: ReadonlyArray<{
   { table: "bands", field: "bannerStorageId" },
   { table: "gigs", field: "flyStorageId" },
   { table: "gigProjects", field: "flyStorageId" },
+  { table: "talentOpportunities", field: "flyStorageId" },
   { table: "users", field: "avatarStorageId" },
   { table: "organizations", field: "photoStorageIds" },
   {
@@ -387,6 +388,10 @@ export const sweepOrphanBlobs = internalMutation({
       .query("gigProjects")
       .withIndex("by_band_and_status")
       .take(TABLE_READ_GUARD);
+    const talentOpportunities = await ctx.db
+      .query("talentOpportunities")
+      .withIndex("by_organizationId_and_status")
+      .take(TABLE_READ_GUARD);
     const users = await ctx.db
       .query("users")
       .withIndex("by_clerk_id")
@@ -417,6 +422,9 @@ export const sweepOrphanBlobs = internalMutation({
     if (heroBands.length === TABLE_READ_GUARD) cappedTables.push("bands");
     if (gigs.length === TABLE_READ_GUARD) cappedTables.push("gigs");
     if (gigProjects.length === TABLE_READ_GUARD) cappedTables.push("gigProjects");
+    if (talentOpportunities.length === TABLE_READ_GUARD) {
+      cappedTables.push("talentOpportunities");
+    }
     if (users.length === TABLE_READ_GUARD) cappedTables.push("users");
     if (organizations.length === TABLE_READ_GUARD) {
       cappedTables.push("organizations");
@@ -466,6 +474,10 @@ export const sweepOrphanBlobs = internalMutation({
     for (const project of gigProjects) {
       if (project.flyStorageId !== undefined)
         referenced.add(project.flyStorageId);
+    }
+    for (const opportunity of talentOpportunities) {
+      if (opportunity.flyStorageId !== undefined)
+        referenced.add(opportunity.flyStorageId);
     }
     for (const user of users) {
       if (user.avatarStorageId !== undefined) {

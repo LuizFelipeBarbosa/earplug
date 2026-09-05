@@ -61,6 +61,32 @@ void main() {
     );
   });
 
+  testWidgets('dashboard offers gig discovery when gig writes are disabled', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    repository.demoBandGigWrites = false;
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandDashScreen()),
+    );
+    if (harness.app.gigWritePolicy) {
+      await harness.app.refreshGigWritePolicy();
+      await tester.pumpAndSettle();
+    }
+
+    await tester.scrollUntilVisible(
+      find.text('FIND GIGS'),
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('FIND GIGS'), findsOne);
+    expect(find.text('PUBLISH GIG'), findsNothing);
+  });
+
   testWidgets('role copy and interactive checklist rows meet size floors', (
     tester,
   ) async {

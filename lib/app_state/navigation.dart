@@ -36,7 +36,12 @@ mixin _NavigationState on _AppStateCore {
       );
     }
     if (adminScreens.contains(screen)) return const AdminIdentity();
-    if (bandTabScreens.contains(screen)) return BandIdentity(bandId);
+    if (bandTabScreens.contains(screen)) {
+      if (screen == Screen.opportunityDetail && bandId.isEmpty) {
+        return const PersonalIdentity();
+      }
+      return BandIdentity(bandId);
+    }
     return const PersonalIdentity();
   }
 
@@ -79,6 +84,7 @@ mixin _NavigationState on _AppStateCore {
     });
     replaceBrowserPath(_browserPathFor(s, null));
     _refreshVisibleBandDashboard();
+    _onBandChanged();
     if (current.screen == Screen.explore) ensureExploreBands();
   }
 
@@ -87,6 +93,7 @@ mixin _NavigationState on _AppStateCore {
     Screen.band => '/${_bands[param]?.publicRef ?? param ?? ''}',
     Screen.venue => _venueBrowserPath(param),
     Screen.orgJoin => '/apply/${param ?? ''}',
+    Screen.opportunityDetail => '/opportunities/${param ?? ''}',
     Screen.orgApply => organizerApplyPath,
     _ => '/',
   };

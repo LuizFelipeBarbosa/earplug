@@ -1,8 +1,11 @@
+/// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import schema from "./schema";
+
+const modules = import.meta.glob("./**/*.ts");
 
 const draftFields = {
   orgName: "Night Light LLC",
@@ -24,7 +27,7 @@ const venueFields = {
 };
 
 async function setupActors() {
-  const t = convexTest(schema);
+  const t = convexTest(schema, modules);
   const asApplicant = t.withIdentity({
     subject: "organization_applicant",
     email: "riley@night-light.example",
@@ -325,10 +328,10 @@ describe("organization applications", () => {
       );
     }
     for (const storageId of ids.slice(0, 5)) {
-      await asApplicant.mutation(
-        api.organizationApplications.attachDocument,
-        { applicationId: application.applicationId, storageId },
-      );
+      await asApplicant.mutation(api.organizationApplications.attachDocument, {
+        applicationId: application.applicationId,
+        storageId,
+      });
     }
     await expect(
       asApplicant.mutation(api.organizationApplications.attachDocument, {
@@ -388,9 +391,7 @@ describe("organization applications", () => {
       const membership = await ctx.db
         .query("organizationMembers")
         .withIndex("by_organizationId_and_userId", (q) =>
-          q
-            .eq("organizationId", organizationId)
-            .eq("userId", applicantUserId),
+          q.eq("organizationId", organizationId).eq("userId", applicantUserId),
         )
         .unique();
       const venue = await ctx.db.get(venueId);
@@ -499,6 +500,93 @@ describe("organization applications", () => {
       exactAddr: "123 EXACT Street, San Francisco, CA",
     });
   });
+
+  test.each([
+    { privateDetails: false, nearbyCount: 0 },
+    { privateDetails: true, nearbyCount: 0 },
+    { privateDetails: false, nearbyCount: 1 },
+    { privateDetails: true, nearbyCount: 1 },
+    { privateDetails: false, nearbyCount: 2 },
+    { privateDetails: true, nearbyCount: 2 },
+  ])(
+    "approval checks all address matches using exact coordinates ($privateDetails, $nearbyCount nearby)",
+    async ({ privateDetails, nearbyCount }) => {
+      const { t, asApplicant, asAdmin } = await setupActors();
+      const venue = { ...venueFields, addr: "123 Exact Street" };
+      const venueIds = await t.run(async (ctx) => {
+        const ids: Id<"venues">[] = [];
+        for (let index = 0; index <= nearbyCount; index++) {
+          const point =
+            index === 0
+              ? { lat: 37.3355, lng: -121.889 }
+              : { lat: venue.lat, lng: venue.lng };
+          const id = await ctx.db.insert("venues", {
+            name: `Existing venue ${index}`,
+            area: "Bay Area",
+            addr: venue.addr,
+            normalizedAddr: "123 exact street",
+            distSF: "1.0 mi",
+            distOak: "8.0 mi",
+            // A public pin may be approximate; only private coordinates should
+            // control matching once private details exist.
+            ...(privateDetails ? { lat: 37.76, lng: -122.42 } : point),
+          });
+          if (privateDetails) {
+            await ctx.db.insert("venuePrivateDetails", {
+              venueId: id,
+              addr: venue.addr,
+              normalizedAddr: "123 exact street",
+              ...point,
+              updatedAt: Date.now(),
+            });
+          }
+          ids.push(id);
+        }
+        return ids;
+      });
+      const application = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        {
+          ...draftFields,
+          venue,
+        },
+      );
+      const storageId = await t.run((ctx) =>
+        ctx.storage.store(new Blob(["license"], { type: "application/pdf" })),
+      );
+      const attached = await asApplicant.mutation(
+        api.organizationApplications.attachDocument,
+        {
+          applicationId: application.applicationId,
+          storageId,
+        },
+      );
+      await asApplicant.mutation(api.organizationApplications.submit, {
+        applicationId: application.applicationId,
+        expectedRevision: attached.revision,
+      });
+      const approval = asAdmin.mutation(api.organizationApplications.decide, {
+        applicationId: application.applicationId,
+        decision: "approved",
+      });
+      if (nearbyCount > 1) {
+        await expect(approval).rejects.toThrow("Multiple venues match");
+        expect(
+          await t.run((ctx) => ctx.db.query("organizations").take(1)),
+        ).toEqual([]);
+      } else {
+        const decision = await approval;
+        expect(decision.venueId).not.toBe(venueIds[0]);
+        if (nearbyCount === 1) expect(decision.venueId).toBe(venueIds[1]);
+        expect(
+          await t.run((ctx) => ctx.db.query("venues").take(10)),
+        ).toHaveLength(2);
+      }
+      expect(await t.run((ctx) => ctx.db.get(venueIds[0]))).not.toHaveProperty(
+        "managedByOrganizationId",
+      );
+    },
+  );
 
   test("listForReview is admin-only and paginates oldest first", async () => {
     const { t, asApplicant, asAdmin, applicantUserId } = await setupActors();

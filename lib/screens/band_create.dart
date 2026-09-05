@@ -500,12 +500,14 @@ class _CreatedView extends StatelessWidget {
                   children: [
                     EpButton('POST A MUSIC CLIP', onTap: app.openBandMedia),
                     const SizedBox(height: 8),
-                    EpButton(
-                      'PUBLISH A GIG',
-                      kind: EpButtonKind.outline,
-                      onTap: app.postFirstGig,
-                    ),
-                    const SizedBox(height: 8),
+                    if (app.gigWritePolicy) ...[
+                      EpButton(
+                        'PUBLISH A GIG',
+                        kind: EpButtonKind.outline,
+                        onTap: app.postFirstGig,
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                     EpButton(
                       'INVITE BAND MEMBERS',
                       kind: EpButtonKind.outline,

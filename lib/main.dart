@@ -30,10 +30,14 @@ import 'screens/gig_invite.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
 import 'screens/my_gigs.dart';
+import 'screens/opportunity_applicants.dart';
+import 'screens/opportunity_detail.dart';
+import 'screens/opportunity_edit.dart';
 import 'screens/org_application_status.dart';
 import 'screens/org_apply.dart';
 import 'screens/org_dash.dart';
 import 'screens/org_join.dart';
+import 'screens/org_opportunities.dart';
 import 'screens/org_settings.dart';
 import 'screens/org_team.dart';
 import 'screens/org_venue_edit.dart';
@@ -99,6 +103,7 @@ Future<void> main() async {
   final gigId = gigIdFromUri(Uri.base);
   final bandSlug = bandSlugFromUri(Uri.base);
   final venueRef = venueRefFromUri(Uri.base);
+  final opportunityRef = opportunityRefFromUri(Uri.base);
   final orgInviteToken = orgInviteTokenFromUri(Uri.base);
   final organizerApply = organizerApplyFromUri(Uri.base);
   if (Env.demo) {
@@ -108,6 +113,7 @@ Future<void> main() async {
       initialGigId: gigId,
       initialBandSlug: bandSlug,
       initialVenueRef: venueRef,
+      initialOpportunityRef: opportunityRef,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
     );
@@ -143,6 +149,7 @@ Future<void> main() async {
       initialGigId: gigId,
       initialBandSlug: bandSlug,
       initialVenueRef: venueRef,
+      initialOpportunityRef: opportunityRef,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
     ),
@@ -190,6 +197,9 @@ String? performerInviteTokenFromUri(Uri uri) =>
 String? gigIdFromUri(Uri uri) => _routeValueFromUri(uri, 'g');
 
 String? venueRefFromUri(Uri uri) => _routeValueFromUri(uri, 'venues');
+
+String? opportunityRefFromUri(Uri uri) =>
+    _routeValueFromUri(uri, 'opportunities');
 
 String? orgInviteTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'apply');
 
@@ -274,6 +284,7 @@ class EarplugApp extends StatelessWidget {
     this.initialGigId,
     this.initialBandSlug,
     this.initialVenueRef,
+    this.initialOpportunityRef,
     this.initialOrgInviteToken,
     this.initialOrganizerApply = false,
   });
@@ -287,6 +298,7 @@ class EarplugApp extends StatelessWidget {
   final String? initialGigId;
   final String? initialBandSlug;
   final String? initialVenueRef;
+  final String? initialOpportunityRef;
   final String? initialOrgInviteToken;
   final bool initialOrganizerApply;
 
@@ -315,6 +327,7 @@ class EarplugApp extends StatelessWidget {
                 initialGigId: initialGigId,
                 initialBandSlug: initialBandSlug,
                 initialVenueRef: initialVenueRef,
+                initialOpportunityRef: initialOpportunityRef,
                 initialOrgInviteToken: initialOrgInviteToken,
                 initialOrganizerApply: initialOrganizerApply,
               ),
@@ -432,19 +445,24 @@ class RootShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (dataStatus, screen, param, canGoBack, dataError) = context
-        .select<AppState, (DataStatus, Screen, String?, bool, String?)>((app) {
-          final current = app.current;
-          return (
-            app.dataStatus,
-            current.screen,
-            current.param,
-            app.canGoBack,
-            app.dataError,
-          );
-        });
+    final (dataStatus, screen, param, canGoBack, dataError, bandId) = context
+        .select<AppState, (DataStatus, Screen, String?, bool, String?, String)>(
+          (app) {
+            final current = app.current;
+            return (
+              app.dataStatus,
+              current.screen,
+              current.param,
+              app.canGoBack,
+              app.dataError,
+              app.bandId,
+            );
+          },
+        );
     final app = context.read<AppState>();
     final entry = ScreenEntry(screen, param);
+    final showOpportunityAsFanTab =
+        screen == Screen.opportunityDetail && bandId.isEmpty;
 
     final body = switch (dataStatus) {
       DataStatus.connecting => ColoredBox(
@@ -481,9 +499,9 @@ class RootShell extends StatelessWidget {
       DataStatus.ready => Stack(
         children: [
           Positioned.fill(child: _screenFor(entry)),
-          if (fanTabScreens.contains(screen))
+          if (fanTabScreens.contains(screen) || showOpportunityAsFanTab)
             const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-          if (bandTabScreens.contains(screen))
+          if (bandTabScreens.contains(screen) && !showOpportunityAsFanTab)
             const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
           if (organizerTabScreens.contains(screen))
             const Positioned(
@@ -549,6 +567,19 @@ class RootShell extends StatelessWidget {
       ),
       Screen.orgTeam => OrgTeamScreen(key: key),
       Screen.orgSettings => OrgSettingsScreen(key: key),
+      Screen.orgOpportunities => OrgOpportunitiesScreen(key: key),
+      Screen.opportunityEdit => OpportunityEditScreen(
+        key: key,
+        opportunityId: entry.param!,
+      ),
+      Screen.opportunityApplicants => OpportunityApplicantsScreen(
+        key: key,
+        opportunityId: entry.param!,
+      ),
+      Screen.opportunityDetail => OpportunityDetailScreen(
+        key: key,
+        opportunityRef: entry.param!,
+      ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,

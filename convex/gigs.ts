@@ -10,6 +10,10 @@ import {
 } from "./_generated/server";
 import { DocCache, docCache } from "./lib/docCache";
 import {
+  assertBandGigWritesEnabled,
+  bandGigWritesEnabled,
+} from "./lib/gigWritePolicy";
+import {
   MAX_FEED_GIGS,
   MAX_PAST_GIGS,
   MAX_UPCOMING_GIGS_PER_BAND,
@@ -376,10 +380,11 @@ export async function createProjectForGig(
 type UpcomingGigs = { gigs: Doc<"gigs">[]; nextStartsAt: number | null };
 
 async function upcomingGigs(ctx: QueryCtx): Promise<UpcomingGigs> {
+  const cutoff = await feedCutoff(ctx);
   const published = await ctx.db
     .query("gigs")
     .withIndex("by_lifecycle_and_startsAt", (q) =>
-      q.eq("lifecycle", "published").gte("startsAt", feedCutoff()),
+      q.eq("lifecycle", "published").gte("startsAt", cutoff),
     )
     .order("asc")
     .take(MAX_FEED_GIGS + 1);
@@ -388,7 +393,7 @@ async function upcomingGigs(ctx: QueryCtx): Promise<UpcomingGigs> {
   const legacy = await ctx.db
     .query("gigs")
     .withIndex("by_lifecycle_and_startsAt", (q) =>
-      q.eq("lifecycle", undefined).gte("startsAt", feedCutoff()),
+      q.eq("lifecycle", undefined).gte("startsAt", cutoff),
     )
     .order("asc")
     .take(MAX_FEED_GIGS + 1);
@@ -600,11 +605,23 @@ export const getProject = query({
     await toProjectPayload(ctx, await requireProjectAdmin(ctx, args.projectId)),
 });
 
+/** Lets the client hide gig-creation controls when band-authored gigs are
+ * frozen. No auth — the flag value itself is not sensitive, only a boolean
+ * feature toggle safe to expose to any client. */
+export const writePolicy = query({
+  args: {},
+  returns: v.object({ bandGigWrites: v.boolean() }),
+  handler: async () => {
+    return { bandGigWrites: bandGigWritesEnabled() };
+  },
+});
+
 export const createDraft = mutation({
   args: { bandId: v.id("bands") },
   returns: projectPayloadValidator,
   handler: async (ctx, args) => {
     const { band } = await requireBandRole(ctx, args.bandId, { role: "admin" });
+    assertBandGigWritesEnabled();
     const now = Date.now();
     const projectId = await ctx.db.insert("gigProjects", {
       bandId: args.bandId,
@@ -655,6 +672,7 @@ export const saveDraft = mutation({
   returns: v.object({ revision: v.number() }),
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
+    assertBandGigWritesEnabled();
     if (project.revision !== args.revision)
       throw new Error("Draft changed elsewhere");
     if (!Number.isFinite(args.price) || args.price < 0)
@@ -693,6 +711,7 @@ export const addPerformer = mutation({
   returns: projectPayloadValidator,
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
+    assertBandGigWritesEnabled();
     const performers = await projectPerformers(ctx, project._id);
     if (performers.length >= MAX_PERFORMERS) throw new Error("Lineup is full");
     let name = args.name?.trim() ?? "";
@@ -752,6 +771,7 @@ export const updatePerformer = mutation({
     const performer = await ctx.db.get(args.performerId);
     if (!performer) throw new Error("Performer not found");
     const project = await requireProjectAdmin(ctx, performer.projectId);
+    assertBandGigWritesEnabled();
     const patch: { name?: string; role?: "headliner" | "support" | "opener" } =
       {};
     if (args.name !== undefined && performer.kind !== "band") {
@@ -779,6 +799,7 @@ export const removePerformer = mutation({
     const performer = await ctx.db.get(args.performerId);
     if (!performer) throw new Error("Performer not found");
     const project = await requireProjectAdmin(ctx, performer.projectId);
+    assertBandGigWritesEnabled();
     await ctx.db.delete(performer._id);
     const remaining = await projectPerformers(ctx, project._id);
     for (let index = 0; index < remaining.length; index++) {
@@ -804,6 +825,7 @@ export const reorderPerformers = mutation({
   returns: projectPayloadValidator,
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
+    assertBandGigWritesEnabled();
     const current = await projectPerformers(ctx, project._id);
     if (
       args.performerIds.length !== current.length ||
@@ -837,6 +859,7 @@ export const publishDraft = mutation({
   returns: v.object({ gigId: v.id("gigs"), slug: v.string() }),
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
+    assertBandGigWritesEnabled();
     const gigId = await publishProject(ctx, project);
     const gig = await ctx.db.get(gigId);
     return { gigId, slug: gig?.slug ?? gigId };
@@ -930,6 +953,7 @@ export const duplicate = mutation({
   returns: projectPayloadValidator,
   handler: async (ctx, args) => {
     const source = await requireProjectAdmin(ctx, args.projectId);
+    assertBandGigWritesEnabled();
     const now = Date.now();
     const projectId = await ctx.db.insert("gigProjects", {
       bandId: source.bandId,
@@ -1079,6 +1103,7 @@ export const claimPerformerInvite = mutation({
   returns: v.object({ projectId: v.id("gigProjects") }),
   handler: async (ctx, args) => {
     const { band } = await requireBandRole(ctx, args.bandId, { role: "admin" });
+    assertBandGigWritesEnabled();
     const performer =
       args.token.length <= 200
         ? await ctx.db

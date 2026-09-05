@@ -24,10 +24,12 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final organizationId = context.read<AppState>().organizationId;
+    final app = context.read<AppState>();
+    final organizationId = app.organizationId;
     if (_loadedOrganizationId == organizationId) return;
     _loadedOrganizationId = organizationId;
     _refresh();
+    app.refreshOpportunities(organizationId);
   }
 
   Future<void> _refresh() async {
@@ -65,6 +67,10 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
         membership?.organization.name ??
         'Organizer';
     final role = app.organizerRoleFor(app.organizationId) ?? dashboard?.role;
+    final openOpportunities = app
+        .opportunitiesFor(app.organizationId)
+        .where((opportunity) => opportunity.status == OpportunityStatus.open)
+        .length;
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -105,10 +111,19 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
                 caption: 'on the team',
               ),
               const SizedBox(width: 8),
-              const EpStatCard(
-                label: 'OPPORTUNITIES',
-                value: '—',
-                caption: 'Phase 2',
+              Expanded(
+                child: GestureDetector(
+                  key: const Key('org-dash-stat-opportunities'),
+                  onTap: () => app.resetTo(Screen.orgOpportunities),
+                  child: EpStatCard(
+                    expand: false,
+                    label: 'OPPORTUNITIES',
+                    value: '$openOpportunities',
+                    caption: openOpportunities > 0
+                        ? 'open right now'
+                        : 'none open',
+                  ),
+                ),
               ),
             ],
           ),
@@ -117,6 +132,7 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
           const SizedBox(height: 10),
           _CommandGrid(
             canManage: app.canManageOrganization(app.organizationId),
+            onOpportunity: app.openOpportunityEditor,
             onVenues: () => app.go(Screen.orgVenues),
             onTeam: () => app.go(Screen.orgTeam),
             onSettings: () => app.go(Screen.orgSettings),
@@ -296,12 +312,14 @@ class _LoadError extends StatelessWidget {
 class _CommandGrid extends StatelessWidget {
   const _CommandGrid({
     required this.canManage,
+    required this.onOpportunity,
     required this.onVenues,
     required this.onTeam,
     required this.onSettings,
   });
 
   final bool canManage;
+  final VoidCallback onOpportunity;
   final VoidCallback onVenues;
   final VoidCallback onTeam;
   final VoidCallback onSettings;
@@ -309,11 +327,14 @@ class _CommandGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final commands = [
-      const _Command(
-        key: Key('org-dash-command-opportunity'),
+      _Command(
+        key: const Key('org-dash-command-opportunity'),
         label: 'NEW OPPORTUNITY',
-        caption: 'Coming in Phase 2',
+        caption: canManage
+            ? 'Post a slot for artists'
+            : 'Managers post opportunities',
         icon: Icons.campaign_outlined,
+        onTap: canManage ? onOpportunity : null,
       ),
       _Command(
         key: const Key('org-dash-command-venues'),

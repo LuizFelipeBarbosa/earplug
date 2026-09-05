@@ -114,6 +114,19 @@ test("reports a deployment missing organizations:addPhoto", () => {
   ]);
 });
 
+test("reports a deployment missing talentOpportunitiesRead:browse", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions)
+    .map(([identifier, functionType]) =>
+      completeFunction(identifier, functionType),
+    )
+    .filter((entry) => entry.identifier !== "talentOpportunitiesRead.js:browse");
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "missing talentOpportunitiesRead.js:browse",
+  ]);
+});
+
 test("reports missing, mistyped, and wrong-deployment functions", () => {
   const problems = contractProblems(
     "https://decisive-iguana-759.convex.cloud",
@@ -171,6 +184,28 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing venues.js:resolvePublic",
     "missing venues.js:privateDetail",
     "missing admin.js:me",
+    "missing talentOpportunities.js:create",
+    "missing talentOpportunities.js:update",
+    "missing talentOpportunities.js:open",
+    "missing talentOpportunities.js:closeApplications",
+    "missing talentOpportunities.js:reopen",
+    "missing talentOpportunities.js:cancel",
+    "missing talentOpportunities.js:deleteDraft",
+    "missing talentOpportunities.js:duplicate",
+    "missing talentOpportunities.js:inviteBand",
+    "missing talentOpportunities.js:uninviteBand",
+    "missing talentOpportunitiesRead.js:browse",
+    "missing talentOpportunitiesRead.js:invitedFor",
+    "missing talentOpportunitiesRead.js:resolvePublic",
+    "missing talentOpportunitiesRead.js:manageForOrganization",
+    "missing talentOpportunitiesRead.js:get",
+    "missing artistApplications.js:apply",
+    "missing artistApplications.js:withdraw",
+    "missing artistApplications.js:review",
+    "missing artistApplications.js:forOpportunity",
+    "missing artistApplications.js:forBand",
+    "missing artistApplications.js:mine",
+    "missing gigs.js:writePolicy",
   ]);
 });
 

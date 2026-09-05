@@ -153,14 +153,13 @@ class StadiaGeocodingService implements GeocodingService {
 
       final houseNumber = _nonEmptyString(properties['housenumber']);
       final street = _nonEmptyString(properties['street']);
-      final name = _nonEmptyString(properties['name']);
       final neighbourhood = _nonEmptyString(properties['neighbourhood']);
       final locality = _nonEmptyString(properties['locality']);
       final region = _nonEmptyString(properties['region']);
       final postalCode = _nonEmptyString(properties['postalcode']);
       final address = houseNumber != null && street != null
-          ? '$houseNumber $street'
-          : name ?? label;
+          ? ['$houseNumber $street', ?locality, ?region, ?postalCode].join(', ')
+          : label;
 
       suggestions.add(
         AddressSuggestion(

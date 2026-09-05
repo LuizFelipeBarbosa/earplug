@@ -26,7 +26,11 @@ void main() {
       home: const Scaffold(body: GigManagerScreen()),
     );
 
-    expect(find.text('Gigs'), findsOne);
+    expect(find.text('GIGS'), findsOne);
+
+    await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
+    await tester.pumpAndSettle();
+
     expect(find.byKey(const Key('gig-project-published-rsvp')), findsOne);
     expect(find.byType(DateBlock), findsWidgets);
     expect(find.text('PUBLISHED'), findsWidgets);
@@ -44,6 +48,9 @@ void main() {
       find.textContaining('finish name, date and times, venue, lineup'),
       findsOne,
     );
+
+    await tester.tap(find.byKey(const Key('band-gigs-seg-past')));
+    await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
       find.text('CANCELLED'),
@@ -74,6 +81,9 @@ void main() {
       repository: _ManagerRepository(auth: auth),
       home: const Scaffold(body: GigManagerScreen()),
     );
+
+    await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('gig-actions-published-rsvp')));
     await tester.pumpAndSettle();
@@ -114,6 +124,9 @@ void main() {
         repository: repository,
         home: const Scaffold(body: GigManagerScreen()),
       );
+
+      await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
+      await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('gig-edit-published-rsvp')));
       await tester.pump();

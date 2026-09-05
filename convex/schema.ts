@@ -79,6 +79,52 @@ export const organizationApplicationStatusValidator = v.union(
   v.literal("withdrawn"),
 );
 
+export const opportunityModeValidator = v.union(
+  v.literal("publicEvent"),
+  v.literal("privateBooking"),
+);
+
+export const opportunityVisibilityValidator = v.union(
+  v.literal("public"),
+  v.literal("inviteOnly"),
+);
+
+// Phase 4 adds a "paid" variant.
+export const opportunityTicketingValidator = v.union(
+  v.literal("none"),
+  v.literal("rsvp"),
+  v.literal("external"),
+);
+
+export const opportunityStatusValidator = v.union(
+  v.literal("draft"),
+  v.literal("open"),
+  v.literal("applications_closed"),
+  v.literal("booking"),
+  v.literal("confirmed"),
+  v.literal("completed"),
+  v.literal("cancelled"),
+);
+
+export const opportunitySlotStatusValidator = v.union(
+  v.literal("open"),
+  v.literal("booked"),
+  v.literal("cancelled"),
+);
+
+// "offered" and "booked" are reachable starting in Phase 3; declaring them
+// now avoids a schema change when booking becomes available.
+export const artistApplicationStatusValidator = v.union(
+  v.literal("submitted"),
+  v.literal("under_review"),
+  v.literal("shortlisted"),
+  v.literal("offered"),
+  v.literal("booked"),
+  v.literal("declined"),
+  v.literal("withdrawn"),
+  v.literal("expired"),
+);
+
 export const venueStatusValidator = v.union(
   v.literal("legacy"),
   v.literal("pending"),
@@ -260,6 +306,110 @@ export default defineSchema({
       "createdAt",
     ])
     .index("by_status_and_createdAt", ["status", "createdAt"]),
+
+  /** Opportunities are organizer-facing and are never shown directly to fans.
+   * The fan-facing `gigs` row is created only once an opportunity reaches
+   * `confirmed`; that linkage lands in Phase 3. `gigProjects` remains band-only
+   * and is unrelated to this table. */
+  talentOpportunities: defineTable({
+    organizationId: v.id("organizations"),
+    // Reserved for private hosts in Phase 5; never set in Phase 2.
+    hostUserId: v.optional(v.id("users")),
+    mode: opportunityModeValidator,
+    venueId: v.optional(v.id("venues")),
+    // Denormalized from the venue's public area/approx label at create/update time;
+    // private bookings (Phase 5) will carry their own value.
+    area: v.string(),
+    venueType: v.optional(venueTypeValidator),
+    title: v.string(),
+    desc: v.string(),
+    eventType: v.optional(v.string()),
+    expectedAttendance: v.optional(v.number()),
+    genres: v.array(v.string()),
+    startsAt: v.number(),
+    doorsAt: v.optional(v.number()),
+    endsAt: v.optional(v.number()),
+    ageRequirement: ageRequirementValidator,
+    equipment: v.optional(v.string()),
+    requirements: v.optional(v.string()),
+    flyKey: v.string(),
+    flyStorageId: v.optional(v.id("_storage")),
+    applicationsCloseAt: v.number(),
+    visibility: opportunityVisibilityValidator,
+    ticketing: opportunityTicketingValidator,
+    currency: v.string(),
+    externalUrl: v.optional(v.string()),
+    status: opportunityStatusValidator,
+    publicGigId: v.optional(v.id("gigs")),
+    slug: v.string(),
+    createdBy: v.id("users"),
+    revision: v.number(),
+    // count of applications in active statuses (submitted, under_review, shortlisted, offered); maintained in the same mutation as each application write
+    applicationCount: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_organizationId_and_status", ["organizationId", "status"])
+    .index("by_mode_and_visibility_and_status_and_startsAt", [
+      "mode",
+      "visibility",
+      "status",
+      "startsAt",
+    ])
+    // Reserved for Phase 3 offer/booking lookups.
+    .index("by_status_and_applicationsCloseAt", ["status", "applicationsCloseAt"])
+    .index("by_venueId_and_startsAt", ["venueId", "startsAt"])
+    .index("by_publicGigId", ["publicGigId"])
+    .index("by_slug", ["slug"]),
+
+  // A `bookingId` field arrives with the `bookings` table in Phase 3.
+  opportunitySlots: defineTable({
+    opportunityId: v.id("talentOpportunities"),
+    order: v.number(),
+    role: gigPerformerRoleValidator,
+    setLengthMin: v.optional(v.number()),
+    guaranteeMinor: v.number(),
+    required: v.boolean(),
+    status: opportunitySlotStatusValidator,
+    bandId: v.optional(v.id("bands")),
+  }).index("by_opportunityId_and_order", ["opportunityId", "order"]),
+
+  opportunityInvites: defineTable({
+    opportunityId: v.id("talentOpportunities"),
+    bandId: v.id("bands"),
+    invitedBy: v.id("users"),
+    createdAt: v.number(),
+  })
+    .index("by_opportunityId_and_bandId", ["opportunityId", "bandId"])
+    .index("by_bandId", ["bandId"]),
+
+  artistApplications: defineTable({
+    opportunityId: v.id("talentOpportunities"),
+    slotId: v.id("opportunitySlots"),
+    bandId: v.id("bands"),
+    submittedBy: v.id("users"),
+    message: v.string(),
+    askMinor: v.optional(v.number()),
+    availabilityNote: v.optional(v.string()),
+    lineupNote: v.optional(v.string()),
+    status: artistApplicationStatusValidator,
+    decidedBy: v.optional(v.id("users")),
+    decidedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_opportunityId_and_bandId", ["opportunityId", "bandId"])
+    .index("by_opportunityId_and_status", ["opportunityId", "status"])
+    .index("by_bandId_and_status", ["bandId", "status"])
+    // Reserved for Phase 3 offer/booking lookups.
+    .index("by_slotId_and_status", ["slotId", "status"]),
+
+  // Singleton rows keyed by name. The heartbeat in convex/clock.ts maintains
+  // the "feedCutoff" row.
+  clock: defineTable({
+    key: v.string(),
+    value: v.number(),
+  }).index("by_key", ["key"]),
 
   bands: defineTable({
     name: v.string(),

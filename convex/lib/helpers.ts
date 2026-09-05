@@ -2,6 +2,7 @@ import { WithoutSystemFields } from "convex/server";
 import { Infer, v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
+import { readFeedCutoff } from "../clock";
 import { DocCache } from "./docCache";
 import {
   addressDisclosureValidator,
@@ -58,7 +59,21 @@ export function slugify(name: string): string {
   return slug === "" ? "band" : slug;
 }
 
-const RESERVED_PUBLIC_SLUGS = new Set(["g", "join", "gig-invite", "check-in"]);
+const RESERVED_PUBLIC_SLUGS = new Set([
+  "g",
+  "join",
+  "gig-invite",
+  "check-in",
+  "opportunities",
+  "venues",
+  "apply",
+  "org",
+  "orgs",
+  "band",
+  "checkout",
+  "t",
+  "admin",
+]);
 
 export function isReservedPublicSlug(slug: string): boolean {
   return RESERVED_PUBLIC_SLUGS.has(slug);
@@ -277,18 +292,12 @@ export async function assertGigPublishable(
   return { band, venue };
 }
 
-/** The instant that divides "upcoming" from "past". Every feed-shaped read
- * derives from it so they share one grace window — but each query execution
- * takes its own reading, so a gig sitting right on the boundary can still be
- * upcoming to one query and past to another.
- *
- * Known staleness, deferred for v1: Date.now() is captured when the query
- * executes, and a cached result only recomputes when something writes to the
- * range it read — so on a quiet deployment a gig can linger past the 6h grace.
- * Pre-launch fix: a cron heartbeat that writes the current hour's cutoff to a
- * singleton doc this reads instead of the clock. */
-export function feedCutoff(): number {
-  return Date.now() - FEED_GRACE_MS;
+/** The instant that divides "upcoming" from "past" for every feed-shaped read.
+ * A clock singleton row is kept fresh by a 15-minute cron heartbeat (see
+ * convex/clock.ts), so queries recompute when the row changes instead of
+ * reading the wall clock directly after the first heartbeat. */
+export async function feedCutoff(ctx: QueryCtx | MutationCtx): Promise<number> {
+  return readFeedCutoff(ctx);
 }
 
 /** One band's published gigs on one side of the feed cutoff, at most `limit`
@@ -304,7 +313,7 @@ async function publishedGigsForBand(
   limit: number,
   side: "past" | "upcoming",
 ): Promise<Doc<"gigs">[]> {
-  const cutoff = feedCutoff();
+  const cutoff = await feedCutoff(ctx);
   const joinRows = await ctx.db
     .query("gigBands")
     .withIndex("by_band_startsAt", (q) =>

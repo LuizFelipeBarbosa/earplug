@@ -7,6 +7,7 @@ import 'package:earplug/main.dart'
         bandSlugFromUri,
         gigIdFromUri,
         joinTokenFromUri,
+        opportunityRefFromUri,
         orgInviteTokenFromUri,
         organizerApplyFromUri,
         performerInviteTokenFromUri,
@@ -47,6 +48,15 @@ void main() {
     expect(
       orgInviteTokenFromUri(Uri.parse('https://earplug.app/apply/abc')),
       'abc',
+    );
+  });
+
+  test('opportunity routes preserve their references', () {
+    expect(
+      opportunityRefFromUri(
+        Uri.parse('https://earplug.app/opportunities/friday-night-live'),
+      ),
+      'friday-night-live',
     );
   });
 
@@ -141,6 +151,7 @@ void main() {
     for (final path in const [
       'venues/the-foghorn-club',
       'apply/invite-token',
+      'opportunities/friday-night-live',
     ]) {
       expect(bandSlugFromUri(Uri.parse('https://earplug.app/$path')), isNull);
     }
@@ -158,6 +169,20 @@ void main() {
 
     expect(resolved.current.screen, Screen.orgJoin);
     expect(resolved.current.param, 'tok123');
+  });
+
+  test('opportunity references seed the detail placeholder', () async {
+    final auth = FakeAuthService();
+    final app = AppState.demo(
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      initialOpportunityRef: 'friday-night-live',
+    );
+    addTearDown(app.dispose);
+    await flushAsyncWork();
+
+    expect(app.current.screen, Screen.opportunityDetail);
+    expect(app.current.param, 'friday-night-live');
   });
 
   test(

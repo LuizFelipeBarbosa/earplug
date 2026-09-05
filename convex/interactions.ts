@@ -69,7 +69,7 @@ export const myInteractions = query({
       ...rsvps.map((rsvp) => rsvp.gigId),
       ...saves.map((save) => save.gigId),
     ]);
-    const cutoff = feedCutoff();
+    const cutoff = await feedCutoff(ctx);
     // A fan's upcoming RSVPs and saves share flyers and legacy lineup bands,
     // so each is read once per invocation rather than once per gig.
     const cache = docCache(ctx);

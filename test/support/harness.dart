@@ -58,6 +58,7 @@ Future<AppHarness> pumpApp(
   LocationService? locationService,
   GeocodingService? geocoding,
   DateTime Function()? now,
+  String? initialOpportunityRef,
   FutureOr<void> Function(AppState app)? beforePump,
   Duration? pumpFor,
 }) async {
@@ -81,6 +82,7 @@ Future<AppHarness> pumpApp(
     locationService: locationService,
     mediaUploadService: resolvedUploader,
     now: now,
+    initialOpportunityRef: initialOpportunityRef,
   );
 
   final picker = FakeMediaPicker();

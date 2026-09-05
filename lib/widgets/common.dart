@@ -290,6 +290,7 @@ class EpChip extends StatelessWidget {
   final VoidCallback? onTap;
   final bool ghost;
   final bool neutralSelected;
+  final bool readOnly;
   final VoidCallback? onRemoved;
   final String? semanticLabel;
 
@@ -300,6 +301,7 @@ class EpChip extends StatelessWidget {
     required this.onTap,
     this.ghost = false,
     this.neutralSelected = false,
+    this.readOnly = false,
     this.onRemoved,
     this.semanticLabel,
   });
@@ -307,8 +309,9 @@ class EpChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null || onRemoved != null;
+    final locked = active && !enabled && !readOnly;
     final textStyle = Theme.of(context).textTheme.epChipLabel.copyWith(
-      color: !enabled
+      color: !enabled && !active
           ? context.epColors.contentDisabled
           : active
           ? neutralSelected
@@ -377,12 +380,25 @@ class EpChip extends StatelessWidget {
         ),
       );
     }
-    return ConstrainedBox(
+    final selectedColor = neutralSelected
+        ? context.epColors.surfaceDisabled
+        : context.epColors.volt;
+    final borderColor = active && neutralSelected
+        ? context.epColors.contentSecondary
+        : active
+        ? context.epColors.volt
+        : context.epColors.border;
+    final chip = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
       child: FilterChip(
         label: Text(label.toUpperCase(), style: textStyle),
         selected: active,
-        onSelected: onTap == null ? null : (_) => onTap!(),
+        // Keep RawChip enabled so it does not fade the selected label.
+        onSelected: locked || readOnly
+            ? (_) {}
+            : onTap == null
+            ? null
+            : (_) => onTap!(),
         onDeleted: onRemoved,
         deleteIcon: Icon(Icons.close, size: 16),
         deleteIconColor: active && !neutralSelected
@@ -390,21 +406,21 @@ class EpChip extends StatelessWidget {
             : context.epColors.mute,
         showCheckmark: false,
         backgroundColor: Colors.transparent,
-        selectedColor: neutralSelected
-            ? context.epColors.surfaceDisabled
-            : context.epColors.volt,
+        selectedColor: locked
+            ? selectedColor.withValues(alpha: .55)
+            : selectedColor,
         disabledColor: Colors.transparent,
         side: BorderSide(
-          color: active && neutralSelected
-              ? context.epColors.contentSecondary
-              : active
-              ? context.epColors.volt
-              : context.epColors.border,
+          color: locked ? borderColor.withValues(alpha: .55) : borderColor,
         ),
         shape: const StadiumBorder(),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       ),
     );
+    if (locked || readOnly) {
+      return IgnorePointer(child: ExcludeFocus(child: chip));
+    }
+    return chip;
   }
 }
 
