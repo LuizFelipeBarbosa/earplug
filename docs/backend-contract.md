@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.20)
+# EarPlug Convex function contract (FROZEN — v1.21)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -398,6 +398,111 @@ quiet deployment; results can remain cached between heartbeats until other
 read data changes. Only before the very first heartbeat ever runs, when the
 row does not yet exist, does the read fall back to
 `Date.now() - FEED_GRACE_MS`, preserving cold-start behavior.
+
+**v1.21 — bookings, offers and reviews.** Organizers can send revisioned
+offers to shortlisted artists, artists can accept or decline, and either
+party can cancel an eligible booking. Booking reads expose fees, the current
+offer, venue details and contact information under the disclosure rules below.
+Completed bookings support one double-blind review per side. The exact
+`BookingPayload` is defined by `bookingPayloadValidator` in
+[`convex/bookingsRead.ts`](../convex/bookingsRead.ts); the booking and listing
+review payload validators are in [`convex/reviews.ts`](../convex/reviews.ts).
+
+- `bookings:sendOffer` — Mutation; `{ applicationId, grossMinor, cancellationTemplate, termsNotes?, message? } -> { bookingId, offerId, revision }`; organization owner/manager or platform admin sends an offer to a shortlisted application for an available slot.
+- `bookings:withdrawOffer` — Mutation; `{ bookingId, expectedRevision } -> { revision }`; organization owner/manager or platform admin withdraws a pending offer and returns its application to `shortlisted`.
+- `bookings:respond` — Mutation; `{ bookingId, action: "accept" | "decline", expectedRevision, message? } -> { status, revision }`; band admin accepts or declines a pending, unexpired offer with revision checking.
+- `bookings:cancel` — Mutation; `{ bookingId, reason, expectedRevision } -> { status, revision }`; organization owner/manager or band admin cancels a booking in `awaiting_payment` or `confirmed`, with a required reason and revision checking.
+- `bookingsRead:get` — Query; `{ bookingId } -> BookingPayload | null`; returns one booking to its organization members, band admins, or a platform admin; missing or inaccessible bookings return null.
+- `bookingsRead:forOrganization` — Query; `{ organizationId, statuses? } -> BookingPayload[]`; organization members or platform admins read bookings newest start first, up to 200 per selected status; defaults to all statuses and retains history access while the organization is suspended.
+- `bookingsRead:forBand` — Query; `{ bandId } -> BookingPayload[]`; band admins read their band's bookings across all statuses, newest start first, up to 200 per status.
+- `reviews:submit` — Mutation; `{ bookingId, rating, categories, text } -> { reviewId, visible }`; organization owner/manager or band admin submits their side's double-blind review of a completed/paid booking within the review window.
+- `reviews:forBooking` — Query; `{ bookingId } -> { mine, theirs, windowClosesAt, canSubmit }`; booking parties with review rights read their own review, the counterparty's released review, and submission eligibility.
+- `reviews:forBand` — Query; `{ bandId, limit? } -> band review payload[]`; publicly lists released, non-hidden reviews of a band, including `monthLabel`, `opportunityTitle`, and `organizationName`.
+- `reviews:forOrganization` — Query; `{ organizationId, limit? } -> organization review payload[]`; any organization role or platform admin lists released, non-hidden reviews of that organization, including `monthLabel`, `opportunityTitle`, and `bandName`.
+
+The booking status machine is declared in `BOOKING_TRANSITIONS` in
+[`convex/lib/bookingStatus.ts`](../convex/lib/bookingStatus.ts). Each state
+has exactly these reachable next states:
+
+- `offer_sent -> [artist_accepted, declined, expired, withdrawn]`.
+- `artist_accepted -> [confirmed, awaiting_payment]`.
+- `awaiting_payment -> [confirmed, cancelled_by_organizer, cancelled_by_artist, expired]`.
+- `confirmed -> [completed, cancelled_by_organizer, cancelled_by_artist, force_majeure, disputed]`.
+- `completed -> [paid, disputed, force_majeure]`.
+- `paid -> [disputed, refunded, force_majeure]`.
+- `disputed -> [confirmed, completed, paid, refunded, force_majeure]`.
+- `refunded -> []`.
+- `cancelled_by_organizer -> []`.
+- `cancelled_by_artist -> []`.
+- `force_majeure -> []`.
+- `declined -> []`.
+- `expired -> []`.
+- `withdrawn -> []`.
+
+The seven states with empty transition lists are terminal. `sendOffer`
+requires a non-negative integer `grossMinor` and refuses values above zero
+while `PAYMENTS_ENABLED` is off (default false). Offers expire after 72 hours.
+Accepting a zero-fee offer confirms the booking; a paid offer moves through
+`artist_accepted` to `awaiting_payment`.
+
+`BookingPayload.fee`, `venue`, and `currentOffer` are required keys;
+`currentOffer` may be null. `get` returns a nullable union, while both booking
+list queries return arrays. `counterpartyEmail` is the application
+submitter's email for an organizer viewer with owner/manager role, or for a
+viewer granted organizer access through the platform-admin fallback (no
+organization role). Other organization roles receive null. Artist viewers
+receive the organization's private `businessEmail` only when that booking is
+`confirmed`, `completed`, or `paid` (`BOOKING_LIVE_STATUSES`); otherwise it is
+null. Missing contact records also produce null.
+
+`venue.exactAddress` comes from `readVenuePrivateFor` in
+[`convex/lib/venuePrivate.ts`](../convex/lib/venuePrivate.ts) and requires an
+existing `venuePrivateDetails` row. With that row, an effectively public
+address is disclosable to any authorized booking reader. An `onTicket`
+address is disclosable to a platform admin, any member of the venue's
+non-suspended managing organization, or an admin of a band with a
+`confirmed`, `completed`, or `paid` booking at that venue. The band check
+scans at most 50 user memberships and 50 bookings per administered band and
+live status; the qualifying booking can be different from the booking being
+read. Other viewers receive null. Ticket/RSVP ownership alone does not yet
+grant access through this helper.
+
+`REVIEW_WINDOW_MS` is 14 days from `completedAt`. Submission requires
+`completed` or `paid`, no existing review from that side, and server time at
+or before `completedAt + REVIEW_WINDOW_MS`. `reviews:forBooking` returns the
+author's own review even while pending; `theirs` stays null until the
+counterparty review has `visibleAt`. On submission, the pair is released
+atomically only if the other side's review exists and still has no
+`visibleAt`; otherwise the new review remains pending. Completion schedules
+the internal `reviews:closeReviewWindow` for the end of the 14-day window,
+which assigns `visibleAt` to any remaining pending reviews. Listing queries
+include only reviews with `visibleAt` and `hidden: false`, newest release
+first, defaulting to 20 and capped at 50 from the latest 200 stored reviews.
+Their `monthLabel` uses the submission month/year in UTC. `forBooking` returns
+a plain object with required `canSubmit`; it does not apply the listings'
+hidden-review filter.
+
+The stored `gigs` row now carries optional `ownerKind`,
+`createdByOrganization`, and `opportunityId` for publish/ownership
+bookkeeping. The wire `GigPayload` is unchanged: none of these three fields
+is exposed to clients by `gigPayloadValidator` or `toGigPayload` in
+`convex/lib/helpers.ts`; `createdByBand` remains present and nullable.
+`convex/lib/gigPublish.ts` inserts organization-owned gigs directly into
+`gigs` with their band index rows when the required slots are confirmed,
+without creating a `gigProjects` row.
+
+Band-side gig editing remains scoped to `gigProjects`: management reads and
+`requireProjectAdmin` admit admins only to their own band's projects, and
+the `BAND_GIG_WRITES`-gated creation/edit/publish mutations operate through
+those projects. Performer invitation claims also require an existing
+`gigProjectPerformers` row linked to a project. Organization-owned gigs have
+no project a band could open or performer invitation it could claim, so
+these mutations never touch them; this follows from the project structure,
+without an explicit `ownerKind` check. `gigs:writePolicy` continues to expose
+the flag. Public gig reads use `ownedByActiveOwner` to exclude gigs whose
+referenced organization is missing or suspended when `createdByOrganization`
+is set, and otherwise exclude archived or missing owning bands when
+`createdByBand` is set.
 
 ## Reconciliation
 
