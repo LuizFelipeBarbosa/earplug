@@ -26,6 +26,7 @@ import {
   REVIEW_WINDOW_MS,
   type BookingStatus,
 } from "./lib/bookingStatus";
+import { settleBookingCancellation } from "./lib/cancellationSettlement";
 import { appBaseUrl, flag } from "./lib/env";
 import { feeSnapshot, resolveCommissionBps } from "./lib/fees";
 import { syncGigLineup, unpublishOpportunityGig } from "./lib/gigPublish";
@@ -589,11 +590,20 @@ export const cancel = mutation({
       revision,
       updatedAt: now,
     });
+    let settlement: Awaited<ReturnType<typeof settleBookingCancellation>> | null =
+      null;
+    if (booking.grossMinor > 0) {
+      settlement = await settleBookingCancellation(ctx, {
+        booking,
+        cancelledBy: side,
+        reason: side === "organizer" ? "organizer_cancel" : "artist_cancel",
+        now,
+      });
+    }
     if (booking.status === "awaiting_payment") {
       await ctx.scheduler.runAfter(0, internal.payments.expireOpenSessions, {
         bookingId: booking._id,
       });
-      // TODO(b3b-refunds): refund any paid installments when cancelling from awaiting_payment.
     }
     if (booking.status === "confirmed") {
       await releaseBookingSlot(ctx, booking);
@@ -626,6 +636,12 @@ export const cancel = mutation({
       ctx,
       await loadBooking(ctx, booking._id),
       "bookingCancelled",
+      {
+        reason:
+          settlement && settlement.refundMinor > 0
+            ? `${reason} Refund: ${(settlement.refundMinor / 100).toFixed(2)} ${booking.currency.toUpperCase()}.`
+            : reason,
+      },
     );
     return { status, revision };
   },
@@ -785,6 +801,17 @@ export const adminForceState = internalMutation({
           }
         : {}),
     });
+    if (
+      (args.status === "force_majeure" || args.status === "refunded") &&
+      booking.grossMinor > 0
+    ) {
+      await settleBookingCancellation(ctx, {
+        booking,
+        cancelledBy: "admin",
+        reason: args.status === "force_majeure" ? "force_majeure" : "admin",
+        now,
+      });
+    }
     if (isCancellation && BOOKING_LIVE_STATUSES.includes(booking.status)) {
       await releaseBookingSlot(ctx, booking);
       const application = await ctx.db.get(booking.applicationId);

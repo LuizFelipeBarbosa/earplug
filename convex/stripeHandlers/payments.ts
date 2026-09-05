@@ -11,11 +11,12 @@ import { BOOKING_ACTIVE_STATUSES } from "../lib/bookingStatus";
 import { appendLedgerEntry } from "../lib/ledger";
 import { recomputePayoutHold } from "../lib/paymentSchedule";
 import type * as payments from "../payments";
+import type * as refunds from "../refunds";
 import type { StripeEventHandler, StripeHandlerMap } from "../stripeWebhook";
 
 const internal = generatedInternal as typeof generatedInternal &
   FilterApi<
-    ApiFromModules<{ payments: typeof payments }>,
+    ApiFromModules<{ payments: typeof payments; refunds: typeof refunds }>,
     FunctionReference<"query" | "mutation" | "action", "internal">
   >;
 
@@ -94,7 +95,10 @@ const checkoutCompleted: StripeEventHandler = async (ctx, event) => {
       payoutHold: true,
       updatedAt: Date.now(),
     });
-    // TODO(b3b-refunds): auto-refund late payment.
+    await ctx.runMutation(internal.refunds.refundLatePayment, {
+      paymentRecordId: record._id,
+      eventId: event.id,
+    });
     return;
   }
   if (
