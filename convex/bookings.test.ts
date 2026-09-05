@@ -258,12 +258,14 @@ async function setupBookings() {
     bookingId: Id<"bookings">,
     actor: Actor,
     expectedRevision = 3,
+    actingAs?: "organizer" | "artist",
   ) {
     return await checked(() =>
       as(actor).mutation(api.bookings.cancel, {
         bookingId,
         expectedRevision,
         reason: "  Unable to perform  ",
+        as: actingAs,
       }),
     );
   }
@@ -781,6 +783,97 @@ describe("booking confirmation and cancellation", () => {
       });
     },
   );
+
+  test.each([
+    ["artist", "artist", "cancelled_by_artist", "withdrawn"],
+    ["organizer", "organizer", "cancelled_by_organizer", "declined"],
+    [undefined, "organizer", "cancelled_by_organizer", "declined"],
+  ] as const)(
+    "resolves dual-role cancellation with as=%s to %s",
+    async (actingAs, side, status, applicationStatus) => {
+      const f = await setupBookings();
+      await f.t.run((ctx) =>
+        ctx.db.insert("bandMembers", {
+          bandId: f.bandId,
+          userId: f.users.owner,
+          role: "admin",
+        }),
+      );
+      const { bookingId } = await f.confirm();
+      expect(await f.cancel(bookingId, "owner", 3, actingAs)).toEqual({
+        status,
+        revision: 4,
+      });
+      expect(await f.readBooking(bookingId)).toMatchObject({
+        status,
+        cancelledBy: side,
+      });
+      expect(await f.readApplication()).toMatchObject({
+        status: applicationStatus,
+      });
+      const band = await f.t.run((ctx) => ctx.db.get(f.bandId));
+      const organization = await f.t.run((ctx) => ctx.db.get(f.organizationId));
+      expect(band?.reviewSummary?.cancellations ?? 0).toBe(
+        side === "artist" ? 1 : 0,
+      );
+      expect(organization?.reviewSummary?.cancellations ?? 0).toBe(
+        side === "organizer" ? 1 : 0,
+      );
+    },
+  );
+
+  test.each([
+    ["admin", "organizer", "artist", "cancelled_by_artist"],
+    ["owner", "artist", "organizer", "cancelled_by_organizer"],
+  ] as const)(
+    "falls back to the authorized side when %s requests cancellation as %s",
+    async (actor, actingAs, side, status) => {
+      const f = await setupBookings();
+      const { bookingId } = await f.confirm();
+      expect(await f.cancel(bookingId, actor, 3, actingAs)).toEqual({
+        status,
+        revision: 4,
+      });
+      expect(await f.readBooking(bookingId)).toMatchObject({
+        status,
+        cancelledBy: side,
+      });
+    },
+  );
+
+  test.each(["organizer", "artist"] as const)(
+    "refuses outsider cancellation with as=%s",
+    async (actingAs) => {
+      const f = await setupBookings();
+      const { bookingId } = await f.confirm();
+      await expect(
+        f.cancel(bookingId, "stranger", 3, actingAs),
+      ).rejects.toThrow("Not permitted to cancel this booking");
+      expect(await f.readBooking(bookingId)).toMatchObject({
+        status: "confirmed",
+        revision: 3,
+      });
+    },
+  );
+
+  test("allows a platform admin to cancel as the organizer", async () => {
+    const f = await setupBookings();
+    await f.t.run((ctx) =>
+      ctx.db.insert("platformAdmins", {
+        userId: f.users.stranger,
+        grantedAt: NOW,
+      }),
+    );
+    const { bookingId } = await f.confirm();
+    expect(await f.cancel(bookingId, "stranger", 3, "organizer")).toEqual({
+      status: "cancelled_by_organizer",
+      revision: 4,
+    });
+    expect(await f.readBooking(bookingId)).toMatchObject({
+      status: "cancelled_by_organizer",
+      cancelledBy: "organizer",
+    });
+  });
 
   test("optional slot cancellation updates the lineup while keeping the gig published", async () => {
     const f = await setupBookings();

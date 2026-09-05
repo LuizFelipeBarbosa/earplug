@@ -8,6 +8,7 @@ import {
 } from "./_generated/server";
 import { bookingEmail, type BookingEmailKind } from "./emails";
 import {
+  isPlatformAdmin,
   organizationMembershipFor,
   requireOrganizationRole,
 } from "./lib/authz";
@@ -423,6 +424,7 @@ export const cancel = mutation({
     bookingId: v.id("bookings"),
     reason: v.string(),
     expectedRevision: v.number(),
+    as: v.optional(v.union(v.literal("organizer"), v.literal("artist"))),
   },
   returns: v.object({ status: bookingStatusValidator, revision: v.number() }),
   handler: async (ctx, args) => {
@@ -436,24 +438,29 @@ export const cancel = mutation({
       throw new Error("Cancellation reason must be at most 500 characters");
     }
     const user = await requireUser(ctx);
-    const membership = await organizationMembershipFor(
-      ctx,
-      booking.organizationId,
-      user._id,
-    );
-    let side: "organizer" | "artist";
-    if (membership?.role === "owner" || membership?.role === "manager") {
-      side = "organizer";
-    } else {
-      const bandMember = await ctx.db
+    const [membership, bandMembership, platformAdmin] = await Promise.all([
+      organizationMembershipFor(ctx, booking.organizationId, user._id),
+      ctx.db
         .query("bandMembers")
         .withIndex("by_band_user", (q) =>
           q.eq("bandId", booking.bandId).eq("userId", user._id),
         )
-        .unique();
-      if (bandMember?.role !== "admin") {
-        throw new Error("Not permitted to cancel this booking");
-      }
+        .unique(),
+      isPlatformAdmin(ctx, user._id),
+    ]);
+    const canOrganizer =
+      membership?.role === "owner" ||
+      membership?.role === "manager" ||
+      platformAdmin;
+    const canArtist = bandMembership?.role === "admin";
+    if (!canOrganizer && !canArtist) {
+      throw new Error("Not permitted to cancel this booking");
+    }
+
+    let side: "organizer" | "artist" = canOrganizer ? "organizer" : "artist";
+    if (args.as === "organizer" && canOrganizer) {
+      side = "organizer";
+    } else if (args.as === "artist" && canArtist) {
       side = "artist";
     }
     if (side === "organizer") {
