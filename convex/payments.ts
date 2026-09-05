@@ -63,6 +63,12 @@ export const loadCheckoutContext = internalQuery({
     if (!record) throw new Error("Payment record not found");
     const booking = await ctx.db.get(record.bookingId);
     if (!booking) throw new Error("Booking not found");
+    if (
+      booking.status !== "awaiting_payment" &&
+      booking.status !== "confirmed"
+    ) {
+      throw new Error("This booking is not accepting payments");
+    }
     const user = await requireUser(ctx);
     const membership = await organizationMembershipFor(
       ctx,
@@ -160,7 +166,11 @@ export const startInstallmentCheckout = action({
     }
     const checkoutExpiresAt =
       Math.floor((Date.now() + CHECKOUT_TTL_MS) / 1000) * 1000;
-    const session = await stripeRequest<{ id: string; url: string }>(
+    const session = await stripeRequest<{
+      id: string;
+      url: string;
+      payment_intent?: string;
+    }>(
       "POST",
       "/v1/checkout/sessions",
       {
@@ -204,6 +214,7 @@ export const startInstallmentCheckout = action({
     await ctx.runMutation(internal.payments.markCheckoutOpen, {
       paymentRecordId: record._id,
       sessionId: session.id,
+      stripePaymentIntentId: session.payment_intent,
       checkoutExpiresAt,
       attempt: record.attempt,
     });
@@ -234,6 +245,7 @@ export const markCheckoutOpen = internalMutation({
   args: {
     paymentRecordId: v.id("paymentRecords"),
     sessionId: v.string(),
+    stripePaymentIntentId: v.optional(v.string()),
     checkoutExpiresAt: v.number(),
     attempt: v.number(),
   },
@@ -253,6 +265,7 @@ export const markCheckoutOpen = internalMutation({
     await ctx.db.patch(record._id, {
       status: "checkout_open",
       stripeCheckoutSessionId: args.sessionId,
+      stripePaymentIntentId: args.stripePaymentIntentId,
       checkoutExpiresAt: args.checkoutExpiresAt,
       attempt: args.attempt + 1,
       updatedAt: Date.now(),
@@ -301,7 +314,7 @@ export const remindPayment = internalMutation({
   args: {
     bookingId: v.id("bookings"),
     paymentRecordId: v.id("paymentRecords"),
-    revision: v.number(),
+    revision: v.optional(v.number()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -316,8 +329,7 @@ export const remindPayment = internalMutation({
     const booking = await ctx.db.get(args.bookingId);
     if (
       !booking ||
-      !["awaiting_payment", "confirmed"].includes(booking.status) ||
-      booking.revision !== args.revision
+      !["awaiting_payment", "confirmed"].includes(booking.status)
     ) {
       return null;
     }
@@ -472,15 +484,21 @@ export const markSessionExpired = internalMutation({
 });
 
 export const markFailed = internalMutation({
-  args: { paymentIntentId: v.string() },
+  args: {
+    paymentIntentId: v.string(),
+    metadataPaymentRecordId: v.optional(v.id("paymentRecords")),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const record = await ctx.db
+    let record = await ctx.db
       .query("paymentRecords")
       .withIndex("by_stripePaymentIntentId", (q) =>
         q.eq("stripePaymentIntentId", args.paymentIntentId),
       )
       .unique();
+    if (!record && args.metadataPaymentRecordId) {
+      record = await ctx.db.get(args.metadataPaymentRecordId);
+    }
     if (!record) {
       console.log(
         `payment_intent.payment_failed ignored: no payment record for intent ${args.paymentIntentId}`,

@@ -16,8 +16,8 @@ export const PAYMENT_RECORD_TRANSITIONS: Record<
 > = {
   pending: ["checkout_open", "expired"],
   checkout_open: ["paid", "failed", "expired", "pending"],
-  failed: ["checkout_open", "pending"],
-  expired: ["checkout_open", "pending"],
+  failed: ["checkout_open", "pending", "expired", "paid"],
+  expired: ["checkout_open", "pending", "paid"],
   paid: ["partially_refunded", "refunded"],
   partially_refunded: ["refunded", "partially_refunded"],
   refunded: [],

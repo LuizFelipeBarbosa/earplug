@@ -653,6 +653,27 @@ describe("installment Checkout", () => {
     expect(stripeRequest).not.toHaveBeenCalled();
   });
 
+  test("refuses Checkout once the booking is no longer accepting payments", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    vi.setSystemTime(NOW + DEFAULT_PAYMENT_DUE_MS + AUTO_CANCEL_GRACE_MS);
+    await f.checked(() =>
+      f.t.mutation(internal.bookings.autoCancelUnpaid, {
+        bookingId: offer.bookingId,
+        revision: 3,
+      }),
+    );
+    expect((await f.readBooking(offer.bookingId))?.status).toBe("expired");
+    expect((await f.records(offer.bookingId))[0].status).toBe("pending");
+    await expect(
+      f.as("finance").action(api.payments.startInstallmentCheckout, {
+        paymentRecordId: record._id,
+      }),
+    ).rejects.toThrow("This booking is not accepting payments");
+    expect(stripeRequest).not.toHaveBeenCalled();
+  });
+
   test("cleanup expires every open session locally even when Stripe fails", async () => {
     const f = await setupPayments();
     const offer = await f.accept(INSTALLMENTS);
@@ -775,6 +796,159 @@ describe("payment webhooks and ledger", () => {
       ),
     ).toHaveLength(1);
   });
+
+  test("a late Checkout completion marks an expired payment paid", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    const sessionId = await f.open(record);
+    vi.setSystemTime(NOW + CHECKOUT_TTL_MS);
+    await f.t.mutation(internal.payments.markSessionExpired, { sessionId });
+    expect((await f.records(offer.bookingId))[0].status).toBe("expired");
+    expect(await f.deliver(completedEvent(record))).toEqual({
+      outcome: "applied",
+    });
+    expect((await f.records(offer.bookingId))[0]).toMatchObject({
+      status: "paid",
+      paidAt: Date.now(),
+    });
+    expect(await f.ledger()).toHaveLength(1);
+  });
+
+  test.each(["paid", "expired"] as const)(
+    "a Checkout event moves a failed payment to %s",
+    async (status) => {
+      const f = await setupPayments();
+      const offer = await f.accept();
+      const [record] = await f.records(offer.bookingId);
+      const sessionId = await f.open(record);
+      await f.t.mutation(internal.payments.markFailed, {
+        paymentIntentId: "pi_installment_0",
+        metadataPaymentRecordId: record._id,
+      });
+      expect((await f.records(offer.bookingId))[0].status).toBe("failed");
+      vi.setSystemTime(NOW + CHECKOUT_TTL_MS);
+      const event: StripeEvent =
+        status === "paid"
+          ? completedEvent(record)
+          : {
+              id: "evt_expired_after_failure",
+              type: "checkout.session.expired",
+              livemode: false,
+              created: Date.now() / 1000,
+              data: {
+                object: {
+                  id: sessionId,
+                  object: "checkout.session",
+                  status: "expired",
+                },
+              },
+            };
+      expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+      expect((await f.records(offer.bookingId))[0].status).toBe(status);
+      expect(await f.ledger()).toHaveLength(status === "paid" ? 1 : 0);
+    },
+  );
+
+  test("payment failure resolves the intent stored when Checkout is created", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    vi.mocked(stripeRequest)
+      .mockResolvedValueOnce({ id: "cus_test_1", object: "customer" })
+      .mockResolvedValueOnce({
+        id: "cs_with_intent",
+        object: "checkout.session",
+        url: "https://checkout.stripe.com/c/pay/cs_with_intent",
+        payment_intent: "pi_checkout",
+      });
+    await f.as("finance").action(api.payments.startInstallmentCheckout, {
+      paymentRecordId: record._id,
+    });
+    expect((await f.records(offer.bookingId))[0]).toMatchObject({
+      status: "checkout_open",
+      stripePaymentIntentId: "pi_checkout",
+    });
+    expect(
+      await f.deliver({
+        id: "evt_payment_failed",
+        type: "payment_intent.payment_failed",
+        livemode: false,
+        created: NOW / 1000,
+        data: {
+          object: {
+            id: "pi_checkout",
+            object: "payment_intent",
+            status: "requires_payment_method",
+            last_payment_error: { code: "card_declined" },
+          },
+        },
+      }),
+    ).toEqual({ outcome: "applied" });
+    expect((await f.records(offer.bookingId))[0].status).toBe("failed");
+    expect(await f.ledger()).toEqual([]);
+  });
+
+  test("payment failure falls back to payment intent metadata", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    await f.open(record);
+    expect(
+      (await f.records(offer.bookingId))[0].stripePaymentIntentId,
+    ).toBeUndefined();
+    expect(
+      await f.deliver({
+        id: "evt_payment_failed_metadata",
+        type: "payment_intent.payment_failed",
+        livemode: false,
+        created: NOW / 1000,
+        data: {
+          object: {
+            id: "pi_not_stored",
+            object: "payment_intent",
+            status: "requires_payment_method",
+            last_payment_error: { code: "card_declined" },
+            metadata: { paymentRecordId: record._id },
+          },
+        },
+      }),
+    ).toEqual({ outcome: "applied" });
+    expect((await f.records(offer.bookingId))[0].status).toBe("failed");
+    expect(await f.ledger()).toEqual([]);
+  });
+
+  test.each([
+    undefined,
+    { paymentRecordId: "invalid-id" },
+    { paymentRecordId: 123 },
+  ])(
+    "ignores payment failure with an unknown intent and metadata %j",
+    async (metadata) => {
+      const f = await setupPayments();
+      const offer = await f.accept();
+      const [record] = await f.records(offer.bookingId);
+      await f.open(record);
+      const records = await f.records(offer.bookingId);
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      expect(
+        await f.deliver({
+          id: "evt_payment_failed_unknown",
+          type: "payment_intent.payment_failed",
+          livemode: false,
+          created: NOW / 1000,
+          data: {
+            object: { id: "pi_unknown", object: "payment_intent", metadata },
+          },
+        }),
+      ).toEqual({ outcome: "applied" });
+      expect(log).toHaveBeenCalledWith(
+        "payment_intent.payment_failed ignored: no payment record for intent pi_unknown",
+      );
+      expect(await f.records(offer.bookingId)).toEqual(records);
+      expect(await f.ledger()).toEqual([]);
+    },
+  );
 
   test.each([undefined, { paymentRecordId: "invalid-id" }])(
     "falls back to session lookup with metadata %j",
@@ -997,21 +1171,15 @@ describe("payment access and scheduled jobs", () => {
     ).toMatchObject([{ canPay: false, paidAt: NOW, status: "paid" }]);
   });
 
-  test("reminders email the organizer with the deadline and ignore stale or settled jobs", async () => {
+  test("reminders email the organizer with the deadline and ignore settled payments", async () => {
     const f = await setupPayments();
     const offer = await f.accept();
     const [record] = await f.records(offer.bookingId);
     const args = {
       bookingId: offer.bookingId,
       paymentRecordId: record._id,
-      revision: 3,
     };
     const initial = await f.scheduled();
-    await f.t.mutation(internal.payments.remindPayment, {
-      ...args,
-      revision: 2,
-    });
-    expect(await f.scheduled()).toEqual(initial);
     await f.t.mutation(internal.payments.remindPayment, args);
     const reminders = (await f.scheduled()).filter(
       (job) => !initial.some((old) => old._id === job._id),
@@ -1034,11 +1202,54 @@ describe("payment access and scheduled jobs", () => {
       outcome: "applied",
     });
     const jobs = await f.scheduled();
-    await f.t.mutation(internal.payments.remindPayment, {
-      ...args,
+    await f.t.mutation(internal.payments.remindPayment, args);
+    expect(await f.scheduled()).toEqual(jobs);
+  });
+
+  test("a later installment reminder still sends after confirmation changes the revision", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept(INSTALLMENTS);
+    const [deposit, balance] = await f.records(offer.bookingId);
+    const args = {
+      bookingId: offer.bookingId,
+      paymentRecordId: balance._id,
+      revision: 3,
+    };
+    expect(
+      (await f.scheduled()).find(
+        (job) =>
+          job.name === "payments:remindPayment" &&
+          job.args[0].paymentRecordId === balance._id,
+      ),
+    ).toMatchObject({ args: [args] });
+    await f.open(deposit);
+    expect(await f.deliver(completedEvent(deposit))).toEqual({
+      outcome: "applied",
+    });
+    expect(await f.readBooking(offer.bookingId)).toMatchObject({
+      status: "confirmed",
       revision: 4,
     });
-    expect(await f.scheduled()).toEqual(jobs);
+    expect((await f.records(offer.bookingId))[1].status).toBe("pending");
+    vi.setSystemTime(balance.dueAt - PAYMENT_REMINDER_LEAD_MS);
+    const initial = await f.scheduled();
+    await f.t.mutation(internal.payments.remindPayment, args);
+    const reminders = (await f.scheduled()).filter(
+      (job) => !initial.some((old) => old._id === job._id),
+    );
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0]).toMatchObject({
+      name: "emails:send",
+      args: [
+        {
+          to: "billing@payment.test",
+          kind: "offerAccepted",
+          text: expect.stringContaining(
+            `Payment due ${new Date(balance.dueAt).toISOString()}`,
+          ),
+        },
+      ],
+    });
   });
 
   test("auto-cancellation expires the booking, shortlists the application, and notifies both sides once", async () => {

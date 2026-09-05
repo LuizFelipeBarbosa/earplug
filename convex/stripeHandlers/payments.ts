@@ -119,8 +119,14 @@ export const paymentHandlers: StripeHandlerMap = {
     });
   },
   "payment_intent.payment_failed": async (ctx, event) => {
+    const paymentRecordId = event.data.object.metadata?.paymentRecordId;
+    const metadataPaymentRecordId =
+      typeof paymentRecordId === "string"
+        ? ctx.db.normalizeId("paymentRecords", paymentRecordId) ?? undefined
+        : undefined;
     await ctx.runMutation(internal.payments.markFailed, {
       paymentIntentId: event.data.object.id,
+      metadataPaymentRecordId,
     });
   },
 };

@@ -52,6 +52,7 @@ import type * as migrations from "../migrations.js";
 import type * as organizationApplications from "../organizationApplications.js";
 import type * as organizationMembers from "../organizationMembers.js";
 import type * as organizations from "../organizations.js";
+import type * as payments from "../payments.js";
 import type * as payoutAccounts from "../payoutAccounts.js";
 import type * as reviews from "../reviews.js";
 import type * as seed from "../seed.js";
@@ -116,6 +117,7 @@ declare const fullApi: ApiFromModules<{
   organizationApplications: typeof organizationApplications;
   organizationMembers: typeof organizationMembers;
   organizations: typeof organizations;
+  payments: typeof payments;
   payoutAccounts: typeof payoutAccounts;
   reviews: typeof reviews;
   seed: typeof seed;
