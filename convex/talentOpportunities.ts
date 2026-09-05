@@ -551,6 +551,17 @@ export const reopen = mutation({
       args.opportunityId,
     );
     assertOpportunityTransition(opportunity.status, "open");
+    if (opportunity.status === "booking") {
+      const slots = await ctx.db
+        .query("opportunitySlots")
+        .withIndex("by_opportunityId_and_order", (q) =>
+          q.eq("opportunityId", opportunity._id),
+        )
+        .take(MAX_OPPORTUNITY_SLOTS + 1);
+      if (slots.every((slot) => slot.status === "booked")) {
+        throw new Error("Every slot is booked");
+      }
+    }
     if (!(
       args.applicationsCloseAt > now &&
       args.applicationsCloseAt < opportunity.startsAt

@@ -1111,6 +1111,79 @@ describe("talent opportunity lifecycle", () => {
     });
   });
 
+  test("reopen from booking with an open slot returns to open and reschedules expiry", async () => {
+    const { t, createDraft, asOwner, readOpportunity } =
+      await setupOrganization();
+    const { opportunityId } = await createDraft({
+      applicationsCloseAt: NOW + DAY_MS,
+      slots: [
+        { role: "headliner", guaranteeMinor: 10000 },
+        { role: "support", guaranteeMinor: 5000 },
+      ],
+    });
+    await asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const { slots } = await readOpportunity(opportunityId);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(opportunityId, { status: "booking" });
+      await ctx.db.patch(slots[0]._id, { status: "booked" });
+    });
+
+    await expect(
+      asOwner.mutation(api.talentOpportunities.reopen, {
+        opportunityId,
+        applicationsCloseAt: NOW + 2 * DAY_MS,
+      }),
+    ).resolves.toBeNull();
+    const reopened = await readOpportunity(opportunityId);
+    expect(reopened.opportunity).toMatchObject({
+      status: "open",
+      applicationsCloseAt: NOW + 2 * DAY_MS,
+    });
+    expect(reopened.slots.map((slot) => slot.status)).toEqual([
+      "booked",
+      "open",
+    ]);
+
+    vi.advanceTimersByTime(2 * DAY_MS + 1);
+    await t.finishInProgressScheduledFunctions();
+    expect((await readOpportunity(opportunityId)).opportunity?.status).toBe(
+      "applications_closed",
+    );
+  });
+
+  test("reopen refuses a booking opportunity whose slots are all booked", async () => {
+    const { t, createDraft, asOwner, readOpportunity } =
+      await setupOrganization();
+    const { opportunityId } = await createDraft({
+      applicationsCloseAt: NOW + DAY_MS,
+      slots: [
+        { role: "headliner", guaranteeMinor: 10000 },
+        { role: "support", guaranteeMinor: 5000 },
+      ],
+    });
+    await asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const { slots } = await readOpportunity(opportunityId);
+    await t.run(async (ctx) => {
+      await ctx.db.patch(opportunityId, { status: "booking" });
+      for (const slot of slots) {
+        await ctx.db.patch(slot._id, { status: "booked" });
+      }
+    });
+
+    await expect(
+      asOwner.mutation(api.talentOpportunities.reopen, {
+        opportunityId,
+        applicationsCloseAt: NOW + 2 * DAY_MS,
+      }),
+    ).rejects.toThrow("Every slot is booked");
+  });
+
   test("cancel declines active applications with the caller and cancels only open slots", async () => {
     const {
       t,

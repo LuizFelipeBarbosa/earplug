@@ -217,6 +217,35 @@ void main() {
     harness.app.dispose();
   });
 
+  testWidgets('reopen is offered and works for a booking-status opportunity', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OrgOpportunitiesScreen(),
+      repositoryBuilder: (auth) => _BookingStatusRepository(auth: auth),
+    );
+    final card = find.byKey(const ValueKey('org-opp-opp1'));
+    await tester.ensureVisible(card);
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+    expect(find.text('REOPEN'), findsOneWidget);
+
+    await tester.tap(find.text('REOPEN'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    final opportunity = await harness.app.repository.opportunity('opp1');
+    // Only the list shows booking; the stored demo record is unchanged, and
+    // DemoRepository reopens unconditionally. These assertions check the UI
+    // flow; the Convex tests cover the booking-specific refusal rule.
+    expect(harness.app.toast, 'Opportunity reopened.');
+    expect(opportunity!.status, OpportunityStatus.open);
+    harness.app.dispose();
+  });
+
   testWidgets('applicants show both bands and the matching slot guarantees', (
     tester,
   ) async {
@@ -774,6 +803,53 @@ Future<AppHarness> _pumpOrganizerScreen(
   await tester.pumpAndSettle();
   await enterOrganizer(tester, harness, 'org1');
   return harness;
+}
+
+class _BookingStatusRepository extends DemoRepository {
+  _BookingStatusRepository({required super.auth});
+
+  @override
+  Future<List<Opportunity>> manageOpportunities(String organizationId) async {
+    final opportunities = await super.manageOpportunities(organizationId);
+    return opportunities.map((opportunity) {
+      if (opportunity.id != 'opp1') return opportunity;
+      return Opportunity(
+        id: opportunity.id,
+        organizationId: opportunity.organizationId,
+        mode: opportunity.mode,
+        venueId: opportunity.venueId,
+        venue: opportunity.venue,
+        title: opportunity.title,
+        desc: opportunity.desc,
+        eventType: opportunity.eventType,
+        expectedAttendance: opportunity.expectedAttendance,
+        genres: opportunity.genres,
+        startsAt: opportunity.startsAt,
+        doorsAt: opportunity.doorsAt,
+        endsAt: opportunity.endsAt,
+        ageRequirement: opportunity.ageRequirement,
+        equipment: opportunity.equipment,
+        requirements: opportunity.requirements,
+        flyKey: opportunity.flyKey,
+        flyerUrl: opportunity.flyerUrl,
+        applicationsCloseAt: opportunity.applicationsCloseAt,
+        visibility: opportunity.visibility,
+        ticketing: opportunity.ticketing,
+        externalUrl: opportunity.externalUrl,
+        status: OpportunityStatus.booking,
+        slug: opportunity.slug,
+        revision: opportunity.revision,
+        applicationCount: opportunity.applicationCount,
+        slots: opportunity.slots,
+        invitedBandIds: opportunity.invitedBandIds,
+        createdAt: opportunity.createdAt,
+        updatedAt: opportunity.updatedAt,
+        area: opportunity.area,
+        venueType: opportunity.venueType,
+        currency: opportunity.currency,
+      );
+    }).toList();
+  }
 }
 
 class _WrappedOfferErrorRepository extends DemoRepository {
