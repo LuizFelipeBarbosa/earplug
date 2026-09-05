@@ -62,6 +62,9 @@ const opportunityFieldsValidator = v.object({
   applicationsCloseAt: v.optional(v.number()),
   visibility: v.optional(opportunityVisibilityValidator),
   ticketing: v.optional(opportunityTicketingValidator),
+  ticketPriceMinor: v.optional(v.number()),
+  ticketCapacity: v.optional(v.number()),
+  ticketCurrency: v.optional(v.string()),
   currency: v.optional(v.string()),
   externalUrl: v.optional(v.string()),
 });
@@ -111,6 +114,32 @@ async function normalizeAndValidateFields(
   if (ticketing === "external" && !isValidHttpsUrl(args.externalUrl)) {
     throw new Error("External ticketing requires a valid HTTPS URL");
   }
+  let ticketPriceMinor: number | undefined;
+  let ticketCapacity: number | undefined;
+  let ticketCurrency: string | undefined;
+  if (ticketing === "paid") {
+    ticketCurrency = (args.ticketCurrency ?? "usd").trim().toLowerCase() || "usd";
+    if (ticketCurrency !== "usd") {
+      throw new Error("Only USD ticketing is supported right now");
+    }
+    if (
+      args.ticketPriceMinor === undefined ||
+      !Number.isInteger(args.ticketPriceMinor) ||
+      args.ticketPriceMinor < 100
+    ) {
+      throw new Error("Ticket price must be at least $1.00");
+    }
+    if (
+      args.ticketCapacity === undefined ||
+      !Number.isInteger(args.ticketCapacity) ||
+      args.ticketCapacity < 1 ||
+      args.ticketCapacity > 5000
+    ) {
+      throw new Error("Ticket capacity must be between 1 and 5,000");
+    }
+    ticketPriceMinor = args.ticketPriceMinor;
+    ticketCapacity = args.ticketCapacity;
+  }
   const flyKey = args.flyKey ?? "xerox";
   if (flyKey === "custom") {
     if (args.flyStorageId === undefined) {
@@ -130,6 +159,9 @@ async function normalizeAndValidateFields(
     startsAt: args.startsAt,
     applicationsCloseAt,
     ticketing,
+    ticketPriceMinor,
+    ticketCapacity,
+    ticketCurrency,
     flyKey,
     visibility: args.visibility ?? "public",
     ageRequirement: args.ageRequirement ?? "allAges",
@@ -409,6 +441,9 @@ export const update = mutation({
       applicationsCloseAt,
       visibility: args.visibility ?? opportunity.visibility,
       ticketing: args.ticketing ?? opportunity.ticketing,
+      ticketPriceMinor: args.ticketPriceMinor ?? opportunity.ticketPriceMinor,
+      ticketCapacity: args.ticketCapacity ?? opportunity.ticketCapacity,
+      ticketCurrency: args.ticketCurrency ?? opportunity.ticketCurrency,
       currency: args.currency ?? opportunity.currency,
       externalUrl: resolveClearable(args.externalUrl, opportunity.externalUrl),
     });

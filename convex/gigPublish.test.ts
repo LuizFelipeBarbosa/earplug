@@ -33,6 +33,9 @@ async function setupGigPublish(
       | "startsAt"
       | "doorsAt"
       | "ticketing"
+      | "ticketPriceMinor"
+      | "ticketCapacity"
+      | "ticketCurrency"
       | "externalUrl"
       | "expectedAttendance"
     >
@@ -447,6 +450,135 @@ describe("opportunity gig publishing", () => {
       });
     },
   );
+
+  test("publishes paid ticket fields and initializes ticket inventory", async () => {
+    const ticketPriceMinor = 1550;
+    const f = await setupGigPublish({
+      ticketing: "paid",
+      ticketPriceMinor,
+      ticketCapacity: 100,
+      ticketCurrency: "usd",
+    });
+    await f.bookSlot(f.slotA, f.bandA);
+    const gigId = await f.publish();
+
+    await f.t.run(async (ctx) => {
+      expect(await ctx.db.get(gigId)).toMatchObject({
+        ticketing: "paid",
+        ticketPriceMinor,
+        ticketCurrency: "usd",
+        ticketCapacity: 100,
+        price: Math.round(ticketPriceMinor / 100),
+      });
+      const inventory = await ctx.db
+        .query("gigTicketInventory")
+        .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+        .unique();
+      expect(inventory).toMatchObject({
+        gigId,
+        organizationId: f.organizationId,
+        capacity: 100,
+        sold: 0,
+        reserved: 0,
+        updatedAt: NOW,
+      });
+    });
+  });
+
+  test("republish updates paid ticket fields and clamps capacity to sold plus reserved", async () => {
+    const f = await setupGigPublish({
+      ticketing: "paid",
+      ticketPriceMinor: 1500,
+      ticketCapacity: 100,
+      ticketCurrency: "usd",
+    });
+    await f.bookSlot(f.slotA, f.bandA);
+    const gigId = await f.publish();
+    const inventoryId = await f.t.run(async (ctx) => {
+      const inventory = await ctx.db
+        .query("gigTicketInventory")
+        .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+        .unique();
+      if (!inventory) throw new Error("Expected paid ticket inventory");
+      await ctx.db.patch(inventory._id, { sold: 3, reserved: 1 });
+      await ctx.db.patch(f.opportunityId, {
+        status: "booking",
+        ticketCapacity: 2,
+        ticketPriceMinor: 2050,
+      });
+      return inventory._id;
+    });
+    vi.setSystemTime(NOW + 1000);
+
+    expect(await f.publish()).toBe(gigId);
+
+    await f.t.run(async (ctx) => {
+      expect(await ctx.db.get(gigId)).toMatchObject({
+        ticketing: "paid",
+        ticketPriceMinor: 2050,
+        ticketCurrency: "usd",
+        ticketCapacity: 2,
+        price: 21,
+      });
+      const inventory = await ctx.db
+        .query("gigTicketInventory")
+        .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+        .unique();
+      expect(inventory).toMatchObject({
+        _id: inventoryId,
+        gigId,
+        organizationId: f.organizationId,
+        capacity: 4,
+        sold: 3,
+        reserved: 1,
+        updatedAt: NOW + 1000,
+      });
+    });
+  });
+
+  test("non-paid republish updates ticketing while preserving price and inventory", async () => {
+    const f = await setupGigPublish({
+      ticketing: "paid",
+      ticketPriceMinor: 1500,
+      ticketCapacity: 100,
+      ticketCurrency: "usd",
+    });
+    await f.bookSlot(f.slotA, f.bandA);
+    const gigId = await f.publish();
+    const inventoryBefore = await f.t.run((ctx) =>
+      ctx.db
+        .query("gigTicketInventory")
+        .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+        .unique(),
+    );
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.opportunityId, {
+        status: "booking",
+        ticketing: "external",
+        externalUrl: "https://tickets.example.com/updated",
+        ticketPriceMinor: undefined,
+        ticketCapacity: undefined,
+        ticketCurrency: undefined,
+      }),
+    );
+    vi.setSystemTime(NOW + 1000);
+
+    expect(await f.publish()).toBe(gigId);
+
+    await f.t.run(async (ctx) => {
+      expect(await ctx.db.get(gigId)).toMatchObject({
+        ticketing: "external",
+        externalUrl: "https://tickets.example.com/updated",
+        price: 15,
+      });
+      expect(
+        await ctx.db
+          .query("gigTicketInventory")
+          .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+          .unique(),
+      ).toEqual(inventoryBefore);
+    });
+  });
 
   test("preserves external ticketing, attendance cap, and doors time", async () => {
     const f = await setupGigPublish({

@@ -46,6 +46,7 @@ import type * as lib_stripeAccountSync from "../lib/stripeAccountSync.js";
 import type * as lib_stripeClient from "../lib/stripeClient.js";
 import type * as lib_stripeSignature from "../lib/stripeSignature.js";
 import type * as lib_ticketFees from "../lib/ticketFees.js";
+import type * as lib_ticketInventory from "../lib/ticketInventory.js";
 import type * as lib_ticketStatus from "../lib/ticketStatus.js";
 import type * as lib_venuePrivate from "../lib/venuePrivate.js";
 import type * as lib_venueSlug from "../lib/venueSlug.js";
@@ -68,6 +69,8 @@ import type * as stripeHandlers_payments from "../stripeHandlers/payments.js";
 import type * as stripeWebhook from "../stripeWebhook.js";
 import type * as talentOpportunities from "../talentOpportunities.js";
 import type * as talentOpportunitiesRead from "../talentOpportunitiesRead.js";
+import type * as tickets from "../tickets.js";
+import type * as ticketsDoor from "../ticketsDoor.js";
 import type * as users from "../users.js";
 import type * as venues from "../venues.js";
 
@@ -116,6 +119,7 @@ declare const fullApi: ApiFromModules<{
   "lib/stripeClient": typeof lib_stripeClient;
   "lib/stripeSignature": typeof lib_stripeSignature;
   "lib/ticketFees": typeof lib_ticketFees;
+  "lib/ticketInventory": typeof lib_ticketInventory;
   "lib/ticketStatus": typeof lib_ticketStatus;
   "lib/venuePrivate": typeof lib_venuePrivate;
   "lib/venueSlug": typeof lib_venueSlug;
@@ -138,6 +142,8 @@ declare const fullApi: ApiFromModules<{
   stripeWebhook: typeof stripeWebhook;
   talentOpportunities: typeof talentOpportunities;
   talentOpportunitiesRead: typeof talentOpportunitiesRead;
+  tickets: typeof tickets;
+  ticketsDoor: typeof ticketsDoor;
   users: typeof users;
   venues: typeof venues;
 }>;

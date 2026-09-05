@@ -177,6 +177,9 @@ export const toggleRsvp = mutation({
     if ((gig.lifecycle ?? "published") !== "published") {
       throw new Error("This gig is not accepting RSVPs");
     }
+    if (gig.ticketing === "paid") {
+      throw new Error("This event sells tickets");
+    }
     await ctx.db.insert("gigRsvps", {
       userId: user._id,
       gigId: args.gigId,

@@ -378,6 +378,73 @@ describe("talent opportunity drafts", () => {
     await expect(createDraft(fields)).rejects.toThrow(error);
   });
 
+  test.each([undefined, " USD ", "   "])(
+    "stores paid ticketing with normalized USD currency (input: %s)",
+    async (ticketCurrency) => {
+      const { createDraft, readOpportunity } = await setupOrganization();
+      const { opportunityId } = await createDraft({
+        ticketing: "paid",
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+        ticketCurrency,
+      });
+      expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+        ticketing: "paid",
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+        ticketCurrency: "usd",
+      });
+    },
+  );
+
+  test.each([undefined, 50, 100.5])(
+    "rejects invalid paid ticket prices: %s",
+    async (ticketPriceMinor) => {
+      const { createDraft } = await setupOrganization();
+      await expect(
+        createDraft({ ticketing: "paid", ticketPriceMinor, ticketCapacity: 100 }),
+      ).rejects.toThrow("Ticket price must be at least $1.00");
+    },
+  );
+
+  test.each([undefined, 0, 5001, 1.5])(
+    "rejects invalid paid ticket capacities: %s",
+    async (ticketCapacity) => {
+      const { createDraft } = await setupOrganization();
+      await expect(
+        createDraft({ ticketing: "paid", ticketPriceMinor: 1500, ticketCapacity }),
+      ).rejects.toThrow("Ticket capacity must be between 1 and 5,000");
+    },
+  );
+
+  test.each([1, 5000])(
+    "accepts the minimum ticket price and capacity boundary: %s",
+    async (ticketCapacity) => {
+      const { createDraft, readOpportunity } = await setupOrganization();
+      const { opportunityId } = await createDraft({
+        ticketing: "paid",
+        ticketPriceMinor: 100,
+        ticketCapacity,
+      });
+      expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+        ticketPriceMinor: 100,
+        ticketCapacity,
+      });
+    },
+  );
+
+  test("rejects paid ticketing in unsupported currencies", async () => {
+    const { createDraft } = await setupOrganization();
+    await expect(
+      createDraft({
+        ticketing: "paid",
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+        ticketCurrency: "eur",
+      }),
+    ).rejects.toThrow("Only USD ticketing is supported right now");
+  });
+
   test("rejects too many slots, invalid guarantees, and invalid set lengths", async () => {
     const { createDraft } = await setupOrganization();
     await expect(
@@ -570,6 +637,59 @@ describe("talent opportunity drafts", () => {
         revision: 2,
       });
       expect(opportunity?.doorsAt).toBe(doorsAt);
+    },
+  );
+
+  test("update validates paid ticketing while preserving omitted ticket fields", async () => {
+    const { createDraft, asOwner, readOpportunity } = await setupOrganization();
+    const { opportunityId } = await createDraft({
+      ticketing: "paid",
+      ticketPriceMinor: 1500,
+      ticketCapacity: 100,
+    });
+    await expect(
+      asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 1,
+        ticketPriceMinor: 50,
+      }),
+    ).rejects.toThrow("Ticket price must be at least $1.00");
+    await asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision: 1,
+      ticketPriceMinor: 2000,
+    });
+    expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+      ticketing: "paid",
+      ticketPriceMinor: 2000,
+      ticketCapacity: 100,
+      ticketCurrency: "usd",
+    });
+  });
+
+  test.each(["rsvp", "none", "external"] as const)(
+    "update clears paid ticket fields when switching to %s",
+    async (ticketing) => {
+      const { createDraft, asOwner, readOpportunity } = await setupOrganization();
+      const { opportunityId } = await createDraft({
+        ticketing: "paid",
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+      });
+      await asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 1,
+        ticketing,
+        externalUrl: "https://tickets.test/event",
+        ticketPriceMinor: 50,
+        ticketCapacity: 0,
+        ticketCurrency: "eur",
+      });
+      const { opportunity } = await readOpportunity(opportunityId);
+      expect(opportunity?.ticketing).toBe(ticketing);
+      expect(opportunity?.ticketPriceMinor).toBeUndefined();
+      expect(opportunity?.ticketCapacity).toBeUndefined();
+      expect(opportunity?.ticketCurrency).toBeUndefined();
     },
   );
 
