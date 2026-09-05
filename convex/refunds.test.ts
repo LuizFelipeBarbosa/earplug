@@ -1791,4 +1791,143 @@ describe("Stripe disputes", () => {
     ).toEqual({ outcome: "applied" });
     expect(await f.scheduled()).toEqual([]);
   });
+
+  test("holds and releases a forfeit payout on a cancelled booking without changing its status", async () => {
+    const f = await setupRefunds();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, { status: "cancelled_by_organizer" }),
+    );
+    const booking = await f.readBooking();
+    const payoutId = await f.addPayout({ kind: "forfeit", status: "scheduled" });
+
+    expect(await f.deliver(disputeEvent("charge.dispute.created"))).toEqual({
+      outcome: "applied",
+    });
+    const heldBooking = await f.readBooking();
+    expect(heldBooking).toEqual({
+      ...booking,
+      payoutHoldReasons: ["dispute"],
+      payoutHold: true,
+      updatedAt: NOW,
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+      status: "held",
+      holdReason: "dispute",
+    });
+
+    await f.t.mutation(internal.payouts.retryHeldPayouts, {});
+    expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+      status: "held",
+      holdReason: "dispute",
+    });
+    expect(await f.readBooking()).toEqual(heldBooking);
+
+    expect(
+      await f.deliver(disputeEvent("charge.dispute.closed", { status: "won" })),
+    ).toEqual({ outcome: "applied" });
+    const releasedBooking = await f.readBooking();
+    expect(releasedBooking).toEqual({
+      ...booking,
+      payoutHoldReasons: [],
+      payoutHold: false,
+      updatedAt: NOW,
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+      status: "scheduled",
+    });
+    expect(
+      (await f.ledger()).filter((row) => row.kind === "dispute_release"),
+    ).toMatchObject([
+      {
+        idempotencyKey: "dispute-release:dp_test",
+        amountMinor: 12000,
+        fundsState: "available",
+      },
+    ]);
+    const jobs = await f.scheduled();
+    expect(
+      jobs.filter(
+        (job) => job.name === "payouts:releasePayout" && job.scheduledTime === NOW,
+      ),
+    ).toMatchObject([{ args: [{ payoutId }] }]);
+
+    await f.t.mutation(internal.payouts.releasePayout, { payoutId });
+    expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+      status: "processing",
+    });
+    expect(await f.readBooking()).toEqual(releasedBooking);
+  });
+
+  test("a won dispute on a cancelled booking preserves other holds and status metadata", async () => {
+    const f = await setupRefunds();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, {
+        status: "cancelled_by_organizer",
+        disputedFromStatus: "confirmed",
+        payoutHoldReasons: ["admin"],
+        payoutHold: true,
+      }),
+    );
+    const booking = await f.readBooking();
+    const payoutId = await f.addPayout({ kind: "forfeit" });
+    expect(await f.deliver(disputeEvent("charge.dispute.created"))).toEqual({
+      outcome: "applied",
+    });
+    expect(await f.readBooking()).toEqual({
+      ...booking,
+      payoutHoldReasons: ["admin", "dispute"],
+    });
+    expect(
+      await f.deliver(disputeEvent("charge.dispute.closed", { status: "won" })),
+    ).toEqual({ outcome: "applied" });
+    expect(await f.readBooking()).toEqual(booking);
+    await f.t.mutation(internal.payouts.releasePayout, { payoutId });
+    expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+      status: "held",
+      holdReason: "admin",
+    });
+  });
+
+  test.each([
+    {
+      status: "cancelled_by_organizer",
+      outcome: "lost",
+      payoutHoldReasons: ["dispute"],
+    },
+    { status: "cancelled_by_organizer", outcome: "won", payoutHoldReasons: [] },
+    { status: "disputed", outcome: "won", payoutHoldReasons: ["dispute"] },
+  ] as const)(
+    "ignores a $outcome dispute on a $status booking without a resolvable status or hold",
+    async ({ status, outcome, payoutHoldReasons }) => {
+      const f = await setupRefunds();
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.bookingId, {
+          status,
+          payoutHoldReasons: [...payoutHoldReasons],
+          payoutHold: payoutHoldReasons.length > 0,
+        }),
+      );
+      await f.addPayout({
+        kind: "forfeit",
+        status: "held",
+        holdReason: "dispute",
+      });
+      const booking = await f.readBooking();
+      const records = await f.records();
+      const payouts = await f.payouts();
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      expect(
+        await f.deliver(disputeEvent("charge.dispute.closed", { status: outcome })),
+      ).toEqual({ outcome: "applied" });
+      expect(log).toHaveBeenCalledExactlyOnceWith(
+        "charge.dispute.closed ignored: nothing to resolve for dp_test",
+      );
+      expect(await f.readBooking()).toEqual(booking);
+      expect(await f.records()).toEqual(records);
+      expect(await f.payouts()).toEqual(payouts);
+      expect(await f.ledger()).toEqual([]);
+      expect(await f.scheduled()).toEqual([]);
+    },
+  );
 });

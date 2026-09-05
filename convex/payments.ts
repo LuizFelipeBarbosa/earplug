@@ -86,13 +86,23 @@ export const loadCheckoutContext = internalQuery({
   },
 });
 
-function isAlreadyClosedSession(error: unknown): boolean {
+function isAlreadyExpiredSession(error: unknown): boolean {
   if (!(error instanceof StripeApiError)) return false;
   return (
-    /\bsession\b[\s\S]*\b(?:already|status|is|has)\b[\s\S]*\b(?:expired|complete(?:d)?)\b/i.test(
+    /\bsession\b[\s\S]*\b(?:already|status|is|has)\b[\s\S]*\bexpired\b/i.test(
       error.message,
     ) ||
-    /^(?:checkout_)?session_(?:already_)?(?:expired|complete|completed)$/.test(
+    /^(?:checkout_)?session_(?:already_)?expired$/.test(error.code ?? "")
+  );
+}
+
+function isAlreadyCompletedSession(error: unknown): boolean {
+  if (!(error instanceof StripeApiError)) return false;
+  return (
+    /\bsession\b[\s\S]*\b(?:already|status|is|has)\b[\s\S]*\b(?:complete(?:d)?|paid)\b/i.test(
+      error.message,
+    ) ||
+    /^(?:checkout_)?session_(?:already_)?(?:complete(?:d)?|paid)$/.test(
       error.code ?? "",
     )
   );
@@ -123,7 +133,10 @@ export const startInstallmentCheckout = action({
           `/v1/checkout/sessions/${record.stripeCheckoutSessionId}/expire`,
         );
       } catch (error) {
-        if (!isAlreadyClosedSession(error)) throw error;
+        if (isAlreadyCompletedSession(error)) {
+          throw new Error("This payment is already being confirmed");
+        }
+        if (!isAlreadyExpiredSession(error)) throw error;
       }
       // Restart through expired: checkout_open cannot transition to itself.
       await ctx.runMutation(internal.payments.markSessionExpired, {

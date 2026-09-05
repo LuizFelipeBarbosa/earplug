@@ -630,22 +630,69 @@ describe("installment Checkout", () => {
     expect(stripeRequest).not.toHaveBeenCalled();
   });
 
-  test.each(["expired", "completed"])(
-    "restarts after Stripe reports the previous session already %s",
-    async (status) => {
+  test("restarts after Stripe reports the previous session already expired", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    const originalSessionId = await f.open(record);
+    vi.mocked(stripeRequest).mockRejectedValueOnce(
+      new StripeApiError("Session is already expired", { status: 400 }),
+    );
+    const session = await f.as("finance").action(
+      api.payments.startInstallmentCheckout,
+      { paymentRecordId: record._id },
+    );
+    expect(session.sessionId).not.toBe(originalSessionId);
+    expect(await f.records(offer.bookingId)).toMatchObject([
+      {
+        status: "checkout_open",
+        attempt: 2,
+        stripeCheckoutSessionId: session.sessionId,
+      },
+    ]);
+  });
+
+  test.each([
+    { message: "Session is already completed" },
+    { message: "Session status is complete" },
+    { message: "Session is already paid" },
+    {
+      message: "Payment is already paid",
+      code: "checkout_session_already_paid",
+    },
+    {
+      message: "Cannot expire this Checkout Session",
+      code: "session_already_completed",
+    },
+  ])(
+    "refuses to restart when Stripe reports '$message'",
+    async ({ message, code }) => {
       const f = await setupPayments();
       const offer = await f.accept();
       const [record] = await f.records(offer.bookingId);
-      await f.open(record);
+      const originalSessionId = await f.open(record);
+      const originalRecords = await f.records(offer.bookingId);
+      vi.setSystemTime(NOW + 1000);
       vi.mocked(stripeRequest).mockRejectedValueOnce(
-        new StripeApiError(`Session is already ${status}`, { status: 400 }),
+        new StripeApiError(message, { status: 400, code }),
       );
-      await f.as("finance").action(api.payments.startInstallmentCheckout, {
-        paymentRecordId: record._id,
-      });
+      await expect(
+        f.as("finance").action(api.payments.startInstallmentCheckout, {
+          paymentRecordId: record._id,
+        }),
+      ).rejects.toThrow("This payment is already being confirmed");
+      expect(stripeRequest).toHaveBeenCalledExactlyOnceWith(
+        "POST",
+        `/v1/checkout/sessions/${originalSessionId}/expire`,
+      );
       expect(await f.records(offer.bookingId)).toMatchObject([
-        { status: "checkout_open", attempt: 2 },
+        {
+          status: "checkout_open",
+          attempt: 1,
+          stripeCheckoutSessionId: originalSessionId,
+        },
       ]);
+      expect(await f.records(offer.bookingId)).toEqual(originalRecords);
     },
   );
 

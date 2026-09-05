@@ -71,7 +71,7 @@ const disputeCreated: StripeEventHandler = async (ctx, event) => {
       revision: booking.revision + 1,
       updatedAt: now,
     });
-  } else if (booking.status === "disputed") {
+  } else {
     await ctx.db.patch(booking._id, {
       payoutHoldReasons: reasons,
       payoutHold: true,
@@ -119,9 +119,11 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
   }
   const booking = await ctx.db.get(record.bookingId);
   if (!booking) throw new Error("Booking not found");
+  const hasDisputeHold = (booking.payoutHoldReasons ?? []).includes("dispute");
   if (
-    booking.status !== "disputed" ||
-    (outcome === "won" && !booking.disputedFromStatus)
+    booking.status === "disputed"
+      ? outcome === "won" && !booking.disputedFromStatus
+      : outcome !== "won" || !hasDisputeHold
   ) {
     console.log(
       `charge.dispute.closed ignored: nothing to resolve for ${disputeId}`,
@@ -143,19 +145,27 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
     .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
     .take(50);
   if (outcome === "won") {
-    const status = booking.disputedFromStatus!;
-    assertBookingTransition("disputed", status);
     const payoutHoldReasons = (booking.payoutHoldReasons ?? []).filter(
       (reason) => reason !== "dispute",
     );
-    await ctx.db.patch(booking._id, {
-      status,
-      disputedFromStatus: undefined,
-      payoutHoldReasons,
-      payoutHold: payoutHoldReasons.length > 0,
-      revision: booking.revision + 1,
-      updatedAt: now,
-    });
+    if (booking.status === "disputed") {
+      const status = booking.disputedFromStatus!;
+      assertBookingTransition("disputed", status);
+      await ctx.db.patch(booking._id, {
+        status,
+        disputedFromStatus: undefined,
+        payoutHoldReasons,
+        payoutHold: payoutHoldReasons.length > 0,
+        revision: booking.revision + 1,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.patch(booking._id, {
+        payoutHoldReasons,
+        payoutHold: payoutHoldReasons.length > 0,
+        updatedAt: now,
+      });
+    }
     await appendLedgerEntry(ctx, {
       ...ledgerFields,
       idempotencyKey: `dispute-release:${disputeId}`,
