@@ -177,8 +177,7 @@ mixin _PaymentState on _AppStateCore {
         if (_disposed || !identical(_paymentSessionToken, token)) return null;
         if (status != null) {
           if (status.bookingId.isNotEmpty) bookingId = status.bookingId;
-          if (status.paymentStatus == PaymentRecordStatus.paid ||
-              status.bookingStatus == BookingStatus.confirmed) {
+          if (status.paymentStatus == PaymentRecordStatus.paid) {
             completed = status;
             break;
           }

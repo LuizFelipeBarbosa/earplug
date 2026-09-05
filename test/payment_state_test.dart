@@ -94,19 +94,27 @@ void main() {
   );
 
   test(
-    'Checkout also stops immediately when the booking is confirmed',
+    'Checkout keeps polling while confirmed until the payment record is paid',
     () async {
       repository.checkoutResult = const CheckoutStatus(
         bookingId: 'bk1',
         paymentStatus: PaymentRecordStatus.checkoutOpen,
         bookingStatus: BookingStatus.confirmed,
       );
+      repository.completeCheckoutAfter = 3;
 
-      final status = await app.awaitCheckout('cs_123');
+      final status = await app.awaitCheckout(
+        'cs_123',
+        interval: const Duration(milliseconds: 5),
+        timeout: const Duration(milliseconds: 200),
+      );
       await flushAsyncWork();
 
-      expect(status, same(repository.checkoutResult));
-      expect(repository.checkoutStatusRequests, ['cs_123']);
+      expect(status?.paymentStatus, PaymentRecordStatus.paid);
+      expect(repository.checkoutStatusRequests, ['cs_123', 'cs_123', 'cs_123']);
+      expect(repository.bookingRequests, ['bk1']);
+      expect(repository.paymentRequests, ['bk1']);
+      expect(app.paymentsFor('bk1'), repository.payments);
     },
   );
 
