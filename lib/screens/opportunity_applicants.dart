@@ -9,6 +9,7 @@ import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/opportunity_labels.dart';
+import '../widgets/send_offer_sheet.dart';
 
 class OpportunityApplicantsScreen extends StatefulWidget {
   const OpportunityApplicantsScreen({super.key, required this.opportunityId});
@@ -49,6 +50,7 @@ class _OpportunityApplicantsScreenState
 
   Future<void> _load({bool refresh = false}) async {
     final app = context.read<AppState>();
+    unawaited(app.refreshOrganizationBookings());
     final token = Object();
     _loadToken = token;
     setState(() {
@@ -114,6 +116,19 @@ class _OpportunityApplicantsScreenState
         setState(() => _reviewing = false);
       }
     }
+  }
+
+  Future<void> _sendOffer(ApplicantRow row, OpportunitySlot slot) async {
+    if (_reviewing) return;
+    final opportunityId = widget.opportunityId;
+    final bookingId = await showSendOfferSheet(context, row: row, slot: slot);
+    if (bookingId == null ||
+        !mounted ||
+        widget.opportunityId != opportunityId) {
+      return;
+    }
+    context.read<AppState>().say('Offer sent');
+    await _load(refresh: true);
   }
 
   @override
@@ -215,6 +230,7 @@ class _OpportunityApplicantsScreenState
               canManage: canManage,
               reviewing: _reviewing,
               onReview: (action) => unawaited(_review(row, action)),
+              onSendOffer: (slot) => unawaited(_sendOffer(row, slot)),
             ),
             const SizedBox(height: 12),
           ],
@@ -230,6 +246,7 @@ class _ApplicantCard extends StatelessWidget {
     required this.canManage,
     required this.reviewing,
     required this.onReview,
+    required this.onSendOffer,
   });
 
   final ApplicantRow row;
@@ -237,6 +254,7 @@ class _ApplicantCard extends StatelessWidget {
   final bool canManage;
   final bool reviewing;
   final ValueChanged<ArtistApplicationReviewAction> onReview;
+  final ValueChanged<OpportunitySlot> onSendOffer;
 
   @override
   Widget build(BuildContext context) {
@@ -247,6 +265,9 @@ class _ApplicantCard extends StatelessWidget {
     );
     final guarantee = Money(slot.guaranteeMinor, opportunity.currency).label;
     final textTheme = Theme.of(context).textTheme;
+    final booking = app.organizationBookings
+        .where((booking) => booking.applicationId == application.id)
+        .firstOrNull;
 
     return EpCard(
       key: ValueKey('applicant-${application.id}'),
@@ -299,7 +320,9 @@ class _ApplicantCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(row.contactEmail!, style: textTheme.epCaption),
           ],
-          if (canManage && application.status.isActive) ...[
+          if (canManage &&
+              (application.status.isActive ||
+                  application.status == ArtistApplicationStatus.booked)) ...[
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -326,13 +349,29 @@ class _ApplicantCard extends StatelessWidget {
                           ),
                     child: const Text('SHORTLIST'),
                   ),
-                TextButton(
-                  key: ValueKey('applicant-${application.id}-decline'),
-                  onPressed: reviewing
-                      ? null
-                      : () => onReview(ArtistApplicationReviewAction.declined),
-                  child: const Text('DECLINE'),
-                ),
+                if (application.status == ArtistApplicationStatus.shortlisted)
+                  FilledButton(
+                    key: ValueKey('applicant-${application.id}-offer'),
+                    onPressed: reviewing ? null : () => onSendOffer(slot),
+                    child: const Text('SEND OFFER'),
+                  ),
+                if (application.status.isActive)
+                  TextButton(
+                    key: ValueKey('applicant-${application.id}-decline'),
+                    onPressed: reviewing
+                        ? null
+                        : () =>
+                              onReview(ArtistApplicationReviewAction.declined),
+                    child: const Text('DECLINE'),
+                  ),
+                if ((application.status == ArtistApplicationStatus.offered ||
+                        application.status == ArtistApplicationStatus.booked) &&
+                    booking != null)
+                  TextButton(
+                    key: ValueKey('applicant-${application.id}-booking'),
+                    onPressed: () => app.openBooking(booking.id),
+                    child: const Text('VIEW BOOKING'),
+                  ),
               ],
             ),
           ],

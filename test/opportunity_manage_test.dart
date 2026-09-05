@@ -8,10 +8,12 @@ import 'package:earplug/screens/org_opportunities.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+import 'support/design_rules.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 
@@ -243,6 +245,292 @@ void main() {
     );
     harness.app.dispose();
   });
+
+  testWidgets('only shortlisted applicants have a primary send offer action', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+
+    expect(find.byKey(const ValueKey('applicant-app2-offer')), findsOneWidget);
+    expect(
+      tester.widget(find.byKey(const ValueKey('applicant-app2-offer'))),
+      isA<FilledButton>(),
+    );
+    expect(find.byKey(const ValueKey('applicant-app1-offer')), findsNothing);
+    harness.app.dispose();
+  });
+
+  testWidgets('send offer starts with the slot guarantee in whole dollars', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('send-offer-gross')))
+          .controller!
+          .text,
+      '300',
+    );
+    expect(
+      tester
+          .widget<EpChip>(
+            find.byKey(const ValueKey('send-offer-terms-standard')),
+          )
+          .active,
+      isTrue,
+    );
+    expect(
+      find.text(CancellationTemplate.standard.description),
+      findsOneWidget,
+    );
+    harness.app.dispose();
+  });
+
+  testWidgets('paid offer failure stays in the sheet with an inline error', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('send-offer-gross')), findsOneWidget);
+    expect(
+      tester.widget<InlineFormFeedback>(find.byType(InlineFormFeedback)).error,
+      'Paid offers open once payments are enabled',
+    );
+    expect(
+      tester
+          .widget<Text>(find.byKey(const ValueKey('send-offer-feedback')))
+          .data,
+      'Paid offers open once payments are enabled',
+    );
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const ValueKey('send-offer-submit')))
+          .onPressed,
+      isNotNull,
+    );
+    harness.app.dispose();
+  });
+
+  testWidgets('sending an offer updates the applicant and opens its booking', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+    (harness.app.repository as DemoRepository).demoPaymentsEnabled = true;
+
+    await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('send-offer-submit')), findsNothing);
+    expect(_applicantPill(tester, 'app2').label, 'Offered');
+    expect(harness.app.toast, 'Offer sent');
+    expect(find.byKey(const ValueKey('applicant-app2-offer')), findsNothing);
+    final booking = harness.app.organizationBookings.singleWhere(
+      (booking) => booking.applicationId == 'app2',
+    );
+    expect(booking.fee.grossMinor, 30000);
+    expect(booking.cancellationTemplate, CancellationTemplate.standard);
+    expect(booking.termsNotes, isNull);
+    expect(booking.currentOffer!.message, isNull);
+    final viewBooking = find.byKey(const ValueKey('applicant-app2-booking'));
+    expect(viewBooking, findsOneWidget);
+    await tester.ensureVisible(viewBooking);
+    await tester.tap(viewBooking);
+    await tester.pumpAndSettle();
+
+    expect(harness.app.current.screen, Screen.bookingDetail);
+    expect(harness.app.current.param, booking.id);
+    harness.app.dispose();
+  });
+
+  testWidgets('send offer fields stay outside applicant cards', (tester) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TextField), findsWidgets);
+    expectNoFieldInCard(tester);
+    harness.app.dispose();
+  });
+
+  testWidgets('invalid guarantees do not send offers', (tester) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+    (harness.app.repository as DemoRepository).demoPaymentsEnabled = true;
+
+    await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
+    await tester.pumpAndSettle();
+    for (final amount in ['', 'abc', '-1', '1.50', '0x10']) {
+      await tester.enterText(
+        find.byKey(const ValueKey('send-offer-gross')),
+        amount,
+      );
+      await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey('send-offer-feedback')))
+            .data,
+        'Enter a valid guarantee in dollars.',
+      );
+      expect(
+        harness.app.organizationBookings.where(
+          (booking) => booking.applicationId == 'app2',
+        ),
+        isEmpty,
+      );
+    }
+    harness.app.dispose();
+  });
+
+  testWidgets('a zero guarantee sends selected terms and trimmed notes', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('send-offer-gross')), '0');
+    await tester.tap(find.byKey(const ValueKey('send-offer-terms-flexible')));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(CancellationTemplate.flexible.description),
+      findsOneWidget,
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('send-offer-notes')),
+      '  Backline provided.  ',
+    );
+    final message = find.byKey(const ValueKey('send-offer-message'));
+    await tester.ensureVisible(message);
+    await tester.enterText(message, '  Looking forward to the show!  ');
+    await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('send-offer-submit')), findsNothing);
+    final booking = harness.app.organizationBookings.singleWhere(
+      (booking) => booking.applicationId == 'app2',
+    );
+    expect(booking.fee.grossMinor, 0);
+    expect(booking.cancellationTemplate, CancellationTemplate.flexible);
+    expect(booking.termsNotes, 'Backline provided.');
+    expect(booking.currentOffer!.message, 'Looking forward to the show!');
+    harness.app.dispose();
+  });
+
+  testWidgets('closing the offer sheet leaves the applicant shortlisted', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('send-offer-submit')), findsNothing);
+    expect(_applicantPill(tester, 'app2').label, 'Shortlisted');
+    expect(find.byKey(const ValueKey('applicant-app2-booking')), findsNothing);
+    expect(harness.app.toast, isNot('Offer sent'));
+    harness.app.dispose();
+  });
+
+  for (final accepted in [false, true]) {
+    testWidgets(
+      'loading ${accepted ? 'booked' : 'offered'} applicants shows their booking',
+      (tester) async {
+        final harness = await _pumpOrganizerScreen(
+          tester,
+          const SizedBox.shrink(),
+        );
+        final repository = harness.app.repository;
+        final result = await repository.sendOffer(
+          applicationId: 'app2',
+          grossMinor: 0,
+          cancellationTemplate: CancellationTemplate.standard,
+        );
+        if (accepted) {
+          await repository.respondToOffer(
+            bookingId: result.bookingId,
+            accept: true,
+            expectedRevision: result.revision,
+          );
+        }
+        harness.app.organizationBookings = [];
+        await tester.pumpWidget(
+          ChangeNotifierProvider<AppState>.value(
+            value: harness.app,
+            child: MaterialApp(
+              theme: buildEpTheme(),
+              home: const Scaffold(
+                body: OpportunityApplicantsScreen(opportunityId: 'opp1'),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          _applicantPill(tester, 'app2').label,
+          accepted ? 'Booked' : 'Offered',
+        );
+        expect(
+          find.byKey(const ValueKey('applicant-app2-offer')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('applicant-app2-decline')),
+          accepted ? findsNothing : findsOneWidget,
+        );
+        final viewBooking = find.byKey(
+          const ValueKey('applicant-app2-booking'),
+        );
+        expect(viewBooking, findsOneWidget);
+        await tester.ensureVisible(viewBooking);
+        await tester.tap(viewBooking);
+        await tester.pumpAndSettle();
+
+        expect(harness.app.current.screen, Screen.bookingDetail);
+        expect(harness.app.current.param, result.bookingId);
+        harness.app.dispose();
+      },
+    );
+  }
 
   testWidgets('shortlisting updates the applicant status pill', (tester) async {
     final harness = await _pumpOrganizerScreen(
