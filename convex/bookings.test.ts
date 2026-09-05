@@ -470,7 +470,29 @@ describe("booking offers", () => {
       status: "cancelled_by_artist",
       revision: 4,
     });
+    expect(await f.readApplication()).toMatchObject({ status: "shortlisted" });
   });
+
+  test.each([0, 12345])(
+    "snapshots the opportunity currency on a %s minor-unit offer and booking",
+    async (grossMinor) => {
+      const f = await setupBookings();
+      vi.stubEnv("PAYMENTS_ENABLED", "true");
+      vi.stubEnv("BOOKING_COMMISSION_BPS", "1000");
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.opportunityId, { currency: "eur" }),
+      );
+      const { bookingId, offerId } = await f.sendOffer({ grossMinor });
+      expect(await f.readBooking(bookingId)).toMatchObject({
+        grossMinor,
+        currency: "eur",
+      });
+      expect(await f.t.run((ctx) => ctx.db.get(offerId))).toMatchObject({
+        grossMinor,
+        currency: "eur",
+      });
+    },
+  );
 
   test.each([
     [
@@ -533,6 +555,42 @@ describe("booking offers", () => {
       respondedBy: f.users.manager,
     });
   });
+
+  test.each(["accept", "decline"] as const)(
+    "checks organizer suspension for an artist's %s response",
+    async (action) => {
+      const f = await setupBookings();
+      const { bookingId, offerId } = await f.sendOffer();
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.organizationId, { status: "suspended" }),
+      );
+      if (action === "accept") {
+        const booking = await f.readBooking(bookingId);
+        const offer = await f.t.run((ctx) => ctx.db.get(offerId));
+        const scheduled = await f.scheduled();
+        await expect(f.respond(bookingId, action)).rejects.toThrow(
+          "This organizer is suspended",
+        );
+        expect(await f.readBooking(bookingId)).toEqual(booking);
+        expect(await f.t.run((ctx) => ctx.db.get(offerId))).toEqual(offer);
+        expect(await f.scheduled()).toEqual(scheduled);
+        expect(await f.readApplication()).toMatchObject({ status: "offered" });
+        expect(await f.readSlot()).toMatchObject({ status: "open" });
+        expect((await f.readOpportunity())?.publicGigId).toBeUndefined();
+      } else {
+        expect(await f.respond(bookingId, action)).toEqual({
+          status: "declined",
+          revision: 2,
+        });
+        expect(await f.readApplication()).toMatchObject({
+          status: "shortlisted",
+        });
+        expect(await f.t.run((ctx) => ctx.db.get(offerId))).toMatchObject({
+          response: "declined",
+        });
+      }
+    },
+  );
 
   test("refuses acceptance after the offer deadline even before its expiry job runs", async () => {
     const f = await setupBookings();
@@ -752,6 +810,36 @@ describe("booking confirmation and cancellation", () => {
     ).toMatchObject({ lineup: [f.bandId], lifecycle: "published" });
   });
 
+  test.each(["owner", "admin"] as const)(
+    "checks organizer suspension for cancellation by %s",
+    async (actor) => {
+      const f = await setupBookings();
+      const { bookingId } = await f.confirm();
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.organizationId, { status: "suspended" }),
+      );
+      if (actor === "owner") {
+        const booking = await f.readBooking(bookingId);
+        const slot = await f.readSlot();
+        const scheduled = await f.scheduled();
+        await expect(f.cancel(bookingId, actor)).rejects.toThrow(
+          "This organizer is suspended",
+        );
+        expect(await f.readBooking(bookingId)).toEqual(booking);
+        expect(await f.readSlot()).toEqual(slot);
+        expect(await f.scheduled()).toEqual(scheduled);
+        expect(await f.readApplication()).toMatchObject({ status: "booked" });
+      } else {
+        expect(await f.cancel(bookingId, actor)).toEqual({
+          status: "cancelled_by_artist",
+          revision: 4,
+        });
+        expect(await f.readSlot()).toMatchObject({ status: "open" });
+        expect(await f.readApplication()).toMatchObject({ status: "withdrawn" });
+      }
+    },
+  );
+
   test("accepts a later optional booking on an already-published opportunity", async () => {
     const f = await setupBookings();
     await f.checked(() =>
@@ -856,6 +944,96 @@ describe("booking confirmation and cancellation", () => {
       f.t.mutation(internal.bookings.markCompleted, { bookingId }),
     );
     expect(await f.scheduled()).toEqual(before);
+  });
+
+  test("admin completion keeps the confirmed booking's slot", async () => {
+    const f = await setupBookings();
+    const { bookingId } = await f.confirm();
+    const slot = await f.readSlot();
+    expect(slot).toMatchObject({ status: "booked", bookingId });
+    expect(
+      await f.checked(() =>
+        f.t.mutation(internal.bookings.adminForceState, {
+          bookingId,
+          status: "completed",
+          reason: "Performance completed",
+          dryRun: false,
+        }),
+      ),
+    ).toEqual({ from: "confirmed", to: "completed", applied: true });
+    expect(await f.readBooking(bookingId)).toMatchObject({
+      status: "completed",
+      revision: 4,
+    });
+    expect(await f.readSlot()).toEqual(slot);
+    expect(await f.readApplication()).toMatchObject({ status: "booked" });
+  });
+
+  test("admin dispute records the source and keeps the slot through resolution", async () => {
+    const f = await setupBookings();
+    const { bookingId } = await f.confirm();
+    const slot = await f.readSlot();
+    expect(slot).toMatchObject({ status: "booked", bookingId });
+    await f.checked(() =>
+      f.t.mutation(internal.bookings.adminForceState, {
+        bookingId,
+        status: "disputed",
+        reason: "Review the agreement",
+        dryRun: false,
+      }),
+    );
+    expect(await f.readBooking(bookingId)).toMatchObject({
+      status: "disputed",
+      disputedFromStatus: "confirmed",
+      revision: 4,
+    });
+    expect(await f.readSlot()).toEqual(slot);
+    await f.checked(() =>
+      f.t.mutation(internal.bookings.adminForceState, {
+        bookingId,
+        status: "confirmed",
+        reason: "Dispute resolved",
+        dryRun: false,
+      }),
+    );
+    expect(await f.readBooking(bookingId)).toMatchObject({
+      status: "confirmed",
+      revision: 5,
+    });
+    expect(await f.readSlot()).toEqual(slot);
+    expect(await f.readApplication()).toMatchObject({ status: "booked" });
+  });
+
+  test("admin refund releases a paid booking's slot and declines its application", async () => {
+    const f = await setupBookings();
+    const { bookingId } = await f.confirm();
+    await f.t.run((ctx) => ctx.db.patch(bookingId, { status: "paid" }));
+    vi.setSystemTime(NOW + 1000);
+    expect(
+      await f.checked(() =>
+        f.t.mutation(internal.bookings.adminForceState, {
+          bookingId,
+          status: "refunded",
+          reason: "Refund approved",
+          dryRun: false,
+        }),
+      ),
+    ).toEqual({ from: "paid", to: "refunded", applied: true });
+    expect(await f.readBooking(bookingId)).toMatchObject({
+      status: "refunded",
+      revision: 4,
+      cancelledBy: "admin",
+      cancelledAt: NOW + 1000,
+      cancelReason: "Refund approved",
+    });
+    const slot = await f.readSlot();
+    expect(slot).toMatchObject({ status: "open" });
+    expect(slot?.bookingId).toBeUndefined();
+    expect(slot?.bandId).toBeUndefined();
+    expect(await f.readApplication()).toMatchObject({
+      status: "declined",
+      updatedAt: NOW + 1000,
+    });
   });
 
   test("admin override defaults to dry run, rejects illegal edges, and releases a live slot when applied", async () => {

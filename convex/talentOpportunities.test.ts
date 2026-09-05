@@ -4,6 +4,8 @@ import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
+import { confirmBooking } from "./lib/bookingConfirm";
+import { feeSnapshot } from "./lib/fees";
 import { toVenuePayload } from "./lib/helpers";
 import {
   opportunityPayloadValidator,
@@ -218,6 +220,58 @@ async function setupOrganization() {
       return applicationIds;
     });
   }
+  async function seedBooking(opportunityId: Id<"talentOpportunities">) {
+    const [applicationId] = await seedApplications(opportunityId, ["offered"]);
+    return await t.run(async (ctx) => {
+      const opportunity = await ctx.db.get(opportunityId);
+      const application = await ctx.db.get(applicationId);
+      if (!opportunity || !application) throw new Error("Fixture lineage missing");
+      const artistId = await ctx.db.insert("users", {
+        clerkId: "opportunity_artist",
+        name: "Artist",
+        email: "artist@opportunity.test",
+        genres: [],
+        attendedCount: 0,
+      });
+      await ctx.db.insert("bandMembers", {
+        bandId: ids.bandId,
+        userId: artistId,
+        role: "admin",
+      });
+      const terms = {
+        ...feeSnapshot(0, 0, opportunity.currency),
+        cancellationTemplate: "standard" as const,
+      };
+      const bookingId = await ctx.db.insert("bookings", {
+        opportunityId,
+        slotId: application.slotId,
+        organizationId: ids.organizationId,
+        bandId: ids.bandId,
+        applicationId,
+        status: "offer_sent",
+        revision: 1,
+        startsAt: opportunity.startsAt,
+        ...terms,
+        organizerAcceptedTermsAt: NOW,
+        payoutHold: false,
+        expiresAt: NOW + 3 * DAY_MS,
+        createdBy: ids.ownerId,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      const offerId = await ctx.db.insert("bookingOffers", {
+        bookingId,
+        revision: 1,
+        ...terms,
+        installments: [],
+        sentBy: ids.ownerId,
+        sentAt: NOW,
+        expiresAt: NOW + 3 * DAY_MS,
+      });
+      await ctx.db.patch(bookingId, { currentOfferId: offerId });
+      return { bookingId, offerId, applicationId, artistId };
+    });
+  }
   return {
     t,
     asOwner,
@@ -231,6 +285,7 @@ async function setupOrganization() {
     createDraft,
     readOpportunity,
     seedApplications,
+    seedBooking,
   };
 }
 
@@ -1029,6 +1084,155 @@ describe("talent opportunity lifecycle", () => {
     await expect(
       asOwner.mutation(api.talentOpportunities.cancel, { opportunityId }),
     ).rejects.toThrow("Opportunity cannot go");
+  });
+
+  test.each([
+    ["offer_sent", true],
+    ["offer_sent", false],
+    ["artist_accepted", true],
+    ["awaiting_payment", true],
+  ] as const)(
+    "cancel withdraws a %s booking and declines its application (offer pointer: %s)",
+    async (status, hasOfferPointer) => {
+      const f = await setupOrganization();
+      const { opportunityId } = await f.createDraft();
+      await f.asOwner.mutation(api.talentOpportunities.open, {
+        opportunityId,
+        expectedRevision: 1,
+      });
+      const { bookingId, offerId, applicationId } =
+        await f.seedBooking(opportunityId);
+      await f.t.run((ctx) =>
+        ctx.db.patch(bookingId, {
+          status,
+          currentOfferId: hasOfferPointer ? offerId : undefined,
+        }),
+      );
+      vi.setSystemTime(NOW + 1000);
+      await f.asManager.mutation(api.talentOpportunities.cancel, {
+        opportunityId,
+      });
+      const booking = await f.t.run((ctx) => ctx.db.get(bookingId));
+      expect(booking).toMatchObject({
+        status: "withdrawn",
+        cancelledBy: "organizer",
+        cancelledByUserId: f.managerId,
+        cancelledAt: NOW + 1000,
+        cancelReason: "Opportunity cancelled",
+        revision: 2,
+        updatedAt: NOW + 1000,
+      });
+      expect(await f.t.run((ctx) => ctx.db.get(offerId))).toMatchObject({
+        response: "withdrawn",
+        respondedAt: NOW + 1000,
+        respondedBy: f.managerId,
+      });
+      expect(await f.t.run((ctx) => ctx.db.get(applicationId))).toMatchObject({
+        status: "declined",
+        decidedBy: f.managerId,
+        decidedAt: NOW + 1000,
+        updatedAt: NOW + 1000,
+      });
+      const result = await f.readOpportunity(opportunityId);
+      expect(result.opportunity).toMatchObject({
+        status: "cancelled",
+        revision: 3,
+        applicationCount: 0,
+      });
+      expect(result.slots[0].status).toBe("cancelled");
+      const scheduled = await f.t.run((ctx) =>
+        ctx.db.system.query("_scheduled_functions").take(100),
+      );
+      const emails = scheduled.filter(
+        (job) =>
+          job.name === "emails:send" && job.args[0].kind === "bookingCancelled",
+      );
+      expect(emails.map((job) => job.args[0].to)).toEqual([
+        "artist@opportunity.test",
+      ]);
+      expect(emails[0].scheduledTime).toBe(NOW + 1000);
+      expect(emails[0].args[0].text).toContain("Reason: Opportunity cancelled");
+      await expect(
+        f.asManager.mutation(api.talentOpportunities.cancel, { opportunityId }),
+      ).rejects.toThrow("Opportunity cannot go from cancelled to cancelled");
+      expect(await f.t.run((ctx) => ctx.db.get(bookingId))).toEqual(booking);
+      expect(
+        await f.t.run((ctx) =>
+          ctx.db.system.query("_scheduled_functions").take(100),
+        ),
+      ).toEqual(scheduled);
+    },
+  );
+
+  test("cancel winds down a confirmed booking and unpublishes its required-slot gig", async () => {
+    const f = await setupOrganization();
+    const { opportunityId } = await f.createDraft();
+    await f.asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const { bookingId, offerId, applicationId, artistId } =
+      await f.seedBooking(opportunityId);
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(bookingId, { status: "artist_accepted", revision: 2 });
+      await ctx.db.patch(offerId, {
+        response: "accepted",
+        respondedAt: NOW,
+        respondedBy: artistId,
+      });
+      await confirmBooking(ctx, bookingId);
+    });
+    const before = await f.readOpportunity(opportunityId);
+    const gigId = before.opportunity!.publicGigId!;
+    expect(before.slots[0]).toMatchObject({
+      status: "booked",
+      required: true,
+      bookingId,
+      bandId: f.bandId,
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(gigId))).toMatchObject({
+      lifecycle: "published",
+    });
+    vi.setSystemTime(NOW + 1000);
+    await f.asOwner.mutation(api.talentOpportunities.cancel, { opportunityId });
+    expect(await f.t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({
+      status: "cancelled_by_organizer",
+      cancelledBy: "organizer",
+      cancelledByUserId: f.ownerId,
+      cancelledAt: NOW + 1000,
+      cancelReason: "Opportunity cancelled",
+      revision: 4,
+      updatedAt: NOW + 1000,
+    });
+    const result = await f.readOpportunity(opportunityId);
+    expect(result.slots[0]).toMatchObject({ status: "cancelled" });
+    expect(result.slots[0].bookingId).toBeUndefined();
+    expect(result.slots[0].bandId).toBeUndefined();
+    expect(await f.t.run((ctx) => ctx.db.get(applicationId))).toMatchObject({
+      status: "declined",
+      updatedAt: NOW + 1000,
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(gigId))).toMatchObject({
+      lifecycle: "unpublished",
+      discoveryListingReady: false,
+    });
+    expect(result.opportunity).toMatchObject({
+      status: "cancelled",
+      publicGigId: gigId,
+      revision: before.opportunity!.revision + 1,
+      applicationCount: 0,
+      updatedAt: NOW + 1000,
+    });
+    const emails = await f.t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").take(100)).filter(
+        (job) =>
+          job.name === "emails:send" && job.args[0].kind === "bookingCancelled",
+      ),
+    );
+    expect(emails.map((job) => job.args[0].to)).toEqual([
+      "artist@opportunity.test",
+    ]);
+    expect(emails[0].args[0].text).toContain("Reason: Opportunity cancelled");
   });
 
   test("scheduled expiry is a no-op for stale revisions, non-open rows, and deleted rows", async () => {

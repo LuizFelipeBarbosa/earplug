@@ -57,12 +57,13 @@ testStatusTransitions(
   assertBookingTransition,
   {
     offer_sent: ["artist_accepted", "declined", "expired", "withdrawn"],
-    artist_accepted: ["confirmed", "awaiting_payment"],
+    artist_accepted: ["confirmed", "awaiting_payment", "withdrawn"],
     awaiting_payment: [
       "confirmed",
       "cancelled_by_organizer",
       "cancelled_by_artist",
       "expired",
+      "withdrawn",
     ],
     confirmed: [
       "completed",

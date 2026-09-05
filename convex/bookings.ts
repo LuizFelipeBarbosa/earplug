@@ -18,6 +18,7 @@ import {
   COMPLETION_DELAY_MS,
   OFFER_TTL_MS,
   REVIEW_WINDOW_MS,
+  type BookingStatus,
 } from "./lib/bookingStatus";
 import { appBaseUrl, flag } from "./lib/env";
 import { feeSnapshot, resolveCommissionBps } from "./lib/fees";
@@ -37,7 +38,7 @@ async function loadBooking(ctx: MutationCtx, bookingId: Id<"bookings">) {
   return booking;
 }
 
-async function loadCurrentOffer(ctx: MutationCtx, booking: Doc<"bookings">) {
+export async function loadCurrentOffer(ctx: MutationCtx, booking: Doc<"bookings">) {
   const offer =
     booking.currentOfferId !== undefined
       ? await ctx.db.get(booking.currentOfferId)
@@ -63,7 +64,7 @@ function normalizeNote(
   return note || undefined;
 }
 
-async function shortlistApplication(
+export async function shortlistApplication(
   ctx: MutationCtx,
   applicationId: Id<"artistApplications">,
   now: number,
@@ -120,7 +121,7 @@ async function resolveEmailRecipients(
   return recipients;
 }
 
-async function sendBookingEmail(
+export async function sendBookingEmail(
   ctx: MutationCtx,
   booking: Doc<"bookings">,
   kind: BookingEmailKind,
@@ -252,8 +253,12 @@ export const sendOffer = mutation({
     const message = normalizeNote(args.message, "Message", 1000);
     const fees =
       args.grossMinor === 0
-        ? feeSnapshot(0, 0)
-        : feeSnapshot(args.grossMinor, resolveCommissionBps(organization));
+        ? feeSnapshot(0, 0, opportunity.currency)
+        : feeSnapshot(
+            args.grossMinor,
+            resolveCommissionBps(organization),
+            opportunity.currency,
+          );
     const now = Date.now();
     const expiresAt = now + OFFER_TTL_MS;
     const terms = {
@@ -377,6 +382,11 @@ export const respond = mutation({
       return { status: "declined" as const, revision };
     }
 
+    const organization = await ctx.db.get(booking.organizationId);
+    if (!organization) throw new Error("Organization not found");
+    if (organization.status === "suspended") {
+      throw new Error("This organizer is suspended");
+    }
     await ctx.db.patch(offer._id, {
       response: "accepted",
       respondedAt: now,
@@ -446,6 +456,13 @@ export const cancel = mutation({
       }
       side = "artist";
     }
+    if (side === "organizer") {
+      const organization = await ctx.db.get(booking.organizationId);
+      if (!organization) throw new Error("Organization not found");
+      if (organization.status === "suspended") {
+        throw new Error("This organizer is suspended");
+      }
+    }
     const status: "cancelled_by_organizer" | "cancelled_by_artist" =
       side === "organizer" ? "cancelled_by_organizer" : "cancelled_by_artist";
     assertBookingTransition(booking.status, status);
@@ -479,6 +496,12 @@ export const cancel = mutation({
           ? { bandId: booking.bandId }
           : { organizationId: booking.organizationId },
       );
+    } else {
+      const application = await ctx.db.get(booking.applicationId);
+      if (!application) throw new Error("Application not found");
+      if (application.status === "offered") {
+        await shortlistApplication(ctx, booking.applicationId, now);
+      }
     }
     await sendBookingEmail(
       ctx,
@@ -567,14 +590,23 @@ export const adminForceState = internalMutation({
       return { from: booking.status, to: args.status, applied: false };
     }
     const now = Date.now();
-    const isCancellation =
-      args.status === "cancelled_by_organizer" ||
-      args.status === "cancelled_by_artist" ||
-      args.status === "force_majeure";
+    const cancellationStatuses: readonly BookingStatus[] = [
+      "cancelled_by_organizer",
+      "cancelled_by_artist",
+      "force_majeure",
+      "refunded",
+      "withdrawn",
+      "expired",
+      "declined",
+    ];
+    const isCancellation = cancellationStatuses.includes(args.status);
     await ctx.db.patch(booking._id, {
       status: args.status,
       revision: booking.revision + 1,
       updatedAt: now,
+      ...(args.status === "disputed"
+        ? { disputedFromStatus: booking.status }
+        : {}),
       ...(isCancellation
         ? {
             cancelledBy: "admin" as const,
@@ -584,8 +616,17 @@ export const adminForceState = internalMutation({
           }
         : {}),
     });
-    if (BOOKING_LIVE_STATUSES.includes(booking.status)) {
+    if (isCancellation && BOOKING_LIVE_STATUSES.includes(booking.status)) {
       await releaseBookingSlot(ctx, booking);
+      const application = await ctx.db.get(booking.applicationId);
+      if (!application) throw new Error("Application not found");
+      if (application.status === "booked") {
+        assertApplicationTransition(application.status, "declined");
+        await ctx.db.patch(application._id, {
+          status: "declined",
+          updatedAt: now,
+        });
+      }
     }
     return { from: booking.status, to: args.status, applied: true };
   },

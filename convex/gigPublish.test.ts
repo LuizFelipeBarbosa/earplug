@@ -340,6 +340,40 @@ describe("opportunity gig publishing", () => {
     expect(await f.t.query(api.gigs.resolvePublic, { ref: gigId })).toBeNull();
   });
 
+  test("unpublishes consecutive required-slot cancellations without repeating the transition", async () => {
+    const f = await setupGigPublish();
+    await f.t.run((ctx) => ctx.db.patch(f.slotB, { required: true }));
+    const bookingA = await f.bookSlot(f.slotA, f.bandA);
+    const bookingB = await f.bookSlot(f.slotB, f.bandB);
+    const gigId = await f.publish();
+
+    for (const [bookingId, slotId] of [
+      [bookingA, f.slotA],
+      [bookingB, f.slotB],
+    ] as const) {
+      vi.setSystemTime(bookingId === bookingA ? NOW + 1000 : NOW + 2000);
+      await f.t.run(async (ctx) => {
+        await ctx.db.patch(bookingId, { status: "cancelled_by_artist" });
+        await ctx.db.patch(slotId, {
+          bookingId: undefined,
+          bandId: undefined,
+          status: "open",
+        });
+        await unpublishOpportunityGig(ctx, f.opportunityId, "required_slot_cancelled");
+        expect(await ctx.db.get(gigId)).toMatchObject({
+          lifecycle: "unpublished",
+          discoveryListingReady: false,
+        });
+        expect(await ctx.db.get(f.opportunityId)).toMatchObject({
+          status: "booking",
+          publicGigId: gigId,
+          revision: 4,
+          updatedAt: NOW + 1000,
+        });
+      });
+    }
+  });
+
   test("republishes the same gig after the required slot is rebooked", async () => {
     const f = await setupGigPublish();
     const bookingId = await f.bookSlot(f.slotA, f.bandA);

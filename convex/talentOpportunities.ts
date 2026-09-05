@@ -2,7 +2,11 @@ import { Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { MutationCtx, internalMutation, mutation } from "./_generated/server";
+import { loadCurrentOffer, sendBookingEmail } from "./bookings";
 import { requireOrganizationRole } from "./lib/authz";
+import { releaseSlot } from "./lib/bookingConfirm";
+import { assertBookingTransition } from "./lib/bookingStatus";
+import { unpublishOpportunityGig } from "./lib/gigPublish";
 import {
   assertUploadAcceptable,
   isReservedPublicSlug,
@@ -12,6 +16,7 @@ import {
 import { MAX_OPPORTUNITY_SLOTS } from "./lib/opportunityPayload";
 import {
   APPLICATION_ACTIVE_STATUSES,
+  assertApplicationTransition,
   assertOpportunityTransition,
   assertSlotTransition,
   type ArtistApplicationStatus,
@@ -564,11 +569,72 @@ export const cancel = mutation({
       args.opportunityId,
     );
     assertOpportunityTransition(opportunity.status, "cancelled");
-    await ctx.db.patch(opportunity._id, {
-      status: "cancelled",
-      revision: opportunity.revision + 1,
-      updatedAt: now,
-    });
+    const bookings = await ctx.db
+      .query("bookings")
+      .withIndex("by_opportunityId", (q) =>
+        q.eq("opportunityId", opportunity._id),
+      )
+      .take(500);
+    for (const booking of bookings) {
+      if (
+        booking.status !== "offer_sent" &&
+        booking.status !== "artist_accepted" &&
+        booking.status !== "awaiting_payment" &&
+        booking.status !== "confirmed"
+      ) {
+        continue;
+      }
+      const status =
+        booking.status === "confirmed" ? "cancelled_by_organizer" : "withdrawn";
+      assertBookingTransition(booking.status, status);
+      await ctx.db.patch(booking._id, {
+        status,
+        cancelledBy: "organizer",
+        cancelledByUserId: user._id,
+        cancelledAt: now,
+        cancelReason: "Opportunity cancelled",
+        revision: booking.revision + 1,
+        updatedAt: now,
+      });
+      if (status === "withdrawn") {
+        const offer = await loadCurrentOffer(ctx, booking);
+        await ctx.db.patch(offer._id, {
+          response: "withdrawn",
+          respondedAt: now,
+          respondedBy: user._id,
+        });
+        const application = await ctx.db.get(booking.applicationId);
+        if (application?.status === "offered") {
+          assertApplicationTransition(application.status, "shortlisted");
+          await ctx.db.patch(application._id, {
+            status: "shortlisted",
+            updatedAt: now,
+          });
+        }
+      } else {
+        await releaseSlot(ctx, booking.slotId);
+        const application = await ctx.db.get(booking.applicationId);
+        if (application?.status === "booked") {
+          assertApplicationTransition(application.status, "declined");
+          await ctx.db.patch(application._id, {
+            status: "declined",
+            updatedAt: now,
+          });
+        }
+      }
+      const cancelledBooking = await ctx.db.get(booking._id);
+      if (!cancelledBooking) throw new Error("Booking not found");
+      await sendBookingEmail(ctx, cancelledBooking, "bookingCancelled");
+    }
+    if (opportunity.publicGigId !== undefined) {
+      await unpublishOpportunityGig(ctx, opportunity._id, "opportunity_cancelled");
+    } else {
+      await ctx.db.patch(opportunity._id, {
+        status: "cancelled",
+        revision: opportunity.revision + 1,
+        updatedAt: now,
+      });
+    }
     await expireActiveApplications(ctx, opportunity._id, {
       statuses: APPLICATION_ACTIVE_STATUSES,
       to: "declined",

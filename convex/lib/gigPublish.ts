@@ -178,10 +178,12 @@ export async function unpublishOpportunityGig(
     discoveryListingReady: false,
   });
   const status = reason === "required_slot_cancelled" ? "booking" : "cancelled";
-  assertOpportunityTransition(opportunity.status, status);
-  await ctx.db.patch(opportunityId, {
-    status,
-    revision: opportunity.revision + 1,
-    updatedAt: Date.now(),
-  });
+  if (opportunity.status !== status) {
+    assertOpportunityTransition(opportunity.status, status);
+    await ctx.db.patch(opportunityId, {
+      status,
+      revision: opportunity.revision + 1,
+      updatedAt: Date.now(),
+    });
+  }
 }
