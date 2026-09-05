@@ -396,6 +396,67 @@ describe("bookings read: get", () => {
     },
   );
 
+  test.each(["artist", "organizer", undefined] as const)(
+    "dual-role user resolves viewAs %s with the corresponding disclosures",
+    async (viewAs) => {
+      const f = await setupBookings({ status: "offer_sent" });
+      await f.t.run((ctx) =>
+        ctx.db.insert("bandMembers", {
+          bandId: f.bandId,
+          userId: f.users.owner,
+          role: "admin",
+        }),
+      );
+      const args = { bookingId: f.bookingId };
+      const payload = await f
+        .as("owner")
+        .query(
+          api.bookingsRead.get,
+          viewAs === undefined ? args : { ...args, viewAs },
+        );
+      expect(payload).toMatchObject({
+        viewerSide: viewAs ?? "organizer",
+        venue: { exactAddress: viewAs === "artist" ? null : EXACT_ADDRESS },
+        counterpartyEmail: viewAs === "artist" ? null : APPLICANT_EMAIL,
+      });
+    },
+  );
+
+  test.each([
+    ["bandAdmin", "organizer", "artist", null, null],
+    ["owner", "artist", "organizer", EXACT_ADDRESS, APPLICANT_EMAIL],
+    ["door", "artist", "organizer", EXACT_ADDRESS, null],
+    ["platformAdmin", "artist", "organizer", EXACT_ADDRESS, APPLICANT_EMAIL],
+  ] as const)(
+    "%s requesting %s falls back to %s with the appropriate disclosures",
+    async (actor, viewAs, viewerSide, exactAddress, counterpartyEmail) => {
+      const f = await setupBookings({ status: "offer_sent" });
+      expect(
+        await f.as(actor).query(api.bookingsRead.get, {
+          bookingId: f.bookingId,
+          viewAs,
+        }),
+      ).toMatchObject({
+        viewerSide,
+        venue: { exactAddress },
+        counterpartyEmail,
+      });
+    },
+  );
+
+  test.each(["organizer", "artist"] as const)(
+    "outsider cannot read a booking by requesting %s",
+    async (viewAs) => {
+      const f = await setupBookings();
+      expect(
+        await f.as("outsider").query(api.bookingsRead.get, {
+          bookingId: f.bookingId,
+          viewAs,
+        }),
+      ).toBeNull();
+    },
+  );
+
   test.each(["outsider", "otherBandAdmin", "bandMember"] as const)(
     "%s cannot read another party's booking",
     async (actor) => {
@@ -518,6 +579,29 @@ describe("bookings read: get", () => {
       counterpartyEmail: BUSINESS_EMAIL,
     });
   });
+
+  test.each(["organizer", "artist"] as const)(
+    "band admin with platform admin access can request %s",
+    async (viewAs) => {
+      const f = await setupBookings({ status: "offer_sent" });
+      await f.t.run((ctx) =>
+        ctx.db.insert("platformAdmins", {
+          userId: f.users.bandAdmin,
+          grantedAt: NOW,
+        }),
+      );
+      expect(
+        await f.as("bandAdmin").query(api.bookingsRead.get, {
+          bookingId: f.bookingId,
+          viewAs,
+        }),
+      ).toMatchObject({
+        viewerSide: viewAs,
+        venue: { exactAddress: viewAs === "artist" ? null : EXACT_ADDRESS },
+        counterpartyEmail: viewAs === "artist" ? null : APPLICANT_EMAIL,
+      });
+    },
+  );
 
   test("normalizes absent optional links and venue details to null", async () => {
     const f = await setupBookings();

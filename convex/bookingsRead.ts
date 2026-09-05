@@ -237,7 +237,10 @@ export async function toBookingPayload(
 }
 
 export const get = query({
-  args: { bookingId: v.id("bookings") },
+  args: {
+    bookingId: v.id("bookings"),
+    viewAs: v.optional(v.union(v.literal("organizer"), v.literal("artist"))),
+  },
   returns: v.union(bookingPayloadValidator, v.null()),
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
@@ -245,37 +248,34 @@ export const get = query({
     const user = await currentUser(ctx);
     if (!user) return null;
 
-    const membership = await organizationMembershipFor(
-      ctx,
-      booking.organizationId,
-      user._id,
-    );
-    if (membership) {
-      return await toBookingPayload(ctx, booking, {
-        userId: user._id,
-        side: "organizer",
-        organizationRole: membership.role,
-      });
+    const [membership, bandMembership, platformAdmin] = await Promise.all([
+      organizationMembershipFor(ctx, booking.organizationId, user._id),
+      ctx.db
+        .query("bandMembers")
+        .withIndex("by_band_user", (q) =>
+          q.eq("bandId", booking.bandId).eq("userId", user._id),
+        )
+        .unique(),
+      isPlatformAdmin(ctx, user._id),
+    ]);
+    const canOrganizer = membership !== null || platformAdmin;
+    const canArtist = bandMembership?.role === "admin";
+    if (!canOrganizer && !canArtist) return null;
+
+    // Preserve the default order: organization member, band admin, platform admin.
+    let side: "organizer" | "artist" =
+      membership || !canArtist ? "organizer" : "artist";
+    if (args.viewAs === "organizer" && canOrganizer) {
+      side = "organizer";
+    } else if (args.viewAs === "artist" && canArtist) {
+      side = "artist";
     }
-    const bandMembership = await ctx.db
-      .query("bandMembers")
-      .withIndex("by_band_user", (q) =>
-        q.eq("bandId", booking.bandId).eq("userId", user._id),
-      )
-      .unique();
-    if (bandMembership?.role === "admin") {
-      return await toBookingPayload(ctx, booking, {
-        userId: user._id,
-        side: "artist",
-      });
-    }
-    if (await isPlatformAdmin(ctx, user._id)) {
-      return await toBookingPayload(ctx, booking, {
-        userId: user._id,
-        side: "organizer",
-      });
-    }
-    return null;
+
+    return await toBookingPayload(ctx, booking, {
+      userId: user._id,
+      side,
+      organizationRole: side === "organizer" ? membership?.role : undefined,
+    });
   },
 });
 
