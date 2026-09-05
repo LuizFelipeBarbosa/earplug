@@ -59,7 +59,7 @@ testStatusTransitions(
     open: ["applications_closed", "cancelled"],
     applications_closed: ["open", "booking", "cancelled"],
     booking: ["confirmed", "applications_closed", "cancelled"],
-    confirmed: ["completed", "cancelled"],
+    confirmed: ["completed", "cancelled", "booking"],
     completed: [],
     cancelled: [],
   },
