@@ -2,6 +2,7 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
+import 'package:earplug/navigation.dart';
 import 'package:earplug/screens/org_dash.dart';
 import 'package:earplug/screens/org_join.dart';
 import 'package:earplug/screens/org_settings.dart';
@@ -50,7 +51,67 @@ void main() {
             .having((card) => card.value, 'value', '2'),
       ),
     );
+    expect(
+      stats,
+      contains(
+        isA<EpStatCard>()
+            .having((card) => card.label, 'label', 'OPPORTUNITIES')
+            .having((card) => card.value, 'value', '2')
+            .having((card) => card.caption, 'caption', 'open right now'),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('org-dash-stat-opportunities')));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.current.screen, Screen.orgOpportunities);
   });
+
+  testWidgets('organizer dashboard opens a new opportunity draft', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: OrgDashScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    expect(find.text('Post a slot for artists'), findsOneWidget);
+    final command = find.byKey(const Key('org-dash-command-opportunity'));
+    await tester.ensureVisible(command);
+    await tester.tap(command);
+    await tester.pumpAndSettle();
+
+    expect(harness.app.current.screen, Screen.opportunityEdit);
+    expect(harness.app.current.param, 'new');
+  });
+
+  for (final role in [OrganizationRole.finance, OrganizationRole.door]) {
+    testWidgets('${role.name} cannot post opportunities from the dashboard', (
+      tester,
+    ) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: OrgDashScreen()),
+      );
+      await enterOrganizer(tester, harness, 'org1');
+      harness.app.myOrganizations = [
+        OrganizationMembership(
+          organization: DemoData.organizations['org1']!,
+          role: role,
+        ),
+      ];
+      await enterOrganizer(tester, harness, 'org1');
+
+      expect(find.text('Managers post opportunities'), findsOneWidget);
+      final command = find.byKey(const Key('org-dash-command-opportunity'));
+      await tester.ensureVisible(command);
+      await tester.tap(command);
+      await tester.pumpAndSettle();
+
+      expect(harness.app.current.screen, Screen.orgDash);
+    });
+  }
 
   testWidgets('venue edit page saves the public profile', (tester) async {
     final auth = FakeAuthService();

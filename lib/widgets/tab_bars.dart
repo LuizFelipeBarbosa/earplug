@@ -221,7 +221,7 @@ class OrganizerTabBar extends StatelessWidget {
           EpNavigationItem(
             key: const Key('organizer-tab-opportunities'),
             icon: Icons.campaign_outlined,
-            label: 'OPPORTUNITIES',
+            label: 'GIGS',
             selected: scr == Screen.orgOpportunities,
             onPressed: () => app.resetTo(Screen.orgOpportunities),
           ),
