@@ -115,6 +115,9 @@ export const apply = mutation({
     if (opportunity.status !== "open") {
       throw new Error("Opportunity is not accepting applications");
     }
+    if (opportunity.applicationsCloseAt <= Date.now()) {
+      throw new Error("Applications for this opportunity have closed");
+    }
     if (opportunity.mode !== "publicEvent") {
       throw new Error("Private bookings are not available yet");
     }

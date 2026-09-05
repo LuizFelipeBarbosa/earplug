@@ -2,8 +2,32 @@ import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { publishGigAsAdmin } from "./gigFixtures.test-helpers";
-import { bandColorFor } from "./lib/helpers";
+import { bandColorFor, isReservedPublicSlug } from "./lib/helpers";
 import schema from "./schema";
+
+describe("lib/helpers: isReservedPublicSlug", () => {
+  test.each([
+    "g",
+    "join",
+    "gig-invite",
+    "check-in",
+    "opportunities",
+    "venues",
+    "apply",
+    "org",
+    "orgs",
+    "band",
+    "checkout",
+    "t",
+    "admin",
+  ])("reserves the fixed route segment %s", (slug) => {
+    expect(isReservedPublicSlug(slug)).toBe(true);
+  });
+
+  test("allows a normal band slug", () => {
+    expect(isReservedPublicSlug("static-bloom")).toBe(false);
+  });
+});
 
 describe("bands: slugs and profile updates", () => {
   async function setup() {

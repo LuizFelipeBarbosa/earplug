@@ -401,6 +401,37 @@ describe("artist applications: apply", () => {
     },
   );
 
+  test.each([
+    ["in the past", NOW - 1],
+    ["at the current time", NOW],
+  ] as const)(
+    "rejects an open opportunity with an application deadline %s",
+    async (_, applicationsCloseAt) => {
+      const f = await setupApplications();
+      await f.checked(() =>
+        f.t.run((ctx) =>
+          ctx.db.patch(f.opportunityId, { applicationsCloseAt }),
+        ),
+      );
+      await expect(f.apply()).rejects.toThrow(
+        /^Applications for this opportunity have closed$/,
+      );
+    },
+  );
+
+  test("accepts an open opportunity with an application deadline in the future", async () => {
+    const f = await setupApplications();
+    await f.checked(() =>
+      f.t.run((ctx) =>
+        ctx.db.patch(f.opportunityId, { applicationsCloseAt: NOW + 1 }),
+      ),
+    );
+    const { applicationId } = await f.apply();
+    expect((await f.readApplication(applicationId))?.status).toBe(
+      "submitted",
+    );
+  });
+
   test.each(["pending", "suspended"] as const)(
     "rejects applications to a %s organization",
     async (status) => {

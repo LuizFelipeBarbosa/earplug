@@ -59,7 +59,21 @@ export function slugify(name: string): string {
   return slug === "" ? "band" : slug;
 }
 
-const RESERVED_PUBLIC_SLUGS = new Set(["g", "join", "gig-invite", "check-in"]);
+const RESERVED_PUBLIC_SLUGS = new Set([
+  "g",
+  "join",
+  "gig-invite",
+  "check-in",
+  "opportunities",
+  "venues",
+  "apply",
+  "org",
+  "orgs",
+  "band",
+  "checkout",
+  "t",
+  "admin",
+]);
 
 export function isReservedPublicSlug(slug: string): boolean {
   return RESERVED_PUBLIC_SLUGS.has(slug);
