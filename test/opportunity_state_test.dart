@@ -74,6 +74,318 @@ void main() {
     harness.app.dispose();
   });
 
+  testWidgets('refresh browse skips empty pages until it finds items', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledOpportunityRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    final item = (await repository.resolveOpportunity('opp1'))!;
+    repository.browsePages = [
+      const OpportunityPage(items: [], continueCursor: 'c1', isDone: false),
+      const OpportunityPage(items: [], continueCursor: 'c2', isDone: false),
+      OpportunityPage(items: [item], continueCursor: 'c3', isDone: true),
+    ];
+    var notifications = 0;
+    harness.app.addListener(() => notifications++);
+
+    await harness.app.refreshBrowse();
+
+    expect(harness.app.browse.items, [item]);
+    expect(harness.app.browse.isDone, isTrue);
+    expect(harness.app.browse.cursor, 'c3');
+    expect(harness.app.browse.status, DataStatus.ready);
+    expect(repository.browseCalls, 3);
+    expect(repository.browseRequests.map((request) => request.cursor), [
+      null,
+      'c1',
+      'c2',
+    ]);
+    expect(notifications, 1);
+    harness.app.dispose();
+  });
+
+  testWidgets('empty browse chains stop after five fetches per action', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledOpportunityRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    repository.browsePages = [
+      for (var i = 1; i <= 11; i++)
+        OpportunityPage(items: const [], continueCursor: 'c$i', isDone: false),
+    ];
+    var notifications = 0;
+    harness.app.addListener(() => notifications++);
+
+    await harness.app.refreshBrowse();
+
+    expect(repository.browseCalls, 5);
+    expect(harness.app.browse.items, isEmpty);
+    expect(harness.app.browse.cursor, 'c5');
+    expect(harness.app.browse.isDone, isFalse);
+    expect(harness.app.browse.status, DataStatus.ready);
+    expect(notifications, 1);
+
+    await harness.app.loadMoreOpportunities();
+
+    expect(repository.browseCalls, 10);
+    expect(repository.browseRequests.map((request) => request.cursor), [
+      null,
+      for (var i = 1; i < 10; i++) 'c$i',
+    ]);
+    expect(harness.app.browse.items, isEmpty);
+    expect(harness.app.browse.cursor, 'c10');
+    expect(harness.app.browse.isDone, isFalse);
+    expect(notifications, 2);
+    harness.app.dispose();
+  });
+
+  testWidgets('load more skips empty pages even with existing browse items', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledOpportunityRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    final existingItem = (await repository.resolveOpportunity('opp1'))!;
+    final newItem = (await repository.resolveOpportunity(
+      'opp3',
+      bandId: 'b1',
+    ))!;
+    final invited = [newItem];
+    harness.app.browse = OpportunityBrowseState(
+      items: [existingItem],
+      invited: invited,
+      cursor: 'start',
+      status: DataStatus.ready,
+    );
+    repository.browsePages = [
+      const OpportunityPage(items: [], continueCursor: 'c1', isDone: false),
+      const OpportunityPage(items: [], continueCursor: 'c2', isDone: false),
+      OpportunityPage(items: [newItem], continueCursor: 'c3', isDone: false),
+    ];
+    var notifications = 0;
+    harness.app.addListener(() => notifications++);
+
+    await harness.app.loadMoreOpportunities();
+
+    expect(harness.app.browse.items, [existingItem, newItem]);
+    expect(harness.app.browse.invited, same(invited));
+    expect(harness.app.browse.cursor, 'c3');
+    expect(harness.app.browse.isDone, isFalse);
+    expect(harness.app.browse.status, DataStatus.ready);
+    expect(repository.browseCalls, 3);
+    expect(repository.browseRequests.map((request) => request.cursor), [
+      'start',
+      'c1',
+      'c2',
+    ]);
+    expect(repository.invitedCalls, 0);
+    expect(notifications, 1);
+    harness.app.dispose();
+  });
+
+  testWidgets('browse stays connecting until pages and invitations finish', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledOpportunityRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+    harness.app.switchToBand('b1');
+    await tester.pumpAndSettle();
+    final item = harness.app.browse.items.single;
+    final invited = harness.app.browse.invited;
+    final browseCalls = repository.browseCalls;
+    final invitedCalls = repository.invitedCalls;
+    final pendingPage = Completer<OpportunityPage>();
+    final pendingInvited = Completer<List<BrowseItem>>();
+    repository.browsePages = [
+      const OpportunityPage(items: [], continueCursor: 'c1', isDone: false),
+      pendingPage.future,
+    ];
+    repository.pendingInvited = pendingInvited;
+    const filters = OpportunityFilters(genre: 'rock');
+    var notifications = 0;
+    harness.app.addListener(() => notifications++);
+
+    harness.app.setBrowseFilters(filters);
+    final connectingBrowse = harness.app.browse;
+    await tester.pump();
+
+    expect(repository.browseCalls, browseCalls + 2);
+    expect(repository.invitedCalls, invitedCalls);
+    expect(harness.app.browse, same(connectingBrowse));
+    expect(harness.app.browse.status, DataStatus.connecting);
+    expect(notifications, 1); // The filter change, with no intermediate pages.
+    for (final request in repository.browseRequests.skip(browseCalls)) {
+      expect(request.bandId, 'b1');
+      expect(request.filters, same(filters));
+    }
+
+    pendingPage.complete(
+      OpportunityPage(items: [item], continueCursor: null, isDone: true),
+    );
+    await tester.pump();
+
+    expect(repository.invitedCalls, invitedCalls + 1);
+    expect(harness.app.browse, same(connectingBrowse));
+    expect(notifications, 1);
+
+    pendingInvited.complete(invited);
+    await tester.pump();
+
+    expect(harness.app.browse.status, DataStatus.ready);
+    expect(harness.app.browse.items, [item]);
+    expect(harness.app.browse.invited, same(invited));
+    expect(notifications, 2);
+    harness.app.dispose();
+  });
+
+  for (final stalePageIsEmpty in [true, false]) {
+    testWidgets(
+      'filter changes discard stale ${stalePageIsEmpty ? 'empty' : 'nonempty'} '
+      'pages mid-chain',
+      (tester) async {
+        final auth = FakeAuthService();
+        final repository = _ControlledOpportunityRepository(auth: auth);
+        final harness = await pumpApp(
+          tester,
+          auth: auth,
+          repository: repository,
+          home: const SizedBox.shrink(),
+        );
+        final staleItem = (await repository.resolveOpportunity('opp1'))!;
+        final newItem = (await repository.resolveOpportunity(
+          'opp3',
+          bandId: 'b1',
+        ))!;
+        final stalePage = Completer<OpportunityPage>();
+        final newPage = Completer<OpportunityPage>();
+        repository.browsePages = [
+          const OpportunityPage(items: [], continueCursor: 'c1', isDone: false),
+          stalePage.future,
+          newPage.future,
+        ];
+        var notifications = 0;
+        harness.app.addListener(() => notifications++);
+        final loading = harness.app.refreshBrowse();
+        await tester.pump();
+        expect(repository.browseCalls, 2);
+        expect(notifications, 0);
+
+        const newFilters = OpportunityFilters(genre: 'jazz');
+        harness.app.setBrowseFilters(newFilters);
+        newPage.complete(
+          OpportunityPage(
+            items: [newItem],
+            continueCursor: 'new',
+            isDone: true,
+          ),
+        );
+        await tester.pump();
+        final newBrowse = harness.app.browse;
+        expect(newBrowse.items, [newItem]);
+        expect(newBrowse.status, DataStatus.ready);
+        expect(notifications, 2);
+
+        stalePage.complete(
+          OpportunityPage(
+            items: stalePageIsEmpty ? [] : [staleItem],
+            continueCursor: 'stale',
+            isDone: false,
+          ),
+        );
+        await loading;
+
+        expect(harness.app.browse, same(newBrowse));
+        expect(harness.app.browse.cursor, 'new');
+        expect(harness.app.browse.isDone, isTrue);
+        expect(repository.browseCalls, 3);
+        expect(repository.browseRequests.map((request) => request.cursor), [
+          null,
+          'c1',
+          null,
+        ]);
+        expect(repository.browseRequests.last.filters, same(newFilters));
+        expect(notifications, 2);
+        harness.app.dispose();
+      },
+    );
+  }
+
+  for (final loadMore in [false, true]) {
+    testWidgets(
+      '${loadMore ? 'load more' : 'refresh'} preserves browse values when a '
+      'later page fails',
+      (tester) async {
+        final auth = FakeAuthService();
+        final repository = _ControlledOpportunityRepository(auth: auth);
+        final harness = await pumpApp(
+          tester,
+          auth: auth,
+          repository: repository,
+          home: const SizedBox.shrink(),
+        );
+        final item = (await repository.resolveOpportunity('opp1'))!;
+        final previousBrowse = OpportunityBrowseState(
+          items: [item],
+          invited: [item],
+          cursor: 'previous',
+          status: DataStatus.ready,
+        );
+        harness.app.browse = previousBrowse;
+        final pendingPage = Completer<OpportunityPage>();
+        repository.browsePages = [
+          const OpportunityPage(items: [], continueCursor: 'c1', isDone: false),
+          pendingPage.future,
+        ];
+        var notifications = 0;
+        harness.app.addListener(() => notifications++);
+        final loading = loadMore
+            ? harness.app.loadMoreOpportunities()
+            : harness.app.refreshBrowse();
+        await tester.pump();
+        expect(harness.app.browse, same(previousBrowse));
+        expect(notifications, 0);
+
+        pendingPage.completeError(StateError('later page failed'));
+        await loading;
+
+        expect(harness.app.browse.status, DataStatus.error);
+        expect(harness.app.browse.error, contains('later page failed'));
+        expect(harness.app.browse.items, same(previousBrowse.items));
+        expect(harness.app.browse.invited, same(previousBrowse.invited));
+        expect(harness.app.browse.cursor, previousBrowse.cursor);
+        expect(harness.app.browse.isDone, previousBrowse.isDone);
+        expect(repository.browseCalls, 2);
+        expect(notifications, 1);
+        harness.app.dispose();
+      },
+    );
+  }
+
   testWidgets('organizer opportunities include drafts first', (tester) async {
     final harness = await pumpApp(tester, home: const SizedBox.shrink());
 
@@ -188,8 +500,13 @@ class _ControlledOpportunityRepository extends DemoRepository {
   _ControlledOpportunityRepository({required super.auth});
 
   int browseCalls = 0;
+  int invitedCalls = 0;
+  final browseRequests =
+      <({String? cursor, String? bandId, OpportunityFilters? filters})>[];
+  List<FutureOr<OpportunityPage>>? browsePages;
   bool failLoads = false;
   Completer<OpportunityPage>? pendingPage;
+  Completer<List<BrowseItem>>? pendingInvited;
 
   @override
   Future<OpportunityPage> browseOpportunities({
@@ -199,7 +516,10 @@ class _ControlledOpportunityRepository extends DemoRepository {
     OpportunityFilters? filters,
   }) {
     browseCalls++;
+    browseRequests.add((cursor: cursor, bandId: bandId, filters: filters));
     if (failLoads) throw UnimplementedError('browseOpportunities');
+    final pages = browsePages;
+    if (pages != null) return Future.value(pages.removeAt(0));
     return pendingPage?.future ??
         super.browseOpportunities(
           cursor: cursor,
@@ -207,6 +527,12 @@ class _ControlledOpportunityRepository extends DemoRepository {
           bandId: bandId,
           filters: filters,
         );
+  }
+
+  @override
+  Future<List<BrowseItem>> invitedOpportunities(String bandId) {
+    invitedCalls++;
+    return pendingInvited?.future ?? super.invitedOpportunities(bandId);
   }
 
   @override

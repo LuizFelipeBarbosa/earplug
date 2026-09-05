@@ -94,11 +94,14 @@ mixin _OpportunityState on _AppStateCore {
     _browseLoadToken = token;
     final requestedBandId = bandId;
     try {
-      final page = await repository.browseOpportunities(
+      final page = await _fetchBrowsePages(
+        token: token,
         bandId: requestedBandId.isEmpty ? null : requestedBandId,
         filters: browseFilters,
       );
-      if (_disposed || !identical(_browseLoadToken, token)) return;
+      if (page == null || _disposed || !identical(_browseLoadToken, token)) {
+        return;
+      }
       final invited = requestedBandId.isEmpty
           ? const <BrowseItem>[]
           : await repository.invitedOpportunities(requestedBandId);
@@ -122,12 +125,15 @@ mixin _OpportunityState on _AppStateCore {
     final token = Object();
     _browseLoadToken = token;
     try {
-      final page = await repository.browseOpportunities(
+      final page = await _fetchBrowsePages(
+        token: token,
         cursor: browse.cursor,
         bandId: bandId.isEmpty ? null : bandId,
         filters: browseFilters,
       );
-      if (_disposed || !identical(_browseLoadToken, token)) return;
+      if (page == null || _disposed || !identical(_browseLoadToken, token)) {
+        return;
+      }
       browse = OpportunityBrowseState(
         items: [...browse.items, ...page.items],
         invited: browse.invited,
@@ -140,6 +146,35 @@ mixin _OpportunityState on _AppStateCore {
       _recordBrowseError(error);
     }
     notifyListeners();
+  }
+
+  Future<OpportunityPage?> _fetchBrowsePages({
+    required Object token,
+    required String? bandId,
+    required OpportunityFilters filters,
+    String? cursor,
+  }) async {
+    final items = <BrowseItem>[];
+    var fetchCount = 0;
+    late OpportunityPage page;
+    // Filtering can leave a page empty even when later pages contain matches.
+    // Bound the work per action so the user can resume with LOAD MORE.
+    do {
+      page = await repository.browseOpportunities(
+        cursor: cursor,
+        bandId: bandId,
+        filters: filters,
+      );
+      if (_disposed || !identical(_browseLoadToken, token)) return null;
+      items.addAll(page.items);
+      cursor = page.continueCursor;
+      fetchCount++;
+    } while (items.isEmpty && !page.isDone && fetchCount < 5);
+    return OpportunityPage(
+      items: items,
+      continueCursor: page.continueCursor,
+      isDone: page.isDone,
+    );
   }
 
   void _recordBrowseError(Object error) {
