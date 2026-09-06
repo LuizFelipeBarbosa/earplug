@@ -34,11 +34,13 @@ type Actor = (typeof ACTORS)[number];
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
+  vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "false");
 });
 
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 async function setupApplications(
@@ -1159,6 +1161,34 @@ async function setupPrivateApplications(visibility: "public" | "inviteOnly") {
 }
 
 describe("private booking applications", () => {
+  beforeEach(() => {
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+  });
+
+  test("blocks private applications while private bookings are disabled and accepts them when enabled", async () => {
+    const f = await setupPrivateApplications("public");
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "false");
+    await expect(f.apply()).rejects.toThrow(
+      "Private bookings are not available yet",
+    );
+    expect((await f.readOpportunity())?.applicationCount).toBe(0);
+    expect(
+      await f.t.run((ctx) =>
+        ctx.db
+          .query("artistApplications")
+          .withIndex("by_opportunityId_and_bandId", (q) =>
+            q.eq("opportunityId", f.opportunityId).eq("bandId", f.bandId),
+          )
+          .first(),
+      ),
+    ).toBeNull();
+
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+    const { applicationId } = await f.apply();
+    expect((await f.readApplication(applicationId))?.status).toBe("submitted");
+    expect((await f.readOpportunity())?.applicationCount).toBe(1);
+  });
+
   test.each(["public", "inviteOnly"] as const)(
     "allows an eligible band to apply to a %s private request and still rejects duplicates",
     async (visibility) => {

@@ -80,6 +80,12 @@ function resolveClearable<T>(
   return provided === null ? undefined : provided;
 }
 
+export function requirePrivateBookingsEnabled(): void {
+  if (!flag("PRIVATE_BOOKINGS_ENABLED", false)) {
+    throw new Error("Private bookings are not available yet");
+  }
+}
+
 function validateTicketPriceAndCapacity(
   ticketPriceMinor: number | undefined,
   ticketCapacity: number | undefined,
@@ -326,9 +332,7 @@ export const create = mutation({
       "area" | "venueId" | "venueType" | "privateLocationId"
     >;
     if (mode === "privateBooking") {
-      if (!flag("PRIVATE_BOOKINGS_ENABLED", false)) {
-        throw new Error("Private bookings are not available yet");
-      }
+      requirePrivateBookingsEnabled();
       if (organization.orgType !== "privateHost") {
         throw new Error("Only verified hosts post private requests");
       }
@@ -340,6 +344,9 @@ export const create = mutation({
         args.privateLocationId,
         args.organizationId,
       );
+      if (location.archivedAt !== undefined) {
+        throw new Error("Choose an active location");
+      }
       if (args.venueId !== undefined) {
         throw new Error("Private requests don't use a venue");
       }
@@ -428,6 +435,9 @@ export const update = mutation({
     if (args.expectedRevision !== opportunity.revision) {
       throw new Error("Opportunity changed elsewhere");
     }
+    if (opportunity.mode === "privateBooking") {
+      requirePrivateBookingsEnabled();
+    }
     if (opportunity.status !== "draft" && opportunity.status !== "open") {
       throw new Error("Opportunity can no longer be edited");
     }
@@ -467,6 +477,9 @@ export const update = mutation({
           opportunity.organizationId,
         )
       : null;
+    if (location && location.archivedAt !== undefined) {
+      throw new Error("Choose an active location");
+    }
     const startsAtChanged =
       args.startsAt !== undefined && args.startsAt !== opportunity.startsAt;
     const doorsAtChanged =
@@ -674,6 +687,9 @@ export const open = mutation({
     if (args.expectedRevision !== opportunity.revision) {
       throw new Error("Opportunity changed elsewhere");
     }
+    if (opportunity.mode === "privateBooking") {
+      requirePrivateBookingsEnabled();
+    }
     assertOpportunityTransition(opportunity.status, "open");
     const slots = await ctx.db
       .query("opportunitySlots")
@@ -718,6 +734,9 @@ export const closeApplications = mutation({
       ctx,
       args.opportunityId,
     );
+    if (opportunity.mode === "privateBooking") {
+      requirePrivateBookingsEnabled();
+    }
     assertOpportunityTransition(opportunity.status, "applications_closed");
     await ctx.db.patch(opportunity._id, {
       status: "applications_closed",
@@ -744,6 +763,9 @@ export const reopen = mutation({
       ctx,
       args.opportunityId,
     );
+    if (opportunity.mode === "privateBooking") {
+      requirePrivateBookingsEnabled();
+    }
     assertOpportunityTransition(opportunity.status, "open");
     if (opportunity.status === "booking") {
       const slots = await ctx.db
@@ -926,15 +948,23 @@ export const duplicate = mutation({
       ctx,
       args.opportunityId,
     );
+    let privateLocationId = source.privateLocationId;
+    if (source.mode === "privateBooking") {
+      requirePrivateBookingsEnabled();
+      if (source.privateLocationId !== undefined) {
+        const location = await ctx.db.get(source.privateLocationId);
+        if (location && location.archivedAt !== undefined) {
+          privateLocationId = undefined;
+        }
+      }
+    }
     const title = `${source.title} (copy)`.slice(0, 120);
     const slug = await uniqueOpportunitySlug(ctx, title);
     const opportunityId = await ctx.db.insert("talentOpportunities", {
       organizationId: source.organizationId,
       mode: source.mode,
       ...(source.venueId !== undefined ? { venueId: source.venueId } : {}),
-      ...(source.privateLocationId !== undefined
-        ? { privateLocationId: source.privateLocationId }
-        : {}),
+      ...(privateLocationId !== undefined ? { privateLocationId } : {}),
       area: source.area,
       ...(source.venueType !== undefined
         ? { venueType: source.venueType }

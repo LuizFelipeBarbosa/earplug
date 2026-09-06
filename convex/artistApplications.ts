@@ -28,6 +28,7 @@ import {
 } from "./lib/opportunityStatus";
 import { bandIsInvited } from "./lib/opportunityVisibility";
 import { artistApplicationStatusValidator } from "./schema";
+import { requirePrivateBookingsEnabled } from "./talentOpportunities";
 
 export const applicationPayloadValidator = v.object({
   _id: v.id("artistApplications"),
@@ -108,6 +109,9 @@ export const apply = mutation({
     });
     const opportunity = await ctx.db.get(args.opportunityId);
     if (!opportunity) throw new Error("Opportunity not found");
+    if (opportunity.mode === "privateBooking") {
+      requirePrivateBookingsEnabled();
+    }
     const organization = await ctx.db.get(opportunity.organizationId);
     if (!organization || organization.status !== "verified") {
       throw new Error("This organizer is not accepting applications");

@@ -1189,6 +1189,53 @@ describe("live opportunity ticketing updates", () => {
 });
 
 describe("talent opportunity lifecycle", () => {
+  test("public opportunities can be updated, opened, closed, reopened, and duplicated with private bookings disabled", async () => {
+    const f = await setupOrganization();
+    const { opportunityId } = await f.createDraft({ mode: "publicEvent" });
+    expect(process.env.PRIVATE_BOOKINGS_ENABLED).toBe("false");
+
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 1,
+        title: "Updated public event",
+      }),
+    ).resolves.toEqual({ revision: 2 });
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.open, {
+        opportunityId,
+        expectedRevision: 2,
+      }),
+    ).resolves.toMatchObject({ revision: 3 });
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.closeApplications, {
+        opportunityId,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.reopen, {
+        opportunityId,
+        applicationsCloseAt: NOW + 8 * DAY_MS,
+      }),
+    ).resolves.toBeNull();
+    const copy = await f.asOwner.mutation(api.talentOpportunities.duplicate, {
+      opportunityId,
+    });
+    expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+      mode: "publicEvent",
+      status: "open",
+      revision: 5,
+    });
+    const { opportunity: copiedOpportunity } = await f.readOpportunity(
+      copy.opportunityId,
+    );
+    expect(copiedOpportunity).toMatchObject({
+      mode: "publicEvent",
+      status: "draft",
+      title: "Updated public event (copy)",
+    });
+  });
+
   test("open schedules expiry while preserving shortlisted and offered applications", async () => {
     const { t, createDraft, asOwner, readOpportunity, seedApplications } =
       await setupOrganization();
@@ -2113,6 +2160,80 @@ describe("private talent opportunity drafts", () => {
     vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
   });
 
+  test.each([
+    {
+      mutation: "update",
+      status: "draft",
+      args: { expectedRevision: 1, title: "Updated private request" },
+    },
+    { mutation: "open", status: "draft", args: { expectedRevision: 1 } },
+    {
+      mutation: "reopen",
+      status: "applications_closed",
+      args: { applicationsCloseAt: NOW + 8 * DAY_MS },
+    },
+    { mutation: "closeApplications", status: "open", args: {} },
+    { mutation: "duplicate", status: "draft", args: {} },
+  ] as const)(
+    "$mutation blocks an existing private request only while private bookings are disabled",
+    async ({ mutation, status, args }) => {
+      const f = await setupPrivateHostOrganization();
+      const { opportunityId } = await f.createPrivateDraft();
+      await f.t.run((ctx) => ctx.db.patch(opportunityId, { status }));
+      const before = await f.readOpportunity(opportunityId);
+
+      vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "false");
+      await expect(
+        f.asOwner.mutation(api.talentOpportunities[mutation], {
+          opportunityId,
+          ...args,
+        }),
+      ).rejects.toThrow("Private bookings are not available yet");
+      expect(await f.readOpportunity(opportunityId)).toEqual(before);
+
+      vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+      await f.asOwner.mutation(api.talentOpportunities[mutation], {
+        opportunityId,
+        ...args,
+      });
+    },
+  );
+
+  test.each([NOW, 0])(
+    "rejects creating a private request at a location archived at %s",
+    async (archivedAt) => {
+      const f = await setupPrivateHostOrganization();
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.privateLocationId, { archivedAt }),
+      );
+      await expect(f.createPrivateDraft()).rejects.toThrow(
+        "Choose an active location",
+      );
+    },
+  );
+
+  test.each(["draft", "open"] as const)(
+    "rejects moving a private request in %s status to an archived location",
+    async (status) => {
+      const f = await setupPrivateHostOrganization();
+      const { opportunityId } = await f.createPrivateDraft();
+      await f.t.run(async (ctx) => {
+        await ctx.db.patch(opportunityId, { status });
+        await ctx.db.patch(f.alternateLocationId, { archivedAt: NOW });
+      });
+      const before = await f.readOpportunity(opportunityId);
+
+      await expect(
+        f.asOwner.mutation(api.talentOpportunities.update, {
+          opportunityId,
+          expectedRevision: 1,
+          privateLocationId: f.alternateLocationId,
+        }),
+      ).rejects.toThrow("Choose an active location");
+      expect(await f.readOpportunity(opportunityId)).toEqual(before);
+    },
+  );
+
   test("requires a verified host organization", async () => {
     const f = await setupOrganization();
     await expect(f.createDraft({ mode: "privateBooking" })).rejects.toThrow(
@@ -2329,6 +2450,44 @@ describe("private talent opportunity drafts", () => {
       status: "draft",
     });
     expect(opportunity).not.toHaveProperty("venueId");
+  });
+
+  test("omits an archived private location when duplicating a draft", async () => {
+    const f = await setupPrivateHostOrganization();
+    const { opportunityId } = await f.createPrivateDraft();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.privateLocationId, { archivedAt: NOW }),
+    );
+
+    const copy = await f.asOwner.mutation(api.talentOpportunities.duplicate, {
+      opportunityId,
+    });
+    const { opportunity } = await f.readOpportunity(copy.opportunityId);
+    expect(opportunity).toMatchObject({
+      mode: "privateBooking",
+      status: "draft",
+      area: "Rockridge, Oakland",
+    });
+    expect(opportunity).not.toHaveProperty("privateLocationId");
+    expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+      privateLocationId: f.privateLocationId,
+    });
+  });
+
+  test("preserves a missing private location reference when duplicating a draft", async () => {
+    const f = await setupPrivateHostOrganization();
+    const { opportunityId } = await f.createPrivateDraft();
+    await f.t.run((ctx) => ctx.db.delete(f.privateLocationId));
+
+    const copy = await f.asOwner.mutation(api.talentOpportunities.duplicate, {
+      opportunityId,
+    });
+    const { opportunity } = await f.readOpportunity(copy.opportunityId);
+    expect(opportunity).toMatchObject({
+      mode: "privateBooking",
+      status: "draft",
+      privateLocationId: f.privateLocationId,
+    });
   });
 
   test("organizer and artist payloads reveal only the area, even with stale venue fields", async () => {
