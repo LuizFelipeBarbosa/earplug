@@ -10,7 +10,7 @@ import {
   BOOKING_ACTIVE_STATUSES,
   assertBookingTransition,
 } from "./lib/bookingStatus";
-import { unpublishOpportunityGig } from "./lib/gigPublish";
+import { syncGigTicketing, unpublishOpportunityGig } from "./lib/gigPublish";
 import {
   assertUploadAcceptable,
   isReservedPublicSlug,
@@ -79,6 +79,28 @@ function resolveClearable<T>(
   return provided === null ? undefined : provided;
 }
 
+function validateTicketPriceAndCapacity(
+  ticketPriceMinor: number | undefined,
+  ticketCapacity: number | undefined,
+): { ticketPriceMinor: number; ticketCapacity: number } {
+  if (
+    ticketPriceMinor === undefined ||
+    !Number.isInteger(ticketPriceMinor) ||
+    ticketPriceMinor < 100
+  ) {
+    throw new Error("Ticket price must be at least $1.00");
+  }
+  if (
+    ticketCapacity === undefined ||
+    !Number.isInteger(ticketCapacity) ||
+    ticketCapacity < 1 ||
+    ticketCapacity > 5000
+  ) {
+    throw new Error("Ticket capacity must be between 1 and 5,000");
+  }
+  return { ticketPriceMinor, ticketCapacity };
+}
+
 async function normalizeAndValidateFields(
   ctx: MutationCtx,
   args: Infer<typeof opportunityFieldsValidator>,
@@ -127,23 +149,10 @@ async function normalizeAndValidateFields(
     if (ticketCurrency !== "usd") {
       throw new Error("Only USD ticketing is supported right now");
     }
-    if (
-      args.ticketPriceMinor === undefined ||
-      !Number.isInteger(args.ticketPriceMinor) ||
-      args.ticketPriceMinor < 100
-    ) {
-      throw new Error("Ticket price must be at least $1.00");
-    }
-    if (
-      args.ticketCapacity === undefined ||
-      !Number.isInteger(args.ticketCapacity) ||
-      args.ticketCapacity < 1 ||
-      args.ticketCapacity > 5000
-    ) {
-      throw new Error("Ticket capacity must be between 1 and 5,000");
-    }
-    ticketPriceMinor = args.ticketPriceMinor;
-    ticketCapacity = args.ticketCapacity;
+    ({ ticketPriceMinor, ticketCapacity } = validateTicketPriceAndCapacity(
+      args.ticketPriceMinor,
+      args.ticketCapacity,
+    ));
   }
   const flyKey = args.flyKey ?? "xerox";
   if (flyKey === "custom") {
@@ -501,6 +510,44 @@ export const update = mutation({
         },
       );
     }
+    return { revision };
+  },
+});
+
+export const updateTicketing = mutation({
+  args: {
+    opportunityId: v.id("talentOpportunities"),
+    expectedRevision: v.number(),
+    ticketPriceMinor: v.number(),
+    ticketCapacity: v.number(),
+  },
+  returns: v.object({ revision: v.number() }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const { opportunity } = await requireOpportunityManager(
+      ctx,
+      args.opportunityId,
+    );
+    if (args.expectedRevision !== opportunity.revision) {
+      throw new Error("Opportunity changed elsewhere");
+    }
+    if (
+      opportunity.ticketing !== "paid" ||
+      (opportunity.status !== "confirmed" && opportunity.status !== "booking")
+    ) {
+      throw new Error("Ticket details can only change on a live paid event");
+    }
+    const fields = validateTicketPriceAndCapacity(
+      args.ticketPriceMinor,
+      args.ticketCapacity,
+    );
+    const revision = opportunity.revision + 1;
+    await ctx.db.patch(opportunity._id, {
+      ...fields,
+      revision,
+      updatedAt: now,
+    });
+    await syncGigTicketing(ctx, args.opportunityId);
     return { revision };
   },
 });

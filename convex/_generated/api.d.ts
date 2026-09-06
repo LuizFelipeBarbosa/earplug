@@ -35,6 +35,7 @@ import type * as lib_geo from "../lib/geo.js";
 import type * as lib_gigPublish from "../lib/gigPublish.js";
 import type * as lib_gigWritePolicy from "../lib/gigWritePolicy.js";
 import type * as lib_helpers from "../lib/helpers.js";
+import type * as lib_insights from "../lib/insights.js";
 import type * as lib_ledger from "../lib/ledger.js";
 import type * as lib_opportunityPayload from "../lib/opportunityPayload.js";
 import type * as lib_opportunityStatus from "../lib/opportunityStatus.js";
@@ -114,6 +115,7 @@ declare const fullApi: ApiFromModules<{
   "lib/gigPublish": typeof lib_gigPublish;
   "lib/gigWritePolicy": typeof lib_gigWritePolicy;
   "lib/helpers": typeof lib_helpers;
+  "lib/insights": typeof lib_insights;
   "lib/ledger": typeof lib_ledger;
   "lib/opportunityPayload": typeof lib_opportunityPayload;
   "lib/opportunityStatus": typeof lib_opportunityStatus;

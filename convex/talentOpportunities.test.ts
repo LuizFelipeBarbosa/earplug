@@ -849,6 +849,214 @@ describe("talent opportunity drafts", () => {
   });
 });
 
+describe("live opportunity ticketing updates", () => {
+  async function setupPublishedOpportunity(ticketing: "paid" | "rsvp" = "paid") {
+    const f = await setupOrganization();
+    const { opportunityId } = await f.createDraft({
+      ticketing,
+      ticketPriceMinor: 1500,
+      ticketCapacity: 100,
+    });
+    await f.asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const { bookingId, offerId, artistId } = await f.seedBooking(opportunityId);
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(bookingId, { status: "artist_accepted", revision: 2 });
+      await ctx.db.patch(offerId, {
+        response: "accepted",
+        respondedAt: NOW,
+        respondedBy: artistId,
+      });
+      await confirmBooking(ctx, bookingId);
+    });
+    const { opportunity } = await f.readOpportunity(opportunityId);
+    if (!opportunity?.publicGigId) throw new Error("Expected a published gig");
+    expect(opportunity.status).toBe("confirmed");
+    return {
+      ...f,
+      opportunity,
+      opportunityId,
+      gigId: opportunity.publicGigId,
+      updateArgs: {
+        opportunityId,
+        expectedRevision: opportunity.revision,
+        ticketPriceMinor: 2050,
+        ticketCapacity: 2,
+      },
+    };
+  }
+
+  test.each([
+    ["asOwner", "confirmed", 2],
+    ["asManager", "confirmed", 200],
+    ["asManager", "booking", 2],
+  ] as const)(
+    "%s updates a %s paid event to capacity %s and syncs its gig and inventory",
+    async (actor, status, ticketCapacity) => {
+      const f = await setupPublishedOpportunity();
+      const inventoryId = await f.t.run(async (ctx) => {
+        await ctx.db.patch(f.opportunityId, { status });
+        const inventory = await ctx.db
+          .query("gigTicketInventory")
+          .withIndex("by_gigId", (q) => q.eq("gigId", f.gigId))
+          .unique();
+        if (!inventory) throw new Error("Expected paid ticket inventory");
+        await ctx.db.patch(inventory._id, { sold: 3, reserved: 1 });
+        return inventory._id;
+      });
+      vi.setSystemTime(NOW + 1000);
+
+      expect(
+        await f[actor].mutation(api.talentOpportunities.updateTicketing, {
+          ...f.updateArgs,
+          ticketCapacity,
+        }),
+      ).toEqual({ revision: f.opportunity.revision + 1 });
+
+      await f.t.run(async (ctx) => {
+        expect(await ctx.db.get(f.opportunityId)).toEqual({
+          ...f.opportunity,
+          status,
+          ticketPriceMinor: 2050,
+          ticketCapacity,
+          revision: f.opportunity.revision + 1,
+          updatedAt: NOW + 1000,
+        });
+        expect(await ctx.db.get(f.gigId)).toMatchObject({
+          ticketing: "paid",
+          ticketPriceMinor: 2050,
+          ticketCurrency: "usd",
+          ticketCapacity,
+          price: 21,
+          lifecycle: "published",
+        });
+        expect(await ctx.db.get(inventoryId)).toMatchObject({
+          capacity: ticketCapacity === 2 ? 4 : 200,
+          sold: 3,
+          reserved: 1,
+          updatedAt: NOW + 1000,
+        });
+      });
+    },
+  );
+
+  test.each([
+    "draft",
+    "open",
+    "applications_closed",
+    "completed",
+    "cancelled",
+  ] as const)(
+    "rejects ticket updates when the opportunity is %s",
+    async (status) => {
+      const f = await setupPublishedOpportunity();
+      await f.t.run((ctx) => ctx.db.patch(f.opportunityId, { status }));
+
+      await expect(
+        f.asOwner.mutation(api.talentOpportunities.updateTicketing, f.updateArgs),
+      ).rejects.toThrow("Ticket details can only change on a live paid event");
+    },
+  );
+
+  test.each(["confirmed", "booking"] as const)(
+    "rejects ticket updates for a %s RSVP opportunity",
+    async (status) => {
+      const f = await setupPublishedOpportunity("rsvp");
+      await f.t.run((ctx) => ctx.db.patch(f.opportunityId, { status }));
+
+      await expect(
+        f.asOwner.mutation(api.talentOpportunities.updateTicketing, f.updateArgs),
+      ).rejects.toThrow("Ticket details can only change on a live paid event");
+    },
+  );
+
+  test.each([99, 100.5])(
+    "rejects invalid ticket price %s",
+    async (ticketPriceMinor) => {
+      const f = await setupPublishedOpportunity();
+
+      await expect(
+        f.asOwner.mutation(api.talentOpportunities.updateTicketing, {
+          ...f.updateArgs,
+          ticketPriceMinor,
+        }),
+      ).rejects.toThrow("Ticket price must be at least $1.00");
+    },
+  );
+
+  test.each([0, 5001, 1.5])(
+    "rejects invalid ticket capacity %s",
+    async (ticketCapacity) => {
+      const f = await setupPublishedOpportunity();
+
+      await expect(
+        f.asOwner.mutation(api.talentOpportunities.updateTicketing, {
+          ...f.updateArgs,
+          ticketCapacity,
+        }),
+      ).rejects.toThrow("Ticket capacity must be between 1 and 5,000");
+    },
+  );
+
+  test("rejects a stale revision without changing the opportunity, gig, or inventory", async () => {
+    const f = await setupPublishedOpportunity();
+    const before = await f.t.run(async (ctx) => ({
+      gig: await ctx.db.get(f.gigId),
+      inventory: await ctx.db
+        .query("gigTicketInventory")
+        .withIndex("by_gigId", (q) => q.eq("gigId", f.gigId))
+        .unique(),
+    }));
+    vi.setSystemTime(NOW + 1000);
+
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.updateTicketing, {
+        ...f.updateArgs,
+        expectedRevision: f.opportunity.revision - 1,
+      }),
+    ).rejects.toThrow("Opportunity changed elsewhere");
+
+    await f.t.run(async (ctx) => {
+      expect(await ctx.db.get(f.opportunityId)).toEqual(f.opportunity);
+      expect(await ctx.db.get(f.gigId)).toEqual(before.gig);
+      expect(
+        await ctx.db
+          .query("gigTicketInventory")
+          .withIndex("by_gigId", (q) => q.eq("gigId", f.gigId))
+          .unique(),
+      ).toEqual(before.inventory);
+    });
+  });
+
+  test.each(["asFinance", "asDoor", "asStranger", "asOtherOwner"] as const)(
+    "rejects ticket updates by %s",
+    async (actor) => {
+      const f = await setupPublishedOpportunity();
+
+      await expect(
+        f[actor].mutation(api.talentOpportunities.updateTicketing, f.updateArgs),
+      ).rejects.toThrow("Not permitted for this organization");
+    },
+  );
+
+  test.each([
+    ["pending", "Organization must be verified"],
+    ["suspended", "Organization suspended"],
+  ] as const)(
+    "rejects ticket updates for a %s organization",
+    async (status, error) => {
+      const f = await setupPublishedOpportunity();
+      await f.t.run((ctx) => ctx.db.patch(f.organizationId, { status }));
+
+      await expect(
+        f.asOwner.mutation(api.talentOpportunities.updateTicketing, f.updateArgs),
+      ).rejects.toThrow(error);
+    },
+  );
+});
+
 describe("talent opportunity lifecycle", () => {
   test("open schedules expiry while preserving shortlisted and offered applications", async () => {
     const { t, createDraft, asOwner, readOpportunity, seedApplications } =

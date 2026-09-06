@@ -7,6 +7,7 @@ import {
   bookedLineup,
   publishGigFromOpportunity,
   syncGigLineup,
+  syncGigTicketing,
   unpublishOpportunityGig,
 } from "./lib/gigPublish";
 import schema from "./schema";
@@ -598,6 +599,184 @@ describe("opportunity gig publishing", () => {
       doorsAt: Date.parse("2026-09-19T02:00:00Z"),
       startsAt: Date.parse("2026-09-19T03:00:00Z"),
     });
+  });
+});
+
+describe("published gig ticketing synchronization", () => {
+  test("syncs paid ticket fields and clamps capacity to sold plus reserved", async () => {
+    const f = await setupGigPublish({
+      ticketing: "paid",
+      ticketPriceMinor: 1500,
+      ticketCapacity: 100,
+      ticketCurrency: "usd",
+    });
+    await f.bookSlot(f.slotA, f.bandA);
+    const gigId = await f.publish();
+    const inventoryId = await f.t.run(async (ctx) => {
+      const inventory = await ctx.db
+        .query("gigTicketInventory")
+        .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+        .unique();
+      if (!inventory) throw new Error("Expected paid ticket inventory");
+      await ctx.db.patch(inventory._id, { sold: 3, reserved: 1 });
+      await ctx.db.patch(f.opportunityId, {
+        ticketPriceMinor: 2050,
+        ticketCapacity: 2,
+      });
+      return inventory._id;
+    });
+    const opportunityBefore = await f.t.run((ctx) => ctx.db.get(f.opportunityId));
+    vi.setSystemTime(NOW + 1000);
+
+    await f.t.run((ctx) => syncGigTicketing(ctx, f.opportunityId));
+
+    await f.t.run(async (ctx) => {
+      expect(await ctx.db.get(gigId)).toMatchObject({
+        ticketPriceMinor: 2050,
+        ticketCurrency: "usd",
+        ticketCapacity: 2,
+        price: 21,
+      });
+      expect(await ctx.db.get(inventoryId)).toMatchObject({
+        capacity: 4,
+        sold: 3,
+        reserved: 1,
+        updatedAt: NOW + 1000,
+      });
+      expect(await ctx.db.get(f.opportunityId)).toEqual(opportunityBefore);
+    });
+  });
+
+  test.each([false, true])(
+    "does not change an RSVP gig or its inventory (existing inventory: %s)",
+    async (hasInventory) => {
+      const f = await setupGigPublish({ ticketing: "rsvp" });
+      await f.bookSlot(f.slotA, f.bandA);
+      const gigId = await f.publish();
+      const before = await f.t.run(async (ctx) => {
+        if (hasInventory) {
+          await ctx.db.insert("gigTicketInventory", {
+            gigId,
+            organizationId: f.organizationId,
+            capacity: 100,
+            sold: 3,
+            reserved: 1,
+            updatedAt: NOW,
+          });
+        }
+        return {
+          gig: await ctx.db.get(gigId),
+          inventory: await ctx.db
+            .query("gigTicketInventory")
+            .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+            .unique(),
+        };
+      });
+      vi.setSystemTime(NOW + 1000);
+
+      await f.t.run((ctx) => syncGigTicketing(ctx, f.opportunityId));
+
+      await f.t.run(async (ctx) => {
+        expect(await ctx.db.get(gigId)).toEqual(before.gig);
+        expect(
+          await ctx.db
+            .query("gigTicketInventory")
+            .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+            .unique(),
+        ).toEqual(before.inventory);
+      });
+    },
+  );
+
+  test("recreates missing paid ticket inventory", async () => {
+    const f = await setupGigPublish({
+      ticketing: "paid",
+      ticketPriceMinor: 1500,
+      ticketCapacity: 100,
+      ticketCurrency: "usd",
+    });
+    await f.bookSlot(f.slotA, f.bandA);
+    const gigId = await f.publish();
+    await f.t.run(async (ctx) => {
+      const inventory = await ctx.db
+        .query("gigTicketInventory")
+        .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+        .unique();
+      if (!inventory) throw new Error("Expected paid ticket inventory");
+      await ctx.db.delete(inventory._id);
+      await ctx.db.patch(f.opportunityId, {
+        ticketPriceMinor: 2050,
+        ticketCapacity: 200,
+      });
+      // A stale gig currency must also be refreshed from the opportunity.
+      await ctx.db.patch(gigId, { ticketCurrency: undefined });
+    });
+    vi.setSystemTime(NOW + 1000);
+
+    await f.t.run((ctx) => syncGigTicketing(ctx, f.opportunityId));
+
+    await f.t.run(async (ctx) => {
+      expect(await ctx.db.get(gigId)).toMatchObject({
+        ticketPriceMinor: 2050,
+        ticketCurrency: "usd",
+        ticketCapacity: 200,
+        price: 21,
+      });
+      expect(
+        await ctx.db
+          .query("gigTicketInventory")
+          .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+          .unique(),
+      ).toMatchObject({
+        gigId,
+        organizationId: f.organizationId,
+        capacity: 200,
+        sold: 0,
+        reserved: 0,
+        updatedAt: NOW + 1000,
+      });
+    });
+  });
+
+  test.each(["unpublished", "missing gig"] as const)(
+    "does not create inventory for a paid opportunity with %s",
+    async (state) => {
+      const f = await setupGigPublish({
+        ticketing: "paid",
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+        ticketCurrency: "usd",
+      });
+      if (state === "missing gig") {
+        await f.bookSlot(f.slotA, f.bandA);
+        const gigId = await f.publish();
+        await f.t.run((ctx) => ctx.db.delete(gigId));
+      }
+      const before = await f.t.run(async (ctx) => ({
+        opportunity: await ctx.db.get(f.opportunityId),
+        inventory: await ctx.db.query("gigTicketInventory").collect(),
+      }));
+      vi.setSystemTime(NOW + 1000);
+
+      await f.t.run((ctx) => syncGigTicketing(ctx, f.opportunityId));
+
+      await f.t.run(async (ctx) => {
+        expect(await ctx.db.get(f.opportunityId)).toEqual(before.opportunity);
+        expect(await ctx.db.query("gigTicketInventory").collect()).toEqual(
+          before.inventory,
+        );
+        expect(await ctx.db.query("gigs").collect()).toEqual([]);
+      });
+    },
+  );
+
+  test("throws when the opportunity is missing", async () => {
+    const f = await setupGigPublish();
+    await f.t.run((ctx) => ctx.db.delete(f.opportunityId));
+
+    await expect(
+      f.t.run((ctx) => syncGigTicketing(ctx, f.opportunityId)),
+    ).rejects.toThrow("Opportunity not found");
   });
 });
 
