@@ -18,12 +18,14 @@ class VenueLocationDraft {
     this.name = '',
     this.address = '',
     this.area = '',
+    this.city,
     this.pin,
   });
 
   final String name;
   final String address;
   final String area;
+  final String? city;
   final LatLng? pin;
 
   bool get isComplete => address.trim().isNotEmpty && pin != null;
@@ -34,12 +36,14 @@ class VenueLocationDraft {
     String? name,
     String? address,
     String? area,
+    String? city,
     LatLng? pin,
   }) {
     return VenueLocationDraft(
       name: name ?? this.name,
       address: address ?? this.address,
       area: area ?? this.area,
+      city: city ?? this.city,
       pin: pin ?? this.pin,
     );
   }
@@ -56,6 +60,7 @@ class VenueLocationEditor extends StatefulWidget {
     this.initialCenter = const LatLng(37.7749, -122.4194),
     this.initialZoom = 11.5,
     this.helperText,
+    this.audienceLabel = 'Fans',
     this.enabled = true,
     this.compactMap = false,
     this.geocoding,
@@ -68,6 +73,7 @@ class VenueLocationEditor extends StatefulWidget {
   final LatLng initialCenter;
   final double initialZoom;
   final String? helperText;
+  final String audienceLabel;
   final bool enabled;
 
   /// Shows a neighborhood thumbnail and edits the exact pin in a sheet.
@@ -203,6 +209,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
       _draft.copyWith(
         address: suggestion.address,
         area: suggestion.area,
+        city: suggestion.locality,
         pin: suggestion.point,
       ),
     );
@@ -473,7 +480,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
           _neighborhoodPreview(context)
         else ...[
           Text(
-            'Fans will see: ${_draft.areaLabel}',
+            '${widget.audienceLabel} will see: ${_draft.areaLabel}',
             key: Key('${widget.keyPrefix}-area-caption'),
             style: Theme.of(context).textTheme.epCaption,
           ),

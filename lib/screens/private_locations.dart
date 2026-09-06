@@ -252,9 +252,10 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
       _location = draft;
       if (!_cityPrefilled && draft.pin != null) {
         _cityPrefilled = true;
-        // Autocomplete may supply only a street address; use its area as a
-        // starting point and let the host correct the city before saving.
-        if (_city.text.trim().isEmpty) _city.text = draft.area;
+        final city = draft.city?.trim();
+        if (_city.text.trim().isEmpty && city != null && city.isNotEmpty) {
+          _city.text = city;
+        }
       }
       _error = null;
     });
@@ -435,6 +436,7 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
                     initial: _location,
                     onChanged: _locationChanged,
                     showNameField: false,
+                    audienceLabel: 'Artists',
                     enabled: enabled,
                     helperText:
                         'The exact address is shared after the deposit.',

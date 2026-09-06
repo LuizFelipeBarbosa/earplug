@@ -376,6 +376,7 @@ void main() {
       final repository = _HostTestRepository(
         auth: auth,
         privateBookings: enabled,
+        excludedOrganizationTypes: const {OrganizationType.privateHost},
       );
       final harness = await pumpApp(
         tester,
@@ -389,7 +390,9 @@ void main() {
 
       final hostEntry = find.byKey(const Key('switcher-become-host'));
       expect(hostEntry, enabled ? findsOneWidget : findsNothing);
-      expect(find.text('Host'), findsOneWidget);
+      expect(find.byKey(const Key('switcher-org-org1')), findsOneWidget);
+      expect(find.byKey(const Key('switcher-org-org2')), findsNothing);
+      expect(find.byKey(const Key('switcher-become-organizer')), findsNothing);
       if (enabled) {
         expect(find.text('BECOME A HOST'), findsOneWidget);
         await tester.ensureVisible(hostEntry);
@@ -401,11 +404,176 @@ void main() {
   }
 
   testWidgets(
-    'host draft and status keep the organizer switcher entry separate',
+    'memberships hide both entries without an application in progress',
     (tester) async {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = DemoRepository(auth: auth);
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(bottomNavigationBar: FanTabBar()),
+        auth: auth,
+        repository: repository,
+      );
+      addTearDown(() => _disposeApp(harness.app));
+      expect(harness.app.privateBookingsEnabled, isTrue);
+      expect(harness.app.myOrganizationApplication, isNull);
+      await tester.tap(find.text('SWITCH'));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('switcher-org-org1')), findsOneWidget);
+      expect(find.byKey(const Key('switcher-org-org2')), findsOneWidget);
+      expect(find.text('Host'), findsOneWidget);
+      expect(find.byKey(const Key('switcher-become-organizer')), findsNothing);
+      expect(find.byKey(const Key('switcher-become-host')), findsNothing);
+    },
+  );
+
+  testWidgets('host draft stays accessible despite a privateHost membership', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _HostTestRepository(auth: auth);
+    await _seedHostDraft(repository);
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(bottomNavigationBar: FanTabBar()),
+      auth: auth,
+      repository: repository,
+    );
+    addTearDown(() => _disposeApp(harness.app));
+    expect(harness.app.privateBookingsEnabled, isTrue);
+    expect(harness.app.myOrganizationApplication?.kind, ApplicationKind.host);
+    expect(
+      harness.app.myOrganizationApplication?.status,
+      OrganizationApplicationStatus.draft,
+    );
+    expect(
+      harness.app.myOrganizations.any(
+        (membership) =>
+            membership.organization.id == 'org2' &&
+            membership.organization.orgType == OrganizationType.privateHost,
+      ),
+      isTrue,
+    );
+    await tester.tap(find.text('SWITCH'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('switcher-org-org2')), findsOneWidget);
+    final hostEntry = find.byKey(const Key('switcher-become-host'));
+    expect(hostEntry, findsOneWidget);
+    expect(find.text('CONTINUE HOST APPLICATION'), findsOneWidget);
+    await tester.ensureVisible(hostEntry);
+    await tester.tap(hostEntry);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.hostApply);
+  });
+
+  testWidgets('host-only membership keeps the organizer entry available', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = _HostTestRepository(
+      auth: auth,
+      hostRole: OrganizationRole.door,
+      excludedOrganizationTypes: const {OrganizationType.venueOperator},
+    );
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(bottomNavigationBar: FanTabBar()),
+      auth: auth,
+      repository: repository,
+    );
+    addTearDown(() => _disposeApp(harness.app));
+    expect(harness.app.privateBookingsEnabled, isTrue);
+    await tester.tap(find.text('SWITCH'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('switcher-org-org1')), findsNothing);
+    expect(find.byKey(const Key('switcher-org-org2')), findsOneWidget);
+    expect(find.text('Host'), findsOneWidget);
+    expect(find.byKey(const Key('switcher-become-host')), findsNothing);
+    final organizerEntry = find.byKey(const Key('switcher-become-organizer'));
+    expect(organizerEntry, findsOneWidget);
+    expect(find.text('BECOME AN ORGANIZER'), findsOneWidget);
+    await tester.ensureVisible(organizerEntry);
+    await tester.tap(organizerEntry);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.orgApply);
+  });
+
+  for (final hasHostMembership in [true, false]) {
+    testWidgets(
+      'approved host application hides entry with membership=$hasHostMembership',
+      (tester) async {
+        final auth = FakeAuthService();
+        await auth.signInDemo();
+        final repository = _HostTestRepository(
+          auth: auth,
+          excludedOrganizationTypes: {
+            if (!hasHostMembership) OrganizationType.privateHost,
+          },
+        )..platformAdmin = true;
+        final draft = await _seedHostDraft(repository);
+        await repository.submitOrganizationApplication(
+          applicationId: draft.id,
+          expectedRevision: draft.revision,
+        );
+        await repository.decideOrganizationApplication(
+          applicationId: draft.id,
+          decision: ApplicationDecision.approved,
+        );
+        final harness = await pumpApp(
+          tester,
+          home: const Scaffold(bottomNavigationBar: FanTabBar()),
+          auth: auth,
+          repository: repository,
+        );
+        addTearDown(() => _disposeApp(harness.app));
+        expect(harness.app.privateBookingsEnabled, isTrue);
+        final application = harness.app.myOrganizationApplication!;
+        expect(application.kind, ApplicationKind.host);
+        expect(application.status, OrganizationApplicationStatus.approved);
+        expect(
+          harness.app.myOrganizations.any(
+            (membership) =>
+                membership.organization.orgType == OrganizationType.privateHost,
+          ),
+          hasHostMembership,
+        );
+        await tester.tap(find.text('SWITCH'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            Key('switcher-org-${application.resultingOrganizationId}'),
+          ),
+          hasHostMembership ? findsOneWidget : findsNothing,
+        );
+        expect(find.byKey(const Key('switcher-become-host')), findsNothing);
+        expect(find.text('HOST APPLICATION · APPROVED'), findsNothing);
+        expect(
+          find.byKey(const Key('switcher-become-organizer')),
+          findsNothing,
+        );
+      },
+    );
+  }
+
+  testWidgets(
+    'host draft and status keep the organizer switcher entry separate',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = _HostTestRepository(
+        auth: auth,
+        excludedOrganizationTypes: const {
+          OrganizationType.venueOperator,
+          OrganizationType.privateHost,
+        },
+      );
       final draft = await _seedHostDraft(repository);
       final harness = await pumpApp(
         tester,
@@ -414,6 +582,7 @@ void main() {
         repository: repository,
       );
       addTearDown(() => _disposeApp(harness.app));
+      expect(harness.app.myOrganizations, isEmpty);
       await tester.tap(find.text('SWITCH'));
       await tester.pumpAndSettle();
       expect(find.text('CONTINUE HOST APPLICATION'), findsOneWidget);
@@ -646,10 +815,12 @@ class _HostTestRepository extends DemoRepository {
     required super.auth,
     this.privateBookings = true,
     this.hostRole = OrganizationRole.owner,
+    this.excludedOrganizationTypes = const {},
   });
 
   final bool privateBookings;
   final OrganizationRole hostRole;
+  final Set<OrganizationType> excludedOrganizationTypes;
 
   @override
   Future<FeatureFlags> featureFlags() async => FeatureFlags(
@@ -673,13 +844,16 @@ class _HostTestRepository extends DemoRepository {
       super.myOrganizations().map(
         (memberships) => [
           for (final membership in memberships)
-            if (membership.organization.id == 'org2')
-              OrganizationMembership(
-                organization: membership.organization,
-                role: hostRole,
-              )
-            else
-              membership,
+            if (!excludedOrganizationTypes.contains(
+              membership.organization.orgType,
+            ))
+              if (membership.organization.id == 'org2')
+                OrganizationMembership(
+                  organization: membership.organization,
+                  role: hostRole,
+                )
+              else
+                membership,
         ],
       );
 }

@@ -329,6 +329,15 @@ OrganizationApplication? _hostApplication(AppState app) {
   return application?.kind == ApplicationKind.host ? application : null;
 }
 
+bool _applicationInProgress(OrganizationApplication? application) =>
+    switch (application?.status) {
+      OrganizationApplicationStatus.draft ||
+      OrganizationApplicationStatus.submitted ||
+      OrganizationApplicationStatus.underReview ||
+      OrganizationApplicationStatus.needsInfo => true,
+      _ => false,
+    };
+
 String _roleLabel(OrganizationRole role) => switch (role) {
   OrganizationRole.owner => 'Owner',
   OrganizationRole.manager => 'Manager',
@@ -476,10 +485,15 @@ void showSwitcherSheet(BuildContext context) {
             ),
           ),
         ),
-        // Approved organizers enter through their membership; withdrawn
-        // applications may start over.
-        if (_organizerApplication(app)?.status !=
-            OrganizationApplicationStatus.approved)
+        // In-progress applications stay accessible even for existing members.
+        if (_applicationInProgress(_organizerApplication(app)) ||
+            (!app.myOrganizations.any(
+                  (membership) =>
+                      membership.organization.orgType !=
+                      OrganizationType.privateHost,
+                ) &&
+                _organizerApplication(app)?.status !=
+                    OrganizationApplicationStatus.approved))
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: OutlinedButton.icon(
@@ -509,7 +523,15 @@ void showSwitcherSheet(BuildContext context) {
               }),
             ),
           ),
-        if (app.privateBookingsEnabled)
+        if (app.privateBookingsEnabled &&
+            (_applicationInProgress(_hostApplication(app)) ||
+                (!app.myOrganizations.any(
+                      (membership) =>
+                          membership.organization.orgType ==
+                          OrganizationType.privateHost,
+                    ) &&
+                    _hostApplication(app)?.status !=
+                        OrganizationApplicationStatus.approved)))
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: OutlinedButton.icon(

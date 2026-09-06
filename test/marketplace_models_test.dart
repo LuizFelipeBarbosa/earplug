@@ -275,11 +275,13 @@ void main() {
 
     test('AdminOverview retains existing counts and adds host counts', () {
       final overview = AdminOverview.fromJson({
-        'counts': {'submittedApplications': 9},
-        'hostApplications': {
-          'submitted': 2.0,
-          'under_review': 3,
-          'needs_info': 4,
+        'counts': {
+          'submittedApplications': 9,
+          'hostApplications': {
+            'submitted': 2.0,
+            'under_review': 3,
+            'needs_info': 4,
+          },
         },
       });
       expect(overview.submitted, 9);
@@ -288,12 +290,16 @@ void main() {
       expect(overview.hostApplications.needsInfo, 4);
       for (final json in <Map<String, dynamic>>[
         {},
-        {'hostApplications': false},
         {
-          'hostApplications': {
-            'submitted': '2',
-            'under_review': null,
-            'needs_info': <Object?>[],
+          'counts': {'hostApplications': false},
+        },
+        {
+          'counts': {
+            'hostApplications': {
+              'submitted': '2',
+              'under_review': null,
+              'needs_info': <Object?>[],
+            },
           },
         },
       ]) {
@@ -879,6 +885,11 @@ void main() {
         'needsInfoApplications': 1,
         'verifiedOrganizations': 8,
         'suspendedOrganizations': 4,
+        'hostApplications': {
+          'submitted': 2,
+          'under_review': 1,
+          'needs_info': 0,
+        },
       },
       'capped': true,
     });
@@ -888,6 +899,9 @@ void main() {
     expect(overview.needsInfo, 1);
     expect(overview.verifiedOrganizations, 8);
     expect(overview.suspendedOrganizations, 4);
+    expect(overview.hostApplications.submitted, 2);
+    expect(overview.hostApplications.underReview, 1);
+    expect(overview.hostApplications.needsInfo, 0);
     expect(overview.capped, isTrue);
   });
 

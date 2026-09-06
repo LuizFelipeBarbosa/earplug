@@ -129,7 +129,8 @@ void main() {
     await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('switcher-org-org1')), findsOne);
-    expect(find.byKey(const Key('switcher-become-organizer')), findsOne);
+    // Existing org1 membership with no application in progress hides the entry.
+    expect(find.byKey(const Key('switcher-become-organizer')), findsNothing);
 
     await tester.tap(find.text('Personal account'));
     await tester.pumpAndSettle();

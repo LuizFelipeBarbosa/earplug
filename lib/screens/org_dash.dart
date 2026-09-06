@@ -113,7 +113,10 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
         else if (_error != null)
           _LoadError(onRetry: _refresh)
         else if (dashboard != null) ...[
-          _VerificationCard(verification: dashboard.verification),
+          _VerificationCard(
+            verification: dashboard.verification,
+            isHost: app.currentIsHost,
+          ),
           const SizedBox(height: 18),
           Row(
             children: [
@@ -307,18 +310,21 @@ class _DashboardHeader extends StatelessWidget {
 }
 
 class _VerificationCard extends StatelessWidget {
-  const _VerificationCard({required this.verification});
+  const _VerificationCard({required this.verification, required this.isHost});
 
   final OrganizationVerification verification;
+  final bool isHost;
 
   @override
   Widget build(BuildContext context) {
     final steps = <(String, bool, String?)>[
       ('Verified', verification.verified, null),
-      ('Stripe details', verification.stripeDetailsSubmitted, null),
-      ('Payouts enabled', verification.stripePayoutsEnabled, null),
+      if (!isHost) ...[
+        ('Stripe details', verification.stripeDetailsSubmitted, null),
+        ('Payouts enabled', verification.stripePayoutsEnabled, null),
+      ],
       ('Profile complete', verification.profileComplete, null),
-      ('Team invited', verification.teamInvited, null),
+      if (!isHost) ('Team invited', verification.teamInvited, null),
     ];
     return EpCard(
       key: const Key('org-dash-verification'),
@@ -327,7 +333,10 @@ class _VerificationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('ORGANIZATION READINESS', style: epDisplay(size: 15)),
+          Text(
+            isHost ? 'HOST READINESS' : 'ORGANIZATION READINESS',
+            style: epDisplay(size: 15),
+          ),
           const SizedBox(height: 11),
           ReadinessSegments(steps: [for (final step in steps) step.$2]),
           const SizedBox(height: 10),

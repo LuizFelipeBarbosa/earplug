@@ -991,7 +991,7 @@ class AdminOverview {
       suspendedOrganizations: _marketplaceInt(counts['suspendedOrganizations']),
       capped: json['capped'] == true,
       hostApplications: ApplicationCounts.fromJson(
-        _marketplaceMap(json['hostApplications']),
+        _marketplaceMap(counts['hostApplications']),
       ),
     );
   }

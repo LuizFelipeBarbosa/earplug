@@ -4,6 +4,7 @@ import 'package:earplug/navigation.dart';
 import 'package:earplug/screens/org_dash.dart';
 import 'package:earplug/screens/private_locations.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/services/geocoding_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -62,8 +63,13 @@ void main() {
 
     await _enterText(tester, 'private-location-label', 'Backyard');
     await _pickAddress(tester, 'Valencia');
+    expect(find.text('Artists will see: Mission'), findsOneWidget);
+    expect(find.textContaining('Fans will see:'), findsNothing);
     await _reveal(tester, find.byKey(const Key('private-location-city')));
-    expect(_field(tester, 'private-location-city').controller!.text, 'Mission');
+    expect(
+      _field(tester, 'private-location-city').controller!.text,
+      'San Francisco',
+    );
     await _enterText(tester, 'private-location-city', 'San Francisco');
     // A later pin placement must preserve the host's city correction.
     await _pickAddress(tester, '22 Valencia');
@@ -90,6 +96,49 @@ void main() {
     expect(harness.app.current.screen, Screen.privateLocations);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  for (final locality in <String?>[null, '']) {
+    testWidgets(
+      'address with ${locality == null ? 'missing' : 'empty'} locality leaves city empty',
+      (tester) async {
+        final auth = FakeAuthService();
+        await auth.signInDemo();
+        final repository = DemoRepository(auth: auth);
+        final suggestion = FakeGeocodingService().suggestions.first;
+        await pumpApp(
+          tester,
+          auth: auth,
+          repository: repository,
+          geocoding: FakeGeocodingService(
+            suggestions: [
+              AddressSuggestion(
+                label: suggestion.label,
+                address: suggestion.address,
+                area: suggestion.area,
+                locality: locality,
+                point: suggestion.point,
+              ),
+            ],
+          ),
+          home: const PrivateLocationEditScreen(locationId: 'new'),
+          beforePump: (app) => app.switchToOrganization('org2'),
+        );
+
+        await _enterText(tester, 'private-location-label', 'Backyard');
+        await _pickAddress(tester, 'Valencia');
+        expect(find.text('Artists will see: Mission'), findsOneWidget);
+        await _reveal(tester, find.byKey(const Key('private-location-city')));
+        expect(
+          _field(tester, 'private-location-city').controller!.text,
+          isEmpty,
+        );
+        expectNoFieldInCard(tester);
+        await _tap(tester, 'private-location-save');
+        expect(find.text('Needs: city'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 
   testWidgets('location save requires a label, address, pin, and city', (
     tester,
@@ -273,6 +322,19 @@ void main() {
         beforePump: (app) => app.switchToOrganization('org2'),
       );
 
+      final readiness = find.byKey(const Key('org-dash-verification'));
+      expect(
+        tester
+            .widgetList<Text>(
+              find.descendant(of: readiness, matching: find.byType(Text)),
+            )
+            .map((text) => text.data),
+        ['HOST READINESS', 'Verified', 'Profile complete'],
+      );
+      expect(find.text('ORGANIZATION READINESS'), findsNothing);
+      expect(find.text('Stripe details'), findsNothing);
+      expect(find.text('Payouts enabled'), findsNothing);
+      expect(find.text('Team invited'), findsNothing);
       expect(find.text('VENUES'), findsNothing);
       expect(find.text('MEMBERS'), findsNothing);
       await _reveal(tester, find.byKey(const Key('org-dash-locations')));
@@ -310,6 +372,23 @@ void main() {
       beforePump: (app) => app.switchToOrganization('org1'),
     );
 
+    final readiness = find.byKey(const Key('org-dash-verification'));
+    expect(
+      tester
+          .widgetList<Text>(
+            find.descendant(of: readiness, matching: find.byType(Text)),
+          )
+          .map((text) => text.data),
+      [
+        'ORGANIZATION READINESS',
+        'Verified',
+        'Stripe details',
+        'Payouts enabled',
+        'Profile complete',
+        'Team invited',
+      ],
+    );
+    expect(find.text('HOST READINESS'), findsNothing);
     expect(find.text('MEMBERS'), findsOneWidget);
     await _reveal(tester, find.byKey(const Key('org-dash-command-venues')));
     expect(find.text('NEW OPPORTUNITY'), findsOneWidget);
