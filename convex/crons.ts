@@ -74,4 +74,12 @@ crons.interval(
   {},
 );
 
+// Reconcile refunds that Stripe reports pending or changed after creation.
+crons.interval(
+  "reconcile pending Stripe refunds",
+  { hours: 6 },
+  internal.refunds.reconcilePendingRefunds,
+  {},
+);
+
 export default crons;

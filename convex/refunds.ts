@@ -19,7 +19,7 @@ import {
   assertRefundTransition,
 } from "./lib/paymentStatus";
 import { stripeIdempotencyKey, stripeRequest } from "./lib/stripeClient";
-import { reversibleMinor } from "./payouts";
+import { reconcilePaymentPayouts } from "./lib/payoutAccounting";
 import schema, {
   cancellationTemplateValidator,
   refundReasonValidator,
@@ -69,9 +69,7 @@ async function requireCancellationParty(
     platformAdmin;
   const canArtist = bandMembership?.role === "admin";
   if (!canOrganizer && !canArtist) {
-    throw new Error(
-      "Not permitted to view this booking's cancellation terms",
-    );
+    throw new Error("Not permitted to view this booking's cancellation terms");
   }
   return { canOrganizer, canArtist };
 }
@@ -98,9 +96,7 @@ export const previewCancellation = query({
       ctx,
       booking,
     );
-    let side: "organizer" | "artist" = canOrganizer
-      ? "organizer"
-      : "artist";
+    let side: "organizer" | "artist" = canOrganizer ? "organizer" : "artist";
     if (args.as === "organizer" && canOrganizer) {
       side = "organizer";
     } else if (args.as === "artist" && canArtist) {
@@ -188,43 +184,53 @@ export const executeRefund = internalAction({
   args: { refundId: v.id("refunds"), attempt: v.number() },
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
-    const context: Infer<typeof refundContextValidator> =
-      await ctx.runQuery(internal.refunds.loadRefundContext, {
+    const context: Infer<typeof refundContextValidator> = await ctx.runQuery(
+      internal.refunds.loadRefundContext,
+      {
         refundId: args.refundId,
-      });
+      },
+    );
     const { refund, stripePaymentIntentId } = context;
     if (refund.status !== "pending") return null;
-    let response: { id: string };
+    let response: { id: string; status: string };
     try {
-      response = await stripeRequest<{ id: string }>(
-        "POST",
-        "/v1/refunds",
-        {
-          payment_intent: stripePaymentIntentId,
-          amount: refund.amountMinor,
-          metadata: {
-            bookingId: refund.bookingId,
-            refundId: refund._id,
-            reason: refund.reason,
-          },
-        },
-        {
-          idempotencyKey: stripeIdempotencyKey("refund", refund._id),
-        },
-      );
+      response = refund.stripeRefundId
+        ? await stripeRequest<{ id: string; status: string }>(
+            "GET",
+            `/v1/refunds/${refund.stripeRefundId}`,
+          )
+        : await stripeRequest<{ id: string; status: string }>(
+            "POST",
+            "/v1/refunds",
+            {
+              payment_intent: stripePaymentIntentId,
+              amount: refund.amountMinor,
+              metadata: {
+                bookingId: refund.bookingId,
+                refundId: refund._id,
+                reason: refund.reason,
+              },
+            },
+            {
+              idempotencyKey: stripeIdempotencyKey("refund", refund._id),
+            },
+          );
     } catch (error) {
       console.error(`Could not execute refund ${refund._id}`, error);
-      await ctx.runMutation(internal.refunds.markRefundFailed, {
-        refundId: refund._id,
-        attempt: args.attempt,
-      });
+      if (!refund.stripeRefundId) {
+        await ctx.runMutation(internal.refunds.markRefundFailed, {
+          refundId: refund._id,
+          attempt: args.attempt,
+        });
+      }
       return null;
     }
     // A successful Stripe POST must never enter the failure/retry path if the
     // accounting mutation fails. charge.refunded reconciles that outcome.
-    await ctx.runMutation(internal.refunds.markRefundSucceeded, {
+    await ctx.runMutation(internal.refunds.recordStripeRefundStatus, {
       refundId: refund._id,
       stripeRefundId: response.id,
+      status: response.status,
     });
     return null;
   },
@@ -269,9 +275,7 @@ export async function applyRefundSucceeded(
   }
   const newRefundedMinor = record.refundedMinor + refund.amountMinor;
   const newStatus =
-    newRefundedMinor >= record.amountMinor
-      ? "refunded"
-      : "partially_refunded";
+    newRefundedMinor >= record.amountMinor ? "refunded" : "partially_refunded";
   assertPaymentRecordTransition(record.status, newStatus);
   await ctx.db.patch(record._id, {
     refundedMinor: newRefundedMinor,
@@ -283,31 +287,11 @@ export async function applyRefundSucceeded(
     updatedAt: now,
   });
 
-  // A paid completion transfer is entitled only to its proportional share of
-  // the charge left unrefunded. Reverse the excess through an action because
-  // Stripe HTTP calls cannot run inside this mutation.
-  const payouts = await ctx.db
-    .query("payouts")
-    .withIndex("by_paymentRecordId", (q) =>
-      q.eq("paymentRecordId", record._id),
-    )
-    .take(50);
-  const payout = payouts.find((row) => row.status === "paid");
-  if (payout) {
-    const entitledMinor = Math.floor(
-      (payout.amountMinor * (record.amountMinor - newRefundedMinor)) /
-        record.amountMinor,
-    );
-    const targetExcess = payout.amountMinor - entitledMinor;
-    const delta = targetExcess - (payout.reversedMinor ?? 0);
-    const reversalMinor = Math.min(delta, reversibleMinor(payout));
-    if (reversalMinor > 0) {
-      await ctx.scheduler.runAfter(0, internal.refunds.reverseTransfer, {
-        payoutId: payout._id,
-        reversalMinor,
-      });
-    }
-  }
+  await reconcilePaymentPayouts(ctx, {
+    ...record,
+    refundedMinor: newRefundedMinor,
+    status: newStatus,
+  });
 }
 
 export const markRefundSucceeded = internalMutation({
@@ -317,6 +301,82 @@ export const markRefundSucceeded = internalMutation({
     const refund = await ctx.db.get(args.refundId);
     if (!refund || refund.status === "succeeded") return null;
     await applyRefundSucceeded(ctx, refund, args.stripeRefundId);
+    return null;
+  },
+});
+
+export async function applyStripeRefundStatus(
+  ctx: MutationCtx,
+  refund: Doc<"refunds">,
+  stripeRefundId: string,
+  status: string,
+): Promise<void> {
+  if (refund.status === "succeeded") return;
+  if (refund.stripeRefundId && refund.stripeRefundId !== stripeRefundId) {
+    throw new Error("Refund Stripe id changed");
+  }
+  if (status === "succeeded") {
+    if (refund.status === "failed") {
+      assertRefundTransition("failed", "pending");
+      refund = { ...refund, status: "pending" };
+    }
+    await applyRefundSucceeded(ctx, refund, stripeRefundId);
+  } else if (status === "failed" || status === "canceled") {
+    await ctx.db.patch(refund._id, {
+      stripeRefundId,
+      status: "failed",
+      updatedAt: Date.now(),
+    });
+  } else if (status === "pending" || status === "requires_action") {
+    // An old pending webhook must not reopen a failed processor refund.
+    if (refund.status === "failed" && refund.stripeRefundId) return;
+    await ctx.db.patch(refund._id, {
+      stripeRefundId,
+      status: "pending",
+      updatedAt: Date.now(),
+    });
+  } else {
+    throw new Error(`Unknown Stripe refund status: ${status}`);
+  }
+}
+
+export const recordStripeRefundStatus = internalMutation({
+  args: {
+    refundId: v.id("refunds"),
+    stripeRefundId: v.string(),
+    status: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const refund = await ctx.db.get(args.refundId);
+    if (refund)
+      await applyStripeRefundStatus(
+        ctx,
+        refund,
+        args.stripeRefundId,
+        args.status,
+      );
+    return null;
+  },
+});
+
+export const reconcilePendingRefunds = internalMutation({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const rows = await ctx.db
+      .query("refunds")
+      .withIndex("by_status_and_updatedAt", (q) => q.eq("status", "pending"))
+      .take(50);
+    for (const row of rows) {
+      if (row.stripeRefundId) {
+        await ctx.scheduler.runAfter(0, internal.refunds.executeRefund, {
+          refundId: row._id,
+          attempt: 0,
+        });
+      }
+      await ctx.db.patch(row._id, { updatedAt: Date.now() });
+    }
     return null;
   },
 });
@@ -340,7 +400,12 @@ export const loadTransferContext = internalQuery({
 });
 
 export const reverseTransfer = internalAction({
-  args: { payoutId: v.id("payouts"), reversalMinor: v.number() },
+  args: {
+    payoutId: v.id("payouts"),
+    reversalMinor: v.number(),
+    // Fixed when the amount is reserved; optional for previously scheduled jobs.
+    reversedMinor: v.optional(v.number()),
+  },
   returns: v.null(),
   handler: async (ctx, args): Promise<null> => {
     if (args.reversalMinor <= 0) return null;
@@ -354,7 +419,7 @@ export const reverseTransfer = internalAction({
       });
       if (!payout.stripeTransferId) return null;
       const newReversedMinor =
-        (payout.reversedMinor ?? 0) + args.reversalMinor;
+        args.reversedMinor ?? (payout.reversedMinor ?? 0) + args.reversalMinor;
       const response = await stripeRequest<{ id: string }>(
         "POST",
         `/v1/transfers/${payout.stripeTransferId}/reversals`,
@@ -394,15 +459,28 @@ export const markTransferReversed = internalMutation({
   handler: async (ctx, args) => {
     const payout = await ctx.db.get(args.payoutId);
     if (!payout) throw new Error("Payout not found");
+    const idempotencyKey = `transfer_reversal:${args.stripeTransferReversalId}`;
+    const existing = await ctx.db
+      .query("ledgerEntries")
+      .withIndex("by_idempotencyKey", (q) =>
+        q.eq("idempotencyKey", idempotencyKey),
+      )
+      .unique();
+    if (existing) return null;
     const now = Date.now();
+    const reversedMinor = (payout.reversedMinor ?? 0) + args.reversalMinor;
     // Partial reversals leave the completed payout in its terminal paid state.
     await ctx.db.patch(payout._id, {
-      reversedMinor: args.reversedMinor,
+      reversedMinor,
+      reversalReservedMinor: Math.max(
+        payout.reversalReservedMinor ?? 0,
+        reversedMinor,
+      ),
       stripeTransferReversalId: args.stripeTransferReversalId,
       updatedAt: now,
     });
     await appendLedgerEntry(ctx, {
-      idempotencyKey: `transfer_reversal:${args.stripeTransferReversalId}`,
+      idempotencyKey,
       kind: "transfer_reversal",
       amountMinor: -args.reversalMinor,
       currency: payout.currency,
@@ -428,8 +506,7 @@ export const refundLatePayment = internalMutation({
     if (
       refunds.some(
         (row) =>
-          row.paymentRecordId === record._id &&
-          row.reason === "late_payment",
+          row.paymentRecordId === record._id && row.reason === "late_payment",
       )
     )
       return null;
@@ -533,6 +610,9 @@ export const retryFailedRefunds = internalMutation({
       .take(50);
     const now = Date.now();
     for (const row of rows) {
+      // Stripe already accepted these requests; a terminal processor failure
+      // needs reconciliation, not another refund POST.
+      if (row.stripeRefundId) continue;
       assertRefundTransition("failed", "pending");
       await ctx.db.patch(row._id, { status: "pending", updatedAt: now });
       await ctx.scheduler.runAfter(0, internal.refunds.executeRefund, {

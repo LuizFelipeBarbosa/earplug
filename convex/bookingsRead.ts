@@ -23,6 +23,7 @@ import {
   cancellationTemplateValidator,
   feeSnapshotFields,
   gigPerformerRoleValidator,
+  payoutHoldReasonValidator,
 } from "./schema";
 
 export const bookingPayloadValidator = v.object({
@@ -44,6 +45,10 @@ export const bookingPayloadValidator = v.object({
   startsAt: v.number(),
   doorsAt: v.union(v.number(), v.null()),
   fee: v.object(feeSnapshotFields),
+  paidMinor: v.number(),
+  refundedMinor: v.number(),
+  paymentDueAt: v.union(v.number(), v.null()),
+  payoutHoldReasons: v.array(payoutHoldReasonValidator),
   cancellationTemplate: cancellationTemplateValidator,
   termsNotes: v.union(v.string(), v.null()),
   organizerAcceptedTermsAt: v.number(),
@@ -258,6 +263,10 @@ export async function toBookingPayload(
       currency: booking.currency,
     },
     cancellationTemplate: booking.cancellationTemplate,
+    paidMinor: booking.paidMinor ?? 0,
+    refundedMinor: booking.refundedMinor ?? 0,
+    paymentDueAt: booking.paymentDueAt ?? null,
+    payoutHoldReasons: booking.payoutHoldReasons ?? [],
     termsNotes: booking.termsNotes ?? null,
     organizerAcceptedTermsAt: booking.organizerAcceptedTermsAt,
     artistAcceptedTermsAt: booking.artistAcceptedTermsAt ?? null,
@@ -275,7 +284,15 @@ export async function toBookingPayload(
           sentAt: offer.sentAt,
           expiresAt: offer.expiresAt,
           response: offer.response ?? null,
-          installments: offer.installments,
+          installments: offer.installments.map((installment) => ({
+            label: installment.label,
+            amountMinor: installment.amountMinor,
+            dueAt:
+              installment.dueAfterAcceptanceMs === undefined
+                ? installment.dueAt
+                : (booking.artistAcceptedTermsAt ?? offer.sentAt) +
+                  installment.dueAfterAcceptanceMs,
+          })),
         }
       : null,
     venue,

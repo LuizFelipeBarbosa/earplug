@@ -55,7 +55,8 @@ export const loadCheckoutContext = internalQuery({
     if (!booking) throw new Error("Booking not found");
     if (
       booking.status !== "awaiting_payment" &&
-      booking.status !== "confirmed"
+      booking.status !== "confirmed" &&
+      booking.status !== "completed"
     ) {
       throw new Error("This booking is not accepting payments");
     }
@@ -91,8 +92,7 @@ function isAlreadyExpiredSession(error: unknown): boolean {
   return (
     /\bsession\b[\s\S]*\b(?:already|status|is|has)\b[\s\S]*\bexpired\b/i.test(
       error.message,
-    ) ||
-    /^(?:checkout_)?session_(?:already_)?expired$/.test(error.code ?? "")
+    ) || /^(?:checkout_)?session_(?:already_)?expired$/.test(error.code ?? "")
   );
 }
 
@@ -240,7 +240,10 @@ export const setOrganizationStripeCustomer = internalMutation({
 });
 
 export const reserveCheckoutAttempt = internalMutation({
-  args: { paymentRecordId: v.id("paymentRecords"), expectedAttempt: v.number() },
+  args: {
+    paymentRecordId: v.id("paymentRecords"),
+    expectedAttempt: v.number(),
+  },
   returns: v.number(),
   handler: async (ctx, args) => {
     const record = await ctx.db.get(args.paymentRecordId);
@@ -344,7 +347,7 @@ export const remindPayment = internalMutation({
     const booking = await ctx.db.get(args.bookingId);
     if (
       !booking ||
-      !["awaiting_payment", "confirmed"].includes(booking.status)
+      !["awaiting_payment", "confirmed", "completed"].includes(booking.status)
     ) {
       return null;
     }
@@ -397,12 +400,15 @@ export const paymentsForBooking = query({
     if (!booking) throw new Error("Booking not found");
     const membership = await requirePaymentParty(ctx, booking);
     const canPay =
-      membership?.role === "owner" || membership?.role === "finance";
+      (membership?.role === "owner" || membership?.role === "finance") &&
+      ["awaiting_payment", "confirmed", "completed"].includes(booking.status);
     const records = await paymentRecordsForBooking(ctx, booking._id);
     const openIndexes = records
       .filter((record) => PAYMENT_OPEN_STATUSES.includes(record.status))
       .map((record) => record.installmentIndex);
-    const lowestOpenIndex = openIndexes.length ? Math.min(...openIndexes) : null;
+    const lowestOpenIndex = openIndexes.length
+      ? Math.min(...openIndexes)
+      : null;
     return records.map((record) => ({
       _id: record._id,
       installmentIndex: record.installmentIndex,

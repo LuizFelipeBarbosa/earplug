@@ -518,7 +518,10 @@ export default defineSchema({
       "startsAt",
     ])
     // Opportunity lookups by status and application deadline for offer workflows.
-    .index("by_status_and_applicationsCloseAt", ["status", "applicationsCloseAt"])
+    .index("by_status_and_applicationsCloseAt", [
+      "status",
+      "applicationsCloseAt",
+    ])
     .index("by_venueId_and_startsAt", ["venueId", "startsAt"])
     .index("by_privateLocationId", ["privateLocationId"])
     .index("by_publicGigId", ["publicGigId"])
@@ -615,7 +618,11 @@ export default defineSchema({
       "status",
       "startsAt",
     ])
-    .index("by_bandId_and_status_and_startsAt", ["bandId", "status", "startsAt"])
+    .index("by_bandId_and_status_and_startsAt", [
+      "bandId",
+      "status",
+      "startsAt",
+    ])
     .index("by_opportunityId", ["opportunityId"])
     .index("by_slotId_and_status", ["slotId", "status"])
     .index("by_applicationId", ["applicationId"])
@@ -707,6 +714,9 @@ export default defineSchema({
     // The Stripe event that marked this record paid.
     stripeEventId: v.optional(v.string()),
     stripeDisputeId: v.optional(v.string()),
+    stripeDisputeStatus: v.optional(
+      v.union(v.literal("open"), v.literal("won"), v.literal("lost")),
+    ),
     disputedMinor: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -738,6 +748,11 @@ export default defineSchema({
     sourceChargeId: v.optional(v.string()),
     stripeTransferReversalId: v.optional(v.string()),
     reversedMinor: v.optional(v.number()),
+    // Immutable basis for recalculating an unpaid payout after refunds.
+    originalAmountMinor: v.optional(v.number()),
+    refundBaselineMinor: v.optional(v.number()),
+    // Includes completed and in-flight reversals; reserved transactionally.
+    reversalReservedMinor: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -762,6 +777,7 @@ export default defineSchema({
   })
     .index("by_bookingId", ["bookingId"])
     .index("by_stripeRefundId", ["stripeRefundId"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"])
     .index("by_stripePaymentIntentId", ["stripePaymentIntentId"]),
 
   ledgerEntries: defineTable({
@@ -1042,7 +1058,9 @@ export default defineSchema({
     createdByBand: v.optional(v.id("bands")),
     // Gigs can also originate from an organization's booked opportunity.
     // Optional so existing band-created gigs remain valid.
-    ownerKind: v.optional(v.union(v.literal("band"), v.literal("organization"))),
+    ownerKind: v.optional(
+      v.union(v.literal("band"), v.literal("organization")),
+    ),
     createdByOrganization: v.optional(v.id("organizations")),
     opportunityId: v.optional(v.id("talentOpportunities")),
     // Band-supplied flyer art, set when flyKey is "custom". The gig owns this

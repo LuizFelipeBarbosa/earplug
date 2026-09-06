@@ -81,7 +81,11 @@ Configure the platform endpoint as `POST /stripe-webhook` on that
 deployment's `.convex.site` host, using `STRIPE_WEBHOOK_SECRET`, and subscribe
 it to `checkout.session.completed`, `checkout.session.expired`,
 `payment_intent.payment_failed`, `charge.dispute.created`, and
-`charge.dispute.closed`. Configure the connected-account endpoint as
+`charge.dispute.closed`, `charge.refunded`, `refund.created`, `refund.updated`,
+`refund.failed`, and `charge.refund.updated` (for older Stripe event versions).
+Pending refunds also reconcile by retrieving their Stripe status every six
+hours, so a missing webhook does not leave them pending indefinitely. Configure
+the connected-account endpoint as
 `POST /stripe-connect-webhook` on the same host, using
 `STRIPE_CONNECT_WEBHOOK_SECRET`, and subscribe it to
 `checkout.session.completed`, `checkout.session.expired`, `charge.refunded`,

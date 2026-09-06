@@ -46,6 +46,7 @@ import type * as lib_opportunityStatus from "../lib/opportunityStatus.js";
 import type * as lib_opportunityVisibility from "../lib/opportunityVisibility.js";
 import type * as lib_paymentSchedule from "../lib/paymentSchedule.js";
 import type * as lib_paymentStatus from "../lib/paymentStatus.js";
+import type * as lib_payoutAccounting from "../lib/payoutAccounting.js";
 import type * as lib_reviewSummary from "../lib/reviewSummary.js";
 import type * as lib_stripeAccountSync from "../lib/stripeAccountSync.js";
 import type * as lib_stripeClient from "../lib/stripeClient.js";
@@ -132,6 +133,7 @@ declare const fullApi: ApiFromModules<{
   "lib/opportunityVisibility": typeof lib_opportunityVisibility;
   "lib/paymentSchedule": typeof lib_paymentSchedule;
   "lib/paymentStatus": typeof lib_paymentStatus;
+  "lib/payoutAccounting": typeof lib_payoutAccounting;
   "lib/reviewSummary": typeof lib_reviewSummary;
   "lib/stripeAccountSync": typeof lib_stripeAccountSync;
   "lib/stripeClient": typeof lib_stripeClient;

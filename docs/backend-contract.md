@@ -547,7 +547,7 @@ use the v1.21 booking state machine.
 - `stripeActions.js:organizationExpressDashboardLink` — Action; `{ organizationId } -> { url: string }`; organization owner receives an Express dashboard login link once an account exists and its details are submitted.
 - `payoutAccounts.js:bandPayoutStatus` — Query; `{ bandId } -> StripeAccountStatus`; band members read the band's saved Stripe payout status.
 - `payoutAccounts.js:organizationStripeStatus` — Query; `{ organizationId } -> StripeAccountStatus`; any organization role reads its saved Stripe account status.
-- `payments.js:startInstallmentCheckout` — Action; `{ paymentRecordId } -> { url: string, sessionId: string }`; organization owner/finance starts Checkout for an open installment on an `awaiting_payment` or `confirmed` booking.
+- `payments.js:startInstallmentCheckout` — Action; `{ paymentRecordId } -> { url: string, sessionId: string }`; organization owner/finance starts Checkout for an open installment on an `awaiting_payment`, `confirmed`, or `completed` booking.
 - `payments.js:paymentsForBooking` — Query; `{ bookingId } -> Array<{ _id, installmentIndex, label, amountMinor, currency, dueAt, status, paidAt: number | null, canPay: boolean }>`; organization members or band admins read the booking's installments and payment eligibility.
 - `payments.js:checkoutStatus` — Query; `{ sessionId: string } -> { bookingId, paymentStatus, bookingStatus } | null`; payment readers resolve a Checkout session's saved payment and booking states, with null for an unknown session.
 - `payouts.js:payoutsForBooking` — Query; `{ bookingId } -> PayoutSummary[]`; organization members, band admins or platform admins read up to 50 payouts, with `[]` for a missing or inaccessible booking.
@@ -557,7 +557,8 @@ use the v1.21 booking state machine.
 
 `paymentsForBooking.canPay` requires an organization owner/finance role and a
 payment status of `pending`, `checkout_open`, `failed`, or `expired`;
-`startInstallmentCheckout` additionally checks the booking status. Restarting
+both eligibility and `startInstallmentCheckout` require an `awaiting_payment`,
+`confirmed`, or `completed` booking. Restarting
 an open Checkout expires the previous session before creating its replacement.
 The account-status queries, `paymentsForBooking`, `payoutsForBand`, and refund
 queries throw when their required access is absent; `checkoutStatus` also
@@ -604,9 +605,11 @@ while the flag is off; their Stripe writes remain gated.
 The platform endpoint `/stripe-webhook` subscribes to
 `checkout.session.completed`, `checkout.session.expired`, and
 `payment_intent.payment_failed` handled by `paymentHandlers`, plus
-`charge.dispute.created` and `charge.dispute.closed` handled by
-`disputeHandlers`. The Connect endpoint `/stripe-connect-webhook` subscribes
-to `account.updated`, handled by `accountHandlers`. Both endpoints use
+`charge.dispute.created`, `charge.dispute.closed`, `charge.refunded`,
+`refund.created`, `refund.updated`, `refund.failed`, and the legacy
+`charge.refund.updated` handled by `disputeHandlers`. The Connect endpoint
+`/stripe-connect-webhook` subscribes to `account.updated`, handled by
+`accountHandlers`. Both endpoints use
 `recordAndApply` in [`convex/stripeWebhook.ts`](../convex/stripeWebhook.ts)
 and record outcomes in `stripeEvents`. An event id already marked `applied`
 or `ignored` returns `duplicate` without applying it again. A deployment
@@ -645,6 +648,34 @@ and `partially_refunded` payment records. Its `shareBps` always reports the
 template/time share, even when an artist cancellation receives a full refund.
 The optional `as` selects a side only if the viewer is authorized for that
 side; otherwise the preview defaults to organizer when permitted, then artist.
+
+Booking detail and list payloads include `paidMinor`, `refundedMinor`,
+`paymentDueAt: number | null`, and `payoutHoldReasons`. Older records default to
+zero totals, no deadline, and no hold reasons. Offer installments retain the
+public `{ label, amountMinor, dueAt }` shape. Relative deadlines are projected
+from acceptance time, or provisionally from the offer's sent time before
+acceptance.
+
+Completion payouts allocate each installment's share against the total booking
+fee. A balance paid after completion schedules its own share without duplicating
+existing payouts. Cancellation removes the unpaid-installment hold and allocates
+forfeiture payouts only against funds retained after the planned refunds; the
+planned refund amount is snapshotted so its webhook does not reduce the forfeiture
+again. Subsequent refunds adjust only payouts funded by the affected payment.
+
+Stripe accepting a refund request does not imply success. Pending refunds retain
+their Stripe id and update accounting only after success; refund events and a
+six-hour reconciliation poll refresh their status. Polls retrieve the existing
+refund instead of issuing another POST. Processor failures are shown as failed
+and are not automatically submitted again. Transfer reversals reserve amounts
+transactionally before scheduling, use a fixed idempotency key per reservation,
+and record completed amounts once even if actions finish out of order. Ambiguous
+reversal failures retain their reservation for manual reconciliation.
+
+Each installment tracks its dispute outcome. Winning one dispute preserves the
+hold while another is open. Winning the last dispute restores the prior state,
+reschedules completion if necessary, and reconciles any installments collected
+while a completed booking was disputed.
 
 The internal `bookings.js:markCompleted` settles a `grossMinor === 0` booking
 through `confirmed -> completed -> paid` in the same call and schedules no

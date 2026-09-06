@@ -1689,7 +1689,7 @@ describe("payment access and scheduled jobs", () => {
       revision: 4,
       paidMinor: 15000,
       payoutHold: true,
-      payoutHoldReasons: ["unpaid_installment", "admin"],
+      payoutHoldReasons: ["admin"],
     });
     expect(await f.ledger()).toHaveLength(1);
     expect(await f.t.run((ctx) => ctx.db.get(f.slotId))).toMatchObject({
