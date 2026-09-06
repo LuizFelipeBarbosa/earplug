@@ -2590,6 +2590,9 @@ class TicketSales {
     required this.feeMinor,
     required this.netMinor,
     required this.currency,
+    this.refundedMinor = 0,
+    this.refundedOrgMinor = 0,
+    this.truncated = false,
   });
 
   final int capacity;
@@ -2601,6 +2604,9 @@ class TicketSales {
   final int feeMinor;
   final int netMinor;
   final String currency;
+  final int refundedMinor;
+  final int refundedOrgMinor;
+  final bool truncated;
 
   factory TicketSales.fromJson(Map<String, dynamic> json) => TicketSales(
     capacity: _marketplaceInt(json['capacity']),
@@ -2612,6 +2618,9 @@ class TicketSales {
     feeMinor: _marketplaceInt(json['feeMinor']),
     netMinor: _marketplaceInt(json['netMinor']),
     currency: _marketplaceString(json['currency']),
+    refundedMinor: _marketplaceInt(json['refundedMinor']),
+    refundedOrgMinor: _marketplaceInt(json['refundedOrgMinor']),
+    truncated: json['truncated'] == true,
   );
 
   Money get gross => Money(grossMinor, currency);

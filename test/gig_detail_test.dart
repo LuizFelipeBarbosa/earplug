@@ -237,6 +237,57 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text("WHO'S GOING"), findsNothing);
   });
+
+  testWidgets('paid gigs show the buy tickets CTA with their price', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    await pumpApp(
+      tester,
+      auth: auth,
+      home: const Scaffold(body: GigDetailScreen(gigId: 'g8')),
+    );
+
+    expect(find.text(r'BUY TICKETS · $25.00'), findsOne);
+    expect(find.byKey(const Key('gig-buy-tickets')), findsOne);
+    expect(find.text('RSVP — FREE'), findsNothing);
+    expect(find.textContaining('AT DOOR'), findsNothing);
+  });
+
+  testWidgets('buy tickets opens the purchase sheet for signed-in fans', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    await pumpApp(
+      tester,
+      auth: auth,
+      home: const Scaffold(body: GigDetailScreen(gigId: 'g8')),
+    );
+
+    await tester.tap(find.byKey(const Key('gig-buy-tickets')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('ticket-hold')), findsOne);
+    expect(find.text('HOLD TICKETS'), findsOne);
+  });
+
+  testWidgets('buy tickets gates signed-out fans through sign-in', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: GigDetailScreen(gigId: 'g8')),
+    );
+
+    await tester.tap(find.byKey(const Key('gig-buy-tickets')));
+    await tester.pumpAndSettle();
+
+    expect(harness.app.pending?.kind, PendingKind.rsvp);
+    expect(harness.app.pending?.id, 'g8');
+    expect(find.byKey(const Key('ticket-hold')), findsNothing);
+  });
 }
 
 Gig _textOnlyGig({

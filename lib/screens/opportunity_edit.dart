@@ -29,6 +29,8 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   final _requirements = TextEditingController();
   final _attendance = TextEditingController();
   final _externalUrl = TextEditingController();
+  final _ticketPrice = TextEditingController();
+  final _ticketCapacity = TextEditingController();
   final _bands = <String, Band>{};
   final _pendingInvites = <String>{};
   final _invitedIds = <String>[];
@@ -49,6 +51,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   bool _deadlineTouched = false;
   AgeRequirement _age = AgeRequirement.allAges;
   OpportunityTicketing _ticketing = OpportunityTicketing.rsvp;
+  bool _stripeChargesEnabled = false;
   OpportunityVisibility _visibility = OpportunityVisibility.publicListing;
   String? _loadedKey;
   String? _loadError;
@@ -76,10 +79,28 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   bool get _validDeadline =>
       _deadline != null && _startsAt != null && _deadline!.isBefore(_startsAt!);
 
+  String? get _ticketPriceError {
+    final dollars = double.tryParse(_ticketPrice.text.trim());
+    return dollars == null || dollars < 1 || !(dollars * 100).isFinite
+        ? 'Enter a ticket price of at least \$1.00.'
+        : null;
+  }
+
+  String? get _ticketCapacityError {
+    final capacity = int.tryParse(_ticketCapacity.text.trim());
+    return capacity == null || capacity < 1 || capacity > 5000
+        ? 'Enter a whole number from 1 to 5000.'
+        : null;
+  }
+
   List<String> get _saveNeeds => [
     if (_title.text.trim().isEmpty) 'title',
     if (_venueId == null) 'venue',
     if (_startsAt == null) 'date',
+    if (_ticketing == OpportunityTicketing.paid) ...[
+      if (_ticketPriceError != null) 'ticket price',
+      if (_ticketCapacityError != null) 'ticket capacity',
+    ],
   ];
 
   List<String> get _openNeeds => [
@@ -138,6 +159,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       if (!mounted || key != _loadedKey) return;
       setState(() {
         _venues = dashboard.venues;
+        _stripeChargesEnabled = dashboard.verification.stripeChargesEnabled;
         _bands
           ..clear()
           ..addAll(bands);
@@ -166,6 +188,13 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     _requirements.text = opportunity?.requirements ?? '';
     _attendance.text = opportunity?.expectedAttendance?.toString() ?? '';
     _externalUrl.text = opportunity?.externalUrl ?? '';
+    final ticketPriceMinor = opportunity?.ticketPriceMinor;
+    _ticketPrice.text = ticketPriceMinor == null
+        ? ''
+        : (ticketPriceMinor / 100).toStringAsFixed(
+            ticketPriceMinor % 100 == 0 ? 0 : 2,
+          );
+    _ticketCapacity.text = opportunity?.ticketCapacity?.toString() ?? '';
     _venueId = opportunity?.venueId;
     _date = opportunity?.startsAt.toLocal();
     _start = opportunity == null
@@ -215,6 +244,8 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       _requirements,
       _attendance,
       _externalUrl,
+      _ticketPrice,
+      _ticketCapacity,
     ]) {
       controller.dispose();
     }
@@ -326,6 +357,15 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   Future<void> _persist(AppState app) async {
     final title = _title.text.trim();
     final slots = [for (final slot in _slots) slot.input];
+    final paid = _ticketing == OpportunityTicketing.paid;
+    final ticketCents = (double.tryParse(_ticketPrice.text.trim()) ?? 0) * 100;
+    final ticketPriceMinor = paid
+        ? (ticketCents.isFinite ? ticketCents.round() : 0)
+        : null;
+    final ticketCapacity = paid
+        ? int.tryParse(_ticketCapacity.text.trim())
+        : null;
+    final ticketCurrency = paid ? 'usd' : null;
     if (_savedId == null) {
       _saved = await app.repository.createOpportunity(
         organizationId: app.organizationId,
@@ -342,6 +382,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         expectedAttendance: int.tryParse(_attendance.text.trim()),
         visibility: _visibility,
         ticketing: _ticketing,
+        ticketPriceMinor: ticketPriceMinor,
+        ticketCapacity: ticketCapacity,
+        ticketCurrency: ticketCurrency,
         externalUrl: _externalUrl.text.trim(),
         slots: slots,
       );
@@ -363,6 +406,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         expectedAttendance: int.tryParse(_attendance.text.trim()),
         visibility: _visibility,
         ticketing: _ticketing,
+        ticketPriceMinor: ticketPriceMinor,
+        ticketCapacity: ticketCapacity,
+        ticketCurrency: ticketCurrency,
         externalUrl: _externalUrl.text.trim(),
         slots: _status == OpportunityStatus.draft ? slots : null,
       );
@@ -764,6 +810,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                         OpportunityTicketing.none,
                         OpportunityTicketing.rsvp,
                         OpportunityTicketing.external,
+                        OpportunityTicketing.paid,
                       ])
                         EpChip(
                           key: ValueKey(
@@ -771,12 +818,60 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                           ),
                           label: ticketing.wireValue,
                           active: _ticketing == ticketing,
-                          onTap: enabled
+                          onTap:
+                              enabled &&
+                                  (ticketing != OpportunityTicketing.paid ||
+                                      _stripeChargesEnabled)
                               ? () => _changed(() => _ticketing = ticketing)
                               : null,
                         ),
                     ],
                   ),
+                  if (!_stripeChargesEnabled)
+                    Text(
+                      'Connect Stripe in SETTINGS to sell tickets',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  if (_ticketing == OpportunityTicketing.paid) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: EpLabeledField(
+                            fieldKey: const ValueKey('opp-edit-ticket-price'),
+                            label: 'TICKET PRICE (\$)',
+                            hint: '25',
+                            controller: _ticketPrice,
+                            keyboardType: TextInputType.number,
+                            enabled: enabled,
+                            onChanged: _textChanged,
+                            caption: _ticketPriceError,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: EpLabeledField(
+                            fieldKey: const ValueKey(
+                              'opp-edit-ticket-capacity',
+                            ),
+                            label: 'CAPACITY',
+                            hint: '100',
+                            controller: _ticketCapacity,
+                            keyboardType: TextInputType.number,
+                            enabled: enabled,
+                            onChanged: _textChanged,
+                            caption: _ticketCapacityError,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Fans pay the EarPlug fee on top · you receive the ticket price minus Stripe processing',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  ],
                   if (_ticketing == OpportunityTicketing.external)
                     EpLabeledField(
                       fieldKey: const ValueKey('opp-edit-external-url'),

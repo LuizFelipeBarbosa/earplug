@@ -10,6 +10,7 @@ import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/map_view.dart';
+import '../widgets/ticket_purchase_sheet.dart';
 
 class GigDetailScreen extends StatelessWidget {
   final String gigId;
@@ -868,6 +869,22 @@ class _GigCtaBar extends StatelessWidget {
           kind: EpButtonKind.disabled,
           onTap: null,
         ),
+      );
+    }
+    if (gig.sellsTickets) {
+      final button = EpButton(
+        'BUY TICKETS · ${gig.priceLabel}',
+        key: const Key('gig-buy-tickets'),
+        fontSize: 14,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        onTap: app.authed
+            ? () => showTicketPurchaseSheet(context, gig)
+            : () => app.requestRsvp(gig.id),
+      );
+      return _CtaBar(
+        note:
+            'Tickets are sold by the organizer · EarPlug fee added at checkout',
+        child: button,
       );
     }
     final isRsvpd = app.rsvps.contains(gig.id);

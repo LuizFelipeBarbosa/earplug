@@ -1826,6 +1826,7 @@ class DemoRepository implements EarplugRepository {
         reserved += order.quantity;
       }
     }
+    const refundedOrgMinor = 0;
     return TicketSales(
       capacity: capacity,
       sold: sold,
@@ -1836,8 +1837,11 @@ class DemoRepository implements EarplugRepository {
       ordersPaid: ordersPaid,
       grossMinor: grossMinor,
       feeMinor: feeMinor,
-      netMinor: grossMinor,
+      refundedMinor: 0,
+      refundedOrgMinor: refundedOrgMinor,
+      netMinor: grossMinor - refundedOrgMinor,
       currency: gig.ticketCurrency ?? 'usd',
+      truncated: false,
     );
   }
 

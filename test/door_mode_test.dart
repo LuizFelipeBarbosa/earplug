@@ -212,6 +212,185 @@ void main() {
       expect(find.byKey(const Key('door-recent-empty')), findsOne);
     },
   );
+
+  const organizerLaunch = DoorModeLaunch.organizer(
+    gigId: 'g8',
+    gigTitle: 'Organization Ticketed Show',
+    venueName: 'The Foghorn Club',
+    doorsTime: '8:00 PM',
+  );
+
+  testWidgets(
+    'organizer checks in a paid ticket and rejects repeat and invalid codes',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      final token = await _buyDemoTicket(repository);
+      expect(token, startsWith('earplug:ticket:v2:'));
+      await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const DoorModeScreen(launch: organizerLaunch),
+      );
+
+      await tester.tap(find.byKey(const Key('door-enter-code')));
+      await tester.pump(const Duration(milliseconds: 200));
+      await _enterDoorCode(tester, token);
+
+      expect(find.text('Earplug Fan checked in ✓'), findsOne);
+      expect(find.text('Ticket'), findsOne);
+      expect(find.text('RSVP'), findsNothing);
+
+      final ticket = (await repository.myTickets()).single;
+      final checkedInTime = TimeOfDay.fromDateTime(
+        ticket.checkedInAt!.toLocal(),
+      ).format(tester.element(find.byType(DoorModeScreen)));
+      await _enterDoorCode(tester, token);
+      expect(find.text('Already checked in $checkedInTime'), findsOne);
+      expect(find.text('Ticket'), findsNothing);
+
+      await _enterDoorCode(tester, 'garbage');
+      expect(find.text('Not a valid ticket'), findsOne);
+
+      await tester.tap(find.byTooltip('Back to door overview'));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.text('RSVPs 0/0 · Tickets 1/1'), findsOne);
+      expect(find.byType(LedgerRow), findsOne);
+      expect(find.text('Earplug Fan · $checkedInTime · door'), findsOne);
+    },
+  );
+
+  testWidgets('organizer checks in a v1 RSVP with an RSVP caption', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    await repository.toggleRsvp('g1');
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const DoorModeScreen(
+        launch: DoorModeLaunch.organizer(
+          gigId: 'g1',
+          gigTitle: 'Organization RSVP Show',
+          venueName: 'The Foghorn Club',
+          doorsTime: '8:00 PM',
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('door-enter-code')));
+    await tester.pump(const Duration(milliseconds: 200));
+    await _enterDoorCode(tester, 'earplug:ticket:v1:demo-g1');
+
+    expect(find.text('Earplug Fan checked in ✓'), findsOne);
+    expect(find.text('RSVP'), findsOne);
+    expect(find.text('Ticket'), findsNothing);
+
+    await tester.tap(find.byTooltip('Back to door overview'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('RSVPs 1/1 · Tickets 0/0'), findsOne);
+    expect(
+      find.descendant(
+        of: find.byType(LedgerRow),
+        matching: find.textContaining('Earplug Fan · '),
+      ),
+      findsOne,
+    );
+  });
+
+  testWidgets('organizer roster refreshes both RSVP and ticket counts', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final token = await _buyDemoTicket(repository);
+    await repository.toggleRsvp('g8');
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const DoorModeScreen(launch: organizerLaunch),
+    );
+
+    expect(find.text('RSVPs 0/1 · Tickets 0/1'), findsOne);
+    await tester.tap(find.byKey(const Key('door-enter-code')));
+    await tester.pump(const Duration(milliseconds: 200));
+    await _enterDoorCode(tester, 'earplug:ticket:v1:demo-g8');
+    expect(find.text('RSVP'), findsOne);
+    await _enterDoorCode(tester, token);
+    expect(find.text('Ticket'), findsOne);
+
+    await tester.tap(find.byTooltip('Back to door overview'));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('door-organizer-roster')),
+        matching: find.text('RSVPs 1/1 · Tickets 1/1'),
+        matchRoot: true,
+      ),
+      findsOne,
+    );
+    expect(find.byType(LedgerRow), findsNWidgets(2));
+  });
+
+  testWidgets('showOrganizerDoorMode pushes the organizer door screen', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => showOrganizerDoorMode(
+              context,
+              gigId: 'g8',
+              gigTitle: 'Organization Ticketed Show',
+              venueName: 'The Foghorn Club',
+              doorsTime: '8:00 PM',
+            ),
+            child: const Text('Open organizer door'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open organizer door'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(DoorModeScreen), findsOne);
+    expect(find.text('Organization Ticketed Show'), findsOne);
+    expect(find.text('RSVPs 0/0 · Tickets 0/0'), findsOne);
+
+    await tester.tap(find.byTooltip('Close Door Mode'));
+    await tester.pumpAndSettle();
+    expect(find.byType(DoorModeScreen), findsNothing);
+    expect(find.text('Open organizer door'), findsOne);
+  });
+}
+
+Future<String> _buyDemoTicket(DemoRepository repository) async {
+  final reservation = await repository.reserveTickets(gigId: 'g8', quantity: 1);
+  final checkout = await repository.startTicketCheckout(reservation.orderId);
+  await repository.simulateTicketCheckoutCompleted(checkout.sessionId);
+  return (await repository.myTickets()).single.token;
+}
+
+Future<void> _enterDoorCode(WidgetTester tester, String code) async {
+  await tester.enterText(find.byKey(const Key('door-manual-ticket')), code);
+  await tester.tap(find.text('CHECK TICKET'));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 50));
 }
 
 class _DoorRepository extends DemoRepository {

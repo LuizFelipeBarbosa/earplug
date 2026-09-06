@@ -6,6 +6,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
+import '../data/repository.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
@@ -16,13 +17,30 @@ import '../widgets/common.dart';
 /// gig details from the door-roster response, which only contains counts.
 class DoorModeLaunch {
   const DoorModeLaunch({
-    required this.projectId,
+    this.projectId,
+    this.gigId,
     required this.gigTitle,
     required this.venueName,
     required this.doorsTime,
-  });
+  }) : assert(
+         (projectId == null) != (gigId == null),
+         'exactly one of projectId or gigId must be set',
+       );
 
-  final String projectId;
+  const DoorModeLaunch.organizer({
+    required String gigId,
+    required String gigTitle,
+    required String venueName,
+    required String doorsTime,
+  }) : this(
+         gigId: gigId,
+         gigTitle: gigTitle,
+         venueName: venueName,
+         doorsTime: doorsTime,
+       );
+
+  final String? projectId;
+  final String? gigId;
   final String gigTitle;
   final String venueName;
   final String doorsTime;
@@ -35,6 +53,180 @@ Future<void> showDoorMode(BuildContext context, DoorModeLaunch launch) =>
         builder: (_) => DoorModeScreen(launch: launch),
       ),
     );
+
+Future<void> showOrganizerDoorMode(
+  BuildContext context, {
+  required String gigId,
+  required String gigTitle,
+  required String venueName,
+  required String doorsTime,
+}) => showDoorMode(
+  context,
+  DoorModeLaunch.organizer(
+    gigId: gigId,
+    gigTitle: gigTitle,
+    venueName: venueName,
+    doorsTime: doorsTime,
+  ),
+);
+
+enum _DoorTone {
+  success,
+  warning,
+  failure;
+
+  ({Color foreground, Color background}) colors(BuildContext context) =>
+      switch (this) {
+        success => (
+          foreground: context.epColors.success,
+          background: context.epColors.successTint,
+        ),
+        warning => (
+          foreground: context.epColors.volt,
+          background: context.epColors.warningTint,
+        ),
+        failure => (
+          foreground: context.epColors.destructive,
+          background: context.epColors.destructiveTint,
+        ),
+      };
+}
+
+class _DoorOutcome {
+  const _DoorOutcome({
+    required this.tone,
+    required this.headline,
+    this.detail,
+    this.checkedInAt,
+    this.holderName,
+  });
+
+  final _DoorTone tone;
+  final String headline;
+  final String? detail;
+  final DateTime? checkedInAt;
+  final String? holderName;
+}
+
+class _DoorCounts {
+  const _DoorCounts({
+    this.primaryLabel,
+    required this.primaryCount,
+    required this.primaryCheckedIn,
+    this.secondaryLabel,
+    this.secondaryCount,
+    this.secondaryCheckedIn,
+    required this.truncated,
+  });
+
+  final String? primaryLabel;
+  final int primaryCount;
+  final int primaryCheckedIn;
+  final String? secondaryLabel;
+  final int? secondaryCount;
+  final int? secondaryCheckedIn;
+  final bool truncated;
+}
+
+sealed class _DoorBackend {
+  Future<_DoorCounts> roster();
+  Future<_DoorOutcome> checkIn(String payload);
+}
+
+class _BandDoorBackend extends _DoorBackend {
+  _BandDoorBackend(this._repository, this._projectId);
+
+  final EarplugRepository _repository;
+  final String _projectId;
+
+  @override
+  Future<_DoorCounts> roster() async {
+    final counts = await _repository.doorRoster(_projectId);
+    return _DoorCounts(
+      primaryCount: counts.total,
+      primaryCheckedIn: counts.checkedIn,
+      truncated: counts.truncated,
+    );
+  }
+
+  @override
+  Future<_DoorOutcome> checkIn(String payload) async {
+    final result = await _repository.checkInTicket(
+      projectId: _projectId,
+      payload: payload,
+    );
+    return _DoorOutcome(
+      tone: _resultTone(result.status),
+      headline: _resultMessage(result),
+      holderName: result.fanName ?? 'Fan',
+      checkedInAt: result.checkedInAt,
+    );
+  }
+}
+
+class _OrganizerDoorBackend extends _DoorBackend {
+  _OrganizerDoorBackend(
+    this._app,
+    this._gigId, {
+    required this._formatCheckInTime,
+  });
+
+  final AppState _app;
+  final String _gigId;
+  final String Function(DateTime?) _formatCheckInTime;
+
+  @override
+  Future<_DoorCounts> roster() async {
+    final counts = await _app.organizerDoorRoster(_gigId);
+    return _DoorCounts(
+      primaryLabel: 'RSVPs',
+      primaryCount: counts.rsvpTotal,
+      primaryCheckedIn: counts.rsvpCheckedIn,
+      secondaryLabel: 'Tickets',
+      secondaryCount: counts.ticketsSold,
+      secondaryCheckedIn: counts.ticketsCheckedIn,
+      truncated: counts.truncated,
+    );
+  }
+
+  @override
+  Future<_DoorOutcome> checkIn(String payload) async {
+    final result = await _app.organizerCheckIn(_gigId, payload);
+    final (tone, headline) = switch (result.kind) {
+      TicketDoorKind.checkedIn => (
+        _DoorTone.success,
+        '${result.holderName ?? 'Fan'} checked in ✓',
+      ),
+      TicketDoorKind.alreadyUsed => (
+        _DoorTone.warning,
+        'Already checked in ${_formatCheckInTime(result.checkedInAt)}',
+      ),
+      TicketDoorKind.refunded => (
+        _DoorTone.failure,
+        'Ticket refunded — not valid',
+      ),
+      TicketDoorKind.eventCancelled => (_DoorTone.failure, 'Event cancelled'),
+      TicketDoorKind.wrongEvent => (
+        _DoorTone.warning,
+        'Ticket is for another event',
+      ),
+      TicketDoorKind.unknown => (_DoorTone.failure, 'Not a valid ticket'),
+    };
+    return _DoorOutcome(
+      tone: tone,
+      headline: headline,
+      detail: result.kind == TicketDoorKind.checkedIn
+          ? switch (result.source) {
+              'ticket' => 'Ticket',
+              'rsvp' => 'RSVP',
+              _ => null,
+            }
+          : null,
+      checkedInAt: result.checkedInAt,
+      holderName: result.holderName ?? 'Fan',
+    );
+  }
+}
 
 class DoorModeScreen extends StatefulWidget {
   const DoorModeScreen({super.key, required this.launch});
@@ -51,10 +243,11 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
   final _manualCode = TextEditingController();
   final _manualFocus = FocusNode();
   final _scannerController = MobileScannerController();
-  final List<DoorCheckInResult> _recentCheckIns = [];
+  final List<_DoorOutcome> _recentCheckIns = [];
+  late final _DoorBackend _backend;
 
-  DoorRoster? _roster;
-  DoorCheckInResult? _result;
+  _DoorCounts? _roster;
+  _DoorOutcome? _result;
   String? _rosterFailureMessage;
   String? _checkInFailureMessage;
   bool _checking = false;
@@ -65,6 +258,16 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
   @override
   void initState() {
     super.initState();
+    final context = this.context;
+    final app = context.read<AppState>();
+    final projectId = widget.launch.projectId;
+    _backend = projectId != null
+        ? _BandDoorBackend(app.repository, projectId)
+        : _OrganizerDoorBackend(
+            app,
+            widget.launch.gigId!,
+            formatCheckInTime: (time) => _checkInTime(context, time),
+          );
     _refreshRoster();
   }
 
@@ -79,9 +282,7 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
 
   Future<void> _refreshRoster({bool checkInSucceeded = false}) async {
     try {
-      final roster = await context.read<AppState>().repository.doorRoster(
-        widget.launch.projectId,
-      );
+      final roster = await _backend.roster();
       if (!mounted) return;
       setState(() {
         _roster = roster;
@@ -112,25 +313,20 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
       _checkInFailureMessage = null;
     });
     try {
-      final result = await context.read<AppState>().repository.checkInTicket(
-        projectId: widget.launch.projectId,
-        payload: code,
-      );
+      final result = await _backend.checkIn(code);
       if (!mounted) return;
       setState(() {
         _result = result;
         _manualCode.clear();
-        if (result.status == DoorCheckInStatus.checkedIn) {
+        if (result.tone == _DoorTone.success) {
           _recentCheckIns.insert(0, result);
           if (_recentCheckIns.length > _recentLimit) {
             _recentCheckIns.removeRange(_recentLimit, _recentCheckIns.length);
           }
         }
       });
-      _announce(_resultMessage(result));
-      await _refreshRoster(
-        checkInSucceeded: result.status == DoorCheckInStatus.checkedIn,
-      );
+      _announce(result.headline);
+      await _refreshRoster(checkInSucceeded: result.tone == _DoorTone.success);
     } catch (_) {
       if (mounted) {
         _showCheckInFailure(
@@ -271,8 +467,8 @@ class _Viewer extends StatelessWidget {
   });
 
   final DoorModeLaunch launch;
-  final DoorRoster? roster;
-  final List<DoorCheckInResult> recentCheckIns;
+  final _DoorCounts? roster;
+  final List<_DoorOutcome> recentCheckIns;
   final String? rosterFailure;
   final VoidCallback onOpenScanner;
   final VoidCallback onEnterCode;
@@ -283,11 +479,11 @@ class _Viewer extends StatelessWidget {
     final denominator = roster == null
         ? '…'
         : roster!.truncated
-        ? '${roster!.total} loaded'
-        : '${roster!.total}';
-    final progress = roster == null || roster!.total == 0
+        ? '${roster!.primaryCount} loaded'
+        : '${roster!.primaryCount}';
+    final progress = roster == null || roster!.primaryCount == 0
         ? 0.0
-        : (roster!.checkedIn / roster!.total).clamp(0.0, 1.0);
+        : (roster!.primaryCheckedIn / roster!.primaryCount).clamp(0.0, 1.0);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
@@ -310,59 +506,71 @@ class _Viewer extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 28),
-        Text(
-          'CHECKED IN',
-          style: Theme.of(context).textTheme.epSection.copyWith(fontSize: 11),
-        ),
-        const SizedBox(height: 6),
-        Semantics(
-          label: roster == null
-              ? 'Checked-in count loading'
-              : roster!.truncated
-              ? '${roster!.checkedIn} checked in from ${roster!.total} loaded roster entries. Roster is limited.'
-              : '${roster!.checkedIn} of ${roster!.total} checked in',
-          excludeSemantics: true,
-          child: Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(
-                  text: '${roster?.checkedIn ?? '…'}',
-                  style: Theme.of(context).textTheme.epDisplay.copyWith(
-                    fontSize: 54,
-                    color: context.epColors.volt,
-                  ),
-                ),
-                TextSpan(
-                  text: ' / $denominator',
-                  style: Theme.of(context).textTheme.epDisplay.copyWith(
-                    fontSize: roster?.truncated == true ? 17 : 28,
-                    color: context.epColors.mute,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (roster?.truncated == true) ...[
-          const SizedBox(height: 4),
+        if (roster?.secondaryLabel != null)
           Text(
-            'LIMITED ROSTER LOADED · TOTAL ATTENDANCE MAY BE HIGHER',
-            key: const Key('door-roster-limited'),
+            '${roster!.primaryLabel} ${roster!.primaryCheckedIn}/${roster!.primaryCount}'
+            ' · ${roster!.secondaryLabel} ${roster!.secondaryCheckedIn}/${roster!.secondaryCount}'
+            '${roster!.truncated ? ' · 500+' : ''}',
+            key: const Key('door-organizer-roster'),
             style: Theme.of(
               context,
-            ).textTheme.epCaption.copyWith(color: context.epColors.volt),
+            ).textTheme.epLabel.copyWith(color: context.epColors.volt),
+          )
+        else ...[
+          Text(
+            'CHECKED IN',
+            style: Theme.of(context).textTheme.epSection.copyWith(fontSize: 11),
+          ),
+          const SizedBox(height: 6),
+          Semantics(
+            label: roster == null
+                ? 'Checked-in count loading'
+                : roster!.truncated
+                ? '${roster!.primaryCheckedIn} checked in from ${roster!.primaryCount} loaded roster entries. Roster is limited.'
+                : '${roster!.primaryCheckedIn} of ${roster!.primaryCount} checked in',
+            excludeSemantics: true,
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '${roster?.primaryCheckedIn ?? '…'}',
+                    style: Theme.of(context).textTheme.epDisplay.copyWith(
+                      fontSize: 54,
+                      color: context.epColors.volt,
+                    ),
+                  ),
+                  TextSpan(
+                    text: ' / $denominator',
+                    style: Theme.of(context).textTheme.epDisplay.copyWith(
+                      fontSize: roster?.truncated == true ? 17 : 28,
+                      color: context.epColors.mute,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (roster?.truncated == true) ...[
+            const SizedBox(height: 4),
+            Text(
+              'LIMITED ROSTER LOADED · TOTAL ATTENDANCE MAY BE HIGHER',
+              key: const Key('door-roster-limited'),
+              style: Theme.of(
+                context,
+              ).textTheme.epCaption.copyWith(color: context.epColors.volt),
+            ),
+          ],
+          const SizedBox(height: 18),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              minHeight: 7,
+              value: progress,
+              backgroundColor: context.epColors.raised,
+              color: context.epColors.volt,
+            ),
           ),
         ],
-        const SizedBox(height: 18),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(99),
-          child: LinearProgressIndicator(
-            minHeight: 7,
-            value: progress,
-            backgroundColor: context.epColors.raised,
-            color: context.epColors.volt,
-          ),
-        ),
         if (rosterFailure != null) ...[
           const SizedBox(height: 12),
           Text(
@@ -416,7 +624,7 @@ class _Viewer extends StatelessWidget {
                 size: 18,
                 color: context.epColors.success,
               ),
-              title: result.fanName ?? 'Fan',
+              title: result.holderName ?? result.headline,
               details: [_checkInTime(context, result.checkedInAt), 'door'],
             ),
       ],
@@ -444,8 +652,8 @@ class _ScannerView extends StatelessWidget {
   final MobileScannerController controller;
   final TextEditingController manualCode;
   final FocusNode manualFocus;
-  final DoorRoster? roster;
-  final DoorCheckInResult? result;
+  final _DoorCounts? roster;
+  final _DoorOutcome? result;
   final String? rosterFailure;
   final String? checkInFailure;
   final bool checking;
@@ -487,8 +695,7 @@ class _ScannerView extends StatelessWidget {
           )
         else if (checkInFailure != null)
           _FailureBanner(message: checkInFailure!),
-        if (result?.status == DoorCheckInStatus.checkedIn &&
-            rosterFailure != null) ...[
+        if (result?.tone == _DoorTone.success && rosterFailure != null) ...[
           const SizedBox(height: 8),
           const _RosterRefreshFailureNotice(),
         ],
@@ -643,23 +850,33 @@ class _CameraFallback extends StatelessWidget {
 class _ResultBanner extends StatelessWidget {
   const _ResultBanner({required this.result, required this.roster});
 
-  final DoorCheckInResult result;
-  final DoorRoster? roster;
+  final _DoorOutcome result;
+  final _DoorCounts? roster;
 
   @override
   Widget build(BuildContext context) {
-    final tone = _resultTone(context, result.status);
-    final message = _resultMessage(result);
-    final count = result.status == DoorCheckInStatus.checkedIn && roster != null
+    final tone = result.tone.colors(context);
+    final message = result.headline;
+    final count =
+        result.tone == _DoorTone.success &&
+            roster != null &&
+            roster!.secondaryLabel == null
         ? roster!.truncated
-              ? ' · ${roster!.checkedIn} checked in (${roster!.total} loaded)'
-              : ' · ${roster!.checkedIn} of ${roster!.total}'
+              ? ' · ${roster!.primaryCheckedIn} checked in (${roster!.primaryCount} loaded)'
+              : ' · ${roster!.primaryCheckedIn} of ${roster!.primaryCount}'
         : '';
+    final headline = Text(
+      '$message$count',
+      style: Theme.of(
+        context,
+      ).textTheme.epLabel.copyWith(color: tone.foreground),
+    );
     return Semantics(
       key: const Key('door-result'),
       container: true,
       liveRegion: true,
-      label: '$message$count',
+      label:
+          '$message$count${result.detail == null ? '' : ' · ${result.detail}'}',
       excludeSemantics: true,
       child: Container(
         padding: const EdgeInsets.all(12),
@@ -668,12 +885,21 @@ class _ResultBanner extends StatelessWidget {
           border: Border.all(color: tone.foreground),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Text(
-          '$message$count',
-          style: Theme.of(
-            context,
-          ).textTheme.epLabel.copyWith(color: tone.foreground),
-        ),
+        child: result.detail == null
+            ? headline
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  headline,
+                  const SizedBox(height: 4),
+                  Text(
+                    result.detail!,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.epCaption.copyWith(color: tone.foreground),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -740,23 +966,12 @@ class _RosterRefreshFailureNotice extends StatelessWidget {
   }
 }
 
-({Color foreground, Color background}) _resultTone(
-  BuildContext context,
-  DoorCheckInStatus status,
-) {
+_DoorTone _resultTone(DoorCheckInStatus status) {
   return switch (status) {
-    DoorCheckInStatus.checkedIn => (
-      foreground: context.epColors.success,
-      background: context.epColors.successTint,
-    ),
-    DoorCheckInStatus.alreadyCheckedIn || DoorCheckInStatus.wrongGig => (
-      foreground: context.epColors.volt,
-      background: context.epColors.warningTint,
-    ),
-    DoorCheckInStatus.invalid => (
-      foreground: context.epColors.destructive,
-      background: context.epColors.destructiveTint,
-    ),
+    DoorCheckInStatus.checkedIn => _DoorTone.success,
+    DoorCheckInStatus.alreadyCheckedIn ||
+    DoorCheckInStatus.wrongGig => _DoorTone.warning,
+    DoorCheckInStatus.invalid => _DoorTone.failure,
   };
 }
 
@@ -771,6 +986,6 @@ String _resultMessage(DoorCheckInResult result) {
 }
 
 String _checkInTime(BuildContext context, DateTime? checkedInAt) {
-  if (checkedInAt == null) return 'just now';
+  if (checkedInAt == null || !context.mounted) return 'just now';
   return TimeOfDay.fromDateTime(checkedInAt.toLocal()).format(context);
 }

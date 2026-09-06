@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -44,6 +46,16 @@ class MyGigsScreen extends StatelessWidget {
             (profile.bio?.trim().isEmpty ?? true) ||
             profile.genres.isEmpty);
     const sectionPadding = EdgeInsets.only(top: 16, bottom: 8);
+    if (!app.myTicketsLoaded) unawaited(app.loadMyTickets());
+    final now = DateTime.now();
+    final tickets = app.myTickets
+        .where(
+          (ticket) =>
+              (ticket.status == TicketStatus.valid ||
+                  ticket.status == TicketStatus.used) &&
+              ticket.gig.startsAt.isAfter(now),
+        )
+        .toList();
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -253,6 +265,19 @@ class MyGigsScreen extends StatelessWidget {
           ),
         ],
         SectionBar(
+          label: 'TICKETS',
+          count: tickets.length,
+          padding: sectionPadding,
+        ),
+        if (tickets.isEmpty)
+          const EmptyNote(
+            message: 'No tickets yet · paid shows list them here',
+          ),
+        for (final ticket in tickets) ...[
+          _TicketCard(ticket: ticket, onTap: () => app.openTicket(ticket.id)),
+          const SizedBox(height: 8),
+        ],
+        SectionBar(
           label: 'UPCOMING RSVPS',
           count: upcoming.isEmpty ? null : upcoming.length,
           padding: sectionPadding,
@@ -349,6 +374,48 @@ class MyGigsScreen extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _TicketCard extends StatelessWidget {
+  const _TicketCard({required this.ticket, required this.onTap});
+
+  final TicketSummary ticket;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, tone) = switch (ticket.status) {
+      TicketStatus.valid => ('VALID', EpStatusPillTone.success),
+      TicketStatus.used => ('CHECKED IN', EpStatusPillTone.selected),
+      TicketStatus.refunded => ('REFUNDED', EpStatusPillTone.warning),
+      TicketStatus.cancelled => ('CANCELLED', EpStatusPillTone.neutral),
+      TicketStatus.unknown => ('UNAVAILABLE', EpStatusPillTone.neutral),
+    };
+    final textTheme = Theme.of(context).textTheme;
+    return EpCard(
+      key: ValueKey('ticket-${ticket.id}'),
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DateBlock.forDate(ticket.gig.startsAt),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(ticket.gig.title, style: textTheme.epSection),
+                const SizedBox(height: 4),
+                Text(ticket.gig.venueName, style: textTheme.epCaption),
+                const SizedBox(height: 8),
+                StatusPill(label: label, tone: tone),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -20,6 +20,7 @@ class OrgOpportunitiesScreen extends StatefulWidget {
 
 class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
   String? _loadedOrganizationId;
+  final _pendingSales = <String>{};
 
   @override
   void didChangeDependencies() {
@@ -35,6 +36,26 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
     final app = context.watch<AppState>();
     final status = app.opportunitiesStatus(app.organizationId);
     final opportunities = app.opportunitiesFor(app.organizationId);
+    final salesByOpportunity = <String, TicketSales?>{};
+    for (final opportunity in opportunities) {
+      if (opportunity.ticketing != OpportunityTicketing.paid) continue;
+      final gig = _publishedGig(app, opportunity);
+      if (gig == null) continue;
+      final sales = app.salesFor(gig.id);
+      salesByOpportunity[opportunity.id] = sales;
+      if (sales != null || !_pendingSales.add(gig.id)) continue;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || app.organizationId != opportunity.organizationId) {
+          _pendingSales.remove(gig.id);
+          return;
+        }
+        unawaited(
+          app.loadTicketSales(gig.id).whenComplete(() {
+            _pendingSales.remove(gig.id);
+          }),
+        );
+      });
+    }
     final sections = <String, List<Opportunity>>{
       'DRAFTS': [],
       'OPEN': [],
@@ -120,6 +141,7 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
                     for (final opportunity in section.value) ...[
                       _OpportunityCard(
                         opportunity: opportunity,
+                        sales: salesByOpportunity[opportunity.id],
                         onActions: () => _showActions(app, opportunity),
                       ),
                       const SizedBox(height: 10),
@@ -132,11 +154,30 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
   }
 
   void _showActions(AppState app, Opportunity opportunity) {
+    final gig = _publishedGig(app, opportunity);
     unawaited(
       showEpActionSheet(
         context,
         header: opportunity.title,
         items: [
+          if (gig != null)
+            EpActionSheetItem(
+              label: 'DOOR',
+              icon: Icons.sensor_door_outlined,
+              onPressed: () => unawaited(
+                showOrganizerDoorMode(
+                  context,
+                  gigId: gig.id,
+                  gigTitle: opportunity.title,
+                  venueName: opportunity.venue?.name ?? 'Venue TBD',
+                  doorsTime: gig.doorsAt != null
+                      ? TimeOfDay.fromDateTime(
+                          gig.doorsAt!.toLocal(),
+                        ).format(context)
+                      : gig.time.split('/').first.trim(),
+                ),
+              ),
+            ),
           EpActionSheetItem(
             label: 'EDIT',
             icon: Icons.edit,
@@ -252,10 +293,15 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
 }
 
 class _OpportunityCard extends StatelessWidget {
-  const _OpportunityCard({required this.opportunity, required this.onActions});
+  const _OpportunityCard({
+    required this.opportunity,
+    required this.onActions,
+    this.sales,
+  });
 
   final Opportunity opportunity;
   final VoidCallback onActions;
+  final TicketSales? sales;
 
   @override
   Widget build(BuildContext context) {
@@ -269,6 +315,7 @@ class _OpportunityCard extends StatelessWidget {
         )
         .join(' · ');
     final textTheme = Theme.of(context).textTheme;
+    final ticketSales = sales;
 
     return EpCard(
       key: ValueKey('org-opp-${opportunity.id}'),
@@ -291,6 +338,15 @@ class _OpportunityCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(slotSummary, style: textTheme.epMeta),
+                if (ticketSales != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '${ticketSales.sold}/${ticketSales.capacity} sold · '
+                    '${ticketSales.net.label} net',
+                    key: Key('org-opp-sales-${opportunity.id}'),
+                    style: textTheme.epCaption,
+                  ),
+                ],
                 const SizedBox(height: 4),
                 Text(
                   'Applications close ${dateLabel(opportunity.applicationsCloseAt)}',
@@ -336,6 +392,9 @@ class _OpportunityCard extends StatelessWidget {
 
 enum _OpportunityAction { duplicate, close, reopen, cancel, delete }
 
+Gig? _publishedGig(AppState app, Opportunity opportunity) =>
+    app.allGigs.where((gig) => gig.opportunityId == opportunity.id).firstOrNull;
+
 Future<bool> _confirm(BuildContext context, String title, String body) async =>
     await showDialog<bool>(
       context: context,
@@ -355,3 +414,16 @@ Future<bool> _confirm(BuildContext context, String title, String body) async =>
       ),
     ) ??
     false;
+
+// TODO(c4-door): remove once door_mode exports it
+Future<void> showOrganizerDoorMode(
+  BuildContext context, {
+  required String gigId,
+  required String gigTitle,
+  required String venueName,
+  required String doorsTime,
+}) async {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text('Door mode for $gigTitle — coming soon')),
+  );
+}

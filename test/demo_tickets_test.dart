@@ -22,6 +22,33 @@ void main() {
     repo = DemoRepository(auth: auth);
   });
 
+  test(
+    'ticket sales parse refunds and tolerate absent or malformed fields',
+    () {
+      final sales = TicketSales.fromJson({
+        'refundedMinor': 2675,
+        'refundedOrgMinor': 2500,
+        'truncated': true,
+      });
+      expect(sales.refundedMinor, 2675);
+      expect(sales.refundedOrgMinor, 2500);
+      expect(sales.truncated, isTrue);
+      for (final json in <Map<String, dynamic>>[
+        {},
+        {
+          'refundedMinor': 'bad',
+          'refundedOrgMinor': <String, dynamic>{},
+          'truncated': 'true',
+        },
+      ]) {
+        final sales = TicketSales.fromJson(json);
+        expect(sales.refundedMinor, 0);
+        expect(sales.refundedOrgMinor, 0);
+        expect(sales.truncated, isFalse);
+      }
+    },
+  );
+
   test('reserve, pay, and check in paid tickets exactly once', () async {
     final before = DateTime.now();
     final reservation = await repo.reserveTickets(
@@ -110,6 +137,9 @@ void main() {
     expect(sales.grossMinor, 5000);
     expect(sales.feeMinor, 350);
     expect(sales.netMinor, 5000);
+    expect(sales.refundedMinor, 0);
+    expect(sales.refundedOrgMinor, 0);
+    expect(sales.truncated, isFalse);
 
     final wrongEvent = await repo.organizerCheckIn(
       gigId: 'g1',
