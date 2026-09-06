@@ -27,9 +27,11 @@ type Actor = (typeof ACTORS)[number];
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
+  vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
 });
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   vi.clearAllTimers();
   vi.useRealTimers();
   vi.unstubAllEnvs();
@@ -324,6 +326,15 @@ describe("safety reporting", () => {
       expect((await f.readReport(reportId))?.text).toHaveLength(length);
     },
   );
+
+  test("refuses reports while private bookings are disabled", async () => {
+    const f = await setupSafety();
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "false");
+    await expect(f.report("artist")).rejects.toThrow(
+      "Private bookings are not available yet",
+    );
+    expect(await f.emails()).toEqual([]);
+  });
 
   test("saves the report without scheduling mail when the reporter has no email", async () => {
     const f = await setupSafety();

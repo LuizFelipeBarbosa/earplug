@@ -15,6 +15,7 @@ import {
 } from "./lib/authz";
 import { appBaseUrl } from "./lib/env";
 import { requireUser } from "./lib/helpers";
+import { requirePrivateBookingsEnabled } from "./talentOpportunities";
 
 const REPORT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const sideValidator = v.union(v.literal("organizer"), v.literal("artist"));
@@ -78,6 +79,7 @@ export const report = mutation({
   },
   returns: v.object({ reportId: v.id("safetyReports") }),
   handler: async (ctx, args) => {
+    requirePrivateBookingsEnabled();
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
     const user = await requireUser(ctx);

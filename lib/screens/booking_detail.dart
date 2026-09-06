@@ -655,7 +655,7 @@ class _BookingSafetySection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (booking.status.isLive) ...[
+        if (booking.status.isLive && app.privateBookingsEnabled) ...[
           const SizedBox(height: 20),
           EpButton(
             'REPORT A SAFETY CONCERN',
