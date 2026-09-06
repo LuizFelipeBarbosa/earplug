@@ -10,6 +10,7 @@ enum PendingKind {
   join,
   gigInvite,
   orgApply,
+  hostApply,
   orgJoin,
   booking,
 }
@@ -40,6 +41,7 @@ mixin _SessionState on _AppStateCore {
   void resetTo(Screen s);
   Future<void> refreshOrganizationApplication();
   Future<void> refreshGigWritePolicy();
+  Future<void> loadFeatureFlags();
 
   int _sessionGeneration = 0;
 
@@ -70,6 +72,7 @@ mixin _SessionState on _AppStateCore {
           (Object error) => logError('refreshAuth', error),
         ),
       );
+      unawaited(loadFeatureFlags());
     }
     notifyListeners();
   }
@@ -86,6 +89,7 @@ mixin _SessionState on _AppStateCore {
       _restartOrganizations();
       unawaited(refreshOrganizationApplication());
       unawaited(refreshGigWritePolicy());
+      unawaited(loadFeatureFlags());
       unawaited(_refreshPlatformAdmin(sessionGeneration));
       await _refreshProfile(sessionGeneration: sessionGeneration);
       if (!_isCurrentSession(sessionGeneration)) return false;
@@ -288,6 +292,8 @@ mixin _SessionState on _AppStateCore {
         _postAuthScreen = Screen.gigInvite;
       case PendingKind.orgApply:
         _postAuthScreen = Screen.orgApply;
+      case PendingKind.hostApply:
+        _postAuthScreen = Screen.hostApply;
       case PendingKind.orgJoin:
       case PendingKind.booking:
         // Pop back to the requested invitation or booking after authentication.

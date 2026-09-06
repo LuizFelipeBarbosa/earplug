@@ -20,7 +20,9 @@ void main() {
     expect(harness.app.browse.status, DataStatus.ready);
     expect(harness.app.browse.items.map((item) => item.opportunity.id), [
       'opp1',
+      'opp-private',
     ]);
+    expect(harness.app.browse.privateCount, 1);
     harness.app.dispose();
   });
 
@@ -44,8 +46,14 @@ void main() {
       contains('opp3'),
     );
     expect(
-      harness.app.browse.items.single.myApplicationStatus,
+      harness.app.browse.items
+          .firstWhere((item) => item.opportunity.id == 'opp1')
+          .myApplicationStatus,
       ArtistApplicationStatus.submitted,
+    );
+    expect(
+      harness.app.browse.items.map((item) => item.opportunity.id),
+      contains('opp-private'),
     );
     harness.app.dispose();
   });
@@ -498,6 +506,14 @@ void main() {
 
 class _ControlledOpportunityRepository extends DemoRepository {
   _ControlledOpportunityRepository({required super.auth});
+
+  @override
+  Future<FeatureFlags> featureFlags() async => const FeatureFlags(
+    privateBookings: false,
+    tickets: true,
+    payments: true,
+    bandGigWrites: true,
+  );
 
   int browseCalls = 0;
   int invitedCalls = 0;

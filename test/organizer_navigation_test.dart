@@ -183,6 +183,41 @@ void main() {
     expect(harness.app.identity, isA<OrganizerIdentity>());
   });
 
+  testWidgets(
+    'private locations and safety screens use their identity shells',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = DemoRepository(auth: auth)..platformAdmin = true;
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const RootShell(),
+      );
+      await enterOrganizer(tester, harness, 'org2');
+
+      for (final screen in [
+        Screen.privateLocations,
+        Screen.privateLocationEdit,
+      ]) {
+        harness.app.go(screen);
+        await tester.pumpAndSettle();
+
+        expect(harness.app.current.screen, screen);
+        expect(harness.app.identity, isA<OrganizerIdentity>());
+        expect(find.byType(OrganizerTabBar), findsOneWidget);
+        expect(find.byKey(ValueKey('${screen.name}-null')), findsOneWidget);
+      }
+
+      harness.app.go(Screen.adminSafety);
+      await tester.pumpAndSettle();
+
+      expect(harness.app.identity, isA<AdminIdentity>());
+      expect(find.byType(OrganizerTabBar), findsNothing);
+      expect(find.byKey(const ValueKey('adminSafety-null')), findsOneWidget);
+    },
+  );
+
   testWidgets('opportunity details use the selected fan or band shell', (
     tester,
   ) async {

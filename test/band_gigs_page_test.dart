@@ -247,7 +247,11 @@ void main() {
       findsOneWidget,
     );
     expect(
-      harness.app.browse.items.single.myApplicationStatus?.isActive ?? false,
+      harness.app.browse.items
+              .firstWhere((item) => item.opportunity.id == 'opp1')
+              .myApplicationStatus
+              ?.isActive ??
+          false,
       isFalse,
     );
     harness.app.dispose();

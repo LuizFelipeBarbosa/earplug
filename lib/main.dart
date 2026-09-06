@@ -765,10 +765,13 @@ class RootShell extends StatelessWidget {
       Screen.gigCreate => GigCreateScreen(key: key),
       Screen.analytics => AnalyticsScreen(key: key),
       Screen.orgApply => OrgApplyScreen(key: key),
+      Screen.hostApply => SizedBox.shrink(key: key),
       Screen.orgApplicationStatus => OrgApplicationStatusScreen(key: key),
       Screen.orgJoin => OrgJoinScreen(key: key, token: entry.param!),
       Screen.orgDash => OrgDashScreen(key: key),
       Screen.orgVenues => OrgVenuesScreen(key: key),
+      Screen.privateLocations => SizedBox.shrink(key: key),
+      Screen.privateLocationEdit => SizedBox.shrink(key: key),
       Screen.orgVenueEdit => OrgVenueEditScreen(
         key: key,
         venueId: entry.param!,
@@ -819,6 +822,7 @@ class RootShell extends StatelessWidget {
         orderId: entry.param!,
       ),
       Screen.adminQueue => AdminQueueScreen(key: key),
+      Screen.adminSafety => SizedBox.shrink(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,
         applicationId: entry.param!,

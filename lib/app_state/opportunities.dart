@@ -5,6 +5,9 @@ part of '../app_state.dart';
 mixin _OpportunityState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   String get bandId;
+  bool isAdminOf(String id);
+  List<String> get myBands;
+  bool get privateBookingsEnabled;
   void go(Screen s, [String? param]);
 
   final Map<String, List<Opportunity>> _opportunitiesByOrg = {};
@@ -83,7 +86,10 @@ mixin _OpportunityState on _AppStateCore {
 
   void setBrowseFilters(OpportunityFilters filters) {
     browseFilters = filters;
-    browse = const OpportunityBrowseState(status: DataStatus.connecting);
+    browse = OpportunityBrowseState(
+      status: DataStatus.connecting,
+      privateCount: browse.privateCount,
+    );
     notifyListeners();
     unawaited(refreshBrowse());
   }
@@ -106,11 +112,44 @@ mixin _OpportunityState on _AppStateCore {
           ? const <BrowseItem>[]
           : await repository.invitedOpportunities(requestedBandId);
       if (_disposed || !identical(_browseLoadToken, token)) return;
+
+      var privateItems = const <BrowseItem>[];
+      if (requestedBandId.isNotEmpty &&
+          myBands.any(isAdminOf) &&
+          privateBookingsEnabled) {
+        try {
+          final privatePage = await repository.browseOpportunities(
+            bandId: requestedBandId,
+            filters: browseFilters,
+            mode: OpportunityMode.privateBooking,
+          );
+          if (_disposed || !identical(_browseLoadToken, token)) return;
+          privateItems = privatePage.items;
+        } catch (error) {
+          logError('browseOpportunities:private', error);
+        }
+        if (_disposed || !identical(_browseLoadToken, token)) return;
+      }
+
+      final itemsById = {
+        for (final item in page.items) item.opportunity.id: item,
+      };
+      var privateCount = 0;
+      for (final item in privateItems) {
+        if (itemsById.containsKey(item.opportunity.id)) continue;
+        itemsById[item.opportunity.id] = item;
+        privateCount++;
+      }
+      final items = itemsById.values.toList()
+        ..sort(
+          (a, b) => a.opportunity.startsAt.compareTo(b.opportunity.startsAt),
+        );
       browse = OpportunityBrowseState(
-        items: page.items,
+        items: items,
         invited: invited,
         cursor: page.continueCursor,
         isDone: page.isDone,
+        privateCount: privateCount,
         status: DataStatus.ready,
       );
     } catch (error) {
@@ -139,6 +178,7 @@ mixin _OpportunityState on _AppStateCore {
         invited: browse.invited,
         cursor: page.continueCursor,
         isDone: page.isDone,
+        privateCount: browse.privateCount,
         status: DataStatus.ready,
       );
     } catch (error) {
@@ -183,6 +223,7 @@ mixin _OpportunityState on _AppStateCore {
       invited: browse.invited,
       cursor: browse.cursor,
       isDone: browse.isDone,
+      privateCount: browse.privateCount,
       status: DataStatus.error,
       error: '$error',
     );
@@ -278,6 +319,7 @@ class OpportunityBrowseState {
     this.invited = const [],
     this.cursor,
     this.isDone = false,
+    this.privateCount = 0,
     this.status = DataStatus.connecting,
     this.error,
   });
@@ -286,6 +328,7 @@ class OpportunityBrowseState {
   final List<BrowseItem> invited;
   final String? cursor;
   final bool isDone;
+  final int privateCount;
   final DataStatus status;
   final String? error;
 }

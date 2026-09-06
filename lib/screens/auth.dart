@@ -801,7 +801,7 @@ class _ThroughStep extends StatelessWidget {
               PendingKind.band => "LET'S START YOUR BAND",
               PendingKind.join || PendingKind.orgJoin => 'READY TO JOIN',
               PendingKind.gigInvite => 'READY TO CLAIM',
-              PendingKind.orgApply => 'READY TO APPLY',
+              PendingKind.orgApply || PendingKind.hostApply => 'READY TO APPLY',
               PendingKind.booking => 'BOOKING READY',
               PendingKind.tickets => 'TICKETS READY',
               PendingKind.myGigs || null => 'ACCOUNT READY',
