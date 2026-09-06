@@ -235,6 +235,10 @@ mixin _FanState on _AppStateCore {
     }
   }
 
+  void requestTickets(String gigId) {
+    needAuth(PendingAuth(PendingKind.tickets, gigId));
+  }
+
   void toggleFollow(String id) {
     if (_toggleOptimistically(
       getIds: () => follows,

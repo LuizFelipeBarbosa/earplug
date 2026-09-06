@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/opportunity_labels.dart';
 import '../widgets/sheets.dart';
+import 'door_mode.dart';
 
 class OrgOpportunitiesScreen extends StatefulWidget {
   const OrgOpportunitiesScreen({super.key});
@@ -414,16 +415,3 @@ Future<bool> _confirm(BuildContext context, String title, String body) async =>
       ),
     ) ??
     false;
-
-// TODO(c4-door): remove once door_mode exports it
-Future<void> showOrganizerDoorMode(
-  BuildContext context, {
-  required String gigId,
-  required String gigTitle,
-  required String venueName,
-  required String doorsTime,
-}) async {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text('Door mode for $gigTitle — coming soon')),
-  );
-}

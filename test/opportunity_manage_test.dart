@@ -4,6 +4,7 @@ import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
+import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/screens/opportunity_applicants.dart';
 import 'package:earplug/screens/org_opportunities.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -79,60 +80,64 @@ void main() {
     harness.app.dispose();
   });
 
-  testWidgets('published paid opportunities load sales and offer a door action', (
-    tester,
-  ) async {
-    final harness = await _pumpOrganizerScreen(
-      tester,
-      const SizedBox.shrink(),
-      repositoryBuilder: (auth) => _PublishedOpportunityRepository(auth: auth),
-    );
-    final repository =
-        harness.app.repository as _PublishedOpportunityRepository;
-    final reservation = await repository.reserveTickets(
-      gigId: 'g8',
-      quantity: 2,
-    );
-    final checkout = await repository.startTicketCheckout(reservation.orderId);
-    await repository.simulateTicketCheckoutCompleted(checkout.sessionId);
-    final expected = await repository.ticketSalesForGig('g8');
-    final readsBeforeScreen = repository.salesReads;
-    expect(expected.sold, greaterThan(0));
-    expect(expected.netMinor, greaterThan(0));
-    expect(harness.app.salesFor('g8'), isNull);
+  testWidgets(
+    'published paid opportunities load sales and offer a door action',
+    (tester) async {
+      final harness = await _pumpOrganizerScreen(
+        tester,
+        const SizedBox.shrink(),
+        repositoryBuilder: (auth) =>
+            _PublishedOpportunityRepository(auth: auth),
+      );
+      final repository =
+          harness.app.repository as _PublishedOpportunityRepository;
+      final reservation = await repository.reserveTickets(
+        gigId: 'g8',
+        quantity: 2,
+      );
+      final checkout = await repository.startTicketCheckout(
+        reservation.orderId,
+      );
+      await repository.simulateTicketCheckoutCompleted(checkout.sessionId);
+      final expected = await repository.ticketSalesForGig('g8');
+      final readsBeforeScreen = repository.salesReads;
+      expect(expected.sold, greaterThan(0));
+      expect(expected.netMinor, greaterThan(0));
+      expect(harness.app.salesFor('g8'), isNull);
 
-    await tester.pumpWidget(
-      ChangeNotifierProvider<AppState>.value(
-        value: harness.app,
-        child: MaterialApp(
-          theme: buildEpTheme(),
-          home: const Scaffold(body: OrgOpportunitiesScreen()),
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppState>.value(
+          value: harness.app,
+          child: MaterialApp(
+            theme: buildEpTheme(),
+            home: const Scaffold(body: OrgOpportunitiesScreen()),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final caption = find.byKey(const Key('org-opp-sales-opp1'));
-    await tester.ensureVisible(caption);
-    expect(
-      tester.widget<Text>(caption).data,
-      '${expected.sold}/${expected.capacity} sold · ${expected.net.label} net',
-    );
-    expect(repository.salesReads, readsBeforeScreen + 1);
-    expectNoFieldInCard(tester);
+      );
+      await tester.pumpAndSettle();
+      final caption = find.byKey(const Key('org-opp-sales-opp1'));
+      await tester.ensureVisible(caption);
+      expect(
+        tester.widget<Text>(caption).data,
+        '${expected.sold}/${expected.capacity} sold · ${expected.net.label} net',
+      );
+      expect(repository.salesReads, readsBeforeScreen + 1);
+      expectNoFieldInCard(tester);
 
-    await harness.app.refreshOpportunities('org1');
-    await tester.pumpAndSettle();
-    expect(repository.salesReads, readsBeforeScreen + 1);
-    await _chooseOpportunityAction(tester, 'opp1', 'DOOR');
-    expect(
-      find.text(
-        'Door mode for ${DemoData.opportunities['opp1']!.title} — coming soon',
-      ),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-    harness.app.dispose();
-  });
+      await harness.app.refreshOpportunities('org1');
+      await tester.pumpAndSettle();
+      expect(repository.salesReads, readsBeforeScreen + 1);
+      await _chooseOpportunityAction(tester, 'opp1', 'DOOR');
+      expect(find.byType(DoorModeScreen), findsOneWidget);
+      expect(
+        tester.widget<DoorModeScreen>(find.byType(DoorModeScreen)).launch.gigId,
+        'g8',
+      );
+      expect(find.text(DemoData.opportunities['opp1']!.title), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      harness.app.dispose();
+    },
+  );
 
   for (final published in [false, true]) {
     testWidgets(

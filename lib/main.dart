@@ -48,6 +48,8 @@ import 'screens/org_venues.dart';
 import 'screens/review_compose.dart';
 import 'screens/settings.dart';
 import 'screens/stripe_return.dart';
+import 'screens/ticket_detail.dart';
+import 'screens/ticket_return.dart';
 import 'screens/venue_detail.dart';
 import 'services/appearance_controller.dart';
 import 'services/auth_service.dart';
@@ -741,10 +743,16 @@ class RootShell extends StatelessWidget {
         bookingId: entry.param!,
       ),
       Screen.stripeReturn => StripeReturnScreen(key: key, param: entry.param!),
-      Screen.myTickets => SizedBox.shrink(key: key),
-      Screen.ticket => SizedBox.shrink(key: key),
-      Screen.ticketCheckoutReturn => SizedBox.shrink(key: key),
-      Screen.ticketCheckoutCancel => SizedBox.shrink(key: key),
+      Screen.myTickets => MyGigsScreen(key: key),
+      Screen.ticket => TicketDetailScreen(key: key, ticketId: entry.param!),
+      Screen.ticketCheckoutReturn => TicketCheckoutReturnScreen(
+        key: key,
+        sessionId: entry.param!,
+      ),
+      Screen.ticketCheckoutCancel => TicketCheckoutCancelScreen(
+        key: key,
+        orderId: entry.param!,
+      ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,

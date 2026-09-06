@@ -810,6 +810,7 @@ class _ThroughStep extends StatelessWidget {
               PendingKind.gigInvite => 'READY TO CLAIM',
               PendingKind.orgApply => 'READY TO APPLY',
               PendingKind.booking => 'BOOKING READY',
+              PendingKind.tickets => 'TICKETS READY',
               PendingKind.myGigs || null => 'ACCOUNT READY',
             }, style: epDisplay(size: 19)),
           ],

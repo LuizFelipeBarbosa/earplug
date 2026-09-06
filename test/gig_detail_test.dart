@@ -284,7 +284,7 @@ void main() {
     await tester.tap(find.byKey(const Key('gig-buy-tickets')));
     await tester.pumpAndSettle();
 
-    expect(harness.app.pending?.kind, PendingKind.rsvp);
+    expect(harness.app.pending?.kind, PendingKind.tickets);
     expect(harness.app.pending?.id, 'g8');
     expect(find.byKey(const Key('ticket-hold')), findsNothing);
   });
