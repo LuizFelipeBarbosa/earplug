@@ -151,10 +151,12 @@ class _AdminApplicationScreenState extends State<AdminApplicationScreen> {
   }
 
   Future<void> _showApproval() async {
+    final isHost = _application?.kind == ApplicationKind.host;
     var confirmed = false;
     await showEpSheet(
       context,
       (_) => _ApprovalSheet(
+        isHost: isHost,
         onConfirm: () async {
           final succeeded = await _performDecision(
             ApplicationDecision.approved,
@@ -165,7 +167,9 @@ class _AdminApplicationScreenState extends State<AdminApplicationScreen> {
       ),
     );
     if (!confirmed || !mounted) return;
-    context.read<AppState>().say('Organization created.');
+    context.read<AppState>().say(
+      isHost ? 'Host account created.' : 'Organization created.',
+    );
     await _refresh();
   }
 
@@ -254,7 +258,10 @@ class _AdminApplicationScreenState extends State<AdminApplicationScreen> {
         if (_loading) const LinearProgressIndicator(),
         _OrganizationSection(application: application),
         _ContactSection(application: application),
-        _VenueSection(venue: application.venue),
+        if (application.kind == ApplicationKind.host)
+          _HostDetailsSection(application: application)
+        else
+          _VenueSection(venue: application.venue),
         _DocumentsSection(documents: application.documents),
         _ReviewSection(
           application: application,
@@ -314,6 +321,40 @@ class _ContactSection extends StatelessWidget {
           _DetailValue(label: 'Email', value: application.businessEmail),
           if (application.phone case final phone?)
             _DetailValue(label: 'Phone', value: phone),
+        ],
+      ),
+    );
+  }
+}
+
+class _HostDetailsSection extends StatelessWidget {
+  const _HostDetailsSection({required this.application});
+
+  final OrganizationApplication application;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DetailSection(
+      label: 'HOST DETAILS',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _DetailValue(
+            label: 'Display name',
+            value: application.hostDisplayName ?? '',
+          ),
+          if (application.hostPhone case final phone?)
+            _DetailValue(label: 'Phone', value: phone),
+          _DetailValue(label: 'Area', value: application.hostArea ?? ''),
+          if (application.hostAgreementAcceptedAt case final acceptedAt?)
+            _DetailValue(
+              label: 'Agreement accepted',
+              value: dateLabel(acceptedAt),
+            ),
+          _DetailValue(
+            label: 'Contact email',
+            value: application.businessEmail,
+          ),
         ],
       ),
     );
@@ -482,7 +523,8 @@ class _ReviewSection extends StatelessWidget {
               organization != null) ...[
             const SizedBox(height: 12),
             Text(
-              'Organization created — ${organization.name} '
+              '${application.kind == ApplicationKind.host ? 'Host account' : 'Organization'} '
+              'created — ${organization.name} '
               '(${organization.slug})',
             ),
           ],
@@ -700,8 +742,9 @@ class _DecisionNoteSheetState extends State<_DecisionNoteSheet> {
 }
 
 class _ApprovalSheet extends StatefulWidget {
-  const _ApprovalSheet({required this.onConfirm});
+  const _ApprovalSheet({required this.isHost, required this.onConfirm});
 
+  final bool isHost;
   final Future<bool> Function() onConfirm;
 
   @override
@@ -730,7 +773,11 @@ class _ApprovalSheetState extends State<_ApprovalSheet> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('This creates the organization and its venue.'),
+          Text(
+            widget.isHost
+                ? 'This creates the host account.'
+                : 'This creates the organization and its venue.',
+          ),
           const SizedBox(height: 14),
           EpButton(
             'CONFIRM',

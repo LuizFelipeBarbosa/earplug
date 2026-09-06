@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
+import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 void main() {
@@ -670,6 +671,204 @@ void main() {
 
       await _reveal(tester, find.byKey(const Key('opp-edit-ticketing-paid')));
       expect(find.byKey(const Key('opp-edit-update-ticketing')), findsNothing);
+      await _disposeApp(tester, harness.app);
+    },
+  );
+
+  testWidgets(
+    'new host requests show locations and omit all ticketing controls',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const OpportunityEditScreen(opportunityId: 'new'),
+        beforePump: (app) => app.switchToOrganization('org2'),
+      );
+
+      expect(find.text('NEW REQUEST'), findsOneWidget);
+      expect(find.text('LOCATION'), findsOneWidget);
+      expect(
+        find.byKey(const Key('opp-location-private-location-org2')),
+        findsOneWidget,
+      );
+      expect(find.text('VENUE'), findsNothing);
+      expect(
+        find.text(
+          'Artists see the area only. The exact address is shared after the deposit.',
+        ),
+        findsOneWidget,
+      );
+      await _reveal(tester, find.byKey(const Key('opp-edit-attendance')));
+      expect(find.text('EXPECTED GUESTS'), findsOneWidget);
+      expectNoFieldInCard(tester);
+      // Inspect the section immediately after attendance so lazy scrolling
+      // cannot make an offscreen ticketing section look absent.
+      await _reveal(tester, find.text('VISIBILITY'));
+      expect(find.text('TICKETING'), findsNothing);
+      for (final ticketing in ['none', 'rsvp', 'external', 'paid']) {
+        expect(find.byKey(Key('opp-edit-ticketing-$ticketing')), findsNothing);
+      }
+      expect(find.byKey(const Key('opp-edit-ticket-price')), findsNothing);
+      expect(find.byKey(const Key('opp-edit-ticket-capacity')), findsNothing);
+      expect(find.byKey(const Key('opp-edit-external-url')), findsNothing);
+      expect(
+        find.text('Connect Stripe in SETTINGS to sell tickets'),
+        findsNothing,
+      );
+      await _disposeApp(tester, harness.app);
+    },
+  );
+
+  testWidgets(
+    'private draft save requires a deadline and a fee for every slot',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      final beforeCount = (await repository.manageOpportunities('org2')).length;
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const OpportunityEditScreen(opportunityId: 'new'),
+        beforePump: (app) => app.switchToOrganization('org2'),
+      );
+
+      await _tapAction(tester, 'save');
+      expect(find.byKey(const Key('opp-edit-feedback')), findsOneWidget);
+      expect(
+        find.text(
+          'Needs: title, location, date, deadline, a fee for every slot',
+        ),
+        findsWidgets,
+      );
+      await _tap(tester, 'opp-edit-slot-add');
+      await _tapAction(tester, 'save');
+      expect(
+        find.textContaining('deadline, a fee for every slot'),
+        findsWidgets,
+      );
+      await _enterText(tester, 'opp-edit-slot-0-guarantee', '150');
+      await _tap(tester, 'opp-edit-slot-add');
+      await _tapAction(tester, 'save');
+      expect(find.textContaining('a fee for every slot'), findsWidgets);
+      await _enterText(tester, 'opp-edit-slot-1-guarantee', '50');
+      await _tapAction(tester, 'save');
+      expect(find.textContaining('a fee for every slot'), findsNothing);
+      expect(find.text('Needs: title, location, date, deadline'), findsWidgets);
+      expect(
+        await repository.manageOpportunities('org2'),
+        hasLength(beforeCount),
+      );
+      await _disposeApp(tester, harness.app);
+    },
+  );
+
+  testWidgets(
+    'complete private request saves its location and paid slot without tickets',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const OpportunityEditScreen(opportunityId: 'new'),
+        beforePump: (app) => app.switchToOrganization('org2'),
+      );
+      final beforeCount = (await repository.manageOpportunities('org2')).length;
+
+      await _enterText(tester, 'opp-edit-title', 'Courtyard birthday');
+      await _tap(tester, 'opp-location-private-location-org2');
+      final date = _futureDate(30);
+      await _pickDate(tester, 'opp-edit-date', date);
+      await _tap(tester, 'opp-edit-start');
+      expect(find.byType(TimePickerDialog), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'OK'));
+      await tester.pumpAndSettle();
+      await _tap(tester, 'opp-edit-slot-add');
+      await _enterText(tester, 'opp-edit-slot-0-guarantee', '150');
+      await _enterText(tester, 'opp-edit-attendance', '35');
+      expectNoFieldInCard(tester);
+
+      // Private deadlines must be explicit and strictly before the start.
+      await _tapAction(tester, 'save');
+      expect(find.text('Needs: deadline'), findsWidgets);
+      expect(
+        await repository.manageOpportunities('org2'),
+        hasLength(beforeCount),
+      );
+      await _pickDate(tester, 'opp-edit-deadline', _futureDate(31));
+      await _tapAction(tester, 'save');
+      expect(find.text('Needs: deadline'), findsWidgets);
+      expect(
+        await repository.manageOpportunities('org2'),
+        hasLength(beforeCount),
+      );
+      final deadline = _futureDate(20);
+      await _pickDate(tester, 'opp-edit-deadline', deadline);
+      await _tapAction(tester, 'save');
+
+      final saved = (await repository.manageOpportunities('org2')).singleWhere(
+        (opportunity) => opportunity.title == 'Courtyard birthday',
+      );
+      final loaded = (await repository.opportunity(saved.id))!;
+      expect(loaded.mode, OpportunityMode.privateBooking);
+      expect(loaded.privateEvent, isTrue);
+      expect(loaded.privateLocationId, 'private-location-org2');
+      expect(loaded.ticketing, OpportunityTicketing.none);
+      expect(loaded.venueId, isNull);
+      expect(loaded.venue, isNull);
+      expect(loaded.expectedAttendance, 35);
+      expect(loaded.slots.single.guaranteeMinor, 15000);
+      expect(loaded.startsAt, DateTime(date.year, date.month, date.day, 21));
+      expect(loaded.applicationsCloseAt, deadline);
+      expect(loaded.status, OpportunityStatus.draft);
+      expect(
+        harness.app
+            .opportunitiesFor('org2')
+            .map((opportunity) => opportunity.id),
+        contains(saved.id),
+      );
+      await _reveal(tester, find.byKey(const Key('opp-edit-title')));
+      expect(find.text('NEW REQUEST'), findsNothing);
+      expect(find.text('Courtyard birthday'), findsWidgets);
+      await _disposeApp(tester, harness.app);
+    },
+  );
+
+  testWidgets(
+    'existing private request retains its mode and location on update',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const OpportunityEditScreen(opportunityId: 'opp-private'),
+        beforePump: (app) => app.switchToOrganization('org2'),
+      );
+      final location = tester.widget<EpChip>(
+        find.byKey(const Key('opp-location-private-location-org2')),
+      );
+      expect(location.active, isTrue);
+      expect(location.onTap, isNull);
+      await _enterText(tester, 'opp-edit-title', 'Updated courtyard request');
+      await _tapAction(tester, 'save');
+
+      final saved = (await repository.opportunity('opp-private'))!;
+      expect(saved.title, 'Updated courtyard request');
+      expect(saved.mode, OpportunityMode.privateBooking);
+      expect(saved.privateLocationId, 'private-location-org2');
+      expect(saved.venueId, isNull);
+      expect(saved.ticketing, OpportunityTicketing.none);
       await _disposeApp(tester, harness.app);
     },
   );

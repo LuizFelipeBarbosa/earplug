@@ -43,6 +43,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   OpportunityStatus _status = OpportunityStatus.draft;
   List<Venue> _venues = const [];
   String? _venueId;
+  List<PrivateLocation> _privateLocations = const [];
+  String? _privateLocationId;
+  bool _isPrivate = false;
   DateTime? _date;
   TimeOfDay _doors = const TimeOfDay(hour: 20, minute: 0);
   TimeOfDay _start = const TimeOfDay(hour: 21, minute: 0);
@@ -99,8 +102,18 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
 
   List<String> get _saveNeeds => [
     if (_title.text.trim().isEmpty) 'title',
-    if (_venueId == null) 'venue',
+    if (_isPrivate) ...[
+      if (_privateLocationId == null) 'location',
+    ] else ...[
+      if (_venueId == null) 'venue',
+    ],
     if (_startsAt == null) 'date',
+    if (_isPrivate) ...[
+      if (!_validDeadline) 'deadline',
+      if (_slots.isEmpty ||
+          _slots.any((slot) => slot.input.guaranteeMinor <= 0))
+        'a fee for every slot',
+    ],
     if (_ticketing == OpportunityTicketing.paid) ...[
       if (_ticketPriceError != null) 'ticket price',
       if (_ticketCapacityError != null) 'ticket capacity',
@@ -110,7 +123,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   List<String> get _openNeeds => [
     ..._saveNeeds,
     if (_slots.isEmpty) 'at least one slot',
-    if (!_validDeadline) 'deadline before start',
+    if (!_isPrivate && !_validDeadline) 'deadline before start',
   ];
 
   @override
@@ -155,6 +168,12 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       if (opportunity != null && opportunity.organizationId != organizationId) {
         throw StateError('This opportunity belongs to another organization.');
       }
+      final isPrivate = opportunity == null
+          ? app.currentIsHost
+          : opportunity.mode == OpportunityMode.privateBooking;
+      final privateLocations = isPrivate
+          ? await app.repository.privateLocationsFor(organizationId)
+          : const <PrivateLocation>[];
       final bands = <String, Band>{};
       for (final bandId in opportunity?.invitedBandIds ?? <String>[]) {
         final band = await app.repository.band(bandId);
@@ -163,6 +182,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       if (!mounted || key != _loadedKey) return;
       setState(() {
         _venues = dashboard.venues;
+        _privateLocations = privateLocations;
         _stripeChargesEnabled = dashboard.verification.stripeChargesEnabled;
         _bands
           ..clear()
@@ -180,6 +200,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   }
 
   void _populate(Opportunity? opportunity) {
+    _isPrivate = opportunity != null
+        ? opportunity.mode == OpportunityMode.privateBooking
+        : context.read<AppState>().currentIsHost;
     _saved = opportunity == null
         ? null
         : (opportunityId: opportunity.id, slug: opportunity.slug);
@@ -200,6 +223,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
           );
     _ticketCapacity.text = opportunity?.ticketCapacity?.toString() ?? '';
     _venueId = opportunity?.venueId;
+    _privateLocationId = opportunity?.privateLocationId;
     _date = opportunity?.startsAt.toLocal();
     _start = opportunity == null
         ? const TimeOfDay(hour: 21, minute: 0)
@@ -210,7 +234,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     _deadline = opportunity?.applicationsCloseAt.toLocal();
     _deadlineTouched = opportunity != null;
     _age = opportunity?.ageRequirement ?? AgeRequirement.allAges;
-    _ticketing = opportunity?.ticketing ?? OpportunityTicketing.rsvp;
+    _ticketing = _isPrivate
+        ? OpportunityTicketing.none
+        : opportunity?.ticketing ?? OpportunityTicketing.rsvp;
     _visibility =
         opportunity?.visibility ?? OpportunityVisibility.publicListing;
     _genres
@@ -288,7 +314,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         _deadlineTouched = true;
       } else {
         _date = picked;
-        if (!_deadlineTouched && _deadline == null) {
+        if (!_isPrivate && !_deadlineTouched && _deadline == null) {
           _deadline = DateTime(picked.year, picked.month, picked.day - 7);
         }
       }
@@ -374,7 +400,11 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       _saved = await app.repository.createOpportunity(
         organizationId: app.organizationId,
         title: title,
-        venueId: _venueId!,
+        venueId: _isPrivate ? null : _venueId!,
+        mode: _isPrivate
+            ? OpportunityMode.privateBooking
+            : OpportunityMode.publicEvent,
+        privateLocationId: _isPrivate ? _privateLocationId : null,
         startsAt: _startsAt!,
         doorsAt: _atTime(_doors),
         applicationsCloseAt: _deadline,
@@ -385,7 +415,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         requirements: _requirements.text.trim(),
         expectedAttendance: int.tryParse(_attendance.text.trim()),
         visibility: _visibility,
-        ticketing: _ticketing,
+        ticketing: _isPrivate ? OpportunityTicketing.none : _ticketing,
         ticketPriceMinor: ticketPriceMinor,
         ticketCapacity: ticketCapacity,
         ticketCurrency: ticketCurrency,
@@ -398,7 +428,8 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         opportunityId: _savedId!,
         expectedRevision: _revision,
         title: title,
-        venueId: _venueId,
+        venueId: _isPrivate ? null : _venueId,
+        privateLocationId: _isPrivate ? _privateLocationId : null,
         startsAt: _startsAt,
         doorsAt: _atTime(_doors),
         applicationsCloseAt: _deadline,
@@ -409,7 +440,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         requirements: _requirements.text.trim(),
         expectedAttendance: int.tryParse(_attendance.text.trim()),
         visibility: _visibility,
-        ticketing: _ticketing,
+        ticketing: _isPrivate ? OpportunityTicketing.none : _ticketing,
         ticketPriceMinor: ticketPriceMinor,
         ticketCapacity: ticketCapacity,
         ticketCurrency: ticketCurrency,
@@ -663,7 +694,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     Expanded(
                       child: Text(
                         _savedTitle.trim().isEmpty
-                            ? 'NEW OPPORTUNITY'
+                            ? (_isPrivate ? 'NEW REQUEST' : 'NEW OPPORTUNITY')
                             : _savedTitle,
                         style: Theme.of(context).textTheme.epPageHeading,
                       ),
@@ -695,22 +726,58 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     enabled: enabled,
                     onChanged: _textChanged,
                   ),
-                  const SectionBar.form(label: 'VENUE'),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: [
-                      for (final venue in _venues)
-                        EpChip(
-                          key: ValueKey('opp-edit-venue-${venue.id}'),
-                          label: venue.name,
-                          active: _venueId == venue.id,
-                          onTap: slotsEnabled
-                              ? () => _changed(() => _venueId = venue.id)
-                              : null,
-                        ),
-                    ],
-                  ),
+                  if (_isPrivate) ...[
+                    const SectionBar.form(label: 'LOCATION'),
+                    if (_privateLocations.isEmpty)
+                      EpButton(
+                        'ADD A LOCATION',
+                        key: const Key('opp-add-location'),
+                        kind: EpButtonKind.outline,
+                        onTap: slotsEnabled
+                            ? () => app.go(Screen.privateLocationEdit, 'new')
+                            : null,
+                      )
+                    else
+                      Wrap(
+                        spacing: 7,
+                        runSpacing: 7,
+                        children: [
+                          for (final location in _privateLocations)
+                            EpChip(
+                              key: ValueKey('opp-location-${location.id}'),
+                              label: location.label,
+                              active: _privateLocationId == location.id,
+                              onTap: slotsEnabled
+                                  ? () => _changed(
+                                      () => _privateLocationId = location.id,
+                                    )
+                                  : null,
+                            ),
+                        ],
+                      ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Artists see the area only. The exact address is shared after the deposit.',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  ] else ...[
+                    const SectionBar.form(label: 'VENUE'),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 7,
+                      children: [
+                        for (final venue in _venues)
+                          EpChip(
+                            key: ValueKey('opp-edit-venue-${venue.id}'),
+                            label: venue.name,
+                            active: _venueId == venue.id,
+                            onTap: slotsEnabled
+                                ? () => _changed(() => _venueId = venue.id)
+                                : null,
+                          ),
+                      ],
+                    ),
+                  ],
                   const SectionBar.form(label: 'WHEN'),
                   Wrap(
                     spacing: 8,
@@ -833,92 +900,96 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                   const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     fieldKey: const ValueKey('opp-edit-attendance'),
-                    label: 'EXPECTED ATTENDANCE',
+                    label: _isPrivate
+                        ? 'EXPECTED GUESTS'
+                        : 'EXPECTED ATTENDANCE',
                     hint: 'Optional',
                     controller: _attendance,
                     keyboardType: TextInputType.number,
                     enabled: enabled,
                     onChanged: _textChanged,
                   ),
-                  const SectionBar.form(label: 'TICKETING'),
-                  Wrap(
-                    spacing: 7,
-                    children: [
-                      for (final ticketing in [
-                        OpportunityTicketing.none,
-                        OpportunityTicketing.rsvp,
-                        OpportunityTicketing.external,
-                        OpportunityTicketing.paid,
-                      ])
-                        EpChip(
-                          key: ValueKey(
-                            'opp-edit-ticketing-${ticketing.wireValue}',
+                  if (!_isPrivate) ...[
+                    const SectionBar.form(label: 'TICKETING'),
+                    Wrap(
+                      spacing: 7,
+                      children: [
+                        for (final ticketing in [
+                          OpportunityTicketing.none,
+                          OpportunityTicketing.rsvp,
+                          OpportunityTicketing.external,
+                          OpportunityTicketing.paid,
+                        ])
+                          EpChip(
+                            key: ValueKey(
+                              'opp-edit-ticketing-${ticketing.wireValue}',
+                            ),
+                            label: ticketing.wireValue,
+                            active: _ticketing == ticketing,
+                            onTap:
+                                enabled &&
+                                    (ticketing != OpportunityTicketing.paid ||
+                                        _stripeChargesEnabled)
+                                ? () => _changed(() => _ticketing = ticketing)
+                                : null,
                           ),
-                          label: ticketing.wireValue,
-                          active: _ticketing == ticketing,
-                          onTap:
-                              enabled &&
-                                  (ticketing != OpportunityTicketing.paid ||
-                                      _stripeChargesEnabled)
-                              ? () => _changed(() => _ticketing = ticketing)
-                              : null,
+                      ],
+                    ),
+                    if (!_stripeChargesEnabled)
+                      Text(
+                        'Connect Stripe in SETTINGS to sell tickets',
+                        style: Theme.of(context).textTheme.epCaption,
+                      ),
+                    if (_ticketing == OpportunityTicketing.paid) ...[
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpFieldRow(
+                        first: EpLabeledField(
+                          fieldKey: const ValueKey('opp-edit-ticket-price'),
+                          label: 'TICKET PRICE (\$)',
+                          hint: '25',
+                          controller: _ticketPrice,
+                          keyboardType: TextInputType.number,
+                          enabled: ticketFieldsEnabled,
+                          onChanged: _textChanged,
+                          errorText: _ticketPriceError,
                         ),
+                        second: EpLabeledField(
+                          fieldKey: const ValueKey('opp-edit-ticket-capacity'),
+                          label: 'CAPACITY',
+                          hint: '100',
+                          controller: _ticketCapacity,
+                          keyboardType: TextInputType.number,
+                          enabled: ticketFieldsEnabled,
+                          onChanged: _textChanged,
+                          errorText: _ticketCapacityError,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Fans pay the EarPlug fee on top · you receive the ticket price minus Stripe processing',
+                        style: Theme.of(context).textTheme.epCaption,
+                      ),
+                      if (_ticketingEditable && canManage) ...[
+                        const SizedBox(height: 12),
+                        EpButton(
+                          'UPDATE TICKETING',
+                          key: const Key('opp-edit-update-ticketing'),
+                          onTap: _busy ? null : _updateTicketing,
+                        ),
+                      ],
                     ],
-                  ),
-                  if (!_stripeChargesEnabled)
-                    Text(
-                      'Connect Stripe in SETTINGS to sell tickets',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                  if (_ticketing == OpportunityTicketing.paid) ...[
-                    const SizedBox(height: EpLayout.fieldGap),
-                    EpFieldRow(
-                      first: EpLabeledField(
-                        fieldKey: const ValueKey('opp-edit-ticket-price'),
-                        label: 'TICKET PRICE (\$)',
-                        hint: '25',
-                        controller: _ticketPrice,
-                        keyboardType: TextInputType.number,
-                        enabled: ticketFieldsEnabled,
+                    if (_ticketing == OpportunityTicketing.external) ...[
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        fieldKey: const ValueKey('opp-edit-external-url'),
+                        label: 'EXTERNAL TICKET URL',
+                        hint: 'https://',
+                        controller: _externalUrl,
+                        keyboardType: TextInputType.url,
+                        enabled: enabled,
                         onChanged: _textChanged,
-                        errorText: _ticketPriceError,
-                      ),
-                      second: EpLabeledField(
-                        fieldKey: const ValueKey('opp-edit-ticket-capacity'),
-                        label: 'CAPACITY',
-                        hint: '100',
-                        controller: _ticketCapacity,
-                        keyboardType: TextInputType.number,
-                        enabled: ticketFieldsEnabled,
-                        onChanged: _textChanged,
-                        errorText: _ticketCapacityError,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Fans pay the EarPlug fee on top · you receive the ticket price minus Stripe processing',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                    if (_ticketingEditable && canManage) ...[
-                      const SizedBox(height: 12),
-                      EpButton(
-                        'UPDATE TICKETING',
-                        key: const Key('opp-edit-update-ticketing'),
-                        onTap: _busy ? null : _updateTicketing,
                       ),
                     ],
-                  ],
-                  if (_ticketing == OpportunityTicketing.external) ...[
-                    const SizedBox(height: EpLayout.fieldGap),
-                    EpLabeledField(
-                      fieldKey: const ValueKey('opp-edit-external-url'),
-                      label: 'EXTERNAL TICKET URL',
-                      hint: 'https://',
-                      controller: _externalUrl,
-                      keyboardType: TextInputType.url,
-                      enabled: enabled,
-                      onChanged: _textChanged,
-                    ),
                   ],
                   const SectionBar.form(label: 'VISIBILITY'),
                   Wrap(

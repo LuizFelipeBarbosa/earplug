@@ -33,6 +33,7 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
 
   OrganizationApplicationStatus _filter =
       OrganizationApplicationStatus.submitted;
+  ApplicationKind? _kind;
   AdminOverview? _overview;
   AdminApplicationPage? _page;
   List<AdminApplicationRow> _rows = const [];
@@ -75,6 +76,7 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
       final overviewFuture = app.repository.adminOverview();
       final pageFuture = app.repository.applicationsForReview(
         status: requestedFilter,
+        kind: _kind,
       );
       final overview = await overviewFuture;
       final page = await pageFuture;
@@ -108,6 +110,7 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
     try {
       final nextPage = await app.repository.applicationsForReview(
         status: requestedFilter,
+        kind: _kind,
         cursor: currentPage.continueCursor,
       );
       if (!mounted || !identical(_loadToken, token)) return;
@@ -130,6 +133,12 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
   void _selectFilter(AppState app, OrganizationApplicationStatus selected) {
     if (_filter == selected || _loading) return;
     setState(() => _filter = selected);
+    _loadFirstPage(app);
+  }
+
+  void _selectKind(AppState app, ApplicationKind? selected) {
+    if (_kind == selected || _loading) return;
+    setState(() => _kind = selected);
     _loadFirstPage(app);
   }
 
@@ -165,6 +174,13 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
                     _OverviewCards(overview: overview),
                     const SizedBox(height: 22),
                   ],
+                  EpButton(
+                    'SAFETY REPORTS',
+                    key: const Key('admin-safety-entry'),
+                    kind: EpButtonKind.outline,
+                    onTap: () => app.go(Screen.adminSafety),
+                  ),
+                  const SizedBox(height: 16),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
@@ -178,13 +194,42 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
                             key: Key(
                               'admin-queue-filter-${_filters[index].name}',
                             ),
-                            label: _statusLabel(_filters[index]),
+                            label: _statusLabel(_filters[index]).toUpperCase(),
                             active: _filter == _filters[index],
                             onTap: () => _selectFilter(app, _filters[index]),
                           ),
                           if (index < _filters.length - 1)
                             const SizedBox(width: 8),
                         ],
+                      ],
+                    ),
+                  ),
+                  const SectionBar(label: 'KIND'),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        EpChip(
+                          key: const Key('admin-queue-kind-all'),
+                          label: 'ALL',
+                          active: _kind == null,
+                          onTap: () => _selectKind(app, null),
+                        ),
+                        const SizedBox(width: 8),
+                        EpChip(
+                          key: const Key('admin-queue-kind-organization'),
+                          label: 'ORGANIZATIONS',
+                          active: _kind == ApplicationKind.organization,
+                          onTap: () =>
+                              _selectKind(app, ApplicationKind.organization),
+                        ),
+                        const SizedBox(width: 8),
+                        EpChip(
+                          key: const Key('admin-queue-kind-host'),
+                          label: 'HOSTS',
+                          active: _kind == ApplicationKind.host,
+                          onTap: () => _selectKind(app, ApplicationKind.host),
+                        ),
                       ],
                     ),
                   ),
@@ -249,6 +294,7 @@ class _OverviewCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final caption = overview.capped ? '100+' : null;
+    final hosts = overview.hostApplications;
     return Column(
       children: [
         Row(
@@ -282,6 +328,16 @@ class _OverviewCards extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            EpStatCard(
+              label: 'HOSTS',
+              value: '${hosts.submitted + hosts.underReview + hosts.needsInfo}',
+              caption: caption,
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -296,6 +352,12 @@ class _ApplicationRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final application = row.application;
+    final isHost = application.kind == ApplicationKind.host;
+    final hostDisplayName = application.hostDisplayName?.trim();
+    final heading =
+        isHost && hostDisplayName != null && hostDisplayName.isNotEmpty
+        ? hostDisplayName
+        : application.orgName;
     return EpCard(
       onTap: onTap,
       padding: const EdgeInsets.all(14),
@@ -307,10 +369,18 @@ class _ApplicationRow extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  application.orgName,
+                  heading,
                   style: Theme.of(context).textTheme.epSectionHeading,
                 ),
               ),
+              if (isHost) ...[
+                const SizedBox(width: 8),
+                StatusPill(
+                  key: Key('admin-row-${application.id}-host'),
+                  label: 'HOST',
+                  tone: EpStatusPillTone.neutral,
+                ),
+              ],
               const SizedBox(width: 10),
               StatusPill(
                 label: _statusLabel(application.status),

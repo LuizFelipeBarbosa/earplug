@@ -14,6 +14,7 @@ import 'env.dart';
 import 'errors.dart';
 import 'screens/admin_application.dart';
 import 'screens/admin_queue.dart';
+import 'screens/admin_safety.dart';
 import 'screens/analytics.dart';
 import 'screens/auth.dart';
 import 'screens/band_create.dart';
@@ -32,6 +33,7 @@ import 'screens/gig_detail.dart';
 import 'screens/gig_invite.dart';
 import 'screens/gig_manager.dart';
 import 'screens/home.dart';
+import 'screens/host_apply.dart';
 import 'screens/my_gigs.dart';
 import 'screens/opportunity_applicants.dart';
 import 'screens/opportunity_detail.dart';
@@ -47,6 +49,7 @@ import 'screens/org_team.dart';
 import 'screens/org_transactions.dart';
 import 'screens/org_venue_edit.dart';
 import 'screens/org_venues.dart';
+import 'screens/private_locations.dart';
 import 'screens/review_compose.dart';
 import 'screens/settings.dart';
 import 'screens/stripe_return.dart';
@@ -765,13 +768,16 @@ class RootShell extends StatelessWidget {
       Screen.gigCreate => GigCreateScreen(key: key),
       Screen.analytics => AnalyticsScreen(key: key),
       Screen.orgApply => OrgApplyScreen(key: key),
-      Screen.hostApply => SizedBox.shrink(key: key),
+      Screen.hostApply => HostApplyScreen(key: key),
       Screen.orgApplicationStatus => OrgApplicationStatusScreen(key: key),
       Screen.orgJoin => OrgJoinScreen(key: key, token: entry.param!),
       Screen.orgDash => OrgDashScreen(key: key),
       Screen.orgVenues => OrgVenuesScreen(key: key),
-      Screen.privateLocations => SizedBox.shrink(key: key),
-      Screen.privateLocationEdit => SizedBox.shrink(key: key),
+      Screen.privateLocations => PrivateLocationsScreen(key: key),
+      Screen.privateLocationEdit => PrivateLocationEditScreen(
+        key: key,
+        locationId: entry.param ?? 'new',
+      ),
       Screen.orgVenueEdit => OrgVenueEditScreen(
         key: key,
         venueId: entry.param!,
@@ -822,7 +828,7 @@ class RootShell extends StatelessWidget {
         orderId: entry.param!,
       ),
       Screen.adminQueue => AdminQueueScreen(key: key),
-      Screen.adminSafety => SizedBox.shrink(key: key),
+      Screen.adminSafety => AdminSafetyScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,
         applicationId: entry.param!,

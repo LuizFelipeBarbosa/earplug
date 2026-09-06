@@ -33,7 +33,8 @@ void main() {
     await harness.auth.signInDemo();
     await tester.pumpAndSettle();
 
-    expect(repository.featureFlagsCalls, 1);
+    // One load on cold start while signed out, one more on sign-in.
+    expect(repository.featureFlagsCalls, 2);
     expect(harness.app.features.bandGigWrites, isTrue);
     expect(harness.app.features.privateBookings, isFalse);
     expect(harness.app.features.tickets, isFalse);
@@ -92,7 +93,8 @@ void main() {
     repository.pendingFlags = Completer<FeatureFlags>();
     await harness.app.signOut();
     await tester.pumpAndSettle();
-    expect(repository.featureFlagsCalls, 2);
+    // Cold start, sign-in, sign-out.
+    expect(repository.featureFlagsCalls, 3);
 
     repository.pendingFlags.complete(
       const FeatureFlags(

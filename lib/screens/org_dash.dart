@@ -117,18 +117,20 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
           const SizedBox(height: 18),
           Row(
             children: [
-              EpStatCard(
-                label: 'VENUES',
-                value: '${dashboard.venues.length}',
-                caption: 'managed profiles',
-              ),
-              const SizedBox(width: 8),
-              EpStatCard(
-                label: 'MEMBERS',
-                value: '${dashboard.memberCount}',
-                caption: 'on the team',
-              ),
-              const SizedBox(width: 8),
+              if (!app.currentIsHost) ...[
+                EpStatCard(
+                  label: 'VENUES',
+                  value: '${dashboard.venues.length}',
+                  caption: 'managed profiles',
+                ),
+                const SizedBox(width: 8),
+                EpStatCard(
+                  label: 'MEMBERS',
+                  value: '${dashboard.memberCount}',
+                  caption: 'on the team',
+                ),
+                const SizedBox(width: 8),
+              ],
               Expanded(
                 child: GestureDetector(
                   key: const Key('org-dash-stat-opportunities'),
@@ -146,9 +148,10 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          const SectionBar(label: 'COMMAND CENTER'),
+          SectionBar(label: app.currentIsHost ? 'HOST' : 'COMMAND CENTER'),
           const SizedBox(height: 10),
           _CommandGrid(
+            isHost: app.currentIsHost,
             canManage: app.canManageOrganization(app.organizationId),
             canSeeFinance: app.canSeeFinance(app.organizationId),
             financeCaption: app.financeOverview == null
@@ -157,6 +160,7 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
             onFinance: app.openFinance,
             onOpportunity: app.openOpportunityEditor,
             onVenues: () => app.go(Screen.orgVenues),
+            onLocations: () => app.go(Screen.privateLocations),
             onTeam: () => app.go(Screen.orgTeam),
             onSettings: () => app.go(Screen.orgSettings),
           ),
@@ -404,31 +408,41 @@ class _LoadError extends StatelessWidget {
 
 class _CommandGrid extends StatelessWidget {
   const _CommandGrid({
+    required this.isHost,
     required this.canManage,
     required this.canSeeFinance,
     required this.financeCaption,
     required this.onFinance,
     required this.onOpportunity,
     required this.onVenues,
+    required this.onLocations,
     required this.onTeam,
     required this.onSettings,
   });
 
+  final bool isHost;
   final bool canManage;
   final bool canSeeFinance;
   final String financeCaption;
   final VoidCallback onFinance;
   final VoidCallback onOpportunity;
   final VoidCallback onVenues;
+  final VoidCallback onLocations;
   final VoidCallback onTeam;
   final VoidCallback onSettings;
 
   @override
   Widget build(BuildContext context) {
+    final settings = _Command(
+      key: const Key('org-dash-command-settings'),
+      label: 'SETTINGS',
+      icon: Icons.settings_outlined,
+      onTap: onSettings,
+    );
     final commands = [
       _Command(
         key: const Key('org-dash-command-opportunity'),
-        label: 'NEW OPPORTUNITY',
+        label: isHost ? 'NEW REQUEST' : 'NEW OPPORTUNITY',
         caption: canManage
             ? 'Post a slot for artists'
             : 'Managers post opportunities',
@@ -436,25 +450,19 @@ class _CommandGrid extends StatelessWidget {
         onTap: canManage ? onOpportunity : null,
       ),
       _Command(
-        key: const Key('org-dash-command-venues'),
-        label: 'VENUES',
+        key: Key(isHost ? 'org-dash-locations' : 'org-dash-command-venues'),
+        label: isHost ? 'LOCATIONS' : 'VENUES',
         icon: Icons.location_on_outlined,
-        onTap: onVenues,
+        onTap: isHost ? onLocations : onVenues,
       ),
-      if (canManage)
+      if (canManage && !isHost)
         _Command(
           key: const Key('org-dash-command-team'),
           label: 'TEAM',
           icon: Icons.group_outlined,
           onTap: onTeam,
         ),
-      if (canManage)
-        _Command(
-          key: const Key('org-dash-command-settings'),
-          label: 'SETTINGS',
-          icon: Icons.settings_outlined,
-          onTap: onSettings,
-        ),
+      if (canManage && !isHost) settings,
       if (canSeeFinance)
         _Command(
           key: const Key('org-dash-command-finance'),
@@ -463,6 +471,7 @@ class _CommandGrid extends StatelessWidget {
           icon: Icons.account_balance_outlined,
           onTap: onFinance,
         ),
+      if (canManage && isHost) settings,
     ];
     final singleColumn =
         MediaQuery.sizeOf(context).width < 340 ||
