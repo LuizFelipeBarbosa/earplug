@@ -65,7 +65,10 @@ for production:
 - `RESEND_SEND_ENABLED`
 - `PAYMENTS_ENABLED`
 - `TICKETS_ENABLED` — dev: `true`; prod: unset (ticketing not yet enabled in production).
-- `PRIVATE_BOOKINGS_ENABLED`
+- `PRIVATE_BOOKINGS_ENABLED` — dev: `true`; prod: unset; gates private-booking
+  opportunity creation, private-location management, and the client's
+  `features:flags.privateBookings` surface (private bookings not yet enabled
+  in production).
 - `BAND_GIG_WRITES`
 
 `convex/lib/env.ts` enforces the pairing at runtime: it refuses a `sk_live_`

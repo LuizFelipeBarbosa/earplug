@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.24)
+# EarPlug Convex function contract (FROZEN — v1.25)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -819,6 +819,37 @@ and returning `{ revision }`. It lets an organizer change ticket price and
 capacity only on a live paid opportunity: `ticketing: "paid"` and status
 `"confirmed"` or `"booking"`. Like the sibling opportunity mutations, it
 guards the change with `expectedRevision` optimistic concurrency.
+
+**v1.25 — Private booking pilot.** Phase 5 introduces hosts as organizations
+with `orgType: "privateHost"`, created from approved host applications.
+`organizationApplications:saveDraft` adds `kind`, `hostDisplayName`,
+`hostPhone`, `hostArea`, and `hostAgreementAccepted`, and
+`organizationApplications:submit` validates the saved host fields;
+`organizationApplications:listForReview` adds a `kind` filter and
+`admin:overview` returns `hostApplications`. Hosts manage locations through
+the new `privateLocations:create`, `privateLocations:update`,
+`privateLocations:remove`, and `privateLocations:forOrganization`; location
+`label`, `area`, and `city` are always visible in booking payloads, while the
+exact address is disclosed only to the organizer or to the artist while the
+booking is live. `talentOpportunities:create` adds optional
+`privateLocationId` and makes `venueId` optional so private requests use a
+private location instead of a public venue. `talentOpportunitiesRead:browse`
+adds optional `mode` to select `publicEvent` or `privateBooking` listings;
+private requests are visible there only to signed-in band admins, require
+positive guarantees and explicit application deadlines, and never create a
+fan-facing event. `bookings:cancel` adds optional `safety` for an artist's
+safety cancellation, which gives a full refund with no reliability penalty.
+`bookingsRead:get` adds required `privateLocation` and `privateEvent` keys
+and optional `cancellationKind`, with nullable `venue` because private
+bookings have no public venue; opportunity payloads also gain `privateEvent`.
+The new `safety:report` and `safety:mine` let either side file and view its
+safety reports, while `safety:listOpen`, `safety:resolve`, and
+`safety:forBookingAdmin` let platform admins triage and resolve them.
+`reviews:forBand` anonymizes private-event rows so reviews reveal no
+organizer or venue name. The new `features:flags` query returns
+`{ privateBookings, tickets, payments, bandGigWrites }`, letting the client
+gate the private-booking UI on `PRIVATE_BOOKINGS_ENABLED` without guessing
+at server-side flags.
 
 ## Reconciliation
 
