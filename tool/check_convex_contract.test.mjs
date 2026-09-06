@@ -26,7 +26,10 @@ function completeFunction(identifier, functionType) {
       entry.returns ??= { type: "array", value: { type: "object", value: {} } };
       entry.returns.value.value[fieldName] = field;
     } else if (
-      identifier === "bands.js:bySlug" || identifier === "bookingsRead.js:get"
+      identifier === "bands.js:bySlug" ||
+      identifier === "bookingsRead.js:get" ||
+      identifier === "tickets.js:orderStatus" ||
+      identifier === "gigs.js:resolvePublic"
     ) {
       entry.returns ??= {
         type: "union",
@@ -234,6 +237,16 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing payouts.js:payoutsForBand",
     "missing refunds.js:previewCancellation",
     "missing refunds.js:refundsForBooking",
+    "missing tickets.js:reserve",
+    "missing tickets.js:cancelReservation",
+    "missing tickets.js:myTickets",
+    "missing tickets.js:get",
+    "missing tickets.js:orderStatus",
+    "missing tickets.js:salesForGig",
+    "missing ticketCheckout.js:startCheckout",
+    "missing ticketCheckout.js:cancelOrder",
+    "missing ticketsDoor.js:checkIn",
+    "missing ticketsDoor.js:doorRoster",
   ]);
 });
 
