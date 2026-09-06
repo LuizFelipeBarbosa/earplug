@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -87,6 +88,8 @@ class AnalyticsScreen extends StatelessWidget {
       _bestShowTakeaway(recap),
       const SizedBox(height: 14),
       _headline(recap),
+      const SizedBox(height: 14),
+      _TicketsAndCheckInsSection(bandId: band.id),
       const SizedBox(height: 14),
       _turnoutByShow(context, recap),
       const SizedBox(height: 14),
@@ -588,31 +591,6 @@ class AnalyticsScreen extends StatelessWidget {
     ];
   }
 
-  Widget _analyticsSection({
-    required Key key,
-    required String title,
-    required Widget child,
-    Widget? trailing,
-  }) {
-    return EpCard(
-      key: key,
-      variant: EpCardVariant.raised,
-      padding: const EdgeInsets.all(14),
-      radius: 13,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SectionBar(
-            label: title,
-            trailing: trailing,
-            padding: const EdgeInsets.only(bottom: 12),
-          ),
-          child,
-        ],
-      ),
-    );
-  }
-
   static List<RecapShow> _bestShows(BandRecap recap) {
     final shows = recapSortedShows(recap);
     final best = shows.fold<int>(
@@ -675,6 +653,161 @@ class AnalyticsScreen extends StatelessWidget {
         'happened, so their lead time before the shows is unknown.';
   }
 }
+
+Widget _analyticsSection({
+  required Key key,
+  required String title,
+  required Widget child,
+  Widget? trailing,
+}) {
+  return EpCard(
+    key: key,
+    variant: EpCardVariant.raised,
+    padding: const EdgeInsets.all(14),
+    radius: 13,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SectionBar(
+          label: title,
+          trailing: trailing,
+          padding: const EdgeInsets.only(bottom: 12),
+        ),
+        child,
+      ],
+    ),
+  );
+}
+
+class _TicketsAndCheckInsSection extends StatefulWidget {
+  const _TicketsAndCheckInsSection({required this.bandId});
+
+  final String bandId;
+
+  @override
+  State<_TicketsAndCheckInsSection> createState() =>
+      _TicketsAndCheckInsSectionState();
+}
+
+class _TicketsAndCheckInsSectionState
+    extends State<_TicketsAndCheckInsSection> {
+  @override
+  void initState() {
+    super.initState();
+    unawaited(context.read<AppState>().loadMyBandInsights(widget.bandId));
+  }
+
+  @override
+  void didUpdateWidget(covariant _TicketsAndCheckInsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.bandId != widget.bandId) {
+      unawaited(context.read<AppState>().loadMyBandInsights(widget.bandId));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final insights = context.watch<AppState>().bandInsights(widget.bandId);
+    final maxEvents =
+        insights?.byPriceBand.buckets.fold<int>(
+          0,
+          (highest, bucket) => math.max(highest, bucket.events),
+        ) ??
+        0;
+
+    return _analyticsSection(
+      key: const Key('analytics-tickets'),
+      title: 'TICKETS & CHECK-INS',
+      child: insights == null
+          ? const Center(
+              child: SizedBox.square(
+                dimension: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _insightStat(
+                        context,
+                        'TICKETS SOLD',
+                        insights.ticketsSold,
+                      ),
+                    ),
+                    Expanded(
+                      child: _insightStat(
+                        context,
+                        'CHECK-INS',
+                        insights.checkIns,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  insights.returningSuppressed
+                      ? 'Returning attendees: not enough data'
+                      : 'Returning attendees: ${insights.returningAttendees}',
+                ),
+                const SizedBox(height: 10),
+                Text(_estimatedDrawLabel(insights.estimatedDraw)),
+                const SizedBox(height: 10),
+                if (insights.byPriceBand.suppressed)
+                  const _SuppressedBreakdown()
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final (i, bucket)
+                          in insights.byPriceBand.buckets.indexed) ...[
+                        if (i > 0) const SizedBox(height: 12),
+                        EpBar(
+                          label: _priceBandLabel(bucket.key),
+                          value: bucket.events,
+                          max: maxEvents,
+                          valueText: '${bucket.events}',
+                        ),
+                      ],
+                    ],
+                  ),
+                if (!insights.attribution.suppressed) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Ticket buyers: referral ${insights.attribution.referral} · '
+                    'followers ${insights.attribution.follow} · '
+                    'other ${insights.attribution.unattributed}',
+                  ),
+                ],
+              ],
+            ),
+    );
+  }
+}
+
+Widget _insightStat(BuildContext context, String label, int count) => Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    Text(label, style: Theme.of(context).textTheme.epMeta),
+    Text('$count', style: Theme.of(context).textTheme.epSectionHeading),
+  ],
+);
+
+String _estimatedDrawLabel(EstimatedDraw? draw) {
+  if (draw == null) return 'Estimated draw: No history yet';
+  final basis = draw.basis == DrawBasis.checkIns ? 'check-ins' : 'RSVPs';
+  return 'Estimated draw: ${draw.low}–${draw.high} · '
+      '${draw.confidence.wireValue} confidence · based on $basis';
+}
+
+String _priceBandLabel(String key) => switch (key) {
+  'free' => 'FREE',
+  'under20' => r'UNDER $20',
+  '20Plus' => r'$20+',
+  _ => key.toUpperCase(),
+};
 
 class _TurnoutChart extends StatelessWidget {
   const _TurnoutChart({required this.shows, required this.average});

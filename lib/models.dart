@@ -2641,12 +2641,14 @@ class FinanceSnapshot {
     required this.pendingMinor,
     required this.currency,
     required this.fetchedAt,
+    this.stale = false,
   });
 
   final int availableMinor;
   final int pendingMinor;
   final String currency;
   final DateTime fetchedAt;
+  final bool stale;
 
   factory FinanceSnapshot.fromJson(Map<String, dynamic> json) =>
       FinanceSnapshot(
@@ -2654,6 +2656,7 @@ class FinanceSnapshot {
         pendingMinor: _marketplaceInt(json['pendingMinor']),
         currency: _marketplaceString(json['currency']),
         fetchedAt: _marketplaceDate(json['fetchedAt']),
+        stale: json['stale'] == true,
       );
 
   Money get available => Money(availableMinor, currency);

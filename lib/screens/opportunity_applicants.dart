@@ -320,6 +320,10 @@ class _ApplicantCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(row.contactEmail!, style: textTheme.epCaption),
           ],
+          if (canManage) ...[
+            const SizedBox(height: 10),
+            _ApplicantInsightsSection(applicationId: application.id),
+          ],
           if (canManage &&
               (application.status.isActive ||
                   application.status == ArtistApplicationStatus.booked)) ...[
@@ -383,6 +387,165 @@ class _ApplicantCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ApplicantInsightsSection extends StatefulWidget {
+  const _ApplicantInsightsSection({required this.applicationId});
+
+  final String applicationId;
+
+  @override
+  State<_ApplicantInsightsSection> createState() =>
+      _ApplicantInsightsSectionState();
+}
+
+class _ApplicantInsightsSectionState extends State<_ApplicantInsightsSection> {
+  bool _expanded = false;
+  bool _loading = false;
+  bool _failed = false;
+  ArtistInsights? _insights;
+
+  void _toggle() {
+    setState(() => _expanded = !_expanded);
+    if (_expanded && _insights == null && !_loading && !_failed) {
+      unawaited(_load());
+    }
+  }
+
+  Future<void> _load({bool refresh = false}) async {
+    final app = context.read<AppState>();
+    final cached = app.insightsForApplication(widget.applicationId);
+    if (!refresh && cached != null) {
+      setState(() => _insights = cached);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _failed = false;
+    });
+    final insights = await app.loadApplicantInsights(
+      widget.applicationId,
+      refresh: refresh,
+    );
+    if (!mounted) return;
+    setState(() {
+      _insights = insights;
+      _loading = false;
+      _failed = insights == null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final insights = _insights;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextButton(
+          key: ValueKey('applicant-${widget.applicationId}-insights'),
+          onPressed: _toggle,
+          child: Text(_expanded ? 'HIDE INSIGHTS' : 'INSIGHTS'),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 8),
+          if (_loading)
+            const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else if (_failed) ...[
+            const Text('Could not load insights. Please retry.'),
+            TextButton(
+              key: ValueKey('applicant-${widget.applicationId}-insights-retry'),
+              onPressed: () => unawaited(_load(refresh: true)),
+              child: const Text('RETRY'),
+            ),
+          ] else if (insights != null)
+            Column(
+              key: ValueKey('applicant-${widget.applicationId}-insights-panel'),
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _insightStat(
+                        context,
+                        'EVENTS',
+                        insights.window.events,
+                      ),
+                    ),
+                    Expanded(
+                      child: _insightStat(
+                        context,
+                        'CHECK-INS',
+                        insights.checkIns,
+                      ),
+                    ),
+                    Expanded(
+                      child: _insightStat(
+                        context,
+                        'TICKETS SOLD',
+                        insights.ticketsSold,
+                      ),
+                    ),
+                    Expanded(
+                      child: _insightStat(
+                        context,
+                        'FOLLOWERS',
+                        insights.followers,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  insights.returningSuppressed
+                      ? 'Returning attendees: not enough data'
+                      : 'Returning attendees: ${insights.returningAttendees}',
+                ),
+                const SizedBox(height: 10),
+                Text(_estimatedDrawLabel(insights.estimatedDraw)),
+                const SizedBox(height: 10),
+                Text(
+                  insights.byArea.suppressed
+                      ? 'Top area: not enough data'
+                      : 'Top area: ${insights.byArea.buckets.first.key}',
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  insights.byVenueType.suppressed
+                      ? 'Top venue type: not enough data'
+                      : 'Top venue type: ${insights.byVenueType.buckets.first.key}',
+                ),
+                if (!insights.attribution.suppressed) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Ticket buyers: referral ${insights.attribution.referral} · '
+                    'followers ${insights.attribution.follow} · '
+                    'other ${insights.attribution.unattributed}',
+                  ),
+                ],
+              ],
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+Widget _insightStat(BuildContext context, String label, int count) => Column(
+  crossAxisAlignment: CrossAxisAlignment.start,
+  children: [
+    Text(label, style: Theme.of(context).textTheme.epMeta),
+    Text('$count', style: Theme.of(context).textTheme.epSectionHeading),
+  ],
+);
+
+String _estimatedDrawLabel(EstimatedDraw? draw) {
+  if (draw == null) return 'Estimated draw: No history yet';
+  final basis = draw.basis == DrawBasis.checkIns ? 'check-ins' : 'RSVPs';
+  return 'Estimated draw: ${draw.low}–${draw.high} · '
+      '${draw.confidence.wireValue} confidence · based on $basis';
 }
 
 Future<bool> _confirm(BuildContext context, String title, String body) async =>
