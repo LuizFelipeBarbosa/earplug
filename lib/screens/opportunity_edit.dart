@@ -6,7 +6,6 @@ import '../data/repository.dart';
 import '../genres.dart';
 import '../models.dart';
 import '../theme.dart';
-import '../widgets/band_identity_editor.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
@@ -615,7 +614,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                 16,
                 headerTopPad(context),
                 16,
-                tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+                tabBarClearance +
+                    actionBarClearance(context) +
+                    MediaQuery.paddingOf(context).bottom,
               ),
               children: [
                 Row(
@@ -648,7 +649,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                   Text(_loadError!),
                   TextButton(onPressed: _load, child: const Text('RETRY')),
                 ] else ...[
-                  BandIdentityTextField(
+                  EpLabeledField(
                     fieldKey: const ValueKey('opp-edit-title'),
                     label: 'TITLE',
                     hint: 'Give this night a name',
@@ -657,7 +658,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     enabled: enabled,
                     onChanged: _textChanged,
                   ),
-                  const SectionBar(label: 'VENUE'),
+                  const SectionBar.form(label: 'VENUE'),
                   Wrap(
                     spacing: 7,
                     runSpacing: 7,
@@ -673,7 +674,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                         ),
                     ],
                   ),
-                  const SectionBar(label: 'WHEN'),
+                  const SectionBar.form(label: 'WHEN'),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -708,7 +709,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       ),
                     ],
                   ),
-                  SectionBar(label: 'SLOTS', count: _slots.length),
+                  SectionBar.form(label: 'SLOTS', count: _slots.length),
                   if (!draft)
                     Text(
                       'Slots are locked once applications are open.',
@@ -724,7 +725,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     icon: const Icon(Icons.add),
                     label: const Text('ADD SLOT'),
                   ),
-                  const SectionBar(label: 'STYLE'),
+                  const SectionBar.form(label: 'STYLE'),
                   Wrap(
                     spacing: 7,
                     runSpacing: 7,
@@ -763,7 +764,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                         ),
                     ],
                   ),
-                  const SectionBar(label: 'DETAILS'),
+                  const SectionBar.form(label: 'DETAILS'),
                   EpLabeledField(
                     fieldKey: const ValueKey('opp-edit-desc'),
                     label: 'DESCRIPTION',
@@ -774,7 +775,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     enabled: enabled,
                     onChanged: _textChanged,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     fieldKey: const ValueKey('opp-edit-equipment'),
                     label: 'EQUIPMENT',
@@ -783,7 +784,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     enabled: enabled,
                     onChanged: _textChanged,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     fieldKey: const ValueKey('opp-edit-requirements'),
                     label: 'REQUIREMENTS',
@@ -792,7 +793,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     enabled: enabled,
                     onChanged: _textChanged,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     fieldKey: const ValueKey('opp-edit-attendance'),
                     label: 'EXPECTED ATTENDANCE',
@@ -802,7 +803,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     enabled: enabled,
                     onChanged: _textChanged,
                   ),
-                  const SectionBar(label: 'TICKETING'),
+                  const SectionBar.form(label: 'TICKETING'),
                   Wrap(
                     spacing: 7,
                     children: [
@@ -833,38 +834,28 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       style: Theme.of(context).textTheme.epCaption,
                     ),
                   if (_ticketing == OpportunityTicketing.paid) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: EpLabeledField(
-                            fieldKey: const ValueKey('opp-edit-ticket-price'),
-                            label: 'TICKET PRICE (\$)',
-                            hint: '25',
-                            controller: _ticketPrice,
-                            keyboardType: TextInputType.number,
-                            enabled: enabled,
-                            onChanged: _textChanged,
-                            caption: _ticketPriceError,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: EpLabeledField(
-                            fieldKey: const ValueKey(
-                              'opp-edit-ticket-capacity',
-                            ),
-                            label: 'CAPACITY',
-                            hint: '100',
-                            controller: _ticketCapacity,
-                            keyboardType: TextInputType.number,
-                            enabled: enabled,
-                            onChanged: _textChanged,
-                            caption: _ticketCapacityError,
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpFieldRow(
+                      first: EpLabeledField(
+                        fieldKey: const ValueKey('opp-edit-ticket-price'),
+                        label: 'TICKET PRICE (\$)',
+                        hint: '25',
+                        controller: _ticketPrice,
+                        keyboardType: TextInputType.number,
+                        enabled: enabled,
+                        onChanged: _textChanged,
+                        errorText: _ticketPriceError,
+                      ),
+                      second: EpLabeledField(
+                        fieldKey: const ValueKey('opp-edit-ticket-capacity'),
+                        label: 'CAPACITY',
+                        hint: '100',
+                        controller: _ticketCapacity,
+                        keyboardType: TextInputType.number,
+                        enabled: enabled,
+                        onChanged: _textChanged,
+                        errorText: _ticketCapacityError,
+                      ),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -872,7 +863,8 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       style: Theme.of(context).textTheme.epCaption,
                     ),
                   ],
-                  if (_ticketing == OpportunityTicketing.external)
+                  if (_ticketing == OpportunityTicketing.external) ...[
+                    const SizedBox(height: EpLayout.fieldGap),
                     EpLabeledField(
                       fieldKey: const ValueKey('opp-edit-external-url'),
                       label: 'EXTERNAL TICKET URL',
@@ -882,7 +874,8 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       enabled: enabled,
                       onChanged: _textChanged,
                     ),
-                  const SectionBar(label: 'VISIBILITY'),
+                  ],
+                  const SectionBar.form(label: 'VISIBILITY'),
                   Wrap(
                     spacing: 7,
                     children: [
@@ -902,7 +895,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                         ),
                     ],
                   ),
-                  const SectionBar(label: 'INVITE BANDS'),
+                  const SectionBar.form(label: 'INVITE BANDS'),
                   Wrap(
                     spacing: 7,
                     runSpacing: 7,
@@ -958,7 +951,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 67,
+              bottom: EpLayout.isDesktop(context) ? 0 : 67,
               child: StickyActionBar(
                 key: ValueKey(switch (_status) {
                   OpportunityStatus.draft => 'opp-edit-open',
@@ -1006,33 +999,26 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: EpLabeledField(
-                  fieldKey: ValueKey('opp-edit-slot-$index-guarantee'),
-                  label: 'GUARANTEE (\$)',
-                  hint: '0',
-                  controller: slot.guarantee,
-                  keyboardType: TextInputType.number,
-                  enabled: enabled,
-                  onChanged: _textChanged,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: EpLabeledField(
-                  fieldKey: ValueKey('opp-edit-slot-$index-length'),
-                  label: 'SET (MINUTES)',
-                  hint: 'Optional',
-                  controller: slot.length,
-                  keyboardType: TextInputType.number,
-                  enabled: enabled,
-                  onChanged: _textChanged,
-                ),
-              ),
-            ],
+          const SizedBox(height: EpLayout.fieldGap),
+          EpFieldRow(
+            first: EpLabeledField(
+              fieldKey: ValueKey('opp-edit-slot-$index-guarantee'),
+              label: 'GUARANTEE (\$)',
+              hint: '0',
+              controller: slot.guarantee,
+              keyboardType: TextInputType.number,
+              enabled: enabled,
+              onChanged: _textChanged,
+            ),
+            second: EpLabeledField(
+              fieldKey: ValueKey('opp-edit-slot-$index-length'),
+              label: 'SET (MINUTES)',
+              hint: 'Optional',
+              controller: slot.length,
+              keyboardType: TextInputType.number,
+              enabled: enabled,
+              onChanged: _textChanged,
+            ),
           ),
           const SizedBox(height: 8),
           Row(
@@ -1140,7 +1126,7 @@ class _InviteBandSearchState extends State<_InviteBandSearch> {
         TextField(
           key: const ValueKey('opp-edit-invite-search'),
           controller: _search,
-          decoration: sheetInput(context, 'Search EarPlug bands'),
+          decoration: epInputDecoration(context, 'Search EarPlug bands'),
           onChanged: (query) => setState(() {
             _results = widget.repository.searchBands(query.trim());
           }),

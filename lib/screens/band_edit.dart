@@ -355,7 +355,9 @@ class _BandEditScreenState extends State<BandEditScreen> {
               16,
               headerTopPad(context),
               16,
-              tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+              tabBarClearance +
+                  actionBarClearance(context) +
+                  MediaQuery.paddingOf(context).bottom,
             ),
             children: [
               Row(
@@ -369,7 +371,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 ],
               ),
               Text(
-                'Shape the profile fans see without leaving the editor guessing what is editable.',
+                'Update your band profile, music links, and members.',
                 style: Theme.of(context).textTheme.epCaption,
               ),
               const SizedBox(height: 18),
@@ -419,7 +421,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                       ),
                     ],
                     const SizedBox(height: 20),
-                    BandIdentityTextField(
+                    EpLabeledField(
                       fieldKey: const ValueKey('edit-band-name'),
                       label: 'BAND NAME',
                       hint: 'Your band name',
@@ -428,8 +430,8 @@ class _BandEditScreenState extends State<BandEditScreen> {
                       enabled: !_saving,
                       onChanged: _draftChanged,
                     ),
-                    const SizedBox(height: 14),
-                    BandIdentityTextField(
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpLabeledField(
                       fieldKey: const ValueKey('edit-home-base'),
                       label: 'HOME BASE',
                       hint: 'Neighborhood or city',
@@ -438,8 +440,8 @@ class _BandEditScreenState extends State<BandEditScreen> {
                       enabled: !_saving,
                       onChanged: _draftChanged,
                     ),
-                    const SizedBox(height: 14),
-                    BandIdentityTextField(
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpLabeledField(
                       fieldKey: const ValueKey('edit-short-bio'),
                       label: 'ABOUT',
                       hint: 'Tell fans about the band',
@@ -449,7 +451,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                       maxLines: 7,
                       onChanged: _draftChanged,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: EpLayout.fieldGap),
                     BandGenreEditor(
                       genres: _genres,
                       onToggle: _toggleGenre,
@@ -462,7 +464,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
                       onAddCustomGenre: _addCustomGenre,
                       enabled: !_saving,
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: EpLayout.fieldGap),
                     _MediaManagementRow(
                       onTap: _saving ? null : app.openBandMedia,
                     ),
@@ -473,59 +475,48 @@ class _BandEditScreenState extends State<BandEditScreen> {
                 key: _linksKey,
                 child: FormSection(
                   title: 'Links',
-                  spacing: 14,
                   description:
                       'Add the places where fans can listen, watch, and follow.',
-                  boxed: false,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TextField(
-                        key: const ValueKey('edit-instagram'),
+                      EpLabeledField(
+                        fieldKey: const ValueKey('edit-instagram'),
                         controller: _instagram,
                         enabled: !_saving,
                         onChanged: (value) {
                           _instagramDirty = true;
                           _draftChanged(value);
                         },
-                        style: Theme.of(context).textTheme.epBody,
-                        decoration: labeledInputDecoration(
-                          context,
-                          'INSTAGRAM',
-                          'Instagram',
-                        ),
+                        label: 'INSTAGRAM',
+                        hint: 'Instagram',
+                        keyboardType: TextInputType.url,
                       ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        key: const ValueKey('edit-bandcamp'),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        fieldKey: const ValueKey('edit-bandcamp'),
                         controller: _bandcamp,
                         enabled: !_saving,
                         onChanged: (value) {
                           _bandcampDirty = true;
                           _draftChanged(value);
                         },
-                        style: Theme.of(context).textTheme.epBody,
-                        decoration: labeledInputDecoration(
-                          context,
-                          'BANDCAMP',
-                          'Bandcamp',
-                        ),
+                        label: 'BANDCAMP',
+                        hint: 'Bandcamp',
+                        keyboardType: TextInputType.url,
                       ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        key: const ValueKey('edit-youtube'),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        fieldKey: const ValueKey('edit-youtube'),
                         controller: _youtube,
                         enabled: !_saving,
                         onChanged: (value) {
                           _youtubeDirty = true;
                           _draftChanged(value);
                         },
-                        style: Theme.of(context).textTheme.epBody,
-                        decoration: labeledInputDecoration(
-                          context,
-                          'YOUTUBE OR VIDEO',
-                          'YouTube or video',
-                        ),
+                        label: 'YOUTUBE OR VIDEO',
+                        hint: 'YouTube or video',
+                        keyboardType: TextInputType.url,
                       ),
                     ],
                   ),
@@ -533,30 +524,20 @@ class _BandEditScreenState extends State<BandEditScreen> {
               ),
               FormSection(
                 title: 'Credits',
-                spacing: 14,
                 description:
                     'Acknowledge producers, artists, labels, and collaborators.',
-                boxed: true,
-                child: Semantics(
-                  label: 'Credits',
-                  textField: true,
-                  child: TextField(
-                    key: const ValueKey('edit-credits'),
-                    controller: _credits,
-                    enabled: !_saving,
-                    onChanged: (value) {
-                      _creditsDirty = true;
-                      _draftChanged(value);
-                    },
-                    minLines: 3,
-                    maxLines: 6,
-                    style: Theme.of(context).textTheme.epBody,
-                    decoration: labeledInputDecoration(
-                      context,
-                      'CREDITS',
-                      'Who helped make the work',
-                    ),
-                  ),
+                child: EpLabeledField(
+                  fieldKey: const ValueKey('edit-credits'),
+                  controller: _credits,
+                  enabled: !_saving,
+                  onChanged: (value) {
+                    _creditsDirty = true;
+                    _draftChanged(value);
+                  },
+                  minLines: 3,
+                  maxLines: 6,
+                  label: 'CREDITS',
+                  hint: 'Who helped make the work',
                 ),
               ),
               KeyedSubtree(
@@ -580,7 +561,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 66,
+          bottom: EpLayout.isDesktop(context) ? 0 : 66,
           child: StickyActionBar(
             key: const ValueKey('save-band-profile'),
             secondaryLabel: 'PREVIEW',
@@ -709,11 +690,9 @@ class _BandMembersSectionState extends State<_BandMembersSection> {
 
     return FormSection(
       title: 'Band members',
-      spacing: 14,
       count: members.length,
       description:
           'Share one secure link. It can be used by multiple members for seven days.',
-      boxed: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -902,7 +881,7 @@ class _ArchiveBandDialogState extends State<_ArchiveBandDialog> {
           Text(
             'This removes the band from public pages and management, revokes invitations, and cancels future gigs it owns. You cannot restore the band in EarPlug. Historical and shared records are preserved.',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: EpLayout.fieldGap),
           Text('Type ${widget.band.name} to confirm.'),
           const SizedBox(height: 8),
           TextField(

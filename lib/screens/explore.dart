@@ -69,7 +69,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 controller: _controller,
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) => _submitSearch(app),
-                style: Theme.of(context).textTheme.epBody,
+                style: Theme.of(context).textTheme.epInput,
                 decoration: epInputDecoration(context, 'Bands, venues, gigs…')
                     .copyWith(
                       suffixIcon: ValueListenableBuilder<TextEditingValue>(
@@ -389,19 +389,6 @@ class _SearchTypeTabs extends StatelessWidget {
                     context,
                   ).textTheme.epLabel.copyWith(fontSize: 11, letterSpacing: .4),
                 ),
-                backgroundColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? context.epColors.volt
-                      : context.epColors.surface,
-                ),
-                foregroundColor: WidgetStateProperty.resolveWith(
-                  (states) => states.contains(WidgetState.selected)
-                      ? context.epColors.dark
-                      : context.epColors.contentSecondary,
-                ),
-                side: WidgetStatePropertyAll(
-                  BorderSide(color: context.epColors.border),
-                ),
               ),
             ),
           ),
@@ -453,8 +440,8 @@ class _ExploreFilterButton extends StatelessWidget {
         icon: Badge(
           isLabelVisible: active,
           label: Text('$activeCount'),
-          backgroundColor: context.epColors.volt,
-          textColor: context.epColors.dark,
+          backgroundColor: context.epColors.highlight,
+          textColor: context.epColors.onHighlight,
           child: Icon(Icons.tune),
         ),
       ),

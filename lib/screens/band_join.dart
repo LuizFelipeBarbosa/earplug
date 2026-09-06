@@ -28,7 +28,10 @@ class BandJoinScreen extends StatelessWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text('BAND INVITATION', style: epDisplay(size: 16)),
+                    child: Text(
+                      'BAND INVITATION',
+                      style: Theme.of(context).textTheme.epSectionHeading,
+                    ),
                   ),
                 ],
               ),

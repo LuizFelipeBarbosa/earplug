@@ -10,7 +10,6 @@ import '../data/repository.dart';
 import '../models.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
-import '../widgets/band_identity_editor.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/venue_location_editor.dart';
@@ -706,12 +705,12 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   List<Widget> _venueFields(BuildContext context) {
     final enabled = !_busy;
     return [
-      const SectionBar(label: 'YOUR VENUE'),
+      const SectionBar.form(label: 'YOUR VENUE'),
       Focus(
         onFocusChange: (focused) {
           if (!focused) _saveOnBlur();
         },
-        child: BandIdentityTextField(
+        child: EpLabeledField(
           fieldKey: const ValueKey('org-apply-name'),
           label: 'ORGANIZATION NAME',
           required: true,
@@ -722,7 +721,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
           onChanged: _organizationNameChanged,
         ),
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: EpLayout.fieldGap),
       const FieldLabel('WHAT ARE YOU', required: true),
       const SizedBox(height: 7),
       SegmentedButton<String>(
@@ -772,7 +771,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         'Promoters and student organizations are coming next.',
         style: Theme.of(context).textTheme.epCaption,
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: EpLayout.fieldGap),
       Focus(
         onFocusChange: (focused) {
           if (!focused) _saveOnBlur();
@@ -790,7 +789,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
           enabled: enabled,
         ),
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: EpLayout.fieldGap),
       EpLabeledField(
         fieldKey: const ValueKey('org-apply-capacity'),
         label: 'CAPACITY · OPTIONAL',
@@ -808,7 +807,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   List<Widget> _contactFields(BuildContext context) {
     final enabled = !_busy;
     return [
-      const SectionBar(label: 'CONTACT'),
+      const SectionBar.form(label: 'CONTACT'),
       EpLabeledField(
         fieldKey: const ValueKey('org-apply-contact-name'),
         label: 'CONTACT NAME',
@@ -821,7 +820,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         onChanged: _textChanged,
         onEditingComplete: _saveOnBlur,
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: EpLayout.fieldGap),
       EpLabeledField(
         fieldKey: const ValueKey('org-apply-email'),
         label: 'BUSINESS EMAIL',
@@ -834,7 +833,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         onChanged: _textChanged,
         onEditingComplete: _saveOnBlur,
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: EpLayout.fieldGap),
       EpLabeledField(
         fieldKey: const ValueKey('org-apply-phone'),
         label: 'PHONE · OPTIONAL',
@@ -846,7 +845,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         onChanged: _textChanged,
         onEditingComplete: _saveOnBlur,
       ),
-      const SizedBox(height: 14),
+      const SizedBox(height: EpLayout.fieldGap),
       EpLabeledField(
         fieldKey: const ValueKey('org-apply-website'),
         label: 'WEBSITE · OPTIONAL',
@@ -858,7 +857,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         onChanged: _textChanged,
         onEditingComplete: _saveOnBlur,
       ),
-      SectionBar(label: 'VERIFICATION', count: _documents.length),
+      SectionBar.form(label: 'VERIFICATION', count: _documents.length),
       if (_documents.isNotEmpty) ...[
         Wrap(
           spacing: 10,
@@ -876,7 +875,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
       ],
       if (_documents.length < 5)
         _AddDocumentTile(enabled: enabled, onTap: _addDocument),
-      const SizedBox(height: 14),
+      const SizedBox(height: EpLayout.fieldGap),
       Material(
         color: Colors.transparent,
         child: CheckboxListTile(

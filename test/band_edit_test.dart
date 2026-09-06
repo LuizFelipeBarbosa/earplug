@@ -34,7 +34,7 @@ void main() {
           .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
           .style
           ?.fontSize,
-      21,
+      16,
     );
     expect(find.text('GENRES · REQUIRED'), findsOne);
     expect(find.text('HOME BASE · REQUIRED'), findsOne);
@@ -45,7 +45,7 @@ void main() {
     expect(find.byType(StickyActionBar), findsOne);
     expect(find.text('LINKS'), findsOne);
     expect(find.text('CREDITS'), findsWidgets);
-    expect(find.bySemanticsLabel('Credits'), findsOne);
+    expect(find.bySemanticsLabel(RegExp('^CREDITS')), findsOne);
     expect(find.text('MANAGE VIDEOS AND PHOTOS'), findsOne);
     expect(find.textContaining('BAND MEMBERS'), findsOne);
     expect(find.text('ACCEPTED MEMBERS'), findsOne);
@@ -365,18 +365,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _scrollToKey(tester, const ValueKey('edit-instagram'));
+    final instagram = tester.widget<TextField>(
+      find.byKey(const ValueKey('edit-instagram')),
+    );
+    expect(instagram.controller!.text, '@existing');
     await _scrollToKey(tester, const ValueKey('edit-credits'));
     final credits = tester.widget<TextField>(
       find.byKey(const ValueKey('edit-credits')),
     );
     expect(credits.controller!.text, 'Existing private credits');
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const ValueKey('edit-instagram')))
-          .controller!
-          .text,
-      '@existing',
-    );
 
     await _scrollTo(tester, 'SAVE CHANGES');
     await tester.tap(find.text('SAVE CHANGES'));

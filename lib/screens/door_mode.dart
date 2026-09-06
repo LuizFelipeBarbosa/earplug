@@ -10,6 +10,7 @@ import '../data/repository.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/form_bits.dart';
 
 /// Display data already known by the screen that launches Door Mode.
 ///
@@ -702,19 +703,17 @@ class _ScannerView extends StatelessWidget {
         const SizedBox(height: 18),
         const SectionBar(label: 'MANUAL FALLBACK'),
         const SizedBox(height: 8),
-        TextField(
-          key: const Key('door-manual-ticket'),
+        EpLabeledField(
+          fieldKey: const Key('door-manual-ticket'),
           controller: manualCode,
           focusNode: manualFocus,
           autocorrect: false,
           textInputAction: TextInputAction.done,
-          decoration: const InputDecoration(
-            labelText: 'Ticket code',
-            hintText: 'e.g. EP-9F2K-41',
-          ),
+          label: 'Ticket code',
+          hint: 'e.g. EP-9F2K-41',
           onSubmitted: (_) => onManualCheck(),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: EpLayout.fieldGap),
         FilledButton(
           onPressed: checking ? null : onManualCheck,
           child: Text(checking ? 'CHECKING…' : 'CHECK TICKET'),

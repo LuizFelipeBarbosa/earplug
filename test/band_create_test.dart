@@ -55,8 +55,11 @@ void main() {
       ValueKey('create-about'),
     ]) {
       final field = tester.widget<TextField>(find.byKey(key));
-      expect(field.decoration?.enabledBorder, isA<OutlineInputBorder>());
-      expect(field.style?.fontSize, greaterThanOrEqualTo(18));
+      final decoration = field.decoration!.applyDefaults(
+        Theme.of(tester.element(find.byKey(key))).inputDecorationTheme,
+      );
+      expect(decoration.enabledBorder, isA<OutlineInputBorder>());
+      expect(field.style?.fontSize, 16);
     }
 
     for (final key in const [

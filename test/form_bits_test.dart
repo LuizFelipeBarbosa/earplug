@@ -67,6 +67,73 @@ void main() {
     expect(find.text('ACCEPTED MEMBERS · REQUIRED'), findsNothing);
   });
 
+  testWidgets('labels stay accessible and Next moves to the following field', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    final name = TextEditingController();
+    final email = TextEditingController();
+    final nameFocus = FocusNode();
+    final emailFocus = FocusNode();
+    addTearDown(name.dispose);
+    addTearDown(email.dispose);
+    addTearDown(nameFocus.dispose);
+    addTearDown(emailFocus.dispose);
+
+    await _pump(
+      tester,
+      EpFieldRow(
+        first: EpLabeledField(
+          label: 'CONTACT NAME',
+          hint: 'Who should we contact?',
+          controller: name,
+          focusNode: nameFocus,
+          fieldKey: const Key('contact-name'),
+          required: true,
+        ),
+        second: EpLabeledField(
+          label: 'EMAIL',
+          hint: 'name@example.com',
+          controller: email,
+          focusNode: emailFocus,
+          fieldKey: const Key('contact-email'),
+          keyboardType: TextInputType.emailAddress,
+        ),
+      ),
+    );
+    expect(
+      find.bySemanticsLabel(RegExp('^CONTACT NAME · REQUIRED')),
+      findsOneWidget,
+    );
+    await tester.enterText(find.byKey(const Key('contact-name')), 'Rae Booker');
+    await tester.testTextInput.receiveAction(TextInputAction.next);
+    await tester.pumpAndSettle();
+    expect(emailFocus.hasFocus, isTrue);
+    await tester.enterText(
+      find.byKey(const Key('contact-email')),
+      'rae@example.com',
+    );
+    expect(name.text, 'Rae Booker');
+    expect(email.text, 'rae@example.com');
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pumpAndSettle();
+    expect(emailFocus.hasFocus, isTrue);
+    expect(email.text, 'rae@example.com');
+    expect(
+      tester.getTopLeft(find.byKey(const Key('contact-email'))).dy,
+      greaterThan(
+        tester.getBottomLeft(find.byKey(const Key('contact-name'))).dy,
+      ),
+    );
+    expect(find.text('CONTACT NAME · REQUIRED'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    semantics.dispose();
+  });
+
   testWidgets('InlineFormFeedback shrinks away without a message', (
     tester,
   ) async {
@@ -120,7 +187,7 @@ void main() {
     expect(find.byKey(const ValueKey('error')), findsNothing);
   });
 
-  testWidgets('FormSection is flat by default and can be boxed explicitly', (
+  testWidgets('FormSection groups controls without an enclosing card', (
     tester,
   ) async {
     await _pump(
@@ -132,12 +199,6 @@ void main() {
             description: 'Default treatment',
             child: SizedBox(key: ValueKey('flat-child')),
           ),
-          FormSection(
-            title: 'Boxed',
-            description: 'Explicit treatment',
-            boxed: true,
-            child: SizedBox(key: ValueKey('boxed-child')),
-          ),
         ],
       ),
     );
@@ -148,13 +209,6 @@ void main() {
         matching: find.byType(EpCard),
       ),
       findsNothing,
-    );
-    expect(
-      find.ancestor(
-        of: find.byKey(const ValueKey('boxed-child')),
-        matching: find.byType(EpCard),
-      ),
-      findsOneWidget,
     );
   });
 }

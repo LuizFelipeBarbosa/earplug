@@ -89,23 +89,17 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
           tabBarClearance,
         ),
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'OPPORTUNITIES',
-                  style: Theme.of(context).textTheme.epPageHeading,
-                ),
-              ),
-              if (app.canManageOrganization(app.organizationId)) ...[
-                const SizedBox(width: 8),
-                FilledButton(
-                  key: const Key('org-opps-new'),
-                  onPressed: app.openOpportunityEditor,
-                  child: const Text('NEW OPPORTUNITY'),
-                ),
-              ],
-            ],
+          EpPageHeading(
+            title: 'OPPORTUNITIES',
+            description: 'Post a slot. Find your next artist.',
+            action: app.canManageOrganization(app.organizationId)
+                ? FilledButton.icon(
+                    key: const Key('org-opps-new'),
+                    onPressed: app.openOpportunityEditor,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('NEW OPPORTUNITY'),
+                  )
+                : null,
           ),
           const SizedBox(height: 18),
           if (status == DataStatus.connecting)

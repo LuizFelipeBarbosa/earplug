@@ -253,6 +253,10 @@ void main() {
     expect(find.text('Not connected'), findsOneWidget);
     expectNoFieldInCard(tester);
 
+    await tester.ensureVisible(
+      find.byKey(const Key('org-settings-stripe-setup')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('org-settings-stripe-setup')));
     await tester.pumpAndSettle();
     expect(launched, ['https://demo.stripe/onboard/org1']);
@@ -313,6 +317,10 @@ void main() {
       250,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.ensureVisible(
+      find.byKey(const Key('org-settings-stripe-setup')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('org-settings-stripe-setup')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('org-settings-stripe-error')), findsOneWidget);

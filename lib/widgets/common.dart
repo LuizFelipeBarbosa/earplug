@@ -10,11 +10,15 @@ import '../services/image_url.dart';
 import '../theme.dart';
 
 /// Top padding for screen headers: status bar / notch plus breathing room.
-double headerTopPad(BuildContext context) =>
-    math.max(MediaQuery.paddingOf(context).top, 24) + 10;
+double headerTopPad(BuildContext context) => EpLayout.isDesktop(context)
+    ? 28
+    : math.max(MediaQuery.paddingOf(context).top, 14) + 10;
 
 /// Bottom inset used by scrollables so content clears the floating tab bar.
 const double tabBarClearance = 96;
+
+double actionBarClearance(BuildContext context) =>
+    EpLayout.stackActions(context) ? 200 : 112;
 
 /// The fixed bar across the top of a screen: status-bar clearance, the page
 /// gutters and a hairline underneath.
@@ -22,7 +26,7 @@ class ScreenHeader extends StatelessWidget {
   const ScreenHeader({
     super.key,
     required this.child,
-    this.bottomPadding = 10,
+    this.bottomPadding = 16,
     this.filled = true,
   });
 
@@ -48,6 +52,70 @@ class ScreenHeader extends StatelessWidget {
         border: Border(bottom: BorderSide(color: context.epColors.border)),
       ),
       child: child,
+    );
+  }
+}
+
+/// A consistent page title with room for longer labels and larger text.
+/// On compact pages, actions sit below the title instead of squeezing it.
+class EpPageHeading extends StatelessWidget {
+  const EpPageHeading({
+    super.key,
+    required this.title,
+    this.description,
+    this.leading,
+    this.action,
+  });
+
+  final String title;
+  final String? description;
+  final Widget? leading;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stackAction =
+            constraints.maxWidth < 560 ||
+            MediaQuery.textScalerOf(context).scale(1) > 1.2;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                if (leading != null) ...[leading!, const SizedBox(width: 10)],
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      title,
+                      style: Theme.of(context).textTheme.epPageHeading,
+                    ),
+                  ),
+                ),
+                if (action != null && !stackAction) ...[
+                  const SizedBox(width: 16),
+                  action!,
+                ],
+              ],
+            ),
+            if (description != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                description!,
+                style: Theme.of(context).textTheme.epBody.copyWith(
+                  color: context.epColors.contentSecondary,
+                ),
+              ),
+            ],
+            if (action != null && stackAction) ...[
+              const SizedBox(height: 12),
+              Align(alignment: Alignment.centerLeft, child: action!),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -142,6 +210,16 @@ class SectionBar extends StatelessWidget {
     this.padding = const EdgeInsets.only(top: 20, bottom: 10),
   });
 
+  const SectionBar.form({
+    super.key,
+    required this.label,
+    this.count,
+    this.trailing,
+  }) : padding = const EdgeInsets.only(
+         top: EpLayout.formSectionGap,
+         bottom: 12,
+       );
+
   final String label;
   final int? count;
   final Widget? trailing;
@@ -157,7 +235,7 @@ class SectionBar extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 22,
+            width: 16,
             height: 3,
             decoration: BoxDecoration(
               color: context.epColors.volt,
@@ -166,12 +244,7 @@ class SectionBar extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epSection,
-            ),
+            child: Text(text, style: Theme.of(context).textTheme.epSection),
           ),
           ?trailing,
         ],
@@ -316,7 +389,7 @@ class EpChip extends StatelessWidget {
           : active
           ? neutralSelected
                 ? context.epColors.contentPrimary
-                : context.epColors.dark
+                : context.epColors.onHighlight
           : ghost
           ? context.epColors.mute
           : context.epColors.contentSecondary,
@@ -354,25 +427,26 @@ class EpChip extends StatelessWidget {
       return ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
         child: InputChip(
+          labelPadding: const EdgeInsets.symmetric(horizontal: 4),
           label: Text(label.toUpperCase(), style: textStyle),
           selected: active,
           onPressed: onTap,
           onDeleted: onRemoved,
           deleteIcon: Icon(Icons.close, size: 16),
           deleteIconColor: active && !neutralSelected
-              ? context.epColors.dark
+              ? context.epColors.onHighlight
               : context.epColors.mute,
           showCheckmark: false,
           backgroundColor: Colors.transparent,
           selectedColor: neutralSelected
               ? context.epColors.surfaceDisabled
-              : context.epColors.volt,
+              : context.epColors.highlight,
           disabledColor: Colors.transparent,
           side: BorderSide(
             color: active && neutralSelected
                 ? context.epColors.contentSecondary
                 : active
-                ? context.epColors.volt
+                ? context.epColors.highlight
                 : context.epColors.border,
           ),
           shape: const StadiumBorder(),
@@ -382,15 +456,16 @@ class EpChip extends StatelessWidget {
     }
     final selectedColor = neutralSelected
         ? context.epColors.surfaceDisabled
-        : context.epColors.volt;
+        : context.epColors.highlight;
     final borderColor = active && neutralSelected
         ? context.epColors.contentSecondary
         : active
-        ? context.epColors.volt
+        ? context.epColors.highlight
         : context.epColors.border;
     final chip = ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
       child: FilterChip(
+        labelPadding: const EdgeInsets.symmetric(horizontal: 4),
         label: Text(label.toUpperCase(), style: textStyle),
         selected: active,
         // Keep RawChip enabled so it does not fade the selected label.
@@ -402,7 +477,7 @@ class EpChip extends StatelessWidget {
         onDeleted: onRemoved,
         deleteIcon: Icon(Icons.close, size: 16),
         deleteIconColor: active && !neutralSelected
-            ? context.epColors.dark
+            ? context.epColors.onHighlight
             : context.epColors.mute,
         showCheckmark: false,
         backgroundColor: Colors.transparent,
@@ -508,7 +583,7 @@ class VoltStrip extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: context.epColors.volt,
+          color: context.epColors.highlight,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
@@ -517,23 +592,23 @@ class VoltStrip extends StatelessWidget {
             Text(
               kicker.toUpperCase(),
               style: Theme.of(context).textTheme.epSection.copyWith(
-                color: context.epColors.dark,
+                color: context.epColors.onHighlight,
                 fontSize: 11,
               ),
             ),
             const SizedBox(height: 6),
             Text(
               title,
-              style: Theme.of(
-                context,
-              ).textTheme.epPosterTitle.copyWith(color: context.epColors.dark),
+              style: Theme.of(context).textTheme.epPosterTitle.copyWith(
+                color: context.epColors.onHighlight,
+              ),
             ),
             const SizedBox(height: 5),
             Text(
               meta,
               style: Theme.of(
                 context,
-              ).textTheme.epMeta.copyWith(color: context.epColors.dark),
+              ).textTheme.epMeta.copyWith(color: context.epColors.onHighlight),
             ),
             if (actionLabel != null) ...[
               const SizedBox(height: 10),
@@ -542,12 +617,12 @@ class VoltStrip extends StatelessWidget {
                 style: ButtonStyle(
                   minimumSize: WidgetStatePropertyAll(Size(48, 48)),
                   backgroundColor: WidgetStatePropertyAll(
-                    context.epColors.dark,
+                    context.epColors.onHighlight,
                   ),
                   foregroundColor: WidgetStateProperty.resolveWith(
                     (states) => states.contains(WidgetState.disabled)
                         ? context.epColors.mute
-                        : context.epColors.volt,
+                        : context.epColors.highlight,
                   ),
                 ),
                 child: Text(actionLabel!.toUpperCase()),
@@ -718,15 +793,15 @@ class ClipTexture extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = FlyerStyle(
-      base: context.epColors.surface,
+      base: Ep.surface,
       patternColor: Ep.whiteA(.06),
-      fg: context.epColors.contentPrimary,
+      fg: Ep.contentPrimary,
       pattern: FlyerPattern.scan,
     );
     return Stack(
       fit: StackFit.expand,
       children: [
-        ColoredBox(color: context.epColors.surface),
+        const ColoredBox(color: Ep.surface),
         ColoredBox(color: bandColor.withValues(alpha: .14)),
         CustomPaint(painter: _FlyerPatternPainter(style, patternScale)),
       ],
@@ -1030,17 +1105,17 @@ class CircleIconButton extends StatelessWidget {
         shape: WidgetStatePropertyAll(CircleBorder()),
       ),
       icon: Container(
-        width: 32,
-        height: 32,
+        width: 40,
+        height: 40,
         decoration: BoxDecoration(
           color: onTap == null
               ? context.epColors.surfaceDisabled
               : background ?? context.epColors.surface,
-          shape: BoxShape.circle,
+          borderRadius: BorderRadius.circular(EpLayout.controlRadius),
           border: bordered ? Border.all(color: context.epColors.border) : null,
         ),
         alignment: Alignment.center,
-        child: Icon(icon, size: 18),
+        child: Icon(icon, size: 20),
       ),
     );
   }
@@ -1146,53 +1221,10 @@ class EpButton extends StatelessWidget {
   }
 }
 
-InputDecoration epInputDecoration(
-  BuildContext context,
-  String hint, {
-  Color? fillColor,
-  double horizontalPadding = 13,
-}) => InputDecoration(
-  hintText: hint,
-  filled: true,
-  fillColor: fillColor ?? context.epColors.surface,
-  isDense: true,
-  constraints: const BoxConstraints(minHeight: 48),
-  contentPadding: EdgeInsets.symmetric(
-    horizontal: horizontalPadding,
-    vertical: 14,
-  ),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: BorderSide(color: context.epColors.border),
-  ),
-  focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: BorderSide(color: context.epColors.accent, width: 2),
-  ),
-);
-
-/// [epInputDecoration] with an always-floating [label] printed above it.
-InputDecoration labeledInputDecoration(
-  BuildContext context,
-  String label,
-  String hint,
-) => epInputDecoration(context, hint).copyWith(
-  labelText: label,
-  floatingLabelBehavior: FloatingLabelBehavior.always,
-);
-
-InputDecoration epCollapsedInputDecoration(
-  String hint, {
-  TextStyle? hintStyle,
-}) => InputDecoration.collapsed(hintText: hint, hintStyle: hintStyle).copyWith(
-  // InputDecorationTheme supplies state-specific outline borders even when
-  // InputDecoration.collapsed sets its fallback border to none.
-  enabledBorder: InputBorder.none,
-  focusedBorder: InputBorder.none,
-  disabledBorder: InputBorder.none,
-  errorBorder: InputBorder.none,
-  focusedErrorBorder: InputBorder.none,
-);
+/// Text boxes inherit their padding, surface, and all state borders from the
+/// shared theme, including when they appear in a dialog or sheet.
+InputDecoration epInputDecoration(BuildContext context, String hint) =>
+    InputDecoration(hintText: hint);
 
 /// Compact dashboard metric with a label, headline value, and caption.
 class EpStatCard extends StatelessWidget {
@@ -1377,7 +1409,7 @@ class EpCard extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.all(12),
-    this.radius = 12,
+    this.radius = EpLayout.cardRadius,
     this.borderColor,
     this.onTap,
     this.variant = EpCardVariant.standard,

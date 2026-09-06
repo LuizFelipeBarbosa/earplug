@@ -239,11 +239,9 @@ class _OrgTeamScreenState extends State<OrgTeamScreen> {
         tabBarClearance,
       ),
       children: [
-        Text('TEAM', style: epDisplay(size: 22)),
-        const SizedBox(height: 4),
-        Text(
-          'Manage who can operate this organization.',
-          style: Theme.of(context).textTheme.epCaption,
+        const EpPageHeading(
+          title: 'TEAM',
+          description: 'Manage who can operate this organization.',
         ),
         SectionBar(label: 'MEMBERS', count: _members.length),
         if (_membersLoading)

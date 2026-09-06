@@ -38,6 +38,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.read<AppState>();
+    final desktop = EpLayout.isDesktop(context);
     final filters = context.select<AppState, DiscoveryFilters>(
       (app) => app.filters,
     );
@@ -47,18 +48,23 @@ class _Header extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const EpLogo.compact(key: ValueKey('home-logo'), height: 38),
-              const SizedBox(width: 9),
+              if (!desktop) ...[
+                const EpLogo.compact(key: ValueKey('home-logo'), height: 38),
+                const SizedBox(width: 9),
+              ],
               Expanded(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
                   child: ExcludeSemantics(
+                    excluding: !desktop,
                     child: Text(
-                      'EARPLUG',
+                      desktop ? 'Find your next show' : 'EARPLUG',
                       key: const ValueKey('home-wordmark'),
                       maxLines: 1,
-                      style: epDisplay(size: 28, letterSpacing: 1.2, height: 1),
+                      style: desktop
+                          ? Theme.of(context).textTheme.epPageHeading
+                          : epDisplay(size: 28, letterSpacing: 1.2, height: 1),
                     ),
                   ),
                 ),
@@ -67,6 +73,18 @@ class _Header extends StatelessWidget {
               const _SegmentedToggle(),
             ],
           ),
+          if (desktop) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Small rooms. Loud nights. Live music near you.',
+                style: Theme.of(context).textTheme.epBody.copyWith(
+                  color: context.epColors.contentSecondary,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           const SizedBox(width: double.infinity, child: _CityPill()),
           const SizedBox(height: 10),

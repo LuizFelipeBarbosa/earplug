@@ -290,17 +290,15 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
         16,
         headerTopPad(context),
         16,
-        tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+        tabBarClearance +
+            actionBarClearance(context) +
+            MediaQuery.paddingOf(context).bottom,
       ),
       children: [
-        Text(
-          'ORGANIZATION SETTINGS',
-          style: Theme.of(context).textTheme.epPageHeading,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Update the organization profile and private business details.',
-          style: Theme.of(context).textTheme.epCaption,
+        const EpPageHeading(
+          title: 'ORGANIZATION SETTINGS',
+          description:
+              'Update the organization profile and private business details.',
         ),
         if (_loading)
           const Padding(
@@ -313,7 +311,6 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
           FormSection(
             title: 'Public profile',
             description: 'These details are visible to artists and fans.',
-            boxed: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -326,7 +323,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                   enabled: canManage,
                   onChanged: _draftChanged,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'ABOUT',
                   hint: 'About the organization',
@@ -337,7 +334,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                   maxLines: 6,
                   onChanged: _draftChanged,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'WEBSITE',
                   hint: 'https://',
@@ -353,7 +350,6 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
           FormSection(
             title: 'Photos',
             description: 'Add up to 10 photos of your organization.',
-            boxed: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -422,7 +418,6 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
             FormSection(
               title: 'Private details',
               description: 'Only EarPlug and your team see these.',
-              boxed: false,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -434,7 +429,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                     enabled: canManage,
                     onChanged: _draftChanged,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     label: 'BUSINESS EMAIL',
                     hint: 'name@example.com',
@@ -444,7 +439,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                     keyboardType: TextInputType.emailAddress,
                     onChanged: _draftChanged,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     label: 'CONTACT NAME',
                     hint: 'Primary contact',
@@ -453,7 +448,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                     enabled: canManage,
                     onChanged: _draftChanged,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     label: 'PHONE',
                     hint: 'Optional',
@@ -471,7 +466,6 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
               title: 'Stripe',
               description:
                   'Needed to sell tickets later; bookings are paid to EarPlug.',
-              boxed: false,
               child: Column(
                 key: const Key('org-settings-stripe'),
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -532,7 +526,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
               ),
             ),
           if (canManage) ...[
-            const SectionBar(label: 'DANGER ZONE'),
+            const SectionBar.form(label: 'DANGER ZONE'),
             EpCard(
               variant: EpCardVariant.raised,
               child: DangerZone(
@@ -566,7 +560,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 66,
+          bottom: EpLayout.isDesktop(context) ? 0 : 66,
           child: StickyActionBar(
             key: const Key('org-settings-save'),
             primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
@@ -628,7 +622,7 @@ class _DeactivateOrganizationDialogState
           const Text(
             'This removes the organization from active marketplace management.',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: EpLayout.fieldGap),
           const Text('Type DEACTIVATE to confirm.'),
           const SizedBox(height: 8),
           TextField(

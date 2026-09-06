@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme.dart';
 import 'common.dart';
@@ -128,16 +129,6 @@ class DoneButton extends StatelessWidget {
   }
 }
 
-/// Text-field styling for inputs that sit inside a create-flow sheet.
-/// [epInputDecoration] on the page background, for fields inside sheets.
-InputDecoration sheetInput(BuildContext context, String hint) =>
-    epInputDecoration(
-      context,
-      hint,
-      fillColor: context.epColors.background,
-      horizontalPadding: 12,
-    );
-
 class EpLabeledField extends StatelessWidget {
   const EpLabeledField({
     super.key,
@@ -157,6 +148,14 @@ class EpLabeledField extends StatelessWidget {
     this.focusNode,
     this.caption,
     this.autofillHints,
+    this.errorText,
+    this.suffixIcon,
+    this.textInputAction,
+    this.onSubmitted,
+    this.inputFormatters,
+    this.prefixText,
+    this.prefixIcon,
+    this.autocorrect,
   });
 
   final String label;
@@ -175,29 +174,55 @@ class EpLabeledField extends StatelessWidget {
   final FocusNode? focusNode;
   final String? caption;
   final Iterable<String>? autofillHints;
+  final String? errorText;
+  final Widget? suffixIcon;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onSubmitted;
+  final List<TextInputFormatter>? inputFormatters;
+  final String? prefixText;
+  final Widget? prefixIcon;
+  final bool? autocorrect;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          key: fieldKey,
-          controller: controller,
-          enabled: enabled,
-          minLines: minLines,
-          maxLines: maxLines,
-          maxLength: maxLength,
-          keyboardType: keyboardType,
-          textCapitalization: textCapitalization,
-          onChanged: onChanged,
-          onEditingComplete: onEditingComplete,
-          focusNode: focusNode,
-          autofillHints: autofillHints,
-          decoration: labeledInputDecoration(
-            context,
-            required ? '$label · REQUIRED' : label,
-            hint,
+        ExcludeSemantics(child: FieldLabel(label, required: required)),
+        const SizedBox(height: 8),
+        Semantics(
+          label: required ? '$label · REQUIRED' : label,
+          child: TextField(
+            key: fieldKey,
+            controller: controller,
+            enabled: enabled,
+            minLines: minLines,
+            maxLines: maxLines,
+            maxLength: maxLength,
+            keyboardType: keyboardType,
+            textCapitalization: textCapitalization,
+            onChanged: onChanged,
+            onEditingComplete: onEditingComplete,
+            focusNode: focusNode,
+            autofillHints: autofillHints,
+            style: Theme.of(context).textTheme.epInput,
+            textInputAction:
+                textInputAction ??
+                (maxLines == 1
+                    ? TextInputAction.next
+                    : TextInputAction.newline),
+            onSubmitted: onSubmitted,
+            inputFormatters: inputFormatters,
+            autocorrect:
+                autocorrect ??
+                (keyboardType != TextInputType.emailAddress &&
+                    keyboardType != TextInputType.url),
+            decoration: epInputDecoration(context, hint).copyWith(
+              errorText: errorText,
+              suffixIcon: suffixIcon,
+              prefixText: prefixText,
+              prefixIcon: prefixIcon,
+            ),
           ),
         ),
         if (caption != null) ...[
@@ -205,6 +230,38 @@ class EpLabeledField extends StatelessWidget {
           Text(caption!, style: Theme.of(context).textTheme.epCaption),
         ],
       ],
+    );
+  }
+}
+
+/// Related fields share a row only when both have enough room to be readable.
+class EpFieldRow extends StatelessWidget {
+  const EpFieldRow({super.key, required this.first, required this.second});
+
+  final Widget first;
+  final Widget second;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked =
+            constraints.maxWidth < 480 ||
+            MediaQuery.textScalerOf(context).scale(1) > 1.3;
+        final fieldWidth = stacked
+            ? constraints.maxWidth
+            : (constraints.maxWidth - EpLayout.fieldGap) / 2;
+        // Wrapping the same children keeps input focus and selection intact
+        // when the available width changes during editing.
+        return Wrap(
+          spacing: EpLayout.fieldGap,
+          runSpacing: EpLayout.fieldGap,
+          children: [
+            SizedBox(width: fieldWidth, child: first),
+            SizedBox(width: fieldWidth, child: second),
+          ],
+        );
+      },
     );
   }
 }
@@ -220,9 +277,8 @@ class FieldLabel extends StatelessWidget {
     return Text(
       required ? '$text · REQUIRED' : text,
       style: Theme.of(context).textTheme.epLabel.copyWith(
-        fontSize: 11,
-        fontWeight: FontWeight.w900,
-        letterSpacing: .8,
+        fontWeight: FontWeight.w600,
+        letterSpacing: .4,
         color: context.epColors.contentSecondary,
       ),
     );
@@ -595,32 +651,49 @@ class StickyActionBar extends StatelessWidget {
         child: SafeArea(
           top: false,
           minimum: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              if (secondaryLabel != null) ...[
-                Expanded(
-                  child: OutlinedButton(
-                    key: secondaryKey,
-                    onPressed: onSecondary,
-                    child: Text(
-                      secondaryLabel!.toUpperCase(),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = EpLayout.stackActions(context);
+              final primary = FilledButton(
+                onPressed: onPrimary,
+                child: Text(
+                  primaryLabel.toUpperCase(),
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(width: 10),
-              ],
-              Expanded(
-                flex: secondaryLabel == null ? 1 : 2,
-                child: FilledButton(
-                  onPressed: onPrimary,
-                  child: Text(
-                    primaryLabel.toUpperCase(),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            ],
+              );
+              final secondary = secondaryLabel == null
+                  ? null
+                  : OutlinedButton(
+                      key: secondaryKey,
+                      onPressed: onSecondary,
+                      child: Text(
+                        secondaryLabel!.toUpperCase(),
+                        textAlign: TextAlign.center,
+                      ),
+                    );
+              if (stacked) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (secondary != null) ...[
+                      secondary,
+                      const SizedBox(height: 8),
+                    ],
+                    primary,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  if (secondary != null) ...[
+                    Expanded(child: secondary),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(flex: secondary == null ? 1 : 2, child: primary),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -671,8 +744,7 @@ class DangerZone extends StatelessWidget {
   }
 }
 
-/// A titled block of a create/edit form: a [SectionBar] heading, a caption,
-/// then [child] — inside a raised card when [boxed] is true.
+/// A form section uses whitespace and a heading to group its controls.
 class FormSection extends StatelessWidget {
   const FormSection({
     super.key,
@@ -680,35 +752,22 @@ class FormSection extends StatelessWidget {
     required this.description,
     required this.child,
     this.count,
-    this.boxed = false,
-    this.spacing = 12,
   });
 
   final String title;
   final String description;
   final Widget child;
   final int? count;
-  final bool boxed;
-
-  /// Gap between the caption and the body.
-  final double spacing;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SectionBar(label: title, count: count),
+        SectionBar.form(label: title, count: count),
         Text(description, style: Theme.of(context).textTheme.epCaption),
-        SizedBox(height: spacing),
-        if (boxed)
-          EpCard(
-            variant: EpCardVariant.raised,
-            padding: const EdgeInsets.all(15),
-            child: child,
-          )
-        else
-          child,
+        const SizedBox(height: 16),
+        child,
       ],
     );
   }

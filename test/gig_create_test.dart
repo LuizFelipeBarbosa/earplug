@@ -41,7 +41,7 @@ void main() {
       await tester.enterText(find.byType(TextField).first, 'Riptide Release');
       await tester.pump();
       expect(app.gfName, 'Riptide Release');
-      expect(find.text('YOUR GIG NAME ✓'), findsOne);
+      expect(find.text('GIG NAME · REQUIRED'), findsOne);
       expect(find.text('Still needs a date + a venue'), findsOne);
 
       // When sheet — pick a day from the rolling calendar.
@@ -143,7 +143,7 @@ void main() {
 
       await tester.tap(find.text('MAKE ANOTHER'));
       await tester.pumpAndSettle();
-      expect(find.text('YOUR GIG NAME · REQUIRED'), findsOne);
+      expect(find.text('GIG NAME · REQUIRED'), findsOne);
       expect(app.gfPrice, 'FREE');
     },
   );

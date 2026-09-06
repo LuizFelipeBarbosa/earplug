@@ -97,7 +97,9 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                 16,
                 headerTopPad(context),
                 16,
-                tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+                tabBarClearance +
+                    actionBarClearance(context) +
+                    MediaQuery.paddingOf(context).bottom,
               ),
               children: [
                 Row(
@@ -127,7 +129,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                     '${Gig.dateShortFor(booking.startsAt.millisecondsSinceEpoch)}',
                     style: Theme.of(context).textTheme.epBody,
                   ),
-                  const SectionBar(label: 'RATING'),
+                  const SectionBar.form(label: 'RATING'),
                   Row(
                     children: [
                       for (var rating = 1; rating <= 5; rating++)
@@ -152,7 +154,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                         ),
                     ],
                   ),
-                  const SectionBar(label: 'CATEGORIES'),
+                  const SectionBar.form(label: 'CATEGORIES'),
                   Wrap(
                     spacing: 7,
                     runSpacing: 7,
@@ -173,7 +175,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                         ),
                     ],
                   ),
-                  const SectionBar(label: 'REVIEW'),
+                  const SectionBar.form(label: 'REVIEW'),
                   EpLabeledField(
                     fieldKey: const ValueKey('review-text'),
                     label: 'REVIEW',
@@ -203,7 +205,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 67,
+              bottom: EpLayout.isDesktop(context) ? 0 : 67,
               child: StickyActionBar(
                 key: const ValueKey('review-submit'),
                 primaryLabel: 'SUBMIT REVIEW',
