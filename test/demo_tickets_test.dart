@@ -150,6 +150,44 @@ void main() {
     );
   });
 
+  test('paid ticket capacity is counted once', () async {
+    final oversellRepo = DemoRepository(auth: auth);
+    for (final repository in [repo, oversellRepo]) {
+      for (var batch = 0; batch < 2; batch++) {
+        final reservation = await repository.reserveTickets(
+          gigId: 'g8',
+          quantity: 10,
+        );
+        final checkout = await repository.startTicketCheckout(
+          reservation.orderId,
+        );
+        await repository.simulateTicketCheckoutCompleted(checkout.sessionId);
+      }
+      final tickets = await repository.myTickets();
+      expect(tickets, hasLength(20));
+      expect(
+        tickets.every((ticket) => ticket.status == TicketStatus.valid),
+        isTrue,
+      );
+      expect((await repository.ticketSalesForGig('g8')).available, 20);
+    }
+
+    // Each reservation is capped at 10, so reserve the remaining 20 in batches.
+    for (var batch = 0; batch < 2; batch++) {
+      await repo.reserveTickets(gigId: 'g8', quantity: 10);
+    }
+    expect((await repo.ticketSalesForGig('g8')).available, 0);
+
+    // Independently attempt 21 more tickets: 10 + 10 fit, but the last does not.
+    for (var batch = 0; batch < 2; batch++) {
+      await oversellRepo.reserveTickets(gigId: 'g8', quantity: 10);
+    }
+    await expectLater(
+      oversellRepo.reserveTickets(gigId: 'g8', quantity: 1),
+      _stateError('Not enough tickets available'),
+    );
+  });
+
   test('cancellation releases reserved and checkout-open capacity', () async {
     final reservations = <TicketReservation>[];
     for (var batch = 0; batch < 4; batch++) {

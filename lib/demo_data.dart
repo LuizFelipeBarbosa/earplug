@@ -615,7 +615,7 @@ abstract final class DemoData {
       id: 'g8',
       slug: 'paid-show-at-the-vault',
       title: 'Paid Show at the Vault',
-      venueId: 'v1',
+      venueId: 'v4',
       price: 25,
       ticketPriceMinor: 2500,
       ticketCurrency: 'usd',

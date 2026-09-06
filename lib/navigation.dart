@@ -43,6 +43,10 @@ enum Screen {
   checkoutReturn,
   checkoutCancel,
   stripeReturn,
+  myTickets,
+  ticket,
+  ticketCheckoutReturn,
+  ticketCheckoutCancel,
 }
 
 sealed class ActiveIdentity {
@@ -70,7 +74,15 @@ class AdminIdentity extends ActiveIdentity {
   const AdminIdentity();
 }
 
-const fanTabScreens = {Screen.home, Screen.explore, Screen.myGigs};
+const fanTabScreens = {
+  Screen.home,
+  Screen.explore,
+  Screen.myGigs,
+  Screen.myTickets,
+  Screen.ticket,
+  Screen.ticketCheckoutReturn,
+  Screen.ticketCheckoutCancel,
+};
 const bandTabScreens = {
   Screen.bandDash,
   Screen.bandEdit,

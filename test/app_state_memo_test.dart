@@ -298,7 +298,7 @@ void main() {
       );
       await flushAsyncWork();
       final updatedUpcoming = app.band(fullBand.id)!;
-      expect(updatedUpcoming.upcoming, ['g2']);
+      expect(updatedUpcoming.upcoming, ['g2', 'g8']);
       expect(updatedUpcoming.bio, fullBand.bio);
       expect(updatedUpcoming.past, fullBand.past);
       expect(updatedUpcoming.isSummary, isFalse);

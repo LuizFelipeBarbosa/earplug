@@ -43,6 +43,7 @@ part 'app_state/opportunities.dart';
 part 'app_state/organizer.dart';
 part 'app_state/payments.dart';
 part 'app_state/session.dart';
+part 'app_state/tickets.dart';
 part 'app_state/venues.dart';
 
 enum DataStatus { connecting, ready, error }
@@ -137,6 +138,7 @@ class AppState extends ChangeNotifier
         _OpportunityState,
         _BookingState,
         _PaymentState,
+        _TicketState,
         _OrganizerState,
         _CatalogState,
         _SessionState,
@@ -158,6 +160,11 @@ class AppState extends ChangeNotifier
     String? initialStripeReturn,
     String? initialOrgInviteToken,
     bool initialOrganizerApply = false,
+    String? initialTicketId,
+    String? initialTicketCheckoutSessionId,
+    String? initialTicketCheckoutCancelOrderId,
+    bool initialMyTickets = false,
+    String? initialReferralBandSlug,
     DateTime Function()? now,
   }) : this._(
          auth,
@@ -176,6 +183,11 @@ class AppState extends ChangeNotifier
          initialStripeReturn,
          initialOrgInviteToken,
          initialOrganizerApply,
+         initialTicketId,
+         initialTicketCheckoutSessionId,
+         initialTicketCheckoutCancelOrderId,
+         initialMyTickets,
+         initialReferralBandSlug,
          now ?? DateTime.now,
        );
 
@@ -199,6 +211,11 @@ class AppState extends ChangeNotifier
     String? initialStripeReturn,
     String? initialOrgInviteToken,
     bool initialOrganizerApply = false,
+    String? initialTicketId,
+    String? initialTicketCheckoutSessionId,
+    String? initialTicketCheckoutCancelOrderId,
+    bool initialMyTickets = false,
+    String? initialReferralBandSlug,
     DateTime Function()? now,
   }) {
     final resolvedAuth = auth ?? FakeAuthService();
@@ -219,6 +236,11 @@ class AppState extends ChangeNotifier
       initialStripeReturn: initialStripeReturn,
       initialOrgInviteToken: initialOrgInviteToken,
       initialOrganizerApply: initialOrganizerApply,
+      initialTicketId: initialTicketId,
+      initialTicketCheckoutSessionId: initialTicketCheckoutSessionId,
+      initialTicketCheckoutCancelOrderId: initialTicketCheckoutCancelOrderId,
+      initialMyTickets: initialMyTickets,
+      initialReferralBandSlug: initialReferralBandSlug,
       now: now,
     );
   }
@@ -240,6 +262,11 @@ class AppState extends ChangeNotifier
     String? initialStripeReturn,
     String? initialOrgInviteToken,
     bool initialOrganizerApply,
+    String? initialTicketId,
+    String? initialTicketCheckoutSessionId,
+    String? initialTicketCheckoutCancelOrderId,
+    bool initialMyTickets,
+    String? initialReferralBandSlug,
     this._now,
   ) : // Only a real backend has a connection to wait on; the demo data is
       // already in memory, so it must not show the connecting screen.
@@ -335,6 +362,36 @@ class AppState extends ChangeNotifier
     final stripeReturn = initialStripeReturn?.trim();
     if (stripeReturn != null && stripeReturn.isNotEmpty) {
       _stack = [ScreenEntry(Screen.stripeReturn, stripeReturn)];
+    }
+    ticketReferralBandSlug = initialReferralBandSlug?.trim();
+    final ticketId = initialTicketId?.trim();
+    if (ticketId != null && ticketId.isNotEmpty) {
+      _stack = [
+        const ScreenEntry(Screen.home),
+        ScreenEntry(Screen.ticket, ticketId),
+      ];
+      unawaited(loadTicket(ticketId));
+    }
+    if (initialMyTickets) {
+      _stack = [
+        const ScreenEntry(Screen.home),
+        const ScreenEntry(Screen.myTickets),
+      ];
+      unawaited(loadMyTickets());
+    }
+    final ticketCheckoutSessionId = initialTicketCheckoutSessionId?.trim();
+    if (ticketCheckoutSessionId != null && ticketCheckoutSessionId.isNotEmpty) {
+      _stack = [
+        ScreenEntry(Screen.ticketCheckoutReturn, ticketCheckoutSessionId),
+      ];
+    }
+    final ticketCheckoutCancelOrderId = initialTicketCheckoutCancelOrderId
+        ?.trim();
+    if (ticketCheckoutCancelOrderId != null &&
+        ticketCheckoutCancelOrderId.isNotEmpty) {
+      _stack = [
+        ScreenEntry(Screen.ticketCheckoutCancel, ticketCheckoutCancelOrderId),
+      ];
     }
   }
 
@@ -435,6 +492,7 @@ class AppState extends ChangeNotifier
     _clearOpportunityState();
     _clearBookingState();
     _clearPaymentState();
+    _clearTicketState();
     _resetGigForm();
   }
 }

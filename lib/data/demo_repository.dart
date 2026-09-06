@@ -1683,22 +1683,8 @@ class DemoRepository implements EarplugRepository {
       throw StateError('Quantity must be between 1 and 10');
     }
     final capacity = gig.numericCapacity;
-    final committed = _ticketOrders.values
-        .where(
-          (order) =>
-              order.gigId == gigId &&
-              (order.status == TicketOrderStatus.reserved ||
-                  order.status == TicketOrderStatus.checkoutOpen ||
-                  order.status == TicketOrderStatus.paid),
-        )
-        .fold(0, (total, order) => total + order.quantity);
-    final validTickets = _tickets.values
-        .where(
-          (ticket) =>
-              ticket.gigId == gigId && ticket.status == TicketStatus.valid,
-        )
-        .length;
-    if (capacity != null && committed + validTickets + quantity > capacity) {
+    final committed = _committedTicketQuantity(gigId);
+    if (capacity != null && committed + quantity > capacity) {
       throw StateError('Not enough tickets available');
     }
 
@@ -1846,7 +1832,7 @@ class DemoRepository implements EarplugRepository {
       reserved: reserved,
       available: capacity == 0
           ? 0
-          : (capacity - sold - reserved).clamp(0, capacity),
+          : (capacity - _committedTicketQuantity(gigId)).clamp(0, capacity),
       ordersPaid: ordersPaid,
       grossMinor: grossMinor,
       feeMinor: feeMinor,
@@ -1854,6 +1840,16 @@ class DemoRepository implements EarplugRepository {
       currency: gig.ticketCurrency ?? 'usd',
     );
   }
+
+  int _committedTicketQuantity(String gigId) => _ticketOrders.values
+      .where(
+        (order) =>
+            order.gigId == gigId &&
+            (order.status == TicketOrderStatus.reserved ||
+                order.status == TicketOrderStatus.checkoutOpen ||
+                order.status == TicketOrderStatus.paid),
+      )
+      .fold(0, (total, order) => total + order.quantity);
 
   Gig _requireTicketGig(String gigId) {
     final gig = [
