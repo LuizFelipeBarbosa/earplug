@@ -375,10 +375,10 @@ describe("overview", () => {
     ).toBe(false);
     expect(
       await t.query(internal.finance.financeContext, { organizationId }),
-    ).toEqual({ snapshot: null });
+    ).toEqual({ snapshot: null, snapshotStripeAccountId: undefined });
   });
 
-  test("sorts and caps pending payments, ignores cancelled dues, and falls back for missing opportunities", async () => {
+  test("bounds payment history, sorts pending payments, ignores cancelled dues, and falls back for missing opportunities", async () => {
     const {
       t,
       as,
@@ -435,20 +435,85 @@ describe("overview", () => {
       organizationId,
     });
     expect(result.bookings).toEqual({
-      dueMinor: 7_500,
+      dueMinor: 5_900,
       paidMinor: 8_000,
       refundedMinor: 2_000,
       disputedMinor: 300,
-      activeCount: 3,
+      activeCount: 2,
     });
-    expect(result.pendingPayments.map((payment) => payment.dueAt)).toEqual(
-      Array.from({ length: 20 }, (_, index) => index + 1),
-    );
+    // The paid record and first nine inserted installments fill the booking's cap.
+    expect(result.pendingPayments.map((payment) => payment.dueAt)).toEqual([
+      ...Array.from({ length: 9 }, (_, index) => index + 17),
+      3_000,
+    ]);
     expect(
       result.pendingPayments.every(
         (payment) => payment.opportunityTitle === "Booking",
       ),
     ).toBe(true);
+  });
+
+  test("caps pending payments at the earliest 20 across bookings", async () => {
+    const { t, as, organizationId, bookingFields, paymentFields } =
+      await setupFinance();
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 6; index++) {
+        const bookingId = await ctx.db.insert("bookings", bookingFields);
+        for (let installmentIndex = 0; installmentIndex < 4; installmentIndex++) {
+          await ctx.db.insert("paymentRecords", {
+            ...paymentFields,
+            bookingId,
+            installmentIndex,
+            status: "pending",
+            amountMinor: 100,
+            refundedMinor: 0,
+            disputedMinor: undefined,
+            dueAt: 24 - index * 4 - installmentIndex,
+          });
+        }
+      }
+    });
+
+    const result = await as("owner").query(api.finance.overview, {
+      organizationId,
+    });
+    expect(result.pendingPayments.map((payment) => payment.dueAt)).toEqual(
+      Array.from({ length: 20 }, (_, index) => index + 1),
+    );
+  });
+
+  test.each([
+    "withdrawn",
+    "cancelled_by_organizer",
+    "cancelled_by_artist",
+    "force_majeure",
+  ] as const)("excludes %s bookings and their payment records", async (status) => {
+    const { t, as, organizationId, bookingFields, paymentFields } =
+      await setupFinance();
+    const baseline = await as("owner").query(api.finance.overview, {
+      organizationId,
+    });
+    await t.run(async (ctx) => {
+      const bookingId = await ctx.db.insert("bookings", {
+        ...bookingFields,
+        status,
+      });
+      await ctx.db.insert("paymentRecords", { ...paymentFields, bookingId });
+      await ctx.db.insert("paymentRecords", {
+        ...paymentFields,
+        bookingId,
+        installmentIndex: 1,
+        status: "pending",
+        refundedMinor: 0,
+        disputedMinor: undefined,
+      });
+    });
+
+    const result = await as("owner").query(api.finance.overview, {
+      organizationId,
+    });
+    expect(result.bookings).toEqual(baseline.bookings);
+    expect(result.pendingPayments).toEqual(baseline.pendingPayments);
   });
 
   test("marks ticket totals truncated at the per-status limit", async () => {
@@ -594,13 +659,13 @@ describe("ledger reads", () => {
     ).toEqual([
       {
         id: ids[7],
-        amountMinor: -300,
+        amountMinor: 300,
         label: "Dispute loss · Friday at the Hall",
       },
       { id: ids[6], amountMinor: 300, label: "Dispute release · Friday Live" },
       {
         id: ids[5],
-        amountMinor: -300,
+        amountMinor: 300,
         label: "Dispute hold · Friday at the Hall",
       },
       { id: ids[4], amountMinor: -275, label: "Ticket refund · Friday Live" },
@@ -669,11 +734,11 @@ describe("ledger reads", () => {
     await seedLedger(t, otherOrganizationId, [
       { kind: "charge", amountMinor: 9_999, occurredAt: 12 },
     ]);
-    const rows = await t.query(internal.finance.ledgerRowsForStatement, {
-      organizationId,
-      fromMs: 10,
-      toMs: 20,
-    });
+    const { rows, truncated } = await t.query(
+      internal.finance.ledgerRowsForStatement,
+      { organizationId, fromMs: 10, toMs: 20 },
+    );
+    expect(truncated).toBe(false);
     expect(
       rows.map(({ occurredAt, amountMinor, label }) => ({
         occurredAt,
@@ -701,6 +766,26 @@ describe("ledger reads", () => {
         .filter((row) => row.occurredAt >= 10 && row.occurredAt <= 20)
         .reverse(),
     );
+  });
+
+  test("marks statements truncated from 2000 source entries even when some kinds are hidden", async () => {
+    const { t, organizationId } = await setupFinance();
+    await seedLedger(
+      t,
+      organizationId,
+      Array.from({ length: 2000 }, (_, index) => ({
+        kind: index % 10 === 0 ? ("commission" as const) : ("ticket_sale" as const),
+        amountMinor: 100,
+        occurredAt: index,
+      })),
+    );
+
+    const { rows, truncated } = await t.query(
+      internal.finance.ledgerRowsForStatement,
+      { organizationId, fromMs: 0, toMs: 1999 },
+    );
+    expect(rows).toHaveLength(1800);
+    expect(truncated).toBe(true);
   });
 
   test("falls back when linked records or titles are missing", async () => {
@@ -770,7 +855,11 @@ test("upsertSnapshot inserts once and patches the same organization snapshot", a
   const { t, organizationId } = await setupFinance();
   expect(
     await t.query(internal.finance.financeContext, { organizationId }),
-  ).toEqual({ stripeAccountId: "acct_finance", snapshot: null });
+  ).toEqual({
+    stripeAccountId: "acct_finance",
+    snapshotStripeAccountId: undefined,
+    snapshot: null,
+  });
   const first = {
     organizationId,
     stripeAccountId: "acct_finance",
@@ -811,6 +900,7 @@ test("upsertSnapshot inserts once and patches the same organization snapshot", a
   ).toEqual({
     // Account context comes from private details, independently of snapshot data.
     stripeAccountId: "acct_finance",
+    snapshotStripeAccountId: "acct_refreshed",
     snapshot: {
       availableMinor: 6_000,
       pendingMinor: 1_000,
@@ -915,27 +1005,39 @@ describe("finance math", () => {
   });
 
   test.each([
-    ["charge", 100, -100],
-    ["charge", -100, 100],
-    ["refund", -100, 100],
-    ["refund", 100, 100],
-    ["ticket_sale", 100, 100],
-    ["ticket_sale", -100, -100],
-    ["ticket_fee", 100, -100],
-    ["ticket_fee", -100, -100],
-    ["ticket_refund", 100, -100],
-    ["ticket_refund", -100, -100],
-    ["dispute_hold", -100, -100],
-    ["dispute_release", 100, 100],
-    ["dispute_loss", -100, -100],
-    ["commission", 100, null],
-    ["payout", -100, null],
-    ["transfer_reversal", 100, null],
-    ["dispute_fee", -100, null],
-    ["unknown", 100, null],
-  ] as const)("maps %s amount %i to %s", (kind, amountMinor, expected) => {
-    expect(organizationLedgerAmount({ kind, amountMinor })).toBe(expected);
-  });
+    ["charge", 100, false, -100],
+    ["charge", -100, false, 100],
+    ["refund", -100, false, 100],
+    ["refund", 100, false, -100],
+    ["ticket_sale", 100, false, 100],
+    ["ticket_sale", -100, false, -100],
+    ["ticket_fee", 100, false, -100],
+    ["ticket_fee", -100, false, 100],
+    ["ticket_refund", 100, false, 100],
+    ["ticket_refund", -100, false, -100],
+    ["dispute_hold", -100, false, -100],
+    ["dispute_hold", -100, true, 100],
+    ["dispute_release", 100, false, 100],
+    ["dispute_release", 100, true, -100],
+    ["dispute_loss", -100, false, -100],
+    ["dispute_loss", -100, true, 100],
+    ["commission", 100, false, null],
+    ["payout", -100, false, null],
+    ["transfer_reversal", 100, false, null],
+    ["dispute_fee", -100, false, null],
+    ["unknown", 100, false, null],
+  ] as const)(
+    "maps %s amount %i with booking=%s to %s",
+    (kind, amountMinor, hasBooking, expected) => {
+      expect(
+        organizationLedgerAmount({
+          kind,
+          amountMinor,
+          bookingId: hasBooking ? ("booking" as Id<"bookings">) : undefined,
+        }),
+      ).toBe(expected);
+    },
+  );
 
   test("uses readable label fallbacks and opportunity-first dispute titles", () => {
     for (const [kind, label] of [

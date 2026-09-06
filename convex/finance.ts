@@ -10,7 +10,7 @@ import {
   query,
   type QueryCtx,
 } from "./_generated/server";
-import { requireOrganizationRole } from "./lib/authz";
+import { requireOrganizationRole, type OrganizationRole } from "./lib/authz";
 import {
   bookingTotals,
   ledgerLabel,
@@ -22,6 +22,9 @@ import {
   fundsStateValidator,
   ledgerKindValidator,
 } from "./schema";
+
+// These roles can read organizer finance data.
+const FINANCE_READ_ROLES: OrganizationRole[] = ["owner", "manager", "finance"];
 
 const snapshotValidator = v.object({
   availableMinor: v.number(),
@@ -93,9 +96,6 @@ async function collectBookingsWithRecords(
     "paid",
     "disputed",
     "refunded",
-    "cancelled_by_organizer",
-    "cancelled_by_artist",
-    "force_majeure",
   ];
   const bookings = (
     await Promise.all(
@@ -116,8 +116,8 @@ async function collectBookingsWithRecords(
         const payments = await ctx.db
           .query("paymentRecords")
           .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
-          // Bound installment history to 50 payment records per booking.
-          .take(50);
+          // Allow 10 payment records per booking, with headroom above 4 installments.
+          .take(10);
         return payments.map((record) => ({
           record,
           booking,
@@ -133,11 +133,7 @@ export const overview = query({
   args: { organizationId: v.id("organizations") },
   returns: financeOverviewValidator,
   handler: async (ctx, args) => {
-    await requireOrganizationRole(ctx, args.organizationId, [
-      "owner",
-      "manager",
-      "finance",
-    ]);
+    await requireOrganizationRole(ctx, args.organizationId, FINANCE_READ_ROLES);
     const details = await ctx.db
       .query("organizationPrivateDetails")
       .withIndex("by_organizationId", (q) =>
@@ -197,7 +193,7 @@ export const overview = query({
       snapshot: snapshotPayload(snapshot),
       bookings: {
         ...bookingTotals(records),
-        // Counts bookings with financial activity, including terminal statuses.
+        // Counts scanned payable, settled, disputed, and refunded bookings.
         activeCount: bookings.length,
       },
       tickets: {
@@ -295,11 +291,7 @@ export const transactions = query({
   },
   returns: paginationResultValidator(transactionValidator),
   handler: async (ctx, args) => {
-    await requireOrganizationRole(ctx, args.organizationId, [
-      "owner",
-      "manager",
-      "finance",
-    ]);
+    await requireOrganizationRole(ctx, args.organizationId, FINANCE_READ_ROLES);
     const result = await ctx.db
       .query("ledgerEntries")
       .withIndex("by_organizationId_and_occurredAt", (q) =>
@@ -318,7 +310,10 @@ export const ledgerRowsForStatement = internalQuery({
     fromMs: v.number(),
     toMs: v.number(),
   },
-  returns: v.array(transactionValidator),
+  returns: v.object({
+    rows: v.array(transactionValidator),
+    truncated: v.boolean(),
+  }),
   handler: async (ctx, args) => {
     const entries = await ctx.db
       .query("ledgerEntries")
@@ -331,7 +326,8 @@ export const ledgerRowsForStatement = internalQuery({
       .order("asc")
       // Statements include at most 2,000 source ledger entries in the range.
       .take(2000);
-    return await mapLedgerRows(ctx, entries);
+    const truncated = entries.length === 2000;
+    return { rows: await mapLedgerRows(ctx, entries), truncated };
   },
 });
 
@@ -339,6 +335,7 @@ export const financeContext = internalQuery({
   args: { organizationId: v.id("organizations") },
   returns: v.object({
     stripeAccountId: v.optional(v.string()),
+    snapshotStripeAccountId: v.optional(v.string()),
     snapshot: v.union(snapshotValidator, v.null()),
   }),
   handler: async (ctx, args) => {
@@ -356,6 +353,7 @@ export const financeContext = internalQuery({
       .unique();
     return {
       stripeAccountId: details?.stripeAccountId,
+      snapshotStripeAccountId: snapshot?.stripeAccountId,
       snapshot: snapshotPayload(snapshot),
     };
   },

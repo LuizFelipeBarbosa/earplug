@@ -1,5 +1,5 @@
 import type { Infer } from "convex/values";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type {
   bookingStatusValidator,
   paymentRecordStatusValidator,
@@ -97,20 +97,29 @@ export function bookingTotals(
 export function organizationLedgerAmount(entry: {
   kind: string;
   amountMinor: number;
+  bookingId?: Id<"bookings">;
+  ticketOrderId?: Id<"ticketOrders">;
 }): number | null {
   switch (entry.kind) {
     case "charge":
       return -entry.amountMinor;
     case "refund":
-      return Math.abs(entry.amountMinor);
+      // Mirrors charge: stored negative refunds credit the organization.
+      return -entry.amountMinor;
     case "ticket_sale":
+      return entry.amountMinor;
+    case "ticket_fee":
+      // Positive fees debit the organization; negative fees refund that debit.
+      return -entry.amountMinor;
+    case "ticket_refund":
+      // Already signed from the organization's perspective.
+      return entry.amountMinor;
     case "dispute_hold":
     case "dispute_release":
     case "dispute_loss":
-      return entry.amountMinor;
-    case "ticket_fee":
-    case "ticket_refund":
-      return -Math.abs(entry.amountMinor);
+      // Booking disputes reverse the organizer's charge; ticket disputes keep
+      // the stored sign. A booking takes precedence when both IDs are present.
+      return entry.bookingId ? -entry.amountMinor : entry.amountMinor;
     default:
       // Platform/band events and unknown kinds are hidden from organizers.
       return null;

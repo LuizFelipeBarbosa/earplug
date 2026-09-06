@@ -1,16 +1,18 @@
 import { internal } from "./_generated/api";
 import { v, type Infer } from "convex/values";
-import type { Id } from "./_generated/dataModel";
 import { action, internalQuery } from "./_generated/server";
-import type { transactionValidator } from "./finance";
 import { requireOrganizationRole, type OrganizationRole } from "./lib/authz";
 import { stripeRequest } from "./lib/stripeClient";
+
+// Stripe access and data exports are limited to owner/finance, excluding managers.
+const FINANCE_WRITE_ROLES: OrganizationRole[] = ["owner", "finance"];
 
 const snapshotValidator = v.object({
   availableMinor: v.number(),
   pendingMinor: v.number(),
   currency: v.string(),
   fetchedAt: v.number(),
+  stale: v.boolean(),
 });
 type Snapshot = Infer<typeof snapshotValidator>;
 
@@ -51,15 +53,17 @@ export const refreshBalance = action({
   handler: async (ctx, args): Promise<Snapshot | null> => {
     await ctx.runQuery(internal.financeActions.requireFinanceAccess, {
       organizationId: args.organizationId,
-      roles: ["owner", "finance"],
+      roles: FINANCE_WRITE_ROLES,
     });
-    const { stripeAccountId, snapshot } = await ctx.runQuery(
-      internal.finance.financeContext,
-      args,
-    );
+    const { stripeAccountId, snapshotStripeAccountId, snapshot } =
+      await ctx.runQuery(internal.finance.financeContext, args);
     if (stripeAccountId == null) return null;
-    if (snapshot && Date.now() - snapshot.fetchedAt < 5 * 60 * 1000) {
-      return snapshot;
+    if (
+      snapshot &&
+      snapshotStripeAccountId === stripeAccountId &&
+      Date.now() - snapshot.fetchedAt < 5 * 60 * 1000
+    ) {
+      return { ...snapshot, stale: false };
     }
 
     let balance: StripeBalance;
@@ -71,13 +75,18 @@ export const refreshBalance = action({
         { stripeAccount: stripeAccountId },
       );
     } catch (error) {
-      if (snapshot) return snapshot;
+      console.error(error);
+      if (snapshot) return { ...snapshot, stale: true };
       throw error;
     }
 
-    const refreshedSnapshot: Snapshot = {
-      availableMinor: sumUsd(balance.available),
-      pendingMinor: sumUsd(balance.pending),
+    const refreshedSnapshot = {
+      availableMinor: sumUsd(
+        Array.isArray(balance.available) ? balance.available : [],
+      ),
+      pendingMinor: sumUsd(
+        Array.isArray(balance.pending) ? balance.pending : [],
+      ),
       currency: "usd",
       fetchedAt: Date.now(),
     };
@@ -86,7 +95,7 @@ export const refreshBalance = action({
       stripeAccountId,
       ...refreshedSnapshot,
     });
-    return refreshedSnapshot;
+    return { ...refreshedSnapshot, stale: false };
   },
 });
 
@@ -101,6 +110,13 @@ function csvField(value: string): string {
   return /[,"\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
+function csvTextField(value: string): string {
+  if (/^[=+\-@\t\r]/.test(value)) {
+    return `"'${value.replace(/"/g, '""')}"`;
+  }
+  return csvField(value);
+}
+
 export const exportStatement = action({
   args: {
     organizationId: v.id("organizations"),
@@ -112,10 +128,13 @@ export const exportStatement = action({
     rows: v.number(),
     truncated: v.boolean(),
   }),
-  handler: async (ctx, args): Promise<{ csv: string; rows: number; truncated: boolean }> => {
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ csv: string; rows: number; truncated: boolean }> => {
     await ctx.runQuery(internal.financeActions.requireFinanceAccess, {
       organizationId: args.organizationId,
-      roles: ["owner", "finance"],
+      roles: FINANCE_WRITE_ROLES,
     });
     if (args.fromMs > args.toMs) {
       throw new Error("fromMs must not be after toMs");
@@ -124,7 +143,7 @@ export const exportStatement = action({
       throw new Error("Choose a range of one year or less");
     }
 
-    const rows: Infer<typeof transactionValidator>[] = await ctx.runQuery(
+    const { rows, truncated } = await ctx.runQuery(
       internal.finance.ledgerRowsForStatement,
       args,
     );
@@ -132,22 +151,20 @@ export const exportStatement = action({
     for (const row of rows) {
       lines.push(
         [
-          new Date(row.occurredAt).toISOString(),
-          row.kind,
-          row.label,
+          csvField(new Date(row.occurredAt).toISOString()),
+          csvTextField(row.kind),
+          csvTextField(row.label),
           formatAmount(row.amountMinor),
-          row.currency,
-          row.fundsState,
-          row.stripeRef ?? "",
-        ]
-          .map(csvField)
-          .join(","),
+          csvField(row.currency),
+          csvField(row.fundsState),
+          csvTextField(row.stripeRef ?? ""),
+        ].join(","),
       );
     }
     return {
       csv: lines.join("\r\n"),
       rows: rows.length,
-      truncated: rows.length === 2000,
+      truncated,
     };
   },
 });

@@ -11,7 +11,7 @@ vi.mock("./lib/stripeClient", async (importOriginal) => {
   return { ...actual, stripeRequest: vi.fn() };
 });
 
-type Snapshot = Pick<
+type StoredSnapshot = Pick<
   Doc<"financeSnapshots">,
   "availableMinor" | "pendingMinor" | "currency" | "fetchedAt"
 >;
@@ -19,7 +19,7 @@ type Snapshot = Pick<
 const refreshBalance = makeFunctionReference<
   "action",
   { organizationId: Id<"organizations"> },
-  Snapshot | null
+  (StoredSnapshot & { stale: boolean }) | null
 >("financeActions:refreshBalance");
 const exportStatement = makeFunctionReference<
   "action",
@@ -35,7 +35,7 @@ const MAX_RANGE = 366 * 24 * 60 * 60 * 1000;
 const HEADER = "date,type,label,amount,currency,funds_state,reference";
 const ACTORS = ["owner", "manager", "finance", "door", "outsider"] as const;
 type Actor = (typeof ACTORS)[number];
-const STALE_SNAPSHOT: Snapshot = {
+const STALE_SNAPSHOT: StoredSnapshot = {
   availableMinor: 12_345,
   pendingMinor: 678,
   currency: "usd",
@@ -51,7 +51,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function setupFinance(snapshot: Snapshot | null = null) {
+async function setupFinance(
+  snapshot: StoredSnapshot | null = null,
+  snapshotStripeAccountId = "acct_finance",
+) {
   const t = convexTest(schema, modules);
   const as = (actor: Actor) =>
     t.withIdentity({ subject: `finance_actions_${actor}` });
@@ -97,7 +100,7 @@ async function setupFinance(snapshot: Snapshot | null = null) {
     if (snapshot) {
       await ctx.db.insert("financeSnapshots", {
         organizationId,
-        stripeAccountId: "acct_finance",
+        stripeAccountId: snapshotStripeAccountId,
         ...snapshot,
       });
     }
@@ -143,7 +146,7 @@ describe("refreshBalance", () => {
 
     expect(
       await as("owner").action(refreshBalance, { organizationId }),
-    ).toEqual(snapshot);
+    ).toEqual({ ...snapshot, stale: false });
     expect(stripeMock).not.toHaveBeenCalled();
   });
 
@@ -179,7 +182,7 @@ describe("refreshBalance", () => {
       };
       expect(
         await as("owner").action(refreshBalance, { organizationId }),
-      ).toEqual(expected);
+      ).toEqual({ ...expected, stale: false });
       expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
         "GET",
         "/v1/balance",
@@ -200,6 +203,7 @@ describe("refreshBalance", () => {
         stripeAccountId: "acct_finance",
         ...expected,
       });
+      expect(snapshots[0]).not.toHaveProperty("stale");
     },
   );
 
@@ -217,19 +221,131 @@ describe("refreshBalance", () => {
       pendingMinor: 0,
       currency: "usd",
       fetchedAt: NOW,
+      stale: false,
     });
   });
 
-  test("returns the stale snapshot unchanged when Stripe fails", async () => {
-    const { t, as, organizationId } = await setupFinance(STALE_SNAPSHOT);
-    stripeMock.mockRejectedValueOnce(
-      new StripeApiError("Stripe unavailable", { status: 503 }),
-    );
+  test.each([
+    {
+      name: "missing buckets",
+      balance: {},
+      availableMinor: 0,
+      pendingMinor: 0,
+    },
+    {
+      name: "null buckets",
+      balance: { available: null, pending: null },
+      availableMinor: 0,
+      pendingMinor: 0,
+    },
+    {
+      name: "a non-array available bucket",
+      balance: {
+        available: { amount: 100, currency: "usd" },
+        pending: [{ amount: 300, currency: "usd" }],
+      },
+      availableMinor: 0,
+      pendingMinor: 300,
+    },
+    {
+      name: "a non-array pending bucket",
+      balance: {
+        available: [{ amount: 200, currency: "usd" }],
+        pending: "invalid",
+      },
+      availableMinor: 200,
+      pendingMinor: 0,
+    },
+  ])("uses zero for $name", async ({ balance, availableMinor, pendingMinor }) => {
+    const { as, organizationId } = await setupFinance();
+    stripeMock.mockResolvedValueOnce(balance);
 
     expect(
       await as("owner").action(refreshBalance, { organizationId }),
-    ).toEqual(STALE_SNAPSHOT);
+    ).toEqual({
+      availableMinor,
+      pendingMinor,
+      currency: "usd",
+      fetchedAt: NOW,
+      stale: false,
+    });
+  });
+
+  test("refetches a recent snapshot belonging to a previously connected account", async () => {
+    const snapshot = { ...STALE_SNAPSHOT, fetchedAt: NOW - 1000 };
+    const { t, as, organizationId } = await setupFinance(snapshot, "acct_old");
+    stripeMock.mockResolvedValueOnce({
+      available: [{ amount: 500, currency: "usd" }],
+      pending: [{ amount: 100, currency: "usd" }],
+    });
+
+    const expected = {
+      availableMinor: 500,
+      pendingMinor: 100,
+      currency: "usd",
+      fetchedAt: NOW,
+    };
+    expect(
+      await as("owner").action(refreshBalance, { organizationId }),
+    ).toEqual({ ...expected, stale: false });
+    expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
+      "GET",
+      "/v1/balance",
+      undefined,
+      { stripeAccount: "acct_finance" },
+    );
+    const stored = await t.run((ctx) =>
+      ctx.db
+        .query("financeSnapshots")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
+    );
+    expect(stored).toMatchObject({ ...expected, stripeAccountId: "acct_finance" });
+    expect(stored).not.toHaveProperty("stale");
+  });
+
+  test("returns a recent snapshot from the old account as stale if Stripe fails", async () => {
+    const snapshot = { ...STALE_SNAPSHOT, fetchedAt: NOW - 1000 };
+    const { t, as, organizationId } = await setupFinance(snapshot, "acct_old");
+    const error = new StripeApiError("Stripe unavailable", { status: 503 });
+    const logError = vi.spyOn(console, "error").mockImplementation(() => {});
+    stripeMock.mockRejectedValueOnce(error);
+
+    expect(
+      await as("owner").action(refreshBalance, { organizationId }),
+    ).toEqual({ ...snapshot, stale: true });
+    expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
+      "GET",
+      "/v1/balance",
+      undefined,
+      { stripeAccount: "acct_finance" },
+    );
+    expect(logError).toHaveBeenCalledWith(error);
+    const stored = await t.run((ctx) =>
+      ctx.db
+        .query("financeSnapshots")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
+    );
+    expect(stored).toMatchObject({ ...snapshot, stripeAccountId: "acct_old" });
+    expect(stored).not.toHaveProperty("stale");
+  });
+
+  test("returns the stored snapshot marked stale when Stripe fails", async () => {
+    const { t, as, organizationId } = await setupFinance(STALE_SNAPSHOT);
+    const error = new StripeApiError("Stripe unavailable", { status: 503 });
+    const logError = vi.spyOn(console, "error").mockImplementation(() => {});
+    stripeMock.mockRejectedValueOnce(error);
+
+    expect(
+      await as("owner").action(refreshBalance, { organizationId }),
+    ).toEqual({ ...STALE_SNAPSHOT, stale: true });
     expect(stripeMock).toHaveBeenCalledTimes(1);
+    expect(logError).toHaveBeenCalledWith(error);
     const stored = await t.run((ctx) =>
       ctx.db
         .query("financeSnapshots")
@@ -239,17 +355,19 @@ describe("refreshBalance", () => {
         .unique(),
     );
     expect(stored).toMatchObject(STALE_SNAPSHOT);
+    expect(stored).not.toHaveProperty("stale");
   });
 
   test("rethrows Stripe failures when no snapshot exists", async () => {
     const { as, organizationId } = await setupFinance();
-    stripeMock.mockRejectedValueOnce(
-      new StripeApiError("Stripe unavailable", { status: 503 }),
-    );
+    const error = new StripeApiError("Stripe unavailable", { status: 503 });
+    const logError = vi.spyOn(console, "error").mockImplementation(() => {});
+    stripeMock.mockRejectedValueOnce(error);
 
     await expect(
       as("owner").action(refreshBalance, { organizationId }),
     ).rejects.toThrow("Stripe unavailable");
+    expect(logError).toHaveBeenCalledWith(error);
   });
 
   test.each([null, STALE_SNAPSHOT])(
@@ -312,6 +430,7 @@ describe("finance action access", () => {
       pendingMinor: 0,
       currency: "usd",
       fetchedAt: NOW,
+      stale: false,
     });
     expect(
       await as("finance").action(exportStatement, {
@@ -420,7 +539,7 @@ describe("exportStatement", () => {
         '1970-01-01T00:00:01.000Z,ticket_sale,"Ticket sale · Friday, ""Live""",150.00,usd,pending,pi_sale',
         '1970-01-01T00:00:02.000Z,charge,Booking payment,-150.00,usd,available,"pi_line\rbreak\nend"',
         "1970-01-01T00:00:03.000Z,ticket_sale,Ticket sale,0.05,usd,available,",
-        "1970-01-01T00:00:04.000Z,ticket_refund,Ticket refund,-0.05,usd,available,",
+        "1970-01-01T00:00:04.000Z,ticket_refund,Ticket refund,0.05,usd,available,",
         "1970-01-01T00:00:05.000Z,refund,Booking refund,0.00,eur,available,",
       ].join("\r\n"),
       rows: 5,
@@ -428,6 +547,35 @@ describe("exportStatement", () => {
     });
     expect(stripeMock).not.toHaveBeenCalled();
   });
+
+  test.each([
+    ["=SUM(1)", `"'=SUM(1)"`],
+    ["+SUM(1)", `"'+SUM(1)"`],
+    ["-SUM(1)", `"'-SUM(1)"`],
+    ["@SUM(1)", `"'@SUM(1)"`],
+    ["\tSUM(1)", `"'\tSUM(1)"`],
+    ["\rSUM(1)", `"'\rSUM(1)"`],
+    ['=SUM("1",2)', `"'=SUM(""1"",2)"`],
+  ])(
+    "escapes formula-like reference %j while leaving negative amounts unquoted",
+    async (stripeRef, expectedReference) => {
+      const setup = await setupFinance();
+      await seedLedger(setup, [
+        { kind: "charge", amountMinor: 15_000, occurredAt: 1000, stripeRef },
+      ]);
+
+      const result = await setup.as("owner").action(exportStatement, {
+        organizationId: setup.organizationId,
+        fromMs: 1000,
+        toMs: 1000,
+      });
+      expect(result).toEqual({
+        csv: `${HEADER}\r\n1970-01-01T00:00:01.000Z,charge,Booking payment,-150.00,usd,available,${expectedReference}`,
+        rows: 1,
+        truncated: false,
+      });
+    },
+  );
 
   test("rejects a reversed range", async () => {
     const { as, organizationId } = await setupFinance();
@@ -492,5 +640,26 @@ describe("exportStatement", () => {
     expect(lines.at(-1)).toBe(
       "1970-01-01T00:00:01.999Z,ticket_sale,Ticket sale,1.00,usd,available,",
     );
+  });
+
+  test("marks 2000 source entries truncated even when hidden kinds reduce the CSV row count", async () => {
+    const setup = await setupFinance();
+    await seedLedger(
+      setup,
+      Array.from({ length: 2000 }, (_, index) => ({
+        kind: index % 10 === 0 ? ("commission" as const) : ("ticket_sale" as const),
+        amountMinor: 100,
+        occurredAt: index,
+      })),
+    );
+
+    const result = await setup.as("owner").action(exportStatement, {
+      organizationId: setup.organizationId,
+      fromMs: 0,
+      toMs: 1999,
+    });
+    expect(result.rows).toBe(1800);
+    expect(result.truncated).toBe(true);
+    expect(result.csv.split("\r\n")).toHaveLength(1801);
   });
 });
