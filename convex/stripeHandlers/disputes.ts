@@ -17,6 +17,12 @@ import type {
   StripeEventHandler,
   StripeHandlerMap,
 } from "../stripeWebhook";
+import {
+  handleTicketChargeRefunded,
+  handleTicketDisputeCreated,
+  handleTicketDisputeClosed,
+  isTicketSession,
+} from "./tickets";
 
 async function paymentRecordForDispute(
   ctx: MutationCtx,
@@ -43,6 +49,10 @@ async function paymentRecordForDispute(
 }
 
 const disputeCreated: StripeEventHandler = async (ctx, event) => {
+  const charge = event.data.object.charge;
+  if (charge && typeof charge === "object" && isTicketSession(charge)) {
+    return handleTicketDisputeCreated(ctx, event, charge);
+  }
   const record = await paymentRecordForDispute(ctx, event);
   if (!record) return;
   const dispute = event.data.object;
@@ -106,6 +116,10 @@ const disputeCreated: StripeEventHandler = async (ctx, event) => {
 };
 
 const disputeClosed: StripeEventHandler = async (ctx, event) => {
+  const charge = event.data.object.charge;
+  if (charge && typeof charge === "object" && isTicketSession(charge)) {
+    return handleTicketDisputeClosed(ctx, event, charge);
+  }
   const record = await paymentRecordForDispute(ctx, event);
   if (!record) return;
   const dispute = event.data.object;
@@ -246,6 +260,7 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
 
 const chargeRefunded: StripeEventHandler = async (ctx, event) => {
   const charge = event.data.object;
+  if (isTicketSession(charge)) return handleTicketChargeRefunded(ctx, event);
   const paymentIntent = charge.payment_intent;
   const paymentIntentId =
     typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;

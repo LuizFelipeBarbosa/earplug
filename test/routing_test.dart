@@ -10,12 +10,17 @@ import 'package:earplug/main.dart'
         checkoutSessionFromUri,
         gigIdFromUri,
         joinTokenFromUri,
+        myTicketsRouteFromUri,
         opportunityRefFromUri,
         orgInviteTokenFromUri,
         organizerApplyFromUri,
         performerInviteTokenFromUri,
+        referralBandSlugFromUri,
         shouldEnableWebSemantics,
         stripeReturnFromUri,
+        ticketCheckoutCancelOrderFromUri,
+        ticketCheckoutSessionFromUri,
+        ticketIdFromUri,
         venueRefFromUri;
 import 'package:earplug/models.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -42,6 +47,121 @@ void main() {
       isNull,
     );
     expect(bandSlugFromUri(Uri.parse('https://earplug.app/check-in')), isNull);
+    expect(bandSlugFromUri(Uri.parse('https://earplug.app/t')), isNull);
+    expect(bandSlugFromUri(Uri.parse('https://earplug.app/tickets')), isNull);
+  });
+
+  test(
+    'ticket routes preserve ids and query values in paths and fragments',
+    () {
+      for (final prefix in ['', '#/', '#']) {
+        expect(
+          ticketIdFromUri(Uri.parse('https://earplug.app/${prefix}t/tk_123')),
+          'tk_123',
+        );
+        expect(
+          ticketCheckoutSessionFromUri(
+            Uri.parse(
+              'https://earplug.app/${prefix}tickets/return?session_id=cs_1',
+            ),
+          ),
+          'cs_1',
+        );
+        expect(
+          ticketCheckoutCancelOrderFromUri(
+            Uri.parse(
+              'https://earplug.app/${prefix}tickets/cancel?order=ord_1',
+            ),
+          ),
+          'ord_1',
+        );
+      }
+      expect(ticketIdFromUri(Uri.parse('https://earplug.app/t')), isNull);
+      expect(ticketIdFromUri(Uri.parse('https://earplug.app/t/%20')), isNull);
+    },
+  );
+
+  test('ticket routes trim values and prefer the path over the fragment', () {
+    for (final (parser, path) in [
+      (ticketIdFromUri, 't/'),
+      (ticketCheckoutSessionFromUri, 'tickets/return?session_id='),
+      (ticketCheckoutCancelOrderFromUri, 'tickets/cancel?order='),
+    ]) {
+      expect(
+        parser(
+          Uri.parse('https://earplug.app/$path%20path%20#/${path}fragment'),
+        ),
+        'path',
+      );
+      expect(
+        parser(Uri.parse('https://earplug.app/$path%20#/${path}fragment')),
+        'fragment',
+      );
+    }
+  });
+
+  test('the ticket wallet route matches only the tickets root', () {
+    for (final prefix in ['', '#/', '#']) {
+      for (final path in ['tickets', 'tickets/', 'tickets?ref=some-band']) {
+        expect(
+          myTicketsRouteFromUri(Uri.parse('https://earplug.app/$prefix$path')),
+          isTrue,
+        );
+      }
+      for (final path in [
+        '',
+        'tickets/return?session_id=cs_1',
+        'tickets/cancel?order=ord_1',
+        'tickets/extra',
+        'prefix/tickets',
+      ]) {
+        expect(
+          myTicketsRouteFromUri(Uri.parse('https://earplug.app/$prefix$path')),
+          isFalse,
+        );
+      }
+    }
+  });
+
+  test('referral slugs are trimmed on any route with fragment fallback', () {
+    expect(
+      referralBandSlugFromUri(
+        Uri.parse('https://earplug.app/g/some-gig?ref=static-bloom'),
+      ),
+      'static-bloom',
+    );
+    for (final path in ['', 'g/some-gig', 't/tk_123', 'tickets']) {
+      expect(
+        referralBandSlugFromUri(
+          Uri.parse('https://earplug.app/$path?ref=%20band%20'),
+        ),
+        'band',
+      );
+      expect(
+        referralBandSlugFromUri(
+          Uri.parse('https://earplug.app/#/$path?ref=band'),
+        ),
+        'band',
+      );
+    }
+    expect(
+      referralBandSlugFromUri(
+        Uri.parse('https://earplug.app/?ref=path#/tickets?ref=fragment'),
+      ),
+      'path',
+    );
+    expect(
+      referralBandSlugFromUri(
+        Uri.parse('https://earplug.app/?ref=%20#/tickets?ref=fragment'),
+      ),
+      'fragment',
+    );
+    for (final path in ['tickets', 'tickets?ref=', 'tickets?ref=%20']) {
+      expect(
+        referralBandSlugFromUri(Uri.parse('https://earplug.app/$path')),
+        isNull,
+      );
+    }
   });
 
   test('venue and organization invitation routes preserve their values', () {
@@ -140,6 +260,8 @@ void main() {
     for (final (parser, path, query) in [
       (checkoutSessionFromUri, 'checkout/return', 'session_id'),
       (checkoutCancelBookingFromUri, 'checkout/cancel', 'booking'),
+      (ticketCheckoutSessionFromUri, 'tickets/return', 'session_id'),
+      (ticketCheckoutCancelOrderFromUri, 'tickets/cancel', 'order'),
       (stripeReturnFromUri, 'band/stripe/return', 'band'),
       (stripeReturnFromUri, 'band/stripe/refresh', 'band'),
       (stripeReturnFromUri, 'org/stripe/return', 'org'),
@@ -288,7 +410,6 @@ void main() {
       'venues',
       'orgs',
       'apply',
-      't',
       'org',
       'band',
       'checkout',
@@ -396,6 +517,101 @@ void main() {
       expect(app.pending, isNull);
     }
   });
+
+  test('ticket deep links open directly while signed out', () async {
+    final app = AppState.demo(initialTicketId: ' tk_123 ');
+    addTearDown(app.dispose);
+    await flushAsyncWork();
+
+    expect(app.current.screen, Screen.ticket);
+    expect(app.current.param, 'tk_123');
+    expect(app.pending, isNull);
+    expect(app.canGoBack, isTrue);
+    app.back();
+    expect(app.current.screen, Screen.home);
+  });
+
+  test(
+    'ticket wallet deep links load and preserve a home back entry',
+    () async {
+      final app = AppState.demo(initialMyTickets: true);
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+
+      expect(app.current.screen, Screen.myTickets);
+      expect(app.pending, isNull);
+      expect(app.myTicketsLoaded, isTrue);
+      expect(app.canGoBack, isTrue);
+      app.back();
+      expect(app.current.screen, Screen.home);
+    },
+  );
+
+  test(
+    'ticket Checkout returns seed a single route without an auth gate',
+    () async {
+      final app = AppState.demo(initialTicketCheckoutSessionId: ' cs_1 ');
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+
+      expect(app.current.screen, Screen.ticketCheckoutReturn);
+      expect(app.current.param, 'cs_1');
+      expect(app.pending, isNull);
+      expect(app.canGoBack, isFalse);
+    },
+  );
+
+  test(
+    'ticket Checkout cancellations seed a single route without an auth gate',
+    () async {
+      final app = AppState.demo(initialTicketCheckoutCancelOrderId: ' ord_1 ');
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+
+      expect(app.current.screen, Screen.ticketCheckoutCancel);
+      expect(app.current.param, 'ord_1');
+      expect(app.pending, isNull);
+      expect(app.canGoBack, isFalse);
+    },
+  );
+
+  test('ticket initial routes take precedence in constructor order', () async {
+    for (final (wallet, checkout, cancel, expected) in [
+      (false, null, null, Screen.ticket),
+      (true, null, null, Screen.myTickets),
+      (true, 'cs_1', null, Screen.ticketCheckoutReturn),
+      (true, 'cs_1', 'ord_1', Screen.ticketCheckoutCancel),
+    ]) {
+      final app = AppState.demo(
+        initialCheckoutSessionId: 'old_checkout',
+        initialStripeReturn: 'org:org1',
+        initialTicketId: 'tk_123',
+        initialMyTickets: wallet,
+        initialTicketCheckoutSessionId: checkout,
+        initialTicketCheckoutCancelOrderId: cancel,
+      );
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+
+      expect(app.current.screen, expected);
+    }
+  });
+
+  test(
+    'blank ticket route parameters leave the home route unchanged',
+    () async {
+      final app = AppState.demo(
+        initialTicketId: ' ',
+        initialTicketCheckoutSessionId: ' ',
+        initialTicketCheckoutCancelOrderId: ' ',
+      );
+      addTearDown(app.dispose);
+      await flushAsyncWork();
+
+      expect(app.current.screen, Screen.home);
+      expect(app.myTicketsLoaded, isFalse);
+    },
+  );
 
   test(
     'blank payment return parameters leave the home route unchanged',

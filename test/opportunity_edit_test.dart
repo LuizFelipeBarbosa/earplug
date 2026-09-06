@@ -143,6 +143,205 @@ void main() {
     await _disposeApp(tester, harness.app);
   });
 
+  testWidgets('paid tickets save dollar prices and validate before opening', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final harness = await _pumpEditor(tester, auth, repository, 'new');
+    await _enterText(tester, 'opp-edit-title', 'Paid Saturday');
+    await _tap(tester, 'opp-edit-venue-v1');
+    await _pickDate(tester, 'opp-edit-date', _futureDate(30));
+    await _tap(tester, 'opp-edit-slot-add');
+    await _reveal(
+      tester,
+      find.byKey(const ValueKey('opp-edit-ticketing-paid')),
+    );
+
+    for (final ticketing in ['none', 'rsvp', 'external', 'paid']) {
+      expect(
+        find.byKey(ValueKey('opp-edit-ticketing-$ticketing')),
+        findsOneWidget,
+      );
+    }
+    expect(find.byKey(const ValueKey('opp-edit-ticket-price')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('opp-edit-ticket-capacity')),
+      findsNothing,
+    );
+    expect(
+      tester
+          .widget<EpChip>(find.byKey(const ValueKey('opp-edit-ticketing-paid')))
+          .onTap,
+      isNotNull,
+    );
+    await _tap(tester, 'opp-edit-ticketing-paid');
+    expect(_field(tester, 'opp-edit-ticket-price').enabled, isTrue);
+    expect(_field(tester, 'opp-edit-ticket-capacity').enabled, isTrue);
+    expect(_field(tester, 'opp-edit-ticket-price').controller!.text, isEmpty);
+    expect(
+      _field(tester, 'opp-edit-ticket-capacity').controller!.text,
+      isEmpty,
+    );
+    expect(find.byKey(const ValueKey('opp-edit-external-url')), findsNothing);
+    await _tapAction(tester, 'save');
+    expect(find.text('Needs: ticket price, ticket capacity'), findsWidgets);
+    expect(
+      (await repository.manageOpportunities(
+        'org1',
+      )).where((opportunity) => opportunity.title == 'Paid Saturday'),
+      isEmpty,
+    );
+
+    await _enterText(tester, 'opp-edit-ticket-price', '25');
+    await _enterText(tester, 'opp-edit-ticket-capacity', '100');
+    await _tapAction(tester, 'save');
+    final saved = (await repository.manageOpportunities(
+      'org1',
+    )).singleWhere((opportunity) => opportunity.title == 'Paid Saturday');
+    expect(saved.ticketing, OpportunityTicketing.paid);
+    expect(saved.ticketPriceMinor, 2500);
+    expect(saved.ticketCapacity, 100);
+    expect(saved.ticketCurrency, 'usd');
+    expect(_action(tester, 'open').onPrimary, isNotNull);
+
+    for (final price in ['0.99', 'NaN', 'Infinity', '1e308']) {
+      await _enterText(tester, 'opp-edit-ticket-price', price);
+      expect(
+        find.text('Enter a ticket price of at least \$1.00.'),
+        findsOneWidget,
+      );
+      expect(_action(tester, 'open').onPrimary, isNull);
+      await _tapAction(tester, 'save');
+      expect(find.text('Needs: ticket price'), findsWidgets);
+      expect(
+        (await repository.opportunity(saved.id))!.revision,
+        saved.revision,
+      );
+    }
+    await _enterText(tester, 'opp-edit-ticket-price', '25');
+    for (final capacity in ['0', '6000', '1.5']) {
+      await _enterText(tester, 'opp-edit-ticket-capacity', capacity);
+      expect(find.text('Enter a whole number from 1 to 5000.'), findsOneWidget);
+      expect(_action(tester, 'open').onPrimary, isNull);
+      await _tapAction(tester, 'save');
+      expect(find.text('Needs: ticket capacity'), findsWidgets);
+      final unchanged = (await repository.opportunity(saved.id))!;
+      expect(unchanged.revision, saved.revision);
+      expect(unchanged.status, OpportunityStatus.draft);
+    }
+
+    // Invalid paid inputs do not constrain other ticketing modes.
+    for (final ticketing in ['external', 'none', 'rsvp']) {
+      await _tap(tester, 'opp-edit-ticketing-$ticketing');
+      expect(find.byKey(const ValueKey('opp-edit-ticket-price')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('opp-edit-ticket-capacity')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('opp-edit-external-url')),
+        ticketing == 'external' ? findsOneWidget : findsNothing,
+      );
+      expect(_action(tester, 'open').onPrimary, isNotNull);
+    }
+    await _tapAction(tester, 'save');
+    expect(
+      (await repository.opportunity(saved.id))!.ticketing,
+      OpportunityTicketing.rsvp,
+    );
+
+    await _tap(tester, 'opp-edit-ticketing-paid');
+    await _enterText(tester, 'opp-edit-ticket-price', '25.505');
+    await _enterText(tester, 'opp-edit-ticket-capacity', '100');
+    await _tapAction(tester, 'open');
+    final opened = (await repository.opportunity(saved.id))!;
+    expect(opened.status, OpportunityStatus.open);
+    expect(opened.ticketing, OpportunityTicketing.paid);
+    expect(opened.ticketPriceMinor, 2551);
+    expect(opened.ticketCapacity, 100);
+    expect(opened.ticketCurrency, 'usd');
+    await _disposeApp(tester, harness.app);
+  });
+
+  for (final price in [2500, 2550]) {
+    testWidgets('paid ticket fields hydrate $price minor units', (
+      tester,
+    ) async {
+      final auth = FakeAuthService();
+      final repository = DemoRepository(auth: auth);
+      final fixture = (await repository.opportunity('opp2'))!;
+      await repository.updateOpportunity(
+        opportunityId: fixture.id,
+        expectedRevision: fixture.revision,
+        ticketing: OpportunityTicketing.paid,
+        ticketPriceMinor: price,
+        ticketCapacity: 100,
+        ticketCurrency: 'usd',
+      );
+      if (price == 2550) await repository.cancelOpportunity(fixture.id);
+      final harness = await _pumpEditor(tester, auth, repository, fixture.id);
+      await _reveal(
+        tester,
+        find.byKey(const ValueKey('opp-edit-ticket-price')),
+      );
+      expect(
+        _field(tester, 'opp-edit-ticket-price').controller!.text,
+        price == 2500 ? '25' : '25.50',
+      );
+      expect(
+        _field(tester, 'opp-edit-ticket-capacity').controller!.text,
+        '100',
+      );
+      expect(_field(tester, 'opp-edit-ticket-price').enabled, price == 2500);
+      expect(_field(tester, 'opp-edit-ticket-capacity').enabled, price == 2500);
+      expect(
+        tester
+            .widget<EpChip>(
+              find.byKey(const ValueKey('opp-edit-ticketing-paid')),
+            )
+            .onTap,
+        price == 2500 ? isNotNull : isNull,
+      );
+      await _disposeApp(tester, harness.app);
+    });
+  }
+
+  testWidgets('paid ticketing requires Stripe charges to be enabled', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _StripeDisconnectedRepository(auth: auth);
+    final harness = await _pumpEditor(tester, auth, repository, 'opp2');
+    await _reveal(
+      tester,
+      find.byKey(const ValueKey('opp-edit-ticketing-paid')),
+    );
+    expect(
+      tester
+          .widget<EpChip>(find.byKey(const ValueKey('opp-edit-ticketing-paid')))
+          .onTap,
+      isNull,
+    );
+    expect(
+      find.text('Connect Stripe in SETTINGS to sell tickets'),
+      findsOneWidget,
+    );
+    await _tap(tester, 'opp-edit-ticketing-paid');
+    expect(find.byKey(const ValueKey('opp-edit-ticket-price')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('opp-edit-ticket-capacity')),
+      findsNothing,
+    );
+    expect(
+      tester
+          .widget<EpChip>(find.byKey(const ValueKey('opp-edit-ticketing-rsvp')))
+          .onTap,
+      isNotNull,
+    );
+    await _disposeApp(tester, harness.app);
+  });
+
   testWidgets('existing open opportunity is prefilled, saves and closes', (
     tester,
   ) async {
@@ -529,6 +728,34 @@ Future<void> _removeInvite(WidgetTester tester, String bandId) async {
   await tester.pumpAndSettle();
 }
 
+class _StripeDisconnectedRepository extends DemoRepository {
+  _StripeDisconnectedRepository({required super.auth});
+
+  @override
+  Future<OrganizationDashboard> organizationDashboard(
+    String organizationId,
+  ) async {
+    final dashboard = await super.organizationDashboard(organizationId);
+    final verification = dashboard.verification;
+    return OrganizationDashboard(
+      organization: dashboard.organization,
+      role: dashboard.role,
+      viaPlatformAdmin: dashboard.viaPlatformAdmin,
+      verification: OrganizationVerification(
+        verified: verification.verified,
+        stripeDetailsSubmitted: verification.stripeDetailsSubmitted,
+        stripeChargesEnabled: false,
+        stripePayoutsEnabled: verification.stripePayoutsEnabled,
+        profileComplete: verification.profileComplete,
+        teamInvited: verification.teamInvited,
+      ),
+      venues: dashboard.venues,
+      memberCount: dashboard.memberCount,
+      privateDetails: dashboard.privateDetails,
+    );
+  }
+}
+
 class _ConflictOnceRepository extends DemoRepository {
   _ConflictOnceRepository({required super.auth});
 
@@ -555,6 +782,9 @@ class _ConflictOnceRepository extends DemoRepository {
     DateTime? applicationsCloseAt,
     OpportunityVisibility? visibility,
     OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
   }) async {
@@ -579,6 +809,9 @@ class _ConflictOnceRepository extends DemoRepository {
       applicationsCloseAt: applicationsCloseAt,
       visibility: visibility,
       ticketing: ticketing,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
+      ticketCurrency: ticketCurrency,
       externalUrl: externalUrl,
       slots: slots,
     );

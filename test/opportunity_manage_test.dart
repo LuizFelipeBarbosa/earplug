@@ -1,8 +1,10 @@
 import 'package:earplug/app_state.dart';
 import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
+import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/screens/opportunity_applicants.dart';
 import 'package:earplug/screens/org_opportunities.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -77,6 +79,96 @@ void main() {
     );
     harness.app.dispose();
   });
+
+  testWidgets(
+    'published paid opportunities load sales and offer a door action',
+    (tester) async {
+      final harness = await _pumpOrganizerScreen(
+        tester,
+        const SizedBox.shrink(),
+        repositoryBuilder: (auth) =>
+            _PublishedOpportunityRepository(auth: auth),
+      );
+      final repository =
+          harness.app.repository as _PublishedOpportunityRepository;
+      final reservation = await repository.reserveTickets(
+        gigId: 'g8',
+        quantity: 2,
+      );
+      final checkout = await repository.startTicketCheckout(
+        reservation.orderId,
+      );
+      await repository.simulateTicketCheckoutCompleted(checkout.sessionId);
+      final expected = await repository.ticketSalesForGig('g8');
+      final readsBeforeScreen = repository.salesReads;
+      expect(expected.sold, greaterThan(0));
+      expect(expected.netMinor, greaterThan(0));
+      expect(harness.app.salesFor('g8'), isNull);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AppState>.value(
+          value: harness.app,
+          child: MaterialApp(
+            theme: buildEpTheme(),
+            home: const Scaffold(body: OrgOpportunitiesScreen()),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final caption = find.byKey(const Key('org-opp-sales-opp1'));
+      await tester.ensureVisible(caption);
+      expect(
+        tester.widget<Text>(caption).data,
+        '${expected.sold}/${expected.capacity} sold · ${expected.net.label} net',
+      );
+      expect(repository.salesReads, readsBeforeScreen + 1);
+      expectNoFieldInCard(tester);
+
+      await harness.app.refreshOpportunities('org1');
+      await tester.pumpAndSettle();
+      expect(repository.salesReads, readsBeforeScreen + 1);
+      await _chooseOpportunityAction(tester, 'opp1', 'DOOR');
+      expect(find.byType(DoorModeScreen), findsOneWidget);
+      expect(
+        tester.widget<DoorModeScreen>(find.byType(DoorModeScreen)).launch.gigId,
+        'g8',
+      );
+      expect(find.text(DemoData.opportunities['opp1']!.title), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      harness.app.dispose();
+    },
+  );
+
+  for (final published in [false, true]) {
+    testWidgets(
+      published
+          ? 'published RSVP opportunities offer DOOR without loading sales'
+          : 'paid opportunities without a published gig have no sales or DOOR',
+      (tester) async {
+        final harness = await _pumpOrganizerScreen(
+          tester,
+          const OrgOpportunitiesScreen(),
+          repositoryBuilder: (auth) => _PublishedOpportunityRepository(
+            auth: auth,
+            published: published,
+            ticketing: published
+                ? OpportunityTicketing.rsvp
+                : OpportunityTicketing.paid,
+          ),
+        );
+        final repository =
+            harness.app.repository as _PublishedOpportunityRepository;
+        expect(repository.salesReads, 0);
+        expect(find.byKey(const Key('org-opp-sales-opp1')), findsNothing);
+        final card = find.byKey(const ValueKey('org-opp-opp1'));
+        await tester.ensureVisible(card);
+        await tester.tap(card);
+        await tester.pumpAndSettle();
+        expect(find.text('DOOR'), published ? findsOneWidget : findsNothing);
+        harness.app.dispose();
+      },
+    );
+  }
 
   testWidgets('new opportunity opens the editor with the new parameter', (
     tester,
@@ -804,6 +896,86 @@ Future<AppHarness> _pumpOrganizerScreen(
   await tester.pumpAndSettle();
   await enterOrganizer(tester, harness, 'org1');
   return harness;
+}
+
+class _PublishedOpportunityRepository extends DemoRepository {
+  _PublishedOpportunityRepository({
+    required super.auth,
+    this.published = true,
+    this.ticketing = OpportunityTicketing.paid,
+  });
+
+  final bool published;
+  final OpportunityTicketing ticketing;
+  int salesReads = 0;
+
+  @override
+  Future<List<Opportunity>> manageOpportunities(String organizationId) async {
+    final opportunities = await super.manageOpportunities(organizationId);
+    return opportunities.map((opportunity) {
+      if (opportunity.id != 'opp1') return opportunity;
+      return Opportunity(
+        id: opportunity.id,
+        organizationId: opportunity.organizationId,
+        mode: opportunity.mode,
+        venueId: opportunity.venueId,
+        venue: opportunity.venue,
+        title: opportunity.title,
+        desc: opportunity.desc,
+        eventType: opportunity.eventType,
+        expectedAttendance: opportunity.expectedAttendance,
+        genres: opportunity.genres,
+        startsAt: opportunity.startsAt,
+        doorsAt: opportunity.doorsAt,
+        endsAt: opportunity.endsAt,
+        ageRequirement: opportunity.ageRequirement,
+        equipment: opportunity.equipment,
+        requirements: opportunity.requirements,
+        flyKey: opportunity.flyKey,
+        flyerUrl: opportunity.flyerUrl,
+        applicationsCloseAt: opportunity.applicationsCloseAt,
+        visibility: opportunity.visibility,
+        ticketing: ticketing,
+        ticketPriceMinor: 2500,
+        ticketCapacity: 40,
+        ticketCurrency: 'usd',
+        externalUrl: opportunity.externalUrl,
+        status: OpportunityStatus.confirmed,
+        slug: opportunity.slug,
+        revision: opportunity.revision,
+        applicationCount: opportunity.applicationCount,
+        slots: opportunity.slots,
+        invitedBandIds: opportunity.invitedBandIds,
+        createdAt: opportunity.createdAt,
+        updatedAt: opportunity.updatedAt,
+        area: opportunity.area,
+        venueType: opportunity.venueType,
+        currency: opportunity.currency,
+      );
+    }).toList();
+  }
+
+  @override
+  Stream<FeedSnapshot> feed() => super.feed().map(
+    (snapshot) => FeedSnapshot(
+      gigs: [
+        for (final gig in snapshot.gigs)
+          if (published && gig.id == 'g8')
+            gig.copyWith(opportunityId: 'opp1')
+          else
+            gig,
+      ],
+      venues: snapshot.venues,
+      bands: snapshot.bands,
+      nextStartsAt: snapshot.nextStartsAt,
+    ),
+  );
+
+  @override
+  Future<TicketSales> ticketSalesForGig(String gigId) {
+    salesReads++;
+    return super.ticketSalesForGig(gigId);
+  }
 }
 
 class _BookingStatusRepository extends DemoRepository {

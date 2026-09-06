@@ -4,6 +4,7 @@ import { Id } from "./_generated/dataModel";
 import { MutationCtx, internalMutation, mutation } from "./_generated/server";
 import { loadCurrentOffer, sendBookingEmail } from "./bookings";
 import { requireOrganizationRole } from "./lib/authz";
+import { flag } from "./lib/env";
 import { releaseSlot } from "./lib/bookingConfirm";
 import {
   BOOKING_ACTIVE_STATUSES,
@@ -24,6 +25,7 @@ import {
   assertSlotTransition,
   type ArtistApplicationStatus,
 } from "./lib/opportunityStatus";
+import { cancelTicketSalesForGig } from "./lib/ticketCancellation";
 import {
   ageRequirementValidator,
   gigPerformerRoleValidator,
@@ -62,6 +64,9 @@ const opportunityFieldsValidator = v.object({
   applicationsCloseAt: v.optional(v.number()),
   visibility: v.optional(opportunityVisibilityValidator),
   ticketing: v.optional(opportunityTicketingValidator),
+  ticketPriceMinor: v.optional(v.number()),
+  ticketCapacity: v.optional(v.number()),
+  ticketCurrency: v.optional(v.string()),
   currency: v.optional(v.string()),
   externalUrl: v.optional(v.string()),
 });
@@ -108,8 +113,37 @@ async function normalizeAndValidateFields(
     throw new Error("Applications must close before the event starts");
   }
   const ticketing = args.ticketing ?? "rsvp";
+  if (ticketing === "paid" && !flag("TICKETS_ENABLED", false)) {
+    throw new Error("Paid ticketing is not available yet");
+  }
   if (ticketing === "external" && !isValidHttpsUrl(args.externalUrl)) {
     throw new Error("External ticketing requires a valid HTTPS URL");
+  }
+  let ticketPriceMinor: number | undefined;
+  let ticketCapacity: number | undefined;
+  let ticketCurrency: string | undefined;
+  if (ticketing === "paid") {
+    ticketCurrency = (args.ticketCurrency ?? "usd").trim().toLowerCase() || "usd";
+    if (ticketCurrency !== "usd") {
+      throw new Error("Only USD ticketing is supported right now");
+    }
+    if (
+      args.ticketPriceMinor === undefined ||
+      !Number.isInteger(args.ticketPriceMinor) ||
+      args.ticketPriceMinor < 100
+    ) {
+      throw new Error("Ticket price must be at least $1.00");
+    }
+    if (
+      args.ticketCapacity === undefined ||
+      !Number.isInteger(args.ticketCapacity) ||
+      args.ticketCapacity < 1 ||
+      args.ticketCapacity > 5000
+    ) {
+      throw new Error("Ticket capacity must be between 1 and 5,000");
+    }
+    ticketPriceMinor = args.ticketPriceMinor;
+    ticketCapacity = args.ticketCapacity;
   }
   const flyKey = args.flyKey ?? "xerox";
   if (flyKey === "custom") {
@@ -130,6 +164,9 @@ async function normalizeAndValidateFields(
     startsAt: args.startsAt,
     applicationsCloseAt,
     ticketing,
+    ticketPriceMinor,
+    ticketCapacity,
+    ticketCurrency,
     flyKey,
     visibility: args.visibility ?? "public",
     ageRequirement: args.ageRequirement ?? "allAges",
@@ -409,6 +446,9 @@ export const update = mutation({
       applicationsCloseAt,
       visibility: args.visibility ?? opportunity.visibility,
       ticketing: args.ticketing ?? opportunity.ticketing,
+      ticketPriceMinor: args.ticketPriceMinor ?? opportunity.ticketPriceMinor,
+      ticketCapacity: args.ticketCapacity ?? opportunity.ticketCapacity,
+      ticketCurrency: args.ticketCurrency ?? opportunity.ticketCurrency,
       currency: args.currency ?? opportunity.currency,
       externalUrl: resolveClearable(args.externalUrl, opportunity.externalUrl),
     });
@@ -659,6 +699,10 @@ export const cancel = mutation({
     }
     if (opportunity.publicGigId !== undefined) {
       await unpublishOpportunityGig(ctx, opportunity._id, "opportunity_cancelled");
+      const gig = await ctx.db.get(opportunity.publicGigId);
+      if (gig?.ticketing === "paid") {
+        await cancelTicketSalesForGig(ctx, opportunity.publicGigId);
+      }
     } else {
       await ctx.db.patch(opportunity._id, {
         status: "cancelled",

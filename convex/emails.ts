@@ -1,8 +1,10 @@
 import { v } from "convex/values";
-import { env, internalAction } from "./_generated/server";
-import { flag } from "./lib/env";
+import { internal } from "./_generated/api";
+import type { Doc, Id } from "./_generated/dataModel";
+import { env, internalAction, type MutationCtx } from "./_generated/server";
+import { appBaseUrl, flag } from "./lib/env";
 
-const emailKindValidator = v.union(
+export const emailKindValidator = v.union(
   v.literal("applicationReceived"),
   v.literal("applicationApproved"),
   v.literal("applicationNeedsInfo"),
@@ -16,6 +18,8 @@ const emailKindValidator = v.union(
   v.literal("bookingConfirmed"),
   v.literal("bookingCancelled"),
   v.literal("reviewRequested"),
+  v.literal("ticketReceipt"),
+  v.literal("ticketRefunded"),
 );
 
 export function applicationEmail(
@@ -126,6 +130,71 @@ export function bookingEmail(
   if (input.grossLabel !== undefined) text += `\n\nFee: ${input.grossLabel}`;
   if (input.reason !== undefined) text += `\n\nReason: ${input.reason}`;
   return { subject, text: `${text}\n\n${input.link}` };
+}
+
+export function ticketEmail(
+  kind: "ticketReceipt" | "ticketRefunded",
+  input: {
+    gigTitle: string;
+    venueName: string;
+    startsAt: number;
+    quantity: number;
+    totalLabel: string;
+    link: string;
+  },
+): { subject: string; text: string } {
+  const performance = `${input.gigTitle} at ${input.venueName} on ${bookingDateLabel(input.startsAt)}`;
+  if (kind === "ticketReceipt") {
+    return {
+      subject: `Your tickets for ${input.gigTitle}`,
+      text: `You purchased ${input.quantity} tickets for ${performance}. Total: ${input.totalLabel}.\n\n${input.link}`,
+    };
+  }
+  return {
+    subject: `Refund on the way for ${input.gigTitle}`,
+    text: `Your ticket order for ${performance} was refunded. Total: ${input.totalLabel}.\n\n${input.link}`,
+  };
+}
+
+export async function sendTicketEmail(
+  ctx: MutationCtx,
+  order: Doc<"ticketOrders">,
+  kind: "ticketReceipt" | "ticketRefunded",
+  options?: { firstTicketId?: Id<"tickets"> },
+): Promise<void> {
+  const buyer = await ctx.db.get(order.buyerUserId);
+  const buyerEmail = buyer?.email.trim();
+  if (!buyerEmail) return;
+
+  const gig = await ctx.db.get(order.gigId);
+  if (!gig) {
+    console.warn(`sendTicketEmail: gig not found for order ${order._id}`);
+    return;
+  }
+  const venue = await ctx.db.get(gig.venueId);
+  if (!venue) {
+    console.warn(`sendTicketEmail: venue not found for order ${order._id}`);
+    return;
+  }
+
+  const totalLabel = `${(order.totalMinor / 100).toFixed(2)} ${order.currency.toUpperCase()}`;
+  const link =
+    options?.firstTicketId !== undefined
+      ? `${appBaseUrl()}/t/${options.firstTicketId}`
+      : `${appBaseUrl()}/`;
+  const body = ticketEmail(kind, {
+    gigTitle: gig.title,
+    venueName: venue.name,
+    startsAt: gig.startsAt,
+    quantity: order.quantity,
+    totalLabel,
+    link,
+  });
+  await ctx.scheduler.runAfter(0, internal.emails.send, {
+    kind,
+    to: buyerEmail,
+    ...body,
+  });
 }
 
 export const send = internalAction({

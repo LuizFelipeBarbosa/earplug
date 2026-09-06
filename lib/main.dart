@@ -48,6 +48,8 @@ import 'screens/org_venues.dart';
 import 'screens/review_compose.dart';
 import 'screens/settings.dart';
 import 'screens/stripe_return.dart';
+import 'screens/ticket_detail.dart';
+import 'screens/ticket_return.dart';
 import 'screens/venue_detail.dart';
 import 'services/appearance_controller.dart';
 import 'services/auth_service.dart';
@@ -115,6 +117,13 @@ Future<void> main() async {
   final stripeReturn = stripeReturnFromUri(Uri.base);
   final orgInviteToken = orgInviteTokenFromUri(Uri.base);
   final organizerApply = organizerApplyFromUri(Uri.base);
+  final ticketId = ticketIdFromUri(Uri.base);
+  final ticketCheckoutSessionId = ticketCheckoutSessionFromUri(Uri.base);
+  final ticketCheckoutCancelOrderId = ticketCheckoutCancelOrderFromUri(
+    Uri.base,
+  );
+  final myTicketsRoute = myTicketsRouteFromUri(Uri.base);
+  final referralBandSlug = referralBandSlugFromUri(Uri.base);
   if (Env.demo) {
     final appState = AppState.demo(
       initialJoinToken: joinToken,
@@ -129,6 +138,11 @@ Future<void> main() async {
       initialStripeReturn: stripeReturn,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
+      initialTicketId: ticketId,
+      initialTicketCheckoutSessionId: ticketCheckoutSessionId,
+      initialTicketCheckoutCancelOrderId: ticketCheckoutCancelOrderId,
+      initialMyTickets: myTicketsRoute,
+      initialReferralBandSlug: referralBandSlug,
     );
     runApp(
       EarplugApp(
@@ -169,6 +183,11 @@ Future<void> main() async {
       initialStripeReturn: stripeReturn,
       initialOrgInviteToken: orgInviteToken,
       initialOrganizerApply: organizerApply,
+      initialTicketId: ticketId,
+      initialTicketCheckoutSessionId: ticketCheckoutSessionId,
+      initialTicketCheckoutCancelOrderId: ticketCheckoutCancelOrderId,
+      initialMyTickets: myTicketsRoute,
+      initialReferralBandSlug: referralBandSlug,
     ),
   );
   _removeSplashAfterFirstFrame();
@@ -230,11 +249,19 @@ String? opportunityRefFromUri(Uri uri) =>
 
 String? bookingIdFromUri(Uri uri) => _routeValueFromUri(uri, 'bookings');
 
+String? ticketIdFromUri(Uri uri) => _routeValueFromUri(uri, 't');
+
 String? checkoutSessionFromUri(Uri uri) =>
     _queryRouteValueFromUri(uri, const ['checkout', 'return'], 'session_id');
 
+String? ticketCheckoutSessionFromUri(Uri uri) =>
+    _queryRouteValueFromUri(uri, const ['tickets', 'return'], 'session_id');
+
 String? checkoutCancelBookingFromUri(Uri uri) =>
     _queryRouteValueFromUri(uri, const ['checkout', 'cancel'], 'booking');
+
+String? ticketCheckoutCancelOrderFromUri(Uri uri) =>
+    _queryRouteValueFromUri(uri, const ['tickets', 'cancel'], 'order');
 
 String? stripeReturnFromUri(Uri uri) => _routeFromUri(uri, (routeUri) {
   final segments = routeUri.pathSegments
@@ -257,6 +284,20 @@ String? orgInviteTokenFromUri(Uri uri) => _routeValueFromUri(uri, 'apply');
 bool organizerApplyFromUri(Uri uri) =>
     uri.path == organizerApplyPath || uri.path == '$organizerApplyPath/';
 
+bool myTicketsRouteFromUri(Uri uri) =>
+    _routeFromUri(uri, (routeUri) {
+      final segments = routeUri.pathSegments
+          .where((segment) => segment.isNotEmpty)
+          .toList();
+      return listEquals(segments, const ['tickets']) ? '' : null;
+    }) !=
+    null;
+
+String? referralBandSlugFromUri(Uri uri) => _routeFromUri(uri, (routeUri) {
+  final value = routeUri.queryParameters['ref']?.trim();
+  return value == null || value.isEmpty ? null : value;
+});
+
 String? bandSlugFromUri(Uri uri) {
   final segments = uri.pathSegments
       .where((segment) => segment.isNotEmpty)
@@ -265,9 +306,16 @@ String? bandSlugFromUri(Uri uri) {
   final slug = segments.single.trim().toLowerCase();
   // Marketplace routes include a second segment, so their bare prefixes can
   // still resolve band slugs issued by the backend (including the `band`
-  // fallback). Only these original roots were excluded from slug allocation.
+  // fallback). Ticket roots are reserved alongside the original exclusions.
   if (slug.isEmpty ||
-      const {'g', 'join', 'gig-invite', 'check-in'}.contains(slug)) {
+      const {
+        'g',
+        'join',
+        'gig-invite',
+        'check-in',
+        't',
+        'tickets',
+      }.contains(slug)) {
     return null;
   }
   return slug;
@@ -342,6 +390,11 @@ class EarplugApp extends StatelessWidget {
     this.initialStripeReturn,
     this.initialOrgInviteToken,
     this.initialOrganizerApply = false,
+    this.initialTicketId,
+    this.initialTicketCheckoutSessionId,
+    this.initialTicketCheckoutCancelOrderId,
+    this.initialMyTickets = false,
+    this.initialReferralBandSlug,
   });
 
   final AppearanceController appearance;
@@ -360,6 +413,11 @@ class EarplugApp extends StatelessWidget {
   final String? initialStripeReturn;
   final String? initialOrgInviteToken;
   final bool initialOrganizerApply;
+  final String? initialTicketId;
+  final String? initialTicketCheckoutSessionId;
+  final String? initialTicketCheckoutCancelOrderId;
+  final bool initialMyTickets;
+  final String? initialReferralBandSlug;
 
   @override
   Widget build(BuildContext context) {
@@ -393,6 +451,12 @@ class EarplugApp extends StatelessWidget {
                 initialStripeReturn: initialStripeReturn,
                 initialOrgInviteToken: initialOrgInviteToken,
                 initialOrganizerApply: initialOrganizerApply,
+                initialTicketId: initialTicketId,
+                initialTicketCheckoutSessionId: initialTicketCheckoutSessionId,
+                initialTicketCheckoutCancelOrderId:
+                    initialTicketCheckoutCancelOrderId,
+                initialMyTickets: initialMyTickets,
+                initialReferralBandSlug: initialReferralBandSlug,
               ),
         ),
         ChangeNotifierProvider<BandMediaController>(
@@ -679,6 +743,16 @@ class RootShell extends StatelessWidget {
         bookingId: entry.param!,
       ),
       Screen.stripeReturn => StripeReturnScreen(key: key, param: entry.param!),
+      Screen.myTickets => MyGigsScreen(key: key),
+      Screen.ticket => TicketDetailScreen(key: key, ticketId: entry.param!),
+      Screen.ticketCheckoutReturn => TicketCheckoutReturnScreen(
+        key: key,
+        sessionId: entry.param!,
+      ),
+      Screen.ticketCheckoutCancel => TicketCheckoutCancelScreen(
+        key: key,
+        orderId: entry.param!,
+      ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,

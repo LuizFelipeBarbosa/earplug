@@ -299,6 +299,9 @@ export async function createProjectForGig(
     .withIndex("by_public_gig", (q) => q.eq("publicGigId", gig._id))
     .first();
   if (existing) return existing._id;
+  if (gig.ticketing === "paid") {
+    throw new Error("Paid gigs are organization-owned and have no band project");
+  }
   const now = Date.now();
   const projectId = await ctx.db.insert("gigProjects", {
     bandId,

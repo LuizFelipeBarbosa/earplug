@@ -289,6 +289,11 @@ async function setupOrganization() {
   };
 }
 
+
+beforeEach(() => {
+  vi.stubEnv("TICKETS_ENABLED", "true");
+});
+
 describe("talent opportunity drafts", () => {
   test("defaults include a free headliner slot and venue discovery fields", async () => {
     const { createDraft, readOpportunity, ownerId, venueId } =
@@ -376,6 +381,81 @@ describe("talent opportunity drafts", () => {
   ])("validates draft fields: $error", async ({ error, ...fields }) => {
     const { createDraft } = await setupOrganization();
     await expect(createDraft(fields)).rejects.toThrow(error);
+  });
+
+  test.each([undefined, " USD ", "   "])(
+    "stores paid ticketing with normalized USD currency (input: %s)",
+    async (ticketCurrency) => {
+      const { createDraft, readOpportunity } = await setupOrganization();
+      const { opportunityId } = await createDraft({
+        ticketing: "paid",
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+        ticketCurrency,
+      });
+      expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+        ticketing: "paid",
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+        ticketCurrency: "usd",
+      });
+    },
+  );
+
+  test("refuses paid ticketing while TICKETS_ENABLED is off", async () => {
+    vi.stubEnv("TICKETS_ENABLED", "false");
+    const { createDraft } = await setupOrganization();
+    await expect(
+      createDraft({ ticketing: "paid", ticketPriceMinor: 1500, ticketCapacity: 100 }),
+    ).rejects.toThrow("Paid ticketing is not available yet");
+  });
+
+  test.each([undefined, 50, 100.5])(
+    "rejects invalid paid ticket prices: %s",
+    async (ticketPriceMinor) => {
+      const { createDraft } = await setupOrganization();
+      await expect(
+        createDraft({ ticketing: "paid", ticketPriceMinor, ticketCapacity: 100 }),
+      ).rejects.toThrow("Ticket price must be at least $1.00");
+    },
+  );
+
+  test.each([undefined, 0, 5001, 1.5])(
+    "rejects invalid paid ticket capacities: %s",
+    async (ticketCapacity) => {
+      const { createDraft } = await setupOrganization();
+      await expect(
+        createDraft({ ticketing: "paid", ticketPriceMinor: 1500, ticketCapacity }),
+      ).rejects.toThrow("Ticket capacity must be between 1 and 5,000");
+    },
+  );
+
+  test.each([1, 5000])(
+    "accepts the minimum ticket price and capacity boundary: %s",
+    async (ticketCapacity) => {
+      const { createDraft, readOpportunity } = await setupOrganization();
+      const { opportunityId } = await createDraft({
+        ticketing: "paid",
+        ticketPriceMinor: 100,
+        ticketCapacity,
+      });
+      expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+        ticketPriceMinor: 100,
+        ticketCapacity,
+      });
+    },
+  );
+
+  test("rejects paid ticketing in unsupported currencies", async () => {
+    const { createDraft } = await setupOrganization();
+    await expect(
+      createDraft({
+        ticketing: "paid",
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+        ticketCurrency: "eur",
+      }),
+    ).rejects.toThrow("Only USD ticketing is supported right now");
   });
 
   test("rejects too many slots, invalid guarantees, and invalid set lengths", async () => {
@@ -570,6 +650,59 @@ describe("talent opportunity drafts", () => {
         revision: 2,
       });
       expect(opportunity?.doorsAt).toBe(doorsAt);
+    },
+  );
+
+  test("update validates paid ticketing while preserving omitted ticket fields", async () => {
+    const { createDraft, asOwner, readOpportunity } = await setupOrganization();
+    const { opportunityId } = await createDraft({
+      ticketing: "paid",
+      ticketPriceMinor: 1500,
+      ticketCapacity: 100,
+    });
+    await expect(
+      asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 1,
+        ticketPriceMinor: 50,
+      }),
+    ).rejects.toThrow("Ticket price must be at least $1.00");
+    await asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision: 1,
+      ticketPriceMinor: 2000,
+    });
+    expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+      ticketing: "paid",
+      ticketPriceMinor: 2000,
+      ticketCapacity: 100,
+      ticketCurrency: "usd",
+    });
+  });
+
+  test.each(["rsvp", "none", "external"] as const)(
+    "update clears paid ticket fields when switching to %s",
+    async (ticketing) => {
+      const { createDraft, asOwner, readOpportunity } = await setupOrganization();
+      const { opportunityId } = await createDraft({
+        ticketing: "paid",
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+      });
+      await asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 1,
+        ticketing,
+        externalUrl: "https://tickets.test/event",
+        ticketPriceMinor: 50,
+        ticketCapacity: 0,
+        ticketCurrency: "eur",
+      });
+      const { opportunity } = await readOpportunity(opportunityId);
+      expect(opportunity?.ticketing).toBe(ticketing);
+      expect(opportunity?.ticketPriceMinor).toBeUndefined();
+      expect(opportunity?.ticketCapacity).toBeUndefined();
+      expect(opportunity?.ticketCurrency).toBeUndefined();
     },
   );
 
@@ -1386,6 +1519,98 @@ describe("talent opportunity lifecycle", () => {
       "artist@opportunity.test",
     ]);
     expect(emails[0].args[0].text).toContain("Reason: Opportunity cancelled");
+  });
+
+  test("cancel requests ticket refunds and emails buyers for a paid-ticket gig", async () => {
+    const f = await setupOrganization();
+    const { opportunityId } = await f.createDraft();
+    await f.asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 1,
+    });
+    const { bookingId, offerId, artistId } = await f.seedBooking(opportunityId);
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(bookingId, { status: "artist_accepted", revision: 2 });
+      await ctx.db.patch(offerId, {
+        response: "accepted",
+        respondedAt: NOW,
+        respondedBy: artistId,
+      });
+      await confirmBooking(ctx, bookingId);
+    });
+    const { opportunity } = await f.readOpportunity(opportunityId);
+    const gigId = opportunity!.publicGigId!;
+    const orderId = await f.t.run(async (ctx) => {
+      await ctx.db.patch(gigId, {
+        ticketing: "paid",
+        ticketPriceMinor: 2000,
+        ticketCurrency: "usd",
+        ticketCapacity: 20,
+      });
+      const buyerUserId = await ctx.db.insert("users", {
+        clerkId: "ticket_buyer",
+        name: "Buyer",
+        email: "buyer@tickets.test",
+        genres: [],
+        attendedCount: 0,
+      });
+      await ctx.db.insert("gigTicketInventory", {
+        gigId,
+        organizationId: f.organizationId,
+        capacity: 20,
+        reserved: 0,
+        sold: 3,
+        updatedAt: NOW,
+      });
+      return await ctx.db.insert("ticketOrders", {
+        gigId,
+        organizationId: f.organizationId,
+        buyerUserId,
+        quantity: 3,
+        unitPriceMinor: 2000,
+        unitFeeMinor: 130,
+        subtotalMinor: 6000,
+        feeMinor: 390,
+        totalMinor: 6390,
+        currency: "usd",
+        status: "paid",
+        reservedUntil: NOW,
+        stripePaymentIntentId: "pi_cancelled_event",
+        paidAt: NOW,
+        attempt: 1,
+        refundedMinor: 0,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+    });
+
+    await f.asOwner.mutation(api.talentOpportunities.cancel, { opportunityId });
+    expect((await f.readOpportunity(opportunityId)).opportunity?.status).toBe(
+      "cancelled",
+    );
+    expect(await f.t.run((ctx) => ctx.db.get(gigId))).toMatchObject({
+      lifecycle: "cancelled",
+    });
+    const refunds = await f.t.run((ctx) =>
+      ctx.db
+        .query("ticketRefunds")
+        .withIndex("by_orderId", (q) => q.eq("orderId", orderId))
+        .take(10),
+    );
+    expect(refunds).toHaveLength(1);
+    expect(refunds[0]).toMatchObject({
+      orderId,
+      status: "pending",
+      reason: "event_cancelled",
+      amountMinor: 6390,
+    });
+    const emails = await f.t.run(async (ctx) =>
+      (await ctx.db.system.query("_scheduled_functions").take(100)).filter(
+        (job) =>
+          job.name === "emails:send" && job.args[0].kind === "ticketRefunded",
+      ),
+    );
+    expect(emails.map((job) => job.args[0].to)).toEqual(["buyer@tickets.test"]);
   });
 
   test("scheduled expiry is a no-op for stale revisions, non-open rows, and deleted rows", async () => {

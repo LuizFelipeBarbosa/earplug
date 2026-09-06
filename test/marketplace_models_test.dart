@@ -1,11 +1,320 @@
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
+import 'package:earplug/money.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
 void main() {
+  group('paid ticket models', () {
+    const gigJson = {
+      '_id': 'gig-1',
+      'title': 'Paid Show',
+      'venueId': 'venue-1',
+      'price': 0,
+      'startsAt': 1800000000000,
+      'doorsTime': '7PM / 8PM',
+      'flyKey': 'paper',
+      'lineup': ['band-1'],
+      'genres': ['indie'],
+      'desc': 'An evening of local bands.',
+      'ticketing': 'paid',
+      'ticketPriceMinor': 2500,
+      'cap': '40',
+    };
+    const ticketGigJson = {
+      'id': 'gig-1',
+      'title': 'Paid Show',
+      'slug': 'paid-show',
+      'startsAt': 1800000000000,
+      'doorsAt': 1799996400000,
+      'venueName': 'The Vault',
+      'lifecycle': 'published',
+    };
+
+    test('Gig uses minor-unit pricing and defaults the currency to USD', () {
+      final gig = Gig.fromJson(gigJson);
+      expect(gig.tix, Ticketing.paid);
+      expect(gig.ticketPriceMinor, 2500);
+      expect(gig.ticketCurrency, isNull);
+      expect(gig.priceLabel, r'$25.00');
+      expect(gig.sellsTickets, isTrue);
+      expect(
+        Gig.fromJson({...gigJson, 'ticketCurrency': 'eur'}).priceLabel,
+        'EUR 25.00',
+      );
+    });
+
+    test('Gig preserves legacy ticketing and price-label fallbacks', () {
+      final unknown = Gig.fromJson({...gigJson, 'ticketing': 'bogus'});
+      expect(unknown.tix, Ticketing.rsvp);
+      expect(unknown.sellsTickets, isFalse);
+      expect(unknown.priceLabel, 'FREE');
+      expect(
+        Gig.fromJson({
+          ...gigJson,
+          'ticketing': 'external',
+          'price': 12,
+        }).priceLabel,
+        r'$12',
+      );
+      expect(
+        Gig.fromJson({
+          ...gigJson,
+          'ticketPriceMinor': null,
+          'price': 12,
+        }).priceLabel,
+        r'$12',
+      );
+    });
+
+    test('Gig retains ticket pricing when copied or relabeled', () {
+      final gig = Gig.fromJson({...gigJson, 'ticketCurrency': 'usd'});
+      final copy = gig.copyWith(going: 2);
+      expect(copy.ticketPriceMinor, 2500);
+      expect(copy.ticketCurrency, 'usd');
+      expect(gig.sameListing(copy), isTrue);
+      expect(gig.sameListing(gig.copyWith(ticketPriceMinor: 3000)), isFalse);
+      expect(gig.sameListing(gig.copyWith(ticketCurrency: 'eur')), isFalse);
+      final relabeled = gig.relabeled(now: gig.startsAt);
+      expect(relabeled.ticketPriceMinor, 2500);
+      expect(relabeled.ticketCurrency, 'usd');
+    });
+
+    test('Opportunity parses nullable paid-ticket fields', () {
+      final opportunity = Opportunity.fromJson({
+        'ticketing': 'paid',
+        'ticketPriceMinor': 2500.0,
+        'ticketCapacity': 40.0,
+        'ticketCurrency': 'usd',
+      });
+      expect(opportunity.ticketing, OpportunityTicketing.paid);
+      expect(opportunity.ticketPriceMinor, 2500);
+      expect(opportunity.ticketCapacity, 40);
+      expect(opportunity.ticketCurrency, 'usd');
+      final missing = Opportunity.fromJson(const {});
+      expect(missing.ticketPriceMinor, isNull);
+      expect(missing.ticketCapacity, isNull);
+      expect(missing.ticketCurrency, isNull);
+    });
+
+    test('ticket enums round-trip and tolerate unknown wire values', () {
+      expect(
+        TicketOrderStatus.fromWire('checkout_open'),
+        TicketOrderStatus.checkoutOpen,
+      );
+      expect(TicketStatus.fromWire('used'), TicketStatus.used);
+      expect(
+        TicketDoorKind.fromWire('alreadyUsed'),
+        TicketDoorKind.alreadyUsed,
+      );
+      for (final value in TicketOrderStatus.values) {
+        expect(TicketOrderStatus.fromWire(value.wireValue), value);
+      }
+      for (final value in TicketStatus.values) {
+        expect(TicketStatus.fromWire(value.wireValue), value);
+      }
+      for (final value in TicketDoorKind.values) {
+        expect(TicketDoorKind.fromWire(value.wireValue), value);
+      }
+      for (final value in ['bogus', null, 42]) {
+        expect(TicketOrderStatus.fromWire(value), TicketOrderStatus.unknown);
+        expect(TicketStatus.fromWire(value), TicketStatus.unknown);
+        expect(TicketDoorKind.fromWire(value), TicketDoorKind.unknown);
+      }
+    });
+
+    test('TicketGigSummary parses lifecycles with a published fallback', () {
+      for (final value in GigLifecycle.values) {
+        expect(
+          TicketGigSummary.fromJson({
+            ...ticketGigJson,
+            'lifecycle': value.name,
+          }).lifecycle,
+          value,
+        );
+      }
+      for (final value in ['bogus', null, 42]) {
+        expect(
+          TicketGigSummary.fromJson({
+            ...ticketGigJson,
+            'lifecycle': value,
+          }).lifecycle,
+          GigLifecycle.published,
+        );
+      }
+    });
+
+    test('TicketReservation parses pricing and expiry', () {
+      final reservation = TicketReservation.fromJson({
+        'orderId': 'order-1',
+        'quantity': 2.0,
+        'unitPriceMinor': 2500,
+        'unitFeeMinor': 175,
+        'subtotalMinor': 5000,
+        'feeMinor': 350,
+        'totalMinor': 5350,
+        'currency': 'usd',
+        'reservedUntil': 1800000000000,
+      });
+      expect(reservation.orderId, 'order-1');
+      expect(reservation.quantity, 2);
+      expect(reservation.unitPriceMinor, 2500);
+      expect(reservation.unitFeeMinor, 175);
+      expect(reservation.subtotalMinor, 5000);
+      expect(reservation.feeMinor, 350);
+      expect(reservation.totalMinor, 5350);
+      expect(reservation.currency, 'usd');
+      expect(reservation.total, const Money(5350, 'usd'));
+      expect(
+        reservation.reservedUntil,
+        DateTime.fromMillisecondsSinceEpoch(1800000000000),
+      );
+    });
+
+    test('TicketSummary parses the ticket and nested gig', () {
+      final ticket = TicketSummary.fromJson({
+        'id': 'ticket-1',
+        'orderId': 'order-1',
+        'gigId': 'gig-1',
+        'token': 'earplug:ticket:v2:token-1',
+        'status': 'used',
+        'checkedInAt': 1800000000000,
+        'createdAt': 1799900000000,
+        'gig': ticketGigJson,
+      });
+      expect(ticket.id, 'ticket-1');
+      expect(ticket.orderId, 'order-1');
+      expect(ticket.gigId, 'gig-1');
+      expect(ticket.token, 'earplug:ticket:v2:token-1');
+      expect(ticket.status, TicketStatus.used);
+      expect(
+        ticket.checkedInAt,
+        DateTime.fromMillisecondsSinceEpoch(1800000000000),
+      );
+      expect(
+        ticket.createdAt,
+        DateTime.fromMillisecondsSinceEpoch(1799900000000),
+      );
+      expect(ticket.gig.id, 'gig-1');
+      expect(ticket.gig.title, 'Paid Show');
+      expect(ticket.gig.slug, 'paid-show');
+      expect(
+        ticket.gig.startsAt,
+        DateTime.fromMillisecondsSinceEpoch(1800000000000),
+      );
+      expect(
+        ticket.gig.doorsAt,
+        DateTime.fromMillisecondsSinceEpoch(1799996400000),
+      );
+      expect(ticket.gig.venueName, 'The Vault');
+      expect(ticket.gig.lifecycle, GigLifecycle.published);
+      expect(TicketSummary.fromJson({'_id': 'ticket-2'}).id, 'ticket-2');
+      expect(TicketGigSummary.fromJson({'_id': 'gig-2'}).id, 'gig-2');
+    });
+
+    test('TicketOrderState parses the checkout state and total', () {
+      final state = TicketOrderState.fromJson({
+        'orderId': 'order-1',
+        'gigId': 'gig-1',
+        'gigSlug': 'paid-show',
+        'status': 'paid',
+        'quantity': 2,
+        'totalMinor': 5350,
+        'currency': 'usd',
+      });
+      expect(state.orderId, 'order-1');
+      expect(state.gigId, 'gig-1');
+      expect(state.gigSlug, 'paid-show');
+      expect(state.status, TicketOrderStatus.paid);
+      expect(state.quantity, 2);
+      expect(state.totalMinor, 5350);
+      expect(state.currency, 'usd');
+      expect(state.total, const Money(5350, 'usd'));
+    });
+
+    test('TicketSales parses counts and Money totals', () {
+      final sales = TicketSales.fromJson({
+        'capacity': 40,
+        'sold': 2,
+        'reserved': 3,
+        'available': 35,
+        'ordersPaid': 1,
+        'grossMinor': 5000,
+        'feeMinor': 350,
+        'netMinor': 5000,
+        'currency': 'usd',
+      });
+      expect(sales.capacity, 40);
+      expect(sales.sold, 2);
+      expect(sales.reserved, 3);
+      expect(sales.available, 35);
+      expect(sales.ordersPaid, 1);
+      expect(sales.grossMinor, 5000);
+      expect(sales.feeMinor, 350);
+      expect(sales.netMinor, 5000);
+      expect(sales.currency, 'usd');
+      expect(sales.gross, const Money(5000, 'usd'));
+      expect(sales.fees, const Money(350, 'usd'));
+      expect(sales.net, const Money(5000, 'usd'));
+    });
+
+    test('TicketDoorResult parses the holder, timestamp, and source', () {
+      final result = TicketDoorResult.fromJson({
+        'kind': 'checkedIn',
+        'holderName': 'Earplug Fan',
+        'checkedInAt': 1800000000000,
+        'source': 'ticket',
+      });
+      expect(result.kind, TicketDoorKind.checkedIn);
+      expect(result.holderName, 'Earplug Fan');
+      expect(
+        result.checkedInAt,
+        DateTime.fromMillisecondsSinceEpoch(1800000000000),
+      );
+      expect(result.source, 'ticket');
+    });
+
+    test('DoorCounts parses RSVP and paid ticket attendance', () {
+      final counts = DoorCounts.fromJson({
+        'rsvpTotal': 3,
+        'rsvpCheckedIn': 1,
+        'ticketsSold': 2,
+        'ticketsCheckedIn': 2,
+        'truncated': true,
+      });
+      expect(counts.rsvpTotal, 3);
+      expect(counts.rsvpCheckedIn, 1);
+      expect(counts.ticketsSold, 2);
+      expect(counts.ticketsCheckedIn, 2);
+      expect(counts.truncated, isTrue);
+    });
+
+    test('ticket models tolerate missing or malformed fields', () {
+      final reservation = TicketReservation.fromJson({'quantity': 'invalid'});
+      expect(reservation.quantity, 0);
+      expect(reservation.reservedUntil, DateTime.fromMillisecondsSinceEpoch(0));
+      final ticket = TicketSummary.fromJson({'status': 'bogus', 'gig': false});
+      expect(ticket.status, TicketStatus.unknown);
+      expect(ticket.checkedInAt, isNull);
+      expect(ticket.gig.lifecycle, GigLifecycle.published);
+      expect(ticket.gig.slug, isNull);
+      expect(ticket.gig.doorsAt, isNull);
+      expect(
+        TicketOrderState.fromJson({'status': 'bogus'}).status,
+        TicketOrderStatus.unknown,
+      );
+      expect(TicketSales.fromJson(const {}).grossMinor, 0);
+      final door = TicketDoorResult.fromJson({'kind': 'bogus', 'source': 42});
+      expect(door.kind, TicketDoorKind.unknown);
+      expect(door.holderName, isNull);
+      expect(door.checkedInAt, isNull);
+      expect(door.source, isNull);
+      expect(DoorCounts.fromJson(const {}).truncated, isFalse);
+    });
+  });
+
   group('Venue.fromJson', () {
     test('treats legacy payloads as exact and capability-unaware', () {
       final venue = Venue.fromJson({

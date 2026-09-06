@@ -142,7 +142,10 @@ class FanTabBar extends StatelessWidget {
         EpNavigationItem(
           icon: Icons.person_outline,
           label: 'PROFILE',
-          selected: scr == Screen.myGigs,
+          selected:
+              scr == Screen.myGigs ||
+              scr == Screen.myTickets ||
+              scr == Screen.ticket,
           onPressed: app.openMyGigsTab,
         ),
         EpNavigationItem(

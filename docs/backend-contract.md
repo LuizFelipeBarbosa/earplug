@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.22)
+# EarPlug Convex function contract (FROZEN — v1.23)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -650,6 +650,123 @@ The internal `bookings.js:markCompleted` settles a `grossMinor === 0` booking
 through `confirmed -> completed -> paid` in the same call and schedules no
 payouts, since nothing is owed. A booking with `grossMinor > 0` remains
 `completed` and calls `schedulePayoutsForBooking` to schedule its payouts.
+
+**v1.23 — Paid tickets, wallet, organizer check-in.** In `convex/tickets.ts`,
+`tickets.js:reserve` is a Mutation taking `{ gigId, quantity,
+referralBandSlug?: string }`, holding 1–10 tickets for 30 minutes and returning
+`{ orderId, quantity, unitPriceMinor, unitFeeMinor, subtotalMinor, feeMinor,
+totalMinor, currency, reservedUntil }`; `tickets.js:cancelReservation` is a
+Mutation taking `{ orderId }` and returning `null` after the buyer releases a
+`reserved` order; `tickets.js:myTickets` is a Query taking `{}` and returning
+the holder's ticket summaries, including required `token` and `status`, with
+upcoming gigs first and past gigs newest first; `tickets.js:get` is a Query
+taking `{ ticketId }` and returning that ticket summary or `null` for an
+unknown or inaccessible ticket; `tickets.js:orderStatus` is a Query taking
+`{ sessionId: string }` and returning `{ orderId, gigId, gigSlug?: string,
+status, quantity, totalMinor, currency } | null` for the buyer;
+`tickets.js:salesForGig` is a Query taking `{ gigId }` and returning
+`{ capacity, sold, reserved, available, ordersPaid, grossMinor, feeMinor,
+netMinor, currency }` to organization owners, managers and finance members.
+In `convex/ticketCheckout.ts`, `ticketCheckout.js:startCheckout` is an Action
+taking `{ orderId }` and returning `{ url: string, sessionId: string }` for
+the buyer's Checkout session; `ticketCheckout.js:cancelOrder` is an Action
+taking `{ orderId }` and returning `null`, expiring an open Stripe session
+before cancelling the order and releasing its hold (or directly cancelling a
+reservation). In `convex/ticketsDoor.ts`, `ticketsDoor.js:checkIn` is a
+Mutation taking `{ gigId, payload: string }` and scanning paid-ticket v2 or
+legacy RSVP v1 payloads, returning a required `kind` discriminator;
+`ticketsDoor.js:doorRoster` is a Query taking `{ gigId }` and returning
+`{ rsvpTotal, rsvpCheckedIn, ticketsSold, ticketsCheckedIn, truncated }`,
+counting at most 500 rows of each kind. Door access requires organization
+owner/manager/door membership, or an associated band admin for a band gig.
+
+The shared `gigPayloadValidator` in `convex/lib/helpers.ts`, including the
+nullable return of `gigs.js:resolvePublic`, widens `ticketing` from `"rsvp" |
+"external"` to `"rsvp" | "external" | "paid"` and adds `ticketPriceMinor?:
+number` and `ticketCurrency?: string`, present only for paid gigs. These
+keys use `v.optional`, so they may be absent rather than containing null.
+The `talentOpportunities.js:create` and `talentOpportunities.js:update`
+Mutations in `convex/talentOpportunities.ts` also accept optional
+`ticketPriceMinor`, `ticketCapacity`, `ticketCurrency` and the additional
+`ticketing: "paid"` literal; paid events require an integer price of at least
+100 minor units and capacity of 1–5000, with currency restricted to `usd`.
+
+`convex/lib/ticketStatus.ts` declares every `ticketOrders` transition:
+`reserved -> [checkout_open, expired, cancelled]`,
+`checkout_open -> [paid, reserved, expired, cancelled]`, `paid -> [refunded]`,
+and terminal `expired`, `cancelled`, `refunded`. `tickets.js:reserve` creates
+`reserved`; `startCheckout` calls `markCheckoutOpen` to enter `checkout_open`,
+or expires the previous session and calls `reopenReservation` to return to
+`reserved` before replacing it. `handleTicketCheckoutCompleted` in
+`convex/stripeHandlers/tickets.ts` accepts a paid completion for the current
+session and calls `mintTickets` in `convex/lib/ticketMint.ts` to enter `paid`;
+a matching completion after reopening first restores `checkout_open`.
+`tickets.js:releaseReservation` and `expireStaleReservations` expire reserved
+holds; `handleTicketCheckoutExpired`, `ticketCheckout.js:markSessionExpired`
+and `sweepStaleCheckouts` expire open checkouts through `expireOrder`.
+`cancelReservation`, `cancelOrder` via `markCancelled`, and
+`cancelTicketSalesForGig` in `convex/lib/ticketCancellation.ts` drive hold
+cancellation to `cancelled`. `applyRefundSucceeded` in
+`convex/ticketRefunds.ts`, called after a refund action or through
+`handleTicketChargeRefunded` / `reconcileDashboardRefund`, changes a paid
+order to `refunded` once cumulative refunds reach `totalMinor`; partial
+refunds leave it `paid`. There is no ticket-order `failed` state.
+
+The `tickets` transitions are `valid -> [used, refunded, cancelled]`,
+`used -> [refunded]`, with terminal `refunded` and `cancelled`. `mintTickets`
+creates `valid` tickets; `ticketsDoor.js:checkIn` changes `valid -> used`;
+a full paid-order refund changes its `valid` and `used` tickets to `refunded`
+through `applyRefundSucceeded`, preserving tickets already `cancelled` or
+`refunded`. The validator permits `valid -> cancelled`, but this phase has
+no runtime writer for that transition. Check-in returns `eventCancelled`
+before inspecting a cancelled gig's ticket; otherwise refunded or cancelled
+tickets return `refunded`, used tickets return `alreadyUsed` with the saved
+check-in time, and neither is admitted again. Successful scans return
+`checkedIn`; unknown payloads/tickets and tickets for another gig return
+`unknown` and `wrongEvent`, respectively.
+
+Cancelling a paid event through `talentOpportunities.js:cancel` calls
+`cancelTicketSalesForGig`: paid orders request their remaining full refund
+with reason `event_cancelled`, while reserved/open orders become `cancelled`
+and release inventory. A paid completion for an expired/cancelled/refunded
+order or a superseded session calls `requestLatePaymentRefund` for that
+session's PaymentIntent and full `amount_total`, without minting tickets or
+reviving the order. A duplicate completion for the current already-paid
+session is ignored. Late-payment refunds deduplicate pending/succeeded
+requests by order and PaymentIntent. `executeRefund` issues the refund on
+the organizer's connected account with `refund_application_fee: true`;
+`applyRefundSucceeded` records the refund without changing a terminal order
+back to `paid` or `refunded`. Event cancellation relies on releasing the open
+orders before their late completions; the completion handler itself checks
+order/session state, not gig lifecycle.
+
+Paid-ticket Checkout uses direct charges on the organizer's connected
+account: `loadCheckoutContext` resolves
+`organizationPrivateDetails.stripeAccountId`, and `startCheckout` passes it
+as `stripeAccount` to `stripeRequest`. Each line item charges
+`unitPriceMinor + unitFeeMinor`, and
+`payment_intent_data.application_fee_amount` is the order's `feeMinor`.
+Reservation snapshots the fee from `resolveTicketingFee` in
+`convex/lib/ticketFees.ts`: a complete organization override pair
+(`ticketingFeeBps`, `ticketingFeeFixedMinor`) wins; otherwise both
+`TICKETING_FEE_BPS` and `TICKETING_FEE_FIXED_MINOR` are required. The per-ticket
+fee is `round(unitPriceMinor * bps / 10000) + fixedMinor` for a nonzero price,
+and `feeMinor` multiplies that by quantity. `TICKETS_ENABLED` gates new
+reservations, Checkout and refund execution; ticket Stripe writes also use
+the v1.22 `PAYMENTS_ENABLED` / `stripeRequest` non-`GET` gate shared with
+`sendOffer`. The new `APP_BASE_URL` paths are
+`/tickets/return?session_id={CHECKOUT_SESSION_ID}` for Checkout success and
+`/tickets/cancel?order=<orderId>` for cancellation; `/t/<ticketId>` is the
+fan's wallet route on the same origin, not a Stripe return URL.
+
+The Connect webhook subscription now extends the v1.22 event set:
+`/stripe-connect-webhook`, using `STRIPE_CONNECT_WEBHOOK_SECRET`, must
+subscribe to `checkout.session.completed`, `checkout.session.expired`,
+`charge.refunded`, `payment_intent.payment_failed`, and `account.updated`.
+Create or recreate the endpoint with Connect webhooks enabled
+(`connect=true` in the Stripe API/CLI). A regular account webhook endpoint
+never receives connected-account events, regardless of its subscribed event
+types.
 
 ## Reconciliation
 

@@ -16,7 +16,7 @@ void main() {
     test('starts on home feed with all demo gigs', () async {
       final app = await _demoApp();
       expect(app.current.screen, Screen.home);
-      expect(app.feed.length, 7);
+      expect(app.feed.length, 8);
     });
 
     test('venue directory merges into one sorted, resolvable list', () async {

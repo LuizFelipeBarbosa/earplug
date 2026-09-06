@@ -122,6 +122,8 @@ mixin _NavigationState on _AppStateCore {
     Screen.opportunityDetail => '/opportunities/${param ?? ''}',
     Screen.bookingDetail => '/bookings/${param ?? ''}',
     Screen.orgApply => organizerApplyPath,
+    Screen.ticket => '/t/${param ?? ''}',
+    Screen.myTickets => '/tickets',
     _ => '/',
   };
 

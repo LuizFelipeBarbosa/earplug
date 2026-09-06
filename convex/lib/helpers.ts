@@ -62,6 +62,8 @@ export function slugify(name: string): string {
 
 const RESERVED_PUBLIC_SLUGS = new Set([
   "g",
+  "t",
+  "tickets",
   "join",
   "gig-invite",
   "check-in",
@@ -427,7 +429,9 @@ export const gigPayloadValidator = v.object({
   performers: v.array(gigPublicPerformerValidator),
   genres: v.array(v.string()),
   desc: v.string(),
-  ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+  ticketing: v.union(v.literal("rsvp"), v.literal("external"), v.literal("paid")),
+  ticketPriceMinor: v.optional(v.number()),
+  ticketCurrency: v.optional(v.string()),
   ageRequirement: ageRequirementValidator,
   externalUrl: v.union(v.string(), v.null()),
   cap: v.string(),
@@ -683,6 +687,8 @@ export async function toGigPayload(
     genres: gig.genres,
     desc: gig.desc,
     ticketing: gig.ticketing,
+    ticketPriceMinor: gig.ticketPriceMinor,
+    ticketCurrency: gig.ticketCurrency,
     ageRequirement: gig.ageRequirement ?? "allAges",
     externalUrl: gig.externalUrl ?? null,
     cap: gig.cap,

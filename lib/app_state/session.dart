@@ -2,6 +2,7 @@ part of '../app_state.dart';
 
 enum PendingKind {
   rsvp,
+  tickets,
   follow,
   save,
   myGigs,
@@ -213,6 +214,19 @@ mixin _SessionState on _AppStateCore {
   /// wherever the auth gate was opened from.
   Screen? _postAuthScreen;
 
+  /// Set by `_commitAuth` when a signed-out "buy tickets" tap resolves.
+  /// `GigDetailScreen` consumes it once, for the matching gig, to reopen the
+  /// purchase sheet after sign-in lands the fan back on the gig page.
+  String? _pendingTicketPurchaseGigId;
+
+  /// True once, for the gig whose signed-out ticket purchase just resolved.
+  /// The caller (`GigDetailScreen`) should open the purchase sheet on `true`.
+  bool consumePendingTicketPurchase(String gigId) {
+    if (_pendingTicketPurchaseGigId != gigId) return false;
+    _pendingTicketPurchaseGigId = null;
+    return true;
+  }
+
   /// The durable half of finishing auth: completes the action that triggered
   /// the gate. Runs before any confirmation delay so
   /// backing out (or being killed) mid-splash can't drop the pending action.
@@ -241,6 +255,9 @@ mixin _SessionState on _AppStateCore {
         await repository.ensureRsvp(p!.id!);
         rsvps = {...rsvps, p.id!};
         say("You're on the list. QR is in Profile.");
+        _postAuthScreen = null;
+      case PendingKind.tickets:
+        _pendingTicketPurchaseGigId = p!.id;
         _postAuthScreen = null;
       case PendingKind.follow:
         await repository.ensureFollow(p!.id!);

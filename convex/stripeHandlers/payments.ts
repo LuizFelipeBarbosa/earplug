@@ -6,9 +6,15 @@ import { BOOKING_ACTIVE_STATUSES } from "../lib/bookingStatus";
 import { appendLedgerEntry } from "../lib/ledger";
 import { recomputePayoutHold } from "../lib/paymentSchedule";
 import type { StripeEventHandler, StripeHandlerMap } from "../stripeWebhook";
+import {
+  handleTicketCheckoutCompleted,
+  handleTicketCheckoutExpired,
+  isTicketSession,
+} from "./tickets";
 
 const checkoutCompleted: StripeEventHandler = async (ctx, event) => {
   const session = event.data.object;
+  if (isTicketSession(session)) return handleTicketCheckoutCompleted(ctx, event);
   let record: Doc<"paymentRecords"> | null = null;
   if (typeof session.metadata?.paymentRecordId === "string") {
     const paymentRecordId = ctx.db.normalizeId(
@@ -138,6 +144,8 @@ const checkoutCompleted: StripeEventHandler = async (ctx, event) => {
 export const paymentHandlers: StripeHandlerMap = {
   "checkout.session.completed": checkoutCompleted,
   "checkout.session.expired": async (ctx, event) => {
+    if (isTicketSession(event.data.object))
+      return handleTicketCheckoutExpired(ctx, event);
     await ctx.runMutation(internal.payments.markSessionExpired, {
       sessionId: event.data.object.id,
     });

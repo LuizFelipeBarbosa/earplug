@@ -750,11 +750,16 @@ class _SlotGrid extends StatelessWidget {
       SlotCard(
         key: const ValueKey('gig-slot-access'),
         tag: 'ACCESS',
-        value: slot.tix == Ticketing.rsvp ? 'In-app RSVP' : 'External link',
+        value: switch (slot.tix) {
+          Ticketing.rsvp => 'In-app RSVP',
+          Ticketing.external => 'External link',
+          Ticketing.paid => 'Paid tickets',
+        },
         sub: switch (slot.tix) {
           Ticketing.rsvp when slot.cap == 'No cap' => 'No RSVP cap',
           Ticketing.rsvp => 'RSVP cap ${slot.cap}',
           Ticketing.external => slot.ext.isEmpty ? 'Add ticket URL' : slot.ext,
+          Ticketing.paid => 'In-app checkout',
         },
         state: slot.tix == Ticketing.external && !slot.validExternalUrl
             ? SlotState.needed

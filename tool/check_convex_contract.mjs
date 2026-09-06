@@ -94,6 +94,16 @@ export const requiredClientFunctions = Object.freeze({
   "payouts.js:payoutsForBand": "Query",
   "refunds.js:previewCancellation": "Query",
   "refunds.js:refundsForBooking": "Query",
+  "tickets.js:reserve": "Mutation",
+  "tickets.js:cancelReservation": "Mutation",
+  "tickets.js:myTickets": "Query",
+  "tickets.js:get": "Query",
+  "tickets.js:orderStatus": "Query",
+  "tickets.js:salesForGig": "Query",
+  "ticketCheckout.js:startCheckout": "Action",
+  "ticketCheckout.js:cancelOrder": "Action",
+  "ticketsDoor.js:checkIn": "Mutation",
+  "ticketsDoor.js:doorRoster": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -129,6 +139,16 @@ export const requiredClientFields = Object.freeze([
   ["payments.js:startInstallmentCheckout", "return", "url", false],
   ["refunds.js:previewCancellation", "return", "refundMinor", false],
   ["payoutAccounts.js:bandPayoutStatus", "return", "state", false],
+  ["tickets.js:reserve", "return", "orderId", false],
+  ["tickets.js:reserve", "return", "totalMinor", false],
+  ["tickets.js:reserve", "return", "reservedUntil", false],
+  ["tickets.js:orderStatus", "return", "status", false],
+  ["tickets.js:myTickets", "arrayReturn", "token", false],
+  ["tickets.js:myTickets", "arrayReturn", "status", false],
+  ["ticketCheckout.js:startCheckout", "return", "url", false],
+  ["ticketCheckout.js:startCheckout", "return", "sessionId", false],
+  ["ticketsDoor.js:checkIn", "return", "kind", false],
+  ["gigs.js:resolvePublic", "return", "ticketPriceMinor", true],
 ]);
 
 export function deploymentNameFromUrl(value) {

@@ -142,6 +142,48 @@ describe("interactions", () => {
     expect(mine.rsvpGigIds).toEqual([]);
   });
 
+  test.each([undefined, true])(
+    "toggleRsvp rejects new RSVPs for paid gigs (on: %s)",
+    async (on) => {
+      const { t, asFan, gigId } = await setup();
+      await t.run((ctx) => ctx.db.patch(gigId, { ticketing: "paid" }));
+
+      await expect(
+        asFan.mutation(api.interactions.toggleRsvp, { gigId, on }),
+      ).rejects.toThrow("This event sells tickets");
+
+      const mine = await asFan.query(api.interactions.myInteractions, {});
+      expect(mine.rsvpGigIds).toEqual([]);
+      expect((await t.run((ctx) => ctx.db.get(gigId)))?.goingCount).toBe(43);
+      expect(
+        await asFan.mutation(api.interactions.toggleRsvp, { gigId, on: false }),
+      ).toEqual({ on: false });
+    },
+  );
+
+  test.each([undefined, false])(
+    "toggleRsvp allows removing an existing RSVP after ticketing becomes paid (on: %s)",
+    async (on) => {
+      const { t, asFan, gigId } = await setup();
+      const { userId } = await asFan.mutation(api.users.ensureUser, {});
+      const rsvpId = await t.run(async (ctx) => {
+        const rsvpId = await ctx.db.insert("gigRsvps", { userId, gigId });
+        await ctx.db.patch(gigId, { ticketing: "paid", goingCount: 44 });
+        return rsvpId;
+      });
+
+      expect(
+        await asFan.mutation(api.interactions.toggleRsvp, { gigId, on: true }),
+      ).toEqual({ on: true });
+      expect((await t.run((ctx) => ctx.db.get(gigId)))?.goingCount).toBe(44);
+      expect(
+        await asFan.mutation(api.interactions.toggleRsvp, { gigId, on }),
+      ).toEqual({ on: false });
+      expect(await t.run((ctx) => ctx.db.get(rsvpId))).toBeNull();
+      expect((await t.run((ctx) => ctx.db.get(gigId)))?.goingCount).toBe(43);
+    },
+  );
+
   test("toggleFollow double-toggle adjusts followerCount both ways", async () => {
     const { t, asFan, bandId } = await setup();
     await asFan.mutation(api.interactions.toggleFollow, { bandId });

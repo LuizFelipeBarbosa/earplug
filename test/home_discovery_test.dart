@@ -57,7 +57,7 @@ void main() {
 
     expect(harness.app.mapMode, isFalse);
     expect(find.byType(GigMapView), findsNothing);
-    expect(find.text('7 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
+    expect(find.text('8 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
     final cards = tester.widgetList<FanEventCard>(find.byType(FanEventCard));
     final featured = cards.first;
     expect(featured.gig.id, harness.app.feed.first.id);

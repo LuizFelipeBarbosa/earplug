@@ -1,5 +1,11 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import {
+  ticketOrderStatusValidator,
+  ticketStatusValidator,
+  ticketRefundReasonValidator,
+  ticketRefundStatusValidator,
+} from "./lib/ticketStatus";
 
 // The non-Instagram links carried over from the legacy `socialLinks` bag
 // (instagram was promoted to `linkIg` as an @handle). Preserved because v1 has
@@ -94,6 +100,7 @@ export const opportunityTicketingValidator = v.union(
   v.literal("none"),
   v.literal("rsvp"),
   v.literal("external"),
+  v.literal("paid"),
 );
 
 export const opportunityStatusValidator = v.union(
@@ -187,6 +194,9 @@ export const ledgerKindValidator = v.union(
   v.literal("dispute_release"),
   v.literal("dispute_loss"),
   v.literal("dispute_fee"),
+  v.literal("ticket_sale"),
+  v.literal("ticket_fee"),
+  v.literal("ticket_refund"),
 );
 
 export const fundsStateValidator = v.union(
@@ -336,6 +346,8 @@ export default defineSchema({
     website: v.optional(v.string()),
     photoStorageIds: v.optional(v.array(v.id("_storage"))),
     bookingCommissionBps: v.optional(v.number()),
+    ticketingFeeBps: v.optional(v.number()),
+    ticketingFeeFixedMinor: v.optional(v.number()),
     // Denormalized rollup maintained alongside review writes; legacy rows
     // read as absent.
     reviewSummary: v.optional(reviewSummaryValidator),
@@ -459,6 +471,9 @@ export default defineSchema({
     applicationsCloseAt: v.number(),
     visibility: opportunityVisibilityValidator,
     ticketing: opportunityTicketingValidator,
+    ticketPriceMinor: v.optional(v.number()),
+    ticketCapacity: v.optional(v.number()),
+    ticketCurrency: v.optional(v.string()),
     currency: v.string(),
     externalUrl: v.optional(v.string()),
     status: opportunityStatusValidator,
@@ -705,6 +720,7 @@ export default defineSchema({
   ledgerEntries: defineTable({
     kind: ledgerKindValidator,
     bookingId: v.optional(v.id("bookings")),
+    ticketOrderId: v.optional(v.id("ticketOrders")),
     organizationId: v.optional(v.id("organizations")),
     bandId: v.optional(v.id("bands")),
     // Signed amount: positive credits, negative debits.
@@ -720,7 +736,84 @@ export default defineSchema({
     .index("by_organizationId_and_occurredAt", ["organizationId", "occurredAt"])
     .index("by_bandId_and_occurredAt", ["bandId", "occurredAt"])
     .index("by_bookingId", ["bookingId"])
+    .index("by_ticketOrderId", ["ticketOrderId"])
     .index("by_idempotencyKey", ["idempotencyKey"]),
+
+  gigTicketInventory: defineTable({
+    gigId: v.id("gigs"),
+    organizationId: v.id("organizations"),
+    capacity: v.number(),
+    sold: v.number(),
+    reserved: v.number(),
+    updatedAt: v.number(),
+  }).index("by_gigId", ["gigId"]),
+
+  ticketOrders: defineTable({
+    gigId: v.id("gigs"),
+    organizationId: v.id("organizations"),
+    buyerUserId: v.id("users"),
+    quantity: v.number(),
+    unitPriceMinor: v.number(),
+    unitFeeMinor: v.number(),
+    subtotalMinor: v.number(),
+    feeMinor: v.number(),
+    totalMinor: v.number(),
+    currency: v.string(),
+    status: ticketOrderStatusValidator,
+    reservedUntil: v.number(),
+    stripeCheckoutSessionId: v.optional(v.string()),
+    stripePaymentIntentId: v.optional(v.string()),
+    stripeChargeId: v.optional(v.string()),
+    checkoutExpiresAt: v.optional(v.number()),
+    attempt: v.number(),
+    referralBandId: v.optional(v.id("bands")),
+    paidAt: v.optional(v.number()),
+    refundedMinor: v.number(),
+    stripeRefundId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_gigId_and_status", ["gigId", "status"])
+    .index("by_buyerUserId_and_createdAt", ["buyerUserId", "createdAt"])
+    .index("by_stripeCheckoutSessionId", ["stripeCheckoutSessionId"])
+    .index("by_status_and_reservedUntil", ["status", "reservedUntil"])
+    .index("by_gigId_and_buyerUserId_and_status", ["gigId", "buyerUserId", "status"]),
+
+  tickets: defineTable({
+    orderId: v.id("ticketOrders"),
+    gigId: v.id("gigs"),
+    organizationId: v.id("organizations"),
+    holderUserId: v.id("users"),
+    token: v.string(),
+    status: ticketStatusValidator,
+    checkedInAt: v.optional(v.number()),
+    checkedInBy: v.optional(v.id("users")),
+    createdAt: v.number(),
+  })
+    .index("by_orderId", ["orderId"])
+    .index("by_gigId", ["gigId"])
+    .index("by_holderUserId_and_createdAt", ["holderUserId", "createdAt"])
+    .index("by_token", ["token"]),
+
+  ticketRefunds: defineTable({
+    orderId: v.id("ticketOrders"),
+    gigId: v.id("gigs"),
+    organizationId: v.id("organizations"),
+    amountMinor: v.number(),
+    currency: v.string(),
+    reason: ticketRefundReasonValidator,
+    status: ticketRefundStatusValidator,
+    stripePaymentIntentId: v.optional(v.string()),
+    stripeRefundId: v.optional(v.string()),
+    attempt: v.number(),
+    retryCount: v.optional(v.number()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_orderId", ["orderId"])
+    .index("by_status_and_updatedAt", ["status", "updatedAt"])
+    .index("by_stripeRefundId", ["stripeRefundId"]),
 
   // One review per (booking, author side). Exactly one subject is set:
   // organizers review bands, and artists review organizations. Submission,
@@ -878,7 +971,10 @@ export default defineSchema({
     lineup: v.array(v.id("bands")),
     genres: v.array(v.string()),
     desc: v.string(),
-    ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+    ticketing: v.union(v.literal("rsvp"), v.literal("external"), v.literal("paid")),
+    ticketPriceMinor: v.optional(v.number()),
+    ticketCurrency: v.optional(v.string()),
+    ticketCapacity: v.optional(v.number()),
     // Optional only while legacy rows remain in deployed data. Every supported
     // write path supplies this explicitly; readers normalize absence to
     // "allAges" until the compatibility rollout can be tightened.

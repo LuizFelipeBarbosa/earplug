@@ -95,6 +95,21 @@ export async function publishGigFromOpportunity(
   const existingGig = opportunity.publicGigId
     ? await ctx.db.get(opportunity.publicGigId)
     : null;
+  const ticketing = opportunity.ticketing === "none" ? "rsvp" : opportunity.ticketing;
+  const ticketingFields = {
+    ticketing,
+    ...(ticketing === "external" && opportunity.externalUrl
+      ? { externalUrl: opportunity.externalUrl }
+      : {}),
+    ...(ticketing === "paid"
+      ? {
+          ticketPriceMinor: opportunity.ticketPriceMinor,
+          ticketCurrency: opportunity.ticketCurrency,
+          ticketCapacity: opportunity.ticketCapacity,
+          price: Math.round((opportunity.ticketPriceMinor ?? 0) / 100),
+        }
+      : {}),
+  };
   let gigId: Id<"gigs">;
   if (existingGig) {
     gigId = existingGig._id;
@@ -103,11 +118,11 @@ export async function publishGigFromOpportunity(
       lineup,
       performers,
       discoveryListingReady: true,
+      ...ticketingFields,
     });
     await replaceGigBandIndex(ctx, gigId, lineup, opportunity.startsAt);
   } else {
     const doorsAt = opportunity.doorsAt ?? opportunity.startsAt;
-    const ticketing = opportunity.ticketing === "none" ? "rsvp" : opportunity.ticketing;
     gigId = await insertGigWithBandIndex(ctx, {
       title: opportunity.title,
       slug: await uniqueGigSlug(ctx, opportunity.title),
@@ -124,10 +139,7 @@ export async function publishGigFromOpportunity(
       performers: performers.map(({ name, role, bandId }) => ({ name, role, bandId })),
       genres: opportunity.genres,
       desc: opportunity.desc,
-      ticketing,
-      ...(ticketing === "external" && opportunity.externalUrl
-        ? { externalUrl: opportunity.externalUrl }
-        : {}),
+      ...ticketingFields,
       ageRequirement: opportunity.ageRequirement,
       cap: opportunity.expectedAttendance !== undefined
         ? String(opportunity.expectedAttendance)
@@ -140,6 +152,33 @@ export async function publishGigFromOpportunity(
       lifecycle: "published",
       discoveryListingReady: true,
     });
+  }
+  if (ticketing === "paid") {
+    if (opportunity.ticketCapacity === undefined) {
+      throw new Error("Paid opportunity is missing a ticket capacity");
+    }
+    const existing = await ctx.db
+      .query("gigTicketInventory")
+      .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        capacity: Math.max(
+          opportunity.ticketCapacity,
+          existing.sold + existing.reserved,
+        ),
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("gigTicketInventory", {
+        gigId,
+        organizationId: opportunity.organizationId,
+        capacity: opportunity.ticketCapacity,
+        sold: 0,
+        reserved: 0,
+        updatedAt: Date.now(),
+      });
+    }
   }
   assertOpportunityTransition(opportunity.status, "confirmed");
   await ctx.db.patch(opportunityId, {

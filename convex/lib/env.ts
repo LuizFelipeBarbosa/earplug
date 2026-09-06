@@ -59,3 +59,16 @@ export function bpsSetting(
 export function appBaseUrl(): string {
   return env.APP_BASE_URL || "https://earplug.app";
 }
+
+export type MinorUnitSetting = "TICKETING_FEE_FIXED_MINOR";
+
+export function minorSetting(name: MinorUnitSetting): number | undefined {
+  const rawValue = env[name];
+  if (rawValue === undefined || rawValue.trim() === "") return undefined;
+
+  const value = Number(rawValue);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid ${name}: ${rawValue}`);
+  }
+  return value;
+}

@@ -24,6 +24,36 @@ class _BookingReviewSlot {
   Review? artist;
 }
 
+class _DemoTicketOrder {
+  _DemoTicketOrder({
+    required this.orderId,
+    required this.gigId,
+    required this.quantity,
+    required this.unitPriceMinor,
+    required this.unitFeeMinor,
+    required this.subtotalMinor,
+    required this.feeMinor,
+    required this.totalMinor,
+    required this.currency,
+    required this.status,
+    required this.reservedUntil,
+    this.referralBandSlug,
+  });
+
+  final String orderId;
+  final String gigId;
+  final int quantity;
+  final int unitPriceMinor;
+  final int unitFeeMinor;
+  final int subtotalMinor;
+  final int feeMinor;
+  final int totalMinor;
+  final String currency;
+  TicketOrderStatus status;
+  final DateTime reservedUntil;
+  final String? referralBandSlug;
+}
+
 int _refundShareBps(CancellationTemplate template, int msBeforeStart) {
   switch (template) {
     case CancellationTemplate.flexible:
@@ -216,6 +246,9 @@ class DemoRepository implements EarplugRepository {
   final Set<String> _followBandIds = {};
   final Set<String> _savedGigIds = {};
   final Map<String, RsvpTicket> _ticketsByGigId = {};
+  final Map<String, _DemoTicketOrder> _ticketOrders = {};
+  final Map<String, TicketSummary> _tickets = {};
+  final Map<String, String> _ticketSessions = {};
   final Set<String> _checkedInGigIds = {};
   final Set<String> _userGenres = {};
   final Map<String, String> _heroByBand = {};
@@ -259,6 +292,9 @@ class DemoRepository implements EarplugRepository {
   int _nextPayoutId = 1;
   int _nextRefundId = 1;
   int _nextCheckoutSessionId = 1;
+  int _nextTicketOrderId = 1;
+  int _nextTicketSessionId = 1;
+  int _nextTicketId = 1;
   int _nextReviewId = 1;
   bool _interactionsSeeded = false;
   Map<String, int> _lastGoingCounts = const {};
@@ -1634,6 +1670,207 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<TicketReservation> reserveTickets({
+    required String gigId,
+    required int quantity,
+    String? referralBandSlug,
+  }) async {
+    final gig = _requireTicketGig(gigId);
+    if (gig.tix != Ticketing.paid || gig.ticketPriceMinor == null) {
+      throw StateError('This gig does not sell tickets');
+    }
+    if (quantity < 1 || quantity > 10) {
+      throw StateError('Quantity must be between 1 and 10');
+    }
+    final capacity = gig.numericCapacity;
+    final committed = _committedTicketQuantity(gigId);
+    if (capacity != null && committed + quantity > capacity) {
+      throw StateError('Not enough tickets available');
+    }
+
+    final unitPriceMinor = gig.ticketPriceMinor!;
+    final subtotalMinor = unitPriceMinor * quantity;
+    final feeMinor = (subtotalMinor * 500 / 10000).round() + 100;
+    final order = _DemoTicketOrder(
+      orderId: 'demo-ticket-order-${_nextTicketOrderId++}',
+      gigId: gigId,
+      quantity: quantity,
+      unitPriceMinor: unitPriceMinor,
+      unitFeeMinor: (feeMinor / quantity).round(),
+      subtotalMinor: subtotalMinor,
+      feeMinor: feeMinor,
+      totalMinor: subtotalMinor + feeMinor,
+      currency: gig.ticketCurrency ?? 'usd',
+      status: TicketOrderStatus.reserved,
+      reservedUntil: DateTime.now().add(const Duration(minutes: 30)),
+      referralBandSlug: referralBandSlug,
+    );
+    _ticketOrders[order.orderId] = order;
+    return TicketReservation(
+      orderId: order.orderId,
+      quantity: order.quantity,
+      unitPriceMinor: order.unitPriceMinor,
+      unitFeeMinor: order.unitFeeMinor,
+      subtotalMinor: order.subtotalMinor,
+      feeMinor: order.feeMinor,
+      totalMinor: order.totalMinor,
+      currency: order.currency,
+      reservedUntil: order.reservedUntil,
+    );
+  }
+
+  @override
+  Future<void> cancelTicketReservation(String orderId) async {
+    final order = _requireTicketOrder(orderId);
+    // Re-cancelling is harmless; cancelling a paid order must not undo payment.
+    if (order.status == TicketOrderStatus.reserved ||
+        order.status == TicketOrderStatus.checkoutOpen) {
+      order.status = TicketOrderStatus.cancelled;
+    }
+  }
+
+  @override
+  Future<({String url, String sessionId})> startTicketCheckout(
+    String orderId,
+  ) async {
+    final order = _requireTicketOrder(orderId);
+    if (order.status != TicketOrderStatus.reserved &&
+        order.status != TicketOrderStatus.checkoutOpen) {
+      throw StateError('This order can not be checked out');
+    }
+    order.status = TicketOrderStatus.checkoutOpen;
+    final sessionId = 'demo-ticket-session-${_nextTicketSessionId++}';
+    _ticketSessions[sessionId] = orderId;
+    return (url: 'https://demo.stripe/tickets/$orderId', sessionId: sessionId);
+  }
+
+  @override
+  Future<void> cancelTicketOrder(String orderId) =>
+      cancelTicketReservation(orderId);
+
+  Future<void> simulateTicketCheckoutCompleted(String sessionId) async {
+    final orderId = _ticketSessions[sessionId];
+    if (orderId == null) throw StateError('Unknown checkout session');
+    final order = _requireTicketOrder(orderId);
+    // Replaying a demo completion must not charge or mint tickets twice.
+    if (order.status == TicketOrderStatus.paid) return;
+    final gig = _requireTicketGig(order.gigId);
+    final summary = TicketGigSummary(
+      id: gig.id,
+      title: gig.title,
+      slug: gig.slug,
+      startsAt: gig.startsAt,
+      doorsAt: gig.doorsAt,
+      venueName: _venues[gig.venueId]?.name ?? '',
+      lifecycle: gig.lifecycle,
+    );
+    final now = DateTime.now();
+    order.status = TicketOrderStatus.paid;
+    for (var n = 1; n <= order.quantity; n++) {
+      final id = 'demo-ticket-${_nextTicketId++}';
+      _tickets[id] = TicketSummary(
+        id: id,
+        orderId: orderId,
+        gigId: order.gigId,
+        token: 'earplug:ticket:v2:demo-$orderId-$n',
+        status: TicketStatus.valid,
+        createdAt: now,
+        gig: summary,
+      );
+    }
+  }
+
+  @override
+  Future<TicketOrderState?> ticketOrderStatus(String sessionId) async {
+    final orderId = _ticketSessions[sessionId];
+    if (orderId == null) return null;
+    final order = _requireTicketOrder(orderId);
+    return TicketOrderState(
+      orderId: order.orderId,
+      gigId: order.gigId,
+      gigSlug: _requireTicketGig(order.gigId).slug,
+      status: order.status,
+      quantity: order.quantity,
+      totalMinor: order.totalMinor,
+      currency: order.currency,
+    );
+  }
+
+  @override
+  Future<List<TicketSummary>> myTickets() async {
+    if (!_auth.signedIn) return const [];
+    return _tickets.values.toList();
+  }
+
+  @override
+  Future<TicketSummary?> ticket(String ticketId) async => _tickets[ticketId];
+
+  @override
+  Future<TicketSales> ticketSalesForGig(String gigId) async {
+    final gig = _requireTicketGig(gigId);
+    final capacity = gig.numericCapacity ?? 0;
+    var sold = 0;
+    var reserved = 0;
+    var ordersPaid = 0;
+    var grossMinor = 0;
+    var feeMinor = 0;
+    for (final order in _ticketOrders.values) {
+      if (order.gigId != gigId) continue;
+      if (order.status == TicketOrderStatus.paid) {
+        sold += order.quantity;
+        ordersPaid++;
+        grossMinor += order.subtotalMinor;
+        feeMinor += order.feeMinor;
+      } else if (order.status == TicketOrderStatus.reserved ||
+          order.status == TicketOrderStatus.checkoutOpen) {
+        reserved += order.quantity;
+      }
+    }
+    const refundedOrgMinor = 0;
+    return TicketSales(
+      capacity: capacity,
+      sold: sold,
+      reserved: reserved,
+      available: capacity == 0
+          ? 0
+          : (capacity - _committedTicketQuantity(gigId)).clamp(0, capacity),
+      ordersPaid: ordersPaid,
+      grossMinor: grossMinor,
+      feeMinor: feeMinor,
+      refundedMinor: 0,
+      refundedOrgMinor: refundedOrgMinor,
+      netMinor: grossMinor - refundedOrgMinor,
+      currency: gig.ticketCurrency ?? 'usd',
+      truncated: false,
+    );
+  }
+
+  int _committedTicketQuantity(String gigId) => _ticketOrders.values
+      .where(
+        (order) =>
+            order.gigId == gigId &&
+            (order.status == TicketOrderStatus.reserved ||
+                order.status == TicketOrderStatus.checkoutOpen ||
+                order.status == TicketOrderStatus.paid),
+      )
+      .fold(0, (total, order) => total + order.quantity);
+
+  Gig _requireTicketGig(String gigId) {
+    final gig = [
+      ...DemoData.gigs,
+      ..._publishedGigs,
+    ].where((gig) => gig.id == gigId).firstOrNull;
+    if (gig == null) throw StateError('Gig not found');
+    return gig;
+  }
+
+  _DemoTicketOrder _requireTicketOrder(String orderId) {
+    final order = _ticketOrders[orderId];
+    if (order == null) throw StateError('Order not found');
+    return order;
+  }
+
+  @override
   Future<void> ensureRsvp(String gigId) async {
     _rsvpGigIds.add(gigId);
     _emitInteractionsIfSignedIn();
@@ -2213,6 +2450,9 @@ class DemoRepository implements EarplugRepository {
     DateTime? applicationsCloseAt,
     OpportunityVisibility? visibility,
     OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
   }) async {
@@ -2243,6 +2483,9 @@ class DemoRepository implements EarplugRepository {
           applicationsCloseAt ?? startsAt.subtract(const Duration(days: 7)),
       visibility: visibility ?? OpportunityVisibility.publicListing,
       ticketing: ticketing ?? OpportunityTicketing.rsvp,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
+      ticketCurrency: ticketCurrency,
       externalUrl: externalUrl,
       status: OpportunityStatus.draft,
       slug: slug,
@@ -2290,6 +2533,9 @@ class DemoRepository implements EarplugRepository {
     DateTime? applicationsCloseAt,
     OpportunityVisibility? visibility,
     OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
   }) async {
@@ -2318,6 +2564,9 @@ class DemoRepository implements EarplugRepository {
       applicationsCloseAt: applicationsCloseAt,
       visibility: visibility,
       ticketing: ticketing,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
+      ticketCurrency: ticketCurrency,
       externalUrl: externalUrl,
       slots: slots == null ? null : _newOpportunitySlots(slots),
       revision: existing.revision + 1,
@@ -3729,7 +3978,100 @@ class DemoRepository implements EarplugRepository {
     required String payload,
   }) async {
     final project = _requireGigProject(projectId);
-    final gigId = project.publicGigId;
+    return _checkInRsvp(project.publicGigId, payload);
+  }
+
+  @override
+  Future<TicketDoorResult> organizerCheckIn({
+    required String gigId,
+    required String payload,
+  }) async {
+    if (payload.startsWith('earplug:ticket:v1:demo-')) {
+      final result = _checkInRsvp(gigId, payload);
+      final kind = switch (result.status) {
+        DoorCheckInStatus.checkedIn => TicketDoorKind.checkedIn,
+        DoorCheckInStatus.alreadyCheckedIn => TicketDoorKind.alreadyUsed,
+        DoorCheckInStatus.wrongGig => TicketDoorKind.wrongEvent,
+        DoorCheckInStatus.invalid => TicketDoorKind.unknown,
+      };
+      return TicketDoorResult(
+        kind: kind,
+        holderName: result.fanName,
+        checkedInAt: result.checkedInAt,
+        source:
+            kind == TicketDoorKind.checkedIn ||
+                kind == TicketDoorKind.alreadyUsed
+            ? 'rsvp'
+            : null,
+      );
+    }
+
+    final ticket = _tickets.values
+        .where((ticket) => ticket.token == payload)
+        .firstOrNull;
+    if (ticket == null) {
+      return const TicketDoorResult(kind: TicketDoorKind.unknown);
+    }
+    if (ticket.gigId != gigId) {
+      return const TicketDoorResult(kind: TicketDoorKind.wrongEvent);
+    }
+    final gig = _requireTicketGig(ticket.gigId);
+    if (gig.lifecycle == GigLifecycle.cancelled) {
+      return const TicketDoorResult(kind: TicketDoorKind.eventCancelled);
+    }
+    if (ticket.status == TicketStatus.refunded) {
+      return const TicketDoorResult(kind: TicketDoorKind.refunded);
+    }
+    if (ticket.status == TicketStatus.used) {
+      return TicketDoorResult(
+        kind: TicketDoorKind.alreadyUsed,
+        holderName: _userName ?? 'Earplug Fan',
+        checkedInAt: ticket.checkedInAt,
+        source: 'ticket',
+      );
+    }
+    if (ticket.status != TicketStatus.valid) {
+      return const TicketDoorResult(kind: TicketDoorKind.unknown);
+    }
+    final now = DateTime.now();
+    _tickets[ticket.id] = TicketSummary(
+      id: ticket.id,
+      orderId: ticket.orderId,
+      gigId: ticket.gigId,
+      token: ticket.token,
+      status: TicketStatus.used,
+      checkedInAt: now,
+      createdAt: ticket.createdAt,
+      gig: ticket.gig,
+    );
+    return TicketDoorResult(
+      kind: TicketDoorKind.checkedIn,
+      holderName: _userName ?? 'Earplug Fan',
+      checkedInAt: now,
+      source: 'ticket',
+    );
+  }
+
+  @override
+  Future<DoorCounts> organizerDoorRoster(String gigId) async => DoorCounts(
+    rsvpTotal: _rsvpGigIds.contains(gigId) ? 1 : 0,
+    rsvpCheckedIn: _checkedInGigIds.contains(gigId) ? 1 : 0,
+    ticketsSold: _ticketOrders.values
+        .where(
+          (order) =>
+              order.gigId == gigId && order.status == TicketOrderStatus.paid,
+        )
+        .fold(0, (total, order) => total + order.quantity),
+    ticketsCheckedIn: _tickets.values
+        .where(
+          (ticket) =>
+              ticket.gigId == gigId && ticket.status == TicketStatus.used,
+        )
+        .length,
+    truncated: false,
+  );
+
+  DoorCheckInResult _checkInRsvp(String? gigId, String payload) {
     if (gigId == null || payload != 'earplug:ticket:v1:demo-$gigId') {
       final belongsToAnotherGig = payload.startsWith('earplug:ticket:v1:demo-');
       return DoorCheckInResult(
@@ -4290,6 +4632,9 @@ class DemoRepository implements EarplugRepository {
     DateTime? applicationsCloseAt,
     OpportunityVisibility? visibility,
     OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
     String? externalUrl,
     OpportunityStatus? status,
     int? revision,
@@ -4323,6 +4668,9 @@ class DemoRepository implements EarplugRepository {
           applicationsCloseAt ?? opportunity.applicationsCloseAt,
       visibility: visibility ?? opportunity.visibility,
       ticketing: ticketing ?? opportunity.ticketing,
+      ticketPriceMinor: ticketPriceMinor ?? opportunity.ticketPriceMinor,
+      ticketCapacity: ticketCapacity ?? opportunity.ticketCapacity,
+      ticketCurrency: ticketCurrency ?? opportunity.ticketCurrency,
       externalUrl: externalUrl ?? opportunity.externalUrl,
       status: status ?? opportunity.status,
       slug: slug ?? opportunity.slug,

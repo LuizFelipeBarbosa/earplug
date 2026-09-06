@@ -58,13 +58,13 @@ for production:
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_CONNECT_WEBHOOK_SECRET`
 - `BOOKING_COMMISSION_BPS`
-- `TICKETING_FEE_BPS`
-- `TICKETING_FEE_FIXED_MINOR` — reserved for Phase 4 (declared, not yet read by any function).
+- `TICKETING_FEE_BPS` — dev: `500`; prod: unset; percentage component of the per-ticket fee.
+- `TICKETING_FEE_FIXED_MINOR` — dev: `100`; prod: unset; fixed minor-unit component of the per-ticket fee, read by Phase 4a.
 - `APP_BASE_URL`
 - `RESEND_API_KEY`
 - `RESEND_SEND_ENABLED`
 - `PAYMENTS_ENABLED`
-- `TICKETS_ENABLED`
+- `TICKETS_ENABLED` — dev: `true`; prod: unset (ticketing not yet enabled in production).
 - `PRIVATE_BOOKINGS_ENABLED`
 - `BAND_GIG_WRITES`
 
@@ -80,12 +80,20 @@ it to `checkout.session.completed`, `checkout.session.expired`,
 `payment_intent.payment_failed`, `charge.dispute.created`, and
 `charge.dispute.closed`. Configure the connected-account endpoint as
 `POST /stripe-connect-webhook` on the same host, using
-`STRIPE_CONNECT_WEBHOOK_SECRET`, and subscribe it to `account.updated`.
+`STRIPE_CONNECT_WEBHOOK_SECRET`, and subscribe it to
+`checkout.session.completed`, `checkout.session.expired`, `charge.refunded`,
+`payment_intent.payment_failed`, and `account.updated`. Create this endpoint
+with `connect=true` in the Stripe API/CLI: a regular account webhook endpoint
+silently receives no connected-account events, regardless of its subscribed
+event types. The development endpoint was recreated with this Connect-enabled
+configuration on 2026-09-05. The production endpoint has not been recreated
+yet; recreate it with this configuration before enabling either
+`PAYMENTS_ENABLED` or `TICKETS_ENABLED` in production.
 
 `APP_BASE_URL` must match the deployed client's origin for the selected
 environment: the development client's origin for development, and
-`https://earplug.app` for production. Checkout and Connect append these paths
-to that origin:
+`https://earplug.app` for production. Checkout and Connect append the return
+paths below to that origin; the ticket wallet uses the same origin:
 
 - `/checkout/return?session_id={CHECKOUT_SESSION_ID}` — Checkout success return; Stripe substitutes the session id.
 - `/checkout/cancel?booking=<bookingId>` — Checkout cancellation return.
@@ -93,6 +101,9 @@ to that origin:
 - `/band/stripe/refresh?band=<bandId>` — band Connect onboarding link refresh.
 - `/org/stripe/return?org=<organizationId>` — organization Connect onboarding return.
 - `/org/stripe/refresh?org=<organizationId>` — organization Connect onboarding link refresh.
+- `/tickets/return?session_id={CHECKOUT_SESSION_ID}` — ticket Checkout success return; Stripe substitutes the session id.
+- `/tickets/cancel?order=<orderId>` — ticket Checkout cancellation return.
+- `/t/<ticketId>` — a fan's ticket wallet route on `APP_BASE_URL`, not a Checkout/Connect return URL.
 
 A mismatched `APP_BASE_URL` sends these redirects to the wrong environment.
 `appBaseUrl()` defaults to `https://earplug.app` when the variable is absent,

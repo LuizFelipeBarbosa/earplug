@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -10,18 +11,40 @@ import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/map_view.dart';
+import '../widgets/ticket_purchase_sheet.dart';
 
-class GigDetailScreen extends StatelessWidget {
+class GigDetailScreen extends StatefulWidget {
   final String gigId;
 
   const GigDetailScreen({super.key, required this.gigId});
 
   @override
+  State<GigDetailScreen> createState() => _GigDetailScreenState();
+}
+
+class _GigDetailScreenState extends State<GigDetailScreen> {
+  bool _checkedPendingTicketPurchase = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_checkedPendingTicketPurchase) return;
+    _checkedPendingTicketPurchase = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (context.read<AppState>().consumePendingTicketPurchase(widget.gigId)) {
+        final gig = context.read<AppState>().gig(widget.gigId);
+        if (gig != null) unawaited(showTicketPurchaseSheet(context, gig));
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final gig = app.gig(gigId);
+    final gig = app.gig(widget.gigId);
     if (gig == null) {
-      if (app.publicGigError(gigId) != null) {
+      if (app.publicGigError(widget.gigId) != null) {
         return Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -34,13 +57,16 @@ class GigDetailScreen extends StatelessWidget {
                   style: epText(color: context.epColors.contentSecondary),
                 ),
                 const SizedBox(height: 16),
-                EpButton('TRY AGAIN', onTap: () => app.retryPublicGig(gigId)),
+                EpButton(
+                  'TRY AGAIN',
+                  onTap: () => app.retryPublicGig(widget.gigId),
+                ),
               ],
             ),
           ),
         );
       }
-      if (app.publicGigMissing(gigId)) {
+      if (app.publicGigMissing(widget.gigId)) {
         return Center(
           child: Text(
             'THIS GIG IS NO LONGER AVAILABLE',
@@ -868,6 +894,22 @@ class _GigCtaBar extends StatelessWidget {
           kind: EpButtonKind.disabled,
           onTap: null,
         ),
+      );
+    }
+    if (gig.sellsTickets) {
+      final button = EpButton(
+        'BUY TICKETS · ${gig.priceLabel}',
+        key: const Key('gig-buy-tickets'),
+        fontSize: 14,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        onTap: app.authed
+            ? () => showTicketPurchaseSheet(context, gig)
+            : () => app.requestTickets(gig.id),
+      );
+      return _CtaBar(
+        note:
+            'Tickets are sold by the organizer · EarPlug fee added at checkout',
+        child: button,
       );
     }
     final isRsvpd = app.rsvps.contains(gig.id);
