@@ -29,7 +29,7 @@ class GigInviteScreen extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'LINEUP INVITATION',
-                      style: epDisplay(size: 16),
+                      style: Theme.of(context).textTheme.epSectionHeading,
                     ),
                   ),
                 ],

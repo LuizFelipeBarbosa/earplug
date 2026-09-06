@@ -598,6 +598,7 @@ class RootShell extends StatelessWidget {
         });
     final app = context.read<AppState>();
     final entry = ScreenEntry(screen, param);
+    final desktop = EpLayout.isDesktop(context);
     final showOpportunityAsFanTab =
         screen == Screen.opportunityDetail && bandId.isEmpty;
     final isDualIdentityScreen =
@@ -641,13 +642,16 @@ class RootShell extends StatelessWidget {
       DataStatus.ready => Stack(
         children: [
           Positioned.fill(child: _screenFor(entry)),
-          if (fanTabScreens.contains(screen) || showOpportunityAsFanTab)
+          if (!desktop &&
+              (fanTabScreens.contains(screen) || showOpportunityAsFanTab))
             const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-          if (bandTabScreens.contains(screen) &&
+          if (!desktop &&
+              bandTabScreens.contains(screen) &&
               !showOpportunityAsFanTab &&
               (!isDualIdentityScreen || !showAsOrganizerTab))
             const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
-          if (organizerTabScreens.contains(screen) &&
+          if (!desktop &&
+              organizerTabScreens.contains(screen) &&
               (!isDualIdentityScreen || showAsOrganizerTab))
             const Positioned(
               left: 0,
@@ -660,19 +664,73 @@ class RootShell extends StatelessWidget {
       ),
     };
 
-    // On phones this fills the window; on wide screens (web/desktop) the app
-    // renders as a centered phone-width column on a dark backdrop.
+    final organizerNavigation =
+        organizerTabScreens.contains(screen) &&
+        (!isDualIdentityScreen || showAsOrganizerTab);
+    final bandNavigation =
+        (bandTabScreens.contains(screen) ||
+            screen == Screen.bandMedia ||
+            screen == Screen.bandPreview ||
+            screen == Screen.gigCreate) &&
+        !showOpportunityAsFanTab &&
+        !organizerNavigation;
+    final page = ClipRRect(
+      borderRadius: BorderRadius.circular(desktop ? 20 : 0),
+      child: Scaffold(body: body),
+    );
+
     return PopScope(
       canPop: !canGoBack,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) app.back();
       },
       child: ColoredBox(
-        color: context.epColors.surface,
+        color: context.epColors.background,
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: ClipRect(child: Scaffold(body: body)),
+            constraints: BoxConstraints(
+              maxWidth: desktop ? EpLayout.workspaceWidth : 600,
+            ),
+            child: desktop
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 20,
+                      horizontal: 16,
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        EpDesktopSidebar(
+                          label: organizerNavigation
+                              ? 'ORGANIZER'
+                              : bandNavigation
+                              ? 'BAND WORKSPACE'
+                              : 'DISCOVER',
+                          navigation: organizerNavigation
+                              ? const OrganizerTabBar(vertical: true)
+                              : bandNavigation
+                              ? const BandTabBar(vertical: true)
+                              : const FanTabBar(vertical: true),
+                        ),
+                        const SizedBox(width: 32),
+                        Expanded(
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(21),
+                              border: Border.all(
+                                color: context.epColors.border,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(1),
+                              child: page,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : page,
           ),
         ),
       ),

@@ -448,17 +448,31 @@ class _CommandGrid extends StatelessWidget {
     final singleColumn =
         MediaQuery.sizeOf(context).width < 340 ||
         MediaQuery.textScalerOf(context).scale(1) > 1.35;
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: singleColumn ? 1 : 2,
-        childAspectRatio: singleColumn ? 3.5 : 1.55,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-      ),
-      itemCount: commands.length,
-      itemBuilder: (_, index) => commands[index],
+    final columns = singleColumn ? 1 : 2;
+    return Column(
+      children: [
+        for (var start = 0; start < commands.length; start += columns) ...[
+          if (start > 0) const SizedBox(height: 10),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var column = 0; column < columns; column++) ...[
+                  if (column > 0) const SizedBox(width: 10),
+                  Expanded(
+                    child: start + column < commands.length
+                        ? ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 124),
+                            child: commands[start + column],
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

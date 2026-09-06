@@ -162,7 +162,7 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                       children: [
                         Text(
                           form.editingPublished ? 'EDIT GIG' : 'GIG DRAFT',
-                          style: epDisplay(size: 16),
+                          style: Theme.of(context).textTheme.epSectionHeading,
                         ),
                         Text(
                           form.saveState,
@@ -187,7 +187,12 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 170),
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  18,
+                  16,
+                  actionBarClearance(context) + 58,
+                ),
                 children: [
                   _NameCard(controller: _cardName, focusNode: _cardFocus),
                   const SizedBox(height: 18),
@@ -587,8 +592,10 @@ class _SwatchRow extends StatelessWidget {
     final press = context.select<AppState, ({String fly, bool custom})>(
       (app) => (fly: app.gfFly, custom: app.gfCustomFlyer),
     );
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 9,
+      runSpacing: 8,
       children: [
         for (final key in flyerPicks) ...[
           Swatch(
@@ -604,7 +611,6 @@ class _SwatchRow extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: 9),
         ],
         Swatch(
           key: const ValueKey('press-custom'),

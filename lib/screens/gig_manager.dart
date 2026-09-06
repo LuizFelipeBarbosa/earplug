@@ -103,20 +103,15 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
           tabBarClearance,
         ),
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'GIGS',
-                  style: Theme.of(context).textTheme.epPageHeading,
-                ),
-              ),
-              if (app.gigWritePolicy && app.isAdminOf(app.bandId))
-                FilledButton(
-                  onPressed: app.startGigCreate,
-                  child: Text('+ NEW GIG'),
-                ),
-            ],
+          EpPageHeading(
+            title: 'GIGS',
+            description: 'Your next stage starts here.',
+            action: app.gigWritePolicy && app.isAdminOf(app.bandId)
+                ? FilledButton(
+                    onPressed: app.startGigCreate,
+                    child: Text('+ NEW GIG'),
+                  )
+                : null,
           ),
           const SizedBox(height: 20),
           Wrap(

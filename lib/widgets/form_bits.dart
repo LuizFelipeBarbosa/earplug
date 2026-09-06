@@ -595,32 +595,49 @@ class StickyActionBar extends StatelessWidget {
         child: SafeArea(
           top: false,
           minimum: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              if (secondaryLabel != null) ...[
-                Expanded(
-                  child: OutlinedButton(
-                    key: secondaryKey,
-                    onPressed: onSecondary,
-                    child: Text(
-                      secondaryLabel!.toUpperCase(),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = EpLayout.stackActions(context);
+              final primary = FilledButton(
+                onPressed: onPrimary,
+                child: Text(
+                  primaryLabel.toUpperCase(),
+                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(width: 10),
-              ],
-              Expanded(
-                flex: secondaryLabel == null ? 1 : 2,
-                child: FilledButton(
-                  onPressed: onPrimary,
-                  child: Text(
-                    primaryLabel.toUpperCase(),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            ],
+              );
+              final secondary = secondaryLabel == null
+                  ? null
+                  : OutlinedButton(
+                      key: secondaryKey,
+                      onPressed: onSecondary,
+                      child: Text(
+                        secondaryLabel!.toUpperCase(),
+                        textAlign: TextAlign.center,
+                      ),
+                    );
+              if (stacked) {
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (secondary != null) ...[
+                      secondary,
+                      const SizedBox(height: 8),
+                    ],
+                    primary,
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  if (secondary != null) ...[
+                    Expanded(child: secondary),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(flex: secondary == null ? 1 : 2, child: primary),
+                ],
+              );
+            },
           ),
         ),
       ),

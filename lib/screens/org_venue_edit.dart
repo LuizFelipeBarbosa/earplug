@@ -282,7 +282,9 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
         16,
         headerTopPad(context),
         16,
-        tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+        tabBarClearance +
+            actionBarClearance(context) +
+            MediaQuery.paddingOf(context).bottom,
       ),
       children: [
         if (_loading)
@@ -446,7 +448,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 67,
+          bottom: EpLayout.isDesktop(context) ? 0 : 67,
           child: StickyActionBar(
             key: const Key('org-venue-save'),
             primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',

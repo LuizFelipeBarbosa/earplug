@@ -355,7 +355,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               16,
               headerTopPad(context),
               16,
-              112 + MediaQuery.paddingOf(context).bottom,
+              actionBarClearance(context) +
+                  MediaQuery.paddingOf(context).bottom,
             ),
             children: [
               Row(

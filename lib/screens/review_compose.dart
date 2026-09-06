@@ -97,7 +97,9 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                 16,
                 headerTopPad(context),
                 16,
-                tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+                tabBarClearance +
+                    actionBarClearance(context) +
+                    MediaQuery.paddingOf(context).bottom,
               ),
               children: [
                 Row(
@@ -203,7 +205,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: 67,
+              bottom: EpLayout.isDesktop(context) ? 0 : 67,
               child: StickyActionBar(
                 key: const ValueKey('review-submit'),
                 primaryLabel: 'SUBMIT REVIEW',

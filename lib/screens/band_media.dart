@@ -530,7 +530,7 @@ class _VideoManageCard extends StatelessWidget {
                 children: [
                   BandVideoThumbnail(
                     media: item,
-                    fallback: ColoredBox(color: context.epColors.surfaceRaised),
+                    fallback: const ColoredBox(color: Ep.surfaceRaised),
                   ),
                   const DecoratedBox(
                     decoration: BoxDecoration(

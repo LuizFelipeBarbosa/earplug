@@ -144,20 +144,13 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
       child: Column(
         children: [
           ScreenHeader(
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'EARPLUG ADMIN',
-                    style: Theme.of(context).textTheme.epPageHeading,
-                  ),
-                ),
-                TextButton(
-                  key: const Key('admin-queue-exit'),
-                  onPressed: app.toFanView,
-                  child: const Text('BACK TO FAN VIEW'),
-                ),
-              ],
+            child: EpPageHeading(
+              title: 'EARPLUG ADMIN',
+              action: TextButton(
+                key: const Key('admin-queue-exit'),
+                onPressed: app.toFanView,
+                child: const Text('BACK TO FAN VIEW'),
+              ),
             ),
           ),
           Expanded(
