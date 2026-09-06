@@ -247,6 +247,13 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing ticketCheckout.js:cancelOrder",
     "missing ticketsDoor.js:checkIn",
     "missing ticketsDoor.js:doorRoster",
+    "missing finance.js:overview",
+    "missing finance.js:transactions",
+    "missing financeActions.js:refreshBalance",
+    "missing financeActions.js:exportStatement",
+    "missing analytics.js:artistInsights",
+    "missing analytics.js:myBandInsights",
+    "missing talentOpportunities.js:updateTicketing",
   ]);
 });
 
@@ -337,5 +344,30 @@ test("reports missing and wrongly optional Phase 3b payment fields", () => {
     "payments.js:startInstallmentCheckout is missing return.url",
     "refunds.js:previewCancellation return.refundMinor optional=true, expected false",
     "payoutAccounts.js:bandPayoutStatus is missing return.state",
+  ]);
+});
+
+test("reports missing and wrongly optional Phase 4b finance and insights fields", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const ticketing = functions.find(
+    (entry) => entry.identifier === "talentOpportunities.js:updateTicketing",
+  );
+  delete ticketing.returns.value.revision;
+  const insights = functions.find(
+    (entry) => entry.identifier === "analytics.js:artistInsights",
+  );
+  insights.returns.value.estimatedDraw.optional = true;
+  const overview = functions.find(
+    (entry) => entry.identifier === "finance.js:overview",
+  );
+  delete overview.returns.value.snapshot;
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "finance.js:overview is missing return.snapshot",
+    "analytics.js:artistInsights return.estimatedDraw optional=true, expected false",
+    "talentOpportunities.js:updateTicketing is missing return.revision",
   ]);
 });
