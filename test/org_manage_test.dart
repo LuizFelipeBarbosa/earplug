@@ -132,12 +132,7 @@ void main() {
     await tester.scrollUntilVisible(command, 250);
     expect(command, findsOneWidget);
     expect(
-      find.descendant(
-        of: command,
-        matching: find.text(
-          '${harness.app.financeOverview!.ticketNetAmount.label} ticket net',
-        ),
-      ),
+      find.descendant(of: command, matching: find.text('FINANCE')),
       findsOneWidget,
     );
     await tester.tap(command);
