@@ -1,6 +1,11 @@
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { appendLedgerEntry } from "../lib/ledger";
 import { expireOrder, mintTickets } from "../lib/ticketMint";
+import {
+  assertTicketOrderTransition,
+  assertTicketTransition,
+} from "../lib/ticketStatus";
 import type { StripeEvent } from "../stripeWebhook";
 import {
   reconcileDashboardRefund,
@@ -35,7 +40,7 @@ async function assertTicketEventAccount(
   ctx: MutationCtx,
   order: Doc<"ticketOrders">,
   event: StripeEvent,
-): Promise<void> {
+): Promise<boolean> {
   const details = await ctx.db
     .query("organizationPrivateDetails")
     .withIndex("by_organizationId", (q) =>
@@ -43,8 +48,12 @@ async function assertTicketEventAccount(
     )
     .unique();
   if (!details?.stripeAccountId || event.account !== details.stripeAccountId) {
-    throw new Error("Ticket event account mismatch");
+    console.warn(
+      `${event.type} ignored: Stripe account mismatch for ticket order ${order._id}`,
+    );
+    return false;
   }
+  return true;
 }
 
 export async function handleTicketCheckoutCompleted(
@@ -54,7 +63,7 @@ export async function handleTicketCheckoutCompleted(
   const session = event.data.object;
   let order = await orderForSession(ctx, session);
   if (!order) return;
-  await assertTicketEventAccount(ctx, order, event);
+  if (!(await assertTicketEventAccount(ctx, order, event))) return;
   if (session.payment_status !== "paid") return;
 
   const matchingSession = order.stripeCheckoutSessionId === session.id;
@@ -66,6 +75,7 @@ export async function handleTicketCheckoutCompleted(
     if (order.status === "reserved") {
       // A delayed payment may arrive after Checkout was reopened for a retry.
       const updatedAt = Date.now();
+      assertTicketOrderTransition("reserved", "checkout_open");
       await ctx.db.patch(order._id, { status: "checkout_open", updatedAt });
       order = { ...order, status: "checkout_open", updatedAt };
     }
@@ -80,6 +90,7 @@ export async function handleTicketCheckoutCompleted(
     return;
   }
 
+  if (typeof session.amount_total !== "number") return;
   if (typeof session.payment_intent !== "string") {
     throw new Error("Late ticket payment is missing a Stripe payment intent");
   }
@@ -97,7 +108,7 @@ export async function handleTicketCheckoutExpired(
   const session = event.data.object;
   const order = await orderForSession(ctx, session);
   if (!order) return;
-  await assertTicketEventAccount(ctx, order, event);
+  if (!(await assertTicketEventAccount(ctx, order, event))) return;
   if (
     order.status === "checkout_open" &&
     session.id === order.stripeCheckoutSessionId
@@ -118,11 +129,115 @@ export async function handleTicketChargeRefunded(
   );
   const order = orderId ? await ctx.db.get(orderId) : null;
   if (!order) return;
-  await assertTicketEventAccount(ctx, order, event);
+  if (!(await assertTicketEventAccount(ctx, order, event))) return;
   await reconcileDashboardRefund(
     ctx,
     order,
     charge as Parameters<typeof reconcileDashboardRefund>[2],
     event.id,
   );
+}
+
+export async function handleTicketDisputeCreated(
+  ctx: MutationCtx,
+  event: StripeEvent,
+  charge: Record<string, any>,
+): Promise<void> {
+  const orderId = ctx.db.normalizeId(
+    "ticketOrders",
+    charge.metadata.ticketOrderId,
+  );
+  const order = orderId ? await ctx.db.get(orderId) : null;
+  if (!order) return;
+  if (!(await assertTicketEventAccount(ctx, order, event))) return;
+
+  const dispute = event.data.object;
+  const disputeId = dispute.id;
+  const disputedMinor =
+    typeof dispute.amount === "number" ? dispute.amount : order.totalMinor;
+  const ledgerContext = {
+    currency: order.currency,
+    organizationId: order.organizationId,
+    ticketOrderId: order._id,
+    stripeRef: `dispute:${disputeId}`,
+    stripeEventId: event.id,
+    occurredAt: Date.now(),
+  };
+  await appendLedgerEntry(ctx, {
+    ...ledgerContext,
+    idempotencyKey: `ticket-dispute-hold:${disputeId}`,
+    kind: "dispute_hold",
+    amountMinor: -disputedMinor,
+    fundsState: "disputed",
+  });
+}
+
+export async function handleTicketDisputeClosed(
+  ctx: MutationCtx,
+  event: StripeEvent,
+  charge: Record<string, any>,
+): Promise<void> {
+  const orderId = ctx.db.normalizeId(
+    "ticketOrders",
+    charge.metadata.ticketOrderId,
+  );
+  const order = orderId ? await ctx.db.get(orderId) : null;
+  if (!order) return;
+  if (!(await assertTicketEventAccount(ctx, order, event))) return;
+
+  const dispute = event.data.object;
+  const disputeId = dispute.id;
+  const outcome = dispute.status;
+  if (outcome !== "won" && outcome !== "lost") {
+    console.log(
+      `charge.dispute.closed ignored: ticket dispute ${disputeId} is ${outcome}`,
+    );
+    return;
+  }
+  const disputedMinor =
+    typeof dispute.amount === "number" ? dispute.amount : order.totalMinor;
+  const now = Date.now();
+  const ledgerContext = {
+    currency: order.currency,
+    organizationId: order.organizationId,
+    ticketOrderId: order._id,
+    stripeRef: `dispute:${disputeId}`,
+    stripeEventId: event.id,
+    occurredAt: now,
+  };
+  if (outcome === "won") {
+    await appendLedgerEntry(ctx, {
+      ...ledgerContext,
+      idempotencyKey: `ticket-dispute-release:${disputeId}`,
+      kind: "dispute_release",
+      amountMinor: disputedMinor,
+      fundsState: "available",
+    });
+    return;
+  }
+
+  await appendLedgerEntry(ctx, {
+    ...ledgerContext,
+    idempotencyKey: `ticket-dispute-loss:${disputeId}`,
+    kind: "dispute_loss",
+    amountMinor: -disputedMinor,
+    fundsState: "refunded",
+  });
+  if (order.status === "paid") {
+    assertTicketOrderTransition("paid", "refunded");
+    await ctx.db.patch(order._id, {
+      status: "refunded",
+      refundedMinor: order.totalMinor,
+      updatedAt: now,
+    });
+    const tickets = await ctx.db
+      .query("tickets")
+      .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
+      .filter((q) => q.eq(q.field("status"), "valid"))
+      .collect();
+    for (const ticket of tickets) {
+      assertTicketTransition("valid", "cancelled");
+      await ctx.db.patch(ticket._id, { status: "cancelled" });
+    }
+  }
 }

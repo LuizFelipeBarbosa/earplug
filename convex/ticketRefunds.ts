@@ -251,26 +251,32 @@ export async function applyRefundSucceeded(
   });
   const order = await ctx.db.get(refund.orderId);
   if (!order) throw new Error("Ticket order not found");
+  const refundsLegitimatePayment =
+    refund.reason !== "late_payment" &&
+    (refund.stripePaymentIntentId ?? order.stripePaymentIntentId) ===
+      order.stripePaymentIntentId;
   const wasPaid = order.status === "paid";
-  const refundedMinor = order.refundedMinor + refund.amountMinor;
-  await ctx.db.patch(order._id, {
-    refundedMinor,
-    stripeRefundId,
-    updatedAt: now,
-  });
-  if (wasPaid && refundedMinor >= order.totalMinor) {
-    assertTicketOrderTransition(order.status, "refunded");
-    await ctx.db.patch(order._id, { status: "refunded" });
-    const tickets = await ctx.db
-      .query("tickets")
-      .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
-      .filter((q) =>
-        q.or(q.eq(q.field("status"), "valid"), q.eq(q.field("status"), "used")),
-      )
-      .collect();
-    for (const ticket of tickets) {
-      assertTicketTransition(ticket.status, "refunded");
-      await ctx.db.patch(ticket._id, { status: "refunded" });
+  if (refundsLegitimatePayment) {
+    const refundedMinor = order.refundedMinor + refund.amountMinor;
+    await ctx.db.patch(order._id, {
+      refundedMinor,
+      stripeRefundId,
+      updatedAt: now,
+    });
+    if (wasPaid && refundedMinor >= order.totalMinor) {
+      assertTicketOrderTransition(order.status, "refunded");
+      await ctx.db.patch(order._id, { status: "refunded" });
+      const tickets = await ctx.db
+        .query("tickets")
+        .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
+        .filter((q) =>
+          q.or(q.eq(q.field("status"), "valid"), q.eq(q.field("status"), "used")),
+        )
+        .collect();
+      for (const ticket of tickets) {
+        assertTicketTransition(ticket.status, "refunded");
+        await ctx.db.patch(ticket._id, { status: "refunded" });
+      }
     }
   }
 
@@ -289,7 +295,7 @@ export async function applyRefundSucceeded(
     amountMinor: -refund.amountMinor,
     idempotencyKey: `ticket-refund:${refund._id}`,
   });
-  if (wasPaid) {
+  if (refundsLegitimatePayment && wasPaid) {
     await appendLedgerEntry(ctx, {
       ...ledgerContext,
       kind: "ticket_fee",
@@ -357,8 +363,14 @@ export const retryFailedTicketRefunds = internalMutation({
       .take(50);
     const now = Date.now();
     for (const row of rows) {
+      const retryCount = row.retryCount ?? 0;
+      if (retryCount >= 5) continue;
       assertTicketRefundTransition("failed", "pending");
-      await ctx.db.patch(row._id, { status: "pending", updatedAt: now });
+      await ctx.db.patch(row._id, {
+        status: "pending",
+        retryCount: retryCount + 1,
+        updatedAt: now,
+      });
       await ctx.scheduler.runAfter(0, internal.ticketRefunds.executeRefund, {
         refundId: row._id,
         attempt: 0,
@@ -375,13 +387,52 @@ export async function reconcileDashboardRefund(
     id: string;
     amount_refunded: number;
     payment_intent?: string;
-    refunds?: { data: Array<{ id: string; amount: number }> };
+    refunds?: {
+      data: Array<{
+        id: string;
+        amount: number;
+        metadata?: { refundId?: string } | null;
+      }>;
+    };
   },
   stripeEventId: string,
 ): Promise<void> {
-  const delta = charge.amount_refunded - order.refundedMinor;
+  const refundEntries = charge.refunds?.data ?? [];
+
+  // A webhook can arrive before the refund action records its successful POST.
+  // Settle our pending row by metadata before calculating any dashboard delta.
+  for (const entry of refundEntries) {
+    const refundId = entry.metadata?.refundId;
+    if (!refundId) continue;
+    const normalized = ctx.db.normalizeId("ticketRefunds", refundId);
+    const pending = normalized ? await ctx.db.get(normalized) : null;
+    if (
+      !pending ||
+      pending.orderId !== order._id ||
+      pending.status !== "pending"
+    ) {
+      continue;
+    }
+    await applyRefundSucceeded(ctx, pending, entry.id, stripeEventId);
+  }
+
+  // Include stray-intent refunds, which do not affect order.refundedMinor,
+  // and read fresh rows so replayed events with stale orders remain harmless.
+  const succeeded = await ctx.db
+    .query("ticketRefunds")
+    .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
+    .filter((q) => q.eq(q.field("status"), "succeeded"))
+    .collect();
+  const knownSucceededMinor = succeeded.reduce(
+    (sum, row) => sum + row.amountMinor,
+    0,
+  );
+  const delta = charge.amount_refunded - knownSucceededMinor;
   if (delta <= 0) return;
-  const stripeRefundId = charge.refunds?.data.at(-1)?.id ?? charge.id;
+
+  // Distinguish successive partial refunds even without an expanded list.
+  const stripeRefundId =
+    refundEntries.at(-1)?.id ?? `${charge.id}:${charge.amount_refunded}`;
   const existing = await ctx.db
     .query("ticketRefunds")
     .withIndex("by_stripeRefundId", (q) =>

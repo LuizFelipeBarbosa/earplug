@@ -221,6 +221,33 @@ function refundedEvent(orderId: Id<"ticketOrders">): StripeEvent {
   };
 }
 
+function ticketDisputeEvent(
+  type: "charge.dispute.created" | "charge.dispute.closed",
+  orderId: Id<"ticketOrders">,
+  fields: Record<string, unknown> = {},
+): StripeEvent {
+  return {
+    id:
+      type === "charge.dispute.created"
+        ? "evt_ticket_dispute_created"
+        : "evt_ticket_dispute_closed",
+    type,
+    livemode: false,
+    account: ACCOUNT_ID,
+    created: NOW / 1000,
+    data: {
+      object: {
+        id: "dp_ticket",
+        payment_intent: "pi_ticket",
+        amount: 1100,
+        status: type === "charge.dispute.closed" ? "won" : undefined,
+        charge: { id: "ch_ticket", metadata: { ticketOrderId: orderId } },
+        ...fields,
+      },
+    },
+  };
+}
+
 describe("ticket Checkout completion", () => {
   test.each(["checkout_open", "reserved"] as const)(
     "mints a matching %s order once, including deliveries with a new event id",
@@ -291,6 +318,18 @@ describe("ticket Checkout completion", () => {
     expect(await f.state()).toEqual(before);
   });
 
+  test.each([undefined, null, "1300"])(
+    "ignores a late payment with a non-numeric amount_total (%j)",
+    async (amountTotal) => {
+      const f = await setupTickets({ status: "expired" });
+      const before = await f.state();
+      expect(
+        await f.deliver(checkoutEvent(f.orderId, { amount_total: amountTotal })),
+      ).toEqual({ outcome: "applied" });
+      expect(await f.state()).toEqual(before);
+    },
+  );
+
   test.each([undefined, null, { id: "pi_expanded" }])(
     "rejects a late payment without a string payment intent (%j)",
     async (paymentIntent) => {
@@ -312,7 +351,7 @@ describe("ticket event account checks", () => {
     "checkout.session.expired",
     "charge.refunded",
   ])(
-    "%s rejects mismatched and missing connected accounts without changing ticket state",
+    "%s ignores mismatched and missing connected accounts without changing ticket state",
     async (type) => {
       const f = await setupTickets(
         type === "charge.refunded" ? { status: "paid" } : {},
@@ -324,7 +363,7 @@ describe("ticket event account checks", () => {
       const before = await f.state();
       for (const account of ["acct_other", undefined]) {
         const rejected = { ...event, id: `evt_account_${account}`, account };
-        expect(await f.deliver(rejected)).toEqual({ outcome: "failed" });
+        expect(await f.deliver(rejected)).toEqual({ outcome: "applied" });
         const recorded = await f.t.run((ctx) =>
           ctx.db
             .query("stripeEvents")
@@ -332,15 +371,16 @@ describe("ticket event account checks", () => {
             .unique(),
         );
         expect(recorded).toMatchObject({
-          error: "Ticket event account mismatch",
+          status: "applied",
         });
+        expect(recorded?.error).toBeUndefined();
         expect(await f.state()).toEqual(before);
       }
     },
   );
 
   test.each(["missing details", "missing account"])(
-    "rejects Checkout when the organization has %s, even without an event account",
+    "ignores Checkout when the organization has %s, even without an event account",
     async (missing) => {
       const f = await setupTickets();
       await f.t.run((ctx) =>
@@ -351,7 +391,7 @@ describe("ticket event account checks", () => {
       const before = await f.state();
       expect(
         await f.deliver({ ...checkoutEvent(f.orderId), account: undefined }),
-      ).toEqual({ outcome: "failed" });
+      ).toEqual({ outcome: "applied" });
       expect(await f.state()).toEqual(before);
     },
   );
@@ -416,9 +456,9 @@ describe("late ticket payments", () => {
       ]);
       expect(settled.order).toMatchObject({
         status,
-        refundedMinor: 1300,
-        stripeRefundId: "re_late_ticket",
+        refundedMinor: 0,
       });
+      expect(settled.order.stripeRefundId).toBeUndefined();
       expect(settled.tickets).toEqual(before.tickets);
       expect(settled.inventory).toEqual(before.inventory);
       expect(settled.ledger).toMatchObject([
@@ -471,6 +511,43 @@ describe("late ticket payments", () => {
       );
     },
   );
+
+  test("a late payment against a paid order leaves the order paid and its tickets valid", async () => {
+    const f = await setupTickets({
+      status: "paid",
+      stripePaymentIntentId: "pi_current",
+    });
+    const before = await f.state();
+    expect(
+      await f.deliver(
+        checkoutEvent(f.orderId, {
+          id: "cs_stale",
+          payment_intent: "pi_stale",
+        }),
+      ),
+    ).toEqual({ outcome: "applied" });
+    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+    const state = await f.state();
+    expect(state.refunds).toMatchObject([
+      {
+        reason: "late_payment",
+        status: "succeeded",
+        stripePaymentIntentId: "pi_stale",
+      },
+    ]);
+    expect(state.order).toEqual(before.order);
+    expect(state.order).toMatchObject({
+      status: "paid",
+      refundedMinor: 0,
+      stripePaymentIntentId: "pi_current",
+    });
+    expect(state.tickets).toEqual(before.tickets);
+    expect(state.tickets.map((ticket) => ticket.status)).toEqual(["valid", "valid"]);
+    expect(state.ledger).toHaveLength(1);
+    expect(state.ledger).toMatchObject([
+      { kind: "ticket_refund", amountMinor: -1100 },
+    ]);
+  });
 
   test("refunds two distinct late payment intents independently on a paid order", async () => {
     const f = await setupTickets({
@@ -593,11 +670,31 @@ describe("ticket Checkout expiry", () => {
 
 describe("ticket dashboard refunds", () => {
   test("reconciles only the refund delta and deduplicates repeated charge events", async () => {
-    const f = await setupTickets({ status: "paid", refundedMinor: 500 });
+    const f = await setupTickets({
+      status: "paid",
+      refundedMinor: 500,
+      stripePaymentIntentId: "pi_ticket",
+    });
+    await f.t.run((ctx) =>
+      ctx.db.insert("ticketRefunds", {
+        orderId: f.orderId,
+        gigId: f.gigId,
+        organizationId: f.organizationId,
+        amountMinor: 500,
+        currency: "usd",
+        reason: "admin",
+        status: "succeeded",
+        stripeRefundId: "re_previous",
+        attempt: 0,
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
+    );
     const event = refundedEvent(f.orderId);
     expect(await f.deliver(event)).toEqual({ outcome: "applied" });
     const state = await f.state();
     expect(state.refunds).toMatchObject([
+      { amountMinor: 500, status: "succeeded", stripeRefundId: "re_previous" },
       {
         reason: "dashboard",
         status: "succeeded",
@@ -653,34 +750,119 @@ test.each([
   expect(await f.state()).toEqual(before);
 });
 
-test.each(["charge.dispute.created", "charge.dispute.closed"])(
-  "%s applies cleanly for a ticket charge without a booking payment record",
-  async (type) => {
-    const f = await setupTickets({
-      status: "paid",
-      stripePaymentIntentId: "pi_ticket",
-    });
+describe("ticket disputes", () => {
+  test("created holds the disputed amount without changing the paid order or tickets", async () => {
+    const f = await setupTickets({ status: "paid" });
     const before = await f.state();
-    const event: StripeEvent = {
-      id: "evt_ticket_dispute",
-      type,
-      livemode: false,
-      account: ACCOUNT_ID,
-      created: NOW / 1000,
-      data: {
-        object: {
-          id: "dp_ticket",
-          payment_intent: "pi_ticket",
-          amount: 1100,
-          status: "won",
-          charge: { id: "ch_ticket", metadata: { ticketOrderId: f.orderId } },
-        },
-      },
-    };
+    const event = ticketDisputeEvent("charge.dispute.created", f.orderId);
     expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+    const state = await f.state();
+    expect(state.order).toEqual(before.order);
+    expect(state.order).toMatchObject({ status: "paid" });
+    expect(state.tickets).toEqual(before.tickets);
+    expect(state.tickets.map((ticket) => ticket.status)).toEqual(["valid", "valid"]);
+    expect(state.ledger).toHaveLength(1);
+    expect(state.ledger).toMatchObject([
+      {
+        kind: "dispute_hold",
+        amountMinor: -1100,
+        fundsState: "disputed",
+        organizationId: f.organizationId,
+        ticketOrderId: f.orderId,
+        currency: "usd",
+        stripeRef: "dispute:dp_ticket",
+        stripeEventId: event.id,
+        idempotencyKey: "ticket-dispute-hold:dp_ticket",
+      },
+    ]);
+    expect(await f.deliver(event)).toEqual({ outcome: "duplicate" });
+    expect(await f.state()).toEqual(state);
+    // A new event id also exercises the ledger's dispute-id deduplication.
+    expect(await f.deliver({ ...event, id: "evt_ticket_dispute_replay" })).toEqual({
+      outcome: "applied",
+    });
+    expect(await f.state()).toEqual(state);
+  });
+
+  test("closed won releases the hold and preserves the paid order and valid tickets", async () => {
+    const f = await setupTickets({ status: "paid" });
+    const before = await f.state();
+    await f.deliver(ticketDisputeEvent("charge.dispute.created", f.orderId));
+    const closed = ticketDisputeEvent("charge.dispute.closed", f.orderId, {
+      status: "won",
+    });
+    expect(await f.deliver(closed)).toEqual({ outcome: "applied" });
+    const state = await f.state();
+    expect(state.order).toEqual(before.order);
+    expect(state.order).toMatchObject({ status: "paid" });
+    expect(state.tickets).toEqual(before.tickets);
+    expect(state.tickets.map((ticket) => ticket.status)).toEqual(["valid", "valid"]);
+    expect(state.ledger).toMatchObject([
+      { kind: "dispute_hold", amountMinor: -1100 },
+      {
+        kind: "dispute_release",
+        amountMinor: 1100,
+        fundsState: "available",
+        organizationId: f.organizationId,
+        ticketOrderId: f.orderId,
+        stripeRef: "dispute:dp_ticket",
+        stripeEventId: closed.id,
+        idempotencyKey: "ticket-dispute-release:dp_ticket",
+      },
+    ]);
+  });
+
+  test("closed lost refunds the order and cancels only valid tickets", async () => {
+    const f = await setupTickets({ status: "paid" });
+    const before = await f.state();
+    await f.t.run((ctx) =>
+      ctx.db.patch(before.tickets[0]._id, { status: "used" }),
+    );
+    const usedTicket = (await f.state()).tickets[0];
+    await f.deliver(ticketDisputeEvent("charge.dispute.created", f.orderId));
+    const closed = ticketDisputeEvent("charge.dispute.closed", f.orderId, {
+      status: "lost",
+    });
+    expect(await f.deliver(closed)).toEqual({ outcome: "applied" });
+    const state = await f.state();
+    expect(state.order).toMatchObject({
+      status: "refunded",
+      refundedMinor: before.order.totalMinor,
+    });
+    expect(state.tickets.map((ticket) => ticket.status).sort()).toEqual([
+      "cancelled",
+      "used",
+    ]);
+    expect(state.tickets.find((ticket) => ticket._id === usedTicket._id)).toEqual(
+      usedTicket,
+    );
+    expect(state.ledger).toMatchObject([
+      { kind: "dispute_hold", amountMinor: -1100 },
+      {
+        kind: "dispute_loss",
+        amountMinor: -1100,
+        fundsState: "refunded",
+        organizationId: f.organizationId,
+        ticketOrderId: f.orderId,
+        stripeRef: "dispute:dp_ticket",
+        stripeEventId: closed.id,
+        idempotencyKey: "ticket-dispute-loss:dp_ticket",
+      },
+    ]);
+  });
+
+  test("ignores a mismatched account without changing ticket state", async () => {
+    const f = await setupTickets({ status: "paid" });
+    const before = await f.state();
+    expect(
+      await f.deliver({
+        ...ticketDisputeEvent("charge.dispute.created", f.orderId),
+        account: "acct_other",
+      }),
+    ).toEqual({ outcome: "applied" });
     expect(await f.state()).toEqual(before);
-  },
-);
+  });
+});
 
 test("booking Checkout still applies through the existing payment-record handler", async () => {
   const f = await setupTickets();

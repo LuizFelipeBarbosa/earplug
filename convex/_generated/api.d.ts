@@ -72,6 +72,7 @@ import type * as stripeHandlers_tickets from "../stripeHandlers/tickets.js";
 import type * as stripeWebhook from "../stripeWebhook.js";
 import type * as talentOpportunities from "../talentOpportunities.js";
 import type * as talentOpportunitiesRead from "../talentOpportunitiesRead.js";
+import type * as ticketCancellationJobs from "../ticketCancellationJobs.js";
 import type * as ticketCheckout from "../ticketCheckout.js";
 import type * as ticketRefunds from "../ticketRefunds.js";
 import type * as tickets from "../tickets.js";
@@ -150,6 +151,7 @@ declare const fullApi: ApiFromModules<{
   stripeWebhook: typeof stripeWebhook;
   talentOpportunities: typeof talentOpportunities;
   talentOpportunitiesRead: typeof talentOpportunitiesRead;
+  ticketCancellationJobs: typeof ticketCancellationJobs;
   ticketCheckout: typeof ticketCheckout;
   ticketRefunds: typeof ticketRefunds;
   tickets: typeof tickets;

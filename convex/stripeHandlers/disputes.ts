@@ -17,7 +17,12 @@ import type {
   StripeEventHandler,
   StripeHandlerMap,
 } from "../stripeWebhook";
-import { handleTicketChargeRefunded, isTicketSession } from "./tickets";
+import {
+  handleTicketChargeRefunded,
+  handleTicketDisputeCreated,
+  handleTicketDisputeClosed,
+  isTicketSession,
+} from "./tickets";
 
 async function paymentRecordForDispute(
   ctx: MutationCtx,
@@ -44,6 +49,10 @@ async function paymentRecordForDispute(
 }
 
 const disputeCreated: StripeEventHandler = async (ctx, event) => {
+  const charge = event.data.object.charge;
+  if (charge && typeof charge === "object" && isTicketSession(charge)) {
+    return handleTicketDisputeCreated(ctx, event, charge);
+  }
   const record = await paymentRecordForDispute(ctx, event);
   if (!record) return;
   const dispute = event.data.object;
@@ -107,6 +116,10 @@ const disputeCreated: StripeEventHandler = async (ctx, event) => {
 };
 
 const disputeClosed: StripeEventHandler = async (ctx, event) => {
+  const charge = event.data.object.charge;
+  if (charge && typeof charge === "object" && isTicketSession(charge)) {
+    return handleTicketDisputeClosed(ctx, event, charge);
+  }
   const record = await paymentRecordForDispute(ctx, event);
   if (!record) return;
   const dispute = event.data.object;

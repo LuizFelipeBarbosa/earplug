@@ -401,6 +401,33 @@ describe("ticket refund execution", () => {
     expect(stripeMock).toHaveBeenCalledTimes(1);
   });
 
+  test("a stray-intent refund on a paid order never touches the order or its tickets", async () => {
+    const f = await setupRefunds();
+    const refundId = await f.addRefund({
+      reason: "late_payment",
+      stripePaymentIntentId: "pi_stale",
+      amountMinor: 500,
+    });
+    const before = await f.state();
+    await f.t.mutation(internal.ticketRefunds.markRefundSucceeded, {
+      refundId,
+      stripeRefundId: "re_stale",
+    });
+    const state = await f.state();
+    expect(state.refunds).toMatchObject([
+      { _id: refundId, status: "succeeded", stripeRefundId: "re_stale" },
+    ]);
+    expect(state.order).toEqual(before.order);
+    expect(state.order).toMatchObject({ status: "paid", refundedMinor: 0 });
+    expect(state.order.stripeRefundId).toBeUndefined();
+    expect(state.tickets).toEqual(before.tickets);
+    expect(state.tickets.map((row) => row.status)).toEqual(["valid", "valid"]);
+    expect(state.ledger).toHaveLength(1);
+    expect(state.ledger).toMatchObject([
+      { kind: "ticket_refund", amountMinor: -500 },
+    ]);
+  });
+
   test("a partial refund preserves valid tickets and rounds the fee to minor units", async () => {
     const f = await setupRefunds();
     await f.request(333);
@@ -566,6 +593,17 @@ describe("ticket refund execution", () => {
 });
 
 describe("retryFailedTicketRefunds", () => {
+  test("stops requeueing after five retries", async () => {
+    const f = await setupRefunds();
+    await f.addRefund({ status: "failed", retryCount: 5 });
+    const before = await f.state();
+    await f.t.mutation(internal.ticketRefunds.retryFailedTicketRefunds, {});
+    const state = await f.state();
+    expect(state).toEqual(before);
+    expect(state.refunds).toMatchObject([{ status: "failed", retryCount: 5 }]);
+    expect(state.jobs).toEqual([]);
+  });
+
   test("requeues failed refunds only and schedules attempt zero", async () => {
     const f = await setupRefunds();
     const refundId = await f.addRefund({
@@ -620,11 +658,17 @@ describe("retryFailedTicketRefunds", () => {
 describe("reconcileDashboardRefund", () => {
   test("settles only the delta and ignores repeated deliveries, including stale order snapshots", async () => {
     const f = await setupRefunds({ refundedMinor: 500 });
+    await f.addRefund({
+      amountMinor: 500,
+      reason: "admin",
+      status: "succeeded",
+      stripeRefundId: "re_previous",
+    });
     const originalOrder = (await f.state()).order;
     const charge = {
       id: "ch_ticket",
       amount_refunded: 1100,
-      payment_intent: "pi_charge_dashboard",
+      payment_intent: "pi_ticket",
       refunds: {
         data: [
           { id: "re_previous", amount: 500 },
@@ -637,12 +681,13 @@ describe("reconcileDashboardRefund", () => {
     );
     const state = await f.state();
     expect(state.refunds).toMatchObject([
+      { amountMinor: 500, status: "succeeded", stripeRefundId: "re_previous" },
       {
         amountMinor: 600,
         reason: "dashboard",
         status: "succeeded",
         stripeRefundId: "re_dashboard",
-        stripePaymentIntentId: "pi_charge_dashboard",
+        stripePaymentIntentId: "pi_ticket",
         attempt: 0,
       },
     ]);
@@ -682,8 +727,79 @@ describe("reconcileDashboardRefund", () => {
     expect(stripeMock).not.toHaveBeenCalled();
   });
 
+  test("a stray-intent dashboard refund records its ledger entry without touching the paid order", async () => {
+    const f = await setupRefunds();
+    const order = (await f.state()).order;
+    const charge = {
+      id: "ch_stray",
+      amount_refunded: 400,
+      payment_intent: "pi_stray_charge",
+      refunds: { data: [{ id: "re_stray", amount: 400 }] },
+    };
+    await f.t.run((ctx) =>
+      reconcileDashboardRefund(ctx, order, charge, "evt_stray"),
+    );
+    const state = await f.state();
+    expect(state.refunds).toMatchObject([
+      {
+        amountMinor: 400,
+        reason: "dashboard",
+        status: "succeeded",
+        stripeRefundId: "re_stray",
+        stripePaymentIntentId: "pi_stray_charge",
+      },
+    ]);
+    expect(state.order).toMatchObject({ status: "paid", refundedMinor: 0 });
+    expect(state.order).toEqual(order);
+    expect(state.tickets.map((row) => row.status)).toEqual(["valid", "valid"]);
+    expect(state.ledger).toMatchObject([
+      { kind: "ticket_refund", amountMinor: -400, fundsState: "refunded" },
+    ]);
+    expect(state.ledger).toHaveLength(1);
+  });
+
+  test("applies our pending refund by its Stripe metadata instead of adding a duplicate dashboard row", async () => {
+    const f = await setupRefunds();
+    const refundId = await f.addRefund({ amountMinor: 1100 });
+    const order = (await f.state()).order;
+    const charge = {
+      id: "ch_ticket",
+      amount_refunded: 1100,
+      payment_intent: "pi_ticket",
+      refunds: {
+        data: [{ id: "re_ticket_1", amount: 1100, metadata: { refundId } }],
+      },
+    };
+    await f.t.run((ctx) =>
+      reconcileDashboardRefund(ctx, order, charge, "evt_webhook_first"),
+    );
+    const state = await f.state();
+    expect(state.refunds).toMatchObject([
+      {
+        _id: refundId,
+        status: "succeeded",
+        stripeRefundId: "re_ticket_1",
+        reason: "admin",
+      },
+    ]);
+    expect(state.order).toMatchObject({ status: "refunded", refundedMinor: 1100 });
+    expect(state.tickets.map((row) => row.status)).toEqual([
+      "refunded",
+      "refunded",
+    ]);
+    expect(state.ledger).toMatchObject([
+      { kind: "ticket_refund", amountMinor: -1100 },
+      { kind: "ticket_fee", amountMinor: -100 },
+    ]);
+    // The action's later success notification must be an idempotent no-op.
+    await f.t.run((ctx) =>
+      applyRefundSucceeded(ctx, state.refunds[0], "re_ticket_1"),
+    );
+    expect(await f.state()).toEqual(state);
+  });
+
   test.each([undefined, { data: [] }])(
-    "falls back to the charge id for refunds %j",
+    "falls back to a charge-scoped id for refunds %j",
     async (refunds) => {
       const f = await setupRefunds();
       const order = (await f.state()).order;
@@ -694,7 +810,7 @@ describe("reconcileDashboardRefund", () => {
       const state = await f.state();
       expect(state.refunds).toMatchObject([
         {
-          stripeRefundId: "ch_fallback",
+          stripeRefundId: "ch_fallback:333",
           amountMinor: 333,
           status: "succeeded",
         },
@@ -711,8 +827,43 @@ describe("reconcileDashboardRefund", () => {
     },
   );
 
+  test("successive partial refunds without a refunds list get distinct ids", async () => {
+    const f = await setupRefunds();
+    const order = (await f.state()).order;
+    await f.t.run((ctx) =>
+      reconcileDashboardRefund(
+        ctx,
+        order,
+        { id: "ch_partial", amount_refunded: 200 },
+        "evt_partial_1",
+      ),
+    );
+    const afterFirst = (await f.state()).order;
+    await f.t.run((ctx) =>
+      reconcileDashboardRefund(
+        ctx,
+        afterFirst,
+        { id: "ch_partial", amount_refunded: 500 },
+        "evt_partial_2",
+      ),
+    );
+    const state = await f.state();
+    expect(state.refunds.map((row) => row.stripeRefundId)).toEqual([
+      "ch_partial:200",
+      "ch_partial:500",
+    ]);
+    expect(state.refunds.map((row) => row.amountMinor)).toEqual([200, 300]);
+    expect(state.order).toMatchObject({ status: "paid", refundedMinor: 500 });
+  });
+
   test("ignores an older cumulative refund balance", async () => {
     const f = await setupRefunds({ refundedMinor: 500 });
+    await f.addRefund({
+      amountMinor: 500,
+      reason: "admin",
+      status: "succeeded",
+      stripeRefundId: "re_previous_2",
+    });
     const state = await f.state();
     await f.t.run((ctx) =>
       reconcileDashboardRefund(

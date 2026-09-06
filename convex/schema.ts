@@ -806,6 +806,7 @@ export default defineSchema({
     stripePaymentIntentId: v.optional(v.string()),
     stripeRefundId: v.optional(v.string()),
     attempt: v.number(),
+    retryCount: v.optional(v.number()),
     error: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
