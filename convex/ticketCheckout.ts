@@ -269,6 +269,15 @@ export const startCheckout = action({
       args,
     );
     const { order } = context;
+    if (order.attempt >= 3) {
+      throw new Error(
+        "Too many checkout attempts; release the hold and start over",
+      );
+    }
+    const holdDeadline = order.createdAt + 60 * 60_000;
+    if (Date.now() >= holdDeadline) {
+      throw new Error("Your ticket hold has expired");
+    }
     if (order.status === "checkout_open" && order.stripeCheckoutSessionId) {
       await expireCheckoutSession(
         order.stripeCheckoutSessionId,
@@ -284,7 +293,8 @@ export const startCheckout = action({
       { orderId: order._id, expectedAttempt: order.attempt },
     );
     const checkoutExpiresAt =
-      Math.floor((Date.now() + CHECKOUT_TTL_MS) / 1000) * 1000;
+      Math.floor(Math.min(Date.now() + CHECKOUT_TTL_MS, holdDeadline) / 1000) *
+      1000;
     const session = await stripeRequest<{
       id: string;
       url: string;
@@ -375,13 +385,7 @@ export const sweepStaleCheckouts = internalMutation({
     const orders = await ctx.db
       .query("ticketOrders")
       .withIndex("by_status_and_reservedUntil", (q) =>
-        q.eq("status", "checkout_open"),
-      )
-      .filter((q) =>
-        q.and(
-          q.neq(q.field("checkoutExpiresAt"), undefined),
-          q.lt(q.field("checkoutExpiresAt"), cutoff),
-        ),
+        q.eq("status", "checkout_open").lt("reservedUntil", cutoff),
       )
       .take(100);
     for (const order of orders) {

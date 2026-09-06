@@ -290,6 +290,24 @@ describe("ticket reservations", () => {
     ).resolves.toMatchObject({ quantity: 1 });
   });
 
+  test.each([NOW - 1, NOW])(
+    "refuses a gig starting at %s without creating an order or changing inventory",
+    async (startsAt) => {
+      const { t, as, gigId } = await setupTickets();
+      const inventory = await t.run(async (ctx) => {
+        await ctx.db.patch(gigId, { startsAt });
+        return await ensureInventory(ctx, (await ctx.db.get(gigId))!);
+      });
+      await expect(
+        as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
+      ).rejects.toThrow("This event has already started");
+      expect(
+        await t.run((ctx) => ctx.db.query("ticketOrders").take(10)),
+      ).toEqual([]);
+      expect(await t.run((ctx) => ctx.db.get(inventory._id))).toEqual(inventory);
+    },
+  );
+
   test.each([
     "ticketPriceMinor",
     "ticketCurrency",
@@ -670,7 +688,7 @@ describe("ticket reads", () => {
     ).toBeNull();
   });
 
-  test("salesForGig math: two paid orders, one partially refunded; refunded-status orders excluded", async () => {
+  test("salesForGig includes paid and refunded revenue, deducts organizer refunds, and counts only paid orders", async () => {
     const { t, as, gigId, organizationId, orderFields } = await setupTickets();
     await t.run(async (ctx) => {
       await ctx.db.insert("gigTicketInventory", {
@@ -706,12 +724,78 @@ describe("ticket reads", () => {
         reserved: 2,
         available: 5,
         ordersPaid: 2,
-        grossMinor: 5500,
-        feeMinor: 390,
-        netMinor: 5110,
+        grossMinor: 8000,
+        feeMinor: 520,
+        netMinor: 5531,
         currency: "usd",
+        truncated: false,
       },
     );
+  });
+
+  test.each(["paid", "refunded"] as const)(
+    "salesForGig reports truncation at exactly 1000 %s orders",
+    async (status) => {
+      const { t, as, gigId, organizationId, orderFields } = await setupTickets();
+      await t.run(async (ctx) => {
+        await ctx.db.insert("gigTicketInventory", {
+          gigId,
+          organizationId,
+          capacity: 1000,
+          sold: status === "paid" ? 1000 : 0,
+          reserved: 0,
+          updatedAt: NOW,
+        });
+        for (let index = 0; index < 1000; index++) {
+          await ctx.db.insert("ticketOrders", {
+            ...orderFields,
+            status,
+            unitPriceMinor: 1,
+            unitFeeMinor: 0,
+            subtotalMinor: 1,
+            feeMinor: 0,
+            totalMinor: 1,
+            refundedMinor: status === "refunded" ? 1 : 0,
+          });
+        }
+      });
+      expect(
+        await as("owner").query(api.tickets.salesForGig, { gigId }),
+      ).toMatchObject({
+        ordersPaid: status === "paid" ? 1000 : 0,
+        grossMinor: 1000,
+        feeMinor: 0,
+        netMinor: status === "paid" ? 1000 : 0,
+        truncated: true,
+      });
+    },
+  );
+
+  test("salesForGig handles zero-total orders without dividing by zero", async () => {
+    const { t, as, gigId, orderFields } = await setupTickets();
+    await t.run(async (ctx) => {
+      await ensureInventory(ctx, (await ctx.db.get(gigId))!);
+      for (const status of ["paid", "refunded"] as const) {
+        await ctx.db.insert("ticketOrders", {
+          ...orderFields,
+          status,
+          unitPriceMinor: 0,
+          unitFeeMinor: 0,
+          subtotalMinor: 0,
+          feeMinor: 0,
+          totalMinor: 0,
+        });
+      }
+    });
+    expect(
+      await as("owner").query(api.tickets.salesForGig, { gigId }),
+    ).toMatchObject({
+      ordersPaid: 1,
+      grossMinor: 0,
+      feeMinor: 0,
+      netMinor: 0,
+      truncated: false,
+    });
   });
 
   test.each(["door", "buyer"] as const)(
@@ -738,6 +822,7 @@ describe("ticket reads", () => {
         feeMinor: 0,
         netMinor: 0,
         currency: "usd",
+        truncated: false,
       },
     );
   });

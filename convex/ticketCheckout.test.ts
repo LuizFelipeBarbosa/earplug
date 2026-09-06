@@ -297,6 +297,81 @@ describe("startCheckout", () => {
     );
   });
 
+  test.each(["reserved", "checkout_open"] as const)(
+    "rejects a fourth checkout attempt for a %s order without side effects",
+    async (status) => {
+      const f = await setupCheckout();
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.orderId, {
+          status,
+          attempt: 3,
+          stripeCheckoutSessionId: "cs_existing",
+          checkoutExpiresAt: NOW + 5 * 60_000,
+        }),
+      );
+      const before = await f.state();
+      await expect(f.start()).rejects.toThrow(
+        "Too many checkout attempts; release the hold and start over",
+      );
+      expect(stripeRequest).not.toHaveBeenCalled();
+      expect(await f.state()).toEqual(before);
+    },
+  );
+
+  test.each([60, 61])(
+    "rejects a hold created %s minutes ago without side effects",
+    async (minutesAgo) => {
+      const f = await setupCheckout();
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.orderId, {
+          createdAt: NOW - minutesAgo * 60_000,
+          status: "checkout_open",
+          stripeCheckoutSessionId: "cs_existing",
+          checkoutExpiresAt: NOW + 5 * 60_000,
+        }),
+      );
+      const before = await f.state();
+      // The reservation still passes the query's feedCutoff check.
+      await expect(
+        f.buyer.query(internal.ticketCheckout.loadCheckoutContext, {
+          orderId: f.orderId,
+        }),
+      ).resolves.toMatchObject({ order: before.order });
+      await expect(f.start()).rejects.toThrow("Your ticket hold has expired");
+      expect(stripeRequest).not.toHaveBeenCalled();
+      expect(await f.state()).toEqual(before);
+    },
+  );
+
+  test.each(["reserved", "checkout_open"] as const)(
+    "clamps a %s order's checkout to its original one-hour hold deadline",
+    async (status) => {
+      const f = await setupCheckout();
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.orderId, {
+          status,
+          attempt: status === "checkout_open" ? 1 : 0,
+          createdAt: NOW - 50 * 60_000 + 1234,
+          stripeCheckoutSessionId: "cs_existing",
+          checkoutExpiresAt: NOW + 5 * 60_000,
+        }),
+      );
+      const checkoutExpiresAt = NOW + 10 * 60_000 + 1000;
+      await f.start();
+      expect(stripeRequest).toHaveBeenLastCalledWith(
+        "POST",
+        "/v1/checkout/sessions",
+        expect.objectContaining({ expires_at: checkoutExpiresAt / 1000 }),
+        expect.any(Object),
+      );
+      expect((await f.state()).order).toMatchObject({
+        status: "checkout_open",
+        checkoutExpiresAt,
+        reservedUntil: checkoutExpiresAt,
+      });
+    },
+  );
+
   test.each([undefined, "false"])(
     "rejects the feature flag value %s",
     async (value) => {
@@ -663,7 +738,7 @@ describe("cancelOrder", () => {
   });
 });
 
-test("sweepStaleCheckouts filters session expiry before taking at most 100 orders", async () => {
+test("sweepStaleCheckouts uses the reservation deadline and expires at most 100 orders", async () => {
   const f = await setupCheckout();
   const cutoff = NOW - 10 * 60_000;
   const { order } = await f.state();
@@ -671,19 +746,19 @@ test("sweepStaleCheckouts filters session expiry before taking at most 100 order
   const keep = await f.t.run(async (ctx) => {
     const retained = [];
     const cases: Partial<Doc<"ticketOrders">>[] = [
-      { checkoutExpiresAt: cutoff },
-      { checkoutExpiresAt: cutoff + 1 },
-      {},
-      { checkoutExpiresAt: cutoff - 1, status: "reserved" },
-      { checkoutExpiresAt: cutoff - 1, status: "paid" },
+      { reservedUntil: cutoff },
+      { reservedUntil: cutoff + 1 },
+      { reservedUntil: NOW + CHECKOUT_TTL_MS },
+      { reservedUntil: cutoff - 1, status: "reserved" },
+      { reservedUntil: cutoff - 1, status: "paid" },
     ];
     for (const patch of cases) {
       retained.push(
         await ctx.db.insert("ticketOrders", {
           ...fields,
           status: "checkout_open",
-          reservedUntil: NOW - 60 * 60_000,
           ...patch,
+          checkoutExpiresAt: patch.reservedUntil,
         }),
       );
     }
@@ -692,8 +767,7 @@ test("sweepStaleCheckouts filters session expiry before taking at most 100 order
         ...fields,
         status: "checkout_open",
         checkoutExpiresAt: cutoff - 1,
-        // The sweep must use checkoutExpiresAt even when reservedUntil is later.
-        reservedUntil: NOW + CHECKOUT_TTL_MS,
+        reservedUntil: cutoff - 1,
       });
     }
     await ctx.db.patch(f.inventoryId, { capacity: 300, reserved: 214 });

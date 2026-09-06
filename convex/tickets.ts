@@ -79,6 +79,10 @@ export const reserve = mutation({
     ) {
       throw new Error("This event is not selling tickets");
     }
+    const now = Date.now();
+    if (gig.startsAt <= now) {
+      throw new Error("This event has already started");
+    }
     const organization = await ctx.db.get(gig.createdByOrganization);
     if (!organization || organization.status === "suspended") {
       throw new Error("This organizer is not ready to sell tickets yet");
@@ -139,7 +143,6 @@ export const reserve = mutation({
       if (band && bandIds.has(band._id)) referralBandId = band._id;
     }
     const inventory = await ensureInventory(ctx, gig);
-    const now = Date.now();
     const reservedUntil = now + 30 * 60_000;
     const orderId = await ctx.db.insert("ticketOrders", {
       gigId: gig._id,
@@ -360,6 +363,7 @@ export const salesForGig = query({
     feeMinor: v.number(),
     netMinor: v.number(),
     currency: v.string(),
+    truncated: v.boolean(),
   }),
   handler: async (ctx, args) => {
     const gig = await ctx.db.get(args.gigId);
@@ -384,6 +388,7 @@ export const salesForGig = query({
         feeMinor: 0,
         netMinor: 0,
         currency: gig.ticketCurrency ?? "usd",
+        truncated: false,
       };
     }
     const [paidOrders, refundedOrders] = await Promise.all(
@@ -393,15 +398,26 @@ export const salesForGig = query({
           .withIndex("by_gigId_and_status", (q) =>
             q.eq("gigId", gig._id).eq("status", status),
           )
-          .take(500),
+          .take(1000),
       ),
     );
-    // Partial refunds reduce paid-order gross; refunded orders are excluded.
-    const grossMinor = paidOrders.reduce(
-      (sum, order) => sum + order.subtotalMinor - order.refundedMinor,
+    const orders = [...paidOrders, ...refundedOrders];
+    const grossMinor = orders.reduce(
+      (sum, order) => sum + order.subtotalMinor,
       0,
     );
-    const feeMinor = paidOrders.reduce((sum, order) => sum + order.feeMinor, 0);
+    const feeMinor = orders.reduce((sum, order) => sum + order.feeMinor, 0);
+    // Fees are charged to fans; only the organizer's share of refunds reduces net.
+    const refundedOrgMinor = orders.reduce(
+      (sum, order) =>
+        sum +
+        (order.totalMinor === 0
+          ? 0
+          : Math.round(
+              (order.refundedMinor * order.subtotalMinor) / order.totalMinor,
+            )),
+      0,
+    );
     return {
       capacity: inventory.capacity,
       sold: inventory.sold,
@@ -410,12 +426,13 @@ export const salesForGig = query({
       ordersPaid: paidOrders.length,
       grossMinor,
       feeMinor,
-      netMinor: grossMinor - feeMinor,
+      netMinor: grossMinor - refundedOrgMinor,
       currency:
         paidOrders[0]?.currency ??
         refundedOrders[0]?.currency ??
         gig.ticketCurrency ??
         "usd",
+      truncated: paidOrders.length === 1000 || refundedOrders.length === 1000,
     };
   },
 });
