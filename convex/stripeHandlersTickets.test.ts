@@ -432,7 +432,7 @@ describe("late ticket payments", () => {
   );
 
   test.each(["paid", "checkout_open", "reserved"] as const)(
-    "queues a refund for a different session on a %s order without replacing its intent",
+    "refunds the late payment's own intent on a %s order without replacing the order's intent",
     async (status) => {
       const f = await setupTickets({
         status,
@@ -449,16 +449,85 @@ describe("late ticket payments", () => {
       ).toEqual({ outcome: "applied" });
       const after = await f.state();
       expect(after.order).toEqual(before.order);
+      expect(after.order.stripePaymentIntentId).toBe("pi_current");
       expect(after.tickets).toEqual(before.tickets);
       expect(after.inventory).toEqual(before.inventory);
       expect(after.refunds).toMatchObject([
-        { reason: "late_payment", status: "pending" },
+        {
+          reason: "late_payment",
+          status: "pending",
+          stripePaymentIntentId: "pi_stale",
+        },
       ]);
       expect(after.jobs).toMatchObject([
         { name: "ticketRefunds:executeRefund" },
       ]);
+      await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+      expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
+        "POST",
+        "/v1/refunds",
+        expect.objectContaining({ payment_intent: "pi_stale" }),
+        expect.objectContaining({ stripeAccount: ACCOUNT_ID }),
+      );
     },
   );
+
+  test("refunds two distinct late payment intents independently on a paid order", async () => {
+    const f = await setupTickets({
+      status: "paid",
+      stripePaymentIntentId: "pi_current",
+    });
+    stripeMock
+      .mockResolvedValueOnce({ id: "re_stale" })
+      .mockResolvedValueOnce({ id: "re_stale_2" });
+    const firstEvent = checkoutEvent(f.orderId, {
+      id: "cs_stale",
+      payment_intent: "pi_stale",
+    });
+    const secondEvent = {
+      ...checkoutEvent(f.orderId, {
+        id: "cs_stale_2",
+        payment_intent: "pi_stale_2",
+      }),
+      id: "evt_stale_2",
+    };
+    expect(await f.deliver(firstEvent)).toEqual({ outcome: "applied" });
+    expect(await f.deliver(secondEvent)).toEqual({ outcome: "applied" });
+    const pending = await f.state();
+    expect(pending.order.stripePaymentIntentId).toBe("pi_current");
+    expect(pending.refunds).toHaveLength(2);
+    expect(pending.refunds).toMatchObject([
+      {
+        reason: "late_payment",
+        status: "pending",
+        stripePaymentIntentId: "pi_stale",
+      },
+      {
+        reason: "late_payment",
+        status: "pending",
+        stripePaymentIntentId: "pi_stale_2",
+      },
+    ]);
+    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(stripeMock).toHaveBeenCalledTimes(2);
+    for (const refund of pending.refunds) {
+      expect(stripeMock).toHaveBeenCalledWith(
+        "POST",
+        "/v1/refunds",
+        expect.objectContaining({
+          payment_intent: refund.stripePaymentIntentId,
+          metadata: expect.objectContaining({ refundId: refund._id }),
+        }),
+        expect.objectContaining({ stripeAccount: ACCOUNT_ID }),
+      );
+    }
+    const settled = await f.state();
+    expect(settled.refunds.map((refund) => refund.status)).toEqual([
+      "succeeded",
+      "succeeded",
+    ]);
+    expect(settled.order.stripePaymentIntentId).toBe("pi_current");
+  });
 
   test("allows a new refund after a failed late-payment request", async () => {
     const f = await setupTickets({ status: "expired" });

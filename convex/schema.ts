@@ -803,6 +803,7 @@ export default defineSchema({
     currency: v.string(),
     reason: ticketRefundReasonValidator,
     status: ticketRefundStatusValidator,
+    stripePaymentIntentId: v.optional(v.string()),
     stripeRefundId: v.optional(v.string()),
     attempt: v.number(),
     error: v.optional(v.string()),

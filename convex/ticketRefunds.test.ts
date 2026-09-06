@@ -193,6 +193,7 @@ describe("requestOrderRefund", () => {
         currency: "usd",
         reason: "admin",
         status: "pending",
+        stripePaymentIntentId: "pi_ticket",
         attempt: 0,
         createdAt: NOW,
         updatedAt: NOW,
@@ -251,6 +252,7 @@ describe("requestOrderRefund", () => {
       _id: refundId,
       status: "pending",
       amountMinor: 900,
+      stripePaymentIntentId: "pi_ticket",
     });
     expect(state.jobs).toHaveLength(1);
   });
@@ -267,7 +269,35 @@ describe("loadRefundContext", () => {
       refund: state.refunds[0],
       order: state.order,
       stripeAccountId: "acct_ticket_organization",
+      paymentIntentId: "pi_ticket",
     });
+  });
+
+  test.each(["pi_ticket", undefined])(
+    "uses the refund's intent when the order's intent is %s",
+    async (stripePaymentIntentId) => {
+      const f = await setupRefunds({ stripePaymentIntentId });
+      const refundId = await f.addRefund({
+        stripePaymentIntentId: "pi_late",
+      });
+      const state = await f.state();
+      expect(
+        await f.t.query(internal.ticketRefunds.loadRefundContext, { refundId }),
+      ).toEqual({
+        refund: state.refunds[0],
+        order: state.order,
+        stripeAccountId: "acct_ticket_organization",
+        paymentIntentId: "pi_late",
+      });
+    },
+  );
+
+  test("rejects when neither the refund nor the order has a Stripe payment intent", async () => {
+    const f = await setupRefunds({ stripePaymentIntentId: undefined });
+    const refundId = await f.addRefund();
+    await expect(
+      f.t.query(internal.ticketRefunds.loadRefundContext, { refundId }),
+    ).rejects.toThrow("Ticket order has no Stripe payment intent");
   });
 
   test.each(["refund", "order", "details", "account"] as const)(
@@ -594,6 +624,7 @@ describe("reconcileDashboardRefund", () => {
     const charge = {
       id: "ch_ticket",
       amount_refunded: 1100,
+      payment_intent: "pi_charge_dashboard",
       refunds: {
         data: [
           { id: "re_previous", amount: 500 },
@@ -611,6 +642,7 @@ describe("reconcileDashboardRefund", () => {
         reason: "dashboard",
         status: "succeeded",
         stripeRefundId: "re_dashboard",
+        stripePaymentIntentId: "pi_charge_dashboard",
         attempt: 0,
       },
     ]);

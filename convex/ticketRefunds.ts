@@ -42,6 +42,7 @@ const refundContextValidator = v.object({
   refund: refundValidator,
   order: orderValidator,
   stripeAccountId: v.string(),
+  paymentIntentId: v.string(),
 });
 
 export async function requestOrderRefund(
@@ -76,6 +77,7 @@ export async function requestOrderRefund(
     currency: order.currency,
     reason,
     status: "pending",
+    stripePaymentIntentId: order.stripePaymentIntentId,
     attempt: 0,
     createdAt: now,
     updatedAt: now,
@@ -102,6 +104,7 @@ export async function requestLatePaymentRefund(
     .filter((q) =>
       q.and(
         q.eq(q.field("reason"), "late_payment"),
+        q.eq(q.field("stripePaymentIntentId"), options.stripePaymentIntentId),
         q.or(
           q.eq(q.field("status"), "pending"),
           q.eq(q.field("status"), "succeeded"),
@@ -126,6 +129,7 @@ export async function requestLatePaymentRefund(
     currency: order.currency,
     reason: "late_payment",
     status: "pending",
+    stripePaymentIntentId: options.stripePaymentIntentId,
     attempt: 0,
     createdAt: now,
     updatedAt: now,
@@ -145,7 +149,9 @@ export const loadRefundContext = internalQuery({
     if (!refund) throw new Error("Refund not found");
     const order = await ctx.db.get(refund.orderId);
     if (!order) throw new Error("Ticket order not found");
-    if (!order.stripePaymentIntentId) {
+    const paymentIntentId =
+      refund.stripePaymentIntentId ?? order.stripePaymentIntentId;
+    if (!paymentIntentId) {
       throw new Error("Ticket order has no Stripe payment intent");
     }
     const details = await ctx.db
@@ -157,7 +163,12 @@ export const loadRefundContext = internalQuery({
     if (!details?.stripeAccountId) {
       throw new Error("Organization has no Stripe account");
     }
-    return { refund, order, stripeAccountId: details.stripeAccountId };
+    return {
+      refund,
+      order,
+      stripeAccountId: details.stripeAccountId,
+      paymentIntentId,
+    };
   },
 });
 
@@ -169,7 +180,7 @@ export const executeRefund = internalAction({
       internal.ticketRefunds.loadRefundContext,
       { refundId: args.refundId },
     );
-    const { refund, order, stripeAccountId } = context;
+    const { refund, order, stripeAccountId, paymentIntentId } = context;
     if (refund.status !== "pending") return null;
     if (!flag("TICKETS_ENABLED", false)) {
       await ctx.runMutation(internal.ticketRefunds.markRefundFailed, {
@@ -186,7 +197,7 @@ export const executeRefund = internalAction({
         "POST",
         "/v1/refunds",
         {
-          payment_intent: order.stripePaymentIntentId,
+          payment_intent: paymentIntentId,
           amount: refund.amountMinor,
           refund_application_fee: true,
           metadata: {
@@ -363,6 +374,7 @@ export async function reconcileDashboardRefund(
   charge: {
     id: string;
     amount_refunded: number;
+    payment_intent?: string;
     refunds?: { data: Array<{ id: string; amount: number }> };
   },
   stripeEventId: string,
@@ -387,6 +399,7 @@ export async function reconcileDashboardRefund(
     currency: order.currency,
     reason: "dashboard",
     status: "pending",
+    stripePaymentIntentId: charge.payment_intent,
     attempt: 0,
     createdAt: now,
     updatedAt: now,
