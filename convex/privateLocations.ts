@@ -3,10 +3,11 @@ import { Doc, Id } from "./_generated/dataModel";
 import { QueryCtx, mutation, query } from "./_generated/server";
 import { requireOrganizationRole } from "./lib/authz";
 
-const MAX_LOCATION_LABEL = 120;
+const MAX_LOCATION_LABEL = 80;
 const MAX_LOCATION_ADDRESS = 240;
 const MAX_LOCATION_CITY = 120;
 const MAX_LOCATION_AREA = 120;
+const MAX_LOCATION_NOTES = 2000;
 
 export const privateLocationValidator = v.object({
   _id: v.id("privateLocations"),
@@ -28,6 +29,7 @@ async function requireHostOrganization(
 ) {
   const { organization } = await requireOrganizationRole(ctx, organizationId, [
     "owner",
+    "manager",
   ]);
   if (organization.orgType !== "privateHost") {
     throw new Error("Only hosts keep private locations");
@@ -38,13 +40,14 @@ async function requireHostOrganization(
 function normalizeAndValidateLocation(
   fields: Pick<
     Doc<"privateLocations">,
-    "label" | "addr" | "city" | "area" | "lat" | "lng"
+    "label" | "addr" | "city" | "area" | "lat" | "lng" | "notes"
   >,
 ) {
   const label = fields.label.trim();
   const addr = fields.addr.trim();
   const city = fields.city.trim();
   const area = fields.area.trim();
+  const notes = fields.notes?.trim() || undefined;
   for (const [name, value, maxLength] of [
     ["Label", label, MAX_LOCATION_LABEL],
     ["Address", addr, MAX_LOCATION_ADDRESS],
@@ -55,13 +58,16 @@ function normalizeAndValidateLocation(
       throw new Error(`${name} must be between 1 and ${maxLength} characters`);
     }
   }
+  if (notes !== undefined && notes.length > MAX_LOCATION_NOTES) {
+    throw new Error(`Notes must be at most ${MAX_LOCATION_NOTES} characters`);
+  }
   if (!Number.isFinite(fields.lat) || fields.lat < -90 || fields.lat > 90) {
     throw new Error("Latitude must be between -90 and 90");
   }
   if (!Number.isFinite(fields.lng) || fields.lng < -180 || fields.lng > 180) {
     throw new Error("Longitude must be between -180 and 180");
   }
-  return { label, addr, city, area, lat: fields.lat, lng: fields.lng };
+  return { label, addr, city, area, lat: fields.lat, lng: fields.lng, notes };
 }
 
 export async function requireOwnedPrivateLocation(
@@ -95,7 +101,6 @@ export const create = mutation({
     const locationId = await ctx.db.insert("privateLocations", {
       organizationId: args.organizationId,
       ...fields,
-      notes: args.notes?.trim() || undefined,
       createdAt: now,
       updatedAt: now,
     });
@@ -119,6 +124,9 @@ export const update = mutation({
     const location = await ctx.db.get(args.locationId);
     if (!location) throw new Error("Location not found");
     await requireHostOrganization(ctx, location.organizationId);
+    if (location.archivedAt !== undefined) {
+      throw new Error("Location has been removed");
+    }
     const fields = normalizeAndValidateLocation({
       label: args.label ?? location.label,
       addr: args.addr ?? location.addr,
@@ -126,12 +134,10 @@ export const update = mutation({
       area: args.area ?? location.area,
       lat: args.lat ?? location.lat,
       lng: args.lng ?? location.lng,
+      notes: args.notes === undefined ? location.notes : args.notes ?? undefined,
     });
     await ctx.db.patch(args.locationId, {
       ...fields,
-      ...(args.notes !== undefined
-        ? { notes: args.notes?.trim() || undefined }
-        : {}),
       updatedAt: Date.now(),
     });
     return null;
@@ -145,23 +151,21 @@ export const remove = mutation({
     const location = await ctx.db.get(args.locationId);
     if (!location) throw new Error("Location not found");
     await requireHostOrganization(ctx, location.organizationId);
-    for (const status of [
-      "draft",
-      "open",
-      "applications_closed",
-      "booking",
-      "confirmed",
-    ] as const) {
-      const opportunity = await ctx.db
-        .query("talentOpportunities")
-        .withIndex("by_organizationId_and_status", (q) =>
-          q.eq("organizationId", location.organizationId).eq("status", status),
-        )
-        .filter((q) => q.eq(q.field("privateLocationId"), args.locationId))
-        .first();
-      if (opportunity) throw new Error("Location is in use");
+    if (location.archivedAt !== undefined) return null;
+    const opportunities = ctx.db
+      .query("talentOpportunities")
+      .withIndex("by_privateLocationId", (q) =>
+        q.eq("privateLocationId", args.locationId),
+      );
+    for await (const opportunity of opportunities) {
+      if (
+        opportunity.status !== "completed" &&
+        opportunity.status !== "cancelled"
+      ) {
+        throw new Error("Location is in use");
+      }
     }
-    await ctx.db.delete(args.locationId);
+    await ctx.db.patch(args.locationId, { archivedAt: Date.now() });
     return null;
   },
 });
@@ -176,8 +180,9 @@ export const forOrganization = query({
       .withIndex("by_organizationId", (q) =>
         q.eq("organizationId", args.organizationId),
       )
+      .filter((q) => q.eq(q.field("archivedAt"), undefined))
       .take(200);
-    return locations.map(({ _creationTime, ...location }) => ({
+    return locations.map(({ _creationTime, archivedAt, ...location }) => ({
       ...location,
       notes: location.notes ?? null,
     }));

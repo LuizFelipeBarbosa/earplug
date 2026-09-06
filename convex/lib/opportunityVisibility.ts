@@ -61,7 +61,22 @@ export async function canViewerSeeOpportunity(
     ) {
       return true;
     }
-    return await isAdminOfAnyBand(ctx, user._id);
+    if (
+      !OPPORTUNITY_ARTIST_VISIBLE_STATUSES.includes(opportunity.status) ||
+      opportunity.visibility !== "inviteOnly" ||
+      bandId === undefined
+    ) {
+      return false;
+    }
+    const membership = await ctx.db
+      .query("bandMembers")
+      .withIndex("by_band_user", (q) =>
+        q.eq("bandId", bandId).eq("userId", user._id),
+      )
+      .unique();
+    return (
+      membership !== null && (await bandIsInvited(ctx, opportunity._id, bandId))
+    );
   }
 
   if (

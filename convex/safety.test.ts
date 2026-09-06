@@ -231,7 +231,7 @@ describe("safety reporting", () => {
           },
         ],
       });
-      expect(emails[0].args[0].text).toContain("Garden reception");
+      expect(emails[0].args[0].text).toContain("Private event");
       expect(emails[0].args[0].text).toContain(
         `https://safety.example.test/bookings/${f.bookingId}`,
       );
@@ -252,40 +252,49 @@ describe("safety reporting", () => {
     },
   );
 
-  test.each(["cancelled_by_artist", "cancelled_by_organizer"] as const)(
-    "enforces the inclusive 30-day window for %s",
-    async (status) => {
-      const f = await setupSafety();
-      await f.t.run((ctx) =>
-        ctx.db.patch(f.bookingId, { status, startsAt: NOW - 30 * DAY_MS }),
-      );
-      vi.setSystemTime(NOW - 1);
-      await expect(f.report()).resolves.toHaveProperty("reportId");
-      vi.setSystemTime(NOW);
-      await expect(f.report()).resolves.toHaveProperty("reportId");
-      vi.setSystemTime(NOW + 1);
-      await expect(f.report()).rejects.toThrow(
-        "Reports are open until 30 days after the event",
-      );
-    },
-  );
+  test.each([
+    "completed",
+    "paid",
+    "cancelled_by_artist",
+    "cancelled_by_organizer",
+    "disputed",
+    "force_majeure",
+    "refunded",
+  ] as const)("enforces the strict 30-day window for %s", async (status) => {
+    const f = await setupSafety();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, { status, startsAt: NOW - 30 * DAY_MS }),
+    );
+    vi.setSystemTime(NOW - 1);
+    await expect(f.report()).resolves.toHaveProperty("reportId");
+    vi.setSystemTime(NOW);
+    await expect(f.report()).rejects.toThrow(
+      "Reports are open until 30 days after the event",
+    );
+    vi.setSystemTime(NOW + 1);
+    await expect(f.report()).rejects.toThrow(
+      "Reports are open until 30 days after the event",
+    );
+  });
 
-  test.each(["confirmed", "completed", "paid"] as const)(
-    "keeps live status %s reportable without a time bound",
-    async (status) => {
-      const f = await setupSafety();
-      await f.t.run((ctx) =>
-        ctx.db.patch(f.bookingId, { status, startsAt: NOW - 60 * DAY_MS }),
-      );
-      await expect(f.report()).resolves.toHaveProperty("reportId");
-    },
-  );
+  test("keeps confirmed bookings reportable without a time bound", async () => {
+    const f = await setupSafety();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, {
+        status: "confirmed",
+        startsAt: NOW - 60 * DAY_MS,
+      }),
+    );
+    await expect(f.report()).resolves.toHaveProperty("reportId");
+  });
 
   test.each([
     "offer_sent",
+    "artist_accepted",
     "awaiting_payment",
-    "disputed",
-    "refunded",
+    "expired",
+    "withdrawn",
+    "declined",
   ] as const)("refuses reports for ineligible status %s", async (status) => {
     const f = await setupSafety();
     await f.t.run((ctx) => ctx.db.patch(f.bookingId, { status }));
@@ -403,7 +412,25 @@ describe("safety admin triage", () => {
       second.reportId,
       first.reportId,
     ]);
-    expect(history[0].status).toBe("resolved");
+    expect(history[0]).toMatchObject({
+      status: "resolved",
+      resolvedAt: NOW + 2,
+      resolvedBy: f.users.platformAdmin,
+      adminNote: args.adminNote,
+    });
+    const mine = await f.as("owner").query(api.safety.mine, {
+      bookingId: f.bookingId,
+    });
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({
+      _id: second.reportId,
+      status: "resolved",
+      resolvedAt: NOW + 2,
+      text: "Unsafe conditions at the event",
+    });
+    expect(mine[0]).not.toHaveProperty("adminNote");
+    expect(mine[0]).not.toHaveProperty("resolvedBy");
+    expect(mine[0]).not.toHaveProperty("_creationTime");
   });
 
   test("refuses all admin operations for a plain band member", async () => {

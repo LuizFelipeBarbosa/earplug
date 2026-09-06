@@ -1196,21 +1196,34 @@ describe("private request discovery", () => {
     },
   );
 
-  test("private resolution hides both slug and ID from anonymous or unrelated viewers and allows any band admin", async () => {
+  test("private resolution requires membership in the specifically invited band and its band ID", async () => {
     const f = await setupPrivateRequest();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.opportunityId, { visibility: "inviteOnly" }),
+    );
     await f.seedInvite(f.opportunityId);
     for (const ref of [f.slug, f.opportunityId]) {
-      for (const caller of [f.t, f.asStranger, f.asArtist]) {
+      for (const caller of [f.t, f.asStranger, f.asOtherArtist]) {
+        for (const bandId of [undefined, f.bandId, f.otherBandId]) {
+          expect(
+            await caller.query(api.talentOpportunitiesRead.resolvePublic, {
+              ref,
+              bandId,
+            }),
+          ).toBeNull();
+        }
+      }
+      for (const bandId of [undefined, f.otherBandId]) {
         expect(
-          await caller.query(api.talentOpportunitiesRead.resolvePublic, {
+          await f.asArtist.query(api.talentOpportunitiesRead.resolvePublic, {
             ref,
-            bandId: f.bandId,
+            bandId,
           }),
         ).toBeNull();
       }
-      const result = await f.asOtherArtist.query(
+      const result = await f.asArtist.query(
         api.talentOpportunitiesRead.resolvePublic,
-        { ref },
+        { ref, bandId: f.bandId },
       );
       expect(result).toMatchObject({
         opportunity: { _id: f.opportunityId, venue: null, privateEvent: true },
@@ -1220,10 +1233,18 @@ describe("private request discovery", () => {
   });
 
   test.each(["public", "inviteOnly"] as const)(
-    "private %s resolution uses viewer roles regardless of opportunity status",
+    "private %s resolution allows posting organization members at every status",
     async (visibility) => {
       const f = await setupPrivateRequest();
-      for (const status of ["draft", "open", "cancelled"] as const) {
+      for (const status of [
+        "draft",
+        "open",
+        "applications_closed",
+        "booking",
+        "confirmed",
+        "completed",
+        "cancelled",
+      ] as const) {
         await f.t.run((ctx) =>
           ctx.db.patch(f.opportunityId, { visibility, status }),
         );
@@ -1235,13 +1256,7 @@ describe("private request discovery", () => {
             }),
           ).toBeNull();
         }
-        for (const caller of [
-          f.asOtherArtist,
-          f.asOwner,
-          f.asManager,
-          f.asFinance,
-          f.asDoor,
-        ]) {
+        for (const caller of [f.asOwner, f.asManager, f.asFinance, f.asDoor]) {
           const result = await caller.query(
             api.talentOpportunitiesRead.resolvePublic,
             { ref: f.slug },
@@ -1253,6 +1268,53 @@ describe("private request discovery", () => {
             privateEvent: true,
           });
           expectNoAddressFields(result);
+        }
+      }
+    },
+  );
+
+  test.each(["public", "inviteOnly"] as const)(
+    "private %s resolution requires an artist-visible status and an invite for a band admin",
+    async (visibility) => {
+      const f = await setupPrivateRequest();
+      for (const invited of [false, true]) {
+        if (invited) await f.seedInvite(f.opportunityId, f.otherBandId);
+        for (const [status, artistVisible] of [
+          ["draft", false],
+          ["open", true],
+          ["applications_closed", true],
+          ["booking", true],
+          ["confirmed", true],
+          ["completed", false],
+          ["cancelled", false],
+        ] as const) {
+          await f.t.run((ctx) =>
+            ctx.db.patch(f.opportunityId, { visibility, status }),
+          );
+          for (const ref of [f.slug, f.opportunityId]) {
+            expect(
+              await f.asOtherArtist.query(
+                api.talentOpportunitiesRead.resolvePublic,
+                {
+                  ref,
+                },
+              ),
+            ).toBeNull();
+            const result = await f.asOtherArtist.query(
+              api.talentOpportunitiesRead.resolvePublic,
+              { ref, bandId: f.otherBandId },
+            );
+            if (invited && visibility === "inviteOnly" && artistVisible) {
+              expect(result?.opportunity).toMatchObject({
+                _id: f.opportunityId,
+                status,
+                privateEvent: true,
+              });
+              expectNoAddressFields(result);
+            } else {
+              expect(result).toBeNull();
+            }
+          }
         }
       }
     },

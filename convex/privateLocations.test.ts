@@ -141,10 +141,14 @@ describe("private locations", () => {
     { addr: "", error: "Address must be" },
     { city: "  ", error: "City must be" },
     { area: "", error: "Area must be" },
-    { label: "x".repeat(121), error: "Label must be" },
+    {
+      label: "x".repeat(81),
+      error: "Label must be between 1 and 80 characters",
+    },
     { addr: "x".repeat(241), error: "Address must be" },
     { city: "x".repeat(121), error: "City must be" },
     { area: "x".repeat(121), error: "Area must be" },
+    { notes: "x".repeat(2001), error: "Notes must be at most 2000 characters" },
     { lat: -91, error: "Latitude must be" },
     { lat: 91, error: "Latitude must be" },
     { lat: Number.NaN, error: "Latitude must be" },
@@ -169,7 +173,46 @@ describe("private locations", () => {
     expect(await f.t.run((ctx) => ctx.db.get(f.locationId))).toEqual(before);
   });
 
-  test.each(["asManager", "asStranger", "venueOperator", "suspended"] as const)(
+  test.each(["asOwner", "asManager"] as const)(
+    "all operations allow %s with labels and notes at their limits",
+    async (actor) => {
+      const f = await setupPrivateHost();
+      const client = f[actor];
+      const fields = { label: "x".repeat(80), notes: "y".repeat(2000) };
+      const { locationId } = await client.mutation(
+        api.privateLocations.create,
+        {
+          ...f.createArgs,
+          ...fields,
+        },
+      );
+      await expect(
+        client.mutation(api.privateLocations.update, {
+          locationId: f.locationId,
+          ...fields,
+        }),
+      ).resolves.toBeNull();
+      const locations = await client.query(
+        api.privateLocations.forOrganization,
+        {
+          organizationId: f.organizationId,
+        },
+      );
+      for (const id of [f.locationId, locationId]) {
+        expect(locations).toContainEqual(
+          expect.objectContaining({ _id: id, ...fields }),
+        );
+      }
+      await expect(
+        client.mutation(api.privateLocations.remove, { locationId }),
+      ).resolves.toBeNull();
+      expect(await f.t.run((ctx) => ctx.db.get(locationId))).toMatchObject({
+        archivedAt: NOW,
+      });
+    },
+  );
+
+  test.each(["asStranger", "venueOperator", "suspended"] as const)(
     "all operations reject unauthorized access: %s",
     async (actor) => {
       const f = await setupPrivateHost(
@@ -253,24 +296,71 @@ describe("private locations", () => {
     );
   });
 
-  test("removes an unreferenced location and reports missing locations", async () => {
+  test("archives a location, preserves history, and permits creating a new location", async () => {
     const f = await setupPrivateHost();
+    const before = await f.t.run((ctx) => ctx.db.get(f.locationId));
     await expect(
       f.asOwner.mutation(api.privateLocations.remove, {
         locationId: f.locationId,
       }),
     ).resolves.toBeNull();
-    expect(await f.t.run((ctx) => ctx.db.get(f.locationId))).toBeNull();
+    expect(await f.t.run((ctx) => ctx.db.get(f.locationId))).toEqual({
+      ...before,
+      archivedAt: NOW,
+    });
+    expect(
+      await f.asOwner.query(api.privateLocations.forOrganization, {
+        organizationId: f.organizationId,
+      }),
+    ).toEqual([]);
+    vi.setSystemTime(NOW + 1000);
     await expect(
       f.asOwner.mutation(api.privateLocations.remove, {
         locationId: f.locationId,
       }),
-    ).rejects.toThrow("Location not found");
+    ).resolves.toBeNull();
+    expect(await f.t.run((ctx) => ctx.db.get(f.locationId))).toEqual({
+      ...before,
+      archivedAt: NOW,
+    });
     await expect(
       f.asOwner.mutation(api.privateLocations.update, {
         locationId: f.locationId,
+        label: "Changed",
       }),
-    ).rejects.toThrow("Location not found");
+    ).rejects.toThrow("Location has been removed");
+    const created = await f.asOwner.mutation(
+      api.privateLocations.create,
+      f.createArgs,
+    );
+    expect(created.locationId).not.toBe(f.locationId);
+    const locations = await f.asOwner.query(
+      api.privateLocations.forOrganization,
+      {
+        organizationId: f.organizationId,
+      },
+    );
+    expect(locations.map((location) => location._id)).toEqual([
+      created.locationId,
+    ]);
+    expect(locations[0]).not.toHaveProperty("archivedAt");
+    expect(await f.t.run((ctx) => ctx.db.get(f.locationId))).toEqual({
+      ...before,
+      archivedAt: NOW,
+    });
+  });
+
+  test("reports missing locations for update and remove", async () => {
+    const f = await setupPrivateHost();
+    await f.t.run((ctx) => ctx.db.delete(f.locationId));
+    for (const mutation of [
+      api.privateLocations.update,
+      api.privateLocations.remove,
+    ]) {
+      await expect(
+        f.asOwner.mutation(mutation, { locationId: f.locationId }),
+      ).rejects.toThrow("Location not found");
+    }
   });
 
   test.each(["completed", "cancelled", "reference removed"] as const)(
@@ -328,7 +418,15 @@ describe("private locations", () => {
       await f.asOwner.mutation(api.privateLocations.remove, {
         locationId: f.locationId,
       });
-      expect(await f.t.run((ctx) => ctx.db.get(f.locationId))).toBeNull();
+      expect(await f.t.run((ctx) => ctx.db.get(f.locationId))).toMatchObject({
+        _id: f.locationId,
+        archivedAt: NOW,
+      });
+      expect(await f.t.run((ctx) => ctx.db.get(opportunityId))).toMatchObject(
+        resolution === "reference removed"
+          ? { status: "confirmed" }
+          : { status: resolution, privateLocationId: f.locationId },
+      );
     },
   );
 });

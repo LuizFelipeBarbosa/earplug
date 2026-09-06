@@ -392,6 +392,7 @@ export default defineSchema({
     lat: v.number(),
     lng: v.number(),
     notes: v.optional(v.string()),
+    archivedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_organizationId", ["organizationId"]),
@@ -519,6 +520,7 @@ export default defineSchema({
     // Opportunity lookups by status and application deadline for offer workflows.
     .index("by_status_and_applicationsCloseAt", ["status", "applicationsCloseAt"])
     .index("by_venueId_and_startsAt", ["venueId", "startsAt"])
+    .index("by_privateLocationId", ["privateLocationId"])
     .index("by_publicGigId", ["publicGigId"])
     .index("by_slug", ["slug"]),
 

@@ -824,7 +824,7 @@ describe("host applications", () => {
     { hostArea: "Mission" },
     { hostAgreementAccepted: true },
   ])(
-    "saveDraft prevents changing kind when host data exists: %j",
+    "saveDraft allows changing kind before submission even when host data exists: %j",
     async (fields) => {
       const { t, asApplicant } = await setupActors();
       const created = await asApplicant.mutation(
@@ -838,19 +838,96 @@ describe("host applications", () => {
           }),
         );
       }
+      let revision = created.revision;
       for (const kind of [undefined, "organization"] as const) {
-        await expect(
-          asApplicant.mutation(api.organizationApplications.saveDraft, {
+        const updated = await asApplicant.mutation(
+          api.organizationApplications.saveDraft,
+          {
             ...draftFields,
             applicationId: created.applicationId,
-            expectedRevision: created.revision,
+            expectedRevision: revision,
             kind,
-          }),
-        ).rejects.toThrow("Application kind cannot change");
+          },
+        );
+        expect(updated.revision).toBe(revision + 1);
+        revision = updated.revision;
       }
       expect(
         await asApplicant.query(api.organizationApplications.mine, {}),
-      ).toMatchObject({ kind: "host", revision: 1 });
+      ).toMatchObject({ kind: "organization", revision });
+    },
+  );
+
+  test.each(["host", "organization", undefined] as const)(
+    "saveDraft freezes submitted kind %s in needs_info while allowing other edits",
+    async (kind) => {
+      vi.useFakeTimers();
+      vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+      const { t, asApplicant, asAdmin } = await setupActors();
+      const fields = {
+        ...draftFields,
+        ...hostDetails,
+        venue: venueFields,
+        kind,
+      };
+      const { applicationId } = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        fields,
+      );
+      if (kind === undefined) {
+        await t.run((ctx) => ctx.db.patch(applicationId, { kind: undefined }));
+      }
+      const storageId = await t.run((ctx) =>
+        ctx.storage.store(
+          new Blob(["verification"], { type: "application/pdf" }),
+        ),
+      );
+      const attached = await asApplicant.mutation(
+        api.organizationApplications.attachDocument,
+        { applicationId, storageId },
+      );
+      const submitted = await asApplicant.mutation(
+        api.organizationApplications.submit,
+        {
+          applicationId,
+          expectedRevision: attached.revision,
+        },
+      );
+      await asAdmin.mutation(api.organizationApplications.decide, {
+        applicationId,
+        decision: "needs_info",
+      });
+      const before = await t.run((ctx) => ctx.db.get(applicationId));
+      const changedKinds =
+        kind === "host"
+          ? (["organization", undefined] as const)
+          : (["host"] as const);
+      for (const changedKind of changedKinds) {
+        await expect(
+          asApplicant.mutation(api.organizationApplications.saveDraft, {
+            ...fields,
+            applicationId,
+            expectedRevision: submitted.revision,
+            kind: changedKind,
+          }),
+        ).rejects.toThrow("Application kind cannot change after submission");
+        expect(await t.run((ctx) => ctx.db.get(applicationId))).toEqual(before);
+      }
+      await expect(
+        asApplicant.mutation(api.organizationApplications.saveDraft, {
+          ...fields,
+          applicationId,
+          expectedRevision: submitted.revision,
+          contactName: "Updated contact",
+          hostArea: "Oakland",
+        }),
+      ).resolves.toEqual({ applicationId, revision: submitted.revision + 1 });
+      expect(await t.run((ctx) => ctx.db.get(applicationId))).toMatchObject({
+        kind: kind ?? "organization",
+        status: "needs_info",
+        contactName: "Updated contact",
+        hostArea: "Oakland",
+      });
     },
   );
 
@@ -1104,6 +1181,89 @@ describe("host applications", () => {
       reviewNote: "Host verified",
     });
   });
+
+  test.each([
+    { applicantEmail: "", businessEmail: "" },
+    { applicantEmail: " \t ", businessEmail: " \n " },
+    { applicantEmail: "", businessEmail: " \t " },
+    { applicantEmail: " \t ", businessEmail: "" },
+  ])(
+    "approval refuses a host without an email: %j",
+    async ({ applicantEmail, businessEmail }) => {
+      const { t, asApplicant, asAdmin, applicantUserId } = await setupActors();
+      const { applicationId } = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        { ...hostDraftFields, ...hostDetails },
+      );
+      await t.run(async (ctx) => {
+        await ctx.db.patch(applicationId, {
+          status: "submitted",
+          businessEmail,
+        });
+        await ctx.db.patch(applicantUserId, { email: applicantEmail });
+      });
+      const before = await t.run((ctx) => ctx.db.get(applicationId));
+      await expect(
+        asAdmin.mutation(api.organizationApplications.decide, {
+          applicationId,
+          decision: "approved",
+        }),
+      ).rejects.toThrow("Host application has no email");
+      const state = await t.run(async (ctx) => ({
+        application: await ctx.db.get(applicationId),
+        organizations: await ctx.db.query("organizations").collect(),
+        privateDetails: await ctx.db
+          .query("organizationPrivateDetails")
+          .collect(),
+        members: await ctx.db.query("organizationMembers").collect(),
+      }));
+      expect(state).toEqual({
+        application: before,
+        organizations: [],
+        privateDetails: [],
+        members: [],
+      });
+      expect(state.application?.status).toBe("submitted");
+    },
+  );
+
+  test.each([
+    {
+      applicantEmail: "  applicant@example.com  ",
+      expected: "applicant@example.com",
+    },
+    { applicantEmail: "", expected: "business@example.com" },
+    { applicantEmail: " \t ", expected: "business@example.com" },
+  ])(
+    "approval saves the trimmed effective host email: %j",
+    async ({ applicantEmail, expected }) => {
+      vi.useFakeTimers();
+      const { t, asApplicant, asAdmin, applicantUserId } = await setupActors();
+      const { applicationId } = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        { ...hostDraftFields, ...hostDetails },
+      );
+      await t.run(async (ctx) => {
+        await ctx.db.patch(applicationId, {
+          status: "submitted",
+          businessEmail: "  business@example.com  ",
+        });
+        await ctx.db.patch(applicantUserId, { email: applicantEmail });
+      });
+      const { organizationId } = await asAdmin.mutation(
+        api.organizationApplications.decide,
+        {
+          applicationId,
+          decision: "approved",
+        },
+      );
+      expect(
+        await t.run((ctx) =>
+          ctx.db.query("organizationPrivateDetails").collect(),
+        ),
+      ).toMatchObject([{ organizationId, businessEmail: expected }]);
+    },
+  );
 
   test("listForReview filters host applications while preserving the combined queue", async () => {
     const { t, asAdmin, applicantUserId } = await setupActors();

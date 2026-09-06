@@ -475,14 +475,10 @@ export const saveDraft = mutation({
         throw new Error("Application changed elsewhere");
       }
       if (
-        application.kind === "host" &&
-        (application.hostDisplayName !== undefined ||
-          application.hostPhone !== undefined ||
-          application.hostArea !== undefined ||
-          application.hostAgreementAcceptedAt !== undefined) &&
-        fields.kind !== "host"
+        application.status !== "draft" &&
+        fields.kind !== (application.kind ?? "organization")
       ) {
-        throw new Error("Application kind cannot change");
+        throw new Error("Application kind cannot change after submission");
       }
       const hostAgreementAcceptedAt =
         args.hostAgreementAccepted === true
@@ -851,6 +847,10 @@ export const decide = mutation({
     }
 
     if (application.kind === "host") {
+      const applicant = await ctx.db.get(application.applicantUserId);
+      const businessEmail =
+        applicant?.email.trim() || application.businessEmail.trim();
+      if (!businessEmail) throw new Error("Host application has no email");
       const slug = await uniqueHostOrganizationSlug(ctx);
       const organizationId = await ctx.db.insert("organizations", {
         name: application.hostDisplayName ?? "",
@@ -863,10 +863,9 @@ export const decide = mutation({
         createdAt: updatedAt,
         updatedAt,
       });
-      const applicant = await ctx.db.get(application.applicantUserId);
       await ctx.db.insert("organizationPrivateDetails", {
         organizationId,
-        businessEmail: applicant?.email || application.businessEmail,
+        businessEmail,
         contactName: application.hostDisplayName ?? "",
         phone: application.hostPhone,
         stripeChargesEnabled: false,

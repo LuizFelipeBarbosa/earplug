@@ -13,7 +13,6 @@ import {
   requirePlatformAdmin,
   requirePlatformAdminQuery,
 } from "./lib/authz";
-import { BOOKING_LIVE_STATUSES } from "./lib/bookingStatus";
 import { appBaseUrl } from "./lib/env";
 import { requireUser } from "./lib/helpers";
 
@@ -38,6 +37,10 @@ const safetyReportValidator = v.object({
   resolvedBy: v.optional(v.id("users")),
   adminNote: v.optional(v.string()),
 });
+const safetyReportMineValidator = safetyReportValidator.omit(
+  "adminNote",
+  "resolvedBy",
+);
 
 async function reportingSide(
   ctx: QueryCtx,
@@ -88,12 +91,12 @@ export const report = mutation({
       (booking.status === "completed" ||
         booking.status === "paid" ||
         booking.status === "cancelled_by_organizer" ||
-        booking.status === "cancelled_by_artist") &&
-      now <= booking.startsAt + REPORT_WINDOW_MS;
-    if (
-      !BOOKING_LIVE_STATUSES.includes(booking.status) &&
-      !withinPostEventWindow
-    ) {
+        booking.status === "cancelled_by_artist" ||
+        booking.status === "disputed" ||
+        booking.status === "force_majeure" ||
+        booking.status === "refunded") &&
+      now < booking.startsAt + REPORT_WINDOW_MS;
+    if (booking.status !== "confirmed" && !withinPostEventWindow) {
       throw new Error("Reports are open until 30 days after the event");
     }
 
@@ -137,7 +140,7 @@ export const report = mutation({
 
 export const mine = query({
   args: { bookingId: v.id("bookings") },
-  returns: v.array(safetyReportValidator),
+  returns: v.array(safetyReportMineValidator),
   handler: async (ctx, args) => {
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
@@ -150,7 +153,7 @@ export const mine = query({
       .collect();
     return reports
       .filter((report) => report.reporterUserId === user._id)
-      .map(reportPayload);
+      .map(({ _creationTime, adminNote, resolvedBy, ...report }) => report);
   },
 });
 
