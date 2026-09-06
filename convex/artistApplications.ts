@@ -118,9 +118,6 @@ export const apply = mutation({
     if (opportunity.applicationsCloseAt <= Date.now()) {
       throw new Error("Applications for this opportunity have closed");
     }
-    if (opportunity.mode !== "publicEvent") {
-      throw new Error("Private bookings are not available yet");
-    }
     if (!(await canBandSeeOpportunity(ctx, opportunity, args.bandId))) {
       throw new Error("This opportunity is invite-only");
     }

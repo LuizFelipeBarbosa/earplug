@@ -7,6 +7,7 @@ import type { Id } from "./_generated/dataModel";
 import * as bookingsRead from "./bookingsRead";
 import {
   BOOKING_ACTIVE_STATUSES,
+  BOOKING_LIVE_STATUSES,
   BOOKING_TRANSITIONS,
   type BookingStatus,
 } from "./lib/bookingStatus";
@@ -331,6 +332,8 @@ describe("bookings read: get", () => {
         approxLabel: "Uptown, Oakland",
         exactAddress: EXACT_ADDRESS,
       },
+      privateLocation: null,
+      privateEvent: false,
       publicGigId: f.gigId,
       publicGigSlug: "friday-public-show",
       counterpartyEmail: APPLICANT_EMAIL,
@@ -1076,4 +1079,211 @@ describe("bookings read: lists", () => {
       f.t.query(api.bookingsRead.forBand, { bandId: f.bandId }),
     ).rejects.toThrow("Not signed in");
   });
+});
+
+const PRIVATE_LOCATION = {
+  label: "Backyard",
+  area: "Rockridge, Oakland",
+  city: "Oakland",
+  addr: "42 Garden Street",
+  lat: 37.84,
+  lng: -122.25,
+  notes: "Use the side gate",
+};
+const APPROXIMATE_PRIVATE_LOCATION = {
+  label: PRIVATE_LOCATION.label,
+  area: PRIVATE_LOCATION.area,
+  city: PRIVATE_LOCATION.city,
+};
+
+async function setupPrivateBooking(status: BookingStatus = "awaiting_payment") {
+  const f = await setupBookings({ status });
+  const privateLocationId = await f.t.run(async (ctx) => {
+    const privateLocationId = await ctx.db.insert("privateLocations", {
+      organizationId: f.organizationId,
+      ...PRIVATE_LOCATION,
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await ctx.db.patch(f.organizationId, { orgType: "privateHost" });
+    await ctx.db.patch(f.opportunityId, {
+      mode: "privateBooking",
+      venueId: undefined,
+      privateLocationId,
+      area: PRIVATE_LOCATION.area,
+      venueType: undefined,
+      publicGigId: undefined,
+    });
+    return privateLocationId;
+  });
+  return { ...f, privateLocationId };
+}
+
+describe("private booking location disclosure", () => {
+  test("get hides the exact location before confirmation and reveals it once the same booking is confirmed", async () => {
+    const f = await setupPrivateBooking();
+    const read = () =>
+      f.as("bandAdmin").query(api.bookingsRead.get, {
+        bookingId: f.bookingId,
+        viewAs: "artist",
+      });
+    const pending = await read();
+    expect(pending).toMatchObject({ venue: null, privateEvent: true });
+    expect(pending?.privateLocation).toStrictEqual(APPROXIMATE_PRIVATE_LOCATION);
+    for (const field of ["addr", "lat", "lng", "notes"] as const) {
+      expect(pending?.privateLocation?.[field]).toBeUndefined();
+    }
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, { status: "confirmed", confirmedAt: NOW }),
+    );
+    const confirmed = await read();
+    expect(confirmed).toMatchObject({ venue: null, privateEvent: true });
+    expect(confirmed?.privateLocation).toStrictEqual(PRIVATE_LOCATION);
+  });
+
+  test.each(Object.keys(BOOKING_TRANSITIONS) as BookingStatus[])(
+    "get applies the live-status location rule to artists and always discloses to organizers for %s",
+    async (status) => {
+      const f = await setupPrivateBooking(status);
+      const artist = await f.as("bandAdmin").query(api.bookingsRead.get, {
+        bookingId: f.bookingId,
+      });
+      expect(artist).toMatchObject({ venue: null, privateEvent: true });
+      expect(artist?.privateLocation).toStrictEqual(
+        BOOKING_LIVE_STATUSES.includes(status)
+          ? PRIVATE_LOCATION
+          : APPROXIMATE_PRIVATE_LOCATION,
+      );
+      const organizer = await f.as("owner").query(api.bookingsRead.get, {
+        bookingId: f.bookingId,
+      });
+      expect(organizer).toMatchObject({ venue: null, privateEvent: true });
+      expect(organizer?.privateLocation).toStrictEqual(PRIVATE_LOCATION);
+    },
+  );
+
+  test("shared cached locations in mixed-status lists are redacted separately for each artist row", async () => {
+    const f = await setupPrivateBooking();
+    const statuses = Object.keys(BOOKING_TRANSITIONS) as BookingStatus[];
+    await f.t.run(async (ctx) => {
+      for (const [index, status] of statuses.entries()) {
+        await ctx.db.insert("bookings", {
+          ...f.bookingFields,
+          status,
+          startsAt: STARTS_AT + index + 1,
+        });
+      }
+    });
+    const artistRows = await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+      bandId: f.bandId,
+      statuses,
+    });
+    expect(artistRows).toHaveLength(statuses.length + 1);
+    for (const row of artistRows) {
+      expect(row).toMatchObject({ venue: null, privateEvent: true });
+      expect(row.privateLocation).toStrictEqual(
+        BOOKING_LIVE_STATUSES.includes(row.status)
+          ? PRIVATE_LOCATION
+          : APPROXIMATE_PRIVATE_LOCATION,
+      );
+      if (!BOOKING_LIVE_STATUSES.includes(row.status)) {
+        for (const field of ["addr", "lat", "lng", "notes"] as const) {
+          expect(row.privateLocation?.[field]).toBeUndefined();
+        }
+      }
+    }
+    const organizerRows = await f.as("owner").query(
+      api.bookingsRead.forOrganization,
+      { organizationId: f.organizationId, statuses },
+    );
+    expect(organizerRows).toHaveLength(statuses.length + 1);
+    for (const row of organizerRows) {
+      expect(row).toMatchObject({ venue: null, privateEvent: true });
+      expect(row.privateLocation).toStrictEqual(PRIVATE_LOCATION);
+    }
+  });
+
+  test.each(["cancelled_by_artist", "cancelled_by_organizer"] as const)(
+    "safety cancellation is preserved in get and lists for both sides of a %s booking",
+    async (status) => {
+      const f = await setupPrivateBooking(status);
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.bookingId, { cancellationKind: "safety" }),
+      );
+      for (const actor of ["owner", "bandAdmin"] as const) {
+        const payload = await f.as(actor).query(api.bookingsRead.get, {
+          bookingId: f.bookingId,
+        });
+        expect(payload?.cancellationKind).toBe("safety");
+        expect(payload?.privateLocation).toStrictEqual(
+          actor === "owner" ? PRIVATE_LOCATION : APPROXIMATE_PRIVATE_LOCATION,
+        );
+      }
+      const artistRows = await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+        bandId: f.bandId,
+        statuses: [status],
+      });
+      const organizerRows = await f.as("owner").query(
+        api.bookingsRead.forOrganization,
+        { organizationId: f.organizationId, statuses: [status] },
+      );
+      expect(artistRows).toHaveLength(1);
+      expect(organizerRows).toHaveLength(1);
+      expect(artistRows[0].cancellationKind).toBe("safety");
+      expect(organizerRows[0].cancellationKind).toBe("safety");
+      expect(artistRows[0].privateLocation).toStrictEqual(
+        APPROXIMATE_PRIVATE_LOCATION,
+      );
+      expect(organizerRows[0].privateLocation).toStrictEqual(PRIVATE_LOCATION);
+    },
+  );
+
+  test.each(["absent", "deleted"] as const)(
+    "get reports a private location that is %s and both lists skip only the broken booking",
+    async (locationState) => {
+      const f = await setupPrivateBooking();
+      const brokenBookingId = await f.t.run(async (ctx) => {
+        const opportunity = (await ctx.db.get(f.opportunityId))!;
+        const { _id, _creationTime, ...fields } = opportunity;
+        let privateLocationId: Id<"privateLocations"> | undefined;
+        if (locationState === "deleted") {
+          privateLocationId = await ctx.db.insert("privateLocations", {
+            organizationId: f.organizationId,
+            ...PRIVATE_LOCATION,
+            createdAt: NOW,
+            updatedAt: NOW,
+          });
+          await ctx.db.delete(privateLocationId);
+        }
+        const opportunityId = await ctx.db.insert("talentOpportunities", {
+          ...fields,
+          slug: "broken-private-request",
+          privateLocationId,
+        });
+        return await ctx.db.insert("bookings", {
+          ...f.bookingFields,
+          opportunityId,
+          startsAt: STARTS_AT + DAY_MS,
+        });
+      });
+      await expect(
+        f.as("bandAdmin").query(api.bookingsRead.get, {
+          bookingId: brokenBookingId,
+        }),
+      ).rejects.toThrow(
+        locationState === "absent"
+          ? `Booking ${brokenBookingId} has a private opportunity without a location`
+          : `Booking ${brokenBookingId} references a missing private location`,
+      );
+      const artistRows = await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+        bandId: f.bandId,
+      });
+      const organizerRows = await f.as("owner").query(
+        api.bookingsRead.forOrganization,
+        { organizationId: f.organizationId },
+      );
+      expect(artistRows.map((row) => row._id)).toEqual([f.bookingId]);
+      expect(organizerRows.map((row) => row._id)).toEqual([f.bookingId]);
+    },
+  );
 });

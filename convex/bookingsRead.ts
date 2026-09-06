@@ -53,6 +53,7 @@ export const bookingPayloadValidator = v.object({
   cancelledAt: v.union(v.number(), v.null()),
   cancelledBy: v.union(bookingCancelledByValidator, v.null()),
   cancelReason: v.union(v.string(), v.null()),
+  cancellationKind: v.optional(v.literal("safety")),
   expiresAt: v.union(v.number(), v.null()),
   currentOffer: v.union(
     v.object({
@@ -77,13 +78,29 @@ export const bookingPayloadValidator = v.object({
     }),
     v.null(),
   ),
-  venue: v.object({
-    _id: v.id("venues"),
-    name: v.string(),
-    slug: v.union(v.string(), v.null()),
-    approxLabel: v.union(v.string(), v.null()),
-    exactAddress: v.union(v.string(), v.null()),
-  }),
+  venue: v.union(
+    v.object({
+      _id: v.id("venues"),
+      name: v.string(),
+      slug: v.union(v.string(), v.null()),
+      approxLabel: v.union(v.string(), v.null()),
+      exactAddress: v.union(v.string(), v.null()),
+    }),
+    v.null(),
+  ),
+  privateLocation: v.union(
+    v.object({
+      label: v.string(),
+      area: v.string(),
+      city: v.string(),
+      addr: v.optional(v.string()),
+      lat: v.optional(v.number()),
+      lng: v.optional(v.number()),
+      notes: v.optional(v.string()),
+    }),
+    v.null(),
+  ),
+  privateEvent: v.boolean(),
   publicGigId: v.union(v.id("gigs"), v.null()),
   publicGigSlug: v.union(v.string(), v.null()),
   counterpartyEmail: v.union(v.string(), v.null()),
@@ -118,27 +135,64 @@ export async function toBookingPayload(
   if (!band) {
     throw new Error(`Booking ${booking._id} references a missing band`);
   }
-  if (!opportunity.venueId) {
-    throw new Error(
-      `Booking ${booking._id} has an opportunity without a venue`,
-    );
-  }
-  const venue = await cache.get(opportunity.venueId);
-  if (!venue) {
-    throw new Error(`Booking ${booking._id} references a missing venue`);
-  }
-  let exactAddress: string | null = null;
-  if (effectiveAddressDisclosure(venue) === "public") {
-    exactAddress = venue.addr;
-  } else if (
-    viewer.side === "organizer" ||
-    (viewer.side === "artist" && BOOKING_LIVE_STATUSES.includes(booking.status))
-  ) {
-    const venuePrivate = await ctx.db
-      .query("venuePrivateDetails")
-      .withIndex("by_venueId", (q) => q.eq("venueId", venue._id))
-      .unique();
-    exactAddress = venuePrivate?.addr ?? null;
+  const isPrivate = opportunity.mode === "privateBooking";
+  let venue: Infer<typeof bookingPayloadValidator>["venue"] = null;
+  let privateLocation: Infer<typeof bookingPayloadValidator>["privateLocation"] =
+    null;
+  if (isPrivate) {
+    if (!opportunity.privateLocationId) {
+      throw new Error(
+        `Booking ${booking._id} has a private opportunity without a location`,
+      );
+    }
+    const location = await cache.get(opportunity.privateLocationId);
+    if (!location) {
+      throw new Error(
+        `Booking ${booking._id} references a missing private location`,
+      );
+    }
+    const showFullLocation =
+      viewer.side === "organizer" ||
+      (viewer.side === "artist" && BOOKING_LIVE_STATUSES.includes(booking.status));
+    privateLocation = {
+      label: location.label,
+      area: location.area,
+      city: location.city,
+      addr: showFullLocation ? location.addr : undefined,
+      lat: showFullLocation ? location.lat : undefined,
+      lng: showFullLocation ? location.lng : undefined,
+      notes: showFullLocation ? location.notes : undefined,
+    };
+  } else {
+    if (!opportunity.venueId) {
+      throw new Error(
+        `Booking ${booking._id} has an opportunity without a venue`,
+      );
+    }
+    const venueDoc = await cache.get(opportunity.venueId);
+    if (!venueDoc) {
+      throw new Error(`Booking ${booking._id} references a missing venue`);
+    }
+    let exactAddress: string | null = null;
+    if (effectiveAddressDisclosure(venueDoc) === "public") {
+      exactAddress = venueDoc.addr;
+    } else if (
+      viewer.side === "organizer" ||
+      (viewer.side === "artist" && BOOKING_LIVE_STATUSES.includes(booking.status))
+    ) {
+      const venuePrivate = await ctx.db
+        .query("venuePrivateDetails")
+        .withIndex("by_venueId", (q) => q.eq("venueId", venueDoc._id))
+        .unique();
+      exactAddress = venuePrivate?.addr ?? null;
+    }
+    venue = {
+      _id: venueDoc._id,
+      name: venueDoc.name,
+      slug: venueDoc.slug ?? null,
+      approxLabel: venueDoc.approxLabel ?? null,
+      exactAddress,
+    };
   }
 
   const offer = booking.currentOfferId
@@ -211,6 +265,7 @@ export async function toBookingPayload(
     cancelledAt: booking.cancelledAt ?? null,
     cancelledBy: booking.cancelledBy ?? null,
     cancelReason: booking.cancelReason ?? null,
+    cancellationKind: booking.cancellationKind,
     expiresAt: booking.expiresAt ?? null,
     currentOffer: offer
       ? {
@@ -222,13 +277,9 @@ export async function toBookingPayload(
           installments: offer.installments,
         }
       : null,
-    venue: {
-      _id: venue._id,
-      name: venue.name,
-      slug: venue.slug ?? null,
-      approxLabel: venue.approxLabel ?? null,
-      exactAddress,
-    },
+    venue,
+    privateLocation,
+    privateEvent: isPrivate,
     publicGigId: opportunity.publicGigId ?? null,
     publicGigSlug: publicGig?.slug ?? null,
     counterpartyEmail,
@@ -333,7 +384,7 @@ export const forOrganization = query({
         } catch (error) {
           if (
             error instanceof Error &&
-            /references a missing|has an opportunity without a venue/.test(
+            /references a missing|has an opportunity without a venue|has a private opportunity without a location/.test(
               error.message,
             )
           ) {
@@ -388,7 +439,7 @@ export const forBand = query({
         } catch (error) {
           if (
             error instanceof Error &&
-            /references a missing|has an opportunity without a venue/.test(
+            /references a missing|has an opportunity without a venue|has a private opportunity without a location/.test(
               error.message,
             )
           ) {
