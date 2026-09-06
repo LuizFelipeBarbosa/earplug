@@ -889,9 +889,9 @@ describe("live opportunity ticketing updates", () => {
   }
 
   test.each([
-    ["asOwner", "confirmed", 2],
+    ["asOwner", "confirmed", 4],
     ["asManager", "confirmed", 200],
-    ["asManager", "booking", 2],
+    ["asManager", "booking", 5],
   ] as const)(
     "%s updates a %s paid event to capacity %s and syncs its gig and inventory",
     async (actor, status, ticketCapacity) => {
@@ -913,7 +913,10 @@ describe("live opportunity ticketing updates", () => {
           ...f.updateArgs,
           ticketCapacity,
         }),
-      ).toEqual({ revision: f.opportunity.revision + 1 });
+      ).toEqual({
+        revision: f.opportunity.revision + 1,
+        capacity: ticketCapacity,
+      });
 
       await f.t.run(async (ctx) => {
         expect(await ctx.db.get(f.opportunityId)).toEqual({
@@ -933,11 +936,83 @@ describe("live opportunity ticketing updates", () => {
           lifecycle: "published",
         });
         expect(await ctx.db.get(inventoryId)).toMatchObject({
-          capacity: ticketCapacity === 2 ? 4 : 200,
+          capacity: ticketCapacity,
           sold: 3,
           reserved: 1,
           updatedAt: NOW + 1000,
         });
+      });
+    },
+  );
+
+  test.each([
+    ["asOwner", "confirmed"],
+    ["asManager", "booking"],
+  ] as const)(
+    "rejects %s lowering a %s event below sold and held tickets without changes",
+    async (actor, status) => {
+      const f = await setupPublishedOpportunity();
+      const before = await f.t.run(async (ctx) => {
+        await ctx.db.patch(f.opportunityId, { status });
+        const inventory = await ctx.db
+          .query("gigTicketInventory")
+          .withIndex("by_gigId", (q) => q.eq("gigId", f.gigId))
+          .unique();
+        if (!inventory) throw new Error("Expected paid ticket inventory");
+        await ctx.db.patch(inventory._id, { sold: 3, reserved: 1 });
+        return {
+          opportunity: await ctx.db.get(f.opportunityId),
+          gig: await ctx.db.get(f.gigId),
+          inventory: await ctx.db.get(inventory._id),
+        };
+      });
+      vi.setSystemTime(NOW + 1000);
+
+      await expect(
+        f[actor].mutation(api.talentOpportunities.updateTicketing, f.updateArgs),
+      ).rejects.toThrow("Capacity cannot go below tickets already sold or held");
+
+      await f.t.run(async (ctx) => {
+        expect(await ctx.db.get(f.opportunityId)).toEqual(before.opportunity);
+        expect(await ctx.db.get(f.gigId)).toEqual(before.gig);
+        expect(
+          await ctx.db
+            .query("gigTicketInventory")
+            .withIndex("by_gigId", (q) => q.eq("gigId", f.gigId))
+            .unique(),
+        ).toEqual(before.inventory);
+      });
+    },
+  );
+
+  test.each([NOW, NOW - DAY_MS])(
+    "rejects an event starting at %i without changing the opportunity, gig, or inventory",
+    async (startsAt) => {
+      const f = await setupPublishedOpportunity();
+      await f.t.run((ctx) => ctx.db.patch(f.opportunityId, { startsAt }));
+      const before = await f.t.run(async (ctx) => ({
+        opportunity: await ctx.db.get(f.opportunityId),
+        gig: await ctx.db.get(f.gigId),
+        inventory: await ctx.db
+          .query("gigTicketInventory")
+          .withIndex("by_gigId", (q) => q.eq("gigId", f.gigId))
+          .unique(),
+      }));
+      vi.setSystemTime(NOW);
+
+      await expect(
+        f.asOwner.mutation(api.talentOpportunities.updateTicketing, f.updateArgs),
+      ).rejects.toThrow("This event has already started");
+
+      await f.t.run(async (ctx) => {
+        expect(await ctx.db.get(f.opportunityId)).toEqual(before.opportunity);
+        expect(await ctx.db.get(f.gigId)).toEqual(before.gig);
+        expect(
+          await ctx.db
+            .query("gigTicketInventory")
+            .withIndex("by_gigId", (q) => q.eq("gigId", f.gigId))
+            .unique(),
+        ).toEqual(before.inventory);
       });
     },
   );
@@ -990,6 +1065,14 @@ describe("live opportunity ticketing updates", () => {
     "rejects invalid ticket capacity %s",
     async (ticketCapacity) => {
       const f = await setupPublishedOpportunity();
+      await f.t.run(async (ctx) => {
+        const inventory = await ctx.db
+          .query("gigTicketInventory")
+          .withIndex("by_gigId", (q) => q.eq("gigId", f.gigId))
+          .unique();
+        if (!inventory) throw new Error("Expected paid ticket inventory");
+        await ctx.db.patch(inventory._id, { sold: 3, reserved: 1 });
+      });
 
       await expect(
         f.asOwner.mutation(api.talentOpportunities.updateTicketing, {

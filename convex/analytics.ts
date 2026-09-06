@@ -495,9 +495,10 @@ export const bandRecap = query({
 });
 
 
-const MAX_TICKETS_PER_GIG = 500;
-const MAX_ORDERS_PER_GIG = 500;
-const MAX_FOLLOWERS_SAMPLE = 2000;
+// Bounds artist-insights reads separately from the fan-facing MAX_RECAP_GIGS.
+const MAX_INSIGHT_GIGS = 15;
+const MAX_TICKETS_PER_GIG = 300;
+const MAX_ORDERS_PER_GIG = 200;
 
 const partitionValidator = v.object({
   buckets: v.array(
@@ -558,28 +559,36 @@ export async function computeArtistInsights(
   const band = await ctx.db.get(bandId);
   if (!band) throw new Error("Band not found");
 
-  const probed = await pastGigsForBand(ctx, bandId, MAX_RECAP_GIGS + 1);
-  const truncated = probed.length > MAX_RECAP_GIGS;
-  const gigs = probed.slice(0, MAX_RECAP_GIGS);
+  const probed = await pastGigsForBand(ctx, bandId, MAX_INSIGHT_GIGS + 1);
+  const truncated = probed.length > MAX_INSIGHT_GIGS;
+  const gigs = probed.slice(0, MAX_INSIGHT_GIGS);
   gigs.sort((a, b) => a.startsAt - b.startsAt);
 
   const analyzed = await Promise.all(
     gigs.map(async (gig) => {
-      const [rsvps, tickets, paidOrders, venue] = await Promise.all([
+      const [rsvps, tickets, paidOrders, inventory, venue] = await Promise.all([
         ctx.db
           .query("gigRsvps")
           .withIndex("by_gig", (q) => q.eq("gigId", gig._id))
           .take(MAX_RSVPS_PER_GIG),
+        gig.ticketing === "paid"
+          ? ctx.db
+              .query("tickets")
+              .withIndex("by_gigId", (q) => q.eq("gigId", gig._id))
+              .take(MAX_TICKETS_PER_GIG)
+          : [],
+        gig.ticketing === "paid"
+          ? ctx.db
+              .query("ticketOrders")
+              .withIndex("by_gigId_and_status", (q) =>
+                q.eq("gigId", gig._id).eq("status", "paid"),
+              )
+              .take(MAX_ORDERS_PER_GIG)
+          : [],
         ctx.db
-          .query("tickets")
+          .query("gigTicketInventory")
           .withIndex("by_gigId", (q) => q.eq("gigId", gig._id))
-          .take(MAX_TICKETS_PER_GIG),
-        ctx.db
-          .query("ticketOrders")
-          .withIndex("by_gigId_and_status", (q) =>
-            q.eq("gigId", gig._id).eq("status", "paid"),
-          )
-          .take(MAX_ORDERS_PER_GIG),
+          .unique(),
         ctx.db.get(gig.venueId),
       ]);
       const checkInUserIds = new Set<Id<"users">>();
@@ -595,24 +604,36 @@ export async function computeArtistInsights(
         paidOrders,
         checkInUserIds,
         rsvpCount: rsvps.length,
-        ticketsSold: tickets.filter(
-          (ticket) => ticket.status === "valid" || ticket.status === "used",
-        ).length,
+        ticketsSold:
+          inventory?.sold ??
+          tickets.filter(
+            (ticket) => ticket.status === "valid" || ticket.status === "used",
+          ).length,
       };
     }),
   );
 
-  const follows = await ctx.db
-    .query("follows")
-    .withIndex("by_band", (q) => q.eq("bandId", bandId))
-    .take(MAX_FOLLOWERS_SAMPLE);
-  const followerIds = new Set(follows.map((follow) => follow.userId));
-  const checkInsByEvent = analyzed.map((show) => show.checkInUserIds);
-  const distinctCheckInUsers = new Set(
-    checkInsByEvent.flatMap((userIds) => [...userIds]),
+  const paidOrders = analyzed.flatMap((show) => show.paidOrders);
+  const buyerIds = new Set(paidOrders.map((order) => order.buyerUserId));
+  const follows = await Promise.all(
+    [...buyerIds].map((buyerId) =>
+      ctx.db
+        .query("follows")
+        .withIndex("by_user_band", (q) =>
+          q.eq("userId", buyerId).eq("bandId", bandId),
+        )
+        .unique(),
+    ),
   );
-  const returning = returningAttendees(checkInsByEvent);
-  const returningSuppressed = distinctCheckInUsers.size < K_ANON_FANS;
+  const followerIds = new Set(
+    follows.flatMap((follow) => (follow ? [follow.userId] : [])),
+  );
+  const checkInsByEvent = analyzed.map((show) => show.checkInUserIds);
+  const { returning, firstTime } = returningAttendees(checkInsByEvent);
+  const returningSuppressed = !partitionMeetsFloor([
+    new Set(returning),
+    new Set(firstTime),
+  ]);
   const basis = analyzed.some((show) => show.checkInUserIds.size > 0)
     ? "checkIns"
     : "rsvps";
@@ -637,45 +658,35 @@ export async function computeArtistInsights(
       (total, show) => total + show.checkInUserIds.size,
       0,
     ),
-    returningAttendees: returningSuppressed ? 0 : returning,
+    returningAttendees: returningSuppressed ? 0 : returning.size,
     returningSuppressed,
-    attribution: attributionCounts(
-      analyzed.flatMap((show) =>
-        show.paidOrders.map((order) => ({
-          referralBandId: order.referralBandId,
-          buyerUserId: order.buyerUserId,
-          quantity: order.quantity,
-        })),
-      ),
-      bandId,
-      followerIds,
-    ),
+    attribution: attributionCounts(paidOrders, bandId, followerIds),
     byArea: suppressPartition(
       bucketize(
         analyzed,
         (show) => show.venue?.area ?? "unknown",
-        (show) => show.checkInUserIds.size,
+        (show) => show.checkInUserIds,
       ),
     ),
     byVenueType: suppressPartition(
       bucketize(
         analyzed,
         (show) => show.venue?.venueType ?? "unknown",
-        (show) => show.checkInUserIds.size,
+        (show) => show.checkInUserIds,
       ),
     ),
     byWeekday: suppressPartition(
       bucketize(
         analyzed,
         (show) => weekdayKey(show.gig.startsAt),
-        (show) => show.checkInUserIds.size,
+        (show) => show.checkInUserIds,
       ),
     ),
     byPriceBand: suppressPartition(
       bucketize(
         analyzed,
         (show) => priceBand(show.gig.ticketPriceMinor, show.gig.ticketing),
-        (show) => show.checkInUserIds.size,
+        (show) => show.checkInUserIds,
       ),
     ),
     estimatedDraw: draw === null ? null : { ...draw, basis },
@@ -694,6 +705,13 @@ export const artistInsights = query({
       "owner",
       "manager",
     ]);
+    if (
+      !["submitted", "under_review", "shortlisted", "offered", "booked"].includes(
+        application.status,
+      )
+    ) {
+      throw new Error("This application is closed");
+    }
     return await computeArtistInsights(ctx, application.bandId);
   },
 });

@@ -10,7 +10,6 @@ import {
   returningAttendees,
   suppressPartition,
   weekdayKey,
-  type Bucket,
 } from "./lib/insights";
 
 describe("percentile", () => {
@@ -160,22 +159,25 @@ describe("priceBand", () => {
 describe("bucketize", () => {
   it("returns no buckets for no rows", () => {
     expect(
-      bucketize<Bucket>(
+      bucketize<string>(
         [],
-        (row) => row.key,
-        (row) => row.checkIns,
+        (key) => key,
+        () => new Set<string>(),
       ),
     ).toEqual([]);
   });
 
-  it("accumulates events and check-ins by key, including zero-check-in events", () => {
+  it("accumulates events, check-ins, and distinct people, including empty events", () => {
     const rows = [
-      { venue: "Oakland", attendees: 3 },
-      { venue: "SF", attendees: 9 },
-      { venue: "Oakland", attendees: 4 },
-      { venue: "Oakland", attendees: 0 },
+      { venue: "Oakland", attendees: new Set(["a", "b"]) },
+      { venue: "SF", attendees: new Set(["a", "b", "c", "d", "e"]) },
+      { venue: "Oakland", attendees: new Set(["a", "c"]) },
+      { venue: "Oakland", attendees: new Set<string>() },
     ];
-    const original = rows.map((row) => ({ ...row }));
+    const original = rows.map((row) => ({
+      ...row,
+      attendees: new Set(row.attendees),
+    }));
     expect(
       bucketize(
         rows,
@@ -183,8 +185,8 @@ describe("bucketize", () => {
         (row) => row.attendees,
       ),
     ).toEqual([
-      { key: "SF", events: 1, checkIns: 9 },
-      { key: "Oakland", events: 3, checkIns: 7 },
+      { key: "SF", events: 1, checkIns: 5, people: 5 },
+      { key: "Oakland", events: 3, checkIns: 4, people: 3 },
     ]);
     expect(rows).toEqual(original);
   });
@@ -195,13 +197,13 @@ describe("bucketize", () => {
       bucketize(
         rows,
         (key) => key,
-        () => 5,
+        () => new Set(["a", "b", "c", "d", "e"]),
       ),
     ).toEqual([
-      { key: "A", events: 1, checkIns: 5 },
-      { key: "Z", events: 1, checkIns: 5 },
-      { key: "a", events: 1, checkIns: 5 },
-      { key: "b", events: 1, checkIns: 5 },
+      { key: "A", events: 1, checkIns: 5, people: 5 },
+      { key: "Z", events: 1, checkIns: 5, people: 5 },
+      { key: "a", events: 1, checkIns: 5, people: 5 },
+      { key: "b", events: 1, checkIns: 5, people: 5 },
     ]);
   });
 
@@ -210,12 +212,12 @@ describe("bucketize", () => {
       bucketize(
         ["__proto__", "", "constructor", "__proto__"],
         (key) => key,
-        () => 1,
+        () => new Set(["fan"]),
       ),
     ).toEqual([
-      { key: "__proto__", events: 2, checkIns: 2 },
-      { key: "", events: 1, checkIns: 1 },
-      { key: "constructor", events: 1, checkIns: 1 },
+      { key: "__proto__", events: 2, checkIns: 2, people: 1 },
+      { key: "", events: 1, checkIns: 1, people: 1 },
+      { key: "constructor", events: 1, checkIns: 1, people: 1 },
     ]);
   });
 });
@@ -230,10 +232,11 @@ describe("suppressPartition", () => {
       counts: [K_ANON_FANS - 1, K_ANON_FANS + 1],
     },
   ])("suppresses an $name partition without changing input", ({ counts }) => {
-    const buckets = counts.map((checkIns, index) => ({
+    const buckets = counts.map((people, index) => ({
       key: String(index),
-      events: 1,
-      checkIns,
+      events: 5,
+      checkIns: people * 5,
+      people,
     }));
     const original = buckets.map((bucket) => ({ ...bucket }));
     expect(suppressPartition(buckets)).toEqual({
@@ -243,32 +246,51 @@ describe("suppressPartition", () => {
     expect(buckets).toEqual(original);
   });
 
-  it("publishes exactly the floor and returns the same array and bucket", () => {
-    const bucket = { key: "Mon", events: 1, checkIns: K_ANON_FANS };
+  it("publishes exactly the people floor without exposing people", () => {
+    const bucket = {
+      key: "Mon",
+      events: 2,
+      checkIns: K_ANON_FANS * 2,
+      people: K_ANON_FANS,
+    };
     const buckets = [bucket];
     const result = suppressPartition(buckets);
-    expect(result).toEqual({ buckets, suppressed: false });
-    expect(result.buckets).toBe(buckets);
-    expect(result.buckets[0]).toBe(bucket);
+    expect(result).toEqual({
+      buckets: [{ key: "Mon", events: 2, checkIns: K_ANON_FANS * 2 }],
+      suppressed: false,
+    });
+    expect(result.buckets[0]).not.toHaveProperty("people");
+    expect(bucket.people).toBe(K_ANON_FANS);
   });
 
   it("publishes safe zero buckets alongside counts at or above the floor", () => {
     const buckets = [
-      { key: "empty", events: 3, checkIns: 0 },
-      { key: "at floor", events: 1, checkIns: K_ANON_FANS },
-      { key: "above floor", events: 2, checkIns: K_ANON_FANS + 1 },
+      { key: "empty", events: 3, checkIns: 0, people: 0 },
+      { key: "at floor", events: 1, checkIns: K_ANON_FANS, people: K_ANON_FANS },
+      {
+        key: "above floor",
+        events: 2,
+        checkIns: 2 * (K_ANON_FANS + 1),
+        people: K_ANON_FANS + 1,
+      },
     ];
     const original = buckets.map((bucket) => ({ ...bucket }));
     const result = suppressPartition(buckets);
-    expect(result).toEqual({ buckets, suppressed: false });
-    expect(result.buckets).toBe(buckets);
+    expect(result).toEqual({
+      buckets: [
+        { key: "empty", events: 3, checkIns: 0 },
+        { key: "at floor", events: 1, checkIns: K_ANON_FANS },
+        { key: "above floor", events: 2, checkIns: 2 * (K_ANON_FANS + 1) },
+      ],
+      suppressed: false,
+    });
     expect(buckets).toEqual(original);
   });
 
   it("uses a custom floor", () => {
-    const buckets = [{ key: "Mon", events: 10, checkIns: 3 }];
+    const buckets = [{ key: "Mon", events: 10, checkIns: 30, people: 3 }];
     expect(suppressPartition(buckets, 3)).toEqual({
-      buckets,
+      buckets: [{ key: "Mon", events: 10, checkIns: 30 }],
       suppressed: false,
     });
     expect(suppressPartition(buckets, 4)).toEqual({
@@ -279,11 +301,38 @@ describe("suppressPartition", () => {
 
   it("still suppresses entirely empty data with a zero floor", () => {
     expect(
-      suppressPartition([{ key: "Mon", events: 1, checkIns: 0 }], 0),
+      suppressPartition([{ key: "Mon", events: 1, checkIns: 0, people: 0 }], 0),
     ).toEqual({
       buckets: [],
       suppressed: true,
     });
+  });
+
+  it("suppresses one fan's five visits but publishes five distinct fans", () => {
+    const rows = Array.from({ length: K_ANON_FANS }, (_, index) => [
+      { key: "repeat", users: new Set(["superfan"]) },
+      { key: "distinct", users: new Set([`fan-${index}`]) },
+    ]).flat();
+    const buckets = bucketize(
+      rows,
+      (row) => row.key,
+      (row) => row.users,
+    );
+    expect(buckets).toEqual([
+      { key: "distinct", events: 5, checkIns: 5, people: 5 },
+      { key: "repeat", events: 5, checkIns: 5, people: 1 },
+    ]);
+    expect(
+      suppressPartition(buckets.filter((bucket) => bucket.key === "repeat")),
+    ).toEqual({ buckets: [], suppressed: true });
+    expect(
+      suppressPartition(buckets.filter((bucket) => bucket.key === "distinct")),
+    ).toEqual({
+      buckets: [{ key: "distinct", events: 5, checkIns: 5 }],
+      suppressed: false,
+    });
+    // Publishing both would expose the small group through the partition.
+    expect(suppressPartition(buckets)).toEqual({ buckets: [], suppressed: true });
   });
 });
 
@@ -464,18 +513,24 @@ describe("attributionCounts", () => {
 
 describe("returningAttendees", () => {
   it("returns zero for no events or only empty events", () => {
-    expect(returningAttendees([])).toBe(0);
-    expect(returningAttendees([new Set(), new Set()])).toBe(0);
+    for (const events of [[], [new Set<string>(), new Set<string>()]]) {
+      const result = returningAttendees(events);
+      expect(result.returning.size).toBe(0);
+      expect(result.firstTime.size).toBe(0);
+    }
   });
 
   it("does not count users who attended only one event", () => {
-    expect(returningAttendees([new Set(["a", "b"]), new Set(["c"])])).toBe(0);
+    const result = returningAttendees([new Set(["a", "b"]), new Set(["c"])]);
+    expect(result.returning.size).toBe(0);
+    expect(result.firstTime).toEqual(new Set(["a", "b", "c"]));
   });
 
   it("counts a user who attended exactly two events", () => {
-    expect(returningAttendees([new Set(["a", "b"]), new Set(["a", "c"])])).toBe(
-      1,
-    );
+    const result = returningAttendees([new Set(["a", "b"]), new Set(["a", "c"])]);
+    expect(result.returning.size).toBe(1);
+    expect(result.returning).toEqual(new Set(["a"]));
+    expect(result.firstTime).toEqual(new Set(["b", "c"]));
   });
 
   it("counts each returning user once across two or more events", () => {
@@ -486,12 +541,16 @@ describe("returningAttendees", () => {
       new Set(["a", "b"]),
     ];
     const original = events.map((event) => new Set(event));
-    expect(returningAttendees(events)).toBe(2);
+    const result = returningAttendees(events);
+    expect(result.returning.size).toBe(2);
+    expect(result.firstTime).toEqual(new Set(["once"]));
     expect(events).toEqual(original);
   });
 
   it("does not count duplicate check-ins within one event as returning", () => {
-    expect(returningAttendees([new Set(["a", "a"])])).toBe(0);
+    const result = returningAttendees([new Set(["a", "a"])]);
+    expect(result.returning.size).toBe(0);
+    expect(result.firstTime).toEqual(new Set(["a"]));
   });
 });
 

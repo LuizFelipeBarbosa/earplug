@@ -52,21 +52,35 @@ export type Bucket = { key: string; events: number; checkIns: number };
 export function bucketize<T>(
   rows: T[],
   keyOf: (row: T) => string,
-  checkInsOf: (row: T) => number,
-): Bucket[] {
-  const bucketsByKey = new Map<string, Bucket>();
+  usersOf: (row: T) => ReadonlySet<string>,
+): Array<{ key: string; events: number; checkIns: number; people: number }> {
+  const bucketsByKey = new Map<string, Bucket & { users: Set<string> }>();
   for (const row of rows) {
     const key = keyOf(row);
-    const bucket = bucketsByKey.get(key) ?? { key, events: 0, checkIns: 0 };
+    const bucket = bucketsByKey.get(key) ?? {
+      key,
+      events: 0,
+      checkIns: 0,
+      users: new Set<string>(),
+    };
+    const users = usersOf(row);
     bucket.events += 1;
-    bucket.checkIns += checkInsOf(row);
+    bucket.checkIns += users.size;
+    for (const userId of users) bucket.users.add(userId);
     bucketsByKey.set(key, bucket);
   }
 
-  return [...bucketsByKey.values()].sort((a, b) => {
-    if (a.checkIns !== b.checkIns) return b.checkIns - a.checkIns;
-    return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
-  });
+  return [...bucketsByKey.values()]
+    .map(({ key, events, checkIns, users }) => ({
+      key,
+      events,
+      checkIns,
+      people: users.size,
+    }))
+    .sort((a, b) => {
+      if (a.checkIns !== b.checkIns) return b.checkIns - a.checkIns;
+      return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+    });
 }
 
 /** Empty buckets identify nobody and are safe to publish; only nonzero
@@ -81,18 +95,21 @@ function partitionMeetsFloor(counts: number[], floor: number): boolean {
 }
 
 export function suppressPartition(
-  buckets: Bucket[],
+  buckets: Array<{ key: string; events: number; checkIns: number; people: number }>,
   floor = K_ANON_FANS,
 ): { buckets: Bucket[]; suppressed: boolean } {
   if (
     !partitionMeetsFloor(
-      buckets.map((bucket) => bucket.checkIns),
+      buckets.map((bucket) => bucket.people),
       floor,
     )
   ) {
     return { buckets: [], suppressed: true };
   }
-  return { buckets, suppressed: false };
+  return {
+    buckets: buckets.map(({ key, events, checkIns }) => ({ key, events, checkIns })),
+    suppressed: false,
+  };
 }
 
 type Attribution = "referral" | "follow" | "unattributed";
@@ -147,18 +164,19 @@ export function attributionCounts(
   return { ...quantities, suppressed: false };
 }
 
-export function returningAttendees(
-  checkInsByEvent: Array<ReadonlySet<string>>,
-): number {
-  const seen = new Set<string>();
-  const returning = new Set<string>();
+export function returningAttendees<T extends string>(
+  checkInsByEvent: Array<ReadonlySet<T>>,
+): { returning: ReadonlySet<T>; firstTime: ReadonlySet<T> } {
+  const seen = new Set<T>();
+  const returning = new Set<T>();
   for (const checkIns of checkInsByEvent) {
     for (const userId of checkIns) {
       if (seen.has(userId)) returning.add(userId);
       seen.add(userId);
     }
   }
-  return returning.size;
+  const firstTime = new Set([...seen].filter((userId) => !returning.has(userId)));
+  return { returning, firstTime };
 }
 
 const PACIFIC_WEEKDAY_FORMATTER = new Intl.DateTimeFormat("en-US", {

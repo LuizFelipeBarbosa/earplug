@@ -960,6 +960,7 @@ describe("analytics:artistInsights aggregates", () => {
       (sum, row) => sum + row.quantity,
       0,
     );
+    // Fans 0–4 return; fans 5–11 attend once. Both groups clear the floor.
     expect(organizerResult).toEqual(bandResult);
     expect(organizerResult).toEqual({
       band: { bandId: setup.bandId, name: "Private Signals" },
@@ -1064,6 +1065,117 @@ describe("analytics:artistInsights aggregates", () => {
     }
   });
 
+  test("ignores stray tickets and paid orders on an RSVP gig", async () => {
+    const setup = await setupMemberBand();
+    const organizationId = await insertInsightsOrganization(
+      setup,
+      setup.userId,
+      "rsvp-tickets",
+    );
+    const fans = await insertFans(setup.t, 6, "rsvp_ticket_fan");
+    const gigId = await insertGig(setup, {
+      title: "RSVP only",
+      startsAt: NOW - DAY_MS,
+    });
+    await insertCheckedInRsvps(setup, gigId, fans);
+    const orders = await insertInsightsOrders(
+      setup,
+      gigId,
+      organizationId,
+      fans.map((buyerUserId) => ({ buyerUserId, quantity: 1 })),
+    );
+    await insertInsightsTickets(setup, gigId, organizationId, [
+      {
+        orderId: orders[0].orderId,
+        holderUserId: fans[0],
+        status: "valid",
+      },
+    ]);
+
+    expect(await queryBandInsights(setup)).toMatchObject({
+      ticketsSold: 0,
+      rsvpTotal: 6,
+      checkIns: 6,
+      attribution: { referral: 0, follow: 0, unattributed: 0, suppressed: true },
+    });
+  });
+
+  test.each([
+    ["paid", 450],
+    ["paid", 0],
+    ["rsvp", 450],
+  ] as const)("uses %s inventory with sold=%i", async (ticketing, sold) => {
+    const setup = await setupMemberBand();
+    const organizationId = await insertInsightsOrganization(
+      setup,
+      setup.userId,
+      "inventory-totals",
+    );
+    const [buyerUserId] = await insertFans(setup.t, 1, "inventory_buyer");
+    const gigId = await insertGig(setup, {
+      title: "Inventory total",
+      startsAt: NOW - DAY_MS,
+    });
+    await setup.t.run(async (ctx) => {
+      await ctx.db.patch(gigId, { ticketing });
+      await ctx.db.insert("gigTicketInventory", {
+        gigId,
+        organizationId,
+        capacity: 500,
+        sold,
+        reserved: 0,
+        updatedAt: FIXTURE_START,
+      });
+    });
+    const [order] = await insertInsightsOrders(setup, gigId, organizationId, [
+      { buyerUserId, quantity: 1 },
+    ]);
+    await insertInsightsTickets(setup, gigId, organizationId, [
+      {
+        orderId: order.orderId,
+        holderUserId: buyerUserId,
+        status: "valid",
+      },
+    ]);
+
+    // Inventory wins over the ticket sample, including zero and totals above 300.
+    expect((await queryBandInsights(setup)).ticketsSold).toBe(sold);
+  });
+
+  test("attributes paid buyers by whether each follows this band", async () => {
+    const setup = await setupMemberBand();
+    const organizationId = await insertInsightsOrganization(
+      setup,
+      setup.userId,
+      "buyer-follows",
+    );
+    const buyers = await insertFans(setup.t, 12, "attribution_buyer");
+    const gigId = await insertGig(setup, {
+      title: "Paid buyers",
+      startsAt: NOW - DAY_MS,
+    });
+    await setup.t.run((ctx) => ctx.db.patch(gigId, { ticketing: "paid" }));
+    await insertInsightsFollows(setup, buyers.slice(0, 6));
+    await insertInsightsOrders(
+      setup,
+      gigId,
+      organizationId,
+      buyers.map((buyerUserId, index) => ({
+        buyerUserId,
+        quantity: index < 6 ? 2 : 3,
+      })),
+    );
+
+    // Regression intent: look up each buyer's follow instead of sampling 2,000
+    // band followers. Keep this fixture small; both buyer groups clear the floor.
+    expect((await queryBandInsights(setup)).attribution).toEqual({
+      referral: 0,
+      follow: 12,
+      unattributed: 18,
+      suppressed: false,
+    });
+  });
+
   test("suppresses attribution based on distinct buyers despite repeated large orders", async () => {
     const setup = await setupMixedArtistInsights();
     // Fold the fifth guest into a repeat buyer, leaving four distinct guests
@@ -1096,7 +1208,7 @@ describe("analytics:artistInsights aggregates", () => {
   });
 
   test.each([4, 5])(
-    "returning privacy uses the union of %i distinct fans",
+    "floors %i returning fans with no first-time fans",
     async (count) => {
       const setup = await setupMemberBand();
       const fans = await insertFans(setup.t, count, `returning_${count}`);
@@ -1111,6 +1223,41 @@ describe("analytics:artistInsights aggregates", () => {
       expect(result.checkIns).toBe(count * 3);
       expect(result.returningAttendees).toBe(count < 5 ? 0 : count);
       expect(result.returningSuppressed).toBe(count < 5);
+    },
+  );
+
+  test.each([
+    { returningCount: 5, firstTimeCount: 1, suppressed: true },
+    { returningCount: 5, firstTimeCount: 4, suppressed: true },
+    { returningCount: 5, firstTimeCount: 5, suppressed: false },
+    { returningCount: 4, firstTimeCount: 5, suppressed: true },
+    { returningCount: 0, firstTimeCount: 5, suppressed: false },
+  ])(
+    "floors both groups for $returningCount returning and $firstTimeCount first-time fans",
+    async ({ returningCount, firstTimeCount, suppressed }) => {
+      const setup = await setupMemberBand();
+      const fans = await insertFans(
+        setup.t,
+        returningCount + firstTimeCount,
+        "returning_partition",
+      );
+      for (const daysAgo of [2, 1]) {
+        const gigId = await insertGig(setup, {
+          title: `Attendance ${daysAgo}`,
+          startsAt: NOW - daysAgo * DAY_MS,
+        });
+        await insertCheckedInRsvps(
+          setup,
+          gigId,
+          daysAgo === 2 ? fans.slice(0, returningCount) : fans,
+        );
+      }
+
+      expect(await queryBandInsights(setup)).toMatchObject({
+        checkIns: returningCount * 2 + firstTimeCount,
+        returningAttendees: suppressed ? 0 : returningCount,
+        returningSuppressed: suppressed,
+      });
     },
   );
 
@@ -1171,7 +1318,8 @@ describe("analytics:artistInsights aggregates", () => {
 });
 
 describe("analytics:artistInsights window", () => {
-  test.each([MAX_RECAP_GIGS, MAX_RECAP_GIGS + 1])(
+  // Mirrors computeArtistInsights's private MAX_INSIGHT_GIGS = 15.
+  test.each([15, 16])(
     "analyzes the newest capped window from %i past gigs",
     async (count) => {
       const setup = await setupMemberBand();
@@ -1190,12 +1338,12 @@ describe("analytics:artistInsights window", () => {
       await insertRsvps(setup.t, futureGigId, [fan]);
       const result = await queryBandInsights(setup);
       expect(result.window).toEqual({
-        events: MAX_RECAP_GIGS,
-        truncated: count > MAX_RECAP_GIGS,
-        firstStartsAt: NOW - MAX_RECAP_GIGS * DAY_MS,
+        events: 15,
+        truncated: count > 15,
+        firstStartsAt: NOW - 15 * DAY_MS,
         lastStartsAt: NOW - DAY_MS,
       });
-      expect(result.rsvpTotal).toBe(MAX_RECAP_GIGS);
+      expect(result.rsvpTotal).toBe(15);
     },
   );
 
@@ -1227,6 +1375,43 @@ describe("analytics:artistInsights window", () => {
 });
 
 describe("analytics:artistInsights authorization", () => {
+  test.each(["declined", "withdrawn", "expired"] as const)(
+    "refuses a closed %s application after checking authorization",
+    async (status) => {
+      const setup = await setupMemberBand();
+      const application = await setupInsightsApplication(setup);
+      await setup.t.run((ctx) =>
+        ctx.db.patch(application.applicationId, { status }),
+      );
+      const args = { applicationId: application.applicationId };
+      await expect(
+        application.asOrganizer.query(artistInsights, args),
+      ).rejects.toThrow("This application is closed");
+      await expect(setup.asMember.query(artistInsights, args)).rejects.toThrow(
+        "Not permitted for this organization",
+      );
+      await expect(setup.t.query(artistInsights, args)).rejects.toThrow(
+        "Not signed in",
+      );
+    },
+  );
+
+  test.each(["under_review", "shortlisted", "offered", "booked"] as const)(
+    "allows an active %s application",
+    async (status) => {
+      const setup = await setupMemberBand();
+      const application = await setupInsightsApplication(setup);
+      await setup.t.run((ctx) =>
+        ctx.db.patch(application.applicationId, { status }),
+      );
+      vi.setSystemTime(NOW);
+      const result = await application.asOrganizer.query(artistInsights, {
+        applicationId: application.applicationId,
+      });
+      expect(result.band.bandId).toBe(setup.bandId);
+    },
+  );
+
   test.each(["owner", "manager"] as const)(
     "allows the opportunity organization's %s",
     async (role) => {

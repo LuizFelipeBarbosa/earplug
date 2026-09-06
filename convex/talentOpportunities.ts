@@ -521,7 +521,7 @@ export const updateTicketing = mutation({
     ticketPriceMinor: v.number(),
     ticketCapacity: v.number(),
   },
-  returns: v.object({ revision: v.number() }),
+  returns: v.object({ revision: v.number(), capacity: v.number() }),
   handler: async (ctx, args) => {
     const now = Date.now();
     const { opportunity } = await requireOpportunityManager(
@@ -537,10 +537,26 @@ export const updateTicketing = mutation({
     ) {
       throw new Error("Ticket details can only change on a live paid event");
     }
+    if (opportunity.startsAt <= now) {
+      throw new Error("This event has already started");
+    }
     const fields = validateTicketPriceAndCapacity(
       args.ticketPriceMinor,
       args.ticketCapacity,
     );
+    const gigId = opportunity.publicGigId;
+    if (gigId !== undefined) {
+      const inventory = await ctx.db
+        .query("gigTicketInventory")
+        .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+        .unique();
+      if (
+        inventory &&
+        fields.ticketCapacity < inventory.sold + inventory.reserved
+      ) {
+        throw new Error("Capacity cannot go below tickets already sold or held");
+      }
+    }
     const revision = opportunity.revision + 1;
     await ctx.db.patch(opportunity._id, {
       ...fields,
@@ -548,7 +564,7 @@ export const updateTicketing = mutation({
       updatedAt: now,
     });
     await syncGigTicketing(ctx, args.opportunityId);
-    return { revision };
+    return { revision, capacity: fields.ticketCapacity };
   },
 });
 
