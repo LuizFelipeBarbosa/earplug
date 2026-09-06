@@ -19,6 +19,7 @@ import type * as clock from "../clock.js";
 import type * as crons from "../crons.js";
 import type * as emails from "../emails.js";
 import type * as finance from "../finance.js";
+import type * as financeActions from "../financeActions.js";
 import type * as gigs from "../gigs.js";
 import type * as http from "../http.js";
 import type * as interactions from "../interactions.js";
@@ -101,6 +102,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   emails: typeof emails;
   finance: typeof finance;
+  financeActions: typeof financeActions;
   gigs: typeof gigs;
   http: typeof http;
   interactions: typeof interactions;
