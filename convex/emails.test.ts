@@ -111,6 +111,7 @@ describe("sendTicketEmail", () => {
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   async function setupOrder() {
@@ -179,10 +180,12 @@ describe("sendTicketEmail", () => {
       });
       return { buyerUserId, venueId, gigId, orderId };
     });
-    const send = () =>
-      t.run(async (ctx) =>
+    const send = async (): Promise<void> => {
+      // Keep the helper's void result instead of Convex's serialized null.
+      await t.run(async (ctx) =>
         sendTicketEmail(ctx, (await ctx.db.get(ids.orderId))!, "ticketReceipt"),
       );
+    };
     const emails = () =>
       t.run(async (ctx) =>
         (await ctx.db.system.query("_scheduled_functions").take(100)).filter(
@@ -218,16 +221,18 @@ describe("sendTicketEmail", () => {
   });
 
   test.each(["gig", "venue"] as const)(
-    "throws when the %s is missing",
+    "returns early without scheduling when the %s is missing",
     async (missing) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const f = await setupOrder();
       await f.t.run((ctx) =>
         ctx.db.delete(missing === "gig" ? f.gigId : f.venueId),
       );
-      await expect(f.send()).rejects.toThrow(
-        missing === "gig" ? "Gig not found" : "Venue not found",
-      );
+      await expect(f.send()).resolves.toBeUndefined();
       expect(await f.emails()).toEqual([]);
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        `sendTicketEmail: ${missing} not found for order ${f.orderId}`,
+      );
     },
   );
 });

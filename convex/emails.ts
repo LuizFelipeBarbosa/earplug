@@ -167,9 +167,15 @@ export async function sendTicketEmail(
   if (!buyerEmail) return;
 
   const gig = await ctx.db.get(order.gigId);
-  if (!gig) throw new Error("Gig not found");
+  if (!gig) {
+    console.warn(`sendTicketEmail: gig not found for order ${order._id}`);
+    return;
+  }
   const venue = await ctx.db.get(gig.venueId);
-  if (!venue) throw new Error("Venue not found");
+  if (!venue) {
+    console.warn(`sendTicketEmail: venue not found for order ${order._id}`);
+    return;
+  }
 
   const totalLabel = `${(order.totalMinor / 100).toFixed(2)} ${order.currency.toUpperCase()}`;
   const link =
