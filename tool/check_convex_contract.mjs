@@ -104,6 +104,13 @@ export const requiredClientFunctions = Object.freeze({
   "ticketCheckout.js:cancelOrder": "Action",
   "ticketsDoor.js:checkIn": "Mutation",
   "ticketsDoor.js:doorRoster": "Query",
+  "finance.js:overview": "Query",
+  "finance.js:transactions": "Query",
+  "financeActions.js:refreshBalance": "Action",
+  "financeActions.js:exportStatement": "Action",
+  "analytics.js:artistInsights": "Query",
+  "analytics.js:myBandInsights": "Query",
+  "talentOpportunities.js:updateTicketing": "Mutation",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -149,6 +156,14 @@ export const requiredClientFields = Object.freeze([
   ["ticketCheckout.js:startCheckout", "return", "sessionId", false],
   ["ticketsDoor.js:checkIn", "return", "kind", false],
   ["gigs.js:resolvePublic", "return", "ticketPriceMinor", true],
+  ["finance.js:overview", "return", "bookings", false],
+  ["finance.js:overview", "return", "tickets", false],
+  ["finance.js:overview", "return", "currency", false],
+  ["finance.js:overview", "return", "snapshot", false],
+  ["finance.js:transactions", "return", "page", false],
+  ["financeActions.js:exportStatement", "return", "csv", false],
+  ["analytics.js:artistInsights", "return", "estimatedDraw", false],
+  ["talentOpportunities.js:updateTicketing", "return", "revision", false],
 ]);
 
 export function deploymentNameFromUrl(value) {

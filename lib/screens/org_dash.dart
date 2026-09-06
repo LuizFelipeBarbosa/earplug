@@ -150,6 +150,11 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
           const SizedBox(height: 10),
           _CommandGrid(
             canManage: app.canManageOrganization(app.organizationId),
+            canSeeFinance: app.canSeeFinance(app.organizationId),
+            financeCaption: app.financeOverview == null
+                ? 'Set up'
+                : '${app.financeOverview!.ticketNetAmount.label} ticket net',
+            onFinance: app.openFinance,
             onOpportunity: app.openOpportunityEditor,
             onVenues: () => app.go(Screen.orgVenues),
             onTeam: () => app.go(Screen.orgTeam),
@@ -400,6 +405,9 @@ class _LoadError extends StatelessWidget {
 class _CommandGrid extends StatelessWidget {
   const _CommandGrid({
     required this.canManage,
+    required this.canSeeFinance,
+    required this.financeCaption,
+    required this.onFinance,
     required this.onOpportunity,
     required this.onVenues,
     required this.onTeam,
@@ -407,6 +415,9 @@ class _CommandGrid extends StatelessWidget {
   });
 
   final bool canManage;
+  final bool canSeeFinance;
+  final String financeCaption;
+  final VoidCallback onFinance;
   final VoidCallback onOpportunity;
   final VoidCallback onVenues;
   final VoidCallback onTeam;
@@ -443,6 +454,14 @@ class _CommandGrid extends StatelessWidget {
           label: 'SETTINGS',
           icon: Icons.settings_outlined,
           onTap: onSettings,
+        ),
+      if (canSeeFinance)
+        _Command(
+          key: const Key('org-dash-command-finance'),
+          label: 'FINANCE',
+          caption: financeCaption,
+          icon: Icons.account_balance_outlined,
+          onTap: onFinance,
         ),
     ];
     final singleColumn =

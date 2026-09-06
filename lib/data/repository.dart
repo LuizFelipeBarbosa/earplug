@@ -634,6 +634,33 @@ abstract class EarplugRepository {
   Future<TicketSummary?> ticket(String ticketId);
   Future<TicketOrderState?> ticketOrderStatus(String sessionId);
   Future<TicketSales> ticketSalesForGig(String gigId);
+
+  Future<FinanceOverview> financeOverview(String organizationId);
+
+  Future<TransactionsPage> financeTransactions(
+    String organizationId, {
+    required int numItems,
+    String? cursor,
+  });
+
+  Future<FinanceSnapshot?> refreshFinanceBalance(String organizationId);
+
+  Future<StatementExport> exportStatement(
+    String organizationId, {
+    required DateTime from,
+    required DateTime to,
+  });
+
+  Future<ArtistInsights> artistInsights(String applicationId);
+
+  Future<ArtistInsights> myBandInsights(String bandId);
+
+  Future<int> updateOpportunityTicketing({
+    required String opportunityId,
+    required int expectedRevision,
+    required int ticketPriceMinor,
+    required int ticketCapacity,
+  });
   Future<void> ensureRsvp(String gigId);
   Future<void> ensureFollow(String bandId);
   Future<void> ensureSave(String gigId);

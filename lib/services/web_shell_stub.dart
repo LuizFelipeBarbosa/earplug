@@ -17,4 +17,7 @@ class _StubWebShell implements WebShell {
 
   @override
   void writeA11yPreference(bool enabled) {}
+
+  @override
+  void downloadTextFile(String filename, String text) {}
 }

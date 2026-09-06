@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.23)
+# EarPlug Convex function contract (FROZEN — v1.24)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -767,6 +767,58 @@ Create or recreate the endpoint with Connect webhooks enabled
 (`connect=true` in the Stripe API/CLI). A regular account webhook endpoint
 never receives connected-account events, regardless of its subscribed event
 types.
+
+**v1.24 — Organizer finance, artist insights, estimated draw.**
+`finance.js:overview` and `finance.js:transactions` are Queries providing
+organizer-perspective money views for one `organizationId`. The overview
+computes live totals from `bookings`, `paymentRecords`, and `ticketOrders`
+and returns a plain object with required `stripeReady`, `snapshot`,
+`bookings`, `tickets`, `pendingPayments`, and `currency` keys. The Stripe
+balance `snapshot` is nullable, remaining `null` until a balance has been
+fetched. `finance.js:transactions` also takes `paginationOpts` and reads
+`ledgerEntries`, returning the standard Convex pagination result with a
+required `page` array, `isDone`, and `continueCursor`.
+
+`financeActions:refreshBalance` is an Action taking `{ organizationId }`
+and returning a snapshot object or top-level `null` when no Stripe account
+is connected. It refreshes the balance on demand, reusing a snapshot for
+five minutes before making a fresh Stripe balance call.
+`financeActions:exportStatement` is an Action taking `{ organizationId,
+fromMs, toMs }` and returning `{ csv, rows, truncated }`; the CSV statement
+is returned inline as a string, not written to file storage.
+
+`analytics:artistInsights` and `analytics:myBandInsights` are Queries
+sharing the plain-object `artistInsightsValidator`. Organizers reach this
+view only through `analytics:artistInsights({ applicationId })`, which
+authorizes an owner/manager against the application's opportunity's
+organization. `analytics:myBandInsights({ bandId })` requires membership in
+that band. Both return the same aggregated view with no per-event rows or
+user ids, never a raw per-event or per-fan breakdown.
+
+The insights use the k-anonymity floor `K_ANON_FANS = 5`. Each area,
+venue-type, weekday, or price-band partition suppresses all of its buckets
+if any bucket has 1–4 check-ins, or if all its buckets have zero check-ins;
+these bucket counts sum distinct check-ins per event rather than
+deduplicating attendees across events. Attribution
+breakdowns use distinct buyers per class and suppress all classes if a
+nonempty class has fewer than five buyers, or all classes are empty.
+`returningAttendees` is zeroed with `returningSuppressed: true` when the
+set of all distinct checked-in attendees across analyzed events is below
+five; the gate does not use the size of the returning subset.
+
+`estimatedDraw` is an always-present, non-optional key whose value is
+`null` when there are no analyzed events. Otherwise it gives the 25th-to-75th
+percentile range of per-event turnout, rounded outward to whole attendees.
+The basis is check-ins for all analyzed events when any check-ins exist,
+otherwise RSVPs. Confidence is `low` for fewer than three events, `medium`
+for three through seven, and `high` for eight or more.
+
+`talentOpportunities:updateTicketing` is a Mutation taking
+`{ opportunityId, expectedRevision, ticketPriceMinor, ticketCapacity }`
+and returning `{ revision }`. It lets an organizer change ticket price and
+capacity only on a live paid opportunity: `ticketing: "paid"` and status
+`"confirmed"` or `"booking"`. Like the sibling opportunity mutations, it
+guards the change with `expectedRevision` optimistic concurrency.
 
 ## Reconciliation
 

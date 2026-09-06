@@ -77,6 +77,45 @@ export async function bookedLineup(
   return { lineup, performers, requiredFilled };
 }
 
+function pricedTicketingGigFields(opportunity: Doc<"talentOpportunities">) {
+  return {
+    ticketPriceMinor: opportunity.ticketPriceMinor,
+    ticketCurrency: opportunity.ticketCurrency,
+    ticketCapacity: opportunity.ticketCapacity,
+    price: Math.round((opportunity.ticketPriceMinor ?? 0) / 100),
+  };
+}
+
+async function applyTicketInventoryCapacity(
+  ctx: MutationCtx,
+  gigId: Id<"gigs">,
+  organizationId: Id<"organizations">,
+  capacity: number | undefined,
+): Promise<void> {
+  if (capacity === undefined) {
+    throw new Error("Paid opportunity is missing a ticket capacity");
+  }
+  const existing = await ctx.db
+    .query("gigTicketInventory")
+    .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+    .unique();
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      capacity: Math.max(capacity, existing.sold + existing.reserved),
+      updatedAt: Date.now(),
+    });
+  } else {
+    await ctx.db.insert("gigTicketInventory", {
+      gigId,
+      organizationId,
+      capacity,
+      sold: 0,
+      reserved: 0,
+      updatedAt: Date.now(),
+    });
+  }
+}
+
 export async function publishGigFromOpportunity(
   ctx: MutationCtx,
   opportunityId: Id<"talentOpportunities">,
@@ -102,12 +141,7 @@ export async function publishGigFromOpportunity(
       ? { externalUrl: opportunity.externalUrl }
       : {}),
     ...(ticketing === "paid"
-      ? {
-          ticketPriceMinor: opportunity.ticketPriceMinor,
-          ticketCurrency: opportunity.ticketCurrency,
-          ticketCapacity: opportunity.ticketCapacity,
-          price: Math.round((opportunity.ticketPriceMinor ?? 0) / 100),
-        }
+      ? pricedTicketingGigFields(opportunity)
       : {}),
   };
   let gigId: Id<"gigs">;
@@ -154,31 +188,12 @@ export async function publishGigFromOpportunity(
     });
   }
   if (ticketing === "paid") {
-    if (opportunity.ticketCapacity === undefined) {
-      throw new Error("Paid opportunity is missing a ticket capacity");
-    }
-    const existing = await ctx.db
-      .query("gigTicketInventory")
-      .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
-      .unique();
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        capacity: Math.max(
-          opportunity.ticketCapacity,
-          existing.sold + existing.reserved,
-        ),
-        updatedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("gigTicketInventory", {
-        gigId,
-        organizationId: opportunity.organizationId,
-        capacity: opportunity.ticketCapacity,
-        sold: 0,
-        reserved: 0,
-        updatedAt: Date.now(),
-      });
-    }
+    await applyTicketInventoryCapacity(
+      ctx,
+      gigId,
+      opportunity.organizationId,
+      opportunity.ticketCapacity,
+    );
   }
   assertOpportunityTransition(opportunity.status, "confirmed");
   await ctx.db.patch(opportunityId, {
@@ -188,6 +203,26 @@ export async function publishGigFromOpportunity(
     updatedAt: Date.now(),
   });
   return gigId;
+}
+
+export async function syncGigTicketing(
+  ctx: MutationCtx,
+  opportunityId: Id<"talentOpportunities">,
+): Promise<void> {
+  const opportunity = await ctx.db.get(opportunityId);
+  if (!opportunity) throw new Error("Opportunity not found");
+  if (opportunity.publicGigId === undefined || opportunity.ticketing !== "paid") {
+    return;
+  }
+  const gig = await ctx.db.get(opportunity.publicGigId);
+  if (!gig) return;
+  await ctx.db.patch(gig._id, pricedTicketingGigFields(opportunity));
+  await applyTicketInventoryCapacity(
+    ctx,
+    gig._id,
+    opportunity.organizationId,
+    opportunity.ticketCapacity,
+  );
 }
 
 export async function syncGigLineup(

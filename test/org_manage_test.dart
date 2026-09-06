@@ -113,6 +113,42 @@ void main() {
     });
   }
 
+  testWidgets('finance command opens for owners and is hidden for door members', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org1'),
+      home: const Scaffold(body: OrgDashScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org1');
+
+    final command = find.byKey(const Key('org-dash-command-finance'));
+    await tester.scrollUntilVisible(command, 250);
+    expect(command, findsOneWidget);
+    expect(
+      find.descendant(of: command, matching: find.text('FINANCE')),
+      findsOneWidget,
+    );
+    await tester.tap(command);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.orgFinance);
+
+    harness.app.myOrganizations = [
+      OrganizationMembership(
+        organization: DemoData.organizations['org1']!,
+        role: OrganizationRole.door,
+      ),
+    ];
+    await enterOrganizer(tester, harness, 'org1');
+    expect(command, findsNothing);
+  });
+
   testWidgets('venue edit page saves the public profile', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();

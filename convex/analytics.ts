@@ -8,6 +8,17 @@ import {
   pastGigsForBand,
   requireBandRole,
 } from "./lib/helpers";
+import type { QueryCtx } from "./_generated/server";
+import { requireOrganizationRole } from "./lib/authz";
+import {
+  attributionCounts,
+  bucketize,
+  estimatedDraw,
+  priceBand,
+  returningAttendees,
+  suppressPartition,
+  weekdayKey,
+} from "./lib/insights";
 
 const leadTimeKeyValidator = v.union(
   v.literal("twoWeeksPlus"),
@@ -480,5 +491,236 @@ export const bandRecap = query({
         suppressed: false,
       },
     };
+  },
+});
+
+
+// Bounds artist-insights reads separately from the fan-facing MAX_RECAP_GIGS.
+const MAX_INSIGHT_GIGS = 15;
+const MAX_TICKETS_PER_GIG = 300;
+const MAX_ORDERS_PER_GIG = 200;
+
+const partitionValidator = v.object({
+  buckets: v.array(
+    v.object({ key: v.string(), events: v.number(), checkIns: v.number() }),
+  ),
+  suppressed: v.boolean(),
+});
+
+export const artistInsightsValidator = v.object({
+  band: v.object({ bandId: v.id("bands"), name: v.string() }),
+  window: v.object({
+    events: v.number(),
+    truncated: v.boolean(),
+    firstStartsAt: v.optional(v.number()),
+    lastStartsAt: v.optional(v.number()),
+  }),
+  followers: v.number(),
+  rsvpTotal: v.number(),
+  ticketsSold: v.number(),
+  checkIns: v.number(),
+  returningAttendees: v.number(),
+  returningSuppressed: v.boolean(),
+  attribution: v.object({
+    referral: v.number(),
+    follow: v.number(),
+    unattributed: v.number(),
+    suppressed: v.boolean(),
+  }),
+  byArea: partitionValidator,
+  byVenueType: partitionValidator,
+  byWeekday: partitionValidator,
+  byPriceBand: partitionValidator,
+  estimatedDraw: v.union(
+    v.object({
+      low: v.number(),
+      high: v.number(),
+      confidence: v.union(
+        v.literal("low"),
+        v.literal("medium"),
+        v.literal("high"),
+      ),
+      events: v.number(),
+      basis: v.union(v.literal("checkIns"), v.literal("rsvps")),
+    }),
+    v.null(),
+  ),
+});
+
+export type ArtistInsights = Infer<typeof artistInsightsValidator>;
+
+/** Shared insights for authorized organizers and band members. Organizers
+ * never see per-event rows or user ids, only aggregated totals and partitions
+ * with k-anonymity suppression. Callers authorize access before computing. */
+export async function computeArtistInsights(
+  ctx: QueryCtx,
+  bandId: Id<"bands">,
+): Promise<ArtistInsights> {
+  const band = await ctx.db.get(bandId);
+  if (!band) throw new Error("Band not found");
+
+  const probed = await pastGigsForBand(ctx, bandId, MAX_INSIGHT_GIGS + 1);
+  const truncated = probed.length > MAX_INSIGHT_GIGS;
+  const gigs = probed.slice(0, MAX_INSIGHT_GIGS);
+  gigs.sort((a, b) => a.startsAt - b.startsAt);
+
+  const analyzed = await Promise.all(
+    gigs.map(async (gig) => {
+      const [rsvps, tickets, paidOrders, inventory, venue] = await Promise.all([
+        ctx.db
+          .query("gigRsvps")
+          .withIndex("by_gig", (q) => q.eq("gigId", gig._id))
+          .take(MAX_RSVPS_PER_GIG),
+        gig.ticketing === "paid"
+          ? ctx.db
+              .query("tickets")
+              .withIndex("by_gigId", (q) => q.eq("gigId", gig._id))
+              .take(MAX_TICKETS_PER_GIG)
+          : [],
+        gig.ticketing === "paid"
+          ? ctx.db
+              .query("ticketOrders")
+              .withIndex("by_gigId_and_status", (q) =>
+                q.eq("gigId", gig._id).eq("status", "paid"),
+              )
+              .take(MAX_ORDERS_PER_GIG)
+          : [],
+        ctx.db
+          .query("gigTicketInventory")
+          .withIndex("by_gigId", (q) => q.eq("gigId", gig._id))
+          .unique(),
+        ctx.db.get(gig.venueId),
+      ]);
+      const checkInUserIds = new Set<Id<"users">>();
+      for (const rsvp of rsvps) {
+        if (rsvp.checkedInAt !== undefined) checkInUserIds.add(rsvp.userId);
+      }
+      for (const ticket of tickets) {
+        if (ticket.status === "used") checkInUserIds.add(ticket.holderUserId);
+      }
+      return {
+        gig,
+        venue,
+        paidOrders,
+        checkInUserIds,
+        rsvpCount: rsvps.length,
+        ticketsSold:
+          inventory?.sold ??
+          tickets.filter(
+            (ticket) => ticket.status === "valid" || ticket.status === "used",
+          ).length,
+      };
+    }),
+  );
+
+  const paidOrders = analyzed.flatMap((show) => show.paidOrders);
+  const buyerIds = new Set(paidOrders.map((order) => order.buyerUserId));
+  const follows = await Promise.all(
+    [...buyerIds].map((buyerId) =>
+      ctx.db
+        .query("follows")
+        .withIndex("by_user_band", (q) =>
+          q.eq("userId", buyerId).eq("bandId", bandId),
+        )
+        .unique(),
+    ),
+  );
+  const followerIds = new Set(
+    follows.flatMap((follow) => (follow ? [follow.userId] : [])),
+  );
+  const checkInsByEvent = analyzed.map((show) => show.checkInUserIds);
+  const { returning, firstTime } = returningAttendees(checkInsByEvent);
+  const returningSuppressed = !partitionMeetsFloor([
+    new Set(returning),
+    new Set(firstTime),
+  ]);
+  const basis = analyzed.some((show) => show.checkInUserIds.size > 0)
+    ? "checkIns"
+    : "rsvps";
+  const draw = estimatedDraw(
+    analyzed.map((show) =>
+      basis === "checkIns" ? show.checkInUserIds.size : show.rsvpCount,
+    ),
+  );
+
+  return {
+    band: { bandId, name: band.name },
+    window: {
+      events: gigs.length,
+      truncated,
+      firstStartsAt: gigs[0]?.startsAt,
+      lastStartsAt: gigs[gigs.length - 1]?.startsAt,
+    },
+    followers: band.followerCount,
+    rsvpTotal: analyzed.reduce((total, show) => total + show.rsvpCount, 0),
+    ticketsSold: analyzed.reduce((total, show) => total + show.ticketsSold, 0),
+    checkIns: analyzed.reduce(
+      (total, show) => total + show.checkInUserIds.size,
+      0,
+    ),
+    returningAttendees: returningSuppressed ? 0 : returning.size,
+    returningSuppressed,
+    attribution: attributionCounts(paidOrders, bandId, followerIds),
+    byArea: suppressPartition(
+      bucketize(
+        analyzed,
+        (show) => show.venue?.area ?? "unknown",
+        (show) => show.checkInUserIds,
+      ),
+    ),
+    byVenueType: suppressPartition(
+      bucketize(
+        analyzed,
+        (show) => show.venue?.venueType ?? "unknown",
+        (show) => show.checkInUserIds,
+      ),
+    ),
+    byWeekday: suppressPartition(
+      bucketize(
+        analyzed,
+        (show) => weekdayKey(show.gig.startsAt),
+        (show) => show.checkInUserIds,
+      ),
+    ),
+    byPriceBand: suppressPartition(
+      bucketize(
+        analyzed,
+        (show) => priceBand(show.gig.ticketPriceMinor, show.gig.ticketing),
+        (show) => show.checkInUserIds,
+      ),
+    ),
+    estimatedDraw: draw === null ? null : { ...draw, basis },
+  };
+}
+
+export const artistInsights = query({
+  args: { applicationId: v.id("artistApplications") },
+  returns: artistInsightsValidator,
+  handler: async (ctx, args) => {
+    const application = await ctx.db.get(args.applicationId);
+    if (!application) throw new Error("Application not found");
+    const opportunity = await ctx.db.get(application.opportunityId);
+    if (!opportunity) throw new Error("Opportunity not found");
+    await requireOrganizationRole(ctx, opportunity.organizationId, [
+      "owner",
+      "manager",
+    ]);
+    if (
+      !["submitted", "under_review", "shortlisted", "offered", "booked"].includes(
+        application.status,
+      )
+    ) {
+      throw new Error("This application is closed");
+    }
+    return await computeArtistInsights(ctx, application.bandId);
+  },
+});
+
+export const myBandInsights = query({
+  args: { bandId: v.id("bands") },
+  returns: artistInsightsValidator,
+  handler: async (ctx, args) => {
+    await requireBandRole(ctx, args.bandId, { role: "member" });
+    return await computeArtistInsights(ctx, args.bandId);
   },
 });

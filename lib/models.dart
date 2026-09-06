@@ -11,16 +11,23 @@ String _marketplaceString(Object? value) => value is String ? value : '';
 String? _marketplaceOptionalString(Object? value) =>
     value is String ? value : null;
 
-int _marketplaceInt(Object? value) => value is num ? value.toInt() : 0;
+int _marketplaceInt(Object? value) => _marketplaceOptionalInt(value) ?? 0;
 
 int? _marketplaceOptionalInt(Object? value) =>
-    value is num ? value.toInt() : null;
+    value is num && value.isFinite ? value.toInt() : null;
 
 DateTime _marketplaceDate(Object? value) =>
-    DateTime.fromMillisecondsSinceEpoch(value is num ? value.toInt() : 0);
+    _marketplaceOptionalDate(value) ?? DateTime.fromMillisecondsSinceEpoch(0);
 
-DateTime? _marketplaceOptionalDate(Object? value) =>
-    value is num ? DateTime.fromMillisecondsSinceEpoch(value.toInt()) : null;
+DateTime? _marketplaceOptionalDate(Object? value) {
+  final milliseconds = _marketplaceOptionalInt(value);
+  if (milliseconds == null ||
+      milliseconds < -8640000000000000 ||
+      milliseconds > 8640000000000000) {
+    return null;
+  }
+  return DateTime.fromMillisecondsSinceEpoch(milliseconds);
+}
 
 Map<String, dynamic> _marketplaceMap(Object? value) {
   if (value is! Map) return const {};
@@ -2626,6 +2633,509 @@ class TicketSales {
   Money get gross => Money(grossMinor, currency);
   Money get fees => Money(feeMinor, currency);
   Money get net => Money(netMinor, currency);
+}
+
+class FinanceSnapshot {
+  const FinanceSnapshot({
+    required this.availableMinor,
+    required this.pendingMinor,
+    required this.currency,
+    required this.fetchedAt,
+    this.stale = false,
+  });
+
+  final int availableMinor;
+  final int pendingMinor;
+  final String currency;
+  final DateTime fetchedAt;
+  final bool stale;
+
+  factory FinanceSnapshot.fromJson(Map<String, dynamic> json) =>
+      FinanceSnapshot(
+        availableMinor: _marketplaceInt(json['availableMinor']),
+        pendingMinor: _marketplaceInt(json['pendingMinor']),
+        currency: _marketplaceString(json['currency']),
+        fetchedAt: _marketplaceDate(json['fetchedAt']),
+        stale: json['stale'] == true,
+      );
+
+  Money get available => Money(availableMinor, currency);
+  Money get pending => Money(pendingMinor, currency);
+}
+
+class FinanceBookings {
+  const FinanceBookings({
+    required this.dueMinor,
+    required this.paidMinor,
+    required this.refundedMinor,
+    required this.disputedMinor,
+    required this.activeCount,
+  });
+
+  final int dueMinor;
+  final int paidMinor;
+  final int refundedMinor;
+  final int disputedMinor;
+  final int activeCount;
+
+  factory FinanceBookings.fromJson(Map<String, dynamic> json) =>
+      FinanceBookings(
+        dueMinor: _marketplaceInt(json['dueMinor']),
+        paidMinor: _marketplaceInt(json['paidMinor']),
+        refundedMinor: _marketplaceInt(json['refundedMinor']),
+        disputedMinor: _marketplaceInt(json['disputedMinor']),
+        activeCount: _marketplaceInt(json['activeCount']),
+      );
+}
+
+class FinanceTickets {
+  const FinanceTickets({
+    required this.ordersPaid,
+    required this.grossMinor,
+    required this.feeMinor,
+    required this.refundedMinor,
+    required this.refundedOrgMinor,
+    required this.netMinor,
+    required this.estimatedProcessingMinor,
+    required this.truncated,
+  });
+
+  final int ordersPaid;
+  final int grossMinor;
+  final int feeMinor;
+  final int refundedMinor;
+  final int refundedOrgMinor;
+  final int netMinor;
+  final int estimatedProcessingMinor;
+  final bool truncated;
+
+  factory FinanceTickets.fromJson(Map<String, dynamic> json) => FinanceTickets(
+    ordersPaid: _marketplaceInt(json['ordersPaid']),
+    grossMinor: _marketplaceInt(json['grossMinor']),
+    feeMinor: _marketplaceInt(json['feeMinor']),
+    refundedMinor: _marketplaceInt(json['refundedMinor']),
+    refundedOrgMinor: _marketplaceInt(json['refundedOrgMinor']),
+    netMinor: _marketplaceInt(json['netMinor']),
+    estimatedProcessingMinor: _marketplaceInt(json['estimatedProcessingMinor']),
+    truncated: json['truncated'] == true,
+  );
+}
+
+class PendingPayment {
+  const PendingPayment({
+    required this.bookingId,
+    required this.paymentRecordId,
+    required this.opportunityTitle,
+    required this.label,
+    required this.currency,
+    required this.amountMinor,
+    required this.dueAt,
+  });
+
+  final String bookingId;
+  final String paymentRecordId;
+  final String opportunityTitle;
+  final String label;
+  final String currency;
+  final int amountMinor;
+  final DateTime dueAt;
+
+  factory PendingPayment.fromJson(
+    Map<String, dynamic> json, {
+    required String currency,
+  }) => PendingPayment(
+    bookingId: _marketplaceString(json['bookingId']),
+    paymentRecordId: _marketplaceString(json['paymentRecordId']),
+    opportunityTitle: _marketplaceString(json['opportunityTitle']),
+    label: _marketplaceString(json['label']),
+    currency: currency,
+    amountMinor: _marketplaceInt(json['amountMinor']),
+    dueAt: _marketplaceDate(json['dueAt']),
+  );
+
+  Money get amount => Money(amountMinor, currency);
+}
+
+class FinanceOverview {
+  const FinanceOverview({
+    required this.stripeReady,
+    required this.snapshot,
+    required this.bookings,
+    required this.tickets,
+    required this.pendingPayments,
+    required this.currency,
+  });
+
+  final bool stripeReady;
+  final FinanceSnapshot? snapshot;
+  final FinanceBookings bookings;
+  final FinanceTickets tickets;
+  final List<PendingPayment> pendingPayments;
+  final String currency;
+
+  factory FinanceOverview.fromJson(Map<String, dynamic> json) {
+    final currency = _marketplaceString(json['currency']);
+    return FinanceOverview(
+      stripeReady: json['stripeReady'] == true,
+      snapshot: json['snapshot'] is Map
+          ? FinanceSnapshot.fromJson(_marketplaceMap(json['snapshot']))
+          : null,
+      bookings: FinanceBookings.fromJson(_marketplaceMap(json['bookings'])),
+      tickets: FinanceTickets.fromJson(_marketplaceMap(json['tickets'])),
+      pendingPayments: [
+        for (final item in _marketplaceMapList(json['pendingPayments']))
+          PendingPayment.fromJson(item, currency: currency),
+      ],
+      currency: currency,
+    );
+  }
+
+  Money get dueAmount => Money(bookings.dueMinor, currency);
+  Money get paidAmount => Money(bookings.paidMinor, currency);
+  Money get refundedAmount => Money(bookings.refundedMinor, currency);
+  Money get disputedAmount => Money(bookings.disputedMinor, currency);
+  Money get ticketGrossAmount => Money(tickets.grossMinor, currency);
+  Money get ticketFeeAmount => Money(tickets.feeMinor, currency);
+  Money get ticketRefundedAmount => Money(tickets.refundedMinor, currency);
+  Money get ticketRefundedOrgAmount =>
+      Money(tickets.refundedOrgMinor, currency);
+  Money get ticketNetAmount => Money(tickets.netMinor, currency);
+  Money get ticketEstimatedProcessingAmount =>
+      Money(tickets.estimatedProcessingMinor, currency);
+}
+
+enum LedgerKind {
+  charge('charge'),
+  refund('refund'),
+  ticketSale('ticketSale'),
+  ticketFee('ticketFee'),
+  ticketRefund('ticketRefund'),
+  disputeHold('disputeHold'),
+  disputeRelease('disputeRelease'),
+  disputeLoss('disputeLoss'),
+  unknown('unknown');
+
+  const LedgerKind(this.wireValue);
+
+  final String wireValue;
+
+  static LedgerKind fromWire(Object? value) => switch (value) {
+    'charge' => LedgerKind.charge,
+    'refund' => LedgerKind.refund,
+    'ticketSale' => LedgerKind.ticketSale,
+    'ticketFee' => LedgerKind.ticketFee,
+    'ticketRefund' => LedgerKind.ticketRefund,
+    'disputeHold' => LedgerKind.disputeHold,
+    'disputeRelease' => LedgerKind.disputeRelease,
+    'disputeLoss' => LedgerKind.disputeLoss,
+    _ => LedgerKind.unknown,
+  };
+}
+
+enum FundsState {
+  pending('pending'),
+  available('available'),
+  paidOut('paidOut'),
+  reversed('reversed'),
+  unknown('unknown');
+
+  const FundsState(this.wireValue);
+
+  final String wireValue;
+
+  static FundsState fromWire(Object? value) => switch (value) {
+    'pending' => FundsState.pending,
+    'available' => FundsState.available,
+    'paidOut' => FundsState.paidOut,
+    'reversed' => FundsState.reversed,
+    _ => FundsState.unknown,
+  };
+}
+
+class FinanceTransaction {
+  const FinanceTransaction({
+    required this.id,
+    required this.kind,
+    required this.amountMinor,
+    required this.currency,
+    required this.fundsState,
+    required this.occurredAt,
+    required this.label,
+    this.bookingId,
+    this.ticketOrderId,
+    this.stripeRef,
+  });
+
+  final String id;
+  final LedgerKind kind;
+  final int amountMinor;
+  final String currency;
+  final FundsState fundsState;
+  final DateTime occurredAt;
+  final String label;
+  final String? bookingId;
+  final String? ticketOrderId;
+  final String? stripeRef;
+
+  factory FinanceTransaction.fromJson(Map<String, dynamic> json) =>
+      FinanceTransaction(
+        id: _marketplaceString(json['id']),
+        kind: LedgerKind.fromWire(json['kind']),
+        amountMinor: _marketplaceInt(json['amountMinor']),
+        currency: _marketplaceString(json['currency']),
+        fundsState: FundsState.fromWire(json['fundsState']),
+        occurredAt: _marketplaceDate(json['occurredAt']),
+        label: _marketplaceString(json['label']),
+        bookingId: _marketplaceOptionalString(json['bookingId']),
+        ticketOrderId: _marketplaceOptionalString(json['ticketOrderId']),
+        stripeRef: _marketplaceOptionalString(json['stripeRef']),
+      );
+
+  Money get amount => Money(amountMinor, currency);
+}
+
+class TransactionsPage {
+  const TransactionsPage({
+    required this.items,
+    required this.isDone,
+    required this.continueCursor,
+  });
+
+  final List<FinanceTransaction> items;
+  final bool isDone;
+  final String? continueCursor;
+
+  factory TransactionsPage.fromJson(Map<String, dynamic> json) =>
+      TransactionsPage(
+        items: [
+          for (final item in _marketplaceMapList(json['page'] ?? json['items']))
+            FinanceTransaction.fromJson(item),
+        ],
+        isDone: json['isDone'] == true,
+        continueCursor: _marketplaceOptionalString(json['continueCursor']),
+      );
+}
+
+class StatementExport {
+  const StatementExport({
+    required this.csv,
+    required this.rows,
+    required this.truncated,
+  });
+
+  final String csv;
+  final int rows;
+  final bool truncated;
+
+  factory StatementExport.fromJson(Map<String, dynamic> json) =>
+      StatementExport(
+        csv: _marketplaceString(json['csv']),
+        rows: _marketplaceInt(json['rows']),
+        truncated: json['truncated'] == true,
+      );
+}
+
+class InsightBucket {
+  const InsightBucket({
+    required this.key,
+    required this.events,
+    required this.checkIns,
+  });
+
+  final String key;
+  final int events;
+  final int checkIns;
+
+  factory InsightBucket.fromJson(Map<String, dynamic> json) => InsightBucket(
+    key: _marketplaceString(json['key']),
+    events: _marketplaceInt(json['events']),
+    checkIns: _marketplaceInt(json['checkIns']),
+  );
+}
+
+class InsightPartition {
+  const InsightPartition({required this.buckets, required this.suppressed});
+
+  final List<InsightBucket> buckets;
+  final bool suppressed;
+
+  factory InsightPartition.fromJson(Map<String, dynamic> json) =>
+      InsightPartition(
+        buckets: [
+          for (final item in _marketplaceMapList(json['buckets']))
+            InsightBucket.fromJson(item),
+        ],
+        suppressed: json['suppressed'] == true,
+      );
+}
+
+class Attribution {
+  const Attribution({
+    required this.referral,
+    required this.follow,
+    required this.unattributed,
+    required this.suppressed,
+  });
+
+  final int referral;
+  final int follow;
+  final int unattributed;
+  final bool suppressed;
+
+  factory Attribution.fromJson(Map<String, dynamic> json) => Attribution(
+    referral: _marketplaceInt(json['referral']),
+    follow: _marketplaceInt(json['follow']),
+    unattributed: _marketplaceInt(json['unattributed']),
+    suppressed: json['suppressed'] == true,
+  );
+}
+
+enum DrawConfidence {
+  low('low'),
+  medium('medium'),
+  high('high'),
+  unknown('unknown');
+
+  const DrawConfidence(this.wireValue);
+
+  final String wireValue;
+
+  static DrawConfidence fromWire(Object? value) => switch (value) {
+    'low' => DrawConfidence.low,
+    'medium' => DrawConfidence.medium,
+    'high' => DrawConfidence.high,
+    _ => DrawConfidence.unknown,
+  };
+}
+
+enum DrawBasis {
+  checkIns('checkIns'),
+  rsvps('rsvps'),
+  unknown('unknown');
+
+  const DrawBasis(this.wireValue);
+
+  final String wireValue;
+
+  static DrawBasis fromWire(Object? value) => switch (value) {
+    'checkIns' => DrawBasis.checkIns,
+    'rsvps' => DrawBasis.rsvps,
+    _ => DrawBasis.unknown,
+  };
+}
+
+class EstimatedDraw {
+  const EstimatedDraw({
+    required this.low,
+    required this.high,
+    required this.confidence,
+    required this.events,
+    required this.basis,
+  });
+
+  final int low;
+  final int high;
+  final DrawConfidence confidence;
+  final int events;
+  final DrawBasis basis;
+
+  factory EstimatedDraw.fromJson(Map<String, dynamic> json) => EstimatedDraw(
+    low: _marketplaceInt(json['low']),
+    high: _marketplaceInt(json['high']),
+    confidence: DrawConfidence.fromWire(json['confidence']),
+    events: _marketplaceInt(json['events']),
+    basis: DrawBasis.fromWire(json['basis']),
+  );
+}
+
+class InsightsWindow {
+  const InsightsWindow({
+    required this.events,
+    required this.truncated,
+    this.firstStartsAt,
+    this.lastStartsAt,
+  });
+
+  final int events;
+  final bool truncated;
+  final DateTime? firstStartsAt;
+  final DateTime? lastStartsAt;
+
+  factory InsightsWindow.fromJson(Map<String, dynamic> json) => InsightsWindow(
+    events: _marketplaceInt(json['events']),
+    truncated: json['truncated'] == true,
+    firstStartsAt: _marketplaceOptionalDate(json['firstStartsAt']),
+    lastStartsAt: _marketplaceOptionalDate(json['lastStartsAt']),
+  );
+}
+
+class InsightsBand {
+  const InsightsBand({required this.bandId, required this.name});
+
+  final String bandId;
+  final String name;
+
+  factory InsightsBand.fromJson(Map<String, dynamic> json) => InsightsBand(
+    bandId: _marketplaceString(json['bandId']),
+    name: _marketplaceString(json['name']),
+  );
+}
+
+class ArtistInsights {
+  const ArtistInsights({
+    required this.band,
+    required this.window,
+    required this.followers,
+    required this.rsvpTotal,
+    required this.ticketsSold,
+    required this.checkIns,
+    required this.returningAttendees,
+    required this.returningSuppressed,
+    required this.attribution,
+    required this.byArea,
+    required this.byVenueType,
+    required this.byWeekday,
+    required this.byPriceBand,
+    required this.estimatedDraw,
+  });
+
+  final InsightsBand band;
+  final InsightsWindow window;
+  final int followers;
+  final int rsvpTotal;
+  final int ticketsSold;
+  final int checkIns;
+  final int returningAttendees;
+  final bool returningSuppressed;
+  final Attribution attribution;
+  final InsightPartition byArea;
+  final InsightPartition byVenueType;
+  final InsightPartition byWeekday;
+  final InsightPartition byPriceBand;
+  final EstimatedDraw? estimatedDraw;
+
+  factory ArtistInsights.fromJson(Map<String, dynamic> json) => ArtistInsights(
+    band: InsightsBand.fromJson(_marketplaceMap(json['band'])),
+    window: InsightsWindow.fromJson(_marketplaceMap(json['window'])),
+    followers: _marketplaceInt(json['followers']),
+    rsvpTotal: _marketplaceInt(json['rsvpTotal']),
+    ticketsSold: _marketplaceInt(json['ticketsSold']),
+    checkIns: _marketplaceInt(json['checkIns']),
+    returningAttendees: _marketplaceInt(json['returningAttendees']),
+    returningSuppressed: json['returningSuppressed'] == true,
+    attribution: Attribution.fromJson(_marketplaceMap(json['attribution'])),
+    byArea: InsightPartition.fromJson(_marketplaceMap(json['byArea'])),
+    byVenueType: InsightPartition.fromJson(
+      _marketplaceMap(json['byVenueType']),
+    ),
+    byWeekday: InsightPartition.fromJson(_marketplaceMap(json['byWeekday'])),
+    byPriceBand: InsightPartition.fromJson(
+      _marketplaceMap(json['byPriceBand']),
+    ),
+    estimatedDraw: json['estimatedDraw'] is Map
+        ? EstimatedDraw.fromJson(_marketplaceMap(json['estimatedDraw']))
+        : null,
+  );
 }
 
 enum TicketDoorKind {

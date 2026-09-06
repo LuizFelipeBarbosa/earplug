@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:js_interop';
+import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
 
@@ -8,6 +11,28 @@ WebShell createWebShell() => _BrowserWebShell();
 
 class _BrowserWebShell implements WebShell {
   static const _a11yPreferenceKey = 'ep:a11y';
+
+  @override
+  void downloadTextFile(String filename, String text) {
+    final bytes = Uint8List.fromList(utf8.encode(text));
+    final blob = web.Blob(
+      <JSAny>[bytes.toJS].toJS,
+      web.BlobPropertyBag(type: 'text/csv'),
+    );
+    final objectUrl = web.URL.createObjectURL(blob);
+    final anchor = web.HTMLAnchorElement()
+      ..href = objectUrl
+      ..download = filename;
+    try {
+      web.document.body?.append(anchor);
+      anchor.click();
+    } finally {
+      anchor.remove();
+      Timer(const Duration(seconds: 60), () {
+        web.URL.revokeObjectURL(objectUrl);
+      });
+    }
+  }
 
   @override
   void removeSplash() {

@@ -120,6 +120,10 @@ terms in the Stripe dashboard; this repository does not configure that
 dashboard action. The payments flag defaults to false and blocks all
 non-`GET` Stripe API calls while disabled.
 
+Phase 4b's organizer finance balance refresh (`financeActions:refreshBalance`)
+calls Stripe's balance endpoint with `GET`, so it keeps working while
+`PAYMENTS_ENABLED` is false. Phase 4b introduces no new environment variables.
+
 ## Building
 
 ```sh

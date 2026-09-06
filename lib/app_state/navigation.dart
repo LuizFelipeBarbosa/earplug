@@ -111,6 +111,7 @@ mixin _NavigationState on _AppStateCore {
     replaceBrowserPath(_browserPathFor(s, null));
     _refreshVisibleBandDashboard();
     _onBandChanged();
+    _onOrganizationChanged();
     if (current.screen == Screen.explore) ensureExploreBands();
   }
 
@@ -122,6 +123,8 @@ mixin _NavigationState on _AppStateCore {
     Screen.opportunityDetail => '/opportunities/${param ?? ''}',
     Screen.bookingDetail => '/bookings/${param ?? ''}',
     Screen.orgApply => organizerApplyPath,
+    Screen.orgFinance => '/org/finance',
+    Screen.orgTransactions => '/org/finance/transactions',
     Screen.ticket => '/t/${param ?? ''}',
     Screen.myTickets => '/tickets',
     _ => '/',

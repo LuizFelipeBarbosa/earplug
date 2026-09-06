@@ -595,6 +595,84 @@ void main() {
       await _disposeApp(tester, harness.app);
     },
   );
+
+  testWidgets(
+    'ticket price and capacity stay editable on a confirmed paid opportunity, everything else is locked',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = _ConfirmedPaidOpportunityRepository(auth: auth);
+      final harness = await _pumpEditor(tester, auth, repository, 'opp1');
+
+      expect(_field(tester, 'opp-edit-title').enabled, isFalse);
+      await _reveal(tester, find.byKey(const Key('opp-edit-ticket-price')));
+      expect(_field(tester, 'opp-edit-ticket-price').enabled, isTrue);
+      expect(_field(tester, 'opp-edit-ticket-capacity').enabled, isTrue);
+      expect(
+        tester
+            .widget<EpChip>(find.byKey(const Key('opp-edit-ticketing-paid')))
+            .onTap,
+        isNull,
+      );
+      expect(
+        find.byKey(const Key('opp-edit-update-ticketing')),
+        findsOneWidget,
+      );
+      expect(find.byType(StickyActionBar), findsNothing);
+      await _disposeApp(tester, harness.app);
+    },
+  );
+
+  testWidgets(
+    'update ticketing submits the new price and capacity for the current revision',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = _ConfirmedPaidOpportunityRepository(auth: auth);
+      final harness = await _pumpEditor(tester, auth, repository, 'opp1');
+
+      await _enterText(tester, 'opp-edit-ticket-price', '30');
+      await _enterText(tester, 'opp-edit-ticket-capacity', '55');
+      await _tap(tester, 'opp-edit-update-ticketing');
+
+      expect(repository.lastTicketingUpdate, (
+        opportunityId: 'opp1',
+        expectedRevision: 1,
+        ticketPriceMinor: 3000,
+        ticketCapacity: 55,
+      ));
+      expect(find.text('Ticketing updated.'), findsOneWidget);
+      await _disposeApp(tester, harness.app);
+    },
+  );
+
+  testWidgets('update ticketing surfaces the server error', (tester) async {
+    final auth = FakeAuthService();
+    final repository = _ConfirmedPaidOpportunityRepository(
+      auth: auth,
+      failNextTicketingUpdate: true,
+    );
+    final harness = await _pumpEditor(tester, auth, repository, 'opp1');
+
+    await _tap(tester, 'opp-edit-update-ticketing');
+
+    expect(
+      find.text('Capacity cannot go below tickets already sold or held'),
+      findsOneWidget,
+    );
+    await _disposeApp(tester, harness.app);
+  });
+
+  testWidgets(
+    'a non-paid confirmed opportunity has no update-ticketing button',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = _BookingStatusRepository(auth: auth);
+      final harness = await _pumpEditor(tester, auth, repository, 'opp1');
+
+      await _reveal(tester, find.byKey(const Key('opp-edit-ticketing-paid')));
+      expect(find.byKey(const Key('opp-edit-update-ticketing')), findsNothing);
+      await _disposeApp(tester, harness.app);
+    },
+  );
 }
 
 Future<void> _disposeApp(WidgetTester tester, AppState app) async {
@@ -726,6 +804,139 @@ Future<void> _removeInvite(WidgetTester tester, String bandId) async {
     find.descendant(of: chip, matching: find.byIcon(Icons.close)),
   );
   await tester.pumpAndSettle();
+}
+
+class _ConfirmedPaidOpportunityRepository extends DemoRepository {
+  _ConfirmedPaidOpportunityRepository({
+    required super.auth,
+    this.failNextTicketingUpdate = false,
+  });
+
+  final bool failNextTicketingUpdate;
+  int _revision = 1;
+  ({
+    String opportunityId,
+    int expectedRevision,
+    int ticketPriceMinor,
+    int ticketCapacity,
+  })?
+  lastTicketingUpdate;
+
+  @override
+  Future<Opportunity?> opportunity(String opportunityId) async {
+    final existing = await super.opportunity(opportunityId);
+    if (existing == null || opportunityId != 'opp1') return existing;
+    return Opportunity(
+      id: existing.id,
+      organizationId: existing.organizationId,
+      mode: existing.mode,
+      venueId: existing.venueId,
+      venue: existing.venue,
+      title: existing.title,
+      desc: existing.desc,
+      eventType: existing.eventType,
+      expectedAttendance: existing.expectedAttendance,
+      genres: existing.genres,
+      startsAt: existing.startsAt,
+      doorsAt: existing.doorsAt,
+      endsAt: existing.endsAt,
+      ageRequirement: existing.ageRequirement,
+      equipment: existing.equipment,
+      requirements: existing.requirements,
+      flyKey: existing.flyKey,
+      flyerUrl: existing.flyerUrl,
+      applicationsCloseAt: existing.applicationsCloseAt,
+      visibility: existing.visibility,
+      ticketing: OpportunityTicketing.paid,
+      ticketPriceMinor: 2500,
+      ticketCapacity: 40,
+      ticketCurrency: 'usd',
+      externalUrl: existing.externalUrl,
+      status: OpportunityStatus.confirmed,
+      slug: existing.slug,
+      revision: _revision,
+      applicationCount: existing.applicationCount,
+      slots: existing.slots,
+      invitedBandIds: existing.invitedBandIds,
+      createdAt: existing.createdAt,
+      updatedAt: existing.updatedAt,
+      area: existing.area,
+      venueType: existing.venueType,
+      currency: existing.currency,
+    );
+  }
+
+  @override
+  Future<int> updateOpportunityTicketing({
+    required String opportunityId,
+    required int expectedRevision,
+    required int ticketPriceMinor,
+    required int ticketCapacity,
+  }) async {
+    if (failNextTicketingUpdate) {
+      throw Exception(
+        '[Request ID: abc123] Server Error\n'
+        'Uncaught Error: Capacity cannot go below tickets already sold or held\n'
+        ' at handler (../../convex/opportunities.ts:1:1)\n',
+      );
+    }
+    lastTicketingUpdate = (
+      opportunityId: opportunityId,
+      expectedRevision: expectedRevision,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
+    );
+    _revision++;
+    return _revision;
+  }
+}
+
+class _BookingStatusRepository extends DemoRepository {
+  _BookingStatusRepository({required super.auth});
+
+  @override
+  Future<Opportunity?> opportunity(String opportunityId) async {
+    final existing = await super.opportunity(opportunityId);
+    if (existing == null || opportunityId != 'opp1') return existing;
+    return Opportunity(
+      id: existing.id,
+      organizationId: existing.organizationId,
+      mode: existing.mode,
+      venueId: existing.venueId,
+      venue: existing.venue,
+      title: existing.title,
+      desc: existing.desc,
+      eventType: existing.eventType,
+      expectedAttendance: existing.expectedAttendance,
+      genres: existing.genres,
+      startsAt: existing.startsAt,
+      doorsAt: existing.doorsAt,
+      endsAt: existing.endsAt,
+      ageRequirement: existing.ageRequirement,
+      equipment: existing.equipment,
+      requirements: existing.requirements,
+      flyKey: existing.flyKey,
+      flyerUrl: existing.flyerUrl,
+      applicationsCloseAt: existing.applicationsCloseAt,
+      visibility: existing.visibility,
+      ticketing: existing.ticketing,
+      ticketPriceMinor: existing.ticketPriceMinor,
+      ticketCapacity: existing.ticketCapacity,
+      ticketCurrency: existing.ticketCurrency,
+      externalUrl: existing.externalUrl,
+      status: OpportunityStatus.booking,
+      slug: existing.slug,
+      revision: existing.revision,
+      applicationCount: existing.applicationCount,
+      slots: existing.slots,
+      invitedBandIds: existing.invitedBandIds,
+      createdAt: existing.createdAt,
+      updatedAt: existing.updatedAt,
+      area: existing.area,
+      venueType: existing.venueType,
+      currency: existing.currency,
+    );
+  }
 }
 
 class _StripeDisconnectedRepository extends DemoRepository {

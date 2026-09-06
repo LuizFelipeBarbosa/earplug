@@ -39,10 +39,12 @@ import 'screens/opportunity_edit.dart';
 import 'screens/org_application_status.dart';
 import 'screens/org_apply.dart';
 import 'screens/org_dash.dart';
+import 'screens/org_finance.dart';
 import 'screens/org_join.dart';
 import 'screens/org_opportunities.dart';
 import 'screens/org_settings.dart';
 import 'screens/org_team.dart';
+import 'screens/org_transactions.dart';
 import 'screens/org_venue_edit.dart';
 import 'screens/org_venues.dart';
 import 'screens/review_compose.dart';
@@ -773,6 +775,8 @@ class RootShell extends StatelessWidget {
       ),
       Screen.orgTeam => OrgTeamScreen(key: key),
       Screen.orgSettings => OrgSettingsScreen(key: key),
+      Screen.orgFinance => OrgFinanceScreen(key: key),
+      Screen.orgTransactions => OrgTransactionsScreen(key: key),
       Screen.orgOpportunities => OrgOpportunitiesScreen(key: key),
       Screen.opportunityEdit => OpportunityEditScreen(
         key: key,

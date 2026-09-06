@@ -67,6 +67,11 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     _ => false,
   };
 
+  bool get _ticketingEditable =>
+      (_status == OpportunityStatus.confirmed ||
+          _status == OpportunityStatus.booking) &&
+      _ticketing == OpportunityTicketing.paid;
+
   DateTime? _atTime(TimeOfDay time) {
     final date = _date;
     return date == null
@@ -446,6 +451,36 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     });
   }
 
+  Future<void> _updateTicketing() async {
+    if (_busy || !_ticketingEditable) return;
+    final needs = [
+      if (_ticketPriceError != null) 'ticket price',
+      if (_ticketCapacityError != null) 'ticket capacity',
+    ];
+    if (needs.isNotEmpty) {
+      _showNeeds(needs);
+      return;
+    }
+    await _mutate((app) async {
+      final dollars = double.tryParse(_ticketPrice.text.trim()) ?? 0;
+      final cents = dollars * 100;
+      final capacity = int.tryParse(_ticketCapacity.text.trim()) ?? 0;
+      await app.updateOpportunityTicketing(
+        opportunityId: _savedId!,
+        expectedRevision: _revision,
+        ticketPriceMinor: cents.isFinite ? cents.round() : 0,
+        ticketCapacity: capacity,
+      );
+      final fresh = await app.loadOpportunity(_savedId!, refresh: true);
+      if (!mounted) return;
+      setState(() {
+        if (fresh != null) _populate(fresh);
+        _success = 'Ticketing updated.';
+      });
+      revealFormFeedback(this, _scroll);
+    });
+  }
+
   Future<void> _transition() async {
     if (_savedId == null || !_editable || _busy) return;
     if (_status == OpportunityStatus.draft && _openNeeds.isNotEmpty) {
@@ -599,6 +634,8 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     final app = context.watch<AppState>();
     final canManage = app.canManageOrganization(app.organizationId);
     final enabled = canManage && _editable && !_busy;
+    final ticketFieldsEnabled =
+        enabled || (canManage && !_busy && _ticketingEditable);
     final draft = _status == OpportunityStatus.draft;
     final slotsEnabled = enabled && draft;
     final needs = _openNeeds;
@@ -842,7 +879,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                         hint: '25',
                         controller: _ticketPrice,
                         keyboardType: TextInputType.number,
-                        enabled: enabled,
+                        enabled: ticketFieldsEnabled,
                         onChanged: _textChanged,
                         errorText: _ticketPriceError,
                       ),
@@ -852,7 +889,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                         hint: '100',
                         controller: _ticketCapacity,
                         keyboardType: TextInputType.number,
-                        enabled: enabled,
+                        enabled: ticketFieldsEnabled,
                         onChanged: _textChanged,
                         errorText: _ticketCapacityError,
                       ),
@@ -862,6 +899,14 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       'Fans pay the EarPlug fee on top · you receive the ticket price minus Stripe processing',
                       style: Theme.of(context).textTheme.epCaption,
                     ),
+                    if (_ticketingEditable && canManage) ...[
+                      const SizedBox(height: 12),
+                      EpButton(
+                        'UPDATE TICKETING',
+                        key: const Key('opp-edit-update-ticketing'),
+                        onTap: _busy ? null : _updateTicketing,
+                      ),
+                    ],
                   ],
                   if (_ticketing == OpportunityTicketing.external) ...[
                     const SizedBox(height: EpLayout.fieldGap),

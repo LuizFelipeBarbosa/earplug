@@ -644,3 +644,871 @@ test("analytics:bandRecap returns the complete empty shape for a band with no pa
     },
   });
 });
+
+import type { Doc } from "./_generated/dataModel";
+import type { ArtistInsights } from "./analytics";
+
+const artistInsights = makeFunctionReference<
+  "query",
+  { applicationId: Id<"artistApplications"> },
+  ArtistInsights
+>("analytics:artistInsights");
+
+const myBandInsights = makeFunctionReference<
+  "query",
+  { bandId: Id<"bands"> },
+  ArtistInsights
+>("analytics:myBandInsights");
+
+async function insertInsightsOrganization(
+  setup: Setup,
+  ownerUserId: Id<"users">,
+  slug: string,
+) {
+  return await setup.t.run(async (ctx) => {
+    const organizationId = await ctx.db.insert("organizations", {
+      name: slug,
+      slug,
+      orgType: "promoter",
+      status: "verified",
+      ownerUserId,
+      createdAt: FIXTURE_START,
+      updatedAt: FIXTURE_START,
+    });
+    await ctx.db.insert("organizationMembers", {
+      organizationId,
+      userId: ownerUserId,
+      role: "owner",
+      createdAt: FIXTURE_START,
+    });
+    return organizationId;
+  });
+}
+
+async function setupInsightsApplication(setup: Setup) {
+  const asOrganizer = setup.t.withIdentity({
+    subject: "insights_organizer",
+    email: "organizer@insights.test",
+  });
+  const { userId: organizerId } = await asOrganizer.mutation(
+    api.users.ensureUser,
+    {},
+  );
+  const organizationId = await insertInsightsOrganization(
+    setup,
+    organizerId,
+    "insights-organizer",
+  );
+  const ids = await setup.t.run(async (ctx) => {
+    const opportunityId = await ctx.db.insert("talentOpportunities", {
+      organizationId,
+      mode: "publicEvent",
+      venueId: setup.venueId,
+      area: "Oakland",
+      title: "Local music night",
+      desc: "An evening of local music.",
+      genres: ["noise"],
+      startsAt: NOW + 14 * DAY_MS,
+      ageRequirement: "allAges",
+      flyKey: "paper",
+      applicationsCloseAt: NOW + 7 * DAY_MS,
+      visibility: "public",
+      ticketing: "rsvp",
+      currency: "usd",
+      status: "open",
+      slug: "local-music-night",
+      createdBy: organizerId,
+      revision: 1,
+      applicationCount: 1,
+      createdAt: FIXTURE_START,
+      updatedAt: FIXTURE_START,
+    });
+    const slotId = await ctx.db.insert("opportunitySlots", {
+      opportunityId,
+      order: 0,
+      role: "headliner",
+      guaranteeMinor: 5000,
+      required: true,
+      status: "open",
+    });
+    const applicationId = await ctx.db.insert("artistApplications", {
+      opportunityId,
+      slotId,
+      bandId: setup.bandId,
+      submittedBy: setup.userId,
+      message: "We are available",
+      status: "submitted",
+      createdAt: FIXTURE_START,
+      updatedAt: FIXTURE_START,
+    });
+    return { opportunityId, applicationId };
+  });
+  return { ...ids, organizationId, organizerId, asOrganizer };
+}
+
+async function insertCheckedInRsvps(
+  setup: Setup,
+  gigId: Id<"gigs">,
+  userIds: Id<"users">[],
+) {
+  await setup.t.run(async (ctx) => {
+    for (const userId of userIds) {
+      // Zero is a recorded check-in, not an absent timestamp.
+      await ctx.db.insert("gigRsvps", { gigId, userId, checkedInAt: 0 });
+    }
+  });
+}
+
+async function insertInsightsFollows(setup: Setup, userIds: Id<"users">[]) {
+  await setup.t.run(async (ctx) => {
+    for (const userId of userIds) {
+      await ctx.db.insert("follows", { bandId: setup.bandId, userId });
+    }
+  });
+}
+
+type InsightsOrderFixture = Pick<
+  Doc<"ticketOrders">,
+  "buyerUserId" | "quantity"
+> &
+  Partial<Pick<Doc<"ticketOrders">, "referralBandId" | "status">>;
+
+async function insertInsightsOrders(
+  setup: Setup,
+  gigId: Id<"gigs">,
+  organizationId: Id<"organizations">,
+  orders: InsightsOrderFixture[],
+) {
+  return await setup.t.run(async (ctx) => {
+    const inserted = [];
+    for (const order of orders) {
+      const status = order.status ?? "paid";
+      const orderId = await ctx.db.insert("ticketOrders", {
+        ...order,
+        gigId,
+        organizationId,
+        status,
+        unitPriceMinor: 2000,
+        unitFeeMinor: 0,
+        subtotalMinor: order.quantity * 2000,
+        feeMinor: 0,
+        totalMinor: order.quantity * 2000,
+        currency: "usd",
+        reservedUntil: FIXTURE_START + HOUR_MS,
+        attempt: 1,
+        refundedMinor: status === "refunded" ? order.quantity * 2000 : 0,
+        createdAt: FIXTURE_START,
+        updatedAt: FIXTURE_START,
+      });
+      inserted.push({ ...order, status, orderId });
+    }
+    return inserted;
+  });
+}
+
+async function insertInsightsTickets(
+  setup: Setup,
+  gigId: Id<"gigs">,
+  organizationId: Id<"organizations">,
+  tickets: Array<Pick<Doc<"tickets">, "orderId" | "holderUserId" | "status">>,
+) {
+  await setup.t.run(async (ctx) => {
+    for (const [index, ticket] of tickets.entries()) {
+      await ctx.db.insert("tickets", {
+        ...ticket,
+        gigId,
+        organizationId,
+        token: `${ticket.orderId}-${index}`,
+        createdAt: FIXTURE_START,
+      });
+    }
+  });
+}
+
+async function queryBandInsights(setup: Setup) {
+  vi.setSystemTime(NOW);
+  return await setup.asMember.query(myBandInsights, { bandId: setup.bandId });
+}
+
+async function setupMixedArtistInsights() {
+  const setup = await setupMemberBand(81);
+  const application = await setupInsightsApplication(setup);
+  const fans = await insertFans(setup.t, 20, "insights_fan");
+  const oldestStartsAt = Date.UTC(2026, 6, 11, 4); // Friday in Pacific time.
+  const paidStartsAt = Date.UTC(2026, 6, 18, 4); // Friday in Pacific time.
+  const newestStartsAt = Date.UTC(2026, 6, 20, 4); // Sunday in Pacific time.
+  // Deliberately insert out of chronological order.
+  const newestGigId = await insertGig(setup, {
+    title: "Newest RSVP",
+    startsAt: newestStartsAt,
+  });
+  const paidGigId = await insertGig(setup, {
+    title: "Paid show",
+    startsAt: paidStartsAt,
+    price: 20,
+  });
+  const oldestGigId = await insertGig(setup, {
+    title: "Oldest RSVP",
+    startsAt: oldestStartsAt,
+  });
+  await setup.t.run(async (ctx) => {
+    await ctx.db.patch(setup.venueId, { venueType: "hall" });
+    const paidVenueId = await ctx.db.insert("venues", {
+      name: "Private paid venue",
+      area: "San Francisco",
+      venueType: "club",
+      addr: "2 Test Way",
+      distSF: "1 mi",
+      distOak: "6 mi",
+      lat: 37.77,
+      lng: -122.42,
+    });
+    await ctx.db.patch(paidGigId, {
+      venueId: paidVenueId,
+      ticketing: "paid",
+      ticketPriceMinor: 2000,
+    });
+  });
+  await insertCheckedInRsvps(setup, oldestGigId, fans.slice(0, 5));
+  await insertRsvps(setup.t, oldestGigId, fans.slice(15, 17));
+  await insertCheckedInRsvps(setup, newestGigId, [fans[0], ...fans.slice(7, 12)]);
+  await insertRsvps(setup.t, newestGigId, fans.slice(15, 18));
+  await insertCheckedInRsvps(setup, paidGigId, [fans[0], fans[6]]);
+  await insertRsvps(setup.t, paidGigId, [fans[19]]);
+
+  // Referral buyers also follow: their referral must take precedence.
+  await insertInsightsFollows(setup, fans.slice(0, 10));
+  const referralOrders = fans.slice(0, 5).map((buyerUserId, index) => ({
+    buyerUserId,
+    quantity: (index % 3) + 1,
+    referralBandId: setup.bandId,
+  }));
+  const followOrders = fans.slice(5, 10).map((buyerUserId, index) => ({
+    buyerUserId,
+    quantity: ((index + 1) % 3) + 1,
+  }));
+  const unattributedOrders = fans.slice(10, 15).map((buyerUserId, index) => ({
+    buyerUserId,
+    quantity: ((index + 2) % 3) + 1,
+  }));
+  const orders = await insertInsightsOrders(
+    setup,
+    paidGigId,
+    application.organizationId,
+    [...referralOrders, ...followOrders, ...unattributedOrders],
+  );
+  await insertInsightsTickets(
+    setup,
+    paidGigId,
+    application.organizationId,
+    orders.flatMap((order, buyerIndex) =>
+      Array.from({ length: order.quantity }, (_, ticketIndex) => ({
+        orderId: order.orderId,
+        holderUserId: order.buyerUserId,
+        // Two used tickets for one buyer must count that fan only once.
+        status:
+          buyerIndex < 6 && (ticketIndex === 0 || buyerIndex === 1)
+            ? ("used" as const)
+            : ("valid" as const),
+      })),
+    ),
+  );
+  for (const status of ["refunded", "cancelled"] as const) {
+    const [order] = await insertInsightsOrders(
+      setup,
+      paidGigId,
+      application.organizationId,
+      [{ buyerUserId: fans[18], quantity: 2, status }],
+    );
+    await insertInsightsTickets(
+      setup,
+      paidGigId,
+      application.organizationId,
+      Array.from({ length: order.quantity }, () => ({
+        orderId: order.orderId,
+        holderUserId: order.buyerUserId,
+        status,
+      })),
+    );
+  }
+  return {
+    ...setup,
+    ...application,
+    fans,
+    gigIds: [oldestGigId, paidGigId, newestGigId],
+    oldestStartsAt,
+    newestStartsAt,
+    referralOrders,
+    followOrders,
+    unattributedOrders,
+  };
+}
+
+describe("analytics:artistInsights aggregates", () => {
+  test("both audiences receive identical aggregates without events or user ids", async () => {
+    const setup = await setupMixedArtistInsights();
+    const bandResult = await queryBandInsights(setup);
+    const organizerResult = await setup.asOrganizer.query(artistInsights, {
+      applicationId: setup.applicationId,
+    });
+    const referral = setup.referralOrders.reduce(
+      (sum, row) => sum + row.quantity,
+      0,
+    );
+    const follow = setup.followOrders.reduce((sum, row) => sum + row.quantity, 0);
+    const unattributed = setup.unattributedOrders.reduce(
+      (sum, row) => sum + row.quantity,
+      0,
+    );
+    // Fans 0–4 return; fans 5–11 attend once. Both groups clear the floor.
+    expect(organizerResult).toEqual(bandResult);
+    expect(organizerResult).toEqual({
+      band: { bandId: setup.bandId, name: "Private Signals" },
+      window: {
+        events: 3,
+        truncated: false,
+        firstStartsAt: setup.oldestStartsAt,
+        lastStartsAt: setup.newestStartsAt,
+      },
+      followers: 81,
+      rsvpTotal: 7 + 9 + 3,
+      ticketsSold: referral + follow + unattributed,
+      checkIns: 5 + 7 + 6,
+      returningAttendees: 5,
+      returningSuppressed: false,
+      attribution: { referral, follow, unattributed, suppressed: false },
+      byArea: {
+        buckets: [
+          { key: "Oakland", events: 2, checkIns: 11 },
+          { key: "San Francisco", events: 1, checkIns: 7 },
+        ],
+        suppressed: false,
+      },
+      byVenueType: {
+        buckets: [
+          { key: "hall", events: 2, checkIns: 11 },
+          { key: "club", events: 1, checkIns: 7 },
+        ],
+        suppressed: false,
+      },
+      byWeekday: {
+        buckets: [
+          { key: "Fri", events: 2, checkIns: 12 },
+          { key: "Sun", events: 1, checkIns: 6 },
+        ],
+        suppressed: false,
+      },
+      byPriceBand: {
+        buckets: [
+          { key: "free", events: 2, checkIns: 11 },
+          { key: "from15to30", events: 1, checkIns: 7 },
+        ],
+        suppressed: false,
+      },
+      estimatedDraw: {
+        low: 5,
+        high: 7,
+        confidence: "medium",
+        events: 3,
+        basis: "checkIns",
+      },
+    });
+    const serialized = JSON.stringify(organizerResult);
+    for (const id of [
+      ...setup.fans,
+      ...setup.gigIds,
+      setup.organizerId,
+      setup.userId,
+    ]) {
+      expect(serialized).not.toContain(id);
+    }
+  });
+
+  test("suppresses a small area bucket while the other partitions remain publishable", async () => {
+    const setup = await setupMemberBand();
+    const fans = await insertFans(setup.t, 8, "small_area");
+    const largeGigId = await insertGig(setup, {
+      title: "Five fans",
+      startsAt: Date.UTC(2026, 6, 11, 4),
+    });
+    const smallGigId = await insertGig(setup, {
+      title: "Three fans",
+      startsAt: Date.UTC(2026, 6, 18, 4),
+    });
+    await setup.t.run(async (ctx) => {
+      await ctx.db.patch(setup.venueId, { venueType: "hall" });
+      const venueId = await ctx.db.insert("venues", {
+        name: "Small venue",
+        area: "Berkeley",
+        venueType: "hall",
+        addr: "3 Test Way",
+        distSF: "10 mi",
+        distOak: "3 mi",
+        lat: 37.87,
+        lng: -122.27,
+      });
+      await ctx.db.patch(smallGigId, { venueId });
+    });
+    await insertCheckedInRsvps(setup, largeGigId, fans.slice(0, 5));
+    await insertCheckedInRsvps(setup, smallGigId, fans.slice(5));
+    const result = await queryBandInsights(setup);
+    expect(result.byArea).toEqual({ buckets: [], suppressed: true });
+    for (const [partition, key] of [
+      [result.byVenueType, "hall"],
+      [result.byWeekday, "Fri"],
+      [result.byPriceBand, "free"],
+    ] as const) {
+      expect(partition).toEqual({
+        buckets: [{ key, events: 2, checkIns: 8 }],
+        suppressed: false,
+      });
+    }
+  });
+
+  test("ignores stray tickets and paid orders on an RSVP gig", async () => {
+    const setup = await setupMemberBand();
+    const organizationId = await insertInsightsOrganization(
+      setup,
+      setup.userId,
+      "rsvp-tickets",
+    );
+    const fans = await insertFans(setup.t, 6, "rsvp_ticket_fan");
+    const gigId = await insertGig(setup, {
+      title: "RSVP only",
+      startsAt: NOW - DAY_MS,
+    });
+    await insertCheckedInRsvps(setup, gigId, fans);
+    const orders = await insertInsightsOrders(
+      setup,
+      gigId,
+      organizationId,
+      fans.map((buyerUserId) => ({ buyerUserId, quantity: 1 })),
+    );
+    await insertInsightsTickets(setup, gigId, organizationId, [
+      {
+        orderId: orders[0].orderId,
+        holderUserId: fans[0],
+        status: "valid",
+      },
+    ]);
+
+    expect(await queryBandInsights(setup)).toMatchObject({
+      ticketsSold: 0,
+      rsvpTotal: 6,
+      checkIns: 6,
+      attribution: { referral: 0, follow: 0, unattributed: 0, suppressed: true },
+    });
+  });
+
+  test.each([
+    ["paid", 450],
+    ["paid", 0],
+    ["rsvp", 450],
+  ] as const)("uses %s inventory with sold=%i", async (ticketing, sold) => {
+    const setup = await setupMemberBand();
+    const organizationId = await insertInsightsOrganization(
+      setup,
+      setup.userId,
+      "inventory-totals",
+    );
+    const [buyerUserId] = await insertFans(setup.t, 1, "inventory_buyer");
+    const gigId = await insertGig(setup, {
+      title: "Inventory total",
+      startsAt: NOW - DAY_MS,
+    });
+    await setup.t.run(async (ctx) => {
+      await ctx.db.patch(gigId, { ticketing });
+      await ctx.db.insert("gigTicketInventory", {
+        gigId,
+        organizationId,
+        capacity: 500,
+        sold,
+        reserved: 0,
+        updatedAt: FIXTURE_START,
+      });
+    });
+    const [order] = await insertInsightsOrders(setup, gigId, organizationId, [
+      { buyerUserId, quantity: 1 },
+    ]);
+    await insertInsightsTickets(setup, gigId, organizationId, [
+      {
+        orderId: order.orderId,
+        holderUserId: buyerUserId,
+        status: "valid",
+      },
+    ]);
+
+    // Inventory wins over the ticket sample, including zero and totals above 300.
+    expect((await queryBandInsights(setup)).ticketsSold).toBe(sold);
+  });
+
+  test("attributes paid buyers by whether each follows this band", async () => {
+    const setup = await setupMemberBand();
+    const organizationId = await insertInsightsOrganization(
+      setup,
+      setup.userId,
+      "buyer-follows",
+    );
+    const buyers = await insertFans(setup.t, 12, "attribution_buyer");
+    const gigId = await insertGig(setup, {
+      title: "Paid buyers",
+      startsAt: NOW - DAY_MS,
+    });
+    await setup.t.run((ctx) => ctx.db.patch(gigId, { ticketing: "paid" }));
+    await insertInsightsFollows(setup, buyers.slice(0, 6));
+    await insertInsightsOrders(
+      setup,
+      gigId,
+      organizationId,
+      buyers.map((buyerUserId, index) => ({
+        buyerUserId,
+        quantity: index < 6 ? 2 : 3,
+      })),
+    );
+
+    // Regression intent: look up each buyer's follow instead of sampling 2,000
+    // band followers. Keep this fixture small; both buyer groups clear the floor.
+    expect((await queryBandInsights(setup)).attribution).toEqual({
+      referral: 0,
+      follow: 12,
+      unattributed: 18,
+      suppressed: false,
+    });
+  });
+
+  test("suppresses attribution based on distinct buyers despite repeated large orders", async () => {
+    const setup = await setupMixedArtistInsights();
+    // Fold the fifth guest into a repeat buyer, leaving four distinct guests
+    // and five each in referral/follow, despite large guest order quantities.
+    await setup.t.run(async (ctx) => {
+      const orders = await ctx.db
+        .query("ticketOrders")
+        .withIndex("by_gigId_and_status", (q) =>
+          q.eq("gigId", setup.gigIds[1]).eq("status", "paid"),
+        )
+        .take(500);
+      for (const order of orders) {
+        if (setup.fans.slice(10, 15).includes(order.buyerUserId)) {
+          await ctx.db.patch(order._id, {
+            quantity: 100,
+            buyerUserId:
+              order.buyerUserId === setup.fans[14]
+                ? setup.fans[10]
+                : order.buyerUserId,
+          });
+        }
+      }
+    });
+    expect((await queryBandInsights(setup)).attribution).toEqual({
+      referral: 0,
+      follow: 0,
+      unattributed: 0,
+      suppressed: true,
+    });
+  });
+
+  test.each([4, 5])(
+    "floors %i returning fans with no first-time fans",
+    async (count) => {
+      const setup = await setupMemberBand();
+      const fans = await insertFans(setup.t, count, `returning_${count}`);
+      for (const daysAgo of [1, 20, 10]) {
+        const gigId = await insertGig(setup, {
+          title: `Repeat ${daysAgo}`,
+          startsAt: NOW - daysAgo * DAY_MS,
+        });
+        await insertCheckedInRsvps(setup, gigId, fans);
+      }
+      const result = await queryBandInsights(setup);
+      expect(result.checkIns).toBe(count * 3);
+      expect(result.returningAttendees).toBe(count < 5 ? 0 : count);
+      expect(result.returningSuppressed).toBe(count < 5);
+    },
+  );
+
+  test.each([
+    { returningCount: 5, firstTimeCount: 1, suppressed: true },
+    { returningCount: 5, firstTimeCount: 4, suppressed: true },
+    { returningCount: 5, firstTimeCount: 5, suppressed: false },
+    { returningCount: 4, firstTimeCount: 5, suppressed: true },
+    { returningCount: 0, firstTimeCount: 5, suppressed: false },
+  ])(
+    "floors both groups for $returningCount returning and $firstTimeCount first-time fans",
+    async ({ returningCount, firstTimeCount, suppressed }) => {
+      const setup = await setupMemberBand();
+      const fans = await insertFans(
+        setup.t,
+        returningCount + firstTimeCount,
+        "returning_partition",
+      );
+      for (const daysAgo of [2, 1]) {
+        const gigId = await insertGig(setup, {
+          title: `Attendance ${daysAgo}`,
+          startsAt: NOW - daysAgo * DAY_MS,
+        });
+        await insertCheckedInRsvps(
+          setup,
+          gigId,
+          daysAgo === 2 ? fans.slice(0, returningCount) : fans,
+        );
+      }
+
+      expect(await queryBandInsights(setup)).toMatchObject({
+        checkIns: returningCount * 2 + firstTimeCount,
+        returningAttendees: suppressed ? 0 : returningCount,
+        returningSuppressed: suppressed,
+      });
+    },
+  );
+
+  test("estimates from RSVPs when every event has zero check-ins", async () => {
+    const setup = await setupMemberBand();
+    const fans = await insertFans(setup.t, 10, "rsvp_draw");
+    for (const [index, count] of [6, 10].entries()) {
+      const gigId = await insertGig(setup, {
+        title: `RSVP only ${index}`,
+        startsAt: NOW - (index + 1) * DAY_MS,
+      });
+      await insertRsvps(setup.t, gigId, fans.slice(0, count));
+    }
+    expect(await queryBandInsights(setup)).toMatchObject({
+      rsvpTotal: 16,
+      ticketsSold: 0,
+      checkIns: 0,
+      returningAttendees: 0,
+      returningSuppressed: true,
+      estimatedDraw: {
+        low: 7,
+        high: 9,
+        confidence: "low",
+        events: 2,
+        basis: "rsvps",
+      },
+    });
+  });
+
+  test("keeps zero-attendance events in the check-in draw and publishes unknown venue buckets", async () => {
+    const setup = await setupMemberBand();
+    const fans = await insertFans(setup.t, 5, "unknown_venue");
+    const gigId = await insertGig(setup, {
+      title: "Attended",
+      startsAt: NOW - 10 * DAY_MS,
+    });
+    await insertCheckedInRsvps(setup, gigId, fans);
+    await insertGig(setup, {
+      title: "No attendance",
+      startsAt: NOW - DAY_MS,
+    });
+    await setup.t.run((ctx) => ctx.db.delete(setup.venueId));
+    const result = await queryBandInsights(setup);
+    for (const partition of [result.byArea, result.byVenueType]) {
+      expect(partition).toEqual({
+        buckets: [{ key: "unknown", events: 2, checkIns: 5 }],
+        suppressed: false,
+      });
+    }
+    expect(result.estimatedDraw).toEqual({
+      low: 1,
+      high: 4,
+      confidence: "low",
+      events: 2,
+      basis: "checkIns",
+    });
+  });
+});
+
+describe("analytics:artistInsights window", () => {
+  // Mirrors computeArtistInsights's private MAX_INSIGHT_GIGS = 15.
+  test.each([15, 16])(
+    "analyzes the newest capped window from %i past gigs",
+    async (count) => {
+      const setup = await setupMemberBand();
+      const [fan] = await insertFans(setup.t, 1, "window_fan");
+      for (let index = 0; index < count; index++) {
+        const gigId = await insertGig(setup, {
+          title: `Past ${index}`,
+          startsAt: NOW - (index + 1) * DAY_MS,
+        });
+        await insertRsvps(setup.t, gigId, [fan]);
+      }
+      const futureGigId = await insertGig(setup, {
+        title: "Future",
+        startsAt: NOW + DAY_MS,
+      });
+      await insertRsvps(setup.t, futureGigId, [fan]);
+      const result = await queryBandInsights(setup);
+      expect(result.window).toEqual({
+        events: 15,
+        truncated: count > 15,
+        firstStartsAt: NOW - 15 * DAY_MS,
+        lastStartsAt: NOW - DAY_MS,
+      });
+      expect(result.rsvpTotal).toBe(15);
+    },
+  );
+
+  test("returns zero totals and optional dates with no past events", async () => {
+    const setup = await setupMemberBand(81);
+    const result = await queryBandInsights(setup);
+    expect(result).toMatchObject({
+      band: { bandId: setup.bandId, name: "Private Signals" },
+      window: { events: 0, truncated: false },
+      followers: 81,
+      rsvpTotal: 0,
+      ticketsSold: 0,
+      checkIns: 0,
+      returningAttendees: 0,
+      returningSuppressed: true,
+      estimatedDraw: null,
+    });
+    expect(result.window.firstStartsAt).toBeUndefined();
+    expect(result.window.lastStartsAt).toBeUndefined();
+    for (const partition of [
+      result.byArea,
+      result.byVenueType,
+      result.byWeekday,
+      result.byPriceBand,
+    ]) {
+      expect(partition.buckets).toEqual([]);
+    }
+  });
+});
+
+describe("analytics:artistInsights authorization", () => {
+  test.each(["declined", "withdrawn", "expired"] as const)(
+    "refuses a closed %s application after checking authorization",
+    async (status) => {
+      const setup = await setupMemberBand();
+      const application = await setupInsightsApplication(setup);
+      await setup.t.run((ctx) =>
+        ctx.db.patch(application.applicationId, { status }),
+      );
+      const args = { applicationId: application.applicationId };
+      await expect(
+        application.asOrganizer.query(artistInsights, args),
+      ).rejects.toThrow("This application is closed");
+      await expect(setup.asMember.query(artistInsights, args)).rejects.toThrow(
+        "Not permitted for this organization",
+      );
+      await expect(setup.t.query(artistInsights, args)).rejects.toThrow(
+        "Not signed in",
+      );
+    },
+  );
+
+  test.each(["under_review", "shortlisted", "offered", "booked"] as const)(
+    "allows an active %s application",
+    async (status) => {
+      const setup = await setupMemberBand();
+      const application = await setupInsightsApplication(setup);
+      await setup.t.run((ctx) =>
+        ctx.db.patch(application.applicationId, { status }),
+      );
+      vi.setSystemTime(NOW);
+      const result = await application.asOrganizer.query(artistInsights, {
+        applicationId: application.applicationId,
+      });
+      expect(result.band.bandId).toBe(setup.bandId);
+    },
+  );
+
+  test.each(["owner", "manager"] as const)(
+    "allows the opportunity organization's %s",
+    async (role) => {
+      const setup = await setupMemberBand();
+      const application = await setupInsightsApplication(setup);
+      const asReviewer = setup.t.withIdentity({ subject: `reviewer_${role}` });
+      const { userId } = await asReviewer.mutation(api.users.ensureUser, {});
+      await setup.t.run((ctx) =>
+        ctx.db.insert("organizationMembers", {
+          organizationId: application.organizationId,
+          userId,
+          role,
+          createdAt: FIXTURE_START,
+        }),
+      );
+      vi.setSystemTime(NOW);
+      const result = await asReviewer.query(artistInsights, {
+        applicationId: application.applicationId,
+      });
+      expect(result.band.bandId).toBe(setup.bandId);
+    },
+  );
+
+  test("refuses another organization's owner and an unauthenticated caller", async () => {
+    const setup = await setupMemberBand();
+    const application = await setupInsightsApplication(setup);
+    const asOtherOwner = setup.t.withIdentity({ subject: "other_org_owner" });
+    const { userId } = await asOtherOwner.mutation(api.users.ensureUser, {});
+    await insertInsightsOrganization(setup, userId, "other-organization");
+    const args = { applicationId: application.applicationId };
+    await expect(asOtherOwner.query(artistInsights, args)).rejects.toThrow(
+      "Not permitted for this organization",
+    );
+    await expect(setup.t.query(artistInsights, args)).rejects.toThrow(
+      "Not signed in",
+    );
+  });
+
+  test.each(["finance", "door"] as const)(
+    "refuses an opportunity organization's %s member",
+    async (role) => {
+      const setup = await setupMemberBand();
+      const application = await setupInsightsApplication(setup);
+      await setup.t.run((ctx) =>
+        ctx.db.insert("organizationMembers", {
+          organizationId: application.organizationId,
+          userId: setup.userId,
+          role,
+          createdAt: FIXTURE_START,
+        }),
+      );
+      await expect(
+        setup.asMember.query(artistInsights, {
+          applicationId: application.applicationId,
+        }),
+      ).rejects.toThrow("Not permitted for this organization");
+    },
+  );
+
+  test.each([
+    ["application", "Application not found"],
+    ["opportunity", "Opportunity not found"],
+    ["band", "Band not found"],
+  ] as const)("reports a missing %s", async (missing, message) => {
+    const setup = await setupMemberBand();
+    const application = await setupInsightsApplication(setup);
+    const id =
+      missing === "application"
+        ? application.applicationId
+        : missing === "opportunity"
+          ? application.opportunityId
+          : setup.bandId;
+    await setup.t.run((ctx) => ctx.db.delete(id));
+    await expect(
+      application.asOrganizer.query(artistInsights, {
+        applicationId: application.applicationId,
+      }),
+    ).rejects.toThrow(message);
+  });
+});
+
+describe("analytics:myBandInsights authorization", () => {
+  test("allows a band member", async () => {
+    const setup = await setupMemberBand();
+    expect((await queryBandInsights(setup)).band.bandId).toBe(setup.bandId);
+  });
+
+  test("refuses a signed-in stranger and an unauthenticated caller", async () => {
+    const setup = await setupMemberBand();
+    const asStranger = setup.t.withIdentity({ subject: "insights_stranger" });
+    await asStranger.mutation(api.users.ensureUser, {});
+    const args = { bandId: setup.bandId };
+    await expect(asStranger.query(myBandInsights, args)).rejects.toThrow(
+      "Not a member of this band",
+    );
+    await expect(setup.t.query(myBandInsights, args)).rejects.toThrow(
+      "Not signed in",
+    );
+  });
+});

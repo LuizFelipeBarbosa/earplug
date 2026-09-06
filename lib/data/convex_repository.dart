@@ -1638,23 +1638,25 @@ class ConvexRepository implements EarplugRepository {
     String? message,
     List<OfferInstallmentInput>? installments,
   }) async {
-    final dynamic decoded = await _convexService
-        .mutation('bookings:sendOffer', {
-          'applicationId': applicationId,
-          'grossMinor': grossMinor,
-          'cancellationTemplate': cancellationTemplate.wireValue,
-          'termsNotes': ?termsNotes,
-          'message': ?message,
-          if (installments != null && installments.isNotEmpty)
-            'installments': [
-              for (final i in installments)
-                {
-                  'label': i.label,
-                  'amountMinor': i.amountMinor,
-                  'dueAfterAcceptanceDays': i.dueAfterAcceptanceDays,
-                },
-            ],
-        });
+    final dynamic decoded = await _convexService.mutation(
+      'bookings:sendOffer',
+      {
+        'applicationId': applicationId,
+        'grossMinor': grossMinor,
+        'cancellationTemplate': cancellationTemplate.wireValue,
+        'termsNotes': ?termsNotes,
+        'message': ?message,
+        if (installments != null && installments.isNotEmpty)
+          'installments': [
+            for (final i in installments)
+              {
+                'label': i.label,
+                'amountMinor': i.amountMinor,
+                'dueAfterAcceptanceDays': i.dueAfterAcceptanceDays,
+              },
+          ],
+      },
+    );
     if (decoded is String) throw Exception(decoded);
     if (decoded is! Map) {
       throw Exception('Unexpected sendOffer response: $decoded');
@@ -1732,6 +1734,84 @@ class ConvexRepository implements EarplugRepository {
           }),
         ),
       );
+
+  @override
+  Future<FinanceOverview> financeOverview(String organizationId) async {
+    final result = await _convexService.query('finance:overview', {
+      'organizationId': organizationId,
+    });
+    return FinanceOverview.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<TransactionsPage> financeTransactions(
+    String organizationId, {
+    required int numItems,
+    String? cursor,
+  }) async {
+    final result = await _convexService.query('finance:transactions', {
+      'organizationId': organizationId,
+      'paginationOpts': {'numItems': numItems, 'cursor': cursor},
+    });
+    return TransactionsPage.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<FinanceSnapshot?> refreshFinanceBalance(String organizationId) async {
+    final decoded = await _convexService.action(
+      'financeActions:refreshBalance',
+      {'organizationId': organizationId},
+    );
+    return decoded == null ? null : FinanceSnapshot.fromJson(_asMap(decoded));
+  }
+
+  @override
+  Future<StatementExport> exportStatement(
+    String organizationId, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final result = await _convexService
+        .action('financeActions:exportStatement', {
+          'organizationId': organizationId,
+          'fromMs': from.millisecondsSinceEpoch,
+          'toMs': to.millisecondsSinceEpoch,
+        });
+    return StatementExport.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<ArtistInsights> artistInsights(String applicationId) async {
+    final result = await _convexService.query('analytics:artistInsights', {
+      'applicationId': applicationId,
+    });
+    return ArtistInsights.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<ArtistInsights> myBandInsights(String bandId) async {
+    final result = await _convexService.query('analytics:myBandInsights', {
+      'bandId': bandId,
+    });
+    return ArtistInsights.fromJson(_asMap(result));
+  }
+
+  @override
+  Future<int> updateOpportunityTicketing({
+    required String opportunityId,
+    required int expectedRevision,
+    required int ticketPriceMinor,
+    required int ticketCapacity,
+  }) async {
+    final result = await _convexService
+        .mutation('talentOpportunities:updateTicketing', {
+          'opportunityId': opportunityId,
+          'expectedRevision': expectedRevision,
+          'ticketPriceMinor': ticketPriceMinor,
+          'ticketCapacity': ticketCapacity,
+        });
+    return _revisionFrom(result);
+  }
 
   @override
   Future<StripeAccountStatus> organizationStripeStatus(

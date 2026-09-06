@@ -829,6 +829,86 @@ void main() {
     });
   }
 
+  testWidgets(
+    'applicant insights expander renders numbers for a non-suppressed band',
+    (tester) async {
+      final harness = await _pumpOrganizerScreen(
+        tester,
+        const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+        repositoryBuilder: (auth) => _ApplicantInsightsRepository(auth: auth),
+      );
+      final toggle = find.byKey(const ValueKey('applicant-app1-insights'));
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      final panel = find.byKey(const ValueKey('applicant-app1-insights-panel'));
+      for (final text in [
+        'EVENTS',
+        '8',
+        'CHECK-INS',
+        '180',
+        'TICKETS SOLD',
+        '96',
+        'FOLLOWERS',
+        '486',
+        'Returning attendees: 42',
+        'Estimated draw: 20–30 · medium confidence · based on check-ins',
+        'Top area: Mission, SF',
+        'Top venue type: bar',
+        'Ticket buyers: referral 30 · followers 20 · other 46',
+      ]) {
+        expect(
+          find.descendant(of: panel, matching: find.text(text)),
+          findsOneWidget,
+        );
+      }
+      expectNoFieldInCard(tester);
+      harness.app.dispose();
+    },
+  );
+
+  testWidgets(
+    'applicant insights expander shows suppressed and no-history states',
+    (tester) async {
+      final harness = await _pumpOrganizerScreen(
+        tester,
+        const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+        repositoryBuilder: (auth) => _ApplicantInsightsRepository(auth: auth),
+      );
+      final toggle = find.byKey(const ValueKey('applicant-app2-insights'));
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      final panel = find.byKey(const ValueKey('applicant-app2-insights-panel'));
+      for (final text in [
+        'Returning attendees: not enough data',
+        'Estimated draw: No history yet',
+        'Top area: not enough data',
+        'Top venue type: not enough data',
+      ]) {
+        expect(
+          find.descendant(of: panel, matching: find.text(text)),
+          findsOneWidget,
+        );
+      }
+      expect(
+        find.descendant(
+          of: panel,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Text &&
+                (widget.data?.startsWith('Ticket buyers:') ?? false),
+          ),
+        ),
+        findsNothing,
+      );
+      expectNoFieldInCard(tester);
+      harness.app.dispose();
+    },
+  );
+
   for (final screen in const [
     OrgOpportunitiesScreen(),
     OpportunityApplicantsScreen(opportunityId: 'opp1'),
@@ -897,6 +977,87 @@ Future<AppHarness> _pumpOrganizerScreen(
   await enterOrganizer(tester, harness, 'org1');
   return harness;
 }
+
+class _ApplicantInsightsRepository extends DemoRepository {
+  _ApplicantInsightsRepository({required super.auth});
+
+  @override
+  Future<ArtistInsights> artistInsights(String applicationId) async {
+    if (applicationId == 'app1') return _nonSuppressedApplicantInsights;
+    return _suppressedApplicantInsights;
+  }
+}
+
+const _nonSuppressedApplicantInsights = ArtistInsights(
+  band: InsightsBand(bandId: 'b1', name: 'Foghorn Diet'),
+  window: InsightsWindow(events: 8, truncated: false),
+  followers: 486,
+  rsvpTotal: 240,
+  ticketsSold: 96,
+  checkIns: 180,
+  returningAttendees: 42,
+  returningSuppressed: false,
+  attribution: Attribution(
+    referral: 30,
+    follow: 20,
+    unattributed: 46,
+    suppressed: false,
+  ),
+  byArea: InsightPartition(
+    buckets: [
+      InsightBucket(key: 'Mission, SF', events: 5, checkIns: 120),
+      InsightBucket(key: 'Temescal, Oakland', events: 3, checkIns: 60),
+    ],
+    suppressed: false,
+  ),
+  byVenueType: InsightPartition(
+    buckets: [
+      InsightBucket(key: 'bar', events: 6, checkIns: 140),
+      InsightBucket(key: 'club', events: 2, checkIns: 40),
+    ],
+    suppressed: false,
+  ),
+  byWeekday: InsightPartition(
+    buckets: [InsightBucket(key: '5', events: 8, checkIns: 180)],
+    suppressed: false,
+  ),
+  byPriceBand: InsightPartition(
+    buckets: [
+      InsightBucket(key: 'under20', events: 5, checkIns: 100),
+      InsightBucket(key: '20Plus', events: 3, checkIns: 80),
+    ],
+    suppressed: false,
+  ),
+  estimatedDraw: EstimatedDraw(
+    low: 20,
+    high: 30,
+    confidence: DrawConfidence.medium,
+    events: 8,
+    basis: DrawBasis.checkIns,
+  ),
+);
+
+const _suppressedApplicantInsights = ArtistInsights(
+  band: InsightsBand(bandId: 'b2', name: 'Pigeon Court'),
+  window: InsightsWindow(events: 3, truncated: false),
+  followers: 1214,
+  rsvpTotal: 40,
+  ticketsSold: 10,
+  checkIns: 22,
+  returningAttendees: 0,
+  returningSuppressed: true,
+  attribution: Attribution(
+    referral: 0,
+    follow: 0,
+    unattributed: 0,
+    suppressed: true,
+  ),
+  byArea: InsightPartition(buckets: [], suppressed: true),
+  byVenueType: InsightPartition(buckets: [], suppressed: true),
+  byWeekday: InsightPartition(buckets: [], suppressed: true),
+  byPriceBand: InsightPartition(buckets: [], suppressed: true),
+  estimatedDraw: null,
+);
 
 class _PublishedOpportunityRepository extends DemoRepository {
   _PublishedOpportunityRepository({

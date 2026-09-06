@@ -739,6 +739,15 @@ export default defineSchema({
     .index("by_ticketOrderId", ["ticketOrderId"])
     .index("by_idempotencyKey", ["idempotencyKey"]),
 
+  financeSnapshots: defineTable({
+    organizationId: v.id("organizations"),
+    stripeAccountId: v.string(),
+    availableMinor: v.number(),
+    pendingMinor: v.number(),
+    currency: v.string(),
+    fetchedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
   gigTicketInventory: defineTable({
     gigId: v.id("gigs"),
     organizationId: v.id("organizations"),
@@ -774,6 +783,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_gigId_and_status", ["gigId", "status"])
+    .index("by_organizationId_and_status", ["organizationId", "status"])
     .index("by_buyerUserId_and_createdAt", ["buyerUserId", "createdAt"])
     .index("by_stripeCheckoutSessionId", ["stripeCheckoutSessionId"])
     .index("by_status_and_reservedUntil", ["status", "reservedUntil"])
