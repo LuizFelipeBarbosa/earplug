@@ -129,7 +129,7 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
                   slotRoleLabel(widget.slot.role),
                   style: textTheme.epCaption,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'GUARANTEE (DOLLARS)',
                   hint: 'Offer guarantee in whole dollars',
@@ -177,7 +177,7 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
                   _cancellationTemplate.description,
                   style: textTheme.epCaption,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'NOTES',
                   hint: 'Optional booking terms',
@@ -188,7 +188,7 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
                   maxLines: 5,
                   maxLength: 2000,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'MESSAGE TO THE BAND',
                   hint: 'Optional message for the band',

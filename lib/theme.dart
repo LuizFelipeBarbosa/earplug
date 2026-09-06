@@ -53,6 +53,9 @@ abstract final class EpLayout {
   static const workspaceWidth = 1120.0;
   static const cardRadius = 16.0;
   static const controlRadius = 12.0;
+  static const fieldGap = 20.0;
+  static const formSectionGap = 32.0;
+  static const inputHeight = 56.0;
 
   static bool isDesktop(BuildContext context) =>
       MediaQuery.sizeOf(context).width >= desktopBreakpoint;
@@ -243,7 +246,7 @@ extension EpBuildContext on BuildContext {
   EpPalette get epColors => Theme.of(this).extension<EpPalette>()!;
 }
 
-/// The six supported text roles.
+/// Semantic text roles for shared interface components.
 ///
 /// Access these from [ThemeData.textTheme] so application typography follows
 /// the active theme, for example `Theme.of(context).textTheme.epBody`.
@@ -254,6 +257,7 @@ extension EpTextTheme on TextTheme {
   TextStyle get epSectionHeading => titleLarge!;
   TextStyle get epSection => titleMedium!;
   TextStyle get epBody => bodyMedium!;
+  TextStyle get epInput => bodyLarge!;
   TextStyle get epLabel => labelLarge!;
   TextStyle get epChipLabel => labelMedium!;
   TextStyle get epMeta => labelSmall!;
@@ -331,6 +335,13 @@ TextTheme _epTextTheme(EpPalette palette) {
       color: palette.contentPrimary,
       letterSpacing: 1.3,
       height: 1.2,
+    ),
+    bodyLarge: TextStyle(
+      fontFamily: 'Archivo',
+      fontSize: 16,
+      fontWeight: FontWeight.w400,
+      color: palette.contentPrimary,
+      height: 1.5,
     ),
     bodyMedium: TextStyle(
       fontFamily: 'Archivo',
@@ -500,28 +511,31 @@ ThemeData buildEpTheme([Brightness brightness = Brightness.dark]) {
       filled: true,
       fillColor: palette.surface,
       isDense: true,
-      constraints: const BoxConstraints(minHeight: 48),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      hintStyle: textTheme.epBody.copyWith(color: palette.contentDisabled),
+      constraints: const BoxConstraints(minHeight: EpLayout.inputHeight),
+      contentPadding: const EdgeInsets.all(16),
+      hintStyle: textTheme.epInput.copyWith(color: palette.contentDisabled),
       labelStyle: textTheme.epLabel.copyWith(color: palette.contentSecondary),
+      alignLabelWithHint: true,
+      errorMaxLines: 3,
+      helperMaxLines: 3,
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(EpLayout.controlRadius),
         borderSide: BorderSide(color: palette.border),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(EpLayout.controlRadius),
         borderSide: BorderSide(color: palette.accent, width: 2),
       ),
       disabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(EpLayout.controlRadius),
         borderSide: BorderSide(color: palette.surfaceDisabled),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(EpLayout.controlRadius),
         borderSide: BorderSide(color: palette.destructive),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(EpLayout.controlRadius),
         borderSide: BorderSide(color: palette.destructive, width: 2),
       ),
     ),

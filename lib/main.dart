@@ -691,46 +691,49 @@ class RootShell extends StatelessWidget {
             constraints: BoxConstraints(
               maxWidth: desktop ? EpLayout.workspaceWidth : 600,
             ),
-            child: desktop
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 20,
-                      horizontal: 16,
+            // Keep the content in the same keyed subtree across breakpoints
+            // so a resize preserves form controllers, focus, and unsaved edits.
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                vertical: desktop ? 20 : 0,
+                horizontal: desktop ? 16 : 0,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (desktop) ...[
+                    EpDesktopSidebar(
+                      label: organizerNavigation
+                          ? 'ORGANIZER'
+                          : bandNavigation
+                          ? 'BAND WORKSPACE'
+                          : 'DISCOVER',
+                      navigation: organizerNavigation
+                          ? const OrganizerTabBar(vertical: true)
+                          : bandNavigation
+                          ? const BandTabBar(vertical: true)
+                          : const FanTabBar(vertical: true),
                     ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        EpDesktopSidebar(
-                          label: organizerNavigation
-                              ? 'ORGANIZER'
-                              : bandNavigation
-                              ? 'BAND WORKSPACE'
-                              : 'DISCOVER',
-                          navigation: organizerNavigation
-                              ? const OrganizerTabBar(vertical: true)
-                              : bandNavigation
-                              ? const BandTabBar(vertical: true)
-                              : const FanTabBar(vertical: true),
-                        ),
-                        const SizedBox(width: 32),
-                        Expanded(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(21),
-                              border: Border.all(
-                                color: context.epColors.border,
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(1),
-                              child: page,
-                            ),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 32),
+                  ],
+                  Expanded(
+                    key: const ValueKey('workspace-content'),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(desktop ? 21 : 0),
+                        border: desktop
+                            ? Border.all(color: context.epColors.border)
+                            : null,
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(desktop ? 1 : 0),
+                        child: page,
+                      ),
                     ),
-                  )
-                : page,
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

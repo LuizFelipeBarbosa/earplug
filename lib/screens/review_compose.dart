@@ -129,7 +129,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                     '${Gig.dateShortFor(booking.startsAt.millisecondsSinceEpoch)}',
                     style: Theme.of(context).textTheme.epBody,
                   ),
-                  const SectionBar(label: 'RATING'),
+                  const SectionBar.form(label: 'RATING'),
                   Row(
                     children: [
                       for (var rating = 1; rating <= 5; rating++)
@@ -154,7 +154,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                         ),
                     ],
                   ),
-                  const SectionBar(label: 'CATEGORIES'),
+                  const SectionBar.form(label: 'CATEGORIES'),
                   Wrap(
                     spacing: 7,
                     runSpacing: 7,
@@ -175,7 +175,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
                         ),
                     ],
                   ),
-                  const SectionBar(label: 'REVIEW'),
+                  const SectionBar.form(label: 'REVIEW'),
                   EpLabeledField(
                     fieldKey: const ValueKey('review-text'),
                     label: 'REVIEW',

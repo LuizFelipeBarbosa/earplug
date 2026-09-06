@@ -194,14 +194,14 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
                   actionBarClearance(context) + 58,
                 ),
                 children: [
-                  _NameCard(controller: _cardName, focusNode: _cardFocus),
+                  _GigNameField(controller: _cardName, focusNode: _cardFocus),
                   const SizedBox(height: 18),
                   const _SlotGrid(),
-                  SectionBar(label: 'Lineup', count: form.performerCount),
+                  SectionBar.form(label: 'Lineup', count: form.performerCount),
                   const _LineupField(),
-                  const SectionBar(label: 'Poster'),
+                  const SectionBar.form(label: 'Poster'),
                   const _FlyerStudio(),
-                  const SectionBar(label: 'Additional information'),
+                  const SectionBar.form(label: 'Additional information'),
                   const _AdditionalInfoField(),
                 ],
               ),
@@ -655,46 +655,25 @@ class _OverlayToggle extends StatelessWidget {
   }
 }
 
-// ============================ form cards ============================
+// ============================ form controls ============================
 
-class _NameCard extends StatelessWidget {
+class _GigNameField extends StatelessWidget {
   final TextEditingController controller;
   final FocusNode focusNode;
 
-  const _NameCard({required this.controller, required this.focusNode});
+  const _GigNameField({required this.controller, required this.focusNode});
 
   @override
   Widget build(BuildContext context) {
     final app = context.read<AppState>();
-    final filled = context.select<AppState, bool>(
-      (app) => app.gfName.trim().isNotEmpty,
-    );
-    return EpCard(
-      variant: EpCardVariant.raised,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SlotTag(
-            filled ? 'YOUR GIG NAME ✓' : 'YOUR GIG NAME · REQUIRED',
-            filled ? context.epColors.success : context.epColors.warning,
-          ),
-          const SizedBox(height: 5),
-          TextField(
-            controller: controller,
-            focusNode: focusNode,
-            onChanged: app.setGfName,
-            style: epDisplay(size: 18),
-            decoration: epCollapsedInputDecoration(
-              'Riptide Release Show',
-              hintStyle: epDisplay(
-                size: 18,
-                color: context.epColors.contentDisabled,
-              ),
-            ),
-          ),
-        ],
-      ),
+    return EpLabeledField(
+      controller: controller,
+      focusNode: focusNode,
+      label: 'GIG NAME',
+      hint: 'Riptide Release Show',
+      required: true,
+      onChanged: app.setGfName,
+      textCapitalization: TextCapitalization.words,
     );
   }
 }
@@ -1033,7 +1012,7 @@ class _AddPerformerBodyState extends State<_AddPerformerBody> {
         TextField(
           controller: _search,
           onChanged: _runSearch,
-          decoration: sheetInput(context, 'Search EarPlug bands'),
+          decoration: epInputDecoration(context, 'Search EarPlug bands'),
         ),
         const SizedBox(height: 8),
         SizedBox(
@@ -1062,11 +1041,13 @@ class _AddPerformerBodyState extends State<_AddPerformerBody> {
           ),
         ),
         Divider(),
-        TextField(
+        EpLabeledField(
           controller: _name,
-          decoration: sheetInput(context, 'Unlisted band or performer name'),
+          label: 'PERFORMER NAME',
+          hint: 'Unlisted band or performer name',
+          textCapitalization: TextCapitalization.words,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: EpLayout.fieldGap),
         Row(
           children: [
             Expanded(
@@ -1125,16 +1106,15 @@ class _AdditionalInfoFieldState extends State<_AdditionalInfoField> {
   }
 
   @override
-  Widget build(BuildContext context) => TextField(
+  Widget build(BuildContext context) => EpLabeledField(
     controller: _controller,
     focusNode: _focusNode,
     minLines: 4,
     maxLines: 7,
     onChanged: context.read<AppState>().setGfDescription,
-    decoration: sheetInput(
-      context,
-      'Accessibility, set times, parking, or anything fans should know',
-    ),
+    label: 'NOTES FOR FANS',
+    hint: 'Accessibility, set times, parking, or anything fans should know',
+    textCapitalization: TextCapitalization.sentences,
   );
 }
 

@@ -395,17 +395,7 @@ class _PriceBodyState extends State<_PriceBody> {
           controller: _custom,
           hint: 'Other amount',
           unitLabel: 'AT THE DOOR',
-          prefix: Text(
-            '\$',
-            style: epDisplay(
-              size: 19,
-              color: context.epColors.contentSecondary,
-            ),
-          ),
-          fieldSpacing: 12,
-          fieldVerticalPadding: 8,
-          fontSize: 16,
-          unitSpacing: 8,
+          prefixText: '\$',
           onPreset: (price) {
             app.setGfPrice(price);
             Navigator.pop(context);
@@ -492,10 +482,6 @@ class _TicketsBodyState extends State<_TicketsBody> {
               controller: _cap,
               hint: 'Other cap',
               unitLabel: 'SPOTS',
-              fieldSpacing: 8,
-              fieldVerticalPadding: 6,
-              fontSize: 14,
-              unitSpacing: 0,
               onPreset: app.setGfCap,
               onCustomChanged: (value) {
                 final spots = int.tryParse(value) ?? 0;
@@ -513,17 +499,16 @@ class _TicketsBodyState extends State<_TicketsBody> {
         if (app.gfTix == Ticketing.external)
           Padding(
             padding: const EdgeInsets.only(top: 10),
-            child: TextField(
+            child: EpLabeledField(
               controller: _ext,
+              label: 'TICKET URL',
+              hint: 'https://…',
               keyboardType: TextInputType.url,
               onChanged: app.setGfExt,
-              style: epText(size: 12.5),
-              decoration: sheetInput(context, 'https://…').copyWith(
-                errorText:
-                    app.gfExt.trim().isNotEmpty && !app.validExternalTicketUrl
-                    ? 'Enter a complete HTTPS URL.'
-                    : null,
-              ),
+              errorText:
+                  app.gfExt.trim().isNotEmpty && !app.validExternalTicketUrl
+                  ? 'Enter a complete HTTPS URL.'
+                  : null,
             ),
           ),
         const SizedBox(height: 14),
@@ -535,9 +520,7 @@ class _TicketsBodyState extends State<_TicketsBody> {
 
 // ---------------------------- shared ----------------------------
 
-/// Preset chips over a digits-only field with a trailing unit label — the
-/// cover and RSVP-cap pickers. The field lights up while [value] is not one
-/// of the [presets].
+/// Preset chips followed by the shared text box for a custom cover or capacity.
 class _PresetNumberField extends StatelessWidget {
   const _PresetNumberField({
     required this.presets,
@@ -545,13 +528,9 @@ class _PresetNumberField extends StatelessWidget {
     required this.controller,
     required this.hint,
     required this.unitLabel,
-    required this.fieldSpacing,
-    required this.fieldVerticalPadding,
-    required this.fontSize,
-    required this.unitSpacing,
     required this.onPreset,
     required this.onCustomChanged,
-    this.prefix,
+    this.prefixText,
   });
 
   final List<String> presets;
@@ -560,18 +539,12 @@ class _PresetNumberField extends StatelessWidget {
   final String hint;
   final String unitLabel;
 
-  /// Leading widget inside the field, before the text — the cover's `$`.
-  final Widget? prefix;
-  final double fieldSpacing;
-  final double fieldVerticalPadding;
-  final double fontSize;
-  final double unitSpacing;
+  final String? prefixText;
   final ValueChanged<String> onPreset;
   final ValueChanged<String> onCustomChanged;
 
   @override
   Widget build(BuildContext context) {
-    final isCustom = !presets.contains(value);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -587,56 +560,15 @@ class _PresetNumberField extends StatelessWidget {
               ),
           ],
         ),
-        SizedBox(height: fieldSpacing),
-        Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: 13,
-            vertical: fieldVerticalPadding,
-          ),
-          decoration: BoxDecoration(
-            color: isCustom
-                ? context.epColors.surfaceSelected
-                : context.epColors.background,
-            border: isCustom
-                ? Border.all(color: context.epColors.accent, width: 1.5)
-                : Border.all(color: context.epColors.border),
-            borderRadius: BorderRadius.circular(11),
-          ),
-          child: Row(
-            children: [
-              if (prefix case final prefix?) ...[
-                prefix,
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  onChanged: onCustomChanged,
-                  style: epText(size: fontSize, weight: FontWeight.w800),
-                  decoration: epCollapsedInputDecoration(
-                    hint,
-                    hintStyle: epText(
-                      size: fontSize,
-                      weight: FontWeight.w800,
-                      color: context.epColors.contentDisabled,
-                    ),
-                  ),
-                ),
-              ),
-              if (unitSpacing > 0) SizedBox(width: unitSpacing),
-              Text(
-                unitLabel,
-                style: epText(
-                  size: 11,
-                  weight: FontWeight.w800,
-                  letterSpacing: .6,
-                  color: context.epColors.contentDisabled,
-                ),
-              ),
-            ],
-          ),
+        const SizedBox(height: EpLayout.fieldGap),
+        EpLabeledField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onChanged: onCustomChanged,
+          label: unitLabel,
+          hint: hint,
+          prefixText: prefixText,
         ),
       ],
     );

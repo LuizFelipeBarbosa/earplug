@@ -311,7 +311,6 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
           FormSection(
             title: 'Public profile',
             description: 'These details are visible to artists and fans.',
-            boxed: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -324,7 +323,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                   enabled: canManage,
                   onChanged: _draftChanged,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'ABOUT',
                   hint: 'About the organization',
@@ -335,7 +334,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                   maxLines: 6,
                   onChanged: _draftChanged,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'WEBSITE',
                   hint: 'https://',
@@ -351,7 +350,6 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
           FormSection(
             title: 'Photos',
             description: 'Add up to 10 photos of your organization.',
-            boxed: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -420,7 +418,6 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
             FormSection(
               title: 'Private details',
               description: 'Only EarPlug and your team see these.',
-              boxed: false,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -432,7 +429,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                     enabled: canManage,
                     onChanged: _draftChanged,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     label: 'BUSINESS EMAIL',
                     hint: 'name@example.com',
@@ -442,7 +439,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                     keyboardType: TextInputType.emailAddress,
                     onChanged: _draftChanged,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     label: 'CONTACT NAME',
                     hint: 'Primary contact',
@@ -451,7 +448,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                     enabled: canManage,
                     onChanged: _draftChanged,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     label: 'PHONE',
                     hint: 'Optional',
@@ -469,7 +466,6 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
               title: 'Stripe',
               description:
                   'Needed to sell tickets later; bookings are paid to EarPlug.',
-              boxed: false,
               child: Column(
                 key: const Key('org-settings-stripe'),
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -530,7 +526,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
               ),
             ),
           if (canManage) ...[
-            const SectionBar(label: 'DANGER ZONE'),
+            const SectionBar.form(label: 'DANGER ZONE'),
             EpCard(
               variant: EpCardVariant.raised,
               child: DangerZone(
@@ -626,7 +622,7 @@ class _DeactivateOrganizationDialogState
           const Text(
             'This removes the organization from active marketplace management.',
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: EpLayout.fieldGap),
           const Text('Type DEACTIVATE to confirm.'),
           const SizedBox(height: 8),
           TextField(

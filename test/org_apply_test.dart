@@ -531,7 +531,7 @@ void main() {
     repository.failNext = true;
     await tester.tap(find.text('CONTINUE'));
     await tester.pump();
-    expect(find.text('Saving…'), findsOneWidget);
+    expect(find.text('SAVING…'), findsOneWidget);
     expect(
       tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
       isNull,

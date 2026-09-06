@@ -629,29 +629,23 @@ class _FollowingSheetState extends State<_FollowingSheet> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(
-                  key: const Key('following-search-field'),
+                EpLabeledField(
+                  fieldKey: const Key('following-search-field'),
                   controller: _searchController,
+                  label: 'Search followed bands',
+                  hint: 'Search by name, genre, or home base',
                   onChanged: (value) => setState(() => _query = value),
                   textInputAction: TextInputAction.search,
                   autocorrect: false,
-                  decoration:
-                      epInputDecoration(
-                        context,
-                        'Search by name, genre, or home base',
-                      ).copyWith(
-                        labelText: 'Search followed bands',
-                        floatingLabelBehavior: FloatingLabelBehavior.always,
-                        prefixIcon: Icon(Icons.search),
-                        suffixIcon: normalizedQuery.isEmpty
-                            ? null
-                            : IconButton(
-                                key: const Key('clear-following-search'),
-                                tooltip: 'Clear Following search',
-                                onPressed: _clearSearch,
-                                icon: Icon(Icons.close),
-                              ),
-                      ),
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: normalizedQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          key: const Key('clear-following-search'),
+                          tooltip: 'Clear Following search',
+                          onPressed: _clearSearch,
+                          icon: const Icon(Icons.close),
+                        ),
                 ),
                 const SizedBox(height: 10),
                 Expanded(

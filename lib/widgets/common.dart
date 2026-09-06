@@ -210,6 +210,16 @@ class SectionBar extends StatelessWidget {
     this.padding = const EdgeInsets.only(top: 20, bottom: 10),
   });
 
+  const SectionBar.form({
+    super.key,
+    required this.label,
+    this.count,
+    this.trailing,
+  }) : padding = const EdgeInsets.only(
+         top: EpLayout.formSectionGap,
+         bottom: 12,
+       );
+
   final String label;
   final int? count;
   final Widget? trailing;
@@ -1211,53 +1221,10 @@ class EpButton extends StatelessWidget {
   }
 }
 
-InputDecoration epInputDecoration(
-  BuildContext context,
-  String hint, {
-  Color? fillColor,
-  double horizontalPadding = 13,
-}) => InputDecoration(
-  hintText: hint,
-  filled: true,
-  fillColor: fillColor ?? context.epColors.surface,
-  isDense: true,
-  constraints: const BoxConstraints(minHeight: 48),
-  contentPadding: EdgeInsets.symmetric(
-    horizontal: horizontalPadding,
-    vertical: 14,
-  ),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: BorderSide(color: context.epColors.border),
-  ),
-  focusedBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(11),
-    borderSide: BorderSide(color: context.epColors.accent, width: 2),
-  ),
-);
-
-/// [epInputDecoration] with an always-floating [label] printed above it.
-InputDecoration labeledInputDecoration(
-  BuildContext context,
-  String label,
-  String hint,
-) => epInputDecoration(context, hint).copyWith(
-  labelText: label,
-  floatingLabelBehavior: FloatingLabelBehavior.always,
-);
-
-InputDecoration epCollapsedInputDecoration(
-  String hint, {
-  TextStyle? hintStyle,
-}) => InputDecoration.collapsed(hintText: hint, hintStyle: hintStyle).copyWith(
-  // InputDecorationTheme supplies state-specific outline borders even when
-  // InputDecoration.collapsed sets its fallback border to none.
-  enabledBorder: InputBorder.none,
-  focusedBorder: InputBorder.none,
-  disabledBorder: InputBorder.none,
-  errorBorder: InputBorder.none,
-  focusedErrorBorder: InputBorder.none,
-);
+/// Text boxes inherit their padding, surface, and all state borders from the
+/// shared theme, including when they appear in a dialog or sheet.
+InputDecoration epInputDecoration(BuildContext context, String hint) =>
+    InputDecoration(hintText: hint);
 
 /// Compact dashboard metric with a label, headline value, and caption.
 class EpStatCard extends StatelessWidget {

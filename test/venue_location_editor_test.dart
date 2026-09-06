@@ -108,6 +108,12 @@ void main() {
     await tester.enterText(address, 'First query');
     await tester.pump(const Duration(milliseconds: 300));
     expect(geocoding.queries, ['First query']);
+    // A pending search must leave space to keep editing the address.
+    final editable = find.descendant(
+      of: address,
+      matching: find.byType(EditableText),
+    );
+    expect(tester.getSize(editable).width, greaterThan(160));
 
     geocoding.gate = secondGate;
     await tester.enterText(address, 'Second query');

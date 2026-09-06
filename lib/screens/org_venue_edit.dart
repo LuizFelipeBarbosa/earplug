@@ -317,7 +317,6 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
             title: 'Public',
             description:
                 'These details appear anywhere EarPlug shows this venue.',
-            boxed: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -330,7 +329,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
                   enabled: canManage,
                   onChanged: _draftChanged,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'ABOUT',
                   hint: 'Tell artists and fans about the venue',
@@ -362,7 +361,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'CAPACITY',
                   hint: 'Optional',
@@ -379,7 +378,6 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
             title: 'Location',
             description:
                 'Fans see only the neighborhood until they hold a ticket.',
-            boxed: false,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -396,7 +394,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
                   initialCenter: _location.pin ?? venue.approx.centroid,
                   initialZoom: _location.pin == null ? 11.5 : 15,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'LOAD-IN NOTES',
                   hint: 'Entrances, stairs, parking, or access notes',
@@ -414,7 +412,6 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
             FormSection(
               title: 'Address disclosure',
               description: 'Control when the exact address becomes visible.',
-              boxed: false,
               child: SwitchRow(
                 key: const Key('org-venue-disclosure'),
                 label: 'Show exact address publicly',

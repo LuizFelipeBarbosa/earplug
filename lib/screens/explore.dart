@@ -69,7 +69,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 controller: _controller,
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) => _submitSearch(app),
-                style: Theme.of(context).textTheme.epBody,
+                style: Theme.of(context).textTheme.epInput,
                 decoration: epInputDecoration(context, 'Bands, venues, gigs…')
                     .copyWith(
                       suffixIcon: ValueListenableBuilder<TextEditingValue>(

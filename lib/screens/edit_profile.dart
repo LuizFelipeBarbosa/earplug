@@ -10,7 +10,6 @@ import '../models.dart';
 import '../services/location_service.dart';
 import '../services/media_picker.dart';
 import '../theme.dart';
-import '../widgets/band_identity_editor.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
@@ -375,13 +374,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ],
               ),
               Text(
-                'Shape the identity fans see while keeping your scene and preferences private.',
+                'Update your public profile and private music preferences.',
                 style: Theme.of(context).textTheme.epCaption,
               ),
-              const SectionBar(
-                label: 'Identity',
-                padding: EdgeInsets.only(top: 18, bottom: 12),
-              ),
+              const SectionBar.form(label: 'Identity'),
               ListenableBuilder(
                 listenable: Listenable.merge([_nameController]),
                 builder: (context, _) => _FanIdentityPreview(
@@ -392,8 +388,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   onEditAvatar: _saving ? null : _openAvatarOptions,
                 ),
               ),
-              const SizedBox(height: 16),
-              BandIdentityTextField(
+              const SizedBox(height: EpLayout.fieldGap),
+              EpLabeledField(
                 fieldKey: const Key('fan-name-field'),
                 label: 'DISPLAY NAME',
                 hint: 'Your name',
@@ -420,8 +416,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ),
                 ),
               ],
-              const SizedBox(height: 14),
-              BandIdentityTextField(
+              const SizedBox(height: EpLayout.fieldGap),
+              EpLabeledField(
                 fieldKey: const Key('fan-bio-field'),
                 label: 'ABOUT',
                 hint: 'A little about your taste in music',
@@ -432,7 +428,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 maxLength: 280,
                 onChanged: (_) {},
               ),
-              const SectionBar(label: 'Scene & Taste'),
+              const SectionBar.form(label: 'Scene & Taste'),
               _FanSelectionField(
                 key: const Key('fan-home-location-field'),
                 label: 'HOME LOCATION',
@@ -454,7 +450,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   onRecovery: _openLocationRecovery,
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: EpLayout.fieldGap),
               _FanSelectionField(
                 key: const Key('fan-favorite-genres-field'),
                 label: 'FAVORITE GENRES · ${_genres.length}',
@@ -479,7 +475,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   ],
                 ),
               ),
-              const SectionBar(label: 'Preferences'),
+              const SectionBar.form(label: 'Preferences'),
               SwitchRow(
                 key: const Key('location-personalization'),
                 label: 'Personalize with home location',
@@ -505,7 +501,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           setState(() => _followedBandUpdatesEnabled = value),
               ),
               if (_error case final error?) ...[
-                const SizedBox(height: 14),
+                const SizedBox(height: EpLayout.fieldGap),
                 Semantics(
                   liveRegion: true,
                   child: Text(
@@ -626,31 +622,22 @@ class _HomeLocationEditor extends StatelessWidget {
           textInputAction: TextInputAction.done,
           autofillHints: const [AutofillHints.addressCity],
           onSubmitted: (_) => focusNode.unfocus(),
-          decoration: InputDecoration(
-            hintText: 'Type a city or location',
-            hintStyle: Theme.of(context).textTheme.epBody.copyWith(
-              color: context.epColors.contentDisabled,
-            ),
-            prefixIcon: Icon(
-              Icons.location_city_outlined,
-              color: context.epColors.contentSecondary,
-              size: 20,
-            ),
-            suffixIcon: query.isEmpty
-                ? null
-                : IconButton(
-                    key: const Key('clear-home-location'),
-                    tooltip: 'Clear home location',
-                    onPressed: enabled ? onClear : null,
-                    icon: Icon(Icons.close, size: 18),
-                  ),
-            filled: false,
-            border: InputBorder.none,
-            enabledBorder: InputBorder.none,
-            focusedBorder: InputBorder.none,
-            disabledBorder: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 15),
-          ),
+          decoration: epInputDecoration(context, 'Type a city or location')
+              .copyWith(
+                prefixIcon: Icon(
+                  Icons.location_city_outlined,
+                  color: context.epColors.contentSecondary,
+                  size: 20,
+                ),
+                suffixIcon: query.isEmpty
+                    ? null
+                    : IconButton(
+                        key: const Key('clear-home-location'),
+                        tooltip: 'Clear home location',
+                        onPressed: enabled ? onClear : null,
+                        icon: Icon(Icons.close, size: 18),
+                      ),
+              ),
         ),
         if (suggestions.isNotEmpty)
           DecoratedBox(
@@ -909,31 +896,17 @@ class _FanSelectionField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: context.epColors.surface,
-        border: Border.all(color: context.epColors.border),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              color: context.epColors.contentSecondary,
-              letterSpacing: 1.1,
-            ),
-          ),
-          if (caption case final caption?) ...[
-            const SizedBox(height: 5),
-            Text(caption, style: Theme.of(context).textTheme.epCaption),
-          ],
-          const SizedBox(height: 10),
-          child,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FieldLabel(label),
+        if (caption case final caption?) ...[
+          const SizedBox(height: 5),
+          Text(caption, style: Theme.of(context).textTheme.epCaption),
         ],
-      ),
+        const SizedBox(height: 10),
+        child,
+      ],
     );
   }
 }

@@ -10,6 +10,7 @@ import '../theme.dart';
 import 'common.dart';
 import 'ep_map.dart';
 import 'ep_sheet.dart';
+import 'form_bits.dart';
 import 'sheets.dart';
 
 class VenueLocationDraft {
@@ -401,30 +402,30 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.showNameField) ...[
-          TextField(
-            key: Key('${widget.keyPrefix}-name'),
+          EpLabeledField(
+            fieldKey: Key('${widget.keyPrefix}-name'),
             controller: _name,
             enabled: widget.enabled,
             maxLength: 120,
-            decoration: labeledInputDecoration(
-              context,
-              'VENUE NAME · REQUIRED',
-              "The room's name",
-            ),
+            label: 'VENUE NAME',
+            required: true,
+            hint: "The room's name",
+            textCapitalization: TextCapitalization.words,
             onChanged: (name) => _emit(_draft.copyWith(name: name)),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: EpLayout.fieldGap),
         ],
-        TextField(
-          key: Key('${widget.keyPrefix}-address'),
+        EpLabeledField(
+          fieldKey: Key('${widget.keyPrefix}-address'),
           controller: _address,
           enabled: widget.enabled,
           maxLength: 240,
-          decoration: labeledInputDecoration(
-            context,
-            'STREET ADDRESS · REQUIRED',
-            'Start typing the address',
-          ).copyWith(suffixIcon: _addressSuffix()),
+          label: 'STREET ADDRESS',
+          required: true,
+          hint: 'Start typing the address',
+          suffixIcon: _addressSuffix(),
+          keyboardType: TextInputType.streetAddress,
+          textCapitalization: TextCapitalization.words,
           onChanged: _onAddressChanged,
         ),
         if (_suggestions.isNotEmpty) ...[
@@ -531,10 +532,13 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
 
   Widget? _addressSuffix() {
     if (_loading) {
-      return const Center(
-        child: SizedBox.square(
-          dimension: 16,
-          child: CircularProgressIndicator(strokeWidth: 2),
+      return const SizedBox(
+        width: 48,
+        child: Center(
+          child: SizedBox.square(
+            dimension: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
         ),
       );
     }
