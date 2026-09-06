@@ -198,7 +198,12 @@ class _BookingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final approxLabel = booking.venue.approxLabel;
+    final approxLabel =
+        booking.venue?.approxLabel ?? booking.privateLocation?.area;
+    final locationName =
+        booking.venue?.name ??
+        booking.privateLocation?.label ??
+        'Private event';
     return EpCard(
       onTap: onTap,
       child: Row(
@@ -217,8 +222,8 @@ class _BookingCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   approxLabel == null || approxLabel.isEmpty
-                      ? booking.venue.name
-                      : '${booking.venue.name} · $approxLabel',
+                      ? locationName
+                      : '$locationName · $approxLabel',
                   style: textTheme.epMeta,
                 ),
                 Text(slotRoleLabel(booking.slotRole), style: textTheme.epMeta),

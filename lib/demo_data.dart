@@ -77,7 +77,33 @@ abstract final class DemoData {
     ),
   };
 
+  static final privateLocations = <String, PrivateLocation>{
+    'private-location-org2': PrivateLocation(
+      id: 'private-location-org2',
+      organizationId: 'org2',
+      label: "Jordan's courtyard",
+      addr: '120 Demo Lane, San Francisco',
+      city: 'San Francisco',
+      area: 'Mission District',
+      lat: 37.7599,
+      lng: -122.4148,
+      notes: 'Use the side gate for load-in.',
+      createdAt: DateTime(2025, 6, 1),
+      updatedAt: DateTime(2025, 6, 1),
+    ),
+  };
+
   static final organizations = <String, Organization>{
+    'org2': Organization(
+      id: 'org2',
+      slug: 'jordan-host',
+      name: 'Jordan (host)',
+      orgType: OrganizationType.privateHost,
+      status: OrganizationStatus.verified,
+      verified: true,
+      photoUrls: const [],
+      createdAt: DateTime(2025, 6, 1),
+    ),
     'org1': Organization(
       id: 'org1',
       slug: 'the-foghorn-club',
@@ -177,6 +203,16 @@ abstract final class DemoData {
       );
 
   static final opportunitySlots = <String, List<OpportunitySlot>>{
+    'opp-private': [
+      OpportunitySlot(
+        id: 'opp-private-headliner',
+        order: 0,
+        role: SlotRole.headliner,
+        guaranteeMinor: 25000,
+        required: true,
+        status: SlotStatus.open,
+      ),
+    ],
     'opp1': [
       OpportunitySlot(
         id: 'opp1-headliner',
@@ -219,6 +255,33 @@ abstract final class DemoData {
 
   /// Upcoming bookings and deadlines stay useful whenever the demo is opened.
   static final opportunities = <String, Opportunity>{
+    'opp-private': Opportunity(
+      id: 'opp-private',
+      organizationId: 'org2',
+      mode: OpportunityMode.privateBooking,
+      privateEvent: true,
+      privateLocationId: 'private-location-org2',
+      title: 'Courtyard birthday set',
+      desc: 'A relaxed evening of live music for friends and family.',
+      genres: List<String>.of(bands['b1']!.genres),
+      startsAt: _demoStartsAt(30, 18),
+      ageRequirement: AgeRequirement.allAges,
+      flyKey: 'xerox',
+      applicationsCloseAt: _demoStartsAt(23, 18),
+      visibility: OpportunityVisibility.publicListing,
+      ticketing: OpportunityTicketing.none,
+      status: OpportunityStatus.open,
+      slug: 'courtyard-birthday-set',
+      revision: 1,
+      applicationCount: 0,
+      slots: opportunitySlots['opp-private']!,
+      invitedBandIds: const [],
+      createdAt: _demoToday.subtract(const Duration(days: 1)),
+      updatedAt: _demoToday.subtract(const Duration(days: 1)),
+      area: privateLocations['private-location-org2']!.area,
+      venueType: VenueType.private,
+      currency: 'usd',
+    ),
     'opp1': Opportunity(
       id: 'opp1',
       organizationId: 'org1',

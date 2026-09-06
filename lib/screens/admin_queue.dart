@@ -11,6 +11,7 @@ String organizationTypeLabel(OrganizationType type) => switch (type) {
   OrganizationType.venueOperator => 'Venue operator',
   OrganizationType.promoter => 'Promoter',
   OrganizationType.studentOrg => 'Student org',
+  OrganizationType.privateHost => 'Private host',
   OrganizationType.other => 'Other',
 };
 

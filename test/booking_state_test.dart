@@ -660,6 +660,7 @@ class _ControlledBookingRepository extends DemoRepository {
     required String reason,
     required int expectedRevision,
     BookingSide? side,
+    bool? safety,
   }) async {
     cancelRequest = (
       bookingId: bookingId,

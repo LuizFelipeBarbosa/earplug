@@ -7,6 +7,400 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
 void main() {
+  group('private booking and safety models', () {
+    test('FeatureFlags defaults missing and malformed flags to false', () {
+      final enabled = FeatureFlags.fromJson({
+        'privateBookings': true,
+        'tickets': true,
+        'payments': true,
+        'bandGigWrites': true,
+      });
+      expect(enabled.privateBookings, isTrue);
+      expect(enabled.tickets, isTrue);
+      expect(enabled.payments, isTrue);
+      expect(enabled.bandGigWrites, isTrue);
+      for (final json in <Map<String, dynamic>>[
+        {},
+        {
+          'privateBookings': 'true',
+          'tickets': 1,
+          'payments': null,
+          'bandGigWrites': <Object?>[],
+        },
+      ]) {
+        final flags = FeatureFlags.fromJson(json);
+        expect(flags.privateBookings, isFalse);
+        expect(flags.tickets, isFalse);
+        expect(flags.payments, isFalse);
+        expect(flags.bandGigWrites, isFalse);
+      }
+    });
+
+    test(
+      'PrivateLocation parses coordinates, notes, and timestamps defensively',
+      () {
+        final location = PrivateLocation.fromJson({
+          '_id': 'location-1',
+          'organizationId': 'org2',
+          'label': 'Courtyard',
+          'addr': '120 Demo Lane',
+          'city': 'San Francisco',
+          'area': 'Mission',
+          'lat': 37.75,
+          'lng': -122,
+          'notes': 'Side gate',
+          'createdAt': 1800000000000.0,
+          'updatedAt': 1800000001000,
+        });
+        expect(location.id, 'location-1');
+        expect(location.organizationId, 'org2');
+        expect(location.label, 'Courtyard');
+        expect(location.addr, '120 Demo Lane');
+        expect(location.city, 'San Francisco');
+        expect(location.area, 'Mission');
+        expect(location.lat, 37.75);
+        expect(location.lng, -122.0);
+        expect(location.notes, 'Side gate');
+        expect(
+          location.createdAt,
+          DateTime.fromMillisecondsSinceEpoch(1800000000000),
+        );
+        expect(
+          location.updatedAt,
+          DateTime.fromMillisecondsSinceEpoch(1800000001000),
+        );
+        for (final json in <Map<String, dynamic>>[
+          {},
+          {
+            '_id': 7,
+            'lat': 'bad',
+            'lng': <Object?>[],
+            'notes': false,
+            'createdAt': 'bad',
+          },
+        ]) {
+          final empty = PrivateLocation.fromJson(json);
+          expect(empty.id, '');
+          expect(empty.lat, 0);
+          expect(empty.lng, 0);
+          expect(empty.notes, isNull);
+          expect(empty.createdAt, DateTime.fromMillisecondsSinceEpoch(0));
+        }
+      },
+    );
+
+    test('private wire enums round-trip and preserve unknown values', () {
+      for (final mode in OpportunityMode.values) {
+        expect(OpportunityMode.fromWire(mode.wireValue), mode);
+      }
+      for (final kind in ApplicationKind.values) {
+        expect(ApplicationKind.fromWire(kind.wireValue), kind);
+      }
+      for (final kind in CancellationKind.values) {
+        expect(CancellationKind.fromWire(kind.wireValue), kind);
+      }
+      for (final category in SafetyCategory.values) {
+        expect(SafetyCategory.fromWire(category.wireValue), category);
+      }
+      for (final value in ['future', null, 42, false, <String>[]]) {
+        expect(OpportunityMode.fromWire(value), OpportunityMode.unknown);
+        expect(ApplicationKind.fromWire(value), ApplicationKind.unknown);
+        expect(CancellationKind.fromWire(value), CancellationKind.unknown);
+        expect(SafetyCategory.fromWire(value), SafetyCategory.unknown);
+      }
+      expect(
+        OrganizationType.fromWire('privateHost'),
+        OrganizationType.privateHost,
+      );
+      expect(OrganizationType.privateHost.wireValue, 'privateHost');
+      expect(VenueType.fromWire('private'), VenueType.private);
+    });
+
+    test('Opportunity reads private requests with no public venue', () {
+      final opportunity = Opportunity.fromJson({
+        'mode': 'privateBooking',
+        'privateEvent': true,
+        'privateLocationId': 'location-1',
+        'venue': null,
+        'venueType': 'private',
+        'area': 'Mission',
+      });
+      expect(opportunity.mode, OpportunityMode.privateBooking);
+      expect(opportunity.privateEvent, isTrue);
+      expect(opportunity.privateLocationId, 'location-1');
+      expect(opportunity.venue, isNull);
+      expect(opportunity.venueType, VenueType.private);
+      expect(opportunity.area, 'Mission');
+      for (final json in <Map<String, dynamic>>[
+        {},
+        {'privateEvent': 'true', 'privateLocationId': 1},
+      ]) {
+        final empty = Opportunity.fromJson(json);
+        expect(empty.privateEvent, isFalse);
+        expect(empty.privateLocationId, isNull);
+        expect(empty.mode, OpportunityMode.unknown);
+      }
+    });
+
+    test('Booking parses withheld and disclosed private locations', () {
+      const areaOnly = {
+        'label': 'Courtyard',
+        'area': 'Mission',
+        'city': 'San Francisco',
+      };
+      for (final locationJson in [
+        areaOnly,
+        {...areaOnly, 'addr': null, 'lat': null, 'lng': null, 'notes': null},
+      ]) {
+        final booking = Booking.fromJson({
+          'venue': null,
+          'privateEvent': true,
+          'privateLocation': locationJson,
+        });
+        expect(booking.venue, isNull);
+        expect(booking.privateEvent, isTrue);
+        expect(booking.privateLocation!.label, 'Courtyard');
+        expect(booking.privateLocation!.area, 'Mission');
+        expect(booking.privateLocation!.city, 'San Francisco');
+        expect(booking.privateLocation!.addr, isNull);
+        expect(booking.privateLocation!.lat, isNull);
+        expect(booking.privateLocation!.lng, isNull);
+        expect(booking.privateLocation!.notes, isNull);
+        expect(booking.cancellationKind, isNull);
+      }
+      final disclosed = Booking.fromJson({
+        'privateEvent': true,
+        'privateLocation': {
+          ...areaOnly,
+          'addr': '120 Demo Lane',
+          'lat': 37.75,
+          'lng': -122,
+          'notes': 'Side gate',
+        },
+        'cancellationKind': 'safety',
+      });
+      expect(disclosed.privateLocation!.addr, '120 Demo Lane');
+      expect(disclosed.privateLocation!.lat, 37.75);
+      expect(disclosed.privateLocation!.lng, -122.0);
+      expect(disclosed.privateLocation!.notes, 'Side gate');
+      expect(disclosed.cancellationKind, CancellationKind.safety);
+      for (final value in ['future', 1]) {
+        expect(
+          Booking.fromJson({'cancellationKind': value}).cancellationKind,
+          CancellationKind.unknown,
+        );
+      }
+      for (final json in <Map<String, dynamic>>[
+        {},
+        {'venue': null, 'privateLocation': null},
+        {
+          'venue': false,
+          'privateLocation': <Object?>[],
+          'privateEvent': 'true',
+        },
+      ]) {
+        final empty = Booking.fromJson(json);
+        expect(empty.venue, isNull);
+        expect(empty.privateLocation, isNull);
+        expect(empty.privateEvent, isFalse);
+        expect(empty.cancellationKind, isNull);
+      }
+      final malformed = BookingPrivateLocation.fromJson({
+        'label': 7,
+        'addr': false,
+        'lat': 'bad',
+        'lng': <Object?>[],
+        'notes': 1,
+      });
+      expect(malformed.label, '');
+      expect(malformed.addr, isNull);
+      expect(malformed.lat, isNull);
+      expect(malformed.lng, isNull);
+      expect(malformed.notes, isNull);
+    });
+
+    test('host application fields and review rows parse optional kind', () {
+      const applicationJson = {
+        '_id': 'host-application',
+        'kind': 'host',
+        'orgType': 'privateHost',
+        'hostDisplayName': 'Jordan',
+        'hostPhone': '415-555-0100',
+        'hostArea': 'Mission',
+        'hostAgreementAcceptedAt': 1800000000000,
+      };
+      final application = OrganizationApplication.fromJson(applicationJson);
+      expect(application.kind, ApplicationKind.host);
+      expect(application.orgType, OrganizationType.privateHost);
+      expect(application.hostDisplayName, 'Jordan');
+      expect(application.hostPhone, '415-555-0100');
+      expect(application.hostArea, 'Mission');
+      expect(
+        application.hostAgreementAcceptedAt,
+        DateTime.fromMillisecondsSinceEpoch(1800000000000),
+      );
+      final row = AdminApplicationRow.fromJson({
+        'kind': 'host',
+        'application': applicationJson,
+      });
+      expect(row.kind, ApplicationKind.host);
+      expect(row.application.kind, ApplicationKind.host);
+      expect(
+        AdminApplicationRow.fromJson({'kind': 'future'}).kind,
+        ApplicationKind.unknown,
+      );
+      expect(AdminApplicationRow.fromJson({}).kind, isNull);
+      for (final json in <Map<String, dynamic>>[
+        {},
+        {
+          'kind': null,
+          'hostDisplayName': 7,
+          'hostPhone': false,
+          'hostArea': <Object?>[],
+          'hostAgreementAcceptedAt': 'bad',
+        },
+      ]) {
+        final empty = OrganizationApplication.fromJson(json);
+        expect(empty.kind, isNull);
+        expect(empty.hostDisplayName, isNull);
+        expect(empty.hostPhone, isNull);
+        expect(empty.hostArea, isNull);
+        expect(empty.hostAgreementAcceptedAt, isNull);
+      }
+      expect(
+        OrganizationApplication.fromJson({'kind': 'future'}).kind,
+        ApplicationKind.unknown,
+      );
+    });
+
+    test('AdminOverview retains existing counts and adds host counts', () {
+      final overview = AdminOverview.fromJson({
+        'counts': {'submittedApplications': 9},
+        'hostApplications': {
+          'submitted': 2.0,
+          'under_review': 3,
+          'needs_info': 4,
+        },
+      });
+      expect(overview.submitted, 9);
+      expect(overview.hostApplications.submitted, 2);
+      expect(overview.hostApplications.underReview, 3);
+      expect(overview.hostApplications.needsInfo, 4);
+      for (final json in <Map<String, dynamic>>[
+        {},
+        {'hostApplications': false},
+        {
+          'hostApplications': {
+            'submitted': '2',
+            'under_review': null,
+            'needs_info': <Object?>[],
+          },
+        },
+      ]) {
+        final counts = AdminOverview.fromJson(json).hostApplications;
+        expect(counts.submitted, 0);
+        expect(counts.underReview, 0);
+        expect(counts.needsInfo, 0);
+      }
+    });
+
+    test('safety reports, admin rows, and pages use defensive parsing', () {
+      const reportJson = {
+        'reportId': 'report-1',
+        'bookingId': 'booking-1',
+        'category': 'harassment',
+        'text': 'Please investigate.',
+        'createdAt': 1800000000000,
+        'status': 'resolved',
+        'reporterUserId': 'user-1',
+        'reporterSide': 'artist',
+        'resolvedAt': 1800000001000,
+        'adminNote': 'Reviewed',
+      };
+      final report = SafetyReport.fromJson(reportJson);
+      expect(report.reportId, 'report-1');
+      expect(report.bookingId, 'booking-1');
+      expect(report.category, SafetyCategory.harassment);
+      expect(report.text, 'Please investigate.');
+      expect(
+        report.createdAt,
+        DateTime.fromMillisecondsSinceEpoch(1800000000000),
+      );
+      expect(report.status, 'resolved');
+      expect(report.reporterUserId, 'user-1');
+      expect(report.reporterSide, BookingSide.artist);
+      expect(
+        report.resolvedAt,
+        DateTime.fromMillisecondsSinceEpoch(1800000001000),
+      );
+      expect(report.adminNote, 'Reviewed');
+      expect(SafetyReport.fromJson({'_id': 'legacy-id'}).reportId, 'legacy-id');
+      final rowJson = {
+        ...reportJson,
+        'bookingTitle': 'Courtyard set',
+        'bandName': 'Pigeon Court',
+      };
+      final row = SafetyReportRow.fromJson(rowJson);
+      expect(row.reportId, report.reportId);
+      expect(row.bookingId, report.bookingId);
+      expect(row.category, report.category);
+      expect(row.text, report.text);
+      expect(row.status, report.status);
+      expect(row.createdAt, report.createdAt);
+      expect(row.reporterUserId, report.reporterUserId);
+      expect(row.reporterSide, BookingSide.artist);
+      expect(row.resolvedAt, report.resolvedAt);
+      expect(row.adminNote, report.adminNote);
+      expect(row.bookingTitle, 'Courtyard set');
+      expect(row.bandName, 'Pigeon Court');
+      for (final key in ['page', 'items']) {
+        final page = SafetyReportsPage.fromJson({
+          key: [rowJson, null, false],
+          'continueCursor': 'next',
+          'isDone': true,
+        });
+        expect(page.items.single.reportId, 'report-1');
+        expect(page.continueCursor, 'next');
+        expect(page.isDone, isTrue);
+      }
+      for (final json in <Map<String, dynamic>>[
+        {},
+        {
+          'category': 'future',
+          'reportId': 7,
+          'bookingId': false,
+          'text': <Object?>[],
+          'createdAt': 'bad',
+          'status': null,
+          'bookingTitle': 1,
+          'bandName': <Object?>[],
+        },
+      ]) {
+        final empty = SafetyReportRow.fromJson(json);
+        expect(empty.reportId, '');
+        expect(empty.bookingId, '');
+        expect(empty.category, SafetyCategory.unknown);
+        expect(empty.text, '');
+        expect(empty.createdAt, DateTime.fromMillisecondsSinceEpoch(0));
+        expect(empty.status, '');
+        expect(empty.reporterUserId, isNull);
+        expect(empty.reporterSide, isNull);
+        expect(empty.resolvedAt, isNull);
+        expect(empty.adminNote, isNull);
+        expect(empty.bookingTitle, '');
+        expect(empty.bandName, '');
+      }
+      final empty = SafetyReportsPage.fromJson({
+        'page': false,
+        'continueCursor': 1,
+        'isDone': 'true',
+      });
+      expect(empty.items, isEmpty);
+      expect(empty.continueCursor, isNull);
+      expect(empty.isDone, isFalse);
+    });
+  });
+
   group('paid ticket models', () {
     const gigJson = {
       '_id': 'gig-1',
@@ -574,7 +968,9 @@ void main() {
     test(
       'public browsing includes opp1 and hides drafts and invitations',
       () async {
-        final page = await repository.browseOpportunities();
+        final page = await repository.browseOpportunities(
+          mode: OpportunityMode.publicEvent,
+        );
 
         expect(page.items.map((item) => item.opportunity.id), ['opp1']);
         expect(page.items.single.invited, isFalse);
@@ -634,6 +1030,7 @@ void main() {
           );
         }
         final page = await repository.browseOpportunities(
+          mode: OpportunityMode.publicEvent,
           cursor: 'ignored',
           numItems: 1,
         );
@@ -692,6 +1089,7 @@ void main() {
         );
         expect(
           (await repository.browseOpportunities(
+            mode: OpportunityMode.publicEvent,
             bandId: 'b1',
           )).items.single.invited,
           isTrue,
@@ -1369,6 +1767,7 @@ void main() {
         expect(applications.first.opportunity.applicationCount, 2);
         expect(
           (await repository.browseOpportunities(
+            mode: OpportunityMode.publicEvent,
             bandId: 'b1',
           )).items.single.myApplicationStatus,
           ArtistApplicationStatus.submitted,
@@ -1594,11 +1993,11 @@ void main() {
         installment.dueAt,
         DateTime.fromMillisecondsSinceEpoch(1799990000000),
       );
-      expect(booking.venue.id, 'venue-1');
-      expect(booking.venue.name, 'Signal Room');
-      expect(booking.venue.slug, 'signal-room');
-      expect(booking.venue.approxLabel, 'Oakland');
-      expect(booking.venue.exactAddress, '100 Broadway, Oakland');
+      expect(booking.venue!.id, 'venue-1');
+      expect(booking.venue!.name, 'Signal Room');
+      expect(booking.venue!.slug, 'signal-room');
+      expect(booking.venue!.approxLabel, 'Oakland');
+      expect(booking.venue!.exactAddress, '100 Broadway, Oakland');
       expect(booking.publicGigId, 'gig-1');
       expect(booking.publicGigSlug, 'night-shifts-at-signal-room');
       expect(booking.counterpartyEmail, 'band@example.com');
@@ -1642,9 +2041,9 @@ void main() {
       expect(booking.publicGigId, isNull);
       expect(booking.publicGigSlug, isNull);
       expect(booking.counterpartyEmail, isNull);
-      expect(booking.venue.slug, isNull);
-      expect(booking.venue.approxLabel, isNull);
-      expect(booking.venue.exactAddress, isNull);
+      expect(booking.venue!.slug, isNull);
+      expect(booking.venue!.approxLabel, isNull);
+      expect(booking.venue!.exactAddress, isNull);
     });
 
     test('defaults missing and malformed fields without throwing', () {
@@ -1675,7 +2074,7 @@ void main() {
         expect(booking.revision, 0);
         expect(booking.fee.grossMinor, 0);
         expect(booking.fee.currency, '');
-        expect(booking.venue.id, '');
+        expect(booking.venue, isNull);
         expect(booking.currentOffer, isNull);
         expect(booking.termsNotes, isNull);
         expect(booking.counterpartyEmail, isNull);
@@ -2757,7 +3156,7 @@ void main() {
         'status': 'made-up',
       });
 
-      expect(opportunity.mode, OpportunityMode.publicEvent);
+      expect(opportunity.mode, OpportunityMode.unknown);
       expect(opportunity.visibility, OpportunityVisibility.publicListing);
       expect(opportunity.ticketing, OpportunityTicketing.none);
       expect(opportunity.status, OpportunityStatus.draft);
@@ -3007,7 +3406,7 @@ void main() {
         ],
       });
       expect(opportunity.id, '');
-      expect(opportunity.mode, OpportunityMode.publicEvent);
+      expect(opportunity.mode, OpportunityMode.unknown);
       expect(opportunity.status, OpportunityStatus.draft);
       expect(opportunity.revision, 2);
       expect(opportunity.startsAt, DateTime.fromMillisecondsSinceEpoch(0));

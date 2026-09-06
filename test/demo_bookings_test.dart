@@ -662,13 +662,13 @@ void main() {
       expect(pending.publicGigId, isNull);
       final artistView = (await repo.bandBookings('b4')).single;
       expect(artistView.viewerSide, BookingSide.artist);
-      expect(artistView.venue.exactAddress, isNull);
+      expect(artistView.venue!.exactAddress, isNull);
       expect(artistView.counterpartyEmail, isNull);
       final organizerView = (await repo.organizationBookings(
         'org1',
       )).firstWhere((booking) => booking.id == sent.bookingId);
       expect(organizerView.viewerSide, BookingSide.organizer);
-      expect(organizerView.venue.exactAddress, isNotNull);
+      expect(organizerView.venue!.exactAddress, isNotNull);
 
       final accepted = await repo.respondToOffer(
         bookingId: sent.bookingId,
@@ -705,10 +705,10 @@ void main() {
       expect(confirmed.publicGigSlug, gig.slug);
       expect((await repo.publicGig(gig.slug).first)!.id, gigId);
       final liveArtistView = (await repo.bandBookings('b4')).single;
-      expect(liveArtistView.venue.exactAddress, isNotNull);
+      expect(liveArtistView.venue!.exactAddress, isNotNull);
       expect(liveArtistView.counterpartyEmail, 'hello@foghorn.example');
       // A previous payload remains private even after the booking changes.
-      expect(artistView.venue.exactAddress, isNull);
+      expect(artistView.venue!.exactAddress, isNull);
 
       final cancelled = await repo.cancelBooking(
         bookingId: sent.bookingId,
@@ -791,7 +791,10 @@ void main() {
     expect(band.reviewSummary!.mean, 5);
     expect(band.reviewSummary!.completedBookings, 1);
     expect(
-      (await repo.myOrganizations().first).single.organization.reviewSummary,
+      (await repo.myOrganizations().first)
+          .singleWhere((membership) => membership.organization.id == 'org1')
+          .organization
+          .reviewSummary,
       same(organization.reviewSummary),
     );
     final bandReviews = await repo.reviewsForBand('b2');
@@ -839,7 +842,7 @@ void main() {
       expect(booking.publicGigSlug, 'riverside-sessions-live');
       expect(booking.viewerSide, BookingSide.organizer);
       expect(
-        booking.venue.exactAddress,
+        booking.venue!.exactAddress,
         DemoData.venuePrivateDetails['v1']!.addr,
       );
       final artistBooking = (await repo.booking(
@@ -848,13 +851,13 @@ void main() {
       ))!;
       expect(artistBooking.viewerSide, BookingSide.artist);
       // Confirmed bookings disclose the exact address to both parties.
-      expect(artistBooking.venue.exactAddress, booking.venue.exactAddress);
+      expect(artistBooking.venue!.exactAddress, booking.venue!.exactAddress);
       final organizerBooking = (await repo.booking(
         'bk2',
         viewAs: BookingSide.organizer,
       ))!;
       expect(organizerBooking.viewerSide, BookingSide.organizer);
-      expect(organizerBooking.venue.exactAddress, isNotNull);
+      expect(organizerBooking.venue!.exactAddress, isNotNull);
       // The user does not hold bk1's artist role (band b2).
       expect(
         (await repo.booking('bk1', viewAs: BookingSide.artist))!.viewerSide,
@@ -873,16 +876,16 @@ void main() {
         )).map((booking) => booking.id),
         ['bk4', 'bk3'],
       );
-      expect((await repo.bandBookings('b2')).first.venue.exactAddress, isNull);
+      expect((await repo.bandBookings('b2')).first.venue!.exactAddress, isNull);
       await repo.setVenueAddressDisclosure(
         venueId: 'v1',
         disclosure: AddressDisclosure.public,
       );
       expect(
-        (await repo.bandBookings('b2')).first.venue.exactAddress,
+        (await repo.bandBookings('b2')).first.venue!.exactAddress,
         isNotNull,
       );
-      expect(DemoData.bookings['bk1']!.venue.exactAddress, isNull);
+      expect(DemoData.bookings['bk1']!.venue!.exactAddress, isNull);
       for (final fixture in DemoData.bookings.values) {
         expect(
           DemoData.opportunities.containsKey(fixture.opportunityId),
@@ -926,13 +929,13 @@ void main() {
       expect(artistBooking.organizationId, 'org1');
       expect(artistBooking.bandId, 'b1');
       expect(artistBooking.viewerSide, BookingSide.artist);
-      expect(artistBooking.venue.exactAddress, isNull);
+      expect(artistBooking.venue!.exactAddress, isNull);
       final organizerBooking = (await repo.booking(
         sent.bookingId,
         viewAs: BookingSide.organizer,
       ))!;
       expect(organizerBooking.viewerSide, BookingSide.organizer);
-      expect(organizerBooking.venue.exactAddress, isNotNull);
+      expect(organizerBooking.venue!.exactAddress, isNotNull);
     },
   );
 
@@ -1077,7 +1080,7 @@ void main() {
       expect(
         (await repo.bandBookings('b1'))
             .firstWhere((booking) => booking.id == sent.bookingId)
-            .venue
+            .venue!
             .exactAddress,
         isNull,
       );
@@ -1359,7 +1362,7 @@ void main() {
         (status: BookingStatus.cancelledByArtist, revision: 4),
       );
       final cancelled = (await repo.booking('bk2'))!;
-      expect(cancelled.venue.exactAddress, isNull);
+      expect(cancelled.venue!.exactAddress, isNull);
       expect(cancelled.counterpartyEmail, isNull);
       expect(cancelled.publicGigId, 'demo-gig-bk2');
       expect((await repo.band('b1'))!.reviewSummary!.cancellations, 1);

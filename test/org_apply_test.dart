@@ -799,6 +799,11 @@ class _FailOnceRepository extends DemoRepository {
   @override
   Future<({String applicationId, int revision})>
   saveOrganizationApplicationDraft({
+    ApplicationKind? kind,
+    String? hostDisplayName,
+    String? hostPhone,
+    String? hostArea,
+    bool? hostAgreementAccepted,
     String? applicationId,
     int? expectedRevision,
     required String orgName,
@@ -815,6 +820,11 @@ class _FailOnceRepository extends DemoRepository {
       throw StateError(failureMessage);
     }
     return super.saveOrganizationApplicationDraft(
+      kind: kind,
+      hostDisplayName: hostDisplayName,
+      hostPhone: hostPhone,
+      hostArea: hostArea,
+      hostAgreementAccepted: hostAgreementAccepted,
       applicationId: applicationId,
       expectedRevision: expectedRevision,
       orgName: orgName,

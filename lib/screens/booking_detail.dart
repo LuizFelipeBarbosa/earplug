@@ -369,10 +369,13 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    booking.venue.name,
+                                    booking.venue?.name ??
+                                        booking.privateLocation?.label ??
+                                        'Private event',
                                     style: textTheme.epSectionHeading,
                                   ),
-                                  if (booking.venue.approxLabel
+                                  if (booking.venue?.approxLabel ??
+                                          booking.privateLocation?.area
                                       case final label?)
                                     Text(label, style: textTheme.epMeta),
                                 ],
@@ -381,11 +384,14 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                           ],
                         ),
                         const SizedBox(height: 12),
-                        VenueMiniMap(
-                          venue: app.venue(booking.venue.id),
-                          approximate: booking.venue.exactAddress == null,
-                        ),
-                        if (booking.venue.exactAddress case final address?) ...[
+                        if (booking.venue case final venue?)
+                          VenueMiniMap(
+                            venue: app.venue(venue.id),
+                            approximate: venue.exactAddress == null,
+                          ),
+                        if (booking.venue?.exactAddress ??
+                                booking.privateLocation?.addr
+                            case final address?) ...[
                           const SizedBox(height: 12),
                           Row(
                             children: [

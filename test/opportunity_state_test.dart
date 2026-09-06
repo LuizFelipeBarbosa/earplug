@@ -514,6 +514,7 @@ class _ControlledOpportunityRepository extends DemoRepository {
     int numItems = 25,
     String? bandId,
     OpportunityFilters? filters,
+    OpportunityMode? mode,
   }) {
     browseCalls++;
     browseRequests.add((cursor: cursor, bandId: bandId, filters: filters));
@@ -526,6 +527,7 @@ class _ControlledOpportunityRepository extends DemoRepository {
           numItems: numItems,
           bandId: bandId,
           filters: filters,
+          mode: mode,
         );
   }
 
