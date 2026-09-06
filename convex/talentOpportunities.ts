@@ -4,6 +4,7 @@ import { Id } from "./_generated/dataModel";
 import { MutationCtx, internalMutation, mutation } from "./_generated/server";
 import { loadCurrentOffer, sendBookingEmail } from "./bookings";
 import { requireOrganizationRole } from "./lib/authz";
+import { flag } from "./lib/env";
 import { releaseSlot } from "./lib/bookingConfirm";
 import {
   BOOKING_ACTIVE_STATUSES,
@@ -112,6 +113,9 @@ async function normalizeAndValidateFields(
     throw new Error("Applications must close before the event starts");
   }
   const ticketing = args.ticketing ?? "rsvp";
+  if (ticketing === "paid" && !flag("TICKETS_ENABLED", false)) {
+    throw new Error("Paid ticketing is not available yet");
+  }
   if (ticketing === "external" && !isValidHttpsUrl(args.externalUrl)) {
     throw new Error("External ticketing requires a valid HTTPS URL");
   }

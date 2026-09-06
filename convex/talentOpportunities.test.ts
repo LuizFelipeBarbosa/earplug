@@ -289,6 +289,11 @@ async function setupOrganization() {
   };
 }
 
+
+beforeEach(() => {
+  vi.stubEnv("TICKETS_ENABLED", "true");
+});
+
 describe("talent opportunity drafts", () => {
   test("defaults include a free headliner slot and venue discovery fields", async () => {
     const { createDraft, readOpportunity, ownerId, venueId } =
@@ -396,6 +401,14 @@ describe("talent opportunity drafts", () => {
       });
     },
   );
+
+  test("refuses paid ticketing while TICKETS_ENABLED is off", async () => {
+    vi.stubEnv("TICKETS_ENABLED", "false");
+    const { createDraft } = await setupOrganization();
+    await expect(
+      createDraft({ ticketing: "paid", ticketPriceMinor: 1500, ticketCapacity: 100 }),
+    ).rejects.toThrow("Paid ticketing is not available yet");
+  });
 
   test.each([undefined, 50, 100.5])(
     "rejects invalid paid ticket prices: %s",

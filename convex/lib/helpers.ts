@@ -62,6 +62,8 @@ export function slugify(name: string): string {
 
 const RESERVED_PUBLIC_SLUGS = new Set([
   "g",
+  "t",
+  "tickets",
   "join",
   "gig-invite",
   "check-in",
