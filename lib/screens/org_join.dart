@@ -105,7 +105,7 @@ class _OrgJoinScreenState extends State<OrgJoinScreen> {
                   Expanded(
                     child: Text(
                       'ORGANIZATION INVITATION',
-                      style: epDisplay(size: 16),
+                      style: Theme.of(context).textTheme.epSectionHeading,
                     ),
                   ),
                 ],

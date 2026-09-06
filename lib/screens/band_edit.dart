@@ -355,7 +355,9 @@ class _BandEditScreenState extends State<BandEditScreen> {
               16,
               headerTopPad(context),
               16,
-              tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+              tabBarClearance +
+                  actionBarClearance(context) +
+                  MediaQuery.paddingOf(context).bottom,
             ),
             children: [
               Row(
@@ -580,7 +582,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 66,
+          bottom: EpLayout.isDesktop(context) ? 0 : 66,
           child: StickyActionBar(
             key: const ValueKey('save-band-profile'),
             secondaryLabel: 'PREVIEW',

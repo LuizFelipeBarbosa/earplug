@@ -365,18 +365,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _scrollToKey(tester, const ValueKey('edit-instagram'));
+    final instagram = tester.widget<TextField>(
+      find.byKey(const ValueKey('edit-instagram')),
+    );
+    expect(instagram.controller!.text, '@existing');
     await _scrollToKey(tester, const ValueKey('edit-credits'));
     final credits = tester.widget<TextField>(
       find.byKey(const ValueKey('edit-credits')),
     );
     expect(credits.controller!.text, 'Existing private credits');
-    expect(
-      tester
-          .widget<TextField>(find.byKey(const ValueKey('edit-instagram')))
-          .controller!
-          .text,
-      '@existing',
-    );
 
     await _scrollTo(tester, 'SAVE CHANGES');
     await tester.tap(find.text('SAVE CHANGES'));

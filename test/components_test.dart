@@ -148,7 +148,7 @@ void main() {
       expect(text.epPosterTitle.fontFamily, 'Archivo Black');
       expect(text.epPosterTitle.fontSize, 22);
       expect(text.epSection.fontSize, 12);
-      expect(text.epSection.letterSpacing, 2);
+      expect(text.epSection.letterSpacing, 1.3);
       expect(text.epChipLabel.fontSize, greaterThanOrEqualTo(11));
       expect(text.epMeta.fontSize, greaterThanOrEqualTo(11));
     });
@@ -183,7 +183,7 @@ void main() {
         of: find.byType(CircleIconButton),
         matching: find.byType(Container),
       );
-      expect(tester.getSize(circleVisual), const Size(32, 32));
+      expect(tester.getSize(circleVisual), const Size(40, 40));
       expect(find.byTooltip('Back'), findsOne);
 
       final buttonData = tester

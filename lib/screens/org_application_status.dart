@@ -174,7 +174,7 @@ class _OrgApplicationStatusScreenState
                 Expanded(
                   child: Text(
                     'ORGANIZER APPLICATION',
-                    style: epDisplay(size: 16),
+                    style: Theme.of(context).textTheme.epSectionHeading,
                   ),
                 ),
               ],

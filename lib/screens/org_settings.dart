@@ -290,17 +290,15 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
         16,
         headerTopPad(context),
         16,
-        tabBarClearance + 112 + MediaQuery.paddingOf(context).bottom,
+        tabBarClearance +
+            actionBarClearance(context) +
+            MediaQuery.paddingOf(context).bottom,
       ),
       children: [
-        Text(
-          'ORGANIZATION SETTINGS',
-          style: Theme.of(context).textTheme.epPageHeading,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Update the organization profile and private business details.',
-          style: Theme.of(context).textTheme.epCaption,
+        const EpPageHeading(
+          title: 'ORGANIZATION SETTINGS',
+          description:
+              'Update the organization profile and private business details.',
         ),
         if (_loading)
           const Padding(
@@ -566,7 +564,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: 66,
+          bottom: EpLayout.isDesktop(context) ? 0 : 66,
           child: StickyActionBar(
             key: const Key('org-settings-save'),
             primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',

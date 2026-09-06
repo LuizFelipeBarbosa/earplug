@@ -475,6 +475,10 @@ void main() {
       findsOne,
     );
 
+    await tester.ensureVisible(
+      find.byKey(const Key('analytics-new-returning-see-all')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('analytics-new-returning-see-all')));
     await tester.pumpAndSettle();
 

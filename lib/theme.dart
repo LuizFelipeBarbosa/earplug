@@ -47,6 +47,21 @@ abstract final class Ep {
   static Color whiteA(double a) => Colors.white.withValues(alpha: a);
 }
 
+/// Shared dimensions for page layouts and controls.
+abstract final class EpLayout {
+  static const desktopBreakpoint = 960.0;
+  static const workspaceWidth = 1120.0;
+  static const cardRadius = 16.0;
+  static const controlRadius = 12.0;
+
+  static bool isDesktop(BuildContext context) =>
+      MediaQuery.sizeOf(context).width >= desktopBreakpoint;
+
+  static bool stackActions(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600 &&
+      MediaQuery.textScalerOf(context).scale(1) > 1.3;
+}
+
 @immutable
 class EpPalette extends ThemeExtension<EpPalette> {
   const EpPalette({
@@ -140,6 +155,11 @@ class EpPalette extends ThemeExtension<EpPalette> {
   Color get raised => surfaceRaised;
   Color get selected => surfaceSelected;
   Color get dark => background;
+
+  /// Brand highlight surfaces retain their yellow-and-ink pairing in both
+  /// themes. The darker light-mode [volt] is reserved for text on pale surfaces.
+  Color get highlight => Ep.volt;
+  Color get onHighlight => Ep.background;
 
   @override
   EpPalette copyWith({
@@ -309,19 +329,19 @@ TextTheme _epTextTheme(EpPalette palette) {
       fontSize: 12,
       fontWeight: FontWeight.w800,
       color: palette.contentPrimary,
-      letterSpacing: 2,
+      letterSpacing: 1.3,
       height: 1.2,
     ),
     bodyMedium: TextStyle(
       fontFamily: 'Archivo',
       fontSize: 14,
-      fontWeight: FontWeight.w600,
+      fontWeight: FontWeight.w400,
       color: palette.contentPrimary,
       height: 1.45,
     ),
     labelLarge: TextStyle(
       fontFamily: 'Archivo',
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: FontWeight.w700,
       color: palette.contentPrimary,
       letterSpacing: .4,
@@ -344,10 +364,10 @@ TextTheme _epTextTheme(EpPalette palette) {
     ),
     bodySmall: TextStyle(
       fontFamily: 'Archivo',
-      fontSize: 11,
-      fontWeight: FontWeight.w600,
+      fontSize: 12,
+      fontWeight: FontWeight.w400,
       color: palette.contentSecondary,
-      height: 1.35,
+      height: 1.45,
     ),
   );
 }
@@ -390,9 +410,11 @@ ThemeData buildEpTheme([Brightness brightness = Brightness.dark]) {
     outlineVariant: palette.border,
   );
   final textTheme = _epTextTheme(palette);
-  final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(12));
+  final shape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(EpLayout.cardRadius),
+  );
   final controlShape = RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(12),
+    borderRadius: BorderRadius.circular(EpLayout.controlRadius),
   );
 
   return ThemeData(
@@ -409,6 +431,59 @@ ThemeData buildEpTheme([Brightness brightness = Brightness.dark]) {
     splashFactory: NoSplash.splashFactory,
     highlightColor: Colors.transparent,
     extensions: [palette],
+    appBarTheme: AppBarTheme(
+      backgroundColor: palette.background,
+      foregroundColor: palette.contentPrimary,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      titleTextStyle: textTheme.epSectionHeading,
+      centerTitle: false,
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: palette.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: shape.copyWith(side: BorderSide(color: palette.border)),
+      titleTextStyle: textTheme.epSectionHeading,
+      contentTextStyle: textTheme.epBody,
+    ),
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: palette.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+    ),
+    snackBarTheme: SnackBarThemeData(
+      backgroundColor: palette.surfaceRaised,
+      contentTextStyle: textTheme.epBody,
+      actionTextColor: palette.accent,
+      behavior: SnackBarBehavior.floating,
+      shape: shape.copyWith(side: BorderSide(color: palette.border)),
+      elevation: 0,
+    ),
+    progressIndicatorTheme: ProgressIndicatorThemeData(color: palette.accent),
+    segmentedButtonTheme: SegmentedButtonThemeData(
+      style: ButtonStyle(
+        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+        textStyle: WidgetStatePropertyAll(textTheme.epLabel),
+        backgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? palette.surfaceSelected
+              : palette.surface,
+        ),
+        foregroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.disabled)
+              ? palette.contentDisabled
+              : states.contains(WidgetState.selected)
+              ? palette.accent
+              : palette.contentSecondary,
+        ),
+        side: WidgetStatePropertyAll(BorderSide(color: palette.border)),
+        shape: WidgetStatePropertyAll(controlShape),
+        overlayColor: _focusOverlay(palette),
+      ),
+    ),
     dividerTheme: DividerThemeData(
       color: palette.border,
       thickness: 1,

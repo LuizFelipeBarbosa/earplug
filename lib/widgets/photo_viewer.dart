@@ -99,8 +99,8 @@ class _PhotoViewerModalState extends State<_PhotoViewerModal> {
                       width: 4,
                       height: 4,
                       color: index == _currentIndex
-                          ? context.epColors.contentPrimary
-                          : context.epColors.contentDisabled,
+                          ? Colors.white
+                          : Colors.white54,
                     ),
                   ],
                 ],

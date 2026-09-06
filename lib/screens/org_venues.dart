@@ -66,7 +66,7 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
         tabBarClearance,
       ),
       children: [
-        Text('VENUES', style: epDisplay(size: 22)),
+        Text('VENUES', style: Theme.of(context).textTheme.epPageHeading),
         const SizedBox(height: 4),
         Text(
           app.canManageOrganization(app.organizationId)
@@ -103,7 +103,12 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(venue.name, style: epDisplay(size: 17)),
+                            Text(
+                              venue.name,
+                              style: Theme.of(
+                                context,
+                              ).textTheme.epSectionHeading,
+                            ),
                             const SizedBox(height: 4),
                             Text(
                               venue.approx.label,

@@ -775,12 +775,7 @@ class _ClipTile extends StatelessWidget {
                 ),
               ),
             ),
-            Center(
-              child: PlayTriangle(
-                size: 13,
-                color: context.epColors.contentPrimary,
-              ),
-            ),
+            Center(child: PlayTriangle(size: 13, color: Colors.white)),
             Positioned(
               left: 8,
               right: 8,
@@ -789,9 +784,9 @@ class _ClipTile extends StatelessWidget {
                 clip.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.epCaption.copyWith(
-                  color: context.epColors.contentPrimary,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.epCaption.copyWith(color: Colors.white),
               ),
             ),
             Positioned(
@@ -812,14 +807,14 @@ class _ClipTile extends StatelessWidget {
                               vertical: 3,
                             ),
                             decoration: BoxDecoration(
-                              color: context.epColors.volt,
+                              color: Ep.volt,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text(
                               'PINNED',
                               style: Theme.of(context).textTheme.epCaption
                                   .copyWith(
-                                    color: context.epColors.dark,
+                                    color: Ep.background,
                                     fontSize: 9,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -848,7 +843,7 @@ class _ClipTile extends StatelessWidget {
                               ? 'PROCESSING'
                               : clip.lenLabel,
                           style: Theme.of(context).textTheme.epCaption.copyWith(
-                            color: context.epColors.contentPrimary,
+                            color: Colors.white,
                             fontSize: 9.5,
                           ),
                         ),
