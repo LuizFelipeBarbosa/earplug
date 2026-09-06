@@ -50,4 +50,28 @@ crons.interval(
   {},
 );
 
+// Release ticket holds whose reservation window has elapsed.
+crons.interval(
+  "expire stale ticket reservations",
+  { minutes: 15 },
+  internal.tickets.expireStaleReservations,
+  {},
+);
+
+// Reconcile open ticket checkouts that outlive their Stripe session.
+crons.interval(
+  "sweep stale ticket checkouts",
+  { hours: 1 },
+  internal.ticketCheckout.sweepStaleCheckouts,
+  {},
+);
+
+// Failed ticket refunds get another attempt once ticket sales are enabled.
+crons.interval(
+  "retry failed ticket refunds",
+  { hours: 6 },
+  internal.ticketRefunds.retryFailedTicketRefunds,
+  {},
+);
+
 export default crons;

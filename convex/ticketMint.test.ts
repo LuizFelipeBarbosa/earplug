@@ -2,6 +2,7 @@
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Doc } from "./_generated/dataModel";
+import { appBaseUrl } from "./lib/env";
 import { expireOrder, mintTickets } from "./lib/ticketMint";
 import { TICKET_TOKEN_PREFIX } from "./lib/ticketStatus";
 import schema from "./schema";
@@ -193,6 +194,33 @@ describe("mintTickets", () => {
     expect(after.tickets).toHaveLength(before.tickets.length);
     expect(after.ledger).toHaveLength(before.ledger.length);
     expect(after).toEqual(before);
+  });
+
+  test("emails one receipt to the buyer and does not resend it on replay", async () => {
+    const f = await setupOrder();
+    const ticketIds = await f.mint();
+    const receiptEmails = () =>
+      f.t.run(async (ctx) =>
+        (await ctx.db.system.query("_scheduled_functions").take(100)).filter(
+          (job) =>
+            job.name === "emails:send" && job.args[0].kind === "ticketReceipt",
+        ),
+      );
+    const emails = await receiptEmails();
+    expect(emails).toHaveLength(1);
+    expect(emails[0].scheduledTime).toBe(NOW);
+    expect(emails[0].args[0]).toMatchObject({
+      to: "buyer@tickets.test",
+      subject: "Your tickets for Friday at the Hall",
+    });
+    expect(emails[0].args[0].text).toContain("3 tickets");
+    expect(emails[0].args[0].text).toContain("63.90 USD");
+    expect(
+      emails[0].args[0].text.endsWith(`\n\n${appBaseUrl()}/t/${ticketIds[0]}`),
+    ).toBe(true);
+
+    expect(await f.mint()).toEqual(ticketIds);
+    expect(await receiptEmails()).toEqual(emails);
   });
 
   test("uses the intent as the ledger reference when the charge is absent", async () => {

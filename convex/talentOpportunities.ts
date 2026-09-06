@@ -24,6 +24,7 @@ import {
   assertSlotTransition,
   type ArtistApplicationStatus,
 } from "./lib/opportunityStatus";
+import { cancelTicketSalesForGig } from "./lib/ticketCancellation";
 import {
   ageRequirementValidator,
   gigPerformerRoleValidator,
@@ -694,6 +695,10 @@ export const cancel = mutation({
     }
     if (opportunity.publicGigId !== undefined) {
       await unpublishOpportunityGig(ctx, opportunity._id, "opportunity_cancelled");
+      const gig = await ctx.db.get(opportunity.publicGigId);
+      if (gig?.ticketing === "paid") {
+        await cancelTicketSalesForGig(ctx, opportunity.publicGigId);
+      }
     } else {
       await ctx.db.patch(opportunity._id, {
         status: "cancelled",

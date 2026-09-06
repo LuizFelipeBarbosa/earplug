@@ -87,6 +87,56 @@ export async function requestOrderRefund(
   return refundId;
 }
 
+export async function requestLatePaymentRefund(
+  ctx: MutationCtx,
+  order: Doc<"ticketOrders">,
+  options: {
+    stripePaymentIntentId: string;
+    amountMinor: number;
+    stripeEventId: string;
+  },
+): Promise<Id<"ticketRefunds">> {
+  const existing = await ctx.db
+    .query("ticketRefunds")
+    .withIndex("by_orderId", (q) => q.eq("orderId", order._id))
+    .filter((q) =>
+      q.and(
+        q.eq(q.field("reason"), "late_payment"),
+        q.or(
+          q.eq(q.field("status"), "pending"),
+          q.eq(q.field("status"), "succeeded"),
+        ),
+      ),
+    )
+    .first();
+  if (existing) return existing._id;
+
+  const now = Date.now();
+  if (order.stripePaymentIntentId === undefined) {
+    await ctx.db.patch(order._id, {
+      stripePaymentIntentId: options.stripePaymentIntentId,
+      updatedAt: now,
+    });
+  }
+  const refundId = await ctx.db.insert("ticketRefunds", {
+    orderId: order._id,
+    gigId: order.gigId,
+    organizationId: order.organizationId,
+    amountMinor: options.amountMinor,
+    currency: order.currency,
+    reason: "late_payment",
+    status: "pending",
+    attempt: 0,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await ctx.scheduler.runAfter(0, internal.ticketRefunds.executeRefund, {
+    refundId,
+    attempt: 0,
+  });
+  return refundId;
+}
+
 export const loadRefundContext = internalQuery({
   args: { refundId: v.id("ticketRefunds") },
   returns: refundContextValidator,
@@ -95,6 +145,9 @@ export const loadRefundContext = internalQuery({
     if (!refund) throw new Error("Refund not found");
     const order = await ctx.db.get(refund.orderId);
     if (!order) throw new Error("Ticket order not found");
+    if (!order.stripePaymentIntentId) {
+      throw new Error("Ticket order has no Stripe payment intent");
+    }
     const details = await ctx.db
       .query("organizationPrivateDetails")
       .withIndex("by_organizationId", (q) =>
@@ -187,13 +240,14 @@ export async function applyRefundSucceeded(
   });
   const order = await ctx.db.get(refund.orderId);
   if (!order) throw new Error("Ticket order not found");
+  const wasPaid = order.status === "paid";
   const refundedMinor = order.refundedMinor + refund.amountMinor;
   await ctx.db.patch(order._id, {
     refundedMinor,
     stripeRefundId,
     updatedAt: now,
   });
-  if (refundedMinor >= order.totalMinor) {
+  if (wasPaid && refundedMinor >= order.totalMinor) {
     assertTicketOrderTransition(order.status, "refunded");
     await ctx.db.patch(order._id, { status: "refunded" });
     const tickets = await ctx.db
@@ -224,14 +278,16 @@ export async function applyRefundSucceeded(
     amountMinor: -refund.amountMinor,
     idempotencyKey: `ticket-refund:${refund._id}`,
   });
-  await appendLedgerEntry(ctx, {
-    ...ledgerContext,
-    kind: "ticket_fee",
-    amountMinor: -Math.round(
-      (order.feeMinor * refund.amountMinor) / order.totalMinor,
-    ),
-    idempotencyKey: `ticket-refund-fee:${refund._id}`,
-  });
+  if (wasPaid) {
+    await appendLedgerEntry(ctx, {
+      ...ledgerContext,
+      kind: "ticket_fee",
+      amountMinor: -Math.round(
+        (order.feeMinor * refund.amountMinor) / order.totalMinor,
+      ),
+      idempotencyKey: `ticket-refund-fee:${refund._id}`,
+    });
+  }
 }
 
 export const markRefundSucceeded = internalMutation({

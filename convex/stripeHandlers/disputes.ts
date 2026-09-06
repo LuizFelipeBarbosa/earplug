@@ -17,6 +17,7 @@ import type {
   StripeEventHandler,
   StripeHandlerMap,
 } from "../stripeWebhook";
+import { handleTicketChargeRefunded, isTicketSession } from "./tickets";
 
 async function paymentRecordForDispute(
   ctx: MutationCtx,
@@ -246,6 +247,7 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
 
 const chargeRefunded: StripeEventHandler = async (ctx, event) => {
   const charge = event.data.object;
+  if (isTicketSession(charge)) return handleTicketChargeRefunded(ctx, event);
   const paymentIntent = charge.payment_intent;
   const paymentIntentId =
     typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;

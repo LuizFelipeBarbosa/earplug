@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { sendTicketEmail } from "../emails";
 import { appendLedgerEntry } from "./ledger";
 import { commitInventory, releaseInventory } from "./ticketInventory";
 import {
@@ -106,6 +107,9 @@ export async function mintTickets(
     kind: "ticket_fee",
     amountMinor: order.feeMinor,
     idempotencyKey: `ticket-fee:${order._id}`,
+  });
+  await sendTicketEmail(ctx, order, "ticketReceipt", {
+    firstTicketId: ticketIds[0],
   });
   return ticketIds;
 }
