@@ -30,6 +30,7 @@ async function setupGigPublish(
   overrides: Partial<
     Pick<
       Doc<"talentOpportunities">,
+      | "mode"
       | "status"
       | "startsAt"
       | "doorsAt"
@@ -211,6 +212,99 @@ async function setupGigPublish(
 }
 
 describe("opportunity gig publishing", () => {
+  test("private requests never publish or synchronize a gig", async () => {
+    const f = await setupGigPublish({ mode: "privateBooking" });
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.organizationId, { orgType: "privateHost" });
+      const privateLocationId = await ctx.db.insert("privateLocations", {
+        organizationId: f.organizationId,
+        label: "Backyard",
+        addr: "42 Garden Street",
+        city: "Oakland",
+        area: "Rockridge, Oakland",
+        lat: 37.84,
+        lng: -122.25,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await ctx.db.patch(f.opportunityId, {
+        hostUserId: f.ownerId,
+        privateLocationId,
+        area: "Rockridge, Oakland",
+        venueId: undefined,
+        venueType: undefined,
+      });
+    });
+    await f.bookSlot(f.slotA, f.bandA);
+    const before = await f.t.run((ctx) => ctx.db.get(f.opportunityId));
+    await f.t.run(async (ctx) => {
+      expect(await publishGigFromOpportunity(ctx, f.opportunityId)).toBeNull();
+      await syncGigLineup(ctx, f.opportunityId);
+      await unpublishOpportunityGig(
+        ctx,
+        f.opportunityId,
+        "required_slot_cancelled",
+      );
+      await syncGigTicketing(ctx, f.opportunityId);
+      expect(await ctx.db.get(f.opportunityId)).toEqual(before);
+      expect((await ctx.db.get(f.opportunityId))?.publicGigId).toBeUndefined();
+      expect(
+        await ctx.db.query("gigs").withIndex("by_creation_time").take(1),
+      ).toEqual([]);
+    });
+
+    // An existing gig reference must not allow any private-request writes either.
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.opportunityId, {
+        mode: "publicEvent",
+        venueId: f.venueId,
+      }),
+    );
+    const gigId = await f.publish();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.opportunityId, {
+        mode: "privateBooking",
+        venueId: undefined,
+        ticketing: "paid",
+        ticketPriceMinor: 1000,
+        ticketCapacity: 20,
+        ticketCurrency: "usd",
+      }),
+    );
+    // If either lineup helper runs, it will encounter the missing booked band.
+    await f.t.run((ctx) => ctx.db.delete(f.bandA));
+    await f.t.run(async (ctx) => {
+      const opportunity = await ctx.db.get(f.opportunityId);
+      const gig = await ctx.db.get(gigId);
+      const bandIndex = await ctx.db
+        .query("gigBands")
+        .withIndex("by_gig", (q) => q.eq("gigId", gigId))
+        .take(25);
+      expect(await publishGigFromOpportunity(ctx, f.opportunityId)).toBeNull();
+      await syncGigLineup(ctx, f.opportunityId);
+      await unpublishOpportunityGig(
+        ctx,
+        f.opportunityId,
+        "opportunity_cancelled",
+      );
+      await syncGigTicketing(ctx, f.opportunityId);
+      expect(await ctx.db.get(f.opportunityId)).toEqual(opportunity);
+      expect(await ctx.db.get(gigId)).toEqual(gig);
+      expect(
+        await ctx.db
+          .query("gigBands")
+          .withIndex("by_gig", (q) => q.eq("gigId", gigId))
+          .take(25),
+      ).toEqual(bandIndex);
+      expect(
+        await ctx.db
+          .query("gigTicketInventory")
+          .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+          .first(),
+      ).toBeNull();
+    });
+  });
+
   test("publishes when only the required slot is confirmed", async () => {
     const f = await setupGigPublish();
     await f.bookSlot(f.slotA, f.bandA);

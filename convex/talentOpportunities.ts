@@ -1,6 +1,6 @@
 import { Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
 import { MutationCtx, internalMutation, mutation } from "./_generated/server";
 import { loadCurrentOffer, sendBookingEmail } from "./bookings";
 import { requireOrganizationRole } from "./lib/authz";
@@ -26,6 +26,7 @@ import {
   type ArtistApplicationStatus,
 } from "./lib/opportunityStatus";
 import { cancelTicketSalesForGig } from "./lib/ticketCancellation";
+import { requireOwnedPrivateLocation } from "./privateLocations";
 import {
   ageRequirementValidator,
   gigPerformerRoleValidator,
@@ -299,7 +300,8 @@ async function uniqueOpportunitySlug(
 export const create = mutation({
   args: {
     organizationId: v.id("organizations"),
-    venueId: v.id("venues"),
+    venueId: v.optional(v.id("venues")),
+    privateLocationId: v.optional(v.id("privateLocations")),
     mode: v.optional(opportunityModeValidator),
     ...opportunityFieldsValidator.fields,
     slots: v.optional(v.array(slotInputValidator)),
@@ -319,23 +321,72 @@ export const create = mutation({
       throw new Error("Organization must be verified");
     }
     const mode = args.mode ?? "publicEvent";
+    let locationFields: Pick<
+      Doc<"talentOpportunities">,
+      "area" | "venueId" | "venueType" | "privateLocationId"
+    >;
     if (mode === "privateBooking") {
-      throw new Error("Private bookings are not available yet");
+      if (!flag("PRIVATE_BOOKINGS_ENABLED", false)) {
+        throw new Error("Private bookings are not available yet");
+      }
+      if (organization.orgType !== "privateHost") {
+        throw new Error("Only verified hosts post private requests");
+      }
+      if (args.privateLocationId === undefined) {
+        throw new Error("Choose a location");
+      }
+      const location = await requireOwnedPrivateLocation(
+        ctx,
+        args.privateLocationId,
+        args.organizationId,
+      );
+      if (args.venueId !== undefined) {
+        throw new Error("Private requests don't use a venue");
+      }
+      locationFields = { privateLocationId: location._id, area: location.area };
+    } else {
+      if (args.privateLocationId !== undefined) {
+        throw new Error("Public events don't use a private location");
+      }
+      if (args.venueId === undefined) {
+        throw new Error("Choose one of your verified venues");
+      }
+      const venue = await requireVerifiedVenue(
+        ctx,
+        args.venueId,
+        args.organizationId,
+      );
+      locationFields = {
+        venueId: venue._id,
+        area: venue.approxLabel ?? venue.area,
+        ...(venue.venueType !== undefined ? { venueType: venue.venueType } : {}),
+      };
     }
-    const venue = await requireVerifiedVenue(
-      ctx,
-      args.venueId,
-      args.organizationId,
-    );
-    const fields = await normalizeAndValidateFields(ctx, args);
     const slots = normalizeAndValidateSlots(args.slots);
+    if (mode === "privateBooking") {
+      if (slots.some((slot) => slot.guaranteeMinor <= 0)) {
+        throw new Error("Private slots need a guarantee");
+      }
+      if (
+        args.applicationsCloseAt === undefined ||
+        !(args.applicationsCloseAt < args.startsAt)
+      ) {
+        throw new Error("Set an application deadline before the event");
+      }
+    }
+    const { ticketPriceMinor, ticketCapacity, ticketCurrency, ...fieldsInput } =
+      args;
+    const fields = await normalizeAndValidateFields(ctx, {
+      ...fieldsInput,
+      ...(mode === "privateBooking"
+        ? { ticketing: "none" as const }
+        : { ticketPriceMinor, ticketCapacity, ticketCurrency }),
+    });
     const slug = await uniqueOpportunitySlug(ctx, fields.title);
     const opportunityId = await ctx.db.insert("talentOpportunities", {
       organizationId: args.organizationId,
       mode,
-      venueId: venue._id,
-      area: venue.approxLabel ?? venue.area,
-      ...(venue.venueType !== undefined ? { venueType: venue.venueType } : {}),
+      ...locationFields,
       ...fields,
       slug,
       status: "draft",
@@ -355,6 +406,7 @@ export const update = mutation({
     opportunityId: v.id("talentOpportunities"),
     expectedRevision: v.number(),
     venueId: v.optional(v.id("venues")),
+    privateLocationId: v.optional(v.id("privateLocations")),
     ...opportunityFieldsValidator.partial().fields,
     eventType: v.optional(v.union(v.string(), v.null())),
     expectedAttendance: v.optional(v.union(v.number(), v.null())),
@@ -382,6 +434,15 @@ export const update = mutation({
     if (args.slots !== undefined && opportunity.status !== "draft") {
       throw new Error("Slots are locked once applications are open");
     }
+    if (opportunity.mode === "privateBooking" && args.venueId !== undefined) {
+      throw new Error("Private requests don't use a venue");
+    }
+    if (
+      opportunity.mode === "publicEvent" &&
+      args.privateLocationId !== undefined
+    ) {
+      throw new Error("Public events don't use a private location");
+    }
     const venueChanged =
       args.venueId !== undefined && args.venueId !== opportunity.venueId;
     if (venueChanged && opportunity.status !== "draft") {
@@ -393,6 +454,16 @@ export const update = mutation({
       ? await requireVerifiedVenue(
           ctx,
           args.venueId!,
+          opportunity.organizationId,
+        )
+      : null;
+    const locationChanged =
+      args.privateLocationId !== undefined &&
+      args.privateLocationId !== opportunity.privateLocationId;
+    const location = locationChanged
+      ? await requireOwnedPrivateLocation(
+          ctx,
+          args.privateLocationId!,
           opportunity.organizationId,
         )
       : null;
@@ -416,6 +487,12 @@ export const update = mutation({
     const startsAt = args.startsAt ?? opportunity.startsAt;
     const applicationsCloseAt =
       args.applicationsCloseAt ?? opportunity.applicationsCloseAt;
+    if (
+      opportunity.mode === "privateBooking" &&
+      !(applicationsCloseAt < startsAt)
+    ) {
+      throw new Error("Set an application deadline before the event");
+    }
     // Check open timing first so normalization cannot mask open's error messages.
     if (opportunity.status === "open") {
       if (!(startsAt > now)) {
@@ -454,15 +531,26 @@ export const update = mutation({
       ),
       applicationsCloseAt,
       visibility: args.visibility ?? opportunity.visibility,
-      ticketing: args.ticketing ?? opportunity.ticketing,
-      ticketPriceMinor: args.ticketPriceMinor ?? opportunity.ticketPriceMinor,
-      ticketCapacity: args.ticketCapacity ?? opportunity.ticketCapacity,
-      ticketCurrency: args.ticketCurrency ?? opportunity.ticketCurrency,
+      ...(opportunity.mode === "privateBooking"
+        ? { ticketing: "none" as const }
+        : {
+            ticketing: args.ticketing ?? opportunity.ticketing,
+            ticketPriceMinor:
+              args.ticketPriceMinor ?? opportunity.ticketPriceMinor,
+            ticketCapacity: args.ticketCapacity ?? opportunity.ticketCapacity,
+            ticketCurrency: args.ticketCurrency ?? opportunity.ticketCurrency,
+          }),
       currency: args.currency ?? opportunity.currency,
       externalUrl: resolveClearable(args.externalUrl, opportunity.externalUrl),
     });
     if (args.slots !== undefined) {
       const slots = normalizeAndValidateSlots(args.slots);
+      if (
+        opportunity.mode === "privateBooking" &&
+        slots.some((slot) => slot.guaranteeMinor <= 0)
+      ) {
+        throw new Error("Private slots need a guarantee");
+      }
       const existing = await ctx.db
         .query("opportunitySlots")
         .withIndex("by_opportunityId_and_order", (q) =>
@@ -495,6 +583,9 @@ export const update = mutation({
             // Explicit undefined clears the old venue's optional type on a patch.
             venueType: venue.venueType,
           }
+        : {}),
+      ...(location
+        ? { privateLocationId: location._id, area: location.area }
         : {}),
       revision,
       updatedAt: now,
@@ -841,6 +932,9 @@ export const duplicate = mutation({
       organizationId: source.organizationId,
       mode: source.mode,
       ...(source.venueId !== undefined ? { venueId: source.venueId } : {}),
+      ...(source.privateLocationId !== undefined
+        ? { privateLocationId: source.privateLocationId }
+        : {}),
       area: source.area,
       ...(source.venueType !== undefined
         ? { venueType: source.venueType }

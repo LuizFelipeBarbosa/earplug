@@ -30,10 +30,11 @@ export const opportunityPayloadValidator = v.object({
   _id: v.id("talentOpportunities"),
   organizationId: v.id("organizations"),
   mode: opportunityModeValidator,
+  privateEvent: v.boolean(),
   venueId: v.union(v.id("venues"), v.null()),
   venue: v.union(venuePayloadValidator, v.null()),
   area: v.string(),
-  venueType: v.union(venueTypeValidator, v.null()),
+  venueType: v.union(venueTypeValidator, v.literal("private"), v.null()),
   title: v.string(),
   desc: v.string(),
   eventType: v.union(v.string(), v.null()),
@@ -78,6 +79,7 @@ export async function toOpportunityPayload(
   ctx: QueryCtx | MutationCtx,
   opportunity: Doc<"talentOpportunities">,
 ): Promise<Infer<typeof opportunityPayloadValidator>> {
+  const isPrivate = opportunity.mode === "privateBooking";
   const slots = await ctx.db
     .query("opportunitySlots")
     .withIndex("by_opportunityId_and_order", (q) =>
@@ -91,9 +93,10 @@ export async function toOpportunityPayload(
       q.eq("opportunityId", opportunity._id),
     )
     .take(100);
-  const venue = opportunity.venueId
-    ? await ctx.db.get(opportunity.venueId)
-    : null;
+  const venue =
+    !isPrivate && opportunity.venueId
+      ? await ctx.db.get(opportunity.venueId)
+      : null;
   const flyerUrl = opportunity.flyStorageId
     ? await ctx.storage.getUrl(opportunity.flyStorageId)
     : null;
@@ -102,10 +105,11 @@ export async function toOpportunityPayload(
     _id: opportunity._id,
     organizationId: opportunity.organizationId,
     mode: opportunity.mode,
-    venueId: opportunity.venueId ?? null,
-    venue: venue ? toVenuePayload(venue) : null,
+    privateEvent: isPrivate,
+    venueId: isPrivate ? null : (opportunity.venueId ?? null),
+    venue: isPrivate ? null : (venue ? toVenuePayload(venue) : null),
     area: opportunity.area,
-    venueType: opportunity.venueType ?? null,
+    venueType: isPrivate ? "private" : (opportunity.venueType ?? null),
     title: opportunity.title,
     desc: opportunity.desc,
     eventType: opportunity.eventType ?? null,

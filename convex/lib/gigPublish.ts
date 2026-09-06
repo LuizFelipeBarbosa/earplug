@@ -122,6 +122,7 @@ export async function publishGigFromOpportunity(
 ): Promise<Id<"gigs"> | null> {
   const opportunity = await ctx.db.get(opportunityId);
   if (!opportunity) throw new Error("Opportunity not found");
+  if (opportunity.mode === "privateBooking") return null;
   const { lineup, performers, requiredFilled } = await bookedLineup(
     ctx,
     opportunityId,
@@ -211,6 +212,7 @@ export async function syncGigTicketing(
 ): Promise<void> {
   const opportunity = await ctx.db.get(opportunityId);
   if (!opportunity) throw new Error("Opportunity not found");
+  if (opportunity.mode === "privateBooking") return;
   if (opportunity.publicGigId === undefined || opportunity.ticketing !== "paid") {
     return;
   }
@@ -231,6 +233,7 @@ export async function syncGigLineup(
 ): Promise<void> {
   const opportunity = await ctx.db.get(opportunityId);
   if (!opportunity) throw new Error("Opportunity not found");
+  if (opportunity.mode === "privateBooking") return;
   if (opportunity.publicGigId === undefined) return;
   const gig = await ctx.db.get(opportunity.publicGigId);
   if (!gig) return;
@@ -246,6 +249,7 @@ export async function unpublishOpportunityGig(
 ): Promise<void> {
   const opportunity = await ctx.db.get(opportunityId);
   if (!opportunity) throw new Error("Opportunity not found");
+  if (opportunity.mode === "privateBooking") return;
   if (opportunity.publicGigId === undefined) return;
   await ctx.db.patch(opportunity.publicGigId, {
     lifecycle: reason === "opportunity_cancelled" ? "cancelled" : "unpublished",

@@ -9,6 +9,7 @@ import { feeSnapshot } from "./lib/fees";
 import { toVenuePayload } from "./lib/helpers";
 import {
   opportunityPayloadValidator,
+  toArtistOpportunityPayload,
   toOpportunityPayload,
 } from "./lib/opportunityPayload";
 import { APPLICATION_ACTIVE_STATUSES } from "./lib/opportunityStatus";
@@ -26,9 +27,12 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
-async function setupOrganization() {
+async function setupOrganization(
+  orgType: "venueOperator" | "privateHost" = "venueOperator",
+) {
   const t = convexTest(schema, modules);
   const asOwner = t.withIdentity({ subject: "opportunity_owner" });
   const asManager = t.withIdentity({ subject: "opportunity_manager" });
@@ -60,7 +64,7 @@ async function setupOrganization() {
     const organizationId = await ctx.db.insert("organizations", {
       name: "Opportunity Collective",
       slug: "opportunity-collective",
-      orgType: "venueOperator",
+      orgType,
       status: "verified",
       ownerUserId: ownerId,
       createdAt: 1,
@@ -290,8 +294,52 @@ async function setupOrganization() {
 }
 
 
+async function setupPrivateHostOrganization() {
+  const fixture = await setupOrganization("privateHost");
+  const locations = await fixture.t.run(async (ctx) => {
+    const fields = {
+      organizationId: fixture.organizationId,
+      label: "Backyard",
+      addr: "42 Garden Street",
+      city: "Oakland",
+      area: "Rockridge, Oakland",
+      lat: 37.84,
+      lng: -122.25,
+      notes: "Use the side gate",
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    const privateLocationId = await ctx.db.insert("privateLocations", fields);
+    const alternateLocationId = await ctx.db.insert("privateLocations", {
+      ...fields,
+      area: "Temescal, Oakland",
+    });
+    const otherLocationId = await ctx.db.insert("privateLocations", {
+      ...fields,
+      organizationId: fixture.otherOrganizationId,
+    });
+    return { privateLocationId, alternateLocationId, otherLocationId };
+  });
+  async function createPrivateDraft(
+    overrides: Partial<
+      FunctionArgs<typeof api.talentOpportunities.create>
+    > = {},
+  ) {
+    return await fixture.createDraft({
+      mode: "privateBooking",
+      venueId: undefined,
+      privateLocationId: locations.privateLocationId,
+      applicationsCloseAt: NOW + 7 * DAY_MS,
+      slots: [{ role: "headliner", guaranteeMinor: 10000 }],
+      ...overrides,
+    });
+  }
+  return { ...fixture, ...locations, createPrivateDraft };
+}
+
 beforeEach(() => {
   vi.stubEnv("TICKETS_ENABLED", "true");
+  vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "false");
 });
 
 describe("talent opportunity drafts", () => {
@@ -2060,6 +2108,279 @@ describe("talent opportunity lifecycle", () => {
   });
 });
 
+describe("private talent opportunity drafts", () => {
+  beforeEach(() => {
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+  });
+
+  test("requires a verified host organization", async () => {
+    const f = await setupOrganization();
+    await expect(f.createDraft({ mode: "privateBooking" })).rejects.toThrow(
+      "Only verified hosts post private requests",
+    );
+    const host = await setupPrivateHostOrganization();
+    await host.t.run((ctx) =>
+      ctx.db.patch(host.organizationId, { status: "pending" }),
+    );
+    await expect(host.createPrivateDraft()).rejects.toThrow(
+      "Organization must be verified",
+    );
+  });
+
+  test("requires an owned location and excludes venues", async () => {
+    const f = await setupPrivateHostOrganization();
+    await expect(
+      f.createPrivateDraft({ privateLocationId: undefined }),
+    ).rejects.toThrow("Choose a location");
+    await expect(
+      f.createPrivateDraft({ privateLocationId: f.otherLocationId }),
+    ).rejects.toThrow("Choose a location");
+    await f.t.run((ctx) => ctx.db.delete(f.alternateLocationId));
+    await expect(
+      f.createPrivateDraft({ privateLocationId: f.alternateLocationId }),
+    ).rejects.toThrow("Choose a location");
+    await expect(f.createPrivateDraft({ venueId: f.venueId })).rejects.toThrow(
+      "Private requests don't use a venue",
+    );
+  });
+
+  test("requires positive guarantees and an explicit deadline before the event", async () => {
+    const f = await setupPrivateHostOrganization();
+    for (const slots of [
+      undefined,
+      [],
+      [{ role: "headliner" as const, guaranteeMinor: 0 }],
+    ]) {
+      await expect(f.createPrivateDraft({ slots })).rejects.toThrow(
+        "Private slots need a guarantee",
+      );
+    }
+    await expect(
+      f.createPrivateDraft({
+        slots: [{ role: "headliner", guaranteeMinor: 1.5 }],
+      }),
+    ).rejects.toThrow("Slot guarantee must be a non-negative integer");
+    for (const applicationsCloseAt of [
+      undefined,
+      NOW + 14 * DAY_MS,
+      NOW + 15 * DAY_MS,
+      Number.NaN,
+    ]) {
+      await expect(
+        f.createPrivateDraft({ applicationsCloseAt }),
+      ).rejects.toThrow("Set an application deadline before the event");
+    }
+  });
+
+  test.each(["true", "false"])(
+    "creates a private request with ticketing disabled when TICKETS_ENABLED=%s",
+    async (enabled) => {
+      vi.stubEnv("TICKETS_ENABLED", enabled);
+      const f = await setupPrivateHostOrganization();
+      const { opportunityId } = await f.createPrivateDraft({
+        ticketing: "paid",
+        ticketPriceMinor: -100,
+        ticketCapacity: -1,
+        ticketCurrency: "cad",
+      });
+      const { opportunity, slots } = await f.readOpportunity(opportunityId);
+      expect(opportunity).toMatchObject({
+        mode: "privateBooking",
+        privateLocationId: f.privateLocationId,
+        area: "Rockridge, Oakland",
+        ticketing: "none",
+        applicationsCloseAt: NOW + 7 * DAY_MS,
+      });
+      for (const field of [
+        "venueId",
+        "venueType",
+        "ticketPriceMinor",
+        "ticketCapacity",
+        "ticketCurrency",
+      ]) {
+        expect(opportunity).not.toHaveProperty(field);
+      }
+      expect(slots[0]).toMatchObject({ guaranteeMinor: 10000 });
+    },
+  );
+
+  test("updates owned locations and area in draft and open requests", async () => {
+    const f = await setupPrivateHostOrganization();
+    const { opportunityId } = await f.createPrivateDraft();
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 1,
+        venueId: f.venueId,
+      }),
+    ).rejects.toThrow("Private requests don't use a venue");
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 1,
+        privateLocationId: f.otherLocationId,
+      }),
+    ).rejects.toThrow("Choose a location");
+    await f.asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision: 1,
+      privateLocationId: f.alternateLocationId,
+    });
+    expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+      privateLocationId: f.alternateLocationId,
+      area: "Temescal, Oakland",
+      revision: 2,
+    });
+    await f.asOwner.mutation(api.talentOpportunities.open, {
+      opportunityId,
+      expectedRevision: 2,
+    });
+    await f.asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision: 3,
+      privateLocationId: f.privateLocationId,
+    });
+    expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+      privateLocationId: f.privateLocationId,
+      area: "Rockridge, Oakland",
+      status: "open",
+    });
+  });
+
+  test("updates retain private guarantees, deadline rules, and no ticketing", async () => {
+    const f = await setupPrivateHostOrganization();
+    const { opportunityId } = await f.createPrivateDraft();
+    for (const slots of [
+      [],
+      [{ role: "headliner" as const, guaranteeMinor: 0 }],
+    ]) {
+      await expect(
+        f.asOwner.mutation(api.talentOpportunities.update, {
+          opportunityId,
+          expectedRevision: 1,
+          slots,
+        }),
+      ).rejects.toThrow("Private slots need a guarantee");
+    }
+    for (const fields of [
+      { applicationsCloseAt: NOW + 14 * DAY_MS },
+      { startsAt: NOW + 7 * DAY_MS },
+    ]) {
+      await expect(
+        f.asOwner.mutation(api.talentOpportunities.update, {
+          opportunityId,
+          expectedRevision: 1,
+          ...fields,
+        }),
+      ).rejects.toThrow("Set an application deadline before the event");
+    }
+    vi.stubEnv("TICKETS_ENABLED", "false");
+    await f.asOwner.mutation(api.talentOpportunities.update, {
+      opportunityId,
+      expectedRevision: 1,
+      ticketing: "paid",
+      ticketPriceMinor: 1000,
+      ticketCapacity: 10,
+      ticketCurrency: "cad",
+      slots: [{ role: "headliner", guaranteeMinor: 20000 }],
+    });
+    const { opportunity, slots } = await f.readOpportunity(opportunityId);
+    expect(opportunity).toMatchObject({ ticketing: "none", revision: 2 });
+    for (const field of [
+      "ticketPriceMinor",
+      "ticketCapacity",
+      "ticketCurrency",
+    ]) {
+      expect(opportunity).not.toHaveProperty(field);
+    }
+    expect(slots[0].guaranteeMinor).toBe(20000);
+  });
+
+  test("public events require venues and reject private locations on create and update", async () => {
+    const f = await setupPrivateHostOrganization();
+    await expect(f.createDraft({ venueId: undefined })).rejects.toThrow(
+      "Choose one of your verified venues",
+    );
+    await expect(
+      f.createDraft({ privateLocationId: f.privateLocationId }),
+    ).rejects.toThrow("Public events don't use a private location");
+    const { opportunityId } = await f.createDraft();
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.update, {
+        opportunityId,
+        expectedRevision: 1,
+        privateLocationId: f.privateLocationId,
+      }),
+    ).rejects.toThrow("Public events don't use a private location");
+  });
+
+  test("duplicates the private location", async () => {
+    const f = await setupPrivateHostOrganization();
+    const { opportunityId } = await f.createPrivateDraft();
+    const copy = await f.asOwner.mutation(api.talentOpportunities.duplicate, {
+      opportunityId,
+    });
+    const { opportunity } = await f.readOpportunity(copy.opportunityId);
+    expect(opportunity).toMatchObject({
+      mode: "privateBooking",
+      privateLocationId: f.privateLocationId,
+      area: "Rockridge, Oakland",
+      ticketing: "none",
+      status: "draft",
+    });
+    expect(opportunity).not.toHaveProperty("venueId");
+  });
+
+  test("organizer and artist payloads reveal only the area, even with stale venue fields", async () => {
+    const f = await setupPrivateHostOrganization();
+    const { opportunityId } = await f.createPrivateDraft();
+    await f.t.run((ctx) =>
+      ctx.db.patch(opportunityId, {
+        venueId: f.venueId,
+        venueType: "hall",
+      }),
+    );
+    const { payload, artistPayload } = await f.t.run(async (ctx) => {
+      const opportunity = await ctx.db.get(opportunityId);
+      if (!opportunity) throw new Error("Fixture opportunity missing");
+      const getSpy = vi.spyOn(ctx.db, "get");
+      try {
+        const payload = await toOpportunityPayload(ctx, opportunity);
+        const artistPayload = await toArtistOpportunityPayload(
+          ctx,
+          opportunity,
+        );
+        expect(getSpy).not.toHaveBeenCalled();
+        return { payload, artistPayload };
+      } finally {
+        getSpy.mockRestore();
+      }
+    });
+    expect(payload).toMatchObject({
+      privateEvent: true,
+      venueId: null,
+      venue: null,
+      venueType: "private",
+      area: "Rockridge, Oakland",
+    });
+    expect(Object.keys(payload).sort()).toEqual(
+      Object.keys(opportunityPayloadValidator.fields).sort(),
+    );
+    for (const field of [
+      "privateLocationId",
+      "addr",
+      "lat",
+      "lng",
+      "notes",
+      "label",
+    ]) {
+      expect(payload).not.toHaveProperty(field);
+    }
+    const { invitedBandIds, ...expectedArtistPayload } = payload;
+    expect(artistPayload).toEqual(expectedArtistPayload);
+  });
+});
+
 describe("talent opportunity invitations and authorization", () => {
   test("invites are idempotent, reject archived bands, and can be removed after closing", async () => {
     const { createDraft, asOwner, bandId, archivedBandId, readOpportunity } =
@@ -2237,6 +2558,7 @@ describe("opportunity payload", () => {
     expect(payload).toMatchObject({
       _id: opportunityId,
       venueId,
+      privateEvent: false,
       venue: toVenuePayload(venue!),
       flyerUrl: null,
       area: "Uptown, Oakland",
