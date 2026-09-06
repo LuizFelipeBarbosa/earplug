@@ -712,6 +712,12 @@ class RootShell extends StatelessWidget {
       ),
       Screen.orgTeam => OrgTeamScreen(key: key),
       Screen.orgSettings => OrgSettingsScreen(key: key),
+      Screen.orgFinance => const SizedBox.shrink(
+        key: Key('org-finance-placeholder'),
+      ),
+      Screen.orgTransactions => const SizedBox.shrink(
+        key: Key('org-transactions-placeholder'),
+      ),
       Screen.orgOpportunities => OrgOpportunitiesScreen(key: key),
       Screen.opportunityEdit => OpportunityEditScreen(
         key: key,

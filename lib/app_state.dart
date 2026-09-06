@@ -25,6 +25,7 @@ import 'services/flyer_text_extractor.dart';
 import 'services/location_service.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
+import 'services/web_shell.dart';
 
 export 'date_names.dart' show dateLabel, monthLabel, timeLabel;
 export 'discovery_filters.dart';
@@ -37,6 +38,7 @@ part 'app_state/bookings.dart';
 part 'app_state/catalog.dart';
 part 'app_state/discovery.dart';
 part 'app_state/fan.dart';
+part 'app_state/finance.dart';
 part 'app_state/gig_editor.dart';
 part 'app_state/navigation.dart';
 part 'app_state/opportunities.dart';
@@ -88,6 +90,8 @@ mixin _AppStateCore on ChangeNotifier {
   void _resetBandForm();
   // Implemented by _OpportunityState and called from _NavigationState.resetTo.
   void _onBandChanged();
+  // Implemented by _FinanceState and called from _NavigationState.resetTo.
+  void _onOrganizationChanged();
   // Implemented by _OpportunityState and called by AppState's session cleanup.
   // AppState resolves the concrete implementation rather than this declaration.
   // ignore: unused_element
@@ -138,6 +142,7 @@ class AppState extends ChangeNotifier
         _OpportunityState,
         _BookingState,
         _PaymentState,
+        _FinanceState,
         _TicketState,
         _OrganizerState,
         _CatalogState,
@@ -492,6 +497,7 @@ class AppState extends ChangeNotifier
     _clearOpportunityState();
     _clearBookingState();
     _clearPaymentState();
+    _clearFinanceState();
     _clearTicketState();
     _resetGigForm();
   }

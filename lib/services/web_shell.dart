@@ -14,6 +14,8 @@ abstract class WebShell {
 
   /// Persists or clears the browser preference for eager web semantics.
   void writeA11yPreference(bool enabled);
+
+  void downloadTextFile(String filename, String text);
 }
 
 final WebShell webShell = createWebShell();
