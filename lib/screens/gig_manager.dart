@@ -644,7 +644,7 @@ class _OpportunityFiltersSheetState extends State<_OpportunityFiltersSheet> {
                       ),
                   ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'MINIMUM GUARANTEE (DOLLARS)',
                   hint: 'Any guarantee',

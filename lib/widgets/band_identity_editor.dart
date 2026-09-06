@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../genres.dart';
 import '../theme.dart';
 import 'common.dart';
+import 'form_bits.dart';
 
 /// The public band-profile header, with optional editing controls layered over
 /// the exact same presentation for create/edit workflows.
@@ -255,58 +256,6 @@ class BandIdentityHeader extends StatelessWidget {
   }
 }
 
-class BandIdentityTextField extends StatelessWidget {
-  const BandIdentityTextField({
-    super.key,
-    this.fieldKey,
-    required this.label,
-    required this.hint,
-    required this.controller,
-    required this.onChanged,
-    this.required = false,
-    this.enabled = true,
-    this.minLines = 1,
-    this.maxLines = 1,
-    this.maxLength,
-    this.textCapitalization = TextCapitalization.none,
-  });
-
-  final String label;
-  final Key? fieldKey;
-  final String hint;
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-  final bool required;
-  final bool enabled;
-  final int minLines;
-  final int maxLines;
-  final int? maxLength;
-  final TextCapitalization textCapitalization;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      key: fieldKey,
-      controller: controller,
-      enabled: enabled,
-      onChanged: onChanged,
-      minLines: minLines,
-      maxLines: maxLines,
-      maxLength: maxLength,
-      textCapitalization: textCapitalization,
-      style: Theme.of(context).textTheme.epDisplay.copyWith(
-        fontSize: minLines > 1 ? 18 : 21,
-        height: 1.25,
-      ),
-      decoration: epInputDecoration(context, hint).copyWith(
-        labelText: required ? '$label · REQUIRED' : label,
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        contentPadding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-      ),
-    );
-  }
-}
-
 class BandGenreEditor extends StatelessWidget {
   const BandGenreEditor({
     super.key,
@@ -329,77 +278,61 @@ class BandGenreEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return Column(
       key: const ValueKey('band-genres-field'),
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        color: context.epColors.surface,
-        border: Border.all(color: context.epColors.border),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'GENRES · REQUIRED',
-            style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              color: genres.isEmpty
-                  ? context.epColors.warning
-                  : context.epColors.contentSecondary,
-              letterSpacing: 1.1,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: [
-              for (final genre in {...kGenres, ...genres})
-                EpChip(
-                  label: genre,
-                  active: genres.contains(genre),
-                  onTap: enabled ? () => onToggle(genre) : null,
-                ),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const FieldLabel('GENRES', required: true),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 7,
+          runSpacing: 7,
+          children: [
+            for (final genre in {...kGenres, ...genres})
               EpChip(
-                key: const ValueKey('show-custom-genre'),
-                label: '+ ADD',
-                active: false,
-                ghost: true,
-                semanticLabel: 'Add custom genre',
-                onTap: enabled ? onShowCustomGenre : null,
+                label: genre,
+                active: genres.contains(genre),
+                onTap: enabled ? () => onToggle(genre) : null,
+              ),
+            EpChip(
+              key: const ValueKey('show-custom-genre'),
+              label: '+ ADD',
+              active: false,
+              ghost: true,
+              semanticLabel: 'Add custom genre',
+              onTap: enabled ? onShowCustomGenre : null,
+            ),
+          ],
+        ),
+        if (addingCustomGenre) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const ValueKey('edit-custom-genre'),
+                  controller: customController,
+                  enabled: enabled,
+                  autofocus: true,
+                  onSubmitted: (_) => onAddCustomGenre(),
+                  style: Theme.of(context).textTheme.epInput,
+                  decoration: epInputDecoration(context, 'Another genre'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                onPressed: enabled ? onAddCustomGenre : null,
+                child: Text('ADD'),
               ),
             ],
           ),
-          if (addingCustomGenre) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    key: const ValueKey('edit-custom-genre'),
-                    controller: customController,
-                    enabled: enabled,
-                    autofocus: true,
-                    onSubmitted: (_) => onAddCustomGenre(),
-                    style: Theme.of(context).textTheme.epBody,
-                    decoration: epInputDecoration(context, 'Another genre'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: enabled ? onAddCustomGenre : null,
-                  child: Text('ADD'),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 7),
-          Text(
-            '${genres.length} of 3 selected',
-            style: Theme.of(context).textTheme.epCaption,
-          ),
         ],
-      ),
+        const SizedBox(height: 7),
+        Text(
+          '${genres.length} of 3 selected',
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+      ],
     );
   }
 }

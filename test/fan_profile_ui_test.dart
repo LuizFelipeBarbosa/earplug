@@ -11,7 +11,6 @@ import 'package:earplug/screens/settings.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
-import 'package:earplug/widgets/band_identity_editor.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +22,39 @@ import 'support/fixtures.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('unsaved profile edits survive desktop and mobile resizing', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      home: const RootShell(),
+      beforePump: (app) => app.go(Screen.editProfile),
+    );
+    tester.view.physicalSize = const Size(1280, 900);
+    await tester.pumpAndSettle();
+    final name = find.byKey(const Key('fan-name-field'));
+    final bio = find.byKey(const Key('fan-bio-field'));
+    await tester.enterText(name, 'Rae Booker');
+    await tester.enterText(bio, 'Small venues and loud guitars.');
+
+    for (final size in [const Size(390, 844), const Size(1280, 900)]) {
+      tester.view.physicalSize = size;
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(name).controller!.text, 'Rae Booker');
+      expect(
+        tester.widget<TextField>(bio).controller!.text,
+        'Small venues and loud guitars.',
+      );
+    }
+    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.pumpAndSettle();
+    expect(harness.app.profile!.name, 'Rae Booker');
+    expect(harness.app.profile!.bio, 'Small venues and loud guitars.');
+  });
+
   testWidgets('profile fields use labelled form grammar and keep semantics', (
     tester,
   ) async {
@@ -53,13 +85,13 @@ void main() {
     expect(find.text('IDENTITY'), findsOne);
     expect(find.text('SCENE & TASTE'), findsOne);
     expect(find.text('DISPLAY NAME · REQUIRED'), findsOne);
-    expect(find.bySemanticsLabel('DISPLAY NAME · REQUIRED'), findsOne);
+    expect(find.bySemanticsLabel(RegExp('^DISPLAY NAME · REQUIRED')), findsOne);
     expect(find.text('HOME LOCATION'), findsOne);
     expect(find.text('ABOUT'), findsOne);
-    expect(find.bySemanticsLabel('ABOUT'), findsOne);
+    expect(find.bySemanticsLabel(RegExp('^ABOUT')), findsOne);
     expect(find.textContaining('FAVORITE GENRES'), findsOne);
     expect(find.text('PREFERENCES'), findsOne);
-    expect(find.byType(BandIdentityTextField), findsNWidgets(2));
+    expect(find.byType(EpLabeledField), findsNWidgets(2));
     expect(find.byType(StickyActionBar), findsOne);
 
     final orderedFields = [
@@ -78,8 +110,11 @@ void main() {
     }
     for (final key in const [Key('fan-name-field'), Key('fan-bio-field')]) {
       final field = tester.widget<TextField>(find.byKey(key));
-      expect(field.style!.fontFamily, 'Archivo Black');
-      expect(field.decoration!.enabledBorder, isA<OutlineInputBorder>());
+      expect(field.style!.fontFamily, 'Archivo');
+      final decoration = field.decoration!.applyDefaults(
+        Theme.of(tester.element(find.byKey(key))).inputDecorationTheme,
+      );
+      expect(decoration.enabledBorder, isA<OutlineInputBorder>());
     }
     semantics.dispose();
   });
@@ -500,7 +535,7 @@ void main() {
     final search = find.byKey(const Key('following-search-field'));
     expect(followingSheet, findsOne);
     expect(search, findsOne);
-    expect(find.bySemanticsLabel('Search followed bands'), findsOne);
+    expect(find.bySemanticsLabel(RegExp('^Search followed bands')), findsOne);
     for (final bandId in harness.app.follows) {
       final band = harness.app.band(bandId);
       if (band != null) expect(find.text(band.name.toUpperCase()), findsOne);

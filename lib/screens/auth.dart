@@ -238,18 +238,14 @@ class _DoorStepState extends State<_DoorStep> {
                     ),
                   ),
                 ),
-                EpCard(
-                  variant: EpCardVariant.raised,
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      if (_stage == _EntryStage.providers)
-                        ..._buildProviders()
-                      else
-                        ..._buildEntry(),
-                    ],
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_stage == _EntryStage.providers)
+                      ..._buildProviders()
+                    else
+                      ..._buildEntry(),
+                  ],
                 ),
               ],
             ),
@@ -294,19 +290,20 @@ class _DoorStepState extends State<_DoorStep> {
   List<Widget> _buildEntry() {
     return [
       if (_stage == _EntryStage.email || _stage == _EntryStage.emailCode)
-        TextField(
+        EpLabeledField(
           controller: _emailController,
+          label: 'EMAIL ADDRESS',
+          hint: 'you@example.com',
           enabled: !_loading && _stage == _EntryStage.email,
           keyboardType: TextInputType.emailAddress,
-          autocorrect: false,
           textCapitalization: TextCapitalization.none,
-          style: epText(size: 14),
-          decoration: epInputDecoration(context, 'you@example.com'),
+          autofillHints: const [AutofillHints.email],
+          textInputAction: TextInputAction.done,
           onSubmitted: (_) {
             if (_stage == _EntryStage.email) _sendEmailCode();
           },
         ),
-      const SizedBox(height: 10),
+      const SizedBox(height: EpLayout.fieldGap),
       if (_stage == _EntryStage.email)
         EpButton(
           _loading ? 'SENDING…' : 'SEND CODE',
@@ -330,8 +327,10 @@ class _DoorStepState extends State<_DoorStep> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
+        EpLabeledField(
           controller: _codeController,
+          label: 'VERIFICATION CODE',
+          hint: '6-digit code',
           enabled: !_loading,
           keyboardType: TextInputType.number,
           textInputAction: TextInputAction.done,
@@ -340,15 +339,9 @@ class _DoorStepState extends State<_DoorStep> {
             FilteringTextInputFormatter.digitsOnly,
             LengthLimitingTextInputFormatter(6),
           ],
-          style: epText(size: 18, weight: FontWeight.w800, letterSpacing: 5),
-          decoration: epInputDecoration(
-            context,
-            '6-digit code',
-          ).copyWith(counterText: ''),
-          maxLength: 6,
           onSubmitted: (_) => _verifyEmailCode(),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: EpLayout.fieldGap),
         EpButton(
           _loading ? 'VERIFYING…' : 'VERIFY',
           kind: _loading || !codeComplete

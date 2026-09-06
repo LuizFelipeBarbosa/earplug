@@ -34,7 +34,7 @@ void main() {
           .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
           .style
           ?.fontSize,
-      21,
+      16,
     );
     expect(find.text('GENRES · REQUIRED'), findsOne);
     expect(find.text('HOME BASE · REQUIRED'), findsOne);
@@ -45,7 +45,7 @@ void main() {
     expect(find.byType(StickyActionBar), findsOne);
     expect(find.text('LINKS'), findsOne);
     expect(find.text('CREDITS'), findsWidgets);
-    expect(find.bySemanticsLabel('Credits'), findsOne);
+    expect(find.bySemanticsLabel(RegExp('^CREDITS')), findsOne);
     expect(find.text('MANAGE VIDEOS AND PHOTOS'), findsOne);
     expect(find.textContaining('BAND MEMBERS'), findsOne);
     expect(find.text('ACCEPTED MEMBERS'), findsOne);

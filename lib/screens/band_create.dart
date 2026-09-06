@@ -176,7 +176,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 ),
               ],
               const SizedBox(height: 20),
-              BandIdentityTextField(
+              EpLabeledField(
                 fieldKey: const ValueKey('create-band-name'),
                 label: 'BAND NAME',
                 hint: 'Your band name',
@@ -184,8 +184,8 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 required: true,
                 onChanged: app.setNbName,
               ),
-              const SizedBox(height: 14),
-              BandIdentityTextField(
+              const SizedBox(height: EpLayout.fieldGap),
+              EpLabeledField(
                 fieldKey: const ValueKey('create-home-base'),
                 label: 'HOME BASE',
                 hint: 'Neighborhood or city',
@@ -193,8 +193,8 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 required: true,
                 onChanged: app.setNbArea,
               ),
-              const SizedBox(height: 14),
-              BandIdentityTextField(
+              const SizedBox(height: EpLayout.fieldGap),
+              EpLabeledField(
                 fieldKey: const ValueKey('create-about'),
                 label: 'ABOUT',
                 hint: 'Tell fans about the band',
@@ -203,7 +203,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 maxLines: 7,
                 onChanged: app.setNbBio,
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: EpLayout.fieldGap),
               BandGenreEditor(
                 genres: app.nbGenres,
                 onToggle: app.toggleNbGenre,
@@ -213,31 +213,29 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                     setState(() => _addingCustomGenre = true),
                 onAddCustomGenre: _addCustomGenre,
               ),
-              const SizedBox(height: 24),
               FormSection(
                 title: 'Links',
                 description:
                     'Add the places where fans can listen, watch, and follow.',
-                boxed: false,
                 child: Column(
                   children: [
-                    _StandardField(
+                    EpLabeledField(
                       fieldKey: const ValueKey('create-instagram'),
                       label: 'INSTAGRAM',
                       hint: 'Instagram',
                       controller: _instagram,
                       onChanged: app.setNbIg,
                     ),
-                    const SizedBox(height: 12),
-                    _StandardField(
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpLabeledField(
                       fieldKey: const ValueKey('create-bandcamp'),
                       label: 'BANDCAMP',
                       hint: 'Bandcamp',
                       controller: _bandcamp,
                       onChanged: app.setNbBc,
                     ),
-                    const SizedBox(height: 12),
-                    _StandardField(
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpLabeledField(
                       fieldKey: const ValueKey('create-youtube'),
                       label: 'YOUTUBE OR VIDEO',
                       hint: 'YouTube or video',
@@ -251,7 +249,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 title: 'Credits',
                 description:
                     'Acknowledge producers, artists, labels, and collaborators.',
-                child: _StandardField(
+                child: EpLabeledField(
                   fieldKey: const ValueKey('create-credits'),
                   label: 'CREDITS',
                   hint: 'Who helped make the work',
@@ -274,39 +272,6 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
         ),
         const Positioned(left: 0, right: 0, bottom: 0, child: _CreateBar()),
       ],
-    );
-  }
-}
-
-class _StandardField extends StatelessWidget {
-  const _StandardField({
-    this.fieldKey,
-    required this.label,
-    required this.hint,
-    required this.controller,
-    required this.onChanged,
-    this.minLines = 1,
-    this.maxLines = 1,
-  });
-
-  final String label;
-  final Key? fieldKey;
-  final String hint;
-  final TextEditingController controller;
-  final ValueChanged<String> onChanged;
-  final int minLines;
-  final int maxLines;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      key: fieldKey,
-      controller: controller,
-      onChanged: onChanged,
-      minLines: minLines,
-      maxLines: maxLines,
-      style: Theme.of(context).textTheme.epBody,
-      decoration: labeledInputDecoration(context, label, hint),
     );
   }
 }

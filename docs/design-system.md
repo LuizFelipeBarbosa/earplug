@@ -31,6 +31,37 @@ colors when the artwork behind it remains dark.
 Segmented controls, dialogs, sheets, progress indicators, and snackbars have
 shared theme defaults. Prefer these defaults over page-specific styling.
 
+## Input forms
+
+Use `EpLabeledField` for labelled text entry. The label stays above the text
+box, with an 8-pixel gap, and remains associated with the editable field for
+screen readers. Required labels are explicit. Input text uses the `epInput`
+role: 16-pixel Archivo at regular weight. Brand/display fonts belong in previews,
+not editable values.
+
+The input itself is the only bordered surface. Do not put a field, genre picker,
+or group of preferences inside another card. `FormSection` groups controls with
+a heading, description, and whitespace. Cards remain appropriate for actual
+content previews and selectable items.
+
+- Leave `EpLayout.fieldGap` (20 pixels) between fields and control groups.
+- Use `SectionBar.form` or `FormSection` for 32-pixel section spacing.
+- Use `EpFieldRow` for related inputs. It stacks them below 480 pixels or with
+  enlarged text instead of squeezing labels and validation messages. Its input
+  subtree stays mounted across width changes, as does the shell's content panel,
+  so resizing preserves unsaved edits and focus.
+- Let `inputDecorationTheme` supply the 56-pixel minimum height, 16-pixel inset,
+  12-pixel corners, and focus, disabled, and error borders. Sheets use the same
+  input treatment as pages.
+- Keep helper text below the field and use `errorText` for field validation.
+  Use the appropriate keyboard and autofill hints. Single-line fields default
+  to Next; search, verification, and terminal actions can override it.
+
+The existing form suites exercise save/retry behavior, dirty drafts, required
+fields, address suggestions, invitations, ticket amounts, authentication, and
+keyboard access. `form_bits_test.dart` also verifies that visible labels remain
+accessible and Next moves focus without losing entered values.
+
 ## Page coverage
 
 `test/design_audit_test.dart` renders and scrolls every `Screen` value with

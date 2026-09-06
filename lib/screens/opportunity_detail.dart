@@ -526,7 +526,7 @@ class _ApplySheetState extends State<_ApplySheet> {
                 ),
                 if (_slot == null)
                   const EmptyNote(message: 'No slots are currently open.'),
-                const SizedBox(height: 18),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'REQUESTED FEE (DOLLARS)',
                   hint: 'Your requested fee',
@@ -537,7 +537,7 @@ class _ApplySheetState extends State<_ApplySheet> {
                     decimal: true,
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'AVAILABILITY',
                   hint: 'Anything we should know about timing?',
@@ -545,7 +545,7 @@ class _ApplySheetState extends State<_ApplySheet> {
                   fieldKey: const Key('opp-apply-availability'),
                   enabled: !_submitting,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'LINEUP',
                   hint: 'Who will be playing?',
@@ -553,7 +553,7 @@ class _ApplySheetState extends State<_ApplySheet> {
                   fieldKey: const Key('opp-apply-lineup'),
                   enabled: !_submitting,
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
                   label: 'MESSAGE',
                   hint: 'Tell the organizer about your band',
