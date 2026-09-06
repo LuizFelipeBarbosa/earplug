@@ -12,6 +12,7 @@ import {
   requirePlatformAdmin,
   requirePlatformAdminQuery,
 } from "./lib/authz";
+import { flag } from "./lib/env";
 import {
   OAK_CENTER,
   SF_CENTER,
@@ -125,6 +126,11 @@ async function findVenueAtAddress(
 
 export const organizationApplicationPayloadValidator = v.object({
   _id: v.id("organizationApplications"),
+  kind: v.union(v.literal("organization"), v.literal("host")),
+  hostDisplayName: v.union(v.string(), v.null()),
+  hostPhone: v.union(v.string(), v.null()),
+  hostArea: v.union(v.string(), v.null()),
+  hostAgreementAcceptedAt: v.union(v.number(), v.null()),
   status: organizationApplicationStatusValidator,
   orgName: v.string(),
   orgType: organizationTypeValidator,
@@ -182,6 +188,11 @@ export async function toApplicationPayload(
   }
   return {
     _id: application._id,
+    kind: application.kind ?? "organization",
+    hostDisplayName: application.hostDisplayName ?? null,
+    hostPhone: application.hostPhone ?? null,
+    hostArea: application.hostArea ?? null,
+    hostAgreementAcceptedAt: application.hostAgreementAcceptedAt ?? null,
     status: application.status,
     orgName: application.orgName,
     orgType: application.orgType,
@@ -216,6 +227,10 @@ function optionalText(value: string | undefined): string | undefined {
 }
 
 function normalizeAndValidateDraft(args: {
+  kind?: "organization" | "host";
+  hostDisplayName?: string;
+  hostPhone?: string;
+  hostArea?: string;
   orgName: string;
   orgType: Infer<typeof organizationTypeValidator>;
   website?: string;
@@ -289,12 +304,30 @@ function normalizeAndValidateDraft(args: {
     };
   }
 
-  if (args.orgType !== "venueOperator") {
+  if (args.kind !== "host" && args.orgType !== "venueOperator") {
     throw new Error(
       "Only bars and clubs that control their location can apply right now",
     );
   }
+
+  const hostDisplayName = optionalText(args.hostDisplayName);
+  if (hostDisplayName !== undefined && hostDisplayName.length > 60) {
+    throw new Error("Host name is too long");
+  }
+  const hostPhone = optionalText(args.hostPhone);
+  if (hostPhone !== undefined && hostPhone.length > 40) {
+    throw new Error("Host phone number is too long");
+  }
+  const hostArea = optionalText(args.hostArea);
+  if (hostArea !== undefined && hostArea.length > 120) {
+    throw new Error("Host area is too long");
+  }
+
   return {
+    kind: args.kind ?? "organization",
+    hostDisplayName,
+    hostPhone,
+    hostArea,
     orgName,
     orgType: args.orgType,
     website,
@@ -332,6 +365,22 @@ async function uniqueOrganizationSlug(
   for (let n = 1; ; n++) {
     const candidate = n === 1 ? base : `${base}-${n}`;
     if (isReservedPublicSlug(candidate)) continue;
+    const existing = await ctx.db
+      .query("organizations")
+      .withIndex("by_slug", (q) => q.eq("slug", candidate))
+      .first();
+    if (existing === null) return candidate;
+  }
+}
+
+async function uniqueHostOrganizationSlug(ctx: MutationCtx): Promise<string> {
+  for (;;) {
+    const bytes = new Uint8Array(6);
+    crypto.getRandomValues(bytes);
+    const suffix = Array.from(bytes, (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    const candidate = `host-${suffix}`;
     const existing = await ctx.db
       .query("organizations")
       .withIndex("by_slug", (q) => q.eq("slug", candidate))
@@ -387,6 +436,11 @@ export const saveDraft = mutation({
   args: {
     applicationId: v.optional(v.id("organizationApplications")),
     expectedRevision: v.optional(v.number()),
+    kind: v.optional(v.union(v.literal("organization"), v.literal("host"))),
+    hostDisplayName: v.optional(v.string()),
+    hostPhone: v.optional(v.string()),
+    hostArea: v.optional(v.string()),
+    hostAgreementAccepted: v.optional(v.boolean()),
     orgName: v.string(),
     orgType: organizationTypeValidator,
     website: v.optional(v.string()),
@@ -413,9 +467,26 @@ export const saveDraft = mutation({
       if (args.expectedRevision !== application.revision) {
         throw new Error("Application changed elsewhere");
       }
+      if (
+        application.kind === "host" &&
+        (application.hostDisplayName !== undefined ||
+          application.hostPhone !== undefined ||
+          application.hostArea !== undefined ||
+          application.hostAgreementAcceptedAt !== undefined) &&
+        fields.kind !== "host"
+      ) {
+        throw new Error("Application kind cannot change");
+      }
+      const hostAgreementAcceptedAt =
+        args.hostAgreementAccepted === true
+          ? now
+          : args.hostAgreementAccepted === false
+            ? undefined
+            : application.hostAgreementAcceptedAt;
       const revision = application.revision + 1;
       await ctx.db.patch(application._id, {
         ...fields,
+        hostAgreementAcceptedAt,
         revision,
         updatedAt: now,
       });
@@ -425,6 +496,8 @@ export const saveDraft = mutation({
     const applicationId = await ctx.db.insert("organizationApplications", {
       applicantUserId: user._id,
       ...fields,
+      hostAgreementAcceptedAt:
+        args.hostAgreementAccepted === true ? now : undefined,
       verificationDocStorageIds: [],
       status: "draft",
       revision: 1,
@@ -452,35 +525,58 @@ export const submit = mutation({
     if (args.expectedRevision !== application.revision) {
       throw new Error("Application changed elsewhere");
     }
-    if (!application.orgName.trim()) {
-      throw new Error("Organization name is required");
-    }
-    if (!application.contactName.trim()) {
-      throw new Error("Contact name is required");
-    }
-    if (
-      !application.businessEmail.trim() ||
-      !application.businessEmail.trim().includes("@")
-    ) {
-      throw new Error("Enter a valid business email");
-    }
-    if (
-      application.orgType === "venueOperator" &&
-      (application.venue === undefined ||
-        !application.venue.name.trim() ||
-        !application.venue.addr.trim() ||
-        !Number.isFinite(application.venue.lat) ||
-        !Number.isFinite(application.venue.lng))
-    ) {
-      throw new Error("Add your venue's details before submitting");
-    }
-    if (
-      application.orgType === "venueOperator" &&
-      application.verificationDocStorageIds.length === 0
-    ) {
-      throw new Error(
-        "Attach at least one verification document before submitting",
-      );
+    if (application.kind === "host") {
+      if (!flag("PRIVATE_BOOKINGS_ENABLED", false)) {
+        throw new Error("Hosting is not available yet");
+      }
+      const hostDisplayName = application.hostDisplayName?.trim() ?? "";
+      if (hostDisplayName.length < 2) throw new Error("Host name is required");
+      if (hostDisplayName.length > 60) throw new Error("Host name is too long");
+      if (!application.hostPhone?.trim()) {
+        throw new Error("Phone number is required");
+      }
+      if (!application.hostArea?.trim()) {
+        throw new Error("Area is required");
+      }
+      if (application.hostAgreementAcceptedAt === undefined) {
+        throw new Error("Accept the hosting agreement before submitting");
+      }
+      if (application.verificationDocStorageIds.length === 0) {
+        throw new Error(
+          "Attach at least one verification document before submitting",
+        );
+      }
+    } else {
+      if (!application.orgName.trim()) {
+        throw new Error("Organization name is required");
+      }
+      if (!application.contactName.trim()) {
+        throw new Error("Contact name is required");
+      }
+      if (
+        !application.businessEmail.trim() ||
+        !application.businessEmail.trim().includes("@")
+      ) {
+        throw new Error("Enter a valid business email");
+      }
+      if (
+        application.orgType === "venueOperator" &&
+        (application.venue === undefined ||
+          !application.venue.name.trim() ||
+          !application.venue.addr.trim() ||
+          !Number.isFinite(application.venue.lat) ||
+          !Number.isFinite(application.venue.lng))
+      ) {
+        throw new Error("Add your venue's details before submitting");
+      }
+      if (
+        application.orgType === "venueOperator" &&
+        application.verificationDocStorageIds.length === 0
+      ) {
+        throw new Error(
+          "Attach at least one verification document before submitting",
+        );
+      }
     }
 
     const revision = application.revision + 1;
@@ -631,19 +727,29 @@ const reviewListItemValidator = v.object({
 
 export const listForReview = query({
   args: {
+    kind: v.optional(v.union(v.literal("organization"), v.literal("host"))),
     status: v.optional(organizationApplicationStatusValidator),
     paginationOpts: paginationOptsValidator,
   },
   returns: paginationResultValidator(reviewListItemValidator),
   handler: async (ctx, args) => {
     await requirePlatformAdminQuery(ctx);
-    const result = await ctx.db
-      .query("organizationApplications")
-      .withIndex("by_status_and_createdAt", (q) =>
-        q.eq("status", args.status ?? "submitted"),
-      )
-      .order("asc")
-      .paginate(args.paginationOpts);
+    const result =
+      args.kind !== undefined
+        ? await ctx.db
+            .query("organizationApplications")
+            .withIndex("by_kind_and_status_and_createdAt", (q) =>
+              q.eq("kind", args.kind).eq("status", args.status ?? "submitted"),
+            )
+            .order("asc")
+            .paginate(args.paginationOpts)
+        : await ctx.db
+            .query("organizationApplications")
+            .withIndex("by_status_and_createdAt", (q) =>
+              q.eq("status", args.status ?? "submitted"),
+            )
+            .order("asc")
+            .paginate(args.paginationOpts);
     const page = [];
     for (const application of result.page) {
       const applicant = await ctx.db.get(application.applicantUserId);
@@ -735,6 +841,57 @@ export const decide = mutation({
         organizationId: null,
         venueId: null,
       };
+    }
+
+    if (application.kind === "host") {
+      const slug = await uniqueHostOrganizationSlug(ctx);
+      const organizationId = await ctx.db.insert("organizations", {
+        name: application.hostDisplayName ?? "",
+        slug,
+        orgType: "privateHost",
+        status: "verified",
+        ownerUserId: application.applicantUserId,
+        applicationId: application._id,
+        verifiedAt: updatedAt,
+        createdAt: updatedAt,
+        updatedAt,
+      });
+      const applicant = await ctx.db.get(application.applicantUserId);
+      await ctx.db.insert("organizationPrivateDetails", {
+        organizationId,
+        businessEmail: applicant?.email || application.businessEmail,
+        contactName: application.hostDisplayName ?? "",
+        phone: application.hostPhone,
+        stripeChargesEnabled: false,
+        stripePayoutsEnabled: false,
+        stripeDetailsSubmitted: false,
+        verificationDocStorageIds: application.verificationDocStorageIds,
+        updatedAt,
+      });
+      await ctx.db.insert("organizationMembers", {
+        organizationId,
+        userId: application.applicantUserId,
+        role: "owner",
+        addedBy: reviewer._id,
+        createdAt: updatedAt,
+      });
+
+      await ctx.db.patch(application._id, {
+        status: "approved",
+        reviewerUserId: reviewer._id,
+        reviewNote,
+        decidedAt: updatedAt,
+        updatedAt,
+        resultingOrganizationId: organizationId,
+        resultingVenueId: undefined,
+      });
+      await scheduleApplicationEmail(
+        ctx,
+        "applicationApproved",
+        application,
+        reviewNote,
+      );
+      return { status: "approved" as const, organizationId, venueId: null };
     }
 
     const slug = await uniqueOrganizationSlug(ctx, application.orgName);

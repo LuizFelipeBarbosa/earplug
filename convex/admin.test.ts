@@ -1,5 +1,6 @@
+/// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { isPlatformAdmin } from "./lib/authz";
 import schema from "./schema";
@@ -112,9 +113,118 @@ describe("admin:overview", () => {
         needsInfoApplications: 1,
         verifiedOrganizations: 2,
         suspendedOrganizations: 1,
+        hostApplications: { submitted: 0, under_review: 0, needs_info: 0 },
       },
       capped: false,
     });
+  });
+});
+
+describe("admin:overview host applications", () => {
+  test("tracks host review counts and caps crowded queues", async () => {
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+    try {
+      const t = convexTest(schema, import.meta.glob("./**/*.ts"));
+      const asAdmin = t.withIdentity({
+        subject: "host_overview_admin",
+        email: "host-overview-admin@example.com",
+      });
+      const asApplicant = t.withIdentity({
+        subject: "host_overview_applicant",
+        email: "host-overview-applicant@example.com",
+      });
+      const { userId: adminUserId } = await asAdmin.mutation(
+        api.users.ensureUser,
+        {},
+      );
+      await asApplicant.mutation(api.users.ensureUser, {});
+      await t.run((ctx) =>
+        ctx.db.insert("platformAdmins", {
+          userId: adminUserId,
+          grantedAt: 1,
+        }),
+      );
+      const draft = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        {
+          kind: "host",
+          orgName: "",
+          orgType: "venueOperator",
+          contactName: "",
+          businessEmail: "",
+          hostDisplayName: "Riley",
+          hostPhone: "415-555-0100",
+          hostArea: "Mission, San Francisco",
+          hostAgreementAccepted: true,
+        },
+      );
+      await asApplicant.mutation(
+        api.organizationApplications.generateDocumentUploadUrl,
+        {},
+      );
+      const storageId = await t.run((ctx) =>
+        ctx.storage.store(
+          new Blob(["host verification"], { type: "application/pdf" }),
+        ),
+      );
+      const attached = await asApplicant.mutation(
+        api.organizationApplications.attachDocument,
+        {
+          applicationId: draft.applicationId,
+          storageId,
+        },
+      );
+      await asApplicant.mutation(api.organizationApplications.submit, {
+        applicationId: draft.applicationId,
+        expectedRevision: attached.revision,
+      });
+      const overview = await asAdmin.query(api.admin.overview, {});
+      expect(overview.counts.hostApplications).toEqual({
+        submitted: 1,
+        under_review: 0,
+        needs_info: 0,
+      });
+      expect(overview.counts.submittedApplications).toBe(1);
+      expect(overview.capped).toBe(false);
+
+      for (const status of ["under_review", "needs_info"] as const) {
+        await asAdmin.mutation(api.organizationApplications.decide, {
+          applicationId: draft.applicationId,
+          decision: status,
+        });
+        expect(
+          (await asAdmin.query(api.admin.overview, {})).counts
+            .hostApplications,
+        ).toEqual({
+          submitted: 0,
+          under_review: status === "under_review" ? 1 : 0,
+          needs_info: status === "needs_info" ? 1 : 0,
+        });
+      }
+
+      await t.run(async (ctx) => {
+        for (let index = 0; index < 100; index++) {
+          await ctx.db.insert("organizationApplications", {
+            applicantUserId: adminUserId,
+            kind: "host",
+            orgName: "",
+            orgType: "venueOperator",
+            contactName: "",
+            businessEmail: "",
+            verificationDocStorageIds: [],
+            status: "needs_info",
+            revision: 1,
+            createdAt: index,
+            updatedAt: index,
+          });
+        }
+      });
+      const cappedOverview = await asAdmin.query(api.admin.overview, {});
+      expect(cappedOverview.counts.hostApplications.needs_info).toBe(100);
+      expect(cappedOverview.capped).toBe(true);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

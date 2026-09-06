@@ -28,41 +28,81 @@ export const overview = query({
       needsInfoApplications: v.number(),
       verifiedOrganizations: v.number(),
       suspendedOrganizations: v.number(),
+      hostApplications: v.object({
+        submitted: v.number(),
+        under_review: v.number(),
+        needs_info: v.number(),
+      }),
     }),
     capped: v.boolean(),
   }),
   handler: async (ctx) => {
     await requirePlatformAdminQuery(ctx);
-    const [submitted, underReview, needsInfo, verified, suspended] =
-      await Promise.all([
-        ctx.db
-          .query("organizationApplications")
-          .withIndex("by_status_and_createdAt", (q) =>
-            q.eq("status", "submitted"),
-          )
-          .take(101),
-        ctx.db
-          .query("organizationApplications")
-          .withIndex("by_status_and_createdAt", (q) =>
-            q.eq("status", "under_review"),
-          )
-          .take(101),
-        ctx.db
-          .query("organizationApplications")
-          .withIndex("by_status_and_createdAt", (q) =>
-            q.eq("status", "needs_info"),
-          )
-          .take(101),
-        ctx.db
-          .query("organizations")
-          .withIndex("by_status_and_name", (q) => q.eq("status", "verified"))
-          .take(101),
-        ctx.db
-          .query("organizations")
-          .withIndex("by_status_and_name", (q) => q.eq("status", "suspended"))
-          .take(101),
-      ]);
-    const rows = [submitted, underReview, needsInfo, verified, suspended];
+    const [
+      submitted,
+      underReview,
+      needsInfo,
+      verified,
+      suspended,
+      hostSubmitted,
+      hostUnderReview,
+      hostNeedsInfo,
+    ] = await Promise.all([
+      ctx.db
+        .query("organizationApplications")
+        .withIndex("by_status_and_createdAt", (q) =>
+          q.eq("status", "submitted"),
+        )
+        .take(101),
+      ctx.db
+        .query("organizationApplications")
+        .withIndex("by_status_and_createdAt", (q) =>
+          q.eq("status", "under_review"),
+        )
+        .take(101),
+      ctx.db
+        .query("organizationApplications")
+        .withIndex("by_status_and_createdAt", (q) =>
+          q.eq("status", "needs_info"),
+        )
+        .take(101),
+      ctx.db
+        .query("organizations")
+        .withIndex("by_status_and_name", (q) => q.eq("status", "verified"))
+        .take(101),
+      ctx.db
+        .query("organizations")
+        .withIndex("by_status_and_name", (q) => q.eq("status", "suspended"))
+        .take(101),
+      ctx.db
+        .query("organizationApplications")
+        .withIndex("by_kind_and_status_and_createdAt", (q) =>
+          q.eq("kind", "host").eq("status", "submitted"),
+        )
+        .take(101),
+      ctx.db
+        .query("organizationApplications")
+        .withIndex("by_kind_and_status_and_createdAt", (q) =>
+          q.eq("kind", "host").eq("status", "under_review"),
+        )
+        .take(101),
+      ctx.db
+        .query("organizationApplications")
+        .withIndex("by_kind_and_status_and_createdAt", (q) =>
+          q.eq("kind", "host").eq("status", "needs_info"),
+        )
+        .take(101),
+    ]);
+    const rows = [
+      submitted,
+      underReview,
+      needsInfo,
+      verified,
+      suspended,
+      hostSubmitted,
+      hostUnderReview,
+      hostNeedsInfo,
+    ];
     return {
       counts: {
         submittedApplications: Math.min(submitted.length, 100),
@@ -70,6 +110,11 @@ export const overview = query({
         needsInfoApplications: Math.min(needsInfo.length, 100),
         verifiedOrganizations: Math.min(verified.length, 100),
         suspendedOrganizations: Math.min(suspended.length, 100),
+        hostApplications: {
+          submitted: Math.min(hostSubmitted.length, 100),
+          under_review: Math.min(hostUnderReview.length, 100),
+          needs_info: Math.min(hostNeedsInfo.length, 100),
+        },
       },
       capped: rows.some((group) => group.length === 101),
     };

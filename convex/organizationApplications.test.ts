@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import schema from "./schema";
@@ -24,6 +24,21 @@ const venueFields = {
   area: "Mission, San Francisco",
   capacity: 240,
   venueType: "club" as const,
+};
+
+const hostDraftFields = {
+  kind: "host" as const,
+  orgName: "",
+  orgType: "venueOperator" as const,
+  contactName: "",
+  businessEmail: "",
+};
+
+const hostDetails = {
+  hostDisplayName: "Riley",
+  hostPhone: "415-555-0100",
+  hostArea: "Mission, San Francisco",
+  hostAgreementAccepted: true,
 };
 
 async function setupActors() {
@@ -628,5 +643,427 @@ describe("organization applications", () => {
         text: "Thanks for applying.",
       }),
     ).resolves.toBeNull();
+  });
+});
+
+describe("host applications", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+  });
+
+  test.each(["venueOperator", "privateHost"] as const)(
+    "saveDraft accepts an empty host draft with orgType %s and no venue",
+    async (orgType) => {
+      const { asApplicant } = await setupActors();
+      const created = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        {
+          ...hostDraftFields,
+          orgType,
+          hostDisplayName: "  ",
+          hostPhone: "  ",
+          hostArea: "  ",
+        },
+      );
+      expect(created.revision).toBe(1);
+      expect(
+        await asApplicant.query(api.organizationApplications.mine, {}),
+      ).toMatchObject({
+        kind: "host",
+        hostDisplayName: null,
+        hostPhone: null,
+        hostArea: null,
+        hostAgreementAcceptedAt: null,
+        venue: null,
+      });
+    },
+  );
+
+  test.each([
+    ["hostDisplayName", 60],
+    ["hostPhone", 40],
+    ["hostArea", 120],
+  ] as const)("saveDraft trims and limits %s", async (field, limit) => {
+    const { asApplicant } = await setupActors();
+    await expect(
+      asApplicant.mutation(api.organizationApplications.saveDraft, {
+        ...hostDraftFields,
+        [field]: `  ${"a".repeat(limit + 1)}  `,
+      }),
+    ).rejects.toThrow("too long");
+    const created = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      { ...hostDraftFields, [field]: `  ${"a".repeat(limit)}  ` },
+    );
+    expect(
+      await asApplicant.query(api.organizationApplications.get, {
+        applicationId: created.applicationId,
+      }),
+    ).toMatchObject({ [field]: "a".repeat(limit) });
+    await asApplicant.mutation(api.organizationApplications.saveDraft, {
+      ...hostDraftFields,
+      applicationId: created.applicationId,
+      expectedRevision: created.revision,
+      [field]: "  ",
+    });
+    expect(
+      await asApplicant.query(api.organizationApplications.mine, {}),
+    ).toMatchObject({ [field]: null });
+  });
+
+  test("saveDraft preserves, renews, and clears the hosting agreement", async () => {
+    const { asApplicant } = await setupActors();
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+    let draft = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      { ...hostDraftFields, ...hostDetails },
+    );
+    for (const [accepted, timestamp] of [
+      [undefined, 1000],
+      [true, 2000],
+      [false, null],
+      [undefined, null],
+    ] as const) {
+      now.mockReturnValue(2000);
+      draft = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        {
+          ...hostDraftFields,
+          ...hostDetails,
+          applicationId: draft.applicationId,
+          expectedRevision: draft.revision,
+          hostAgreementAccepted: accepted,
+        },
+      );
+      expect(
+        await asApplicant.query(api.organizationApplications.mine, {}),
+      ).toMatchObject({ hostAgreementAcceptedAt: timestamp });
+    }
+  });
+
+  test.each([
+    { hostDisplayName: "Riley" },
+    { hostPhone: "415-555-0100" },
+    { hostArea: "Mission" },
+    { hostAgreementAccepted: true },
+  ])(
+    "saveDraft prevents changing kind when host data exists: %j",
+    async (fields) => {
+      const { t, asApplicant } = await setupActors();
+      const created = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        { ...hostDraftFields, ...fields },
+      );
+      if (fields.hostAgreementAccepted) {
+        await t.run((ctx) =>
+          ctx.db.patch(created.applicationId, {
+            hostAgreementAcceptedAt: 0,
+          }),
+        );
+      }
+      for (const kind of [undefined, "organization"] as const) {
+        await expect(
+          asApplicant.mutation(api.organizationApplications.saveDraft, {
+            ...draftFields,
+            applicationId: created.applicationId,
+            expectedRevision: created.revision,
+            kind,
+          }),
+        ).rejects.toThrow("Application kind cannot change");
+      }
+      expect(
+        await asApplicant.query(api.organizationApplications.mine, {}),
+      ).toMatchObject({ kind: "host", revision: 1 });
+    },
+  );
+
+  test("an empty host draft may become an organization draft", async () => {
+    const { asApplicant } = await setupActors();
+    const created = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      hostDraftFields,
+    );
+    await asApplicant.mutation(api.organizationApplications.saveDraft, {
+      ...draftFields,
+      applicationId: created.applicationId,
+      expectedRevision: created.revision,
+    });
+    expect(
+      await asApplicant.query(api.organizationApplications.mine, {}),
+    ).toMatchObject({ kind: "organization", revision: 2 });
+  });
+
+  test.each([false, true])(
+    "mine and get default organization payload kind (legacy: %s)",
+    async (legacy) => {
+      const { t, asApplicant } = await setupActors();
+      const created = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        draftFields,
+      );
+      if (legacy) {
+        await t.run((ctx) =>
+          ctx.db.patch(created.applicationId, { kind: undefined }),
+        );
+      }
+      for (const payload of [
+        await asApplicant.query(api.organizationApplications.mine, {}),
+        await asApplicant.query(api.organizationApplications.get, {
+          applicationId: created.applicationId,
+        }),
+      ]) {
+        expect(payload).toMatchObject({
+          kind: "organization",
+          hostDisplayName: null,
+          hostPhone: null,
+          hostArea: null,
+          hostAgreementAcceptedAt: null,
+        });
+      }
+    },
+  );
+
+  test.each([undefined, "false"])(
+    "submit rejects hosts when PRIVATE_BOOKINGS_ENABLED is %s",
+    async (value) => {
+      vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", value);
+      const { asApplicant } = await setupActors();
+      const created = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        hostDraftFields,
+      );
+      await expect(
+        asApplicant.mutation(api.organizationApplications.submit, {
+          applicationId: created.applicationId,
+          expectedRevision: created.revision,
+        }),
+      ).rejects.toThrow("Hosting is not available yet");
+    },
+  );
+
+  test("submit requires host details, agreement, and a document", async () => {
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+    const { t, asApplicant } = await setupActors();
+    let draft = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      hostDraftFields,
+    );
+    await expect(
+      asApplicant.mutation(api.organizationApplications.submit, {
+        applicationId: draft.applicationId,
+        expectedRevision: draft.revision,
+      }),
+    ).rejects.toThrow("Host name is required");
+
+    for (const [fields, error] of [
+      [{ ...hostDetails, hostDisplayName: " R " }, "Host name is required"],
+      [{ ...hostDetails, hostPhone: "  " }, "Phone number is required"],
+      [{ ...hostDetails, hostArea: "  " }, "Area is required"],
+      [
+        { ...hostDetails, hostAgreementAccepted: false },
+        "Accept the hosting agreement before submitting",
+      ],
+      [
+        hostDetails,
+        "Attach at least one verification document before submitting",
+      ],
+    ] as const) {
+      draft = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        {
+          ...hostDraftFields,
+          ...fields,
+          applicationId: draft.applicationId,
+          expectedRevision: draft.revision,
+        },
+      );
+      await expect(
+        asApplicant.mutation(api.organizationApplications.submit, {
+          applicationId: draft.applicationId,
+          expectedRevision: draft.revision,
+        }),
+      ).rejects.toThrow(error);
+    }
+
+    await expect(
+      asApplicant.mutation(
+        api.organizationApplications.generateDocumentUploadUrl,
+        {},
+      ),
+    ).resolves.toEqual(expect.any(String));
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(
+        new Blob(["host verification"], { type: "application/pdf" }),
+      ),
+    );
+    const attached = await asApplicant.mutation(
+      api.organizationApplications.attachDocument,
+      { applicationId: draft.applicationId, storageId },
+    );
+    await expect(
+      asApplicant.mutation(api.organizationApplications.submit, {
+        applicationId: draft.applicationId,
+        expectedRevision: attached.revision,
+      }),
+    ).resolves.toEqual({ revision: attached.revision + 1 });
+    expect(
+      await asApplicant.query(api.organizationApplications.mine, {}),
+    ).toMatchObject({ status: "submitted", kind: "host", venue: null });
+  });
+
+  test("approval creates a privateHost organization and owner without a venue", async () => {
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+    const { t, asApplicant, asAdmin, applicantUserId } =
+      await setupActors();
+    const created = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      { ...hostDraftFields, ...hostDetails },
+    );
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(
+        new Blob(["host verification"], { type: "application/pdf" }),
+      ),
+    );
+    const attached = await asApplicant.mutation(
+      api.organizationApplications.attachDocument,
+      { applicationId: created.applicationId, storageId },
+    );
+    await asApplicant.mutation(api.organizationApplications.submit, {
+      applicationId: created.applicationId,
+      expectedRevision: attached.revision,
+    });
+    await asAdmin.mutation(api.organizationApplications.decide, {
+      applicationId: created.applicationId,
+      decision: "under_review",
+    });
+    const decision = await asAdmin.mutation(
+      api.organizationApplications.decide,
+      {
+        applicationId: created.applicationId,
+        decision: "approved",
+        note: "Host verified",
+      },
+    );
+    expect(decision).toMatchObject({ status: "approved", venueId: null });
+    const organizationId = decision.organizationId;
+    if (organizationId === null)
+      throw new Error("Approved host missing organization");
+
+    const state = await t.run(async (ctx) => ({
+      organization: await ctx.db.get(organizationId),
+      applicant: await ctx.db.get(applicantUserId),
+      privateDetails: await ctx.db
+        .query("organizationPrivateDetails")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
+      membership: await ctx.db
+        .query("organizationMembers")
+        .withIndex("by_organizationId_and_userId", (q) =>
+          q
+            .eq("organizationId", organizationId)
+            .eq("userId", applicantUserId),
+        )
+        .unique(),
+      venues: await ctx.db.query("venues").take(1),
+      venuePrivateDetails: await ctx.db
+        .query("venuePrivateDetails")
+        .take(1),
+    }));
+    expect(state.organization).toMatchObject({
+      name: hostDetails.hostDisplayName,
+      slug: expect.stringMatching(/^host-[0-9a-f]{12}$/),
+      orgType: "privateHost",
+      status: "verified",
+      ownerUserId: applicantUserId,
+      applicationId: created.applicationId,
+      verifiedAt: expect.any(Number),
+    });
+    expect(state.organization).not.toHaveProperty("website");
+    expect(state.organization).not.toHaveProperty("description");
+    expect(state.privateDetails).toMatchObject({
+      businessEmail: state.applicant?.email,
+      contactName: hostDetails.hostDisplayName,
+      phone: hostDetails.hostPhone,
+      stripeChargesEnabled: false,
+      stripePayoutsEnabled: false,
+      stripeDetailsSubmitted: false,
+      verificationDocStorageIds: [storageId],
+    });
+    expect(state.privateDetails?.businessEmail).not.toBe(
+      hostDraftFields.businessEmail,
+    );
+    expect(state.membership).toMatchObject({
+      userId: applicantUserId,
+      role: "owner",
+    });
+    expect(state.venues).toEqual([]);
+    expect(state.venuePrivateDetails).toEqual([]);
+    expect(
+      await asAdmin.query(api.organizationApplications.get, {
+        applicationId: created.applicationId,
+      }),
+    ).toMatchObject({
+      status: "approved",
+      resultingOrganizationId: organizationId,
+      resultingVenueId: null,
+      reviewNote: "Host verified",
+    });
+  });
+
+  test("listForReview filters host applications while preserving the combined queue", async () => {
+    const { t, asAdmin, applicantUserId } = await setupActors();
+    const ids = await t.run(async (ctx) => {
+      const ids = [];
+      const kinds = [undefined, "host", "organization"] as const;
+      for (const [index, kind] of kinds.entries()) {
+        ids.push(
+          await ctx.db.insert("organizationApplications", {
+            applicantUserId,
+            ...draftFields,
+            kind,
+            verificationDocStorageIds: [],
+            status: "submitted",
+            revision: 1,
+            createdAt: index,
+            updatedAt: index,
+          }),
+        );
+      }
+      return ids;
+    });
+    const paginationOpts = { numItems: 10, cursor: null };
+    const combined = await asAdmin.query(
+      api.organizationApplications.listForReview,
+      {
+        paginationOpts,
+      },
+    );
+    expect(combined.page.map(({ application }) => application._id)).toEqual(
+      ids,
+    );
+    const hosts = await asAdmin.query(
+      api.organizationApplications.listForReview,
+      {
+        kind: "host",
+        paginationOpts,
+      },
+    );
+    expect(hosts.page.map(({ application }) => application._id)).toEqual([
+      ids[1],
+    ]);
+    expect(hosts.page[0].application.kind).toBe("host");
+    const organizations = await asAdmin.query(
+      api.organizationApplications.listForReview,
+      {
+        kind: "organization",
+        paginationOpts,
+      },
+    );
+    expect(
+      organizations.page.map(({ application }) => application._id),
+    ).toEqual([ids[2]]);
   });
 });
