@@ -88,6 +88,12 @@ void main() {
       (await repo.browseOpportunities()).items.map(
         (item) => item.opportunity.id,
       ),
+      isNot(contains(opportunity.id)),
+    );
+    expect(
+      (await repo.browseOpportunities(
+        mode: OpportunityMode.privateBooking,
+      )).items.map((item) => item.opportunity.id),
       contains(opportunity.id),
     );
     expect(
