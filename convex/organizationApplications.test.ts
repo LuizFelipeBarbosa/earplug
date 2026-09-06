@@ -648,9 +648,85 @@ describe("organization applications", () => {
 
 describe("host applications", () => {
   afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
+
+  test.each([
+    {
+      name: "prefers a trimmed business email",
+      businessEmail: "  business@example.com  ",
+      applicantEmail: "applicant@example.com",
+      expectedTo: "business@example.com",
+    },
+    {
+      name: "falls back to a trimmed applicant email for a blank business email",
+      businessEmail: " \t ",
+      applicantEmail: "  applicant@example.com  ",
+      expectedTo: "applicant@example.com",
+    },
+    {
+      name: "skips email when both addresses are empty",
+      businessEmail: "",
+      applicantEmail: "",
+      expectedTo: null,
+    },
+    {
+      name: "skips email when both addresses are whitespace",
+      businessEmail: " \t ",
+      applicantEmail: " \t ",
+      expectedTo: null,
+    },
+    {
+      name: "skips email when the applicant is missing and business email is empty",
+      businessEmail: "",
+      applicantEmail: null,
+      expectedTo: null,
+    },
+  ])(
+    "a status transition $name",
+    async ({ businessEmail, applicantEmail, expectedTo }) => {
+      vi.useFakeTimers();
+      const { t, asApplicant, asAdmin, applicantUserId } = await setupActors();
+      const { applicationId } = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        { ...hostDraftFields, ...hostDetails },
+      );
+      await t.run(async (ctx) => {
+        // Preserve raw stored whitespace to exercise recipient normalization.
+        await ctx.db.patch(applicationId, { status: "submitted", businessEmail });
+        if (applicantEmail === null) {
+          await ctx.db.delete(applicantUserId);
+        } else {
+          await ctx.db.patch(applicantUserId, { email: applicantEmail });
+        }
+      });
+
+      await expect(
+        asAdmin.mutation(api.organizationApplications.decide, {
+          applicationId,
+          decision: "needs_info",
+          note: "Please update the verification document.",
+        }),
+      ).resolves.toMatchObject({ status: "needs_info" });
+
+      const jobs = await t.run((ctx) =>
+        ctx.db.system.query("_scheduled_functions").take(100),
+      );
+      if (expectedTo === null) {
+        expect(jobs).toEqual([]);
+      } else {
+        expect(jobs).toMatchObject([
+          {
+            name: "emails:send",
+            args: [{ kind: "applicationNeedsInfo", to: expectedTo }],
+          },
+        ]);
+      }
+    },
+  );
 
   test.each(["venueOperator", "privateHost"] as const)(
     "saveDraft accepts an empty host draft with orgType %s and no venue",
@@ -913,6 +989,7 @@ describe("host applications", () => {
   });
 
   test("approval creates a privateHost organization and owner without a venue", async () => {
+    vi.useFakeTimers();
     vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
     const { t, asApplicant, asAdmin, applicantUserId } =
       await setupActors();
@@ -1001,6 +1078,21 @@ describe("host applications", () => {
     });
     expect(state.venues).toEqual([]);
     expect(state.venuePrivateDetails).toEqual([]);
+    const jobs = await t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").take(100),
+    );
+    expect(jobs.filter((job) => job.name === "emails:send")).toMatchObject([
+      {
+        args: [
+          { kind: "applicationReceived", to: "riley@night-light.example" },
+        ],
+      },
+      {
+        args: [
+          { kind: "applicationApproved", to: "riley@night-light.example" },
+        ],
+      },
+    ]);
     expect(
       await asAdmin.query(api.organizationApplications.get, {
         applicationId: created.applicationId,

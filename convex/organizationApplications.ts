@@ -399,13 +399,20 @@ async function scheduleApplicationEmail(
   application: Doc<"organizationApplications">,
   note: string | undefined,
 ) {
+  let to = application.businessEmail.trim();
+  if (!to) {
+    const applicant = await ctx.db.get(application.applicantUserId);
+    to = applicant?.email.trim() ?? "";
+  }
+  if (!to) return;
+
   const email = applicationEmail(kind, {
     orgName: application.orgName,
     note,
   });
   await ctx.scheduler.runAfter(0, internal.emails.send, {
     kind,
-    to: application.businessEmail,
+    to,
     ...email,
   });
 }

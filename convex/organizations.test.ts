@@ -65,6 +65,59 @@ async function setupOrganization() {
 }
 
 describe("organizations", () => {
+  test("private hosts are hidden from public lookups but visible to their owner", async () => {
+    const { t, asOwner, organizationId } = await setupOrganization();
+    await t.run((ctx) =>
+      ctx.db.patch(organizationId, { orgType: "privateHost" }),
+    );
+
+    for (const caller of [t, asOwner]) {
+      expect(
+        await caller.query(api.organizations.get, { organizationId }),
+      ).toBeNull();
+      expect(
+        await caller.query(api.organizations.bySlug, {
+          slug: "stable-slug-venues",
+        }),
+      ).toBeNull();
+    }
+    expect(await asOwner.query(api.organizations.mine, {})).toMatchObject([
+      {
+        organization: { _id: organizationId, orgType: "privateHost" },
+        role: "owner",
+      },
+    ]);
+    expect(
+      await asOwner.query(api.organizations.dashboard, { organizationId }),
+    ).toMatchObject({
+      organization: { _id: organizationId, orgType: "privateHost" },
+      role: "owner",
+    });
+  });
+
+  test.each(["verified", "suspended"] as const)(
+    "public lookups preserve visibility for a %s venue operator",
+    async (status) => {
+      const { t, organizationId } = await setupOrganization();
+      await t.run((ctx) => ctx.db.patch(organizationId, { status }));
+
+      for (const organization of [
+        await t.query(api.organizations.get, { organizationId }),
+        await t.query(api.organizations.bySlug, { slug: "stable-slug-venues" }),
+      ]) {
+        if (status === "suspended") {
+          expect(organization).toBeNull();
+        } else {
+          expect(organization).toMatchObject({
+            _id: organizationId,
+            orgType: "venueOperator",
+            status,
+          });
+        }
+      }
+    },
+  );
+
   test("dashboard rejects strangers and hides private details from door staff", async () => {
     const { asDoor, asStranger, organizationId } = await setupOrganization();
     await expect(

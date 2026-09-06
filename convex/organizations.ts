@@ -95,7 +95,9 @@ export const bySlug = query({
       .query("organizations")
       .withIndex("by_slug", (q) => q.eq("slug", args.slug))
       .first();
-    return organization === null || organization.status === "suspended"
+    return organization === null ||
+      organization.status === "suspended" ||
+      organization.orgType === "privateHost"
       ? null
       : await toOrganizationPayload(ctx, organization);
   },
@@ -106,7 +108,9 @@ export const get = query({
   returns: v.union(organizationPayloadValidator, v.null()),
   handler: async (ctx, args) => {
     const organization = await ctx.db.get(args.organizationId);
-    return organization === null || organization.status === "suspended"
+    return organization === null ||
+      organization.status === "suspended" ||
+      organization.orgType === "privateHost"
       ? null
       : await toOrganizationPayload(ctx, organization);
   },
