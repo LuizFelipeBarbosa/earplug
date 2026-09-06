@@ -18,6 +18,7 @@ import type * as bookingsRead from "../bookingsRead.js";
 import type * as clock from "../clock.js";
 import type * as crons from "../crons.js";
 import type * as emails from "../emails.js";
+import type * as features from "../features.js";
 import type * as finance from "../finance.js";
 import type * as financeActions from "../financeActions.js";
 import type * as gigs from "../gigs.js";
@@ -101,6 +102,7 @@ declare const fullApi: ApiFromModules<{
   clock: typeof clock;
   crons: typeof crons;
   emails: typeof emails;
+  features: typeof features;
   finance: typeof finance;
   financeActions: typeof financeActions;
   gigs: typeof gigs;
