@@ -136,6 +136,9 @@ export async function toBookingPayload(
     throw new Error(`Booking ${booking._id} references a missing band`);
   }
   const isPrivate = opportunity.mode === "privateBooking";
+  const showFullLocation =
+    viewer.side === "organizer" ||
+    (viewer.side === "artist" && BOOKING_LIVE_STATUSES.includes(booking.status));
   let venue: Infer<typeof bookingPayloadValidator>["venue"] = null;
   let privateLocation: Infer<typeof bookingPayloadValidator>["privateLocation"] =
     null;
@@ -151,11 +154,8 @@ export async function toBookingPayload(
         `Booking ${booking._id} references a missing private location`,
       );
     }
-    const showFullLocation =
-      viewer.side === "organizer" ||
-      (viewer.side === "artist" && BOOKING_LIVE_STATUSES.includes(booking.status));
     privateLocation = {
-      label: location.label,
+      label: showFullLocation ? location.label : location.area,
       area: location.area,
       city: location.city,
       addr: showFullLocation ? location.addr : undefined,
@@ -240,7 +240,8 @@ export async function toBookingPayload(
     slotRole: slot.role,
     slotRequired: slot.required,
     organizationId: booking.organizationId,
-    organizationName: organization.name,
+    organizationName:
+      isPrivate && !showFullLocation ? "Private host" : organization.name,
     bandId: booking.bandId,
     bandName: band.name,
     bandSlug: band.slug,

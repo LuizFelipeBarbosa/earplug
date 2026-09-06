@@ -1091,7 +1091,7 @@ const PRIVATE_LOCATION = {
   notes: "Use the side gate",
 };
 const APPROXIMATE_PRIVATE_LOCATION = {
-  label: PRIVATE_LOCATION.label,
+  label: PRIVATE_LOCATION.area,
   area: PRIVATE_LOCATION.area,
   city: PRIVATE_LOCATION.city,
 };
@@ -1128,7 +1128,11 @@ describe("private booking location disclosure", () => {
         viewAs: "artist",
       });
     const pending = await read();
-    expect(pending).toMatchObject({ venue: null, privateEvent: true });
+    expect(pending).toMatchObject({
+      venue: null,
+      privateEvent: true,
+      organizationName: "Private host",
+    });
     expect(pending?.privateLocation).toStrictEqual(APPROXIMATE_PRIVATE_LOCATION);
     for (const field of ["addr", "lat", "lng", "notes"] as const) {
       expect(pending?.privateLocation?.[field]).toBeUndefined();
@@ -1137,7 +1141,11 @@ describe("private booking location disclosure", () => {
       ctx.db.patch(f.bookingId, { status: "confirmed", confirmedAt: NOW }),
     );
     const confirmed = await read();
-    expect(confirmed).toMatchObject({ venue: null, privateEvent: true });
+    expect(confirmed).toMatchObject({
+      venue: null,
+      privateEvent: true,
+      organizationName: "Opportunity Collective",
+    });
     expect(confirmed?.privateLocation).toStrictEqual(PRIVATE_LOCATION);
   });
 
@@ -1148,7 +1156,13 @@ describe("private booking location disclosure", () => {
       const artist = await f.as("bandAdmin").query(api.bookingsRead.get, {
         bookingId: f.bookingId,
       });
-      expect(artist).toMatchObject({ venue: null, privateEvent: true });
+      expect(artist).toMatchObject({
+        venue: null,
+        privateEvent: true,
+        organizationName: BOOKING_LIVE_STATUSES.includes(status)
+          ? "Opportunity Collective"
+          : "Private host",
+      });
       expect(artist?.privateLocation).toStrictEqual(
         BOOKING_LIVE_STATUSES.includes(status)
           ? PRIVATE_LOCATION
@@ -1157,7 +1171,11 @@ describe("private booking location disclosure", () => {
       const organizer = await f.as("owner").query(api.bookingsRead.get, {
         bookingId: f.bookingId,
       });
-      expect(organizer).toMatchObject({ venue: null, privateEvent: true });
+      expect(organizer).toMatchObject({
+        venue: null,
+        privateEvent: true,
+        organizationName: "Opportunity Collective",
+      });
       expect(organizer?.privateLocation).toStrictEqual(PRIVATE_LOCATION);
     },
   );
@@ -1180,7 +1198,13 @@ describe("private booking location disclosure", () => {
     });
     expect(artistRows).toHaveLength(statuses.length + 1);
     for (const row of artistRows) {
-      expect(row).toMatchObject({ venue: null, privateEvent: true });
+      expect(row).toMatchObject({
+        venue: null,
+        privateEvent: true,
+        organizationName: BOOKING_LIVE_STATUSES.includes(row.status)
+          ? "Opportunity Collective"
+          : "Private host",
+      });
       expect(row.privateLocation).toStrictEqual(
         BOOKING_LIVE_STATUSES.includes(row.status)
           ? PRIVATE_LOCATION
@@ -1198,7 +1222,11 @@ describe("private booking location disclosure", () => {
     );
     expect(organizerRows).toHaveLength(statuses.length + 1);
     for (const row of organizerRows) {
-      expect(row).toMatchObject({ venue: null, privateEvent: true });
+      expect(row).toMatchObject({
+        venue: null,
+        privateEvent: true,
+        organizationName: "Opportunity Collective",
+      });
       expect(row.privateLocation).toStrictEqual(PRIVATE_LOCATION);
     }
   });
