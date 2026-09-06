@@ -1043,6 +1043,9 @@ class ConvexRepository implements EarplugRepository {
     DateTime? applicationsCloseAt,
     OpportunityVisibility? visibility,
     OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
   }) async {
@@ -1066,6 +1069,9 @@ class ConvexRepository implements EarplugRepository {
         'applicationsCloseAt': ?applicationsCloseAt?.millisecondsSinceEpoch,
         'visibility': ?visibility?.wireValue,
         'ticketing': ?ticketing?.wireValue,
+        'ticketPriceMinor': ?ticketPriceMinor,
+        'ticketCapacity': ?ticketCapacity,
+        'ticketCurrency': ?ticketCurrency,
         'externalUrl': ?externalUrl,
         if (slots != null) 'slots': [for (final slot in slots) slot.toJson()],
       }),
@@ -1097,6 +1103,9 @@ class ConvexRepository implements EarplugRepository {
     DateTime? applicationsCloseAt,
     OpportunityVisibility? visibility,
     OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
   }) async => _revisionFrom(
@@ -1120,6 +1129,9 @@ class ConvexRepository implements EarplugRepository {
       'applicationsCloseAt': ?applicationsCloseAt?.millisecondsSinceEpoch,
       'visibility': ?visibility?.wireValue,
       'ticketing': ?ticketing?.wireValue,
+      'ticketPriceMinor': ?ticketPriceMinor,
+      'ticketCapacity': ?ticketCapacity,
+      'ticketCurrency': ?ticketCurrency,
       'externalUrl': ?externalUrl,
       if (slots != null) 'slots': [for (final slot in slots) slot.toJson()],
     }),
@@ -1512,6 +1524,97 @@ class ConvexRepository implements EarplugRepository {
       await _convexService.query('gigs:doorRoster', {'projectId': projectId}),
     ),
   );
+
+  @override
+  Future<TicketReservation> reserveTickets({
+    required String gigId,
+    required int quantity,
+    String? referralBandSlug,
+  }) async => TicketReservation.fromJson(
+    _asMap(
+      await _convexService.mutation('tickets:reserve', {
+        'gigId': gigId,
+        'quantity': quantity,
+        'referralBandSlug': ?referralBandSlug,
+      }),
+    ),
+  );
+
+  @override
+  Future<void> cancelTicketReservation(String orderId) => _convexService
+      .mutation('tickets:cancelReservation', {'orderId': orderId});
+
+  @override
+  Future<({String url, String sessionId})> startTicketCheckout(
+    String orderId,
+  ) async {
+    final result = _asMap(
+      await _convexService.action('ticketCheckout:startCheckout', {
+        'orderId': orderId,
+      }),
+    );
+    return (
+      url: result['url'] as String,
+      sessionId: result['sessionId'] as String,
+    );
+  }
+
+  @override
+  Future<void> cancelTicketOrder(String orderId) =>
+      _convexService.action('ticketCheckout:cancelOrder', {'orderId': orderId});
+
+  @override
+  Future<List<TicketSummary>> myTickets() async {
+    final result = await _convexService.query('tickets:myTickets');
+    return [for (final json in _mapList(result)) TicketSummary.fromJson(json)];
+  }
+
+  @override
+  Future<TicketSummary?> ticket(String ticketId) async {
+    final decoded = await _convexService.query('tickets:get', {
+      'ticketId': ticketId,
+    });
+    return decoded == null ? null : TicketSummary.fromJson(_asMap(decoded));
+  }
+
+  @override
+  Future<TicketOrderState?> ticketOrderStatus(String sessionId) async {
+    final decoded = await _convexService.query('tickets:orderStatus', {
+      'sessionId': sessionId,
+    });
+    return decoded == null ? null : TicketOrderState.fromJson(_asMap(decoded));
+  }
+
+  @override
+  Future<TicketSales> ticketSalesForGig(String gigId) async =>
+      TicketSales.fromJson(
+        _asMap(
+          await _convexService.query('tickets:salesForGig', {'gigId': gigId}),
+        ),
+      );
+
+  @override
+  Future<TicketDoorResult> organizerCheckIn({
+    required String gigId,
+    required String payload,
+  }) async => TicketDoorResult.fromJson(
+    _asMap(
+      await _convexService.mutation('ticketsDoor:checkIn', {
+        'gigId': gigId,
+        'payload': payload,
+      }),
+    ),
+  );
+
+  @override
+  Future<DoorCounts> organizerDoorRoster(String gigId) async =>
+      DoorCounts.fromJson(
+        _asMap(
+          await _convexService.query('ticketsDoor:doorRoster', {
+            'gigId': gigId,
+          }),
+        ),
+      );
 
   @override
   Future<DoorCheckInResult> checkInTicket({

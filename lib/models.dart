@@ -1401,6 +1401,9 @@ class Opportunity {
     required this.applicationsCloseAt,
     required this.visibility,
     required this.ticketing,
+    this.ticketPriceMinor,
+    this.ticketCapacity,
+    this.ticketCurrency,
     this.externalUrl,
     required this.status,
     required this.slug,
@@ -1436,6 +1439,9 @@ class Opportunity {
   final DateTime applicationsCloseAt;
   final OpportunityVisibility visibility;
   final OpportunityTicketing ticketing;
+  final int? ticketPriceMinor;
+  final int? ticketCapacity;
+  final String? ticketCurrency;
   final String? externalUrl;
   final OpportunityStatus status;
   final String slug;
@@ -1473,6 +1479,9 @@ class Opportunity {
     applicationsCloseAt: _marketplaceDate(json['applicationsCloseAt']),
     visibility: OpportunityVisibility.fromWire(json['visibility']),
     ticketing: OpportunityTicketing.fromWire(json['ticketing']),
+    ticketPriceMinor: _marketplaceOptionalInt(json['ticketPriceMinor']),
+    ticketCapacity: _marketplaceOptionalInt(json['ticketCapacity']),
+    ticketCurrency: _marketplaceOptionalString(json['ticketCurrency']),
     externalUrl: _marketplaceOptionalString(json['externalUrl']),
     status: OpportunityStatus.fromWire(json['status']),
     slug: _marketplaceString(json['slug']),
@@ -2384,6 +2393,300 @@ class CheckoutStatus {
   );
 }
 
+enum TicketOrderStatus {
+  reserved('reserved'),
+  checkoutOpen('checkout_open'),
+  paid('paid'),
+  expired('expired'),
+  cancelled('cancelled'),
+  refunded('refunded'),
+  unknown('unknown');
+
+  const TicketOrderStatus(this.wireValue);
+
+  final String wireValue;
+
+  static TicketOrderStatus fromWire(Object? value) => switch (value) {
+    'reserved' => TicketOrderStatus.reserved,
+    'checkout_open' => TicketOrderStatus.checkoutOpen,
+    'paid' => TicketOrderStatus.paid,
+    'expired' => TicketOrderStatus.expired,
+    'cancelled' => TicketOrderStatus.cancelled,
+    'refunded' => TicketOrderStatus.refunded,
+    _ => TicketOrderStatus.unknown,
+  };
+}
+
+enum TicketStatus {
+  valid('valid'),
+  used('used'),
+  refunded('refunded'),
+  cancelled('cancelled'),
+  unknown('unknown');
+
+  const TicketStatus(this.wireValue);
+
+  final String wireValue;
+
+  static TicketStatus fromWire(Object? value) => switch (value) {
+    'valid' => TicketStatus.valid,
+    'used' => TicketStatus.used,
+    'refunded' => TicketStatus.refunded,
+    'cancelled' => TicketStatus.cancelled,
+    _ => TicketStatus.unknown,
+  };
+}
+
+class TicketReservation {
+  const TicketReservation({
+    required this.orderId,
+    required this.quantity,
+    required this.unitPriceMinor,
+    required this.unitFeeMinor,
+    required this.subtotalMinor,
+    required this.feeMinor,
+    required this.totalMinor,
+    required this.currency,
+    required this.reservedUntil,
+  });
+
+  final String orderId;
+  final int quantity;
+  final int unitPriceMinor;
+  final int unitFeeMinor;
+  final int subtotalMinor;
+  final int feeMinor;
+  final int totalMinor;
+  final String currency;
+  final DateTime reservedUntil;
+
+  factory TicketReservation.fromJson(Map<String, dynamic> json) =>
+      TicketReservation(
+        orderId: _marketplaceString(json['orderId']),
+        quantity: _marketplaceInt(json['quantity']),
+        unitPriceMinor: _marketplaceInt(json['unitPriceMinor']),
+        unitFeeMinor: _marketplaceInt(json['unitFeeMinor']),
+        subtotalMinor: _marketplaceInt(json['subtotalMinor']),
+        feeMinor: _marketplaceInt(json['feeMinor']),
+        totalMinor: _marketplaceInt(json['totalMinor']),
+        currency: _marketplaceString(json['currency']),
+        reservedUntil: _marketplaceDate(json['reservedUntil']),
+      );
+
+  Money get total => Money(totalMinor, currency);
+}
+
+class TicketGigSummary {
+  const TicketGigSummary({
+    required this.id,
+    required this.title,
+    this.slug,
+    required this.startsAt,
+    this.doorsAt,
+    required this.venueName,
+    required this.lifecycle,
+  });
+
+  final String id;
+  final String title;
+  final String? slug;
+  final DateTime startsAt;
+  final DateTime? doorsAt;
+  final String venueName;
+  final GigLifecycle lifecycle;
+
+  factory TicketGigSummary.fromJson(Map<String, dynamic> json) =>
+      TicketGigSummary(
+        id: _marketplaceString(json['_id'] ?? json['id']),
+        title: _marketplaceString(json['title']),
+        slug: _marketplaceOptionalString(json['slug']),
+        startsAt: _marketplaceDate(json['startsAt']),
+        doorsAt: _marketplaceOptionalDate(json['doorsAt']),
+        venueName: _marketplaceString(json['venueName']),
+        lifecycle: switch (json['lifecycle']) {
+          'published' => GigLifecycle.published,
+          'cancelled' => GigLifecycle.cancelled,
+          'unpublished' => GigLifecycle.unpublished,
+          'deleted' => GigLifecycle.deleted,
+          _ => GigLifecycle.published,
+        },
+      );
+}
+
+class TicketSummary {
+  const TicketSummary({
+    required this.id,
+    required this.orderId,
+    required this.gigId,
+    required this.token,
+    required this.status,
+    this.checkedInAt,
+    required this.createdAt,
+    required this.gig,
+  });
+
+  final String id;
+  final String orderId;
+  final String gigId;
+  final String token;
+  final TicketStatus status;
+  final DateTime? checkedInAt;
+  final DateTime createdAt;
+  final TicketGigSummary gig;
+
+  factory TicketSummary.fromJson(Map<String, dynamic> json) => TicketSummary(
+    id: _marketplaceString(json['_id'] ?? json['id']),
+    orderId: _marketplaceString(json['orderId']),
+    gigId: _marketplaceString(json['gigId']),
+    token: _marketplaceString(json['token']),
+    status: TicketStatus.fromWire(json['status']),
+    checkedInAt: _marketplaceOptionalDate(json['checkedInAt']),
+    createdAt: _marketplaceDate(json['createdAt']),
+    gig: TicketGigSummary.fromJson(_marketplaceMap(json['gig'])),
+  );
+}
+
+class TicketOrderState {
+  const TicketOrderState({
+    required this.orderId,
+    required this.gigId,
+    this.gigSlug,
+    required this.status,
+    required this.quantity,
+    required this.totalMinor,
+    required this.currency,
+  });
+
+  final String orderId;
+  final String gigId;
+  final String? gigSlug;
+  final TicketOrderStatus status;
+  final int quantity;
+  final int totalMinor;
+  final String currency;
+
+  factory TicketOrderState.fromJson(Map<String, dynamic> json) =>
+      TicketOrderState(
+        orderId: _marketplaceString(json['orderId']),
+        gigId: _marketplaceString(json['gigId']),
+        gigSlug: _marketplaceOptionalString(json['gigSlug']),
+        status: TicketOrderStatus.fromWire(json['status']),
+        quantity: _marketplaceInt(json['quantity']),
+        totalMinor: _marketplaceInt(json['totalMinor']),
+        currency: _marketplaceString(json['currency']),
+      );
+
+  Money get total => Money(totalMinor, currency);
+}
+
+class TicketSales {
+  const TicketSales({
+    required this.capacity,
+    required this.sold,
+    required this.reserved,
+    required this.available,
+    required this.ordersPaid,
+    required this.grossMinor,
+    required this.feeMinor,
+    required this.netMinor,
+    required this.currency,
+  });
+
+  final int capacity;
+  final int sold;
+  final int reserved;
+  final int available;
+  final int ordersPaid;
+  final int grossMinor;
+  final int feeMinor;
+  final int netMinor;
+  final String currency;
+
+  factory TicketSales.fromJson(Map<String, dynamic> json) => TicketSales(
+    capacity: _marketplaceInt(json['capacity']),
+    sold: _marketplaceInt(json['sold']),
+    reserved: _marketplaceInt(json['reserved']),
+    available: _marketplaceInt(json['available']),
+    ordersPaid: _marketplaceInt(json['ordersPaid']),
+    grossMinor: _marketplaceInt(json['grossMinor']),
+    feeMinor: _marketplaceInt(json['feeMinor']),
+    netMinor: _marketplaceInt(json['netMinor']),
+    currency: _marketplaceString(json['currency']),
+  );
+
+  Money get gross => Money(grossMinor, currency);
+  Money get fees => Money(feeMinor, currency);
+  Money get net => Money(netMinor, currency);
+}
+
+enum TicketDoorKind {
+  checkedIn('checkedIn'),
+  alreadyUsed('alreadyUsed'),
+  refunded('refunded'),
+  eventCancelled('eventCancelled'),
+  wrongEvent('wrongEvent'),
+  unknown('unknown');
+
+  const TicketDoorKind(this.wireValue);
+
+  final String wireValue;
+
+  static TicketDoorKind fromWire(Object? value) => switch (value) {
+    'checkedIn' => TicketDoorKind.checkedIn,
+    'alreadyUsed' => TicketDoorKind.alreadyUsed,
+    'refunded' => TicketDoorKind.refunded,
+    'eventCancelled' => TicketDoorKind.eventCancelled,
+    'wrongEvent' => TicketDoorKind.wrongEvent,
+    _ => TicketDoorKind.unknown,
+  };
+}
+
+class TicketDoorResult {
+  const TicketDoorResult({
+    required this.kind,
+    this.holderName,
+    this.checkedInAt,
+    this.source,
+  });
+
+  final TicketDoorKind kind;
+  final String? holderName;
+  final DateTime? checkedInAt;
+  final String? source;
+
+  factory TicketDoorResult.fromJson(Map<String, dynamic> json) =>
+      TicketDoorResult(
+        kind: TicketDoorKind.fromWire(json['kind']),
+        holderName: _marketplaceOptionalString(json['holderName']),
+        checkedInAt: _marketplaceOptionalDate(json['checkedInAt']),
+        source: _marketplaceOptionalString(json['source']),
+      );
+}
+
+class DoorCounts {
+  const DoorCounts({
+    required this.rsvpTotal,
+    required this.rsvpCheckedIn,
+    required this.ticketsSold,
+    required this.ticketsCheckedIn,
+    required this.truncated,
+  });
+
+  final int rsvpTotal;
+  final int rsvpCheckedIn;
+  final int ticketsSold;
+  final int ticketsCheckedIn;
+  final bool truncated;
+
+  factory DoorCounts.fromJson(Map<String, dynamic> json) => DoorCounts(
+    rsvpTotal: _marketplaceInt(json['rsvpTotal']),
+    rsvpCheckedIn: _marketplaceInt(json['rsvpCheckedIn']),
+    ticketsSold: _marketplaceInt(json['ticketsSold']),
+    ticketsCheckedIn: _marketplaceInt(json['ticketsCheckedIn']),
+    truncated: json['truncated'] == true,
+  );
+}
+
 class OfferInstallmentInput {
   const OfferInstallmentInput({
     required this.label,
@@ -2529,7 +2832,7 @@ class GigWritePolicy {
       GigWritePolicy(bandGigWrites: json['bandGigWrites'] == true);
 }
 
-enum Ticketing { rsvp, external }
+enum Ticketing { rsvp, external, paid }
 
 enum GigLifecycle { published, cancelled, unpublished, deleted }
 
@@ -2696,6 +2999,8 @@ class Gig {
   final String title;
   final String venueId;
   final int price; // dollars; 0 == free
+  final int? ticketPriceMinor;
+  final String? ticketCurrency;
   final DateTime startsAt;
   final DateTime? doorsAt;
   final String dateShort; // "TUE JUL 28"
@@ -2725,6 +3030,8 @@ class Gig {
     required this.title,
     required this.venueId,
     required this.price,
+    this.ticketPriceMinor,
+    this.ticketCurrency,
     required this.startsAt,
     this.doorsAt,
     required this.dateShort,
@@ -2767,6 +3074,8 @@ class Gig {
       title: json['title'] as String,
       venueId: json['venueId'] as String,
       price: (json['price'] as num).toInt(),
+      ticketPriceMinor: _marketplaceOptionalInt(json['ticketPriceMinor']),
+      ticketCurrency: _marketplaceOptionalString(json['ticketCurrency']),
       startsAt: startsAt,
       doorsAt: doorsAtMs == null
           ? startsAt
@@ -2794,6 +3103,7 @@ class Gig {
       desc: json['desc'] as String,
       tix: switch (json['ticketing']) {
         'external' => Ticketing.external,
+        'paid' => Ticketing.paid,
         _ => Ticketing.rsvp,
       },
       externalUrl: json['externalUrl'] as String?,
@@ -2866,7 +3176,12 @@ class Gig {
   }
 
   bool get free => price == 0;
-  String get priceLabel => free ? 'FREE' : '\$$price';
+  String get priceLabel => tix == Ticketing.paid && ticketPriceMinor != null
+      ? Money(ticketPriceMinor!, ticketCurrency ?? 'usd').label
+      : free
+      ? 'FREE'
+      : '\$$price';
+  bool get sellsTickets => tix == Ticketing.paid;
   int? get numericCapacity {
     final value = int.tryParse(cap.trim());
     return value != null && value > 0 ? value : null;
@@ -2880,6 +3195,8 @@ class Gig {
         title != other.title ||
         venueId != other.venueId ||
         price != other.price ||
+        ticketPriceMinor != other.ticketPriceMinor ||
+        ticketCurrency != other.ticketCurrency ||
         startsAt != other.startsAt ||
         doorsAt != other.doorsAt ||
         time != other.time ||
@@ -2926,6 +3243,8 @@ class Gig {
     String? title,
     String? venueId,
     int? price,
+    int? ticketPriceMinor,
+    String? ticketCurrency,
     DateTime? startsAt,
     DateTime? doorsAt,
     String? dateShort,
@@ -2954,6 +3273,8 @@ class Gig {
     title: title ?? this.title,
     venueId: venueId ?? this.venueId,
     price: price ?? this.price,
+    ticketPriceMinor: ticketPriceMinor ?? this.ticketPriceMinor,
+    ticketCurrency: ticketCurrency ?? this.ticketCurrency,
     startsAt: startsAt ?? this.startsAt,
     doorsAt: doorsAt ?? this.doorsAt,
     dateShort: dateShort ?? this.dateShort,

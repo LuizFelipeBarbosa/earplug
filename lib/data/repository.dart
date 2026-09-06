@@ -622,6 +622,18 @@ abstract class EarplugRepository {
   Future<void> toggleFollow(String bandId);
   Future<void> toggleSave(String gigId);
   Future<RsvpTicket> ticketForGig(String gigId);
+  Future<TicketReservation> reserveTickets({
+    required String gigId,
+    required int quantity,
+    String? referralBandSlug,
+  });
+  Future<void> cancelTicketReservation(String orderId);
+  Future<({String url, String sessionId})> startTicketCheckout(String orderId);
+  Future<void> cancelTicketOrder(String orderId);
+  Future<List<TicketSummary>> myTickets();
+  Future<TicketSummary?> ticket(String ticketId);
+  Future<TicketOrderState?> ticketOrderStatus(String sessionId);
+  Future<TicketSales> ticketSalesForGig(String gigId);
   Future<void> ensureRsvp(String gigId);
   Future<void> ensureFollow(String bandId);
   Future<void> ensureSave(String gigId);
@@ -697,6 +709,9 @@ abstract class EarplugRepository {
     DateTime? applicationsCloseAt,
     OpportunityVisibility? visibility,
     OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
   }) {
@@ -724,6 +739,9 @@ abstract class EarplugRepository {
     DateTime? applicationsCloseAt,
     OpportunityVisibility? visibility,
     OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
   }) {
@@ -1077,6 +1095,11 @@ abstract class EarplugRepository {
   Future<void> cancelGig(String projectId);
   Future<void> deleteGig(String projectId);
   Future<DoorRoster> doorRoster(String projectId);
+  Future<TicketDoorResult> organizerCheckIn({
+    required String gigId,
+    required String payload,
+  });
+  Future<DoorCounts> organizerDoorRoster(String gigId);
   Future<DoorCheckInResult> checkInTicket({
     required String projectId,
     required String payload,

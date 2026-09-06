@@ -555,6 +555,9 @@ class _ConflictOnceRepository extends DemoRepository {
     DateTime? applicationsCloseAt,
     OpportunityVisibility? visibility,
     OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
   }) async {
@@ -579,6 +582,9 @@ class _ConflictOnceRepository extends DemoRepository {
       applicationsCloseAt: applicationsCloseAt,
       visibility: visibility,
       ticketing: ticketing,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
+      ticketCurrency: ticketCurrency,
       externalUrl: externalUrl,
       slots: slots,
     );
