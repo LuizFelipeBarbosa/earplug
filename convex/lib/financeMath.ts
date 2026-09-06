@@ -44,6 +44,8 @@ export function ticketTotals(
           );
     if (order.status === "paid") {
       totals.ordersPaid += 1;
+    }
+    if (order.status === "paid" || order.status === "refunded") {
       totals.estimatedProcessingMinor +=
         Math.round(order.totalMinor * 0.029) + 30;
     }
@@ -86,7 +88,7 @@ export function bookingTotals(
       record.status === "partially_refunded" ||
       record.status === "refunded"
     ) {
-      totals.paidMinor += record.amountMinor - record.refundedMinor;
+      totals.paidMinor += record.amountMinor;
     }
     totals.refundedMinor += record.refundedMinor;
     totals.disputedMinor += record.disputedMinor ?? 0;

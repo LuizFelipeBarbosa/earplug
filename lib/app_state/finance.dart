@@ -238,12 +238,8 @@ mixin _FinanceState on _AppStateCore {
   void _onOrganizationChanged() {
     if (_lastKnownOrganizationIdForFinance == organizationId) return;
     _lastKnownOrganizationIdForFinance = organizationId;
-    if (organizationId.isEmpty) {
-      _clearFinanceState();
-      notifyListeners();
-      return;
-    }
-    unawaited(loadFinance(refresh: true));
+    _clearFinanceState();
+    notifyListeners();
   }
 
   // ---- sign-out cleanup
@@ -262,7 +258,6 @@ mixin _FinanceState on _AppStateCore {
     transactionsLoading = false;
     _insightsByApplication.clear();
     _insightsByBand.clear();
-    _lastKnownOrganizationIdForFinance = '';
   }
 }
 

@@ -44,7 +44,7 @@ void main() {
     addTearDown(app.dispose);
     app.switchToOrganization('org1');
 
-    // The explicit load supersedes the load triggered by the identity change.
+    // Only the explicit load fetches, after auth is ready.
     final load = app.loadFinance();
     await flushAsyncWork();
     expect(repository.financeOverviewRequests, hasLength(0));
@@ -71,6 +71,29 @@ void main() {
     await app.loadFinance(refresh: true);
     expect(repository.financeOverviewRequests, ['org1', 'org1']);
     expect(app.financeOverview, same(repository.lastOverview));
+  });
+
+  test('organization changes clear finance without fetching', () async {
+    app.switchToOrganization('org1');
+    await flushAsyncWork();
+    expect(repository.financeOverviewRequests, isEmpty);
+
+    await app.loadFinance();
+    final overview = app.financeOverview;
+    expect(overview, isNotNull);
+    expect(repository.financeOverviewRequests, ['org1']);
+
+    // Navigation within the same organization preserves its cached overview.
+    app.switchToOrganization('org1');
+    expect(app.financeOverview, same(overview));
+
+    app.switchToOrganization('org2');
+    expect(app.financeOverview, isNull);
+    expect(app.financeLoading, isFalse);
+    expect(repository.financeOverviewRequests, ['org1']);
+    await flushAsyncWork();
+    expect(app.financeOverview, isNull);
+    expect(repository.financeOverviewRequests, ['org1']);
   });
 
   test('balance refresh patches only the overview snapshot', () async {

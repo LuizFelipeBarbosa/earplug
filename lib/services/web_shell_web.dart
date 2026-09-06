@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:typed_data';
@@ -27,7 +28,9 @@ class _BrowserWebShell implements WebShell {
       anchor.click();
     } finally {
       anchor.remove();
-      web.URL.revokeObjectURL(objectUrl);
+      Timer(const Duration(seconds: 60), () {
+        web.URL.revokeObjectURL(objectUrl);
+      });
     }
   }
 

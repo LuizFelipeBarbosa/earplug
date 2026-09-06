@@ -190,10 +190,10 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
             _FinanceStats(
               key: const Key('org-finance-bookings'),
               values: [
-                ('DUE', overview.dueAmount.label),
-                ('PAID', overview.paidAmount.label),
-                ('REFUNDED', overview.refundedAmount.label),
-                ('DISPUTED', overview.disputedAmount.label),
+                ('DUE', overview.dueAmount.label, null),
+                ('PAID', overview.paidAmount.label, null),
+                ('REFUNDED', overview.refundedAmount.label, null),
+                ('DISPUTED', overview.disputedAmount.label, null),
               ],
             ),
             const SectionBar(label: 'PENDING PAYMENTS'),
@@ -229,10 +229,14 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
               children: [
                 _FinanceStats(
                   values: [
-                    ('GROSS', overview.ticketGrossAmount.label),
-                    ('EARPLUG FEE', overview.ticketFeeAmount.label),
-                    ('REFUNDED', overview.ticketRefundedAmount.label),
-                    ('NET', overview.ticketNetAmount.label),
+                    ('GROSS', overview.ticketGrossAmount.label, null),
+                    (
+                      'EARPLUG FEE',
+                      overview.ticketFeeAmount.label,
+                      'paid by buyers on top of the ticket price',
+                    ),
+                    ('REFUNDED', overview.ticketRefundedOrgAmount.label, null),
+                    ('NET', overview.ticketNetAmount.label, null),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -284,7 +288,7 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
 class _FinanceStats extends StatelessWidget {
   const _FinanceStats({super.key, required this.values});
 
-  final List<(String, String)> values;
+  final List<(String, String, String?)> values;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -299,10 +303,15 @@ class _FinanceStats extends StatelessWidget {
         spacing: 8,
         runSpacing: 8,
         children: [
-          for (final (label, value) in values)
+          for (final (label, value, caption) in values)
             SizedBox(
               width: width,
-              child: EpStatCard(expand: false, label: label, value: value),
+              child: EpStatCard(
+                expand: false,
+                label: label,
+                value: value,
+                caption: caption,
+              ),
             ),
         ],
       );

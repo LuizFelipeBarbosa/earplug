@@ -266,7 +266,7 @@ describe("overview", () => {
       organizationId,
     });
     expect(result.bookings).toEqual({
-      paidMinor: 8_000,
+      paidMinor: 10_000,
       dueMinor: 5_000,
       refundedMinor: 2_000,
       disputedMinor: 300,
@@ -318,7 +318,7 @@ describe("overview", () => {
       refundedMinor: 1_375,
       refundedOrgMinor: 1_250,
       netMinor: 750,
-      estimatedProcessingMinor: 62,
+      estimatedProcessingMinor: 124,
       truncated: false,
     });
   });
@@ -436,7 +436,7 @@ describe("overview", () => {
     });
     expect(result.bookings).toEqual({
       dueMinor: 5_900,
-      paidMinor: 8_000,
+      paidMinor: 10_000,
       refundedMinor: 2_000,
       disputedMinor: 300,
       activeCount: 2,
@@ -938,11 +938,11 @@ describe("finance math", () => {
       refundedMinor: 2,
       refundedOrgMinor: 2,
       netMinor: 0,
-      estimatedProcessingMinor: 30,
+      estimatedProcessingMinor: 90,
     });
   });
 
-  test("computes dues only for payable bookings and nets settled records after refunds", () => {
+  test("computes dues only for payable bookings and reports gross settled payments", () => {
     const record = {
       amountMinor: 1_000,
       refundedMinor: 200,
@@ -983,7 +983,7 @@ describe("finance math", () => {
       ]),
     ).toEqual({
       dueMinor: 1_200,
-      paidMinor: 1_600,
+      paidMinor: 3_000,
       refundedMinor: 1_800,
       disputedMinor: 250,
     });

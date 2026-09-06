@@ -72,9 +72,21 @@ void main() {
     _expectStats(tester, tickets, {
       'GROSS': overview.ticketGrossAmount.label,
       'EARPLUG FEE': overview.ticketFeeAmount.label,
-      'REFUNDED': overview.ticketRefundedAmount.label,
+      'REFUNDED': overview.ticketRefundedOrgAmount.label,
       'NET': overview.ticketNetAmount.label,
     });
+    final feeCard = find.descendant(
+      of: tickets,
+      matching: find.byWidgetPredicate(
+        (widget) => widget is EpStatCard && widget.label == 'EARPLUG FEE',
+      ),
+    );
+    const feeCaption = 'paid by buyers on top of the ticket price';
+    expect(tester.widget<EpStatCard>(feeCard).caption, feeCaption);
+    expect(
+      find.descendant(of: tickets, matching: find.text(feeCaption)),
+      findsOneWidget,
+    );
     expect(
       find.text(
         'Stripe processing (est.) ${overview.ticketEstimatedProcessingAmount.label}',
@@ -135,6 +147,8 @@ void main() {
       await pumpScreen(tester, const OrgFinanceScreen());
       final export = find.byKey(const Key('org-finance-export'));
       await tester.scrollUntilVisible(export, 250);
+      await tester.ensureVisible(export);
+      await tester.pumpAndSettle();
       final before = DateTime.now();
       await tester.tap(export);
       await tester.pumpAndSettle();
@@ -194,6 +208,8 @@ void main() {
       find.byKey(const Key('org-finance-export')),
       250,
     );
+    await tester.ensureVisible(find.byKey(const Key('org-finance-export')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('org-finance-export')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('LAST 30 DAYS'));
