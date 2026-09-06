@@ -262,6 +262,45 @@ void main() {
     },
   );
 
+  testWidgets('host form opens after an approved organizer application', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth)..platformAdmin = true;
+    final draft = await repository.saveOrganizationApplicationDraft(
+      kind: ApplicationKind.organization,
+      orgName: 'The Foghorn Club',
+      orgType: OrganizationType.venueOperator,
+      contactName: 'Jordan Lee',
+      businessEmail: 'jordan@example.com',
+    );
+    await repository.submitOrganizationApplication(
+      applicationId: draft.applicationId,
+      expectedRevision: draft.revision,
+    );
+    await repository.decideOrganizationApplication(
+      applicationId: draft.applicationId,
+      decision: ApplicationDecision.approved,
+    );
+    final harness = await pumpApp(
+      tester,
+      home: const HostApplyScreen(),
+      auth: auth,
+      repository: repository,
+    );
+    addTearDown(() => _disposeApp(harness.app));
+
+    expect(
+      find.text('You already have an organizer application in progress.'),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey('host-apply-display-name')),
+      findsOneWidget,
+    );
+  });
+
   for (final kind in [
     null,
     ApplicationKind.organization,

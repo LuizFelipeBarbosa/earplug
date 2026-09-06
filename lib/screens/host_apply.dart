@@ -222,9 +222,11 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
     final application = app.myOrganizationApplication;
     if (!app.privateBookingsEnabled ||
         (application != null &&
-            application.status != OrganizationApplicationStatus.withdrawn &&
-            (application.kind != ApplicationKind.host ||
-                !application.editable))) {
+            (_pendingOrganizerApplication(application) ||
+                (application.kind == ApplicationKind.host &&
+                    !application.editable &&
+                    application.status !=
+                        OrganizationApplicationStatus.withdrawn)))) {
       return false;
     }
     try {
@@ -426,9 +428,7 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
         ),
       );
     }
-    if (application != null &&
-        application.kind != ApplicationKind.host &&
-        application.status != OrganizationApplicationStatus.withdrawn) {
+    if (application != null && _pendingOrganizerApplication(application)) {
       return Material(
         color: context.epColors.background,
         child: _ApplicationNotice(
@@ -770,3 +770,18 @@ class _AddDocumentTile extends StatelessWidget {
     );
   }
 }
+
+/// An organizer application still under way blocks a host application; a
+/// decided (approved or rejected) or withdrawn one does not, because the
+/// backend keeps one open application per person and reports the newest.
+bool _pendingOrganizerApplication(OrganizationApplication application) =>
+    application.kind != ApplicationKind.host &&
+    switch (application.status) {
+      OrganizationApplicationStatus.draft ||
+      OrganizationApplicationStatus.submitted ||
+      OrganizationApplicationStatus.underReview ||
+      OrganizationApplicationStatus.needsInfo => true,
+      OrganizationApplicationStatus.approved ||
+      OrganizationApplicationStatus.rejected ||
+      OrganizationApplicationStatus.withdrawn => false,
+    };
