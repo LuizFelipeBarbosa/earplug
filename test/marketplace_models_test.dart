@@ -3048,4 +3048,531 @@ void main() {
       );
     });
   });
+
+  group('marketplace finance models', () {
+    const snapshotJson = {
+      'availableMinor': 12000.0,
+      'pendingMinor': 3400,
+      'currency': 'eur',
+      'fetchedAt': 1800000000000,
+    };
+    const bookingJson = {
+      'dueMinor': 1000,
+      'paidMinor': 2000,
+      'refundedMinor': 300,
+      'disputedMinor': 400,
+      'activeCount': 2,
+    };
+    const ticketJson = {
+      'ordersPaid': 3,
+      'grossMinor': 4500,
+      'feeMinor': 225,
+      'refundedMinor': 600,
+      'refundedOrgMinor': 500,
+      'netMinor': 4000,
+      'estimatedProcessingMinor': 150,
+      'truncated': true,
+    };
+    const pendingJson = {
+      'bookingId': 'booking-1',
+      'paymentRecordId': 'payment-1',
+      'opportunityTitle': 'Show',
+      'label': 'Deposit',
+      'amountMinor': 1000,
+      'dueAt': 1800000000000,
+    };
+    const transactionJson = {
+      'id': 'ledger-1',
+      'kind': 'ticketSale',
+      'amountMinor': 4500,
+      'currency': 'eur',
+      'fundsState': 'available',
+      'occurredAt': 1800000000000,
+      'label': 'Show',
+      'bookingId': 'booking-1',
+      'ticketOrderId': 'order-1',
+      'stripeRef': 'pi_1',
+    };
+
+    test('FinanceSnapshot parses balances, currency, and timestamp', () {
+      final snapshot = FinanceSnapshot.fromJson(snapshotJson);
+      expect(snapshot.availableMinor, 12000);
+      expect(snapshot.pendingMinor, 3400);
+      expect(snapshot.currency, 'eur');
+      expect(snapshot.available, const Money(12000, 'eur'));
+      expect(snapshot.pending, const Money(3400, 'eur'));
+      expect(snapshot.fetchedAt.millisecondsSinceEpoch, 1800000000000);
+    });
+
+    test('FinanceBookings and FinanceTickets parse every aggregate', () {
+      final bookings = FinanceBookings.fromJson(bookingJson);
+      expect(bookings.dueMinor, 1000);
+      expect(bookings.paidMinor, 2000);
+      expect(bookings.refundedMinor, 300);
+      expect(bookings.disputedMinor, 400);
+      expect(bookings.activeCount, 2);
+      final tickets = FinanceTickets.fromJson(ticketJson);
+      expect(tickets.ordersPaid, 3);
+      expect(tickets.grossMinor, 4500);
+      expect(tickets.feeMinor, 225);
+      expect(tickets.refundedMinor, 600);
+      expect(tickets.refundedOrgMinor, 500);
+      expect(tickets.netMinor, 4000);
+      expect(tickets.estimatedProcessingMinor, 150);
+      expect(tickets.truncated, isTrue);
+    });
+
+    test('PendingPayment and FinanceOverview use the parent currency', () {
+      final pending = PendingPayment.fromJson(pendingJson, currency: 'eur');
+      expect(pending.bookingId, 'booking-1');
+      expect(pending.paymentRecordId, 'payment-1');
+      expect(pending.opportunityTitle, 'Show');
+      expect(pending.label, 'Deposit');
+      expect(pending.amountMinor, 1000);
+      expect(pending.currency, 'eur');
+      expect(pending.amount, const Money(1000, 'eur'));
+      expect(pending.dueAt.millisecondsSinceEpoch, 1800000000000);
+      final overview = FinanceOverview.fromJson({
+        'stripeReady': true,
+        'snapshot': snapshotJson,
+        'bookings': bookingJson,
+        'tickets': ticketJson,
+        'pendingPayments': [pendingJson],
+        'currency': 'eur',
+      });
+      expect(overview.stripeReady, isTrue);
+      expect(overview.snapshot!.available, const Money(12000, 'eur'));
+      expect(overview.pendingPayments.single.amount, const Money(1000, 'eur'));
+      expect(overview.dueAmount, const Money(1000, 'eur'));
+      expect(overview.paidAmount, const Money(2000, 'eur'));
+      expect(overview.refundedAmount, const Money(300, 'eur'));
+      expect(overview.disputedAmount, const Money(400, 'eur'));
+      expect(overview.ticketGrossAmount, const Money(4500, 'eur'));
+      expect(overview.ticketFeeAmount, const Money(225, 'eur'));
+      expect(overview.ticketRefundedAmount, const Money(600, 'eur'));
+      expect(overview.ticketRefundedOrgAmount, const Money(500, 'eur'));
+      expect(overview.ticketNetAmount, const Money(4000, 'eur'));
+      expect(overview.ticketEstimatedProcessingAmount, const Money(150, 'eur'));
+      for (final value in [null, false, 'invalid']) {
+        expect(FinanceOverview.fromJson({'snapshot': value}).snapshot, isNull);
+      }
+    });
+
+    test('FinanceTransaction parses money, references, and wire enums', () {
+      final transaction = FinanceTransaction.fromJson(transactionJson);
+      expect(transaction.id, 'ledger-1');
+      expect(transaction.kind, LedgerKind.ticketSale);
+      expect(transaction.amount, const Money(4500, 'eur'));
+      expect(transaction.fundsState, FundsState.available);
+      expect(transaction.occurredAt.millisecondsSinceEpoch, 1800000000000);
+      expect(transaction.label, 'Show');
+      expect(transaction.bookingId, 'booking-1');
+      expect(transaction.ticketOrderId, 'order-1');
+      expect(transaction.stripeRef, 'pi_1');
+    });
+
+    test('TransactionsPage accepts both list keys and pagination fields', () {
+      for (final key in ['page', 'items']) {
+        final page = TransactionsPage.fromJson({
+          key: [transactionJson],
+          'isDone': false,
+          'continueCursor': 'next',
+        });
+        expect(page.items.single.id, 'ledger-1');
+        expect(page.isDone, isFalse);
+        expect(page.continueCursor, 'next');
+      }
+      final page = TransactionsPage.fromJson({
+        'page': <Object?>[],
+        'isDone': true,
+        'continueCursor': null,
+      });
+      expect(page.items, isEmpty);
+      expect(page.isDone, isTrue);
+      expect(page.continueCursor, isNull);
+      expect(
+        TransactionsPage.fromJson({
+          'page': <Object?>[],
+          'items': [transactionJson],
+        }).items,
+        isEmpty,
+      );
+    });
+
+    test('StatementExport parses CSV and export metadata', () {
+      final statement = StatementExport.fromJson({
+        'csv': 'date,type\n2026-09-06,charge',
+        'rows': 1.0,
+        'truncated': true,
+      });
+      expect(statement.csv, 'date,type\n2026-09-06,charge');
+      expect(statement.rows, 1);
+      expect(statement.truncated, isTrue);
+    });
+
+    test('finance models tolerate missing and malformed payload fields', () {
+      final epoch = DateTime.fromMillisecondsSinceEpoch(0);
+      for (final json in <Map<String, dynamic>>[
+        <String, dynamic>{},
+        {
+          'availableMinor': 'bad',
+          'pendingMinor': false,
+          'currency': 7,
+          'fetchedAt': 'bad',
+          'dueMinor': <Object?>[],
+          'paidMinor': '2',
+          'refundedMinor': false,
+          'disputedMinor': <String, dynamic>{},
+          'activeCount': null,
+          'ordersPaid': 'bad',
+          'grossMinor': false,
+          'feeMinor': <Object?>[],
+          'refundedOrgMinor': 'bad',
+          'netMinor': null,
+          'estimatedProcessingMinor': true,
+          'truncated': 'true',
+          'bookingId': false,
+          'paymentRecordId': 8,
+          'opportunityTitle': <Object?>[],
+          'label': 9,
+          'amountMinor': 'bad',
+          'dueAt': <String, dynamic>{},
+          'stripeReady': 'true',
+          'snapshot': <Object?>[],
+          'bookings': false,
+          'tickets': 'bad',
+          'pendingPayments': [null, 'bad'],
+          'id': false,
+          'kind': 'future-kind',
+          'fundsState': 'future-state',
+          'occurredAt': 'bad',
+          'ticketOrderId': 4,
+          'stripeRef': <Object?>[],
+          'page': [null, false],
+          'isDone': 'true',
+          'continueCursor': 3,
+          'csv': false,
+          'rows': '1',
+        },
+      ]) {
+        final snapshot = FinanceSnapshot.fromJson(json);
+        expect(snapshot.availableMinor, 0);
+        expect(snapshot.pendingMinor, 0);
+        expect(snapshot.currency, '');
+        expect(snapshot.fetchedAt, epoch);
+        final bookings = FinanceBookings.fromJson(json);
+        expect([
+          bookings.dueMinor,
+          bookings.paidMinor,
+          bookings.refundedMinor,
+          bookings.disputedMinor,
+          bookings.activeCount,
+        ], everyElement(0));
+        final tickets = FinanceTickets.fromJson(json);
+        expect([
+          tickets.ordersPaid,
+          tickets.grossMinor,
+          tickets.feeMinor,
+          tickets.refundedMinor,
+          tickets.refundedOrgMinor,
+          tickets.netMinor,
+          tickets.estimatedProcessingMinor,
+        ], everyElement(0));
+        expect(tickets.truncated, isFalse);
+        final pending = PendingPayment.fromJson(json, currency: 'eur');
+        expect([
+          pending.bookingId,
+          pending.paymentRecordId,
+          pending.opportunityTitle,
+          pending.label,
+        ], everyElement(''));
+        expect(pending.amount, const Money(0, 'eur'));
+        expect(pending.dueAt, epoch);
+        final overview = FinanceOverview.fromJson(json);
+        expect(overview.stripeReady, isFalse);
+        expect(overview.snapshot, isNull);
+        expect(overview.pendingPayments, isEmpty);
+        expect(overview.bookings.activeCount, 0);
+        expect(overview.tickets.ordersPaid, 0);
+        final transaction = FinanceTransaction.fromJson(json);
+        expect(transaction.id, '');
+        expect(transaction.kind, LedgerKind.unknown);
+        expect(transaction.fundsState, FundsState.unknown);
+        expect(transaction.amount, const Money(0, ''));
+        expect(transaction.occurredAt, epoch);
+        expect(transaction.label, '');
+        expect(transaction.bookingId, isNull);
+        expect(transaction.ticketOrderId, isNull);
+        expect(transaction.stripeRef, isNull);
+        final page = TransactionsPage.fromJson(json);
+        expect(page.items, isEmpty);
+        expect(page.isDone, isFalse);
+        expect(page.continueCursor, isNull);
+        final statement = StatementExport.fromJson(json);
+        expect(statement.csv, '');
+        expect(statement.rows, 0);
+        expect(statement.truncated, isFalse);
+      }
+    });
+  });
+
+  group('marketplace insights models', () {
+    const bucketJson = {'key': 'Oakland', 'events': 5, 'checkIns': 42};
+    const partitionJson = {
+      'buckets': [bucketJson],
+      'suppressed': false,
+    };
+    const attributionJson = {
+      'referral': 12,
+      'follow': 20,
+      'unattributed': 10,
+      'suppressed': true,
+    };
+    const drawJson = {
+      'low': 30,
+      'high': 50,
+      'confidence': 'medium',
+      'events': 5,
+      'basis': 'checkIns',
+    };
+    const windowJson = {
+      'events': 5,
+      'truncated': true,
+      'firstStartsAt': 1800000000000,
+      'lastStartsAt': 1801000000000,
+    };
+    const bandJson = {'bandId': 'band-1', 'name': 'Signal Band'};
+
+    test(
+      'InsightBucket and InsightPartition parse event and check-in counts',
+      () {
+        final bucket = InsightBucket.fromJson(bucketJson);
+        expect(bucket.key, 'Oakland');
+        expect(bucket.events, 5);
+        expect(bucket.checkIns, 42);
+        final partition = InsightPartition.fromJson(partitionJson);
+        expect(partition.buckets.single.key, 'Oakland');
+        expect(partition.buckets.single.events, 5);
+        expect(partition.buckets.single.checkIns, 42);
+        expect(partition.suppressed, isFalse);
+        expect(
+          InsightPartition.fromJson({
+            'buckets': <Object?>[],
+            'suppressed': true,
+          }).suppressed,
+          isTrue,
+        );
+      },
+    );
+
+    test('Attribution and EstimatedDraw parse counts and draw enums', () {
+      final attribution = Attribution.fromJson(attributionJson);
+      expect(attribution.referral, 12);
+      expect(attribution.follow, 20);
+      expect(attribution.unattributed, 10);
+      expect(attribution.suppressed, isTrue);
+      final draw = EstimatedDraw.fromJson(drawJson);
+      expect(draw.low, 30);
+      expect(draw.high, 50);
+      expect(draw.confidence, DrawConfidence.medium);
+      expect(draw.events, 5);
+      expect(draw.basis, DrawBasis.checkIns);
+    });
+
+    test('InsightsWindow and InsightsBand parse dates and band identity', () {
+      final window = InsightsWindow.fromJson(windowJson);
+      expect(window.events, 5);
+      expect(window.truncated, isTrue);
+      expect(window.firstStartsAt!.millisecondsSinceEpoch, 1800000000000);
+      expect(window.lastStartsAt!.millisecondsSinceEpoch, 1801000000000);
+      final band = InsightsBand.fromJson(bandJson);
+      expect(band.bandId, 'band-1');
+      expect(band.name, 'Signal Band');
+    });
+
+    test('ArtistInsights parses every nested model and nullable draw', () {
+      final insights = ArtistInsights.fromJson({
+        'band': bandJson,
+        'window': windowJson,
+        'followers': 100,
+        'rsvpTotal': 80,
+        'ticketsSold': 60,
+        'checkIns': 42,
+        'returningAttendees': 8,
+        'returningSuppressed': true,
+        'attribution': attributionJson,
+        'byArea': partitionJson,
+        'byVenueType': partitionJson,
+        'byWeekday': partitionJson,
+        'byPriceBand': partitionJson,
+        'estimatedDraw': drawJson,
+      });
+      expect(insights.band.bandId, 'band-1');
+      expect(insights.window.events, 5);
+      expect(insights.followers, 100);
+      expect(insights.rsvpTotal, 80);
+      expect(insights.ticketsSold, 60);
+      expect(insights.checkIns, 42);
+      expect(insights.returningAttendees, 8);
+      expect(insights.returningSuppressed, isTrue);
+      expect(insights.attribution.follow, 20);
+      for (final partition in [
+        insights.byArea,
+        insights.byVenueType,
+        insights.byWeekday,
+        insights.byPriceBand,
+      ]) {
+        expect(partition.buckets.single.checkIns, 42);
+        expect(partition.suppressed, isFalse);
+      }
+      expect(insights.estimatedDraw!.confidence, DrawConfidence.medium);
+      for (final value in [null, false, 'invalid']) {
+        expect(
+          ArtistInsights.fromJson({'estimatedDraw': value}).estimatedDraw,
+          isNull,
+        );
+      }
+    });
+
+    test(
+      'new enums round-trip known values and fall back on unknown values',
+      () {
+        for (final value in LedgerKind.values) {
+          expect(LedgerKind.fromWire(value.wireValue), value);
+        }
+        for (final value in FundsState.values) {
+          expect(FundsState.fromWire(value.wireValue), value);
+        }
+        for (final value in DrawConfidence.values) {
+          expect(DrawConfidence.fromWire(value.wireValue), value);
+        }
+        for (final value in DrawBasis.values) {
+          expect(DrawBasis.fromWire(value.wireValue), value);
+        }
+        for (final value in ['future-value', null, 123]) {
+          expect(LedgerKind.fromWire(value), LedgerKind.unknown);
+          expect(FundsState.fromWire(value), FundsState.unknown);
+          expect(DrawConfidence.fromWire(value), DrawConfidence.unknown);
+          expect(DrawBasis.fromWire(value), DrawBasis.unknown);
+        }
+      },
+    );
+
+    test('insights models tolerate missing and malformed fields', () {
+      for (final json in <Map<String, dynamic>>[
+        <String, dynamic>{},
+        {
+          'key': false,
+          'events': 'bad',
+          'checkIns': <Object?>[],
+          'buckets': [null, false],
+          'suppressed': 'true',
+          'referral': <Object?>[],
+          'follow': null,
+          'unattributed': false,
+          'low': false,
+          'high': 'bad',
+          'confidence': 'future-confidence',
+          'basis': 'future-basis',
+          'firstStartsAt': 'bad',
+          'lastStartsAt': <String, dynamic>{},
+          'truncated': 'true',
+          'bandId': false,
+          'name': <Object?>[],
+          'band': false,
+          'window': <Object?>[],
+          'followers': 'bad',
+          'rsvpTotal': null,
+          'ticketsSold': <Object?>[],
+          'returningAttendees': <String, dynamic>{},
+          'returningSuppressed': 'true',
+          'attribution': false,
+          'byArea': <Object?>[],
+          'byVenueType': 3,
+          'byWeekday': true,
+          'byPriceBand': 'bad',
+          'estimatedDraw': false,
+        },
+      ]) {
+        final bucket = InsightBucket.fromJson(json);
+        expect(bucket.key, '');
+        expect(bucket.events, 0);
+        expect(bucket.checkIns, 0);
+        final partition = InsightPartition.fromJson(json);
+        expect(partition.buckets, isEmpty);
+        expect(partition.suppressed, isFalse);
+        final attribution = Attribution.fromJson(json);
+        expect([
+          attribution.referral,
+          attribution.follow,
+          attribution.unattributed,
+        ], everyElement(0));
+        expect(attribution.suppressed, isFalse);
+        final draw = EstimatedDraw.fromJson(json);
+        expect([draw.low, draw.high, draw.events], everyElement(0));
+        expect(draw.confidence, DrawConfidence.unknown);
+        expect(draw.basis, DrawBasis.unknown);
+        final window = InsightsWindow.fromJson(json);
+        expect(window.events, 0);
+        expect(window.truncated, isFalse);
+        expect(window.firstStartsAt, isNull);
+        expect(window.lastStartsAt, isNull);
+        final band = InsightsBand.fromJson(json);
+        expect(band.bandId, '');
+        expect(band.name, '');
+        final insights = ArtistInsights.fromJson(json);
+        expect(insights.band.bandId, '');
+        expect(insights.window.events, 0);
+        expect([
+          insights.followers,
+          insights.rsvpTotal,
+          insights.ticketsSold,
+          insights.checkIns,
+          insights.returningAttendees,
+        ], everyElement(0));
+        expect(insights.returningSuppressed, isFalse);
+        expect(insights.attribution.referral, 0);
+        for (final partition in [
+          insights.byArea,
+          insights.byVenueType,
+          insights.byWeekday,
+          insights.byPriceBand,
+        ]) {
+          expect(partition.buckets, isEmpty);
+          expect(partition.suppressed, isFalse);
+        }
+        expect(insights.estimatedDraw, isNull);
+      }
+    });
+
+    test('non-finite numbers and invalid timestamp ranges never throw', () {
+      for (final value in [
+        double.nan,
+        double.infinity,
+        double.negativeInfinity,
+      ]) {
+        expect(InsightBucket.fromJson({'events': value}).events, 0);
+      }
+      for (final value in [
+        double.nan,
+        double.infinity,
+        8640000000000001,
+        -8640000000000001,
+        -9223372036854775808,
+        1e100,
+        -1e100,
+      ]) {
+        expect(
+          FinanceSnapshot.fromJson({
+            'fetchedAt': value,
+          }).fetchedAt.millisecondsSinceEpoch,
+          0,
+        );
+        expect(
+          InsightsWindow.fromJson({'firstStartsAt': value}).firstStartsAt,
+          isNull,
+        );
+      }
+    });
+  });
 }

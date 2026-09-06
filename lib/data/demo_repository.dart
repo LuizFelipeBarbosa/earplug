@@ -52,6 +52,7 @@ class _DemoTicketOrder {
   TicketOrderStatus status;
   final DateTime reservedUntil;
   final String? referralBandSlug;
+  DateTime? paidAt;
 }
 
 int _refundShareBps(CancellationTemplate template, int msBeforeStart) {
@@ -151,6 +152,8 @@ class DemoRepository implements EarplugRepository {
     _bookings = Map<String, Booking>.of(DemoData.bookings);
     _bandStripeStatus = {};
     _organizationStripeStatus = {};
+    // The paid seed gig predates opportunity links in DemoData.
+    _seedGigOrganizationIds = {'g8': 'org1'};
     _paymentRecordsByBooking = {};
     _paymentSessionToRecordKey = {};
     _payoutsByBooking = {};
@@ -229,6 +232,7 @@ class DemoRepository implements EarplugRepository {
   late final Map<String, Booking> _bookings;
   late final Map<String, StripeAccountStatus> _bandStripeStatus;
   late final Map<String, StripeAccountStatus> _organizationStripeStatus;
+  late final Map<String, String> _seedGigOrganizationIds;
   late final Map<String, List<PaymentRecord>> _paymentRecordsByBooking;
   late final Map<String, ({String bookingId, String paymentRecordId})>
   _paymentSessionToRecordKey;
@@ -1766,6 +1770,7 @@ class DemoRepository implements EarplugRepository {
     );
     final now = DateTime.now();
     order.status = TicketOrderStatus.paid;
+    order.paidAt = now;
     for (var n = 1; n <= order.quantity; n++) {
       final id = 'demo-ticket-${_nextTicketId++}';
       _tickets[id] = TicketSummary(
@@ -1842,6 +1847,350 @@ class DemoRepository implements EarplugRepository {
       netMinor: grossMinor - refundedOrgMinor,
       currency: gig.ticketCurrency ?? 'usd',
       truncated: false,
+    );
+  }
+
+  @override
+  Future<FinanceOverview> financeOverview(String organizationId) async {
+    const currency = 'usd';
+    final bookings = _bookings.values
+        .where((booking) => booking.organizationId == organizationId)
+        .toList();
+    final pendingPayments = <PendingPayment>[
+      for (final booking in bookings)
+        for (final record
+            in _paymentRecordsByBooking[booking.id] ?? <PaymentRecord>[])
+          if (record.status != PaymentRecordStatus.paid)
+            PendingPayment(
+              bookingId: booking.id,
+              paymentRecordId: record.id,
+              opportunityTitle: booking.opportunityTitle,
+              label: record.label,
+              amountMinor: record.amountMinor,
+              currency: currency,
+              dueAt: record.dueAt,
+            ),
+    ]..sort((a, b) => a.dueAt.compareTo(b.dueAt));
+    final orders = _paidOrganizationTicketOrders(organizationId);
+    final grossMinor = orders.fold(
+      0,
+      (total, order) => total + order.subtotalMinor,
+    );
+    final stripeReady = (await organizationStripeStatus(
+      organizationId,
+    )).chargesEnabled;
+    return FinanceOverview(
+      stripeReady: stripeReady,
+      snapshot: stripeReady ? _financeSnapshot(grossMinor) : null,
+      bookings: FinanceBookings(
+        dueMinor: pendingPayments.fold(
+          0,
+          (total, payment) => total + payment.amountMinor,
+        ),
+        paidMinor: bookings.fold(
+          0,
+          (total, booking) => total + booking.paidMinor,
+        ),
+        refundedMinor: bookings.fold(
+          0,
+          (total, booking) => total + booking.refundedMinor,
+        ),
+        disputedMinor: 0,
+        activeCount: bookings
+            .where((booking) => booking.status.isActive)
+            .length,
+      ),
+      tickets: FinanceTickets(
+        ordersPaid: orders.length,
+        grossMinor: grossMinor,
+        feeMinor: orders.fold(0, (total, order) => total + order.feeMinor),
+        refundedMinor: 0,
+        refundedOrgMinor: 0,
+        // Demo ticket fees are charged to the buyer on top of the subtotal.
+        netMinor: grossMinor,
+        estimatedProcessingMinor: 0,
+        truncated: false,
+      ),
+      pendingPayments: pendingPayments,
+      currency: currency,
+    );
+  }
+
+  List<_DemoTicketOrder> _paidOrganizationTicketOrders(String organizationId) {
+    final gigIds = <String>{
+      for (final gig in [...DemoData.gigs, ..._publishedGigs])
+        if (_organizationForGig(gig) == organizationId) gig.id,
+    };
+    return [
+      for (final order in _ticketOrders.values)
+        if (order.status == TicketOrderStatus.paid &&
+            gigIds.contains(order.gigId))
+          order,
+    ];
+  }
+
+  String? _organizationForGig(Gig gig) =>
+      _opportunities[gig.opportunityId]?.organizationId ??
+      _bookings.values
+          .where((booking) => booking.publicGigId == gig.id)
+          .firstOrNull
+          ?.organizationId ??
+      _seedGigOrganizationIds[gig.id] ??
+      (gig.ownerKind == GigOwnerKind.organization
+          ? _venues[gig.venueId]?.managedByOrganizationId
+          : null);
+
+  FinanceSnapshot _financeSnapshot(int ticketNetMinor) => FinanceSnapshot(
+    availableMinor: ticketNetMinor,
+    pendingMinor: 0,
+    currency: 'usd',
+    fetchedAt: _userCreatedAt,
+  );
+
+  @override
+  Future<FinanceSnapshot?> refreshFinanceBalance(String organizationId) async =>
+      (await financeOverview(organizationId)).snapshot;
+
+  List<FinanceTransaction> _financeTransactions(String organizationId) {
+    final transactions = <FinanceTransaction>[
+      for (final order in _paidOrganizationTicketOrders(organizationId))
+        FinanceTransaction(
+          id: order.orderId,
+          kind: LedgerKind.ticketSale,
+          amountMinor: order.subtotalMinor,
+          currency: order.currency,
+          fundsState: FundsState.available,
+          occurredAt: order.paidAt!,
+          label: _requireTicketGig(order.gigId).title,
+          ticketOrderId: order.orderId,
+        ),
+      for (final booking in _bookings.values)
+        if (booking.organizationId == organizationId)
+          for (final record
+              in _paymentRecordsByBooking[booking.id] ?? <PaymentRecord>[])
+            if (record.status == PaymentRecordStatus.paid)
+              FinanceTransaction(
+                id: record.id,
+                kind: LedgerKind.charge,
+                amountMinor: record.amountMinor,
+                currency: record.currency,
+                fundsState: FundsState.available,
+                occurredAt: record.paidAt ?? record.dueAt,
+                label: record.label,
+                bookingId: booking.id,
+              ),
+    ];
+    transactions.sort((a, b) {
+      final byDate = b.occurredAt.compareTo(a.occurredAt);
+      return byDate == 0 ? a.id.compareTo(b.id) : byDate;
+    });
+    return transactions;
+  }
+
+  @override
+  Future<TransactionsPage> financeTransactions(
+    String organizationId, {
+    required int numItems,
+    String? cursor,
+  }) async {
+    final transactions = _financeTransactions(organizationId);
+    final start = (int.tryParse(cursor ?? '') ?? 0).clamp(
+      0,
+      transactions.length,
+    );
+    final end = (start + numItems.clamp(1, 20)).clamp(
+      start,
+      transactions.length,
+    );
+    return TransactionsPage(
+      items: transactions.sublist(start, end),
+      isDone: end == transactions.length,
+      continueCursor: end.toString(),
+    );
+  }
+
+  @override
+  Future<StatementExport> exportStatement(
+    String organizationId, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final transactions = _financeTransactions(organizationId)
+        .where(
+          (transaction) =>
+              !transaction.occurredAt.isBefore(from) &&
+              !transaction.occurredAt.isAfter(to),
+        )
+        .toList();
+    String csvField(String value) => RegExp('[,"\r\n]').hasMatch(value)
+        ? '"${value.replaceAll('"', '""')}"'
+        : value;
+    final lines = <String>[
+      'date,type,label,amount,currency,funds_state,reference',
+      for (final transaction in transactions)
+        [
+          transaction.occurredAt.toUtc().toIso8601String(),
+          transaction.kind.wireValue,
+          transaction.label,
+          (transaction.amountMinor / 100).toStringAsFixed(2),
+          transaction.currency,
+          transaction.fundsState.wireValue,
+          transaction.stripeRef ??
+              transaction.ticketOrderId ??
+              transaction.bookingId ??
+              transaction.id,
+        ].map(csvField).join(','),
+    ];
+    return StatementExport(
+      csv: lines.join('\n'),
+      rows: transactions.length,
+      truncated: false,
+    );
+  }
+
+  @override
+  Future<ArtistInsights> artistInsights(String applicationId) =>
+      myBandInsights(_requireArtistApplication(applicationId).bandId);
+
+  @override
+  Future<ArtistInsights> myBandInsights(String bandId) async {
+    final band = _bands[bandId];
+    if (band == null) throw StateError('Band not found');
+    final gigsById = {
+      for (final gig in [...DemoData.gigs, ..._publishedGigs]) gig.id: gig,
+    };
+    final gigs =
+        gigsById.values
+            .where(
+              (gig) =>
+                  gig.lifecycle == GigLifecycle.published &&
+                  gig.lineup.contains(bandId),
+            )
+            .toList()
+          ..sort((a, b) => a.startsAt.compareTo(b.startsAt));
+    final gigIds = gigs.map((gig) => gig.id).toSet();
+    final orders = _ticketOrders.values
+        .where(
+          (order) =>
+              order.status == TicketOrderStatus.paid &&
+              gigIds.contains(order.gigId),
+        )
+        .toList();
+    final checkInsByGig = <String, int>{
+      for (final gig in gigs) gig.id: _checkedInGigIds.contains(gig.id) ? 1 : 0,
+    };
+    for (final ticket in _tickets.values) {
+      if (gigIds.contains(ticket.gigId) && ticket.status == TicketStatus.used) {
+        checkInsByGig.update(ticket.gigId, (count) => count + 1);
+      }
+    }
+    final checkIns = checkInsByGig.values.fold(
+      0,
+      (total, count) => total + count,
+    );
+    final rsvpTotal = gigs.fold(0, (total, gig) => total + _goingFor(gig));
+    final ticketsSold = orders.fold(
+      0,
+      (total, order) => total + order.quantity,
+    );
+    final suppressed = gigs.length < 5;
+    final attendees = rsvpTotal + ticketsSold;
+    final attendeeSuppressed = suppressed || attendees < 5;
+    final referral = orders
+        .where((order) => order.referralBandSlug == band.slug)
+        .fold(0, (total, order) => total + order.quantity);
+    final follow = _followBandIds.contains(bandId)
+        ? gigs.where((gig) => _rsvpGigIds.contains(gig.id)).length
+        : 0;
+    // Demo aggregate RSVPs do not carry fan identities; estimate repeats only
+    // once both the event and attendee samples meet the privacy floor.
+    final returningAttendees = attendeeSuppressed ? 0 : attendees ~/ 4;
+    final basis = checkIns > 0 ? DrawBasis.checkIns : DrawBasis.rsvps;
+    final average = gigs.isEmpty
+        ? 0
+        : (checkIns > 0 ? checkIns : rsvpTotal) / gigs.length;
+    return ArtistInsights(
+      band: InsightsBand(bandId: band.id, name: band.name),
+      window: InsightsWindow(
+        events: gigs.length,
+        truncated: false,
+        firstStartsAt: gigs.firstOrNull?.startsAt,
+        lastStartsAt: gigs.lastOrNull?.startsAt,
+      ),
+      followers: band.followers + (_followBandIds.contains(bandId) ? 1 : 0),
+      rsvpTotal: rsvpTotal,
+      ticketsSold: ticketsSold,
+      checkIns: checkIns,
+      returningAttendees: returningAttendees,
+      returningSuppressed: attendeeSuppressed,
+      attribution: Attribution(
+        referral: attendeeSuppressed ? 0 : referral,
+        follow: attendeeSuppressed ? 0 : follow,
+        unattributed: attendeeSuppressed ? 0 : attendees - referral - follow,
+        suppressed: attendeeSuppressed,
+      ),
+      byArea: _insightPartition(
+        gigs,
+        checkInsByGig,
+        (gig) => _venues[gig.venueId]?.area ?? '',
+      ),
+      byVenueType: _insightPartition(
+        gigs,
+        checkInsByGig,
+        (gig) => _venues[gig.venueId]?.venueType?.wireValue ?? 'other',
+      ),
+      byWeekday: _insightPartition(
+        gigs,
+        checkInsByGig,
+        (gig) => gig.startsAt.weekday.toString(),
+      ),
+      byPriceBand: _insightPartition(gigs, checkInsByGig, (gig) {
+        final minor = gig.ticketPriceMinor ?? gig.price * 100;
+        return minor == 0
+            ? 'free'
+            : minor < 2000
+            ? 'under20'
+            : '20Plus';
+      }),
+      estimatedDraw: suppressed
+          ? null
+          : EstimatedDraw(
+              low: (average * 0.8).floor(),
+              high: (average * 1.2).ceil(),
+              confidence: gigs.length >= 10
+                  ? DrawConfidence.medium
+                  : DrawConfidence.low,
+              events: gigs.length,
+              basis: basis,
+            ),
+    );
+  }
+
+  InsightPartition _insightPartition(
+    List<Gig> gigs,
+    Map<String, int> checkInsByGig,
+    String Function(Gig) keyFor,
+  ) {
+    if (gigs.length < 5) {
+      return const InsightPartition(buckets: [], suppressed: true);
+    }
+    final buckets = <String, InsightBucket>{};
+    for (final gig in gigs) {
+      final key = keyFor(gig);
+      final previous = buckets[key];
+      buckets[key] = InsightBucket(
+        key: key,
+        events: (previous?.events ?? 0) + 1,
+        checkIns: (previous?.checkIns ?? 0) + (checkInsByGig[gig.id] ?? 0),
+      );
+    }
+    // A partition must not expose an individual bucket below the same floor.
+    if (buckets.values.any((bucket) => bucket.events < 5)) {
+      return const InsightPartition(buckets: [], suppressed: true);
+    }
+    return InsightPartition(
+      buckets: buckets.values.toList()..sort((a, b) => a.key.compareTo(b.key)),
+      suppressed: false,
     );
   }
 
@@ -2573,6 +2922,36 @@ class DemoRepository implements EarplugRepository {
       updatedAt: DateTime.now(),
     );
     _opportunities[opportunityId] = updated;
+    return updated.revision;
+  }
+
+  @override
+  Future<int> updateOpportunityTicketing({
+    required String opportunityId,
+    required int expectedRevision,
+    required int ticketPriceMinor,
+    required int ticketCapacity,
+  }) async {
+    final existing = _requireOpportunity(opportunityId);
+    _checkOpportunityRevision(existing, expectedRevision);
+    final updated = _copyOpportunity(
+      existing,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
+      revision: existing.revision + 1,
+      updatedAt: DateTime.now(),
+    );
+    _opportunities[opportunityId] = updated;
+    for (var index = 0; index < _publishedGigs.length; index++) {
+      final gig = _publishedGigs[index];
+      if (gig.opportunityId == opportunityId) {
+        _publishedGigs[index] = gig.copyWith(
+          ticketPriceMinor: ticketPriceMinor,
+          cap: ticketCapacity.toString(),
+        );
+      }
+    }
+    _emitFeed();
     return updated.revision;
   }
 
