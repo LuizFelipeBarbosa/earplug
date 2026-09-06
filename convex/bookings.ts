@@ -109,6 +109,7 @@ async function resolveEmailRecipients(
     kind === "offerExpired" ||
     kind === "bookingConfirmed" ||
     kind === "reviewRequested" ||
+    kind === "safetyCancellation" ||
     (kind === "bookingCancelled" &&
       (booking.cancelledBy === "artist" ||
         booking.cancelledBy === "admin" ||
@@ -141,6 +142,24 @@ async function resolveEmailRecipients(
   return recipients;
 }
 
+export async function resolveVenueName(
+  ctx: MutationCtx,
+  opportunity: Doc<"talentOpportunities">,
+): Promise<string> {
+  if (opportunity.privateLocationId !== undefined) {
+    const location = await ctx.db.get(opportunity.privateLocationId);
+    return location?.label ?? "Private event";
+  }
+  if (opportunity.mode === "privateBooking") return "Private event";
+
+  const venue =
+    opportunity.venueId !== undefined
+      ? await ctx.db.get(opportunity.venueId)
+      : null;
+  if (!venue) throw new Error("Venue not found");
+  return venue.name;
+}
+
 export async function sendBookingEmail(
   ctx: MutationCtx,
   booking: Doc<"bookings">,
@@ -155,16 +174,12 @@ export async function sendBookingEmail(
   if (!opportunity) throw new Error("Opportunity not found");
   if (!band) throw new Error("Band not found");
   if (!organization) throw new Error("Organization not found");
-  const venue =
-    opportunity.venueId !== undefined
-      ? await ctx.db.get(opportunity.venueId)
-      : null;
-  if (!venue) throw new Error("Venue not found");
+  const venueName = await resolveVenueName(ctx, opportunity);
   const body = bookingEmail(kind, {
     opportunityTitle: opportunity.title,
     bandName: band.name,
     orgName: organization.name,
-    venueName: venue.name,
+    venueName,
     startsAt: booking.startsAt,
     link: `${appBaseUrl()}/bookings/${booking._id}`,
     ...(booking.grossMinor > 0
@@ -579,6 +594,7 @@ export const cancel = mutation({
     reason: v.string(),
     expectedRevision: v.number(),
     as: v.optional(v.union(v.literal("organizer"), v.literal("artist"))),
+    safety: v.optional(v.boolean()),
   },
   returns: v.object({ status: bookingStatusValidator, revision: v.number() }),
   handler: async (ctx, args) => {
@@ -617,6 +633,10 @@ export const cancel = mutation({
     } else if (args.as === "artist" && canArtist) {
       side = "artist";
     }
+    if (args.safety === true && side !== "artist") {
+      throw new Error("Only the artist can cancel for safety");
+    }
+    const safetyCancellation = side === "artist" && args.safety === true;
     if (side === "organizer") {
       const organization = await ctx.db.get(booking.organizationId);
       if (!organization) throw new Error("Organization not found");
@@ -635,9 +655,21 @@ export const cancel = mutation({
       cancelledByUserId: user._id,
       cancelledAt: now,
       cancelReason: reason,
+      ...(safetyCancellation ? { cancellationKind: "safety" as const } : {}),
       revision,
       updatedAt: now,
     });
+    if (safetyCancellation) {
+      await ctx.db.insert("safetyReports", {
+        bookingId: booking._id,
+        reporterUserId: user._id,
+        side: "artist",
+        category: "safety",
+        text: reason,
+        status: "open",
+        createdAt: now,
+      });
+    }
     let settlement: Awaited<ReturnType<typeof settleBookingCancellation>> | null =
       null;
     if (booking.grossMinor > 0) {
@@ -683,7 +715,7 @@ export const cancel = mutation({
     await sendBookingEmail(
       ctx,
       await loadBooking(ctx, booking._id),
-      "bookingCancelled",
+      safetyCancellation ? "safetyCancellation" : "bookingCancelled",
       {
         reason:
           settlement && settlement.refundMinor > 0

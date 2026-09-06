@@ -68,7 +68,11 @@ export async function recomputeReviewSummary(
       count,
       mean,
       completedBookings: completed.length + paid.length,
-      cancellations: cancelled.length,
+      cancellations:
+        "bandId" in subject
+          ? cancelled.filter((booking) => booking.cancellationKind !== "safety")
+              .length
+          : cancelled.length,
     },
   });
 }

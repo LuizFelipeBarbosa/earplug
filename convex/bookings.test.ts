@@ -260,6 +260,7 @@ async function setupBookings() {
     actor: Actor,
     expectedRevision = 3,
     actingAs?: "organizer" | "artist",
+    safety?: boolean,
   ) {
     return await checked(() =>
       as(actor).mutation(api.bookings.cancel, {
@@ -267,6 +268,7 @@ async function setupBookings() {
         expectedRevision,
         reason: "  Unable to perform  ",
         as: actingAs,
+        safety,
       }),
     );
   }
@@ -856,6 +858,170 @@ describe("booking offers", () => {
 });
 
 describe("booking confirmation and cancellation", () => {
+  test("artist safety cancellation refunds all payments without a reliability penalty", async () => {
+    const f = await setupBookings();
+    const { bookingId } = await f.confirm();
+    // Model a paid private booking, including both kinds of pending payout.
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.opportunityId, {
+        mode: "privateBooking",
+        venueId: undefined,
+        publicGigId: undefined,
+      });
+      await ctx.db.patch(bookingId, {
+        ...feeSnapshot(20000, 1000),
+        paidMinor: 20000,
+      });
+      for (const [installmentIndex, amountMinor, status] of [
+        [0, 12000, "scheduled"],
+        [1, 8000, "held"],
+      ] as const) {
+        const paymentRecordId = await ctx.db.insert("paymentRecords", {
+          bookingId,
+          installmentIndex,
+          label: `Installment ${installmentIndex + 1}`,
+          amountMinor,
+          currency: "usd",
+          dueAt: NOW,
+          status: "paid",
+          stripeChargeId: `ch_safety_${installmentIndex}`,
+          paidAt: NOW,
+          attempt: 0,
+          refundedMinor: 0,
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+        await ctx.db.insert("payouts", {
+          bookingId,
+          bandId: f.bandId,
+          paymentRecordId,
+          amountMinor: amountMinor * 0.9,
+          currency: "usd",
+          status,
+          scheduledFor: STARTS_AT + DAY_MS,
+          attempt: 0,
+          kind: "completion",
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      }
+    });
+    const cancelledAt = STARTS_AT - DAY_MS;
+    vi.setSystemTime(cancelledAt);
+    expect(await f.cancel(bookingId, "admin", 3, "artist", true)).toEqual({
+      status: "cancelled_by_artist",
+      revision: 4,
+    });
+    expect(await f.readBooking(bookingId)).toMatchObject({
+      status: "cancelled_by_artist",
+      cancellationKind: "safety",
+      cancelledBy: "artist",
+      cancelledByUserId: f.users.admin,
+      cancelledAt,
+      cancelReason: "Unable to perform",
+    });
+    const slot = await f.readSlot();
+    expect(slot?.status).toBe("open");
+    expect(slot?.bookingId).toBeUndefined();
+    expect(slot?.bandId).toBeUndefined();
+    expect(await f.readApplication()).toMatchObject({ status: "withdrawn" });
+    await f.t.run(async (ctx) => {
+      const reports = await ctx.db
+        .query("safetyReports")
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", bookingId))
+        .collect();
+      expect(reports).toMatchObject([
+        {
+          bookingId,
+          reporterUserId: f.users.admin,
+          category: "safety",
+          side: "artist",
+          text: "Unable to perform",
+          status: "open",
+          createdAt: cancelledAt,
+        },
+      ]);
+      expect((await ctx.db.get(f.bandId))?.reviewSummary).toMatchObject({
+        cancellations: 0,
+      });
+      const payouts = await ctx.db
+        .query("payouts")
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", bookingId))
+        .collect();
+      expect(payouts).toHaveLength(2);
+      expect(payouts.every((payout) => payout.status === "reversed")).toBe(true);
+    });
+    const refunds = await f.t.run((ctx) =>
+      ctx.db
+        .query("refunds")
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", bookingId))
+        .collect(),
+    );
+    expect(refunds).toMatchObject([
+      { amountMinor: 8000, reason: "artist_cancel", status: "pending" },
+      { amountMinor: 12000, reason: "artist_cancel", status: "pending" },
+    ]);
+    const jobs = await f.scheduled();
+    expect(
+      jobs.filter((job) => job.name === "refunds:executeRefund"),
+    ).toMatchObject(
+      refunds.map((refund) => ({
+        args: [{ refundId: refund._id, attempt: 0 }],
+        scheduledTime: cancelledAt,
+      })),
+    );
+    expect(jobs.filter((job) => job.name === "payouts:releasePayout")).toEqual([]);
+    const cancellationEmails = jobs.filter(
+      (job) =>
+        job.name === "emails:send" &&
+        ["safetyCancellation", "bookingCancelled"].includes(job.args[0].kind),
+    );
+    expect(cancellationEmails).toHaveLength(1);
+    expect(cancellationEmails[0].args[0]).toMatchObject({
+      kind: "safetyCancellation",
+      to: "owner@booking.test",
+      subject: expect.stringContaining("Private event"),
+      text: expect.stringContaining("cancelled for safety"),
+    });
+    expect(cancellationEmails[0].args[0].text).toContain("full refund");
+    expect(cancellationEmails[0].args[0].text).toContain(
+      "Reason: Unable to perform Refund: 200.00 USD.",
+    );
+  });
+
+  test.each(["owner", "stranger"] as const)(
+    "refuses a safety cancellation by %s acting as organizer without any changes",
+    async (actor) => {
+      const f = await setupBookings();
+      if (actor === "stranger") {
+        await f.t.run((ctx) =>
+          ctx.db.insert("platformAdmins", {
+            userId: f.users.stranger,
+            grantedAt: NOW,
+          }),
+        );
+      }
+      const { bookingId } = await f.confirm();
+      const before = await f.readBooking(bookingId);
+      const jobsBefore = await f.scheduled();
+      await expect(
+        f.cancel(bookingId, actor, 3, "organizer", true),
+      ).rejects.toThrow("Only the artist can cancel for safety");
+      expect(await f.readBooking(bookingId)).toEqual(before);
+      expect(await f.scheduled()).toEqual(jobsBefore);
+      expect(await f.readSlot()).toMatchObject({ status: "booked", bookingId });
+      expect(await f.readApplication()).toMatchObject({ status: "booked" });
+      expect(
+        await f.t.run((ctx) =>
+          ctx.db
+            .query("safetyReports")
+            .withIndex("by_bookingId", (q) => q.eq("bookingId", bookingId))
+            .collect(),
+        ),
+      ).toEqual([]);
+    },
+  );
+
   test("confirms the free headliner, declines competitors, and publishes the gig", async () => {
     const f = await setupBookings();
     const { bookingId, offerId, status, revision } = await f.confirm();
@@ -1413,6 +1579,74 @@ describe("booking confirmation and cancellation", () => {
 });
 
 describe("booking email scheduling", () => {
+  test.each(["present", "absent", "deleted"] as const)(
+    "uses a private location label or fallback when the private location is %s",
+    async (locationState) => {
+      const f = await setupBookings();
+      const { bookingId } = await f.seedOffer(1);
+      await f.t.run(async (ctx) => {
+        let privateLocationId: Id<"privateLocations"> | undefined;
+        if (locationState !== "absent") {
+          privateLocationId = await ctx.db.insert("privateLocations", {
+            organizationId: f.organizationId,
+            label: "Garden reception",
+            addr: "200 Private Street",
+            city: "Oakland",
+            area: "Oakland",
+            lat: 37.8,
+            lng: -122.27,
+            createdAt: NOW,
+            updatedAt: NOW,
+          });
+          if (locationState === "deleted") await ctx.db.delete(privateLocationId);
+        }
+        await ctx.db.patch(f.opportunityId, {
+          mode: "privateBooking",
+          venueId: undefined,
+          privateLocationId,
+        });
+        await bookings.sendBookingEmail(
+          ctx,
+          (await ctx.db.get(bookingId))!,
+          "offerSent",
+        );
+      });
+      const emails = (await f.scheduled()).filter(
+        (job) => job.name === "emails:send",
+      );
+      expect(emails).toHaveLength(1);
+      const venueName =
+        locationState === "present" ? "Garden reception" : "Private event";
+      expect(emails[0].args[0].subject).toContain(venueName);
+      expect(emails[0].args[0].text).toContain(venueName);
+      expect(emails[0].args[0].text).not.toContain("200 Private Street");
+    },
+  );
+
+  test.each(["absent", "deleted"] as const)(
+    "still refuses public booking email when the venue is %s",
+    async (venueState) => {
+      const f = await setupBookings();
+      const { bookingId } = await f.seedOffer(1);
+      await f.t.run(async (ctx) => {
+        if (venueState === "absent") {
+          await ctx.db.patch(f.opportunityId, { venueId: undefined });
+        } else {
+          await ctx.db.delete(f.venueId);
+        }
+      });
+      await expect(
+        f.t.run(async (ctx) =>
+          bookings.sendBookingEmail(
+            ctx,
+            (await ctx.db.get(bookingId))!,
+            "offerSent",
+          ),
+        ),
+      ).rejects.toThrow("Venue not found");
+    },
+  );
+
   test("emails every artist admin with an address and uses the booking context", async () => {
     const f = await setupBookings();
     await f.t.run(async (ctx) => {
