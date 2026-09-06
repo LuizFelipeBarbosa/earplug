@@ -122,12 +122,20 @@ export async function publishGigFromOpportunity(
 ): Promise<Id<"gigs"> | null> {
   const opportunity = await ctx.db.get(opportunityId);
   if (!opportunity) throw new Error("Opportunity not found");
-  if (opportunity.mode === "privateBooking") return null;
   const { lineup, performers, requiredFilled } = await bookedLineup(
     ctx,
     opportunityId,
   );
   if (!requiredFilled) return null;
+  if (opportunity.mode === "privateBooking") {
+    assertOpportunityTransition(opportunity.status, "confirmed");
+    await ctx.db.patch(opportunityId, {
+      status: "confirmed",
+      revision: opportunity.revision + 1,
+      updatedAt: Date.now(),
+    });
+    return null;
+  }
   if (opportunity.venueId === undefined) {
     throw new Error("Opportunity has no venue");
   }
@@ -249,12 +257,13 @@ export async function unpublishOpportunityGig(
 ): Promise<void> {
   const opportunity = await ctx.db.get(opportunityId);
   if (!opportunity) throw new Error("Opportunity not found");
-  if (opportunity.mode === "privateBooking") return;
-  if (opportunity.publicGigId === undefined) return;
-  await ctx.db.patch(opportunity.publicGigId, {
-    lifecycle: reason === "opportunity_cancelled" ? "cancelled" : "unpublished",
-    discoveryListingReady: false,
-  });
+  if (opportunity.mode !== "privateBooking") {
+    if (opportunity.publicGigId === undefined) return;
+    await ctx.db.patch(opportunity.publicGigId, {
+      lifecycle: reason === "opportunity_cancelled" ? "cancelled" : "unpublished",
+      discoveryListingReady: false,
+    });
+  }
   const status = reason === "required_slot_cancelled" ? "booking" : "cancelled";
   if (opportunity.status !== status) {
     assertOpportunityTransition(opportunity.status, status);

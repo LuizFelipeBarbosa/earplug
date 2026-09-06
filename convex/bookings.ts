@@ -209,7 +209,12 @@ async function releaseBookingSlot(ctx: MutationCtx, booking: Doc<"bookings">) {
   await releaseSlot(ctx, booking.slotId);
   const opportunity = await ctx.db.get(booking.opportunityId);
   if (!opportunity) throw new Error("Opportunity not found");
-  if (opportunity.publicGigId === undefined) return;
+  if (
+    opportunity.publicGigId === undefined &&
+    opportunity.mode !== "privateBooking"
+  ) {
+    return;
+  }
   const slot = await ctx.db.get(booking.slotId);
   if (!slot) throw new Error("Slot not found");
   if (slot.required) {
