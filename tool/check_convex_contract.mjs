@@ -111,6 +111,16 @@ export const requiredClientFunctions = Object.freeze({
   "analytics.js:artistInsights": "Query",
   "analytics.js:myBandInsights": "Query",
   "talentOpportunities.js:updateTicketing": "Mutation",
+  "features.js:flags": "Query",
+  "privateLocations.js:create": "Mutation",
+  "privateLocations.js:update": "Mutation",
+  "privateLocations.js:remove": "Mutation",
+  "privateLocations.js:forOrganization": "Query",
+  "safety.js:report": "Mutation",
+  "safety.js:mine": "Query",
+  "safety.js:listOpen": "Query",
+  "safety.js:resolve": "Mutation",
+  "safety.js:forBookingAdmin": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -164,6 +174,14 @@ export const requiredClientFields = Object.freeze([
   ["financeActions.js:exportStatement", "return", "csv", false],
   ["analytics.js:artistInsights", "return", "estimatedDraw", false],
   ["talentOpportunities.js:updateTicketing", "return", "revision", false],
+  ["features.js:flags", "return", "privateBookings", false],
+  ["privateLocations.js:create", "return", "locationId", false],
+  ["safety.js:report", "return", "reportId", false],
+  ["bookingsRead.js:get", "return", "privateEvent", false],
+  ["bookingsRead.js:get", "return", "privateLocation", false],
+  ["talentOpportunitiesRead.js:browse", "args", "mode", true],
+  ["bookings.js:cancel", "args", "safety", true],
+  ["talentOpportunities.js:create", "args", "privateLocationId", true],
 ]);
 
 export function deploymentNameFromUrl(value) {

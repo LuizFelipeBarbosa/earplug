@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
@@ -54,6 +55,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       if (booking != null && mounted && widget.bookingId == booking.id) {
         unawaited(app.refreshPayments(booking.id));
         unawaited(app.refreshRefunds(booking.id));
+        if (booking.status.isLive) {
+          unawaited(app.mySafetyReports(booking.id));
+        }
         if (booking.viewerSide == BookingSide.artist &&
             (booking.status == BookingStatus.completed ||
                 booking.status == BookingStatus.paid)) {
@@ -339,7 +343,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   Row(
                     children: [
                       StatusPill(
-                        label: booking.status.label,
+                        label: _statusLabel(booking),
                         tone: booking.status.isLive
                             ? EpStatusPillTone.success
                             : EpStatusPillTone.neutral,
@@ -356,54 +360,63 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   const SizedBox(height: 20),
                   StatusTimeline(steps: _timelineSteps(booking)),
                   const SectionBar(label: 'WHEN & WHERE'),
-                  EpCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            DateBlock.forDate(booking.startsAt.toLocal()),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    booking.venue.name,
-                                    style: textTheme.epSectionHeading,
-                                  ),
-                                  if (booking.venue.approxLabel
-                                      case final label?)
-                                    Text(label, style: textTheme.epMeta),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        VenueMiniMap(
-                          venue: app.venue(booking.venue.id),
-                          approximate: booking.venue.exactAddress == null,
-                        ),
-                        if (booking.venue.exactAddress case final address?) ...[
-                          const SizedBox(height: 12),
+                  if (booking.privateEvent)
+                    _PrivateBookingLocationCard(booking: booking)
+                  else
+                    EpCard(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
                           Row(
                             children: [
-                              const Icon(Icons.lock_outline, size: 16),
-                              const SizedBox(width: 8),
+                              DateBlock.forDate(booking.startsAt.toLocal()),
+                              const SizedBox(width: 12),
                               Expanded(
-                                child: Text(
-                                  'Exact address · shared with you: $address',
-                                  key: const Key('booking-exact-address'),
-                                  style: textTheme.epMeta,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      booking.venue?.name ??
+                                          booking.privateLocation?.label ??
+                                          'Private event',
+                                      style: textTheme.epSectionHeading,
+                                    ),
+                                    if (booking.venue?.approxLabel ??
+                                            booking.privateLocation?.area
+                                        case final label?)
+                                      Text(label, style: textTheme.epMeta),
+                                  ],
                                 ),
                               ),
                             ],
                           ),
+                          const SizedBox(height: 12),
+                          if (booking.venue case final venue?)
+                            VenueMiniMap(
+                              venue: app.venue(venue.id),
+                              approximate: venue.exactAddress == null,
+                            ),
+                          if (booking.venue?.exactAddress ??
+                                  booking.privateLocation?.addr
+                              case final address?) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                const Icon(Icons.lock_outline, size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Exact address · shared with you: $address',
+                                    key: const Key('booking-exact-address'),
+                                    style: textTheme.epMeta,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
                   const SectionBar(label: 'SLOT'),
                   EpCard(
                     child: LedgerRow(
@@ -516,6 +529,9 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       onTap: () => context.read<AppState>().openGig(gigId),
                     ),
                   ],
+                  if (booking.status.isLive ||
+                      app.safetyReportsFor(booking.id).isNotEmpty)
+                    _BookingSafetySection(booking: booking),
                   if (booking.status == BookingStatus.completed ||
                       booking.status == BookingStatus.paid) ...[
                     const SectionBar(label: 'REVIEWS'),
@@ -542,6 +558,278 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
           ],
         );
       },
+    );
+  }
+}
+
+class _PrivateBookingLocationCard extends StatelessWidget {
+  const _PrivateBookingLocationCard({required this.booking});
+
+  final Booking booking;
+
+  @override
+  Widget build(BuildContext context) {
+    final location = booking.privateLocation;
+    final address = location?.addr;
+    final artist = booking.viewerSide == BookingSide.artist;
+    final label = artist && address == null
+        ? 'Private event'
+        : location?.label ?? 'Private event';
+    final textTheme = Theme.of(context).textTheme;
+    final lat = location?.lat;
+    final lng = location?.lng;
+    return EpCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              DateBlock.forDate(booking.startsAt.toLocal()),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: textTheme.epSectionHeading),
+                    if (location != null)
+                      Text(
+                        [
+                          location.area,
+                          location.city,
+                        ].where((part) => part.isNotEmpty).join(' · '),
+                        style: textTheme.epMeta,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (address != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              address,
+              key: const Key('booking-exact-address'),
+              style: textTheme.epBody,
+            ),
+            if (location?.notes?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 12),
+              const FieldLabel('HOST NOTES'),
+              Text(location!.notes!, style: textTheme.epBody),
+            ],
+            if (lat != null && lng != null) ...[
+              const SizedBox(height: 12),
+              VenueMiniMap(
+                venue: Venue(
+                  id: '',
+                  name: label,
+                  area: location!.area,
+                  addr: address,
+                  point: LatLng(lat, lng),
+                ),
+                approximate: false,
+              ),
+            ],
+          ] else if (artist) ...[
+            const SizedBox(height: 12),
+            Text(
+              'The exact address is shared once the deposit is paid.',
+              key: const Key('booking-location-pending'),
+              style: textTheme.epBody,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BookingSafetySection extends StatelessWidget {
+  const _BookingSafetySection({required this.booking});
+
+  final Booking booking;
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (booking.status.isLive && app.privateBookingsEnabled) ...[
+          const SizedBox(height: 20),
+          EpButton(
+            'REPORT A SAFETY CONCERN',
+            key: const Key('booking-safety-report'),
+            kind: EpButtonKind.outline,
+            onTap: () => showEpSheet(
+              context,
+              (_) => _SafetyReportSheet(app: app, bookingId: booking.id),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'EarPlug reviews every report. Reporting never affects your payout.',
+            style: textTheme.epCaption,
+          ),
+        ],
+        if (app.safetyReportsFor(booking.id).isNotEmpty)
+          const SectionBar(label: 'SAFETY'),
+        for (final report in app.safetyReportsFor(booking.id)) ...[
+          const SizedBox(height: 12),
+          EpCard(
+            key: ValueKey('booking-safety-report-${report.reportId}'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  report.category.wireValue.toUpperCase(),
+                  style: textTheme.epSectionHeading,
+                ),
+                Text(
+                  _fullDate(context, report.createdAt),
+                  style: textTheme.epMeta,
+                ),
+                const SizedBox(height: 8),
+                Text(report.text, style: textTheme.epBody),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: StatusPill(
+                    label: report.status.toUpperCase(),
+                    tone: report.status == 'resolved'
+                        ? EpStatusPillTone.success
+                        : EpStatusPillTone.neutral,
+                  ),
+                ),
+                if (report.status == 'resolved' &&
+                    report.adminNote?.trim().isNotEmpty == true) ...[
+                  const SizedBox(height: 8),
+                  Text(report.adminNote!, style: textTheme.epBody),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SafetyReportSheet extends StatefulWidget {
+  const _SafetyReportSheet({required this.app, required this.bookingId});
+
+  final AppState app;
+  final String bookingId;
+
+  @override
+  State<_SafetyReportSheet> createState() => _SafetyReportSheetState();
+}
+
+class _SafetyReportSheetState extends State<_SafetyReportSheet> {
+  final _text = TextEditingController();
+  SafetyCategory _category = SafetyCategory.safety;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    final text = _text.text.trim();
+    if (text.isEmpty) {
+      setState(() => _error = 'Report text is required');
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    final app = widget.app;
+    final previousIds = app
+        .safetyReportsFor(widget.bookingId)
+        .map((report) => report.reportId)
+        .toSet();
+    await app.reportSafety(widget.bookingId, _category, text);
+    if (!mounted) return;
+    // AppState logs failures without throwing. Confirm the refreshed report
+    // before dismissing the user's text.
+    final submitted = app
+        .safetyReportsFor(widget.bookingId)
+        .any(
+          (report) =>
+              !previousIds.contains(report.reportId) &&
+              report.category == _category &&
+              report.text == text,
+        );
+    if (!submitted) {
+      setState(() {
+        _submitting = false;
+        _error = 'Could not confirm your report. Please try again.';
+      });
+      return;
+    }
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return EpFormSheet(
+      title: 'REPORT A SAFETY CONCERN',
+      padBody: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const FieldLabel('CATEGORY'),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                for (final category in const [
+                  SafetyCategory.safety,
+                  SafetyCategory.harassment,
+                  SafetyCategory.misrepresentation,
+                  SafetyCategory.other,
+                ])
+                  EpChip(
+                    key: ValueKey(
+                      'booking-safety-category-${category.wireValue}',
+                    ),
+                    label: category.wireValue.toUpperCase(),
+                    active: _category == category,
+                    onTap: _submitting
+                        ? null
+                        : () => setState(() => _category = category),
+                  ),
+              ],
+            ),
+            const SizedBox(height: EpLayout.fieldGap),
+            EpLabeledField(
+              label: 'CONCERN',
+              hint: 'Tell us what happened',
+              controller: _text,
+              fieldKey: const Key('booking-safety-text'),
+              required: true,
+              minLines: 3,
+              maxLines: 6,
+              enabled: !_submitting,
+            ),
+            const SizedBox(height: 14),
+            InlineFormFeedback(error: _error),
+            const SizedBox(height: 14),
+            EpButton(
+              'SEND REPORT',
+              key: const Key('booking-safety-submit'),
+              onTap: _submitting ? null : _submit,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -850,6 +1138,7 @@ class _CancelBookingSheet extends StatefulWidget {
 class _CancelBookingSheetState extends State<_CancelBookingSheet> {
   final _reason = TextEditingController();
   late final Future<RefundPreview?> _preview;
+  bool _safety = false;
   bool _submitting = false;
   String? _error;
 
@@ -868,7 +1157,7 @@ class _CancelBookingSheetState extends State<_CancelBookingSheet> {
   Future<void> _confirm() async {
     if (_submitting) return;
     final reason = _reason.text.trim();
-    if (reason.isEmpty) {
+    if (reason.isEmpty && !_safety) {
       setState(() => _error = 'Cancellation reason is required');
       return;
     }
@@ -877,7 +1166,11 @@ class _CancelBookingSheetState extends State<_CancelBookingSheet> {
       _error = null;
     });
     try {
-      await widget.app.cancelBooking(widget.booking, reason: reason);
+      await widget.app.cancelBooking(
+        widget.booking,
+        reason: reason.isEmpty ? 'Safety concern' : reason,
+        safety: _safety,
+      );
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -895,59 +1188,93 @@ class _CancelBookingSheetState extends State<_CancelBookingSheet> {
   Widget build(BuildContext context) {
     return EpFormSheet(
       title: 'CANCEL BOOKING',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          FutureBuilder<RefundPreview?>(
-            future: _preview,
-            builder: (context, snapshot) {
-              final preview = snapshot.data;
-              if (preview == null || preview.paidMinor == 0) {
-                return const SizedBox.shrink();
-              }
-              final currency = widget.booking.fee.currency;
-              final recipient = widget.booking.viewerSide == BookingSide.artist
-                  ? 'You would receive'
-                  : 'The artist receives';
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Refund: ${Money(preview.refundMinor, currency).label} · Forfeited: ${Money(preview.forfeitedMinor, currency).label}',
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '$recipient ${Money(preview.artistPayoutMinor, currency).label}',
-                    ),
-                  ],
+      padBody: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.booking.viewerSide == BookingSide.artist) ...[
+              Material(
+                type: MaterialType.transparency,
+                child: CheckboxListTile(
+                  key: const Key('booking-cancel-safety'),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text("I don't feel safe"),
+                  subtitle: const Text(
+                    'Safety cancellations carry no penalty and refund the host in full.',
+                  ),
+                  value: _safety,
+                  onChanged: _submitting
+                      ? null
+                      : (value) => setState(() {
+                          _safety = value == true;
+                          _error = null;
+                        }),
                 ),
-              );
-            },
-          ),
-          EpLabeledField(
-            label: 'REASON',
-            hint: 'Explain why you need to cancel',
-            controller: _reason,
-            fieldKey: const Key('booking-cancel-reason'),
-            required: true,
-            minLines: 2,
-            maxLines: 5,
-            enabled: !_submitting,
-          ),
-          const SizedBox(height: 14),
-          InlineFormFeedback(
-            error: _error,
-            errorKey: const Key('booking-feedback'),
-          ),
-          const SizedBox(height: 14),
-          EpButton(
-            'CONFIRM',
-            key: const Key('booking-cancel-confirm'),
-            onTap: _submitting ? null : _confirm,
-          ),
-        ],
+              ),
+              const SizedBox(height: 14),
+            ],
+            FutureBuilder<RefundPreview?>(
+              future: _preview,
+              builder: (context, snapshot) {
+                final preview = snapshot.data;
+                if (preview == null || preview.paidMinor == 0) {
+                  return const SizedBox.shrink();
+                }
+                final currency = widget.booking.fee.currency;
+                final recipient =
+                    widget.booking.viewerSide == BookingSide.artist
+                    ? 'You would receive'
+                    : 'The artist receives';
+                final refundMinor = _safety
+                    ? preview.paidMinor
+                    : preview.refundMinor;
+                final forfeitedMinor = _safety ? 0 : preview.forfeitedMinor;
+                final artistPayoutMinor = _safety
+                    ? 0
+                    : preview.artistPayoutMinor;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Refund: ${Money(refundMinor, currency).label} · Forfeited: ${Money(forfeitedMinor, currency).label}',
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$recipient ${Money(artistPayoutMinor, currency).label}',
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            EpLabeledField(
+              label: 'REASON',
+              hint: 'Explain why you need to cancel',
+              controller: _reason,
+              fieldKey: const Key('booking-cancel-reason'),
+              required: !_safety,
+              minLines: 2,
+              maxLines: 5,
+              enabled: !_submitting,
+            ),
+            const SizedBox(height: 14),
+            InlineFormFeedback(
+              error: _error,
+              errorKey: const Key('booking-feedback'),
+            ),
+            const SizedBox(height: 14),
+            EpButton(
+              'CONFIRM',
+              key: const Key('booking-cancel-confirm'),
+              onTap: _submitting ? null : _confirm,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -966,7 +1293,7 @@ List<TimelineStep> _timelineSteps(Booking booking) {
   }.contains(booking.status)) {
     return [
       TimelineStep(
-        label: booking.status.label,
+        label: _statusLabel(booking),
         state: TimelineStepState.blocked,
       ),
     ];
@@ -1005,6 +1332,11 @@ List<TimelineStep> _timelineSteps(Booking booking) {
   ];
 }
 
+String _statusLabel(Booking booking) =>
+    booking.cancellationKind == CancellationKind.safety
+    ? 'Cancelled for safety'
+    : booking.status.label;
+
 String _statusCaption(BuildContext context, Booking booking) {
   if (booking.status == BookingStatus.awaitingPayment &&
       booking.viewerSide == BookingSide.artist) {
@@ -1026,14 +1358,19 @@ String _statusCaption(BuildContext context, Booking booking) {
     BookingStatus.cancelledByArtist ||
     BookingStatus.forceMajeure ||
     BookingStatus.refunded ||
-    BookingStatus.disputed => ('Cancelled', booking.cancelledAt),
+    BookingStatus.disputed => (
+      booking.cancellationKind == CancellationKind.safety
+          ? 'Cancelled for safety'
+          : 'Cancelled',
+      booking.cancelledAt,
+    ),
     _ => ('', null),
   };
   if (booking.status == BookingStatus.offerSent) {
     return '$prefix ${_expiryLabel(date)}';
   }
   return date == null
-      ? booking.status.label
+      ? _statusLabel(booking)
       : '$prefix ${_fullDate(context, date)}';
 }
 

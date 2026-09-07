@@ -198,7 +198,12 @@ class _BookingCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
-    final approxLabel = booking.venue.approxLabel;
+    final approxLabel = booking.privateEvent
+        ? booking.privateLocation?.area
+        : booking.venue?.approxLabel;
+    final locationName = booking.privateEvent
+        ? 'Private event'
+        : booking.venue?.name ?? 'Private event';
     return EpCard(
       onTap: onTap,
       child: Row(
@@ -217,8 +222,8 @@ class _BookingCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   approxLabel == null || approxLabel.isEmpty
-                      ? booking.venue.name
-                      : '${booking.venue.name} · $approxLabel',
+                      ? locationName
+                      : '$locationName · $approxLabel',
                   style: textTheme.epMeta,
                 ),
                 Text(slotRoleLabel(booking.slotRole), style: textTheme.epMeta),
@@ -302,6 +307,9 @@ class _OpportunityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final opportunity = item.opportunity;
     final venue = opportunity.venue;
+    final isPrivate =
+        opportunity.privateEvent ||
+        opportunity.mode == OpportunityMode.privateBooking;
     return EpCard(
       onTap: () => context.read<AppState>().openOpportunity(opportunity.slug),
       child: Column(
@@ -322,7 +330,7 @@ class _OpportunityCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      venue == null
+                      isPrivate || venue == null
                           ? opportunity.area
                           : '${venue.name} · ${venue.area}',
                       style: Theme.of(context).textTheme.epMeta,
@@ -332,6 +340,21 @@ class _OpportunityCard extends StatelessWidget {
               ),
             ],
           ),
+          if (isPrivate) ...[
+            const SizedBox(height: 8),
+            EpChip(
+              key: ValueKey('opp-card-${opportunity.id}-private'),
+              label: 'PRIVATE EVENT',
+              active: true,
+              readOnly: true,
+              onTap: null,
+            ),
+            if (opportunity.expectedAttendance case final guests?)
+              Text(
+                '~$guests guests',
+                style: Theme.of(context).textTheme.epMeta,
+              ),
+          ],
           const SizedBox(height: 12),
           for (final slot in opportunity.slots)
             Text(

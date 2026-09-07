@@ -269,6 +269,22 @@ describe("reviews: double-blind submission", () => {
   });
 
   test.each(["manager", "bandAdmin"] as const)(
+    "marks a private booking review as private when %s submits",
+    async (actor) => {
+      const f = await setupReviews();
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.opportunityId, { mode: "privateBooking" }),
+      );
+
+      const { reviewId } = await f.submit(actor);
+
+      expect(await f.t.run((ctx) => ctx.db.get(reviewId))).toMatchObject({
+        privateEvent: true,
+      });
+    },
+  );
+
+  test.each(["manager", "bandAdmin"] as const)(
     "reveals both reviews atomically when %s submits first",
     async (firstActor) => {
       const f = await setupReviews();
@@ -578,6 +594,37 @@ describe("reviews: validation", () => {
 });
 
 describe("reviews: listings and moderation", () => {
+  test.each([
+    // Both UTC timestamps fall in the previous month in Pacific time.
+    ["2026-09-01T06:30:00Z", "Private event · Aug 2026"], // PDT
+    ["2026-01-01T07:30:00Z", "Private event · Dec 2025"], // PST
+  ])(
+    "anonymizes a private review using the booking's Pacific month (%s)",
+    async (startsAt, opportunityTitle) => {
+      const f = await setupReviews();
+      const { reviewId } = await f.submit();
+      await f.submit("bandAdmin");
+      await f.t.run(async (ctx) => {
+        await ctx.db.patch(reviewId, { privateEvent: true });
+        await ctx.db.patch(f.bookingId, { startsAt: Date.parse(startsAt) });
+        await ctx.db.patch(f.organizationId, { orgType: "privateHost" });
+      });
+
+      expect(await f.t.query(api.reviews.forBand, { bandId: f.bandId })).toEqual([
+        {
+          reviewId,
+          rating: 5,
+          categories: f.submitArgs.categories,
+          text: "Great performance!",
+          submittedAt: NOW,
+          monthLabel: "Sep 2026",
+          organizationName: "Private event",
+          opportunityTitle,
+        },
+      ]);
+    },
+  );
+
   test("lists a visible band review and removes it and its rating when hidden", async () => {
     const f = await setupReviews();
     const { reviewId } = await f.submit();

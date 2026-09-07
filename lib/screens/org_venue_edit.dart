@@ -488,5 +488,6 @@ String _venueTypeLabel(VenueType type) => switch (type) {
   VenueType.hall => 'Hall',
   VenueType.house => 'House',
   VenueType.outdoor => 'Outdoor',
+  VenueType.private => 'Private',
   VenueType.other => 'Other',
 };

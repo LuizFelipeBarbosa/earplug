@@ -39,6 +39,12 @@ const organizationReviewPayloadValidator = listingReviewPayloadValidator.extend(
   },
 );
 
+const PACIFIC_MONTH_YEAR_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Los_Angeles",
+  month: "short",
+  year: "numeric",
+});
+
 function validateRating(rating: number): void {
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
     throw new Error("Rating must be an integer between 1 and 5");
@@ -177,6 +183,7 @@ export const submit = mutation({
     validateRating(args.rating);
     validateCategories(args.categories);
     const text = normalizeReviewText(args.text);
+    const opportunity = await ctx.db.get(booking.opportunityId);
     const reviewId = await ctx.db.insert("reviews", {
       bookingId: booking._id,
       authorSide,
@@ -189,7 +196,7 @@ export const submit = mutation({
       text,
       submittedAt: now,
       hidden: false,
-      privateEvent: false,
+      privateEvent: opportunity?.mode === "privateBooking",
     });
     const other = await ctx.db
       .query("reviews")
@@ -332,6 +339,16 @@ export const forBand = query({
     for (const review of visibleListingReviews(reviews, args.limit)) {
       const booking = await ctx.db.get(review.bookingId);
       if (!booking) continue;
+      if (review.privateEvent) {
+        const month = PACIFIC_MONTH_YEAR_FORMATTER.format(
+          new Date(booking.startsAt),
+        );
+        result.push({
+          ...toListingReviewPayload(review, `Private event · ${month}`),
+          organizationName: "Private event",
+        });
+        continue;
+      }
       const organization = await ctx.db.get(booking.organizationId);
       const opportunity = await ctx.db.get(booking.opportunityId);
       if (!organization || !opportunity) continue;

@@ -22,6 +22,36 @@ mixin _OrganizerState on _AppStateCore {
   List<OrganizationMembership> myOrganizations = const [];
   OrganizationApplication? myOrganizationApplication;
 
+  FeatureFlags features = const FeatureFlags(
+    privateBookings: false,
+    tickets: false,
+    payments: false,
+    bandGigWrites: true,
+  );
+
+  bool get privateBookingsEnabled => features.privateBookings;
+
+  Future<void> loadFeatureFlags() async {
+    try {
+      final loaded = await repository.featureFlags();
+      if (_disposed) return;
+      features = loaded;
+      notifyListeners();
+    } catch (error) {
+      logError('featureFlags', error);
+    }
+  }
+
+  bool isHostOrganization(String id) =>
+      myOrganizations
+          .where((membership) => membership.organization.id == id)
+          .firstOrNull
+          ?.organization
+          .orgType ==
+      OrganizationType.privateHost;
+
+  bool get currentIsHost => isHostOrganization(organizationId);
+
   OrganizationRole? organizerRoleFor(String organizationId) => myOrganizations
       .where((membership) => membership.organization.id == organizationId)
       .firstOrNull
@@ -44,6 +74,9 @@ mixin _OrganizerState on _AppStateCore {
       .firstOrNull;
 
   bool get hasOrganizerApplication => myOrganizationApplication != null;
+
+  bool get hasHostApplication =>
+      myOrganizationApplication?.kind == ApplicationKind.host;
 
   void switchToOrganization(String id) {
     organizationId = id;
@@ -104,6 +137,14 @@ mixin _OrganizerState on _AppStateCore {
       return;
     }
     go(Screen.orgApply);
+  }
+
+  void openHostApply() {
+    if (!authed) {
+      needAuth(const PendingAuth(PendingKind.hostApply));
+      return;
+    }
+    go(Screen.hostApply);
   }
 
   void openOrganizationJoin(String token) => go(Screen.orgJoin, token);

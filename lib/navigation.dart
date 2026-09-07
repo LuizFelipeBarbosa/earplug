@@ -49,6 +49,10 @@ enum Screen {
   ticket,
   ticketCheckoutReturn,
   ticketCheckoutCancel,
+  hostApply,
+  privateLocations,
+  privateLocationEdit,
+  adminSafety,
 }
 
 sealed class ActiveIdentity {
@@ -77,6 +81,7 @@ class AdminIdentity extends ActiveIdentity {
 }
 
 const fanTabScreens = {
+  Screen.hostApply,
   Screen.home,
   Screen.explore,
   Screen.myGigs,
@@ -97,6 +102,8 @@ const bandTabScreens = {
   Screen.stripeReturn,
 };
 const organizerTabScreens = {
+  Screen.privateLocations,
+  Screen.privateLocationEdit,
   Screen.orgDash,
   Screen.orgVenues,
   Screen.orgVenueEdit,
@@ -113,7 +120,11 @@ const organizerTabScreens = {
   Screen.checkoutCancel,
   Screen.stripeReturn,
 };
-const adminScreens = {Screen.adminQueue, Screen.adminApplication};
+const adminScreens = {
+  Screen.adminQueue,
+  Screen.adminApplication,
+  Screen.adminSafety,
+};
 
 class ScreenEntry {
   final Screen screen;

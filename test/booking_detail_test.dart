@@ -7,7 +7,9 @@ import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/money.dart';
 import 'package:earplug/screens/booking_detail.dart';
+import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/form_bits.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:earplug/widgets/sheets.dart';
 import 'package:earplug/widgets/status_timeline.dart';
@@ -20,6 +22,309 @@ import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('private address and host notes appear only after payment', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final bookingId = await _createPrivateBookingAwaitingPayment(repository);
+    final harness = await pumpApp(
+      tester,
+      home: Scaffold(body: BookingDetailScreen(bookingId: bookingId)),
+      auth: auth,
+      repository: repository,
+      beforePump: (app) async {
+        app.switchToBand('b1');
+        await app.loadBooking(bookingId, viewAs: BookingSide.artist);
+      },
+    );
+
+    expect(harness.app.bookingById(bookingId)?.viewerSide, BookingSide.artist);
+    expect(
+      harness.app.bookingById(bookingId)?.status,
+      BookingStatus.awaitingPayment,
+    );
+    final pending = find.byKey(const Key('booking-location-pending'));
+    await _reveal(tester, pending);
+    expect(
+      tester.widget<Text>(pending).data,
+      'The exact address is shared once the deposit is paid.',
+    );
+    expect(find.text('Private event'), findsOneWidget);
+    expect(find.text('Mission District · San Francisco'), findsOneWidget);
+    expect(find.text("Jordan's courtyard"), findsNothing);
+    expect(
+      find.textContaining('120 Demo Lane', skipOffstage: false),
+      findsNothing,
+    );
+    expect(find.text('Use the side gate for load-in.'), findsNothing);
+    expect(find.byKey(const Key('booking-exact-address')), findsNothing);
+    expect(find.byType(VenueMiniMap), findsNothing);
+    expectNoFieldInCard(tester);
+
+    final payment = (await repository.paymentsForBooking(bookingId)).single;
+    final checkout = await repository.startInstallmentCheckout(payment.id);
+    await repository.simulateCheckoutCompleted(checkout.sessionId);
+    final refresh = find.byKey(const Key('booking-refresh'));
+    await _reveal(tester, refresh, delta: -300);
+    await tester.tap(refresh);
+    await tester.pumpAndSettle();
+
+    expect(harness.app.bookingById(bookingId)?.status, BookingStatus.confirmed);
+    expect(harness.app.bookingById(bookingId)?.viewerSide, BookingSide.artist);
+    final address = find.byKey(const Key('booking-exact-address'));
+    await _reveal(tester, address);
+    expect(tester.widget<Text>(address).data, '120 Demo Lane, San Francisco');
+    expect(pending, findsNothing);
+    expect(find.text('Mission District · San Francisco'), findsOneWidget);
+    expect(find.text('HOST NOTES'), findsOneWidget);
+    expect(find.text('Use the side gate for load-in.'), findsOneWidget);
+    final map = tester.widget<VenueMiniMap>(find.byType(VenueMiniMap));
+    final location = (await repository.privateLocationsFor('org2')).single;
+    expect(map.approximate, isFalse);
+    expect(map.venue.name, "Jordan's courtyard");
+    expect(map.venue.addr, location.addr);
+    expect(map.venue.point.latitude, location.lat);
+    expect(map.venue.point.longitude, location.lng);
+    expectNoFieldInCard(tester);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final side in [BookingSide.artist, BookingSide.organizer]) {
+    testWidgets(
+      '${side.name} can report a live private booking safety concern',
+      (tester) async {
+        final auth = FakeAuthService();
+        await auth.signInDemo();
+        final repository = DemoRepository(auth: auth);
+        final bookingId = await _createPrivateBookingAwaitingPayment(
+          repository,
+        );
+        final payment = (await repository.paymentsForBooking(bookingId)).single;
+        final checkout = await repository.startInstallmentCheckout(payment.id);
+        await repository.simulateCheckoutCompleted(checkout.sessionId);
+        final harness = await pumpApp(
+          tester,
+          home: Scaffold(body: BookingDetailScreen(bookingId: bookingId)),
+          auth: auth,
+          repository: repository,
+          beforePump: (app) async {
+            if (side == BookingSide.artist) {
+              app.switchToBand('b1');
+            } else {
+              app.switchToOrganization('org2');
+            }
+            await app.loadBooking(bookingId, viewAs: side);
+          },
+        );
+
+        expect(harness.app.bookingById(bookingId)?.viewerSide, side);
+        expect(
+          harness.app.bookingById(bookingId)?.status,
+          BookingStatus.confirmed,
+        );
+        final reportButton = find.byKey(const Key('booking-safety-report'));
+        await _reveal(tester, reportButton);
+        expect(
+          tester.widget<EpButton>(reportButton).kind,
+          EpButtonKind.outline,
+        );
+        expect(
+          find.text(
+            'EarPlug reviews every report. Reporting never affects your payout.',
+          ),
+          findsOneWidget,
+        );
+        await tester.tap(reportButton);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(EpFormSheet), findsOneWidget);
+        for (final category in [
+          'safety',
+          'harassment',
+          'misrepresentation',
+          'other',
+        ]) {
+          final chip = tester.widget<EpChip>(
+            find.byKey(Key('booking-safety-category-$category')),
+          );
+          expect(chip.label, category.toUpperCase());
+          expect(chip.active, category == 'safety');
+        }
+        final text = find.byKey(const Key('booking-safety-text'));
+        expect(tester.widget<TextField>(text).minLines, greaterThan(1));
+        final submit = find.byKey(const Key('booking-safety-submit'));
+        await tester.ensureVisible(submit);
+        await tester.tap(submit);
+        await tester.pumpAndSettle();
+        expect(find.text('Report text is required'), findsOneWidget);
+        expect(await repository.mySafetyReports(bookingId), isEmpty);
+        expectNoFieldInCard(tester);
+
+        final harassment = find.byKey(
+          const Key('booking-safety-category-harassment'),
+        );
+        await tester.ensureVisible(harassment);
+        await tester.tap(harassment);
+        await tester.pumpAndSettle();
+        expect(tester.widget<EpChip>(harassment).active, isTrue);
+        const concern = 'A guest threatened the band during load-in.';
+        await tester.enterText(text, '  $concern  ');
+        await tester.ensureVisible(submit);
+        await tester.tap(submit);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(EpFormSheet), findsNothing);
+        final report = (await repository.mySafetyReports(bookingId)).single;
+        expect(report.category, SafetyCategory.harassment);
+        expect(report.text, concern);
+        expect(report.status, 'open');
+        expect(
+          harness.app.safetyReportsFor(bookingId).single.reportId,
+          report.reportId,
+        );
+        final card = find.byKey(
+          Key('booking-safety-report-${report.reportId}'),
+        );
+        await _reveal(tester, card);
+        expect(find.widgetWithText(SectionBar, 'SAFETY'), findsOneWidget);
+        expect(
+          find.descendant(of: card, matching: find.text('HARASSMENT')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: card, matching: find.text(concern)),
+          findsOneWidget,
+        );
+        final dates = MaterialLocalizations.of(tester.element(card));
+        expect(
+          find.descendant(
+            of: card,
+            matching: find.text(
+              dates.formatFullDate(report.createdAt.toLocal()),
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: card,
+            matching: find.widgetWithText(StatusPill, 'OPEN'),
+          ),
+          findsOneWidget,
+        );
+        expectNoFieldInCard(tester);
+
+        // Refresh must load reports again, including an admin's resolution.
+        repository.platformAdmin = true;
+        await repository.resolveSafetyReport(
+          report.reportId,
+          adminNote: 'Host contacted; access is safe.',
+        );
+        final refresh = find.byKey(const Key('booking-refresh'));
+        await _reveal(tester, refresh, delta: -300);
+        await tester.tap(refresh);
+        await tester.pumpAndSettle();
+        await _reveal(tester, card);
+        expect(
+          find.descendant(
+            of: card,
+            matching: find.widgetWithText(StatusPill, 'RESOLVED'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: card,
+            matching: find.text('Host contacted; access is safe.'),
+          ),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('artist cancels a private booking for safety without a reason', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final bookingId = await _createPrivateBookingAwaitingPayment(repository);
+    final payment = (await repository.paymentsForBooking(bookingId)).single;
+    final checkout = await repository.startInstallmentCheckout(payment.id);
+    await repository.simulateCheckoutCompleted(checkout.sessionId);
+    final harness = await pumpApp(
+      tester,
+      home: Scaffold(body: BookingDetailScreen(bookingId: bookingId)),
+      auth: auth,
+      repository: repository,
+      beforePump: (app) async {
+        app.switchToBand('b1');
+        await app.loadBooking(bookingId, viewAs: BookingSide.artist);
+      },
+    );
+
+    expect(harness.app.bookingById(bookingId)?.status, BookingStatus.confirmed);
+    await tester.tap(find.byKey(const Key('booking-cancel')));
+    await tester.pumpAndSettle();
+    final safety = find.byKey(const Key('booking-cancel-safety'));
+    expect(tester.widget<CheckboxListTile>(safety).value, isFalse);
+    expect(find.text("I don't feel safe"), findsOneWidget);
+    expect(
+      find.text(
+        'Safety cancellations carry no penalty and refund the host in full.',
+      ),
+      findsOneWidget,
+    );
+    final reason = find.byKey(const Key('booking-cancel-reason'));
+    final reasonField = find.ancestor(
+      of: reason,
+      matching: find.byType(EpLabeledField),
+    );
+    expect(tester.widget<EpLabeledField>(reasonField).required, isTrue);
+    await tester.tap(safety);
+    await tester.pumpAndSettle();
+    expect(tester.widget<CheckboxListTile>(safety).value, isTrue);
+    expect(tester.widget<EpLabeledField>(reasonField).required, isFalse);
+    expect(tester.widget<TextField>(reason).controller!.text, isEmpty);
+    expectNoFieldInCard(tester);
+    final confirm = find.byKey(const Key('booking-cancel-confirm'));
+    await tester.ensureVisible(confirm);
+    await tester.tap(confirm);
+    await tester.pumpAndSettle();
+
+    final cancelled = (await repository.booking(
+      bookingId,
+      viewAs: BookingSide.artist,
+    ))!;
+    expect(cancelled.status, BookingStatus.cancelledByArtist);
+    expect(cancelled.cancellationKind, CancellationKind.safety);
+    expect(cancelled.cancelReason, 'Safety concern');
+    expect(cancelled.refundedMinor, payment.amountMinor);
+    expect(
+      harness.app.bookingById(bookingId)?.cancellationKind,
+      CancellationKind.safety,
+    );
+    expect(find.byType(EpFormSheet), findsNothing);
+    expect(find.byKey(const Key('booking-cancel')), findsNothing);
+    expect(
+      find.widgetWithText(StatusPill, 'CANCELLED FOR SAFETY'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Cancelled for safety '), findsOneWidget);
+    await _reveal(tester, find.byType(StatusTimeline), delta: -300);
+    final step = tester
+        .widget<StatusTimeline>(find.byType(StatusTimeline))
+        .steps
+        .single;
+    expect(step.label, 'Cancelled for safety');
+    expect(step.state, TimelineStepState.blocked);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('refresh shows booking changes made elsewhere', (tester) async {
     final harness = await pumpApp(tester, home: const RootShell());
     await enterOrganizer(tester, harness, 'org1');
@@ -663,6 +968,35 @@ void main() {
     expect(tester.takeException(), isNull);
     harness.app.dispose();
   });
+}
+
+Future<String> _createPrivateBookingAwaitingPayment(
+  DemoRepository repository,
+) async {
+  final opportunity = (await repository.browseOpportunities(
+    mode: OpportunityMode.privateBooking,
+  )).items.single.opportunity;
+  final applicationId = await repository.applyToOpportunity(
+    opportunityId: opportunity.id,
+    slotId: opportunity.slots.single.id,
+    bandId: 'b1',
+    message: 'Ready for the courtyard set.',
+  );
+  await repository.reviewApplication(
+    applicationId: applicationId,
+    action: ArtistApplicationReviewAction.shortlisted,
+  );
+  final sent = await repository.sendOffer(
+    applicationId: applicationId,
+    grossMinor: opportunity.slots.single.guaranteeMinor,
+    cancellationTemplate: CancellationTemplate.standard,
+  );
+  await repository.respondToOffer(
+    bookingId: sent.bookingId,
+    accept: true,
+    expectedRevision: sent.revision,
+  );
+  return sent.bookingId;
 }
 
 Future<String> _createAwaitingPaymentBooking(DemoRepository repository) async {

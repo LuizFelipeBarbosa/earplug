@@ -245,6 +245,134 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<FeatureFlags> featureFlags() async => FeatureFlags.fromJson(
+    _asMap(await _convexService.query('features:flags', {})),
+  );
+
+  @override
+  Future<List<PrivateLocation>> privateLocationsFor(
+    String organizationId,
+  ) async {
+    final result = await _convexService.query(
+      'privateLocations:forOrganization',
+      {'organizationId': organizationId},
+    );
+    return [
+      for (final json in _mapList(result)) PrivateLocation.fromJson(json),
+    ];
+  }
+
+  @override
+  Future<String> createPrivateLocation({
+    required String organizationId,
+    required String label,
+    required String addr,
+    required String city,
+    required String area,
+    required double lat,
+    required double lng,
+    String? notes,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('privateLocations:create', {
+        'organizationId': organizationId,
+        'label': label,
+        'addr': addr,
+        'city': city,
+        'area': area,
+        'lat': lat,
+        'lng': lng,
+        'notes': ?notes,
+      }),
+    );
+    return result['locationId'] as String;
+  }
+
+  @override
+  Future<void> updatePrivateLocation(
+    String locationId, {
+    String? label,
+    String? addr,
+    String? city,
+    String? area,
+    double? lat,
+    double? lng,
+    String? notes,
+  }) async {
+    await _convexService.mutation('privateLocations:update', {
+      'locationId': locationId,
+      'label': ?label,
+      'addr': ?addr,
+      'city': ?city,
+      'area': ?area,
+      'lat': ?lat,
+      'lng': ?lng,
+      'notes': ?notes,
+    });
+  }
+
+  @override
+  Future<void> removePrivateLocation(String locationId) async {
+    await _convexService.mutation('privateLocations:remove', {
+      'locationId': locationId,
+    });
+  }
+
+  @override
+  Future<String> reportSafety({
+    required String bookingId,
+    required SafetyCategory category,
+    required String text,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('safety:report', {
+        'bookingId': bookingId,
+        'category': category.wireValue,
+        'text': text,
+      }),
+    );
+    return result['reportId'] as String;
+  }
+
+  @override
+  Future<List<SafetyReport>> mySafetyReports(String bookingId) async {
+    final result = await _convexService.query('safety:mine', {
+      'bookingId': bookingId,
+    });
+    return [for (final json in _mapList(result)) SafetyReport.fromJson(json)];
+  }
+
+  @override
+  Future<SafetyReportsPage> openSafetyReports({
+    String? cursor,
+    int numItems = 25,
+  }) async => SafetyReportsPage.fromJson(
+    _asMap(
+      await _convexService.query('safety:listOpen', {
+        'paginationOpts': {'numItems': numItems, 'cursor': cursor},
+      }),
+    ),
+  );
+
+  @override
+  Future<void> resolveSafetyReport(String reportId, {String? adminNote}) async {
+    await _convexService.mutation('safety:resolve', {
+      'reportId': reportId,
+      'adminNote': ?adminNote,
+    });
+  }
+
+  @override
+  Future<List<SafetyReport>> safetyReportsForBookingAdmin(
+    String bookingId,
+  ) async {
+    final result = await _convexService.query('safety:forBookingAdmin', {
+      'bookingId': bookingId,
+    });
+    return [for (final json in _mapList(result)) SafetyReport.fromJson(json)];
+  }
+
+  @override
   Future<OrganizationApplication?> myOrganizationApplication() async {
     final json = _asMap(
       await _convexService.query('organizationApplications:mine'),
@@ -255,6 +383,11 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<({String applicationId, int revision})>
   saveOrganizationApplicationDraft({
+    ApplicationKind? kind,
+    String? hostDisplayName,
+    String? hostPhone,
+    String? hostArea,
+    bool? hostAgreementAccepted,
     String? applicationId,
     int? expectedRevision,
     required String orgName,
@@ -271,6 +404,11 @@ class ConvexRepository implements EarplugRepository {
         'expectedRevision': ?expectedRevision,
         'orgName': orgName,
         'orgType': orgType.wireValue,
+        'kind': ?kind?.wireValue,
+        'hostDisplayName': ?hostDisplayName,
+        'hostPhone': ?hostPhone,
+        'hostArea': ?hostArea,
+        'hostAgreementAccepted': ?hostAgreementAccepted,
         'website': ?website,
         'contactName': contactName,
         'businessEmail': businessEmail,
@@ -347,6 +485,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<AdminApplicationPage> applicationsForReview({
     OrganizationApplicationStatus? status,
+    ApplicationKind? kind,
     String? cursor,
     int numItems = 25,
   }) async {
@@ -354,6 +493,7 @@ class ConvexRepository implements EarplugRepository {
       'organizationApplications:listForReview',
       {
         'status': ?status?.wireValue,
+        'kind': ?kind?.wireValue,
         'paginationOpts': {'numItems': numItems, 'cursor': cursor},
       },
     );
@@ -1028,7 +1168,9 @@ class ConvexRepository implements EarplugRepository {
     required String organizationId,
     required String title,
     String? desc,
-    required String venueId,
+    String? venueId,
+    OpportunityMode mode = OpportunityMode.publicEvent,
+    String? privateLocationId,
     String? eventType,
     int? expectedAttendance,
     List<String>? genres,
@@ -1054,7 +1196,9 @@ class ConvexRepository implements EarplugRepository {
         'organizationId': organizationId,
         'title': title,
         'desc': ?desc,
-        'venueId': venueId,
+        'venueId': ?venueId,
+        'mode': mode.wireValue,
+        'privateLocationId': ?privateLocationId,
         'eventType': ?eventType,
         'expectedAttendance': ?expectedAttendance,
         'genres': ?genres,
@@ -1089,6 +1233,7 @@ class ConvexRepository implements EarplugRepository {
     String? title,
     String? desc,
     String? venueId,
+    String? privateLocationId,
     String? eventType,
     int? expectedAttendance,
     List<String>? genres,
@@ -1115,6 +1260,7 @@ class ConvexRepository implements EarplugRepository {
       'title': ?title,
       'desc': ?desc,
       'venueId': ?venueId,
+      'privateLocationId': ?privateLocationId,
       'eventType': ?eventType,
       'expectedAttendance': ?expectedAttendance,
       'genres': ?genres,
@@ -1274,12 +1420,14 @@ class ConvexRepository implements EarplugRepository {
     int numItems = 25,
     String? bandId,
     OpportunityFilters? filters,
+    OpportunityMode? mode,
   }) async {
     final result = await _convexService.query(
       'talentOpportunitiesRead:browse',
       {
         'paginationOpts': {'numItems': numItems, 'cursor': cursor},
         'bandId': ?bandId,
+        'mode': ?mode?.wireValue,
         'filters': ?filters?.toJson(),
       },
     );
@@ -1710,6 +1858,7 @@ class ConvexRepository implements EarplugRepository {
     required String reason,
     required int expectedRevision,
     BookingSide? side,
+    bool? safety,
   }) async {
     final result = _asMap(
       await _convexService.mutation('bookings:cancel', {
@@ -1717,6 +1866,7 @@ class ConvexRepository implements EarplugRepository {
         'reason': reason,
         'expectedRevision': expectedRevision,
         'as': ?side?.wireValue,
+        'safety': ?safety,
       }),
     );
     return (

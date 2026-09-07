@@ -1,10 +1,22 @@
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
-import { organizationMembershipFor } from "./authz";
+import { isPlatformAdmin, organizationMembershipFor } from "./authz";
 import {
   ArtistApplicationStatus,
   OPPORTUNITY_ARTIST_VISIBLE_STATUSES,
 } from "./opportunityStatus";
+
+export async function isAdminOfAnyBand(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"users">,
+): Promise<boolean> {
+  const membership = await ctx.db
+    .query("bandMembers")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .filter((q) => q.eq(q.field("role"), "admin"))
+    .first();
+  return membership !== null;
+}
 
 export async function bandIsInvited(
   ctx: QueryCtx | MutationCtx,
@@ -41,6 +53,32 @@ export async function canViewerSeeOpportunity(
   viewer: { user: Doc<"users"> | null; bandId?: Id<"bands"> },
 ): Promise<boolean> {
   const { user, bandId } = viewer;
+  if (opportunity.mode === "privateBooking") {
+    if (!user) return false;
+    if (await isPlatformAdmin(ctx, user._id)) return true;
+    if (
+      await organizationMembershipFor(ctx, opportunity.organizationId, user._id)
+    ) {
+      return true;
+    }
+    if (
+      !OPPORTUNITY_ARTIST_VISIBLE_STATUSES.includes(opportunity.status) ||
+      opportunity.visibility !== "inviteOnly" ||
+      bandId === undefined
+    ) {
+      return false;
+    }
+    const membership = await ctx.db
+      .query("bandMembers")
+      .withIndex("by_band_user", (q) =>
+        q.eq("bandId", bandId).eq("userId", user._id),
+      )
+      .unique();
+    return (
+      membership !== null && (await bandIsInvited(ctx, opportunity._id, bandId))
+    );
+  }
+
   if (
     opportunity.visibility === "public" &&
     OPPORTUNITY_ARTIST_VISIBLE_STATUSES.includes(opportunity.status)

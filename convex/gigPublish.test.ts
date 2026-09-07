@@ -30,6 +30,7 @@ async function setupGigPublish(
   overrides: Partial<
     Pick<
       Doc<"talentOpportunities">,
+      | "mode"
       | "status"
       | "startsAt"
       | "doorsAt"
@@ -125,6 +126,27 @@ async function setupGigPublish(
       updatedAt: NOW,
       ...overrides,
     });
+    if (overrides.mode === "privateBooking") {
+      await ctx.db.patch(organizationId, { orgType: "privateHost" });
+      const privateLocationId = await ctx.db.insert("privateLocations", {
+        organizationId,
+        label: "Backyard",
+        addr: "42 Garden Street",
+        city: "Oakland",
+        area: "Rockridge, Oakland",
+        lat: 37.84,
+        lng: -122.25,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await ctx.db.patch(opportunityId, {
+        hostUserId: ownerId,
+        privateLocationId,
+        area: "Rockridge, Oakland",
+        venueId: undefined,
+        venueType: undefined,
+      });
+    }
     const slotA = await ctx.db.insert("opportunitySlots", {
       opportunityId,
       order: 0,
@@ -211,6 +233,193 @@ async function setupGigPublish(
 }
 
 describe("opportunity gig publishing", () => {
+  test.each([false, true])(
+    "leaves an unfilled private request unchanged (optional booked: %s)",
+    async (bookOptional) => {
+      const f = await setupGigPublish({ mode: "privateBooking" });
+      if (bookOptional) await f.bookSlot(f.slotB, f.bandB);
+      const before = await f.t.run((ctx) => ctx.db.get(f.opportunityId));
+      vi.setSystemTime(NOW + 1000);
+
+      expect(
+        await f.t.run((ctx) => publishGigFromOpportunity(ctx, f.opportunityId)),
+      ).toBeNull();
+
+      await f.t.run(async (ctx) => {
+        expect(await ctx.db.get(f.opportunityId)).toEqual(before);
+        expect((await ctx.db.get(f.opportunityId))?.publicGigId).toBeUndefined();
+        expect(await ctx.db.query("gigs").collect()).toEqual([]);
+        expect(await ctx.db.query("gigBands").collect()).toEqual([]);
+        expect(await ctx.db.query("gigTicketInventory").collect()).toEqual([]);
+      });
+    },
+  );
+
+  test("confirms a filled private request without publishing a gig", async () => {
+    const f = await setupGigPublish({ mode: "privateBooking" });
+    await f.bookSlot(f.slotA, f.bandA);
+    const before = await f.t.run((ctx) => ctx.db.get(f.opportunityId));
+    vi.setSystemTime(NOW + 1000);
+
+    expect(
+      await f.t.run((ctx) => publishGigFromOpportunity(ctx, f.opportunityId)),
+    ).toBeNull();
+
+    await f.t.run(async (ctx) => {
+      expect(await ctx.db.get(f.opportunityId)).toEqual({
+        ...before,
+        status: "confirmed",
+        revision: 3,
+        updatedAt: NOW + 1000,
+      });
+      expect((await ctx.db.get(f.opportunityId))?.publicGigId).toBeUndefined();
+      expect(await ctx.db.query("gigs").collect()).toEqual([]);
+      expect(await ctx.db.query("gigBands").collect()).toEqual([]);
+      expect(await ctx.db.query("gigTicketInventory").collect()).toEqual([]);
+    });
+  });
+
+  test.each([
+    ["required_slot_cancelled", "booking"],
+    ["opportunity_cancelled", "cancelled"],
+  ] as const)(
+    "%s moves a confirmed private request to %s only once",
+    async (reason, status) => {
+      const f = await setupGigPublish({ mode: "privateBooking" });
+      await f.bookSlot(f.slotA, f.bandA);
+      await f.t.run((ctx) => publishGigFromOpportunity(ctx, f.opportunityId));
+      const before = await f.t.run((ctx) => ctx.db.get(f.opportunityId));
+
+      for (const time of [NOW + 1000, NOW + 2000]) {
+        vi.setSystemTime(time);
+        await f.t.run((ctx) =>
+          unpublishOpportunityGig(ctx, f.opportunityId, reason),
+        );
+        await f.t.run(async (ctx) => {
+          expect(await ctx.db.get(f.opportunityId)).toEqual({
+            ...before,
+            status,
+            revision: 4,
+            updatedAt: NOW + 1000,
+          });
+          expect((await ctx.db.get(f.opportunityId))?.publicGigId).toBeUndefined();
+          expect(await ctx.db.query("gigs").collect()).toEqual([]);
+          expect(await ctx.db.query("gigBands").collect()).toEqual([]);
+          expect(await ctx.db.query("gigTicketInventory").collect()).toEqual([]);
+        });
+      }
+    },
+  );
+
+  test.each(["rsvp", "paid"] as const)(
+    "private requests preserve an existing %s gig and its related rows",
+    async (ticketing) => {
+      const f = await setupGigPublish({
+        ticketing,
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+        ticketCurrency: "usd",
+      });
+      await f.bookSlot(f.slotA, f.bandA);
+      const gigId = await f.publish();
+      await f.bookSlot(f.slotB, f.bandB);
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.opportunityId, {
+          mode: "privateBooking",
+          status: "booking",
+          venueId: undefined,
+          venueType: undefined,
+          ticketing: "paid",
+          ticketPriceMinor: 1000,
+          ticketCapacity: 20,
+        }),
+      );
+      const before = await f.t.run(async (ctx) => ({
+        gigs: await ctx.db.query("gigs").collect(),
+        bandIndex: await ctx.db.query("gigBands").collect(),
+        inventory: await ctx.db.query("gigTicketInventory").collect(),
+      }));
+      vi.setSystemTime(NOW + 1000);
+
+      expect(
+        await f.t.run((ctx) => publishGigFromOpportunity(ctx, f.opportunityId)),
+      ).toBeNull();
+      await f.t.run((ctx) => syncGigLineup(ctx, f.opportunityId));
+      await f.t.run((ctx) => syncGigTicketing(ctx, f.opportunityId));
+      await f.t.run((ctx) =>
+        unpublishOpportunityGig(ctx, f.opportunityId, "required_slot_cancelled"),
+      );
+      await f.t.run((ctx) =>
+        unpublishOpportunityGig(ctx, f.opportunityId, "opportunity_cancelled"),
+      );
+
+      await f.t.run(async (ctx) => {
+        expect(await ctx.db.get(f.opportunityId)).toMatchObject({
+          status: "cancelled",
+          publicGigId: gigId,
+          revision: 6,
+          updatedAt: NOW + 1000,
+        });
+        expect(await ctx.db.query("gigs").collect()).toEqual(before.gigs);
+        expect(await ctx.db.query("gigBands").collect()).toEqual(before.bandIndex);
+        expect(await ctx.db.query("gigTicketInventory").collect()).toEqual(
+          before.inventory,
+        );
+      });
+    },
+  );
+
+  test.each([
+    "draft",
+    "open",
+    "applications_closed",
+    "booking",
+    "confirmed",
+    "completed",
+    "cancelled",
+  ] as const)(
+    "private lineup and ticketing sync are complete no-ops in %s status",
+    async (status) => {
+      const f = await setupGigPublish({
+        ticketing: "paid",
+        ticketPriceMinor: 1500,
+        ticketCapacity: 100,
+        ticketCurrency: "usd",
+      });
+      await f.bookSlot(f.slotA, f.bandA);
+      await f.publish();
+      await f.t.run(async (ctx) => {
+        await ctx.db.patch(f.opportunityId, {
+          mode: "privateBooking",
+          status,
+          ticketPriceMinor: 1000,
+          ticketCapacity: 20,
+        });
+        // Lineup computation would throw on this missing booked band.
+        await ctx.db.delete(f.bandA);
+      });
+      const before = await f.t.run(async (ctx) => ({
+        opportunity: await ctx.db.get(f.opportunityId),
+        gigs: await ctx.db.query("gigs").collect(),
+        bandIndex: await ctx.db.query("gigBands").collect(),
+        inventory: await ctx.db.query("gigTicketInventory").collect(),
+      }));
+      vi.setSystemTime(NOW + 1000);
+
+      await f.t.run((ctx) => syncGigLineup(ctx, f.opportunityId));
+      await f.t.run((ctx) => syncGigTicketing(ctx, f.opportunityId));
+
+      await f.t.run(async (ctx) => {
+        expect(await ctx.db.get(f.opportunityId)).toEqual(before.opportunity);
+        expect(await ctx.db.query("gigs").collect()).toEqual(before.gigs);
+        expect(await ctx.db.query("gigBands").collect()).toEqual(before.bandIndex);
+        expect(await ctx.db.query("gigTicketInventory").collect()).toEqual(
+          before.inventory,
+        );
+      });
+    },
+  );
+
   test("publishes when only the required slot is confirmed", async () => {
     const f = await setupGigPublish();
     await f.bookSlot(f.slotA, f.bandA);

@@ -5,8 +5,10 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_manager.dart';
 import 'package:earplug/screens/opportunity_detail.dart';
 import 'package:earplug/screens/org_opportunities.dart';
+import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
+import 'package:earplug/widgets/map_view.dart';
 import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +18,105 @@ import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('OPEN identifies private requests and explains disclosure', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final opportunity = (await repository.opportunity('opp-private'))!;
+    await repository.updateOpportunity(
+      opportunityId: opportunity.id,
+      expectedRevision: opportunity.revision,
+      expectedAttendance: 45,
+    );
+    final harness = await pumpApp(
+      tester,
+      home: const RootShell(),
+      auth: auth,
+      repository: repository,
+      beforePump: (app) {
+        app.switchToBand('b1');
+        app.resetTo(Screen.gigMgr);
+      },
+    );
+    await harness.app.refreshBrowse();
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<EpChip>(find.byKey(const Key('band-gigs-seg-open'))).active,
+      isTrue,
+    );
+    expect(harness.app.browse.privateCount, 1);
+    final card = find.byKey(const Key('opp-card-opp-private'));
+    await tester.scrollUntilVisible(
+      card,
+      300,
+      scrollable: find.descendant(
+        of: find.byType(GigManagerScreen),
+        matching: find.byType(Scrollable),
+      ).first,
+    );
+    await tester.pumpAndSettle();
+    expect(card, findsOneWidget);
+    final pill = find.descendant(
+      of: card,
+      matching: find.byKey(const Key('opp-card-opp-private-private')),
+    );
+    expect(tester.widget<EpChip>(pill).label, 'PRIVATE EVENT');
+    expect(
+      find.descendant(of: card, matching: find.text('Mission District')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: card, matching: find.text('~45 guests')),
+      findsOneWidget,
+    );
+    for (final privateDetail in [
+      "Jordan's courtyard",
+      '120 Demo Lane, San Francisco',
+      'The Foghorn Club',
+    ]) {
+      expect(
+        find.descendant(of: card, matching: find.text(privateDetail)),
+        findsNothing,
+      );
+    }
+    expectNoFieldInCard(tester);
+
+    await tester.tap(card);
+    await tester.pumpAndSettle();
+    expect(find.byType(OpportunityDetailScreen), findsOneWidget);
+    expect(harness.app.current.param, opportunity.slug);
+    expect(
+      tester.widget<EpChip>(find.byKey(const Key('opp-detail-private'))).label,
+      'PRIVATE EVENT',
+    );
+    final note = find.byKey(const Key('opp-detail-private-note'));
+    await tester.ensureVisible(note);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Text>(note).data,
+      'The exact address is shared with the booked artist after the deposit is paid.',
+    );
+    expect(find.text('Mission District'), findsOneWidget);
+    expect(find.byType(VenueMiniMap), findsNothing);
+    expect(find.textContaining('120 Demo Lane'), findsNothing);
+    expect(find.byKey(const Key('opp-detail-apply')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('EXPECTED GUESTS · 45'),
+      300,
+      scrollable: find.descendant(
+        of: find.byType(OpportunityDetailScreen),
+        matching: find.byType(Scrollable),
+      ).first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('EXPECTED GUESTS · 45'), findsOneWidget);
+    expectNoFieldInCard(tester);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'public invitations appear once and retain the invitation label',
     (tester) async {
@@ -247,7 +348,11 @@ void main() {
       findsOneWidget,
     );
     expect(
-      harness.app.browse.items.single.myApplicationStatus?.isActive ?? false,
+      harness.app.browse.items
+              .firstWhere((item) => item.opportunity.id == 'opp1')
+              .myApplicationStatus
+              ?.isActive ??
+          false,
       isFalse,
     );
     harness.app.dispose();

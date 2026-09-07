@@ -319,6 +319,25 @@ Future<void> showEpActionSheet(
 
 // ============================ view switcher ============================
 
+OrganizationApplication? _organizerApplication(AppState app) {
+  final application = app.myOrganizationApplication;
+  return application?.kind == ApplicationKind.host ? null : application;
+}
+
+OrganizationApplication? _hostApplication(AppState app) {
+  final application = app.myOrganizationApplication;
+  return application?.kind == ApplicationKind.host ? application : null;
+}
+
+bool _applicationInProgress(OrganizationApplication? application) =>
+    switch (application?.status) {
+      OrganizationApplicationStatus.draft ||
+      OrganizationApplicationStatus.submitted ||
+      OrganizationApplicationStatus.underReview ||
+      OrganizationApplicationStatus.needsInfo => true,
+      _ => false,
+    };
+
 String _roleLabel(OrganizationRole role) => switch (role) {
   OrganizationRole.owner => 'Owner',
   OrganizationRole.manager => 'Manager',
@@ -441,7 +460,10 @@ void showSwitcherSheet(BuildContext context) {
                           style: Theme.of(ctx).textTheme.epLabel,
                         ),
                         Text(
-                          'Organizer · ${_roleLabel(membership.role)}',
+                          membership.organization.orgType ==
+                                  OrganizationType.privateHost
+                              ? 'Host'
+                              : 'Organizer · ${_roleLabel(membership.role)}',
                           style: Theme.of(ctx).textTheme.epCaption,
                         ),
                       ],
@@ -463,17 +485,22 @@ void showSwitcherSheet(BuildContext context) {
             ),
           ),
         ),
-        // Approved organizers enter through their membership; withdrawn
-        // applications may start over.
-        if (app.myOrganizationApplication?.status !=
-            OrganizationApplicationStatus.approved)
+        // In-progress applications stay accessible even for existing members.
+        if (_applicationInProgress(_organizerApplication(app)) ||
+            (!app.myOrganizations.any(
+                  (membership) =>
+                      membership.organization.orgType !=
+                      OrganizationType.privateHost,
+                ) &&
+                _organizerApplication(app)?.status !=
+                    OrganizationApplicationStatus.approved))
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: OutlinedButton.icon(
               key: const Key('switcher-become-organizer'),
               onPressed: () {
                 Navigator.pop(ctx);
-                final application = app.myOrganizationApplication;
+                final application = _organizerApplication(app);
                 if (application == null ||
                     application.editable ||
                     application.status ==
@@ -484,7 +511,7 @@ void showSwitcherSheet(BuildContext context) {
                 }
               },
               icon: const Icon(Icons.storefront_outlined),
-              label: Text(switch (app.myOrganizationApplication) {
+              label: Text(switch (_organizerApplication(app)) {
                 OrganizationApplication(
                   status: OrganizationApplicationStatus.draft,
                 ) =>
@@ -493,6 +520,44 @@ void showSwitcherSheet(BuildContext context) {
                     when status != OrganizationApplicationStatus.withdrawn =>
                   'ORGANIZER APPLICATION · ${_applicationStatusLabel(status).toUpperCase()}',
                 _ => 'BECOME AN ORGANIZER',
+              }),
+            ),
+          ),
+        if (app.privateBookingsEnabled &&
+            (_applicationInProgress(_hostApplication(app)) ||
+                (!app.myOrganizations.any(
+                      (membership) =>
+                          membership.organization.orgType ==
+                          OrganizationType.privateHost,
+                    ) &&
+                    _hostApplication(app)?.status !=
+                        OrganizationApplicationStatus.approved)))
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: OutlinedButton.icon(
+              key: const Key('switcher-become-host'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                final application = _hostApplication(app);
+                if (application == null ||
+                    application.editable ||
+                    application.status ==
+                        OrganizationApplicationStatus.withdrawn) {
+                  app.openHostApply();
+                } else {
+                  app.go(Screen.orgApplicationStatus);
+                }
+              },
+              icon: const Icon(Icons.home_outlined),
+              label: Text(switch (_hostApplication(app)) {
+                OrganizationApplication(
+                  status: OrganizationApplicationStatus.draft,
+                ) =>
+                  'CONTINUE HOST APPLICATION',
+                OrganizationApplication(status: final status)
+                    when status != OrganizationApplicationStatus.withdrawn =>
+                  'HOST APPLICATION · ${_applicationStatusLabel(status).toUpperCase()}',
+                _ => 'BECOME A HOST',
               }),
             ),
           ),

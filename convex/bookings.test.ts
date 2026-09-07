@@ -260,6 +260,7 @@ async function setupBookings() {
     actor: Actor,
     expectedRevision = 3,
     actingAs?: "organizer" | "artist",
+    safety?: boolean,
   ) {
     return await checked(() =>
       as(actor).mutation(api.bookings.cancel, {
@@ -267,6 +268,7 @@ async function setupBookings() {
         expectedRevision,
         reason: "  Unable to perform  ",
         as: actingAs,
+        safety,
       }),
     );
   }
@@ -464,6 +466,34 @@ describe("booking offers", () => {
     await expect(
       f.sendOffer({ applicationId: f.otherApplicationId }),
     ).rejects.toThrow("This slot already has a pending offer");
+  });
+
+  test("refuses private offers while private bookings are disabled", async () => {
+    const f = await setupBookings();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.opportunityId, { mode: "privateBooking" }),
+    );
+    const applicationBefore = await f.readApplication();
+    const slotBefore = await f.readSlot();
+    const jobsBefore = await f.scheduled();
+    await expect(f.sendOffer()).rejects.toThrow(
+      "Private bookings are not available yet",
+    );
+    expect(await f.readApplication()).toEqual(applicationBefore);
+    expect(await f.readSlot()).toEqual(slotBefore);
+    expect(await f.scheduled()).toEqual(jobsBefore);
+    expect(await f.t.run((ctx) => ctx.db.query("bookings").take(1))).toEqual([]);
+  });
+
+  test("allows private offers when private bookings are enabled", async () => {
+    const f = await setupBookings();
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.opportunityId, { mode: "privateBooking" }),
+    );
+    const { bookingId } = await f.sendOffer();
+    expect(await f.readBooking(bookingId)).toMatchObject({ status: "offer_sent" });
+    expect(await f.readApplication()).toMatchObject({ status: "offered" });
   });
 
   test.each([-1, 0.5, NaN, Infinity])(
@@ -856,6 +886,248 @@ describe("booking offers", () => {
 });
 
 describe("booking confirmation and cancellation", () => {
+  test("artist safety cancellation refunds all payments without a reliability penalty", async () => {
+    const f = await setupBookings();
+    const { bookingId } = await f.confirm();
+    // Model a paid private booking, including both kinds of pending payout.
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.opportunityId, {
+        mode: "privateBooking",
+        venueId: undefined,
+        publicGigId: undefined,
+      });
+      await ctx.db.patch(bookingId, {
+        ...feeSnapshot(20000, 1000),
+        paidMinor: 20000,
+      });
+      for (const [installmentIndex, amountMinor, status] of [
+        [0, 12000, "scheduled"],
+        [1, 8000, "held"],
+      ] as const) {
+        const paymentRecordId = await ctx.db.insert("paymentRecords", {
+          bookingId,
+          installmentIndex,
+          label: `Installment ${installmentIndex + 1}`,
+          amountMinor,
+          currency: "usd",
+          dueAt: NOW,
+          status: "paid",
+          stripeChargeId: `ch_safety_${installmentIndex}`,
+          paidAt: NOW,
+          attempt: 0,
+          refundedMinor: 0,
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+        await ctx.db.insert("payouts", {
+          bookingId,
+          bandId: f.bandId,
+          paymentRecordId,
+          amountMinor: amountMinor * 0.9,
+          currency: "usd",
+          status,
+          scheduledFor: STARTS_AT + DAY_MS,
+          attempt: 0,
+          kind: "completion",
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      }
+    });
+    const cancelledAt = STARTS_AT - DAY_MS;
+    vi.setSystemTime(cancelledAt);
+    expect(await f.cancel(bookingId, "admin", 3, "artist", true)).toEqual({
+      status: "cancelled_by_artist",
+      revision: 4,
+    });
+    expect(await f.readBooking(bookingId)).toMatchObject({
+      status: "cancelled_by_artist",
+      cancellationKind: "safety",
+      cancelledBy: "artist",
+      cancelledByUserId: f.users.admin,
+      cancelledAt,
+      cancelReason: "Cancelled for safety",
+    });
+    const slot = await f.readSlot();
+    expect(slot?.status).toBe("open");
+    expect(slot?.bookingId).toBeUndefined();
+    expect(slot?.bandId).toBeUndefined();
+    expect(await f.readApplication()).toMatchObject({ status: "withdrawn" });
+    await f.t.run(async (ctx) => {
+      const reports = await ctx.db
+        .query("safetyReports")
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", bookingId))
+        .collect();
+      expect(reports).toMatchObject([
+        {
+          bookingId,
+          reporterUserId: f.users.admin,
+          category: "safety",
+          side: "artist",
+          text: "Unable to perform",
+          status: "open",
+          createdAt: cancelledAt,
+        },
+      ]);
+      expect((await ctx.db.get(f.bandId))?.reviewSummary).toMatchObject({
+        cancellations: 0,
+      });
+      const payouts = await ctx.db
+        .query("payouts")
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", bookingId))
+        .collect();
+      expect(payouts).toHaveLength(2);
+      expect(payouts.every((payout) => payout.status === "reversed")).toBe(true);
+    });
+    const refunds = await f.t.run((ctx) =>
+      ctx.db
+        .query("refunds")
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", bookingId))
+        .collect(),
+    );
+    expect(refunds).toMatchObject([
+      { amountMinor: 8000, reason: "artist_cancel", status: "pending" },
+      { amountMinor: 12000, reason: "artist_cancel", status: "pending" },
+    ]);
+    const jobs = await f.scheduled();
+    expect(
+      jobs.filter((job) => job.name === "refunds:executeRefund"),
+    ).toMatchObject(
+      refunds.map((refund) => ({
+        args: [{ refundId: refund._id, attempt: 0 }],
+        scheduledTime: cancelledAt,
+      })),
+    );
+    expect(jobs.filter((job) => job.name === "payouts:releasePayout")).toEqual([]);
+    const cancellationEmails = jobs.filter(
+      (job) =>
+        job.name === "emails:send" &&
+        ["safetyCancellation", "bookingCancelled"].includes(job.args[0].kind),
+    );
+    expect(cancellationEmails).toHaveLength(1);
+    expect(cancellationEmails[0].args[0]).toMatchObject({
+      kind: "safetyCancellation",
+      to: "owner@booking.test",
+      subject: expect.stringContaining("Private event"),
+      text: expect.stringContaining("cancelled for safety"),
+    });
+    expect(cancellationEmails[0].args[0].text).toContain("full refund");
+    expect(cancellationEmails[0].args[0].text).not.toContain("Reason:");
+    expect(cancellationEmails[0].args[0].text).not.toContain("Unable to perform");
+  });
+
+  test("refuses a safety cancellation for a public booking without any changes", async () => {
+    const f = await setupBookings();
+    const { bookingId, revision } = await f.confirm();
+    const bookingBefore = await f.readBooking(bookingId);
+    const slotBefore = await f.readSlot();
+    const applicationBefore = await f.readApplication();
+    const opportunityBefore = await f.readOpportunity();
+    const jobsBefore = await f.scheduled();
+    await expect(
+      f.cancel(bookingId, "admin", revision, "artist", true),
+    ).rejects.toThrow("Safety cancellations apply to private bookings");
+    expect(await f.readBooking(bookingId)).toEqual(bookingBefore);
+    expect(await f.readSlot()).toEqual(slotBefore);
+    expect(await f.readApplication()).toEqual(applicationBefore);
+    expect(await f.readOpportunity()).toEqual(opportunityBefore);
+    expect(await f.scheduled()).toEqual(jobsBefore);
+    expect(
+      await f.t.run((ctx) =>
+        ctx.db
+          .query("safetyReports")
+          .withIndex("by_bookingId", (q) => q.eq("bookingId", bookingId))
+          .take(1),
+      ),
+    ).toEqual([]);
+  });
+
+  test("cancels a confirmed private booking while another required slot keeps the opportunity open", async () => {
+    const f = await setupBookings();
+    const { bookingId } = await f.sendOffer();
+    await f.t.run(async (ctx) => {
+      const privateLocationId = await ctx.db.insert("privateLocations", {
+        organizationId: f.organizationId,
+        label: "Garden reception",
+        addr: "200 Private Street",
+        city: "Oakland",
+        area: "Oakland",
+        lat: 37.8,
+        lng: -122.27,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await ctx.db.patch(f.opportunityId, {
+        mode: "privateBooking",
+        venueId: undefined,
+        publicGigId: undefined,
+        privateLocationId,
+      });
+      await ctx.db.patch(f.supportSlotId, { required: true });
+    });
+    const confirmed = await f.respond(bookingId);
+    expect(confirmed.status).toBe("confirmed");
+    expect(await f.readSlot()).toMatchObject({
+      status: "booked",
+      required: true,
+      bookingId,
+    });
+    const supportBefore = await f.readSlot(f.supportSlotId);
+    expect(supportBefore).toMatchObject({ status: "open", required: true });
+    const opportunityBefore = await f.readOpportunity();
+    expect(opportunityBefore).toMatchObject({ status: "open" });
+    expect(opportunityBefore?.publicGigId).toBeUndefined();
+
+    await expect(f.cancel(bookingId, "owner", confirmed.revision)).resolves.toEqual({
+      status: "cancelled_by_organizer",
+      revision: confirmed.revision + 1,
+    });
+    expect(await f.readBooking(bookingId)).toMatchObject({
+      status: "cancelled_by_organizer",
+      cancelReason: "Unable to perform",
+    });
+    const released = await f.readSlot();
+    expect(released?.status).toBe("open");
+    expect(released?.bookingId).toBeUndefined();
+    expect(released?.bandId).toBeUndefined();
+    expect(await f.readApplication()).toMatchObject({ status: "declined" });
+    expect(await f.readSlot(f.supportSlotId)).toEqual(supportBefore);
+    expect(await f.readOpportunity()).toEqual(opportunityBefore);
+  });
+
+  test.each(["owner", "stranger"] as const)(
+    "refuses a safety cancellation by %s acting as organizer without any changes",
+    async (actor) => {
+      const f = await setupBookings();
+      if (actor === "stranger") {
+        await f.t.run((ctx) =>
+          ctx.db.insert("platformAdmins", {
+            userId: f.users.stranger,
+            grantedAt: NOW,
+          }),
+        );
+      }
+      const { bookingId } = await f.confirm();
+      const before = await f.readBooking(bookingId);
+      const jobsBefore = await f.scheduled();
+      await expect(
+        f.cancel(bookingId, actor, 3, "organizer", true),
+      ).rejects.toThrow("Only the artist can cancel for safety");
+      expect(await f.readBooking(bookingId)).toEqual(before);
+      expect(await f.scheduled()).toEqual(jobsBefore);
+      expect(await f.readSlot()).toMatchObject({ status: "booked", bookingId });
+      expect(await f.readApplication()).toMatchObject({ status: "booked" });
+      expect(
+        await f.t.run((ctx) =>
+          ctx.db
+            .query("safetyReports")
+            .withIndex("by_bookingId", (q) => q.eq("bookingId", bookingId))
+            .collect(),
+        ),
+      ).toEqual([]);
+    },
+  );
+
   test("confirms the free headliner, declines competitors, and publishes the gig", async () => {
     const f = await setupBookings();
     const { bookingId, offerId, status, revision } = await f.confirm();
@@ -1413,6 +1685,155 @@ describe("booking confirmation and cancellation", () => {
 });
 
 describe("booking email scheduling", () => {
+  test.each(["present", "absent", "deleted"] as const)(
+    "uses Private event in emails when the private location is %s",
+    async (locationState) => {
+      const f = await setupBookings();
+      const { bookingId } = await f.seedOffer(1);
+      await f.t.run(async (ctx) => {
+        let privateLocationId: Id<"privateLocations"> | undefined;
+        if (locationState !== "absent") {
+          privateLocationId = await ctx.db.insert("privateLocations", {
+            organizationId: f.organizationId,
+            label: "Garden reception",
+            addr: "200 Private Street",
+            city: "Oakland",
+            area: "Oakland",
+            lat: 37.8,
+            lng: -122.27,
+            createdAt: NOW,
+            updatedAt: NOW,
+          });
+          if (locationState === "deleted") await ctx.db.delete(privateLocationId);
+        }
+        await ctx.db.patch(f.opportunityId, {
+          mode: "privateBooking",
+          venueId: undefined,
+          privateLocationId,
+        });
+        await bookings.sendBookingEmail(
+          ctx,
+          (await ctx.db.get(bookingId))!,
+          "offerSent",
+        );
+      });
+      const emails = (await f.scheduled()).filter(
+        (job) => job.name === "emails:send",
+      );
+      expect(emails).toHaveLength(1);
+      const venueName = "Private event";
+      expect(emails[0].args[0].subject).toContain(venueName);
+      expect(emails[0].args[0].text).toContain(venueName);
+      expect(emails[0].args[0].text).not.toContain("200 Private Street");
+      expect(emails[0].args[0].subject).not.toContain("Garden reception");
+      expect(emails[0].args[0].text).not.toContain("Garden reception");
+    },
+  );
+
+  test("masks the private host in artist offer emails and reveals it after confirmation", async () => {
+    const f = await setupBookings();
+    const { bookingId } = await f.seedOffer(1);
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.opportunityId, {
+        mode: "privateBooking",
+        venueId: undefined,
+      });
+      await bookings.sendBookingEmail(
+        ctx,
+        (await ctx.db.get(bookingId))!,
+        "offerSent",
+      );
+    });
+    const offers = (await f.scheduled()).filter(
+      (job) => job.name === "emails:send" && job.args[0].kind === "offerSent",
+    );
+    expect(offers).toHaveLength(1);
+    expect(offers[0].args[0]).toMatchObject({
+      to: "admin@booking.test",
+      subject: expect.stringContaining("Private event"),
+      text: expect.stringContaining("A private host sent Static Bloom an offer"),
+    });
+    expect(offers[0].args[0].text).toContain("Private event");
+    expect(offers[0].args[0].subject).not.toContain("Booking Collective");
+    expect(offers[0].args[0].text).not.toContain("Booking Collective");
+
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(bookingId, { status: "confirmed", confirmedAt: NOW });
+      await bookings.sendBookingEmail(
+        ctx,
+        (await ctx.db.get(bookingId))!,
+        "bookingConfirmed",
+      );
+    });
+    const confirmations = (await f.scheduled()).filter(
+      (job) => job.name === "emails:send" && job.args[0].kind === "bookingConfirmed",
+    );
+    expect(confirmations.map((job) => job.args[0].to).sort()).toEqual([
+      "admin@booking.test",
+      "owner@booking.test",
+    ]);
+    for (const email of confirmations) {
+      expect(email.args[0].subject).toContain("Private event");
+      expect(email.args[0].text).toContain("Private event");
+      expect(email.args[0].text).toContain("Booking Collective");
+      expect(email.args[0].text).not.toContain("A private host");
+    }
+  });
+
+  test.each([
+    ["offerAccepted", "artist_accepted"],
+    ["offerDeclined", "declined"],
+    ["offerExpired", "expired"],
+    ["safetyCancellation", "cancelled_by_artist"],
+    ["bookingCancelled", "cancelled_by_artist"],
+  ] as const)(
+    "keeps the real private host name in host-only %s emails",
+    async (kind, status) => {
+      const f = await setupBookings();
+      const { bookingId } = await f.seedOffer(1);
+      await f.t.run(async (ctx) => {
+        await ctx.db.patch(f.opportunityId, { mode: "privateBooking" });
+        await ctx.db.patch(bookingId, { status, cancelledBy: "artist" });
+        await bookings.sendBookingEmail(ctx, (await ctx.db.get(bookingId))!, kind);
+      });
+      const emails = (await f.scheduled()).filter(
+        (job) => job.name === "emails:send",
+      );
+      expect(emails).toHaveLength(1);
+      expect(emails[0].args[0]).toMatchObject({
+        kind,
+        to: "owner@booking.test",
+        subject: expect.stringContaining("Private event"),
+        text: expect.stringContaining("Booking Collective"),
+      });
+      expect(emails[0].args[0].text).not.toContain("A private host");
+    },
+  );
+
+  test.each(["absent", "deleted"] as const)(
+    "still refuses public booking email when the venue is %s",
+    async (venueState) => {
+      const f = await setupBookings();
+      const { bookingId } = await f.seedOffer(1);
+      await f.t.run(async (ctx) => {
+        if (venueState === "absent") {
+          await ctx.db.patch(f.opportunityId, { venueId: undefined });
+        } else {
+          await ctx.db.delete(f.venueId);
+        }
+      });
+      await expect(
+        f.t.run(async (ctx) =>
+          bookings.sendBookingEmail(
+            ctx,
+            (await ctx.db.get(bookingId))!,
+            "offerSent",
+          ),
+        ),
+      ).rejects.toThrow("Venue not found");
+    },
+  );
+
   test("emails every artist admin with an address and uses the booking context", async () => {
     const f = await setupBookings();
     await f.t.run(async (ctx) => {

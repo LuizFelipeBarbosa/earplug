@@ -279,16 +279,16 @@ class OrganizerTabBar extends StatelessWidget {
           selected: scr == Screen.orgDash,
           onPressed: () => app.resetTo(Screen.orgDash),
         ),
-        if (canManage)
+        if (app.currentIsHost || canManage)
           EpNavigationItem(
             vertical: vertical,
             key: const Key('organizer-tab-opportunities'),
             icon: Icons.campaign_outlined,
-            label: 'GIGS',
+            label: app.currentIsHost ? 'REQUESTS' : 'GIGS',
             selected: scr == Screen.orgOpportunities,
             onPressed: () => app.resetTo(Screen.orgOpportunities),
           ),
-        if (canManage)
+        if (!app.currentIsHost && canManage)
           EpNavigationItem(
             vertical: vertical,
             key: const Key('organizer-tab-team'),
@@ -297,7 +297,7 @@ class OrganizerTabBar extends StatelessWidget {
             selected: scr == Screen.orgTeam,
             onPressed: () => app.resetTo(Screen.orgTeam),
           ),
-        if (canManage)
+        if (app.currentIsHost || canManage)
           EpNavigationItem(
             vertical: vertical,
             key: const Key('organizer-tab-settings'),

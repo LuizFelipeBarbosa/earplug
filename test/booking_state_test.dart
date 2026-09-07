@@ -367,6 +367,7 @@ void main() {
       reason: 'conflict',
       expectedRevision: booking.revision,
       side: BookingSide.artist,
+      safety: false,
     ));
     expect(refreshed, same(cancelled));
     expect(harness.app.bookingById(booking.id), same(cancelled));
@@ -579,7 +580,13 @@ class _ControlledBookingRepository extends DemoRepository {
   offerRequest;
   ({String bookingId, bool accept, int expectedRevision, String? message})?
   responseRequest;
-  ({String bookingId, String reason, int expectedRevision, BookingSide? side})?
+  ({
+    String bookingId,
+    String reason,
+    int expectedRevision,
+    BookingSide? side,
+    bool? safety,
+  })?
   cancelRequest;
 
   @override
@@ -660,12 +667,14 @@ class _ControlledBookingRepository extends DemoRepository {
     required String reason,
     required int expectedRevision,
     BookingSide? side,
+    bool? safety,
   }) async {
     cancelRequest = (
       bookingId: bookingId,
       reason: reason,
       expectedRevision: expectedRevision,
       side: side,
+      safety: safety,
     );
     final cancelled = cancelledBooking!;
     bookingResult = cancelled;

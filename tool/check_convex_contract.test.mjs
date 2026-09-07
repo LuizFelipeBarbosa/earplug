@@ -132,6 +132,19 @@ test("reports a deployment missing talentOpportunitiesRead:browse", () => {
   ]);
 });
 
+test("reports a deployment missing privateLocations:forOrganization", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions)
+    .map(([identifier, functionType]) =>
+      completeFunction(identifier, functionType),
+    )
+    .filter((entry) => entry.identifier !== "privateLocations.js:forOrganization");
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "missing privateLocations.js:forOrganization",
+  ]);
+});
+
 test("reports missing, mistyped, and wrong-deployment functions", () => {
   const problems = contractProblems(
     "https://decisive-iguana-759.convex.cloud",
@@ -254,6 +267,16 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing analytics.js:artistInsights",
     "missing analytics.js:myBandInsights",
     "missing talentOpportunities.js:updateTicketing",
+    "missing features.js:flags",
+    "missing privateLocations.js:create",
+    "missing privateLocations.js:update",
+    "missing privateLocations.js:remove",
+    "missing privateLocations.js:forOrganization",
+    "missing safety.js:report",
+    "missing safety.js:mine",
+    "missing safety.js:listOpen",
+    "missing safety.js:resolve",
+    "missing safety.js:forBookingAdmin",
   ]);
 });
 
@@ -369,5 +392,35 @@ test("reports missing and wrongly optional Phase 4b finance and insights fields"
     "finance.js:overview is missing return.snapshot",
     "analytics.js:artistInsights return.estimatedDraw optional=true, expected false",
     "talentOpportunities.js:updateTicketing is missing return.revision",
+  ]);
+});
+
+test("reports missing Phase 5 private-booking fields", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const flags = functions.find(
+    (entry) => entry.identifier === "features.js:flags",
+  );
+  delete flags.returns.value.privateBookings;
+  const location = functions.find(
+    (entry) => entry.identifier === "privateLocations.js:create",
+  );
+  delete location.returns.value.locationId;
+  const report = functions.find(
+    (entry) => entry.identifier === "safety.js:report",
+  );
+  delete report.returns.value.reportId;
+  const booking = functions.find(
+    (entry) => entry.identifier === "bookingsRead.js:get",
+  );
+  delete booking.returns.value[0].value.privateEvent;
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "features.js:flags is missing return.privateBookings",
+    "privateLocations.js:create is missing return.locationId",
+    "safety.js:report is missing return.reportId",
+    "bookingsRead.js:get is missing return.privateEvent",
   ]);
 });

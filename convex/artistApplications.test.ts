@@ -34,11 +34,13 @@ type Actor = (typeof ACTORS)[number];
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
+  vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "false");
 });
 
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 async function setupApplications(
@@ -444,13 +446,6 @@ describe("artist applications: apply", () => {
       );
     },
   );
-
-  test("rejects private bookings", async () => {
-    const f = await setupApplications({ mode: "privateBooking" });
-    await expect(f.apply()).rejects.toThrow(
-      "Private bookings are not available yet",
-    );
-  });
 
   test("rejects missing opportunities, missing slots, and slots belonging to another opportunity", async () => {
     const f = await setupApplications();
@@ -1134,4 +1129,101 @@ describe("artist applications: private queries", () => {
       }),
     ).rejects.toThrow("Band not found");
   });
+});
+
+async function setupPrivateApplications(visibility: "public" | "inviteOnly") {
+  const f = await setupApplications({ visibility });
+  await f.checked(() =>
+    f.t.run(async (ctx) => {
+      const privateLocationId = await ctx.db.insert("privateLocations", {
+        organizationId: f.organizationId,
+        label: "Backyard",
+        addr: "42 Garden Street",
+        city: "Oakland",
+        area: "Rockridge, Oakland",
+        lat: 37.84,
+        lng: -122.25,
+        notes: "Use the side gate",
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await ctx.db.patch(f.organizationId, { orgType: "privateHost" });
+      await ctx.db.patch(f.opportunityId, {
+        mode: "privateBooking",
+        venueId: undefined,
+        privateLocationId,
+        area: "Rockridge, Oakland",
+        venueType: undefined,
+      });
+    }),
+  );
+  return f;
+}
+
+describe("private booking applications", () => {
+  beforeEach(() => {
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+  });
+
+  test("blocks private applications while private bookings are disabled and accepts them when enabled", async () => {
+    const f = await setupPrivateApplications("public");
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "false");
+    await expect(f.apply()).rejects.toThrow(
+      "Private bookings are not available yet",
+    );
+    expect((await f.readOpportunity())?.applicationCount).toBe(0);
+    expect(
+      await f.t.run((ctx) =>
+        ctx.db
+          .query("artistApplications")
+          .withIndex("by_opportunityId_and_bandId", (q) =>
+            q.eq("opportunityId", f.opportunityId).eq("bandId", f.bandId),
+          )
+          .first(),
+      ),
+    ).toBeNull();
+
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+    const { applicationId } = await f.apply();
+    expect((await f.readApplication(applicationId))?.status).toBe("submitted");
+    expect((await f.readOpportunity())?.applicationCount).toBe(1);
+  });
+
+  test.each(["public", "inviteOnly"] as const)(
+    "allows an eligible band to apply to a %s private request and still rejects duplicates",
+    async (visibility) => {
+      const f = await setupPrivateApplications(visibility);
+      if (visibility === "inviteOnly") {
+        await expect(f.apply()).rejects.toThrow("This opportunity is invite-only");
+        await f.checked(() =>
+          f.t.run((ctx) =>
+            ctx.db.insert("opportunityInvites", {
+              opportunityId: f.opportunityId,
+              bandId: f.bandId,
+              invitedBy: f.users.owner,
+              createdAt: NOW,
+            }),
+          ),
+        );
+      }
+      const { applicationId } = await f.apply({
+        message: "  We are available  ",
+        askMinor: 12000,
+        availabilityNote: "  After 6pm  ",
+        lineupNote: "  Four musicians  ",
+      });
+      expect(await f.readApplication(applicationId)).toMatchObject({
+        ...f.applyArgs,
+        submittedBy: f.users.admin,
+        status: "submitted",
+        askMinor: 12000,
+        availabilityNote: "After 6pm",
+        lineupNote: "Four musicians",
+      });
+      expect((await f.readOpportunity())?.applicationCount).toBe(1);
+      await expect(f.apply()).rejects.toThrow(
+        "This band already has an active application for this opportunity",
+      );
+    },
+  );
 });

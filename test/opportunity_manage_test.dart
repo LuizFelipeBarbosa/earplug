@@ -32,6 +32,9 @@ void main() {
     final openCard = find.byKey(const ValueKey('org-opp-opp1'));
     final draftCard = find.byKey(const ValueKey('org-opp-opp2'));
 
+    expect(find.text('OPPORTUNITIES'), findsOneWidget);
+    expect(find.text('Post a slot. Find your next artist.'), findsOneWidget);
+    expect(find.text('NEW OPPORTUNITY'), findsOneWidget);
     expect(
       tester
           .widget<SectionBar>(
@@ -78,6 +81,47 @@ void main() {
       findsOneWidget,
     );
     harness.app.dispose();
+  });
+
+  testWidgets('host requests use host copy and a private event caption', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: OrgOpportunitiesScreen()),
+      beforePump: (app) => app.switchToOrganization('org2'),
+    );
+
+    expect(find.text('REQUESTS'), findsOneWidget);
+    expect(find.text('Post a request. Find your artist.'), findsOneWidget);
+    expect(find.text('NEW REQUEST'), findsOneWidget);
+    expect(find.text('OPPORTUNITIES'), findsNothing);
+    expect(find.text('Post a slot. Find your next artist.'), findsNothing);
+    expect(find.text('NEW OPPORTUNITY'), findsNothing);
+    final privateCard = find.byKey(const ValueKey('org-opp-opp-private'));
+    await tester.ensureVisible(privateCard);
+    expect(
+      find.descendant(
+        of: privateCard,
+        matching: find.text('Private event · Mission District'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Venue TBD'), findsNothing);
+    expectNoFieldInCard(tester);
+
+    final newRequest = find.byKey(const Key('org-opps-new'));
+    await tester.ensureVisible(newRequest);
+    await tester.tap(newRequest);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.opportunityEdit);
+    expect(harness.app.current.param, 'new');
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets(

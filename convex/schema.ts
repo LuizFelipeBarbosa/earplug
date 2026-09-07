@@ -67,6 +67,7 @@ export const organizationTypeValidator = v.union(
   v.literal("promoter"),
   v.literal("studentOrg"),
   v.literal("other"),
+  v.literal("privateHost"),
 );
 
 export const organizationStatusValidator = v.union(
@@ -380,6 +381,22 @@ export default defineSchema({
     .index("by_stripeAccountId", ["stripeAccountId"])
     .index("by_stripeCustomerId", ["stripeCustomerId"]),
 
+  // Organizer-owned locations for private bookings, independent of venues.
+  privateLocations: defineTable({
+    organizationId: v.id("organizations"),
+    label: v.string(),
+    addr: v.string(),
+    city: v.string(),
+    // Approximate, public-safe label, like a venue's area.
+    area: v.string(),
+    lat: v.number(),
+    lng: v.number(),
+    notes: v.optional(v.string()),
+    archivedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_organizationId", ["organizationId"]),
+
   organizationMembers: defineTable({
     organizationId: v.id("organizations"),
     userId: v.id("users"),
@@ -404,6 +421,11 @@ export default defineSchema({
 
   organizationApplications: defineTable({
     applicantUserId: v.id("users"),
+    kind: v.optional(v.union(v.literal("organization"), v.literal("host"))),
+    hostDisplayName: v.optional(v.string()),
+    hostPhone: v.optional(v.string()),
+    hostArea: v.optional(v.string()),
+    hostAgreementAcceptedAt: v.optional(v.number()),
     orgName: v.string(),
     orgType: organizationTypeValidator,
     website: v.optional(v.string()),
@@ -439,7 +461,8 @@ export default defineSchema({
       "applicantUserId",
       "createdAt",
     ])
-    .index("by_status_and_createdAt", ["status", "createdAt"]),
+    .index("by_status_and_createdAt", ["status", "createdAt"])
+    .index("by_kind_and_status_and_createdAt", ["kind", "status", "createdAt"]),
 
   /** Opportunities are organizer-facing and are never shown directly to fans.
    * The fan-facing `gigs` row is created only once an opportunity reaches
@@ -451,6 +474,7 @@ export default defineSchema({
     hostUserId: v.optional(v.id("users")),
     mode: opportunityModeValidator,
     venueId: v.optional(v.id("venues")),
+    privateLocationId: v.optional(v.id("privateLocations")),
     // Denormalized from the venue's public area/approx label at create/update time;
     // private bookings (Phase 5) will carry their own value.
     area: v.string(),
@@ -496,6 +520,7 @@ export default defineSchema({
     // Opportunity lookups by status and application deadline for offer workflows.
     .index("by_status_and_applicationsCloseAt", ["status", "applicationsCloseAt"])
     .index("by_venueId_and_startsAt", ["venueId", "startsAt"])
+    .index("by_privateLocationId", ["privateLocationId"])
     .index("by_publicGigId", ["publicGigId"])
     .index("by_slug", ["slug"]),
 
@@ -570,6 +595,7 @@ export default defineSchema({
     cancelledBy: v.optional(bookingCancelledByValidator),
     cancelledByUserId: v.optional(v.id("users")),
     cancelReason: v.optional(v.string()),
+    cancellationKind: v.optional(v.literal("safety")),
     // Captures the status immediately before `disputed` so resolution can resume `confirmed`, `completed`, or `paid`.
     disputedFromStatus: v.optional(bookingStatusValidator),
     // Derived from payoutHoldReasons being non-empty; maintained by later payment writers.
@@ -628,6 +654,27 @@ export default defineSchema({
     respondedAt: v.optional(v.number()),
     respondedBy: v.optional(v.id("users")),
   }).index("by_bookingId_and_revision", ["bookingId", "revision"]),
+
+  // Safety concerns raised by either side of a booking for admin review.
+  safetyReports: defineTable({
+    bookingId: v.id("bookings"),
+    reporterUserId: v.id("users"),
+    side: v.union(v.literal("organizer"), v.literal("artist")),
+    category: v.union(
+      v.literal("safety"),
+      v.literal("harassment"),
+      v.literal("misrepresentation"),
+      v.literal("other"),
+    ),
+    text: v.string(),
+    status: v.union(v.literal("open"), v.literal("resolved")),
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+    resolvedBy: v.optional(v.id("users")),
+    adminNote: v.optional(v.string()),
+  })
+    .index("by_status_and_createdAt", ["status", "createdAt"])
+    .index("by_bookingId", ["bookingId"]),
 
   bandPayoutAccounts: defineTable({
     bandId: v.id("bands"),

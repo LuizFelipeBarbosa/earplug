@@ -219,12 +219,14 @@ mixin _BookingState on _AppStateCore {
   Future<Booking?> cancelBooking(
     Booking booking, {
     required String reason,
+    bool safety = false,
   }) async {
     await repository.cancelBooking(
       bookingId: booking.id,
       reason: reason,
       expectedRevision: booking.revision,
       side: booking.viewerSide,
+      safety: safety,
     );
     return _refreshAfterAction(booking);
   }
@@ -260,6 +262,41 @@ mixin _BookingState on _AppStateCore {
     }
   }
 
+  final Map<String, List<SafetyReport>> _safetyReportsByBooking = {};
+
+  List<SafetyReport> safetyReportsFor(String bookingId) =>
+      _safetyReportsByBooking[bookingId] ?? const [];
+
+  Future<List<SafetyReport>> mySafetyReports(String bookingId) async {
+    try {
+      final reports = await repository.mySafetyReports(bookingId);
+      if (_disposed) return reports;
+      _safetyReportsByBooking[bookingId] = reports;
+      notifyListeners();
+      return reports;
+    } catch (error) {
+      logError('mySafetyReports', error);
+      return const [];
+    }
+  }
+
+  Future<void> reportSafety(
+    String bookingId,
+    SafetyCategory category,
+    String text,
+  ) async {
+    try {
+      await repository.reportSafety(
+        bookingId: bookingId,
+        category: category,
+        text: text,
+      );
+      await mySafetyReports(bookingId);
+    } catch (error) {
+      logError('reportSafety', error);
+    }
+  }
+
   // ---- band changes (chained after _OpportunityState)
   String _lastKnownBandIdForBookings = '';
 
@@ -279,6 +316,7 @@ mixin _BookingState on _AppStateCore {
     _bookingLoads.clear();
     _bookingSides.clear();
     _bookingById.clear();
+    _safetyReportsByBooking.clear();
     organizationBookings = const [];
     bandBookings = const [];
     organizationBookingsStatus = DataStatus.connecting;

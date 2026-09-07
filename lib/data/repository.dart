@@ -443,6 +443,43 @@ abstract class EarplugRepository {
   /// sequence mutations after an identity change.
   Future<void> refreshAuth();
 
+  Future<FeatureFlags> featureFlags();
+  Future<List<PrivateLocation>> privateLocationsFor(String organizationId);
+  Future<String> createPrivateLocation({
+    required String organizationId,
+    required String label,
+    required String addr,
+    required String city,
+    required String area,
+    required double lat,
+    required double lng,
+    String? notes,
+  });
+  Future<void> updatePrivateLocation(
+    String locationId, {
+    String? label,
+    String? addr,
+    String? city,
+    String? area,
+    double? lat,
+    double? lng,
+    String? notes,
+  });
+  Future<void> removePrivateLocation(String locationId);
+
+  Future<String> reportSafety({
+    required String bookingId,
+    required SafetyCategory category,
+    required String text,
+  });
+  Future<List<SafetyReport>> mySafetyReports(String bookingId);
+  Future<SafetyReportsPage> openSafetyReports({
+    String? cursor,
+    int numItems = 25,
+  });
+  Future<void> resolveSafetyReport(String reportId, {String? adminNote});
+  Future<List<SafetyReport>> safetyReportsForBookingAdmin(String bookingId);
+
   /// The signed-in user's profile, or null when the backend holds none.
   Future<UserProfile?> me();
 
@@ -488,6 +525,11 @@ abstract class EarplugRepository {
   Future<OrganizationApplication?> myOrganizationApplication();
   Future<({String applicationId, int revision})>
   saveOrganizationApplicationDraft({
+    ApplicationKind? kind,
+    String? hostDisplayName,
+    String? hostPhone,
+    String? hostArea,
+    bool? hostAgreementAccepted,
     String? applicationId,
     int? expectedRevision,
     required String orgName,
@@ -517,6 +559,7 @@ abstract class EarplugRepository {
   );
   Future<AdminApplicationPage> applicationsForReview({
     OrganizationApplicationStatus? status,
+    ApplicationKind? kind,
     String? cursor,
     int numItems = 25,
   });
@@ -721,7 +764,9 @@ abstract class EarplugRepository {
     required String organizationId,
     required String title,
     String? desc,
-    required String venueId,
+    String? venueId,
+    OpportunityMode mode = OpportunityMode.publicEvent,
+    String? privateLocationId,
     String? eventType,
     int? expectedAttendance,
     List<String>? genres,
@@ -752,6 +797,7 @@ abstract class EarplugRepository {
     String? title,
     String? desc,
     String? venueId,
+    String? privateLocationId,
     String? eventType,
     int? expectedAttendance,
     List<String>? genres,
@@ -859,6 +905,7 @@ abstract class EarplugRepository {
     int numItems = 25,
     String? bandId,
     OpportunityFilters? filters,
+    OpportunityMode? mode,
   }) {
     // TODO(marketplace-phase2): demo lane implements this.
     throw UnimplementedError('browseOpportunities');
@@ -945,6 +992,7 @@ abstract class EarplugRepository {
     required String reason,
     required int expectedRevision,
     BookingSide? side,
+    bool? safety,
   }) {
     // TODO(marketplace-phase3): demo lane implements this.
     throw UnimplementedError('cancelBooking');

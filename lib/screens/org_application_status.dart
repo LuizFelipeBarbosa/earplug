@@ -59,7 +59,12 @@ class _OrgApplicationStatusScreenState
     _redirected = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      context.read<AppState>().go(Screen.orgApply);
+      final app = context.read<AppState>();
+      if (app.hasHostApplication) {
+        app.openHostApply();
+      } else {
+        app.go(Screen.orgApply);
+      }
     });
   }
 
@@ -84,17 +89,25 @@ class _OrgApplicationStatusScreenState
     if (_startingNewApplication) return;
     setState(() => _startingNewApplication = true);
     final app = context.read<AppState>();
+    final isHost = app.myOrganizationApplication?.kind == ApplicationKind.host;
     try {
       // A new draft keeps the rejected record and its review history intact.
       await app.repository.saveOrganizationApplicationDraft(
+        kind: isHost ? ApplicationKind.host : null,
         orgName: '',
-        orgType: OrganizationType.venueOperator,
+        orgType: isHost
+            ? OrganizationType.privateHost
+            : OrganizationType.venueOperator,
         contactName: '',
         businessEmail: '',
       );
       await app.refreshOrganizationApplication();
       if (!mounted) return;
-      app.openOrganizerApply();
+      if (isHost) {
+        app.openHostApply();
+      } else {
+        app.openOrganizerApply();
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _startingNewApplication = false);
@@ -158,6 +171,7 @@ class _OrgApplicationStatusScreenState
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final application = app.myOrganizationApplication;
+    final isHost = application?.kind == ApplicationKind.host;
     if (!_startingNewApplication &&
         application?.status == OrganizationApplicationStatus.draft) {
       _scheduleApplyRedirect();
@@ -173,7 +187,7 @@ class _OrgApplicationStatusScreenState
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'ORGANIZER APPLICATION',
+                    isHost ? 'HOST APPLICATION' : 'ORGANIZER APPLICATION',
                     style: Theme.of(context).textTheme.epSectionHeading,
                   ),
                 ),
@@ -201,25 +215,56 @@ class _OrgApplicationStatusScreenState
                         key: const Key('org-status-timeline'),
                         steps: _steps(application),
                       ),
+                      if (isHost) ...[
+                        Column(
+                          key: const Key('host-status-details'),
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _HostDetailRow(
+                              label: 'DISPLAY NAME',
+                              value: application.hostDisplayName,
+                            ),
+                            _HostDetailRow(
+                              label: 'AREA',
+                              value: application.hostArea,
+                            ),
+                            _HostDetailRow(
+                              label: 'PHONE',
+                              value: application.hostPhone,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                      ],
                       if (application.status ==
                           OrganizationApplicationStatus.needsInfo) ...[
                         EpButton(
                           'EDIT APPLICATION',
                           key: const Key('org-status-edit'),
-                          onTap: () =>
-                              context.read<AppState>().go(Screen.orgApply),
+                          onTap: () {
+                            final app = context.read<AppState>();
+                            if (isHost) {
+                              app.openHostApply();
+                            } else {
+                              app.go(Screen.orgApply);
+                            }
+                          },
                         ),
                         const SizedBox(height: 18),
                       ],
                       if (application.status ==
                           OrganizationApplicationStatus.approved) ...[
                         Text(
-                          "You're verified",
+                          isHost
+                              ? 'Your host account is ready.'
+                              : "You're verified",
                           style: Theme.of(context).textTheme.epPageHeading,
                         ),
                         const SizedBox(height: 12),
                         EpButton(
-                          'SWITCH TO ORGANIZER',
+                          isHost
+                              ? 'OPEN HOST DASHBOARD'
+                              : 'SWITCH TO ORGANIZER',
                           key: const Key('org-status-switch'),
                           onTap: () =>
                               context.read<AppState>().switchToOrganization(
@@ -277,6 +322,34 @@ class _OrgApplicationStatusScreenState
                     ],
                   ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HostDetailRow extends StatelessWidget {
+  const _HostDetailRow({required this.label, required this.value});
+
+  final String label;
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: textTheme.epLabel.copyWith(
+              color: context.epColors.contentSecondary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(value ?? '—', style: textTheme.epBody),
         ],
       ),
     );

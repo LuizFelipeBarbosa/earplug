@@ -90,14 +90,18 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
         ),
         children: [
           EpPageHeading(
-            title: 'OPPORTUNITIES',
-            description: 'Post a slot. Find your next artist.',
+            title: app.currentIsHost ? 'REQUESTS' : 'OPPORTUNITIES',
+            description: app.currentIsHost
+                ? 'Post a request. Find your artist.'
+                : 'Post a slot. Find your next artist.',
             action: app.canManageOrganization(app.organizationId)
                 ? FilledButton.icon(
                     key: const Key('org-opps-new'),
                     onPressed: app.openOpportunityEditor,
                     icon: const Icon(Icons.add, size: 18),
-                    label: const Text('NEW OPPORTUNITY'),
+                    label: Text(
+                      app.currentIsHost ? 'NEW REQUEST' : 'NEW OPPORTUNITY',
+                    ),
                   )
                 : null,
           ),
@@ -164,7 +168,12 @@ class _OrgOpportunitiesScreenState extends State<OrgOpportunitiesScreen> {
                   context,
                   gigId: gig.id,
                   gigTitle: opportunity.title,
-                  venueName: opportunity.venue?.name ?? 'Venue TBD',
+                  venueName:
+                      opportunity.venue?.name ??
+                      (opportunity.privateEvent ||
+                              opportunity.mode == OpportunityMode.privateBooking
+                          ? 'Private event'
+                          : 'Venue TBD'),
                   doorsTime: gig.doorsAt != null
                       ? TimeOfDay.fromDateTime(
                           gig.doorsAt!.toLocal(),
@@ -311,6 +320,11 @@ class _OpportunityCard extends StatelessWidget {
         .join(' · ');
     final textTheme = Theme.of(context).textTheme;
     final ticketSales = sales;
+    final venueLabel =
+        opportunity.privateEvent ||
+            opportunity.mode == OpportunityMode.privateBooking
+        ? 'Private event'
+        : opportunity.venue?.name ?? 'Venue TBD';
 
     return EpCard(
       key: ValueKey('org-opp-${opportunity.id}'),
@@ -327,7 +341,7 @@ class _OpportunityCard extends StatelessWidget {
                 Text(opportunity.title, style: textTheme.epSectionHeading),
                 const SizedBox(height: 4),
                 Text(
-                  '${opportunity.venue?.name ?? 'Venue TBD'} · '
+                  '$venueLabel · '
                   '${opportunity.venue?.area ?? opportunity.area}',
                   style: textTheme.epMeta,
                 ),

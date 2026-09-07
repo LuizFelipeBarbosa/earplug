@@ -5,9 +5,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api as generatedApi, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { readFeedCutoff } from "./clock";
+import { flag } from "./lib/env";
 import { ArtistApplicationStatus } from "./lib/opportunityStatus";
 import schema from "./schema";
 import type * as readModule from "./talentOpportunitiesRead";
+
+vi.mock("./lib/env", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./lib/env")>();
+  return { ...actual, flag: vi.fn(actual.flag) };
+});
 
 // Keep the new module typed locally until the integration lane runs codegen.
 const api = generatedApi as typeof generatedApi &
@@ -20,6 +26,8 @@ const paginationOpts = { numItems: 100, cursor: null };
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
+  vi.mocked(flag).mockReset();
+  vi.mocked(flag).mockImplementation((_name, defaultValue) => defaultValue);
 });
 
 afterEach(() => {
@@ -1055,5 +1063,310 @@ describe("organization talent opportunity reads", () => {
         opportunityId,
       }),
     ).toMatchObject({ _id: opportunityId, invitedBandIds: [] });
+  });
+});
+
+async function setupPrivateRequest() {
+  const f = await setupOrganization();
+  const opportunity = await f.createOpen({ title: "Backyard party" });
+  await f.t.run(async (ctx) => {
+    const privateLocationId = await ctx.db.insert("privateLocations", {
+      organizationId: f.organizationId,
+      label: "Backyard",
+      addr: "42 Garden Street",
+      city: "Oakland",
+      area: "Rockridge, Oakland",
+      lat: 37.84,
+      lng: -122.25,
+      notes: "Use the side gate",
+      createdAt: NOW,
+      updatedAt: NOW,
+    });
+    await ctx.db.patch(f.organizationId, { orgType: "privateHost" });
+    await ctx.db.patch(opportunity.opportunityId, {
+      mode: "privateBooking",
+      venueId: undefined,
+      privateLocationId,
+      area: "Rockridge, Oakland",
+      venueType: undefined,
+    });
+  });
+  return { ...f, ...opportunity };
+}
+
+function expectNoAddressFields(value: unknown) {
+  if (value === null || typeof value !== "object") return;
+  for (const [key, nested] of Object.entries(value)) {
+    expect(["addr", "lat", "lng", "notes", "exactAddress"]).not.toContain(key);
+    expectNoAddressFields(nested);
+  }
+}
+
+describe("private request discovery", () => {
+  test("band admins can browse private requests without any address fields", async () => {
+    const f = await setupPrivateRequest();
+    vi.mocked(flag).mockReturnValue(true);
+    await f.seedInvite(f.opportunityId, f.otherBandId);
+    const result = await f.asOtherArtist.query(
+      api.talentOpportunitiesRead.browse,
+      { paginationOpts, mode: "privateBooking", bandId: f.otherBandId },
+    );
+    expect(result.page).toHaveLength(1);
+    expect(result.page[0]).toMatchObject({
+      opportunity: {
+        _id: f.opportunityId,
+        venue: null,
+        privateEvent: true,
+        area: "Rockridge, Oakland",
+      },
+      invited: true,
+      myApplicationStatus: null,
+    });
+    expectNoAddressFields(result.page[0]);
+    expect(flag).toHaveBeenCalledWith("PRIVATE_BOOKINGS_ENABLED", false);
+  });
+
+  test("band admins get an empty completed page when private bookings are disabled", async () => {
+    const f = await setupPrivateRequest();
+    vi.mocked(flag).mockReturnValue(false);
+    await expect(
+      f.asOtherArtist.query(api.talentOpportunitiesRead.browse, {
+        paginationOpts,
+        mode: "privateBooking",
+      }),
+    ).resolves.toEqual({ page: [], isDone: true, continueCursor: "" });
+  });
+
+  test.each([false, true])(
+    "private browse rejects anonymous viewers and non-band-admins when the flag is %s",
+    async (enabled) => {
+      const f = await setupPrivateRequest();
+      vi.mocked(flag).mockReturnValue(enabled);
+      for (const caller of [
+        f.t,
+        f.asStranger,
+        f.asArtist,
+        f.asOwner,
+        f.t.withIdentity({ subject: "no_user_record" }),
+      ]) {
+        await expect(
+          caller.query(api.talentOpportunitiesRead.browse, {
+            paginationOpts,
+            mode: "privateBooking",
+            bandId: f.otherBandId,
+          }),
+        ).rejects.toThrow("Sign in as a band admin to see private requests");
+      }
+    },
+  );
+
+  test("any admin membership grants private browse even when the first membership is a regular member", async () => {
+    const f = await setupPrivateRequest();
+    await f.t.run((ctx) =>
+      ctx.db.insert("bandMembers", {
+        bandId: f.otherBandId,
+        userId: f.artistId,
+        role: "admin",
+      }),
+    );
+    vi.mocked(flag).mockReturnValue(true);
+    const result = await f.asArtist.query(api.talentOpportunitiesRead.browse, {
+      paginationOpts,
+      mode: "privateBooking",
+    });
+    expect(result.page.map((item) => item.opportunity._id)).toEqual([
+      f.opportunityId,
+    ]);
+  });
+
+  test.each([undefined, "publicEvent"] as const)(
+    "public browse with mode %s stays anonymous and does not check the private flag",
+    async (mode) => {
+      const f = await setupOrganization();
+      const { opportunityId } = await f.createOpen();
+      vi.mocked(flag).mockClear();
+      const result = await f.t.query(api.talentOpportunitiesRead.browse, {
+        paginationOpts,
+        mode,
+      });
+      expect(result.page.map((item) => item.opportunity._id)).toEqual([
+        opportunityId,
+      ]);
+      expect(flag).not.toHaveBeenCalled();
+    },
+  );
+
+  test("private resolution requires membership in the specifically invited band and its band ID", async () => {
+    const f = await setupPrivateRequest();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.opportunityId, { visibility: "inviteOnly" }),
+    );
+    await f.seedInvite(f.opportunityId);
+    for (const ref of [f.slug, f.opportunityId]) {
+      for (const caller of [f.t, f.asStranger, f.asOtherArtist]) {
+        for (const bandId of [undefined, f.bandId, f.otherBandId]) {
+          expect(
+            await caller.query(api.talentOpportunitiesRead.resolvePublic, {
+              ref,
+              bandId,
+            }),
+          ).toBeNull();
+        }
+      }
+      for (const bandId of [undefined, f.otherBandId]) {
+        expect(
+          await f.asArtist.query(api.talentOpportunitiesRead.resolvePublic, {
+            ref,
+            bandId,
+          }),
+        ).toBeNull();
+      }
+      const result = await f.asArtist.query(
+        api.talentOpportunitiesRead.resolvePublic,
+        { ref, bandId: f.bandId },
+      );
+      expect(result).toMatchObject({
+        opportunity: { _id: f.opportunityId, venue: null, privateEvent: true },
+      });
+      expectNoAddressFields(result);
+    }
+  });
+
+  test.each(["public", "inviteOnly"] as const)(
+    "private %s resolution allows posting organization members at every status",
+    async (visibility) => {
+      const f = await setupPrivateRequest();
+      for (const status of [
+        "draft",
+        "open",
+        "applications_closed",
+        "booking",
+        "confirmed",
+        "completed",
+        "cancelled",
+      ] as const) {
+        await f.t.run((ctx) =>
+          ctx.db.patch(f.opportunityId, { visibility, status }),
+        );
+        for (const caller of [f.t, f.asStranger, f.asArtist]) {
+          expect(
+            await caller.query(api.talentOpportunitiesRead.resolvePublic, {
+              ref: f.slug,
+              bandId: f.bandId,
+            }),
+          ).toBeNull();
+        }
+        for (const caller of [f.asOwner, f.asManager, f.asFinance, f.asDoor]) {
+          const result = await caller.query(
+            api.talentOpportunitiesRead.resolvePublic,
+            { ref: f.slug },
+          );
+          expect(result?.opportunity).toMatchObject({
+            _id: f.opportunityId,
+            status,
+            venue: null,
+            privateEvent: true,
+          });
+          expectNoAddressFields(result);
+        }
+      }
+    },
+  );
+
+  test.each(["public", "inviteOnly"] as const)(
+    "private %s resolution requires an artist-visible status and an invite for a band admin",
+    async (visibility) => {
+      const f = await setupPrivateRequest();
+      for (const invited of [false, true]) {
+        if (invited) await f.seedInvite(f.opportunityId, f.otherBandId);
+        for (const [status, artistVisible] of [
+          ["draft", false],
+          ["open", true],
+          ["applications_closed", true],
+          ["booking", true],
+          ["confirmed", true],
+          ["completed", false],
+          ["cancelled", false],
+        ] as const) {
+          await f.t.run((ctx) =>
+            ctx.db.patch(f.opportunityId, { visibility, status }),
+          );
+          for (const ref of [f.slug, f.opportunityId]) {
+            expect(
+              await f.asOtherArtist.query(
+                api.talentOpportunitiesRead.resolvePublic,
+                {
+                  ref,
+                },
+              ),
+            ).toBeNull();
+            const result = await f.asOtherArtist.query(
+              api.talentOpportunitiesRead.resolvePublic,
+              { ref, bandId: f.otherBandId },
+            );
+            if (invited && visibility === "inviteOnly" && artistVisible) {
+              expect(result?.opportunity).toMatchObject({
+                _id: f.opportunityId,
+                status,
+                privateEvent: true,
+              });
+              expectNoAddressFields(result);
+            } else {
+              expect(result).toBeNull();
+            }
+          }
+        }
+      }
+    },
+  );
+
+  test("private resolution allows platform admins but rejects unrelated organization members and revoked admins", async () => {
+    const f = await setupPrivateRequest();
+    const grantId = await f.t.run(async (ctx) => {
+      const userId = await ctx.db.insert("users", {
+        clerkId: "private_platform_admin",
+        name: "Platform admin",
+        email: "platform-admin@opportunity.test",
+        genres: [],
+        attendedCount: 0,
+      });
+      const organizationId = await ctx.db.insert("organizations", {
+        name: "Unrelated Organizer",
+        slug: "unrelated-organizer",
+        orgType: "promoter",
+        status: "verified",
+        ownerUserId: userId,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      await ctx.db.insert("organizationMembers", {
+        organizationId,
+        userId,
+        role: "owner",
+        createdAt: NOW,
+      });
+      return await ctx.db.insert("platformAdmins", {
+        userId,
+        grantedAt: NOW,
+      });
+    });
+    const asAdmin = f.t.withIdentity({ subject: "private_platform_admin" });
+    expect(
+      await asAdmin.query(api.talentOpportunitiesRead.resolvePublic, {
+        ref: f.slug,
+      }),
+    ).toMatchObject({ opportunity: { _id: f.opportunityId } });
+    await expect(
+      asAdmin.query(api.talentOpportunitiesRead.browse, {
+        paginationOpts,
+        mode: "privateBooking",
+      }),
+    ).rejects.toThrow("Sign in as a band admin to see private requests");
+    await f.t.run((ctx) => ctx.db.patch(grantId, { revokedAt: NOW }));
+    expect(
+      await asAdmin.query(api.talentOpportunitiesRead.resolvePublic, {
+        ref: f.slug,
+      }),
+    ).toBeNull();
   });
 });

@@ -9,6 +9,7 @@ import {
   ALL_ORGANIZATION_ROLES,
   requireOrganizationRoleQuery,
 } from "./lib/authz";
+import { flag } from "./lib/env";
 import { currentUser, feedCutoff } from "./lib/helpers";
 import {
   artistOpportunityPayloadValidator,
@@ -23,9 +24,14 @@ import {
 import {
   bandIsInvited,
   canViewerSeeOpportunity,
+  isAdminOfAnyBand,
   latestApplicationStatusFor,
 } from "./lib/opportunityVisibility";
-import { artistApplicationStatusValidator, venueTypeValidator } from "./schema";
+import {
+  artistApplicationStatusValidator,
+  opportunityModeValidator,
+  venueTypeValidator,
+} from "./schema";
 
 export const browseItemValidator = v.object({
   opportunity: artistOpportunityPayloadValidator,
@@ -50,6 +56,7 @@ async function bandHasMember(
 export const browse = query({
   args: {
     paginationOpts: paginationOptsValidator,
+    mode: v.optional(opportunityModeValidator),
     bandId: v.optional(v.id("bands")),
     filters: v.optional(
       v.object({
@@ -62,18 +69,28 @@ export const browse = query({
   },
   returns: paginationResultValidator(browseItemValidator),
   handler: async (ctx, args) => {
+    const mode = args.mode ?? "publicEvent";
+    const user = await currentUser(ctx);
+    if (mode === "privateBooking") {
+      if (!user || !(await isAdminOfAnyBand(ctx, user._id))) {
+        throw new Error("Sign in as a band admin to see private requests");
+      }
+      if (!flag("PRIVATE_BOOKINGS_ENABLED", false)) {
+        return { page: [], isDone: true, continueCursor: "" };
+      }
+    }
+
     const cutoff = await feedCutoff(ctx);
     const result = await ctx.db
       .query("talentOpportunities")
       .withIndex("by_mode_and_visibility_and_status_and_startsAt", (q) =>
         q
-          .eq("mode", "publicEvent")
+          .eq("mode", mode)
           .eq("visibility", "public")
           .eq("status", "open"),
       )
       .order("asc")
       .paginate(args.paginationOpts);
-    const user = await currentUser(ctx);
     const canSeeBandState =
       args.bandId !== undefined &&
       user !== null &&

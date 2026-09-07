@@ -57,6 +57,72 @@ LatLng _marketplacePoint(
   json['lng'] is num ? (json['lng'] as num).toDouble() : fallback.longitude,
 );
 
+class FeatureFlags {
+  const FeatureFlags({
+    required this.privateBookings,
+    required this.tickets,
+    required this.payments,
+    required this.bandGigWrites,
+  });
+
+  final bool privateBookings;
+  final bool tickets;
+  final bool payments;
+  final bool bandGigWrites;
+
+  factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
+    privateBookings: json['privateBookings'] == true,
+    tickets: json['tickets'] == true,
+    payments: json['payments'] == true,
+    bandGigWrites: json['bandGigWrites'] == true,
+  );
+}
+
+class PrivateLocation {
+  const PrivateLocation({
+    required this.id,
+    required this.organizationId,
+    required this.label,
+    required this.addr,
+    required this.city,
+    required this.area,
+    required this.lat,
+    required this.lng,
+    this.notes,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String id;
+  final String organizationId;
+  final String label;
+  final String addr;
+  final String city;
+  final String area;
+  final double lat;
+  final double lng;
+  final String? notes;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  factory PrivateLocation.fromJson(Map<String, dynamic> json) {
+    final point = _marketplacePoint(json);
+    return PrivateLocation(
+      id: _marketplaceString(json['_id']),
+      organizationId: _marketplaceString(json['organizationId']),
+      label: _marketplaceString(json['label']),
+      addr: _marketplaceString(json['addr']),
+      city: _marketplaceString(json['city']),
+      area: _marketplaceString(json['area']),
+      lat: point.latitude,
+      lng: point.longitude,
+      notes: _marketplaceOptionalString(json['notes']),
+      createdAt: _marketplaceDate(json['createdAt']),
+      updatedAt: _marketplaceDate(json['updatedAt']),
+    );
+  }
+}
+
 enum AddressDisclosure {
   onTicket('onTicket'),
   public('public');
@@ -78,6 +144,7 @@ enum VenueType {
   hall('hall'),
   house('house'),
   outdoor('outdoor'),
+  private('private'),
   other('other');
 
   const VenueType(this.wireValue);
@@ -90,6 +157,7 @@ enum VenueType {
     'hall' => VenueType.hall,
     'house' => VenueType.house,
     'outdoor' => VenueType.outdoor,
+    'private' => VenueType.private,
     _ => VenueType.other,
   };
 }
@@ -313,6 +381,7 @@ enum OrganizationType {
   venueOperator('venueOperator'),
   promoter('promoter'),
   studentOrg('studentOrg'),
+  privateHost('privateHost'),
   other('other');
 
   const OrganizationType(this.wireValue);
@@ -323,6 +392,7 @@ enum OrganizationType {
     'venueOperator' => OrganizationType.venueOperator,
     'promoter' => OrganizationType.promoter,
     'studentOrg' => OrganizationType.studentOrg,
+    'privateHost' => OrganizationType.privateHost,
     _ => OrganizationType.other,
   };
 }
@@ -617,6 +687,41 @@ enum OrganizationApplicationStatus {
       };
 }
 
+enum ApplicationKind {
+  organization('organization'),
+  host('host'),
+  unknown('unknown');
+
+  const ApplicationKind(this.wireValue);
+
+  final String wireValue;
+
+  static ApplicationKind fromWire(Object? value) => switch (value) {
+    'organization' => ApplicationKind.organization,
+    'host' => ApplicationKind.host,
+    _ => ApplicationKind.unknown,
+  };
+}
+
+class ApplicationCounts {
+  const ApplicationCounts({
+    this.submitted = 0,
+    this.underReview = 0,
+    this.needsInfo = 0,
+  });
+
+  final int submitted;
+  final int underReview;
+  final int needsInfo;
+
+  factory ApplicationCounts.fromJson(Map<String, dynamic> json) =>
+      ApplicationCounts(
+        submitted: _marketplaceInt(json['submitted']),
+        underReview: _marketplaceInt(json['under_review']),
+        needsInfo: _marketplaceInt(json['needs_info']),
+      );
+}
+
 enum ApplicationDecision {
   underReview('under_review'),
   needsInfo('needs_info'),
@@ -708,6 +813,11 @@ class ApplicationDocument {
 class OrganizationApplication {
   const OrganizationApplication({
     required this.id,
+    this.kind,
+    this.hostDisplayName,
+    this.hostPhone,
+    this.hostArea,
+    this.hostAgreementAcceptedAt,
     required this.status,
     required this.orgName,
     required this.orgType,
@@ -727,6 +837,11 @@ class OrganizationApplication {
   });
 
   final String id;
+  final ApplicationKind? kind;
+  final String? hostDisplayName;
+  final String? hostPhone;
+  final String? hostArea;
+  final DateTime? hostAgreementAcceptedAt;
   final OrganizationApplicationStatus status;
   final String orgName;
   final OrganizationType orgType;
@@ -748,6 +863,15 @@ class OrganizationApplication {
     final documentJson = json['documents'] ?? json['verificationDocuments'];
     return OrganizationApplication(
       id: _marketplaceString(json['_id']),
+      kind: json['kind'] == null
+          ? null
+          : ApplicationKind.fromWire(json['kind']),
+      hostDisplayName: _marketplaceOptionalString(json['hostDisplayName']),
+      hostPhone: _marketplaceOptionalString(json['hostPhone']),
+      hostArea: _marketplaceOptionalString(json['hostArea']),
+      hostAgreementAcceptedAt: _marketplaceOptionalDate(
+        json['hostAgreementAcceptedAt'],
+      ),
       status: OrganizationApplicationStatus.fromWire(json['status']),
       orgName: _marketplaceString(json['orgName']),
       orgType: OrganizationType.fromWire(json['orgType']),
@@ -782,12 +906,14 @@ class OrganizationApplication {
 class AdminApplicationRow {
   const AdminApplicationRow({
     required this.application,
+    this.kind,
     required this.applicantUserId,
     required this.applicantName,
     required this.applicantEmail,
   });
 
   final OrganizationApplication application;
+  final ApplicationKind? kind;
   final String applicantUserId;
   final String applicantName;
   final String applicantEmail;
@@ -795,6 +921,9 @@ class AdminApplicationRow {
   factory AdminApplicationRow.fromJson(Map<String, dynamic> json) {
     final applicant = _marketplaceMap(json['applicant']);
     return AdminApplicationRow(
+      kind: json['kind'] == null
+          ? null
+          : ApplicationKind.fromWire(json['kind']),
       application: OrganizationApplication.fromJson(
         _marketplaceMap(json['application']),
       ),
@@ -841,6 +970,7 @@ class AdminOverview {
     required this.verifiedOrganizations,
     required this.suspendedOrganizations,
     required this.capped,
+    this.hostApplications = const ApplicationCounts(),
   });
 
   final int submitted;
@@ -849,6 +979,7 @@ class AdminOverview {
   final int verifiedOrganizations;
   final int suspendedOrganizations;
   final bool capped;
+  final ApplicationCounts hostApplications;
 
   factory AdminOverview.fromJson(Map<String, dynamic> json) {
     final counts = _marketplaceMap(json['counts']);
@@ -859,6 +990,9 @@ class AdminOverview {
       verifiedOrganizations: _marketplaceInt(counts['verifiedOrganizations']),
       suspendedOrganizations: _marketplaceInt(counts['suspendedOrganizations']),
       capped: json['capped'] == true,
+      hostApplications: ApplicationCounts.fromJson(
+        _marketplaceMap(counts['hostApplications']),
+      ),
     );
   }
 }
@@ -1202,7 +1336,8 @@ enum GigWhen { tonight, week, later }
 
 enum OpportunityMode {
   publicEvent('publicEvent'),
-  privateBooking('privateBooking');
+  privateBooking('privateBooking'),
+  unknown('unknown');
 
   const OpportunityMode(this.wireValue);
 
@@ -1210,7 +1345,8 @@ enum OpportunityMode {
 
   static OpportunityMode fromWire(Object? value) => switch (value) {
     'privateBooking' => OpportunityMode.privateBooking,
-    _ => OpportunityMode.publicEvent,
+    'publicEvent' => OpportunityMode.publicEvent,
+    _ => OpportunityMode.unknown,
   };
 }
 
@@ -1391,6 +1527,8 @@ class Opportunity {
     required this.organizationId,
     required this.mode,
     this.venueId,
+    this.privateLocationId,
+    this.privateEvent = false,
     this.venue,
     required this.title,
     required this.desc,
@@ -1429,6 +1567,8 @@ class Opportunity {
   final String organizationId;
   final OpportunityMode mode;
   final String? venueId;
+  final String? privateLocationId;
+  final bool privateEvent;
   final Venue? venue;
   final String title;
   final String desc;
@@ -1467,6 +1607,8 @@ class Opportunity {
     organizationId: _marketplaceString(json['organizationId']),
     mode: OpportunityMode.fromWire(json['mode']),
     venueId: _marketplaceOptionalString(json['venueId']),
+    privateLocationId: _marketplaceOptionalString(json['privateLocationId']),
+    privateEvent: json['privateEvent'] == true,
     venue: json['venue'] is Map
         ? Venue.fromJson(_marketplaceMap(json['venue']))
         : null,
@@ -1949,6 +2091,53 @@ class BookingVenue {
   );
 }
 
+class BookingPrivateLocation {
+  const BookingPrivateLocation({
+    required this.label,
+    required this.area,
+    required this.city,
+    this.addr,
+    this.lat,
+    this.lng,
+    this.notes,
+  });
+
+  final String label;
+  final String area;
+  final String city;
+  final String? addr;
+  final double? lat;
+  final double? lng;
+  final String? notes;
+
+  factory BookingPrivateLocation.fromJson(Map<String, dynamic> json) {
+    final point = _marketplacePoint(json);
+    return BookingPrivateLocation(
+      label: _marketplaceString(json['label']),
+      area: _marketplaceString(json['area']),
+      city: _marketplaceString(json['city']),
+      addr: _marketplaceOptionalString(json['addr']),
+      lat: json['lat'] is num ? point.latitude : null,
+      lng: json['lng'] is num ? point.longitude : null,
+      notes: _marketplaceOptionalString(json['notes']),
+    );
+  }
+}
+
+enum CancellationKind {
+  safety('safety'),
+  unknown('unknown');
+
+  const CancellationKind(this.wireValue);
+
+  final String wireValue;
+
+  static CancellationKind fromWire(Object? value) => switch (value) {
+    'safety' => CancellationKind.safety,
+    _ => CancellationKind.unknown,
+  };
+}
+
 class Booking {
   const Booking({
     required this.id,
@@ -1984,7 +2173,10 @@ class Booking {
     this.cancelReason,
     this.expiresAt,
     this.currentOffer,
-    required this.venue,
+    this.venue,
+    this.privateLocation,
+    this.privateEvent = false,
+    this.cancellationKind,
     this.publicGigId,
     this.publicGigSlug,
     this.counterpartyEmail,
@@ -2024,7 +2216,10 @@ class Booking {
   final String? cancelReason;
   final DateTime? expiresAt;
   final BookingOffer? currentOffer;
-  final BookingVenue venue;
+  final BookingVenue? venue;
+  final BookingPrivateLocation? privateLocation;
+  final bool privateEvent;
+  final CancellationKind? cancellationKind;
   final String? publicGigId;
   final String? publicGigSlug;
   final String? counterpartyEmail;
@@ -2074,12 +2269,144 @@ class Booking {
     currentOffer: json['currentOffer'] is Map
         ? BookingOffer.fromJson(_marketplaceMap(json['currentOffer']))
         : null,
-    venue: BookingVenue.fromJson(_marketplaceMap(json['venue'])),
+    venue: json['venue'] is Map
+        ? BookingVenue.fromJson(_marketplaceMap(json['venue']))
+        : null,
+    privateLocation: json['privateLocation'] is Map
+        ? BookingPrivateLocation.fromJson(
+            _marketplaceMap(json['privateLocation']),
+          )
+        : null,
+    privateEvent: json['privateEvent'] == true,
+    cancellationKind: json['cancellationKind'] == null
+        ? null
+        : CancellationKind.fromWire(json['cancellationKind']),
     publicGigId: _marketplaceOptionalString(json['publicGigId']),
     publicGigSlug: _marketplaceOptionalString(json['publicGigSlug']),
     counterpartyEmail: _marketplaceOptionalString(json['counterpartyEmail']),
     viewerSide: BookingSide.fromWire(json['viewerSide']),
   );
+}
+
+enum SafetyCategory {
+  safety('safety'),
+  harassment('harassment'),
+  misrepresentation('misrepresentation'),
+  other('other'),
+  unknown('unknown');
+
+  const SafetyCategory(this.wireValue);
+
+  final String wireValue;
+
+  static SafetyCategory fromWire(Object? value) => switch (value) {
+    'safety' => SafetyCategory.safety,
+    'harassment' => SafetyCategory.harassment,
+    'misrepresentation' => SafetyCategory.misrepresentation,
+    'other' => SafetyCategory.other,
+    _ => SafetyCategory.unknown,
+  };
+}
+
+class SafetyReport {
+  const SafetyReport({
+    required this.reportId,
+    required this.bookingId,
+    required this.category,
+    required this.text,
+    required this.createdAt,
+    required this.status,
+    this.reporterUserId,
+    this.reporterSide,
+    this.resolvedAt,
+    this.adminNote,
+  });
+
+  final String reportId;
+  final String bookingId;
+  final SafetyCategory category;
+  final String text;
+  final DateTime createdAt;
+  final String status;
+  final String? reporterUserId;
+  final BookingSide? reporterSide;
+  final DateTime? resolvedAt;
+  final String? adminNote;
+
+  factory SafetyReport.fromJson(Map<String, dynamic> json) => SafetyReport(
+    reportId: _marketplaceString(json['reportId'] ?? json['_id']),
+    bookingId: _marketplaceString(json['bookingId']),
+    category: SafetyCategory.fromWire(json['category']),
+    text: _marketplaceString(json['text']),
+    createdAt: _marketplaceDate(json['createdAt']),
+    status: _marketplaceString(json['status']),
+    reporterUserId: _marketplaceOptionalString(json['reporterUserId']),
+    reporterSide: json['reporterSide'] == null
+        ? null
+        : BookingSide.fromWire(json['reporterSide']),
+    resolvedAt: _marketplaceOptionalDate(json['resolvedAt']),
+    adminNote: _marketplaceOptionalString(json['adminNote']),
+  );
+}
+
+class SafetyReportRow extends SafetyReport {
+  const SafetyReportRow({
+    required super.reportId,
+    required super.bookingId,
+    required super.category,
+    required super.text,
+    required super.createdAt,
+    required super.status,
+    super.reporterUserId,
+    required super.reporterSide,
+    super.resolvedAt,
+    super.adminNote,
+    required this.bookingTitle,
+    required this.bandName,
+  });
+
+  final String bookingTitle;
+  final String bandName;
+
+  factory SafetyReportRow.fromJson(Map<String, dynamic> json) {
+    final report = SafetyReport.fromJson(json);
+    return SafetyReportRow(
+      reportId: report.reportId,
+      bookingId: report.bookingId,
+      category: report.category,
+      text: report.text,
+      createdAt: report.createdAt,
+      status: report.status,
+      reporterUserId: report.reporterUserId,
+      reporterSide: report.reporterSide,
+      resolvedAt: report.resolvedAt,
+      adminNote: report.adminNote,
+      bookingTitle: _marketplaceString(json['bookingTitle']),
+      bandName: _marketplaceString(json['bandName']),
+    );
+  }
+}
+
+class SafetyReportsPage {
+  const SafetyReportsPage({
+    required this.items,
+    required this.continueCursor,
+    required this.isDone,
+  });
+
+  final List<SafetyReportRow> items;
+  final String? continueCursor;
+  final bool isDone;
+
+  factory SafetyReportsPage.fromJson(Map<String, dynamic> json) =>
+      SafetyReportsPage(
+        items: [
+          for (final row in _marketplaceMapList(json['page'] ?? json['items']))
+            SafetyReportRow.fromJson(row),
+        ],
+        continueCursor: _marketplaceOptionalString(json['continueCursor']),
+        isDone: json['isDone'] == true,
+      );
 }
 
 enum StripeAccountState {

@@ -124,13 +124,23 @@ class DemoRepository implements EarplugRepository {
       DemoData.venuePrivateDetails,
     );
     _organizations = Map<String, Organization>.of(DemoData.organizations);
+    _privateLocations = Map<String, PrivateLocation>.of(
+      DemoData.privateLocations,
+    );
     _organizationMemberships = [
       OrganizationMembership(
         organization: _organizations['org1']!,
         role: OrganizationRole.owner,
       ),
+      OrganizationMembership(
+        organization: _organizations['org2']!,
+        role: OrganizationRole.owner,
+      ),
     ];
     _organizationMembers = {
+      'org2': {
+        DemoData.demoUserId: DemoData.organizationMembers[DemoData.demoUserId]!,
+      },
       'org1': Map<String, OrganizationMember>.of(DemoData.organizationMembers),
     };
     _organizationPrivateDetails = {
@@ -222,6 +232,10 @@ class DemoRepository implements EarplugRepository {
   late final Map<String, Venue> _venues;
   late final Map<String, VenuePrivateDetails> _venuePrivateDetails;
   late final Map<String, Organization> _organizations;
+  late final Map<String, PrivateLocation> _privateLocations;
+  final Map<String, SafetyReport> _safetyReports = {};
+  int _nextPrivateLocationId = 1;
+  int _nextSafetyReportId = 1;
   late final List<OrganizationMembership> _organizationMemberships;
   late final Map<String, Map<String, OrganizationMember>> _organizationMembers;
   late final Map<String, OrganizationPrivateDetails>
@@ -815,6 +829,222 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<FeatureFlags> featureFlags() async => const FeatureFlags(
+    privateBookings: true,
+    tickets: true,
+    payments: true,
+    bandGigWrites: true,
+  );
+
+  @override
+  Future<List<PrivateLocation>> privateLocationsFor(
+    String organizationId,
+  ) async {
+    _requirePrivateLocationAccess(organizationId);
+    return _privateLocations.values
+        .where((location) => location.organizationId == organizationId)
+        .toList();
+  }
+
+  @override
+  Future<String> createPrivateLocation({
+    required String organizationId,
+    required String label,
+    required String addr,
+    required String city,
+    required String area,
+    required double lat,
+    required double lng,
+    String? notes,
+  }) async {
+    _requirePrivateLocationAccess(organizationId);
+    final id = 'demo-private-location-${_nextPrivateLocationId++}';
+    final now = DateTime.now();
+    _privateLocations[id] = PrivateLocation(
+      id: id,
+      organizationId: organizationId,
+      label: label,
+      addr: addr,
+      city: city,
+      area: area,
+      lat: lat,
+      lng: lng,
+      notes: notes,
+      createdAt: now,
+      updatedAt: now,
+    );
+    return id;
+  }
+
+  @override
+  Future<void> updatePrivateLocation(
+    String locationId, {
+    String? label,
+    String? addr,
+    String? city,
+    String? area,
+    double? lat,
+    double? lng,
+    String? notes,
+  }) async {
+    final location = _requirePrivateLocation(locationId);
+    _requirePrivateLocationAccess(location.organizationId);
+    _privateLocations[locationId] = PrivateLocation(
+      id: location.id,
+      organizationId: location.organizationId,
+      label: label ?? location.label,
+      addr: addr ?? location.addr,
+      city: city ?? location.city,
+      area: area ?? location.area,
+      lat: lat ?? location.lat,
+      lng: lng ?? location.lng,
+      notes: notes ?? location.notes,
+      createdAt: location.createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> removePrivateLocation(String locationId) async {
+    final location = _requirePrivateLocation(locationId);
+    _requirePrivateLocationAccess(location.organizationId);
+    if (_opportunities.values.any(
+      (opportunity) => opportunity.privateLocationId == locationId,
+    )) {
+      throw StateError('Private location is used by an opportunity');
+    }
+    _privateLocations.remove(locationId);
+  }
+
+  PrivateLocation _requirePrivateLocation(String locationId) {
+    final location = _privateLocations[locationId];
+    if (location == null) throw StateError('Private location not found');
+    return location;
+  }
+
+  void _requirePrivateLocationAccess(String organizationId) {
+    _requireOrganization(organizationId);
+    if (!_organizationMemberships.any(
+      (membership) =>
+          membership.organization.id == organizationId &&
+          (membership.role == OrganizationRole.owner ||
+              membership.role == OrganizationRole.manager),
+    )) {
+      throw StateError('Private locations are only available to host managers');
+    }
+  }
+
+  @override
+  Future<String> reportSafety({
+    required String bookingId,
+    required SafetyCategory category,
+    required String text,
+  }) async {
+    final booking = _requireBooking(bookingId);
+    final side = _requireBookingSide(
+      booking,
+      'Only booking parties can report safety concerns',
+    );
+    if (category == SafetyCategory.unknown) {
+      throw StateError('Unknown safety category');
+    }
+    if (text.trim().isEmpty) throw StateError('Report text is required');
+    final id = 'demo-safety-report-${_nextSafetyReportId++}';
+    _safetyReports[id] = SafetyReport(
+      reportId: id,
+      bookingId: bookingId,
+      category: category,
+      text: text.trim(),
+      createdAt: DateTime.now(),
+      status: 'open',
+      reporterUserId: DemoData.demoUserId,
+      reporterSide: side,
+    );
+    return id;
+  }
+
+  @override
+  Future<List<SafetyReport>> mySafetyReports(String bookingId) async {
+    _requireBookingSide(
+      _requireBooking(bookingId),
+      'Only booking parties can view their reports',
+    );
+    return _safetyReports.values
+        .where(
+          (report) =>
+              report.bookingId == bookingId &&
+              report.reporterUserId == DemoData.demoUserId,
+        )
+        .toList();
+  }
+
+  @override
+  Future<SafetyReportsPage> openSafetyReports({
+    String? cursor,
+    int numItems = 25,
+  }) async {
+    if (!platformAdmin) throw StateError('Platform admin access required.');
+    final reports =
+        _safetyReports.values
+            .where((report) => report.status == 'open')
+            .toList()
+          ..sort((left, right) => right.createdAt.compareTo(left.createdAt));
+    final start = (int.tryParse(cursor ?? '') ?? 0).clamp(0, reports.length);
+    final end = (start + numItems).clamp(start, reports.length);
+    return SafetyReportsPage(
+      items: [
+        for (final report in reports.sublist(start, end))
+          SafetyReportRow(
+            reportId: report.reportId,
+            bookingId: report.bookingId,
+            category: report.category,
+            text: report.text,
+            createdAt: report.createdAt,
+            status: report.status,
+            reporterUserId: report.reporterUserId,
+            reporterSide: report.reporterSide,
+            resolvedAt: report.resolvedAt,
+            adminNote: report.adminNote,
+            bookingTitle: _requireBooking(report.bookingId).opportunityTitle,
+            bandName: _requireBooking(report.bookingId).bandName,
+          ),
+      ],
+      continueCursor: end.toString(),
+      isDone: end == reports.length,
+    );
+  }
+
+  @override
+  Future<void> resolveSafetyReport(String reportId, {String? adminNote}) async {
+    if (!platformAdmin) throw StateError('Platform admin access required.');
+    final report = _safetyReports[reportId];
+    if (report == null) throw StateError('Safety report not found');
+    _safetyReports[reportId] = SafetyReport(
+      reportId: report.reportId,
+      bookingId: report.bookingId,
+      category: report.category,
+      text: report.text,
+      createdAt: report.createdAt,
+      status: 'resolved',
+      reporterUserId: report.reporterUserId,
+      reporterSide: report.reporterSide,
+      resolvedAt: DateTime.now(),
+      adminNote: adminNote,
+    );
+  }
+
+  @override
+  Future<List<SafetyReport>> safetyReportsForBookingAdmin(
+    String bookingId,
+  ) async {
+    if (!platformAdmin) throw StateError('Platform admin access required.');
+    _requireBooking(bookingId);
+    return _safetyReports.values
+        .where((report) => report.bookingId == bookingId)
+        .toList();
+  }
+
+  @override
   Future<OrganizationApplication?> myOrganizationApplication() async {
     final applicationId = _myOrganizationApplicationId;
     return applicationId == null
@@ -825,6 +1055,11 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<({String applicationId, int revision})>
   saveOrganizationApplicationDraft({
+    ApplicationKind? kind,
+    String? hostDisplayName,
+    String? hostPhone,
+    String? hostArea,
+    bool? hostAgreementAccepted,
     String? applicationId,
     int? expectedRevision,
     required String orgName,
@@ -850,6 +1085,15 @@ class DemoRepository implements EarplugRepository {
         applicationId ?? 'demo-application-${_nextOrganizationApplicationId++}';
     final application = OrganizationApplication(
       id: id,
+      kind: kind ?? existing?.kind,
+      hostDisplayName: hostDisplayName ?? existing?.hostDisplayName,
+      hostPhone: hostPhone ?? existing?.hostPhone,
+      hostArea: hostArea ?? existing?.hostArea,
+      hostAgreementAcceptedAt: hostAgreementAccepted == true
+          ? existing?.hostAgreementAcceptedAt ?? now
+          : hostAgreementAccepted == false
+          ? null
+          : existing?.hostAgreementAcceptedAt,
       status: existing?.status == OrganizationApplicationStatus.needsInfo
           ? OrganizationApplicationStatus.needsInfo
           : OrganizationApplicationStatus.draft,
@@ -965,17 +1209,23 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<AdminApplicationPage> applicationsForReview({
     OrganizationApplicationStatus? status,
+    ApplicationKind? kind,
     String? cursor,
     int numItems = 25,
   }) async {
     final rows = <AdminApplicationRow>[];
     for (final application in _organizationApplications.values) {
+      if (kind != null &&
+          (application.kind ?? ApplicationKind.organization) != kind) {
+        continue;
+      }
       if (status != null && application.status != status) continue;
       if (application.status == OrganizationApplicationStatus.draft) continue;
       final applicant = _applicationApplicants[application.id];
       rows.add(
         AdminApplicationRow(
           application: application,
+          kind: application.kind,
           applicantUserId: applicant?.userId ?? '',
           applicantName: applicant?.name ?? '',
           applicantEmail: applicant?.email ?? '',
@@ -1556,6 +1806,29 @@ class DemoRepository implements EarplugRepository {
           (organization) => organization.status == OrganizationStatus.suspended,
         )
         .length,
+    hostApplications: ApplicationCounts(
+      submitted: _organizationApplications.values
+          .where(
+            (application) =>
+                application.kind == ApplicationKind.host &&
+                application.status == OrganizationApplicationStatus.submitted,
+          )
+          .length,
+      underReview: _organizationApplications.values
+          .where(
+            (application) =>
+                application.kind == ApplicationKind.host &&
+                application.status == OrganizationApplicationStatus.underReview,
+          )
+          .length,
+      needsInfo: _organizationApplications.values
+          .where(
+            (application) =>
+                application.kind == ApplicationKind.host &&
+                application.status == OrganizationApplicationStatus.needsInfo,
+          )
+          .length,
+    ),
     capped: false,
   );
 
@@ -2784,7 +3057,9 @@ class DemoRepository implements EarplugRepository {
     required String organizationId,
     required String title,
     String? desc,
-    required String venueId,
+    String? venueId,
+    OpportunityMode mode = OpportunityMode.publicEvent,
+    String? privateLocationId,
     String? eventType,
     int? expectedAttendance,
     List<String>? genres,
@@ -2805,15 +3080,31 @@ class DemoRepository implements EarplugRepository {
     String? externalUrl,
     List<SlotInput>? slots,
   }) async {
-    final venue = _requireVenue(venueId);
+    if (mode == OpportunityMode.privateBooking) {
+      _requireOrganization(organizationId);
+    }
+    if (mode == OpportunityMode.unknown) {
+      throw StateError('Unknown opportunity mode');
+    }
+    final isPrivate = mode == OpportunityMode.privateBooking;
+    final venue = isPrivate ? null : _requireVenue(venueId ?? '');
+    final location = privateLocationId == null
+        ? null
+        : _requirePrivateLocation(privateLocationId);
+    if (location != null &&
+        (!isPrivate || location.organizationId != organizationId)) {
+      throw StateError('Private location must belong to the host organization');
+    }
     final now = DateTime.now();
     final id = 'demo-opportunity-${_nextOpportunityId++}';
     final slug = _uniqueOpportunitySlug(title);
     _opportunities[id] = Opportunity(
       id: id,
       organizationId: organizationId,
-      mode: OpportunityMode.publicEvent,
-      venueId: venueId,
+      mode: mode,
+      privateEvent: isPrivate,
+      privateLocationId: privateLocationId,
+      venueId: venue?.id,
       venue: venue,
       title: title,
       desc: desc ?? '',
@@ -2831,7 +3122,9 @@ class DemoRepository implements EarplugRepository {
       applicationsCloseAt:
           applicationsCloseAt ?? startsAt.subtract(const Duration(days: 7)),
       visibility: visibility ?? OpportunityVisibility.publicListing,
-      ticketing: ticketing ?? OpportunityTicketing.rsvp,
+      ticketing: isPrivate
+          ? OpportunityTicketing.none
+          : ticketing ?? OpportunityTicketing.rsvp,
       ticketPriceMinor: ticketPriceMinor,
       ticketCapacity: ticketCapacity,
       ticketCurrency: ticketCurrency,
@@ -2854,8 +3147,14 @@ class DemoRepository implements EarplugRepository {
       invitedBandIds: const [],
       createdAt: now,
       updatedAt: now,
-      area: venue.approx.label.isEmpty ? venue.area : venue.approx.label,
-      venueType: venue.venueType,
+      area:
+          location?.area ??
+          (venue == null
+              ? ''
+              : venue.approx.label.isEmpty
+              ? venue.area
+              : venue.approx.label),
+      venueType: isPrivate ? VenueType.private : venue?.venueType,
       currency: 'usd',
     );
     return (opportunityId: id, slug: slug);
@@ -2868,6 +3167,7 @@ class DemoRepository implements EarplugRepository {
     String? title,
     String? desc,
     String? venueId,
+    String? privateLocationId,
     String? eventType,
     int? expectedAttendance,
     List<String>? genres,
@@ -2894,11 +3194,21 @@ class DemoRepository implements EarplugRepository {
       throw StateError('Slots are locked once applications are open');
     }
     if (venueId != null) _requireVenue(venueId);
+    if (privateLocationId != null) {
+      final location = _requirePrivateLocation(privateLocationId);
+      if (!existing.privateEvent ||
+          location.organizationId != existing.organizationId) {
+        throw StateError(
+          'Private location must belong to the host organization',
+        );
+      }
+    }
     final updated = _copyOpportunity(
       existing,
       title: title,
       desc: desc,
       venueId: venueId,
+      privateLocationId: privateLocationId,
       eventType: eventType,
       expectedAttendance: expectedAttendance,
       genres: genres,
@@ -3198,12 +3508,13 @@ class DemoRepository implements EarplugRepository {
     int numItems = 25,
     String? bandId,
     OpportunityFilters? filters,
+    OpportunityMode? mode,
   }) async {
     final now = DateTime.now();
     final opportunities = _opportunities.values.where((opportunity) {
       if (opportunity.status != OpportunityStatus.open ||
           opportunity.visibility != OpportunityVisibility.publicListing ||
-          opportunity.mode != OpportunityMode.publicEvent ||
+          opportunity.mode != (mode ?? OpportunityMode.publicEvent) ||
           opportunity.startsAt.isBefore(now)) {
         return false;
       }
@@ -3399,12 +3710,18 @@ class DemoRepository implements EarplugRepository {
     if (grossMinor < 0) {
       throw StateError('Gross fee must be a non-negative integer');
     }
-    if (grossMinor > 0 && !demoPaymentsEnabled) {
+    if (opportunity.privateEvent && grossMinor <= 0) {
+      throw StateError('Private bookings require a positive guarantee');
+    }
+    if (grossMinor > 0 && !demoPaymentsEnabled && !opportunity.privateEvent) {
       throw StateError('Paid offers open once payments are enabled');
     }
     final commissionBps = grossMinor == 0 ? 0 : demoCommissionBps;
     final commissionMinor = (grossMinor * commissionBps / 10000).round();
-    final venue = _requireVenue(opportunity.venueId!);
+    final venue = opportunity.venueId == null
+        ? null
+        : _requireVenue(opportunity.venueId!);
+    final location = _privateLocations[opportunity.privateLocationId];
     final organization = _requireOrganization(opportunity.organizationId);
     final band = _bands[application.bandId]!;
     final now = DateTime.now();
@@ -3456,15 +3773,29 @@ class DemoRepository implements EarplugRepository {
             ),
         ],
       ),
-      venue: BookingVenue(
-        id: venue.id,
-        name: venue.name,
-        slug: venue.slug,
-        approxLabel: venue.approx.label,
-        exactAddress: venue.disclosure == AddressDisclosure.public
-            ? venue.addr
-            : _venuePrivateDetails[venue.id]?.addr,
-      ),
+      privateEvent: opportunity.privateEvent,
+      privateLocation: location == null
+          ? null
+          : BookingPrivateLocation(
+              label: location.label,
+              area: location.area,
+              city: location.city,
+              addr: location.addr,
+              lat: location.lat,
+              lng: location.lng,
+              notes: location.notes,
+            ),
+      venue: venue == null
+          ? null
+          : BookingVenue(
+              id: venue.id,
+              name: venue.name,
+              slug: venue.slug,
+              approxLabel: venue.approx.label,
+              exactAddress: venue.disclosure == AddressDisclosure.public
+                  ? venue.addr
+                  : _venuePrivateDetails[venue.id]?.addr,
+            ),
       viewerSide: BookingSide.organizer,
     );
     _artistApplications[applicationId] = _copyArtistApplication(
@@ -3575,6 +3906,7 @@ class DemoRepository implements EarplugRepository {
     required String reason,
     required int expectedRevision,
     BookingSide? side,
+    bool? safety,
   }) async {
     final booking = _requireBooking(bookingId);
     _checkBookingRevision(booking, expectedRevision);
@@ -3608,6 +3940,7 @@ class DemoRepository implements EarplugRepository {
           : BookingCancelledBy.artist,
       cancelledAt: now,
       cancelReason: trimmedReason,
+      cancellationKind: safety == true ? CancellationKind.safety : null,
     );
     if (booking.paidMinor > 0) {
       final msBeforeStart = booking.startsAt.difference(now).inMilliseconds;
@@ -4508,12 +4841,16 @@ class DemoRepository implements EarplugRepository {
   }
 
   Booking _bookingPayload(Booking stored, BookingSide side) {
-    final venue = _venues[stored.venue.id];
+    final bookingVenue = stored.venue;
+    final venue = _venues[bookingVenue?.id];
+    final location = stored.privateLocation;
+    final disclosePrivateLocation =
+        side == BookingSide.organizer || stored.status.isLive;
     final String? exactAddress;
     if (venue?.disclosure == AddressDisclosure.public) {
       exactAddress = venue!.addr;
     } else if (side == BookingSide.organizer || stored.status.isLive) {
-      exactAddress = _venuePrivateDetails[stored.venue.id]?.addr;
+      exactAddress = _venuePrivateDetails[bookingVenue?.id]?.addr;
     } else {
       exactAddress = null;
     }
@@ -4529,13 +4866,26 @@ class DemoRepository implements EarplugRepository {
     }
     return _copyBooking(
       stored,
-      venue: BookingVenue(
-        id: stored.venue.id,
-        name: stored.venue.name,
-        slug: stored.venue.slug,
-        approxLabel: stored.venue.approxLabel,
-        exactAddress: exactAddress,
-      ),
+      privateLocation: location == null
+          ? null
+          : BookingPrivateLocation(
+              label: location.label,
+              area: location.area,
+              city: location.city,
+              addr: disclosePrivateLocation ? location.addr : null,
+              lat: disclosePrivateLocation ? location.lat : null,
+              lng: disclosePrivateLocation ? location.lng : null,
+              notes: disclosePrivateLocation ? location.notes : null,
+            ),
+      venue: bookingVenue == null
+          ? null
+          : BookingVenue(
+              id: bookingVenue.id,
+              name: bookingVenue.name,
+              slug: bookingVenue.slug,
+              approxLabel: bookingVenue.approxLabel,
+              exactAddress: exactAddress,
+            ),
       viewerSide: side,
       counterpartyEmail: counterpartyEmail,
     );
@@ -4572,6 +4922,8 @@ class DemoRepository implements EarplugRepository {
     String? cancelReason,
     BookingOffer? currentOffer,
     BookingVenue? venue,
+    BookingPrivateLocation? privateLocation,
+    CancellationKind? cancellationKind,
     String? publicGigId,
     String? publicGigSlug,
     BookingSide? viewerSide,
@@ -4612,6 +4964,9 @@ class DemoRepository implements EarplugRepository {
     expiresAt: booking.expiresAt,
     currentOffer: currentOffer ?? booking.currentOffer,
     venue: venue ?? booking.venue,
+    privateEvent: booking.privateEvent,
+    privateLocation: privateLocation ?? booking.privateLocation,
+    cancellationKind: cancellationKind ?? booking.cancellationKind,
     publicGigId: publicGigId ?? booking.publicGigId,
     publicGigSlug: publicGigSlug ?? booking.publicGigSlug,
     // A query supplying a viewer must be able to explicitly hide the email.
@@ -4688,7 +5043,9 @@ class DemoRepository implements EarplugRepository {
     if (slots
         .where((slot) => slot.required)
         .every((slot) => slot.status == SlotStatus.booked)) {
-      gig = _publishOpportunityGig(updatedOpportunity);
+      if (!opportunity.privateEvent) {
+        gig = _publishOpportunityGig(updatedOpportunity);
+      }
       updatedOpportunity = _copyOpportunity(
         updatedOpportunity,
         status: OpportunityStatus.confirmed,
@@ -4997,6 +5354,7 @@ class DemoRepository implements EarplugRepository {
     String? title,
     String? desc,
     String? venueId,
+    String? privateLocationId,
     String? eventType,
     int? expectedAttendance,
     List<String>? genres,
@@ -5023,11 +5381,17 @@ class DemoRepository implements EarplugRepository {
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
-    final venue = _venues[venueId ?? opportunity.venueId];
+    final venue = opportunity.privateEvent
+        ? null
+        : _venues[venueId ?? opportunity.venueId];
+    final location =
+        _privateLocations[privateLocationId ?? opportunity.privateLocationId];
     return Opportunity(
       id: id ?? opportunity.id,
       organizationId: opportunity.organizationId,
       mode: opportunity.mode,
+      privateEvent: opportunity.privateEvent,
+      privateLocationId: privateLocationId ?? opportunity.privateLocationId,
       venueId: venueId ?? opportunity.venueId,
       venue: venue,
       title: title ?? opportunity.title,
@@ -5059,9 +5423,13 @@ class DemoRepository implements EarplugRepository {
       invitedBandIds: invitedBandIds ?? opportunity.invitedBandIds,
       createdAt: createdAt ?? opportunity.createdAt,
       updatedAt: updatedAt ?? opportunity.updatedAt,
-      area: venueId == null
-          ? opportunity.area
-          : (venue!.approx.label.isEmpty ? venue.area : venue.approx.label),
+      area:
+          location?.area ??
+          (venueId == null
+              ? opportunity.area
+              : (venue!.approx.label.isEmpty
+                    ? venue.area
+                    : venue.approx.label)),
       venueType: venueId == null ? opportunity.venueType : venue?.venueType,
       currency: opportunity.currency,
     );
@@ -5316,6 +5684,11 @@ class DemoRepository implements EarplugRepository {
     DateTime? updatedAt,
   }) => OrganizationApplication(
     id: application.id,
+    kind: application.kind,
+    hostDisplayName: application.hostDisplayName,
+    hostPhone: application.hostPhone,
+    hostArea: application.hostArea,
+    hostAgreementAcceptedAt: application.hostAgreementAcceptedAt,
     status: status ?? application.status,
     orgName: application.orgName,
     orgType: application.orgType,

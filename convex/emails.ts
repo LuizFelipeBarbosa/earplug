@@ -17,6 +17,8 @@ export const emailKindValidator = v.union(
   v.literal("offerWithdrawn"),
   v.literal("bookingConfirmed"),
   v.literal("bookingCancelled"),
+  v.literal("safetyCancellation"),
+  v.literal("safetyReportReceived"),
   v.literal("reviewRequested"),
   v.literal("ticketReceipt"),
   v.literal("ticketRefunded"),
@@ -66,6 +68,8 @@ export type BookingEmailKind =
   | "offerWithdrawn"
   | "bookingConfirmed"
   | "bookingCancelled"
+  | "safetyCancellation"
+  | "safetyReportReceived"
   | "reviewRequested";
 
 function bookingDateLabel(timestamp: number): string {
@@ -121,6 +125,14 @@ export function bookingEmail(
     case "bookingCancelled":
       subject = `Booking cancelled at ${input.venueName}: ${input.opportunityTitle}`;
       text = `${input.bandName}'s booking with ${input.orgName} for ${performance} was cancelled.`;
+      break;
+    case "safetyCancellation":
+      subject = `Booking cancelled for safety at ${input.venueName}: ${input.opportunityTitle}`;
+      text = `${input.bandName}'s booking with ${input.orgName} for ${performance} was cancelled for safety. ${input.orgName} will receive a full refund.`;
+      break;
+    case "safetyReportReceived":
+      subject = `We received your report about ${input.opportunityTitle}`;
+      text = `We received your report about the booking for ${performance}. Our team will review it.`;
       break;
     case "reviewRequested":
       subject = `Review requested for ${input.venueName}: ${input.opportunityTitle}`;

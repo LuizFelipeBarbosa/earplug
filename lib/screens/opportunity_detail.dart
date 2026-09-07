@@ -161,6 +161,9 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
         }
         final opportunity = item.opportunity;
         final venue = opportunity.venue;
+        final isPrivate =
+            opportunity.privateEvent ||
+            opportunity.mode == OpportunityMode.privateBooking;
         final status = item.myApplicationStatus;
         final applied = status != null && status.isActive;
         final canWithdraw =
@@ -186,6 +189,19 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                     opportunity.title,
                     style: Theme.of(context).textTheme.epPageHeading,
                   ),
+                  if (isPrivate) ...[
+                    const SizedBox(height: 8),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: EpChip(
+                        key: Key('opp-detail-private'),
+                        label: 'PRIVATE EVENT',
+                        active: true,
+                        readOnly: true,
+                        onTap: null,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 8),
                   Text(
                     '${opportunity.status.wireValue.replaceAll('_', ' ').toUpperCase()} · Applications close ${_dateLabel(opportunity.applicationsCloseAt)}',
@@ -209,7 +225,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                     ),
                   ],
                   const SizedBox(height: 20),
-                  if (venue != null)
+                  if (!isPrivate && venue != null)
                     EpCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -235,6 +251,14 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                       opportunity.area,
                       style: Theme.of(context).textTheme.epMeta,
                     ),
+                  if (isPrivate) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'The exact address is shared with the booked artist after the deposit is paid.',
+                      key: const Key('opp-detail-private-note'),
+                      style: Theme.of(context).textTheme.epBody,
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   const SectionBar(label: 'SLOTS'),
                   for (final slot in opportunity.slots)
@@ -318,7 +342,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
                     ),
                   if (opportunity.expectedAttendance != null)
                     LedgerRow(
-                      title: 'Expected attendance',
+                      title: isPrivate ? 'EXPECTED GUESTS' : 'Expected attendance',
                       details: ['${opportunity.expectedAttendance}'],
                     ),
                   LedgerRow(

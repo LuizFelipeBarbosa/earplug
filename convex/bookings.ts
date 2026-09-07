@@ -93,22 +93,15 @@ async function resolveEmailRecipients(
   booking: Doc<"bookings">,
   organization: Doc<"organizations">,
   kind: BookingEmailKind,
+  artistFacing: boolean,
 ): Promise<string[]> {
-  const artistFacing =
-    kind === "offerSent" ||
-    kind === "offerWithdrawn" ||
-    kind === "bookingConfirmed" ||
-    kind === "reviewRequested" ||
-    (kind === "bookingCancelled" &&
-      (booking.cancelledBy === "organizer" ||
-        booking.cancelledBy === "admin" ||
-        booking.cancelledBy === "system"));
   const organizerFacing =
     kind === "offerAccepted" ||
     kind === "offerDeclined" ||
     kind === "offerExpired" ||
     kind === "bookingConfirmed" ||
     kind === "reviewRequested" ||
+    kind === "safetyCancellation" ||
     (kind === "bookingCancelled" &&
       (booking.cancelledBy === "artist" ||
         booking.cancelledBy === "admin" ||
@@ -141,6 +134,20 @@ async function resolveEmailRecipients(
   return recipients;
 }
 
+export async function resolveVenueName(
+  ctx: MutationCtx,
+  opportunity: Doc<"talentOpportunities">,
+): Promise<string> {
+  if (opportunity.mode === "privateBooking") return "Private event";
+
+  const venue =
+    opportunity.venueId !== undefined
+      ? await ctx.db.get(opportunity.venueId)
+      : null;
+  if (!venue) throw new Error("Venue not found");
+  return venue.name;
+}
+
 export async function sendBookingEmail(
   ctx: MutationCtx,
   booking: Doc<"bookings">,
@@ -155,16 +162,26 @@ export async function sendBookingEmail(
   if (!opportunity) throw new Error("Opportunity not found");
   if (!band) throw new Error("Band not found");
   if (!organization) throw new Error("Organization not found");
-  const venue =
-    opportunity.venueId !== undefined
-      ? await ctx.db.get(opportunity.venueId)
-      : null;
-  if (!venue) throw new Error("Venue not found");
+  const artistFacing =
+    kind === "offerSent" ||
+    kind === "offerWithdrawn" ||
+    kind === "bookingConfirmed" ||
+    kind === "reviewRequested" ||
+    (kind === "bookingCancelled" &&
+      (booking.cancelledBy === "organizer" ||
+        booking.cancelledBy === "admin" ||
+        booking.cancelledBy === "system"));
+  const venueName = await resolveVenueName(ctx, opportunity);
   const body = bookingEmail(kind, {
     opportunityTitle: opportunity.title,
     bandName: band.name,
-    orgName: organization.name,
-    venueName: venue.name,
+    orgName:
+      opportunity.mode === "privateBooking" &&
+      artistFacing &&
+      !BOOKING_LIVE_STATUSES.includes(booking.status)
+        ? "A private host"
+        : organization.name,
+    venueName,
     startsAt: booking.startsAt,
     link: `${appBaseUrl()}/bookings/${booking._id}`,
     ...(booking.grossMinor > 0
@@ -180,6 +197,7 @@ export async function sendBookingEmail(
     booking,
     organization,
     kind,
+    artistFacing,
   );
   for (const to of recipients) {
     await ctx.scheduler.runAfter(0, internal.emails.send, {
@@ -194,7 +212,15 @@ async function releaseBookingSlot(ctx: MutationCtx, booking: Doc<"bookings">) {
   await releaseSlot(ctx, booking.slotId);
   const opportunity = await ctx.db.get(booking.opportunityId);
   if (!opportunity) throw new Error("Opportunity not found");
-  if (opportunity.publicGigId === undefined) return;
+  if (
+    opportunity.publicGigId === undefined &&
+    opportunity.mode !== "privateBooking"
+  ) {
+    return;
+  }
+  if (opportunity.mode === "privateBooking" && opportunity.status !== "confirmed") {
+    return;
+  }
   const slot = await ctx.db.get(booking.slotId);
   if (!slot) throw new Error("Slot not found");
   if (slot.required) {
@@ -274,6 +300,12 @@ export const sendOffer = mutation({
       opportunity.organizationId,
       ["owner", "manager"],
     );
+    if (
+      opportunity.mode === "privateBooking" &&
+      !flag("PRIVATE_BOOKINGS_ENABLED", false)
+    ) {
+      throw new Error("Private bookings are not available yet");
+    }
     if (application.status !== "shortlisted") {
       throw new Error("Shortlist the application before sending an offer");
     }
@@ -579,6 +611,7 @@ export const cancel = mutation({
     reason: v.string(),
     expectedRevision: v.number(),
     as: v.optional(v.union(v.literal("organizer"), v.literal("artist"))),
+    safety: v.optional(v.boolean()),
   },
   returns: v.object({ status: bookingStatusValidator, revision: v.number() }),
   handler: async (ctx, args) => {
@@ -617,6 +650,17 @@ export const cancel = mutation({
     } else if (args.as === "artist" && canArtist) {
       side = "artist";
     }
+    if (args.safety === true && side !== "artist") {
+      throw new Error("Only the artist can cancel for safety");
+    }
+    const safetyCancellation = side === "artist" && args.safety === true;
+    if (safetyCancellation) {
+      const opportunity = await ctx.db.get(booking.opportunityId);
+      if (!opportunity) throw new Error("Opportunity not found");
+      if (opportunity.mode !== "privateBooking") {
+        throw new Error("Safety cancellations apply to private bookings");
+      }
+    }
     if (side === "organizer") {
       const organization = await ctx.db.get(booking.organizationId);
       if (!organization) throw new Error("Organization not found");
@@ -634,10 +678,22 @@ export const cancel = mutation({
       cancelledBy: side,
       cancelledByUserId: user._id,
       cancelledAt: now,
-      cancelReason: reason,
+      cancelReason: safetyCancellation ? "Cancelled for safety" : reason,
+      ...(safetyCancellation ? { cancellationKind: "safety" as const } : {}),
       revision,
       updatedAt: now,
     });
+    if (safetyCancellation) {
+      await ctx.db.insert("safetyReports", {
+        bookingId: booking._id,
+        reporterUserId: user._id,
+        side: "artist",
+        category: "safety",
+        text: reason,
+        status: "open",
+        createdAt: now,
+      });
+    }
     let settlement: Awaited<ReturnType<typeof settleBookingCancellation>> | null =
       null;
     if (booking.grossMinor > 0) {
@@ -683,13 +739,15 @@ export const cancel = mutation({
     await sendBookingEmail(
       ctx,
       await loadBooking(ctx, booking._id),
-      "bookingCancelled",
-      {
-        reason:
-          settlement && settlement.refundMinor > 0
-            ? `${reason} Refund: ${(settlement.refundMinor / 100).toFixed(2)} ${booking.currency.toUpperCase()}.`
-            : reason,
-      },
+      safetyCancellation ? "safetyCancellation" : "bookingCancelled",
+      safetyCancellation
+        ? {}
+        : {
+            reason:
+              settlement && settlement.refundMinor > 0
+                ? `${reason} Refund: ${(settlement.refundMinor / 100).toFixed(2)} ${booking.currency.toUpperCase()}.`
+                : reason,
+          },
     );
     return { status, revision };
   },
