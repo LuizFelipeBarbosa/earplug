@@ -231,6 +231,37 @@ mixin _BookingState on _AppStateCore {
     return _refreshAfterAction(booking);
   }
 
+  Future<Booking?> openDispute(
+    Booking booking, {
+    required DisputeCategory category,
+    required String text,
+    int? requestedRefundMinor,
+  }) async {
+    await repository.openDispute(
+      bookingId: booking.id,
+      category: category,
+      text: text,
+      requestedRefundMinor: requestedRefundMinor,
+    );
+    await loadDisputes(booking.id);
+    return _refreshAfterAction(booking);
+  }
+
+  Future<void> startDisputeReview(String disputeId) =>
+      repository.startDisputeReview(disputeId);
+
+  Future<void> resolveDispute(
+    String disputeId, {
+    required DisputeResolution resolution,
+    int? refundMinor,
+    String? adminNote,
+  }) => repository.resolveDispute(
+    disputeId,
+    resolution: resolution,
+    refundMinor: refundMinor,
+    adminNote: adminNote,
+  );
+
   Future<Booking?> _refreshAfterAction(Booking booking) async {
     final refreshed = await loadBooking(booking.id, refresh: true);
     if (booking.viewerSide == BookingSide.organizer) {
@@ -297,6 +328,35 @@ mixin _BookingState on _AppStateCore {
     }
   }
 
+  // ---- disputes
+  final Map<String, List<Dispute>> _disputesByBooking = {};
+  final Map<String, Object> _disputesLoadTokens = {};
+
+  List<Dispute> disputesFor(String bookingId) =>
+      _disputesByBooking[bookingId] ?? const [];
+
+  Future<List<Dispute>> loadDisputes(String bookingId) async {
+    if (_disposed) return disputesFor(bookingId);
+    final token = Object();
+    _disputesLoadTokens[bookingId] = token;
+    try {
+      await _authReady;
+      if (_disposed || !identical(_disputesLoadTokens[bookingId], token)) {
+        return disputesFor(bookingId);
+      }
+      final disputes = await repository.disputesForBooking(bookingId);
+      if (_disposed || !identical(_disputesLoadTokens[bookingId], token)) {
+        return disputesFor(bookingId);
+      }
+      _disputesByBooking[bookingId] = disputes;
+      notifyListeners();
+      return disputes;
+    } catch (error) {
+      logError('disputesForBooking', error);
+      return disputesFor(bookingId);
+    }
+  }
+
   // ---- band changes (chained after _OpportunityState)
   String _lastKnownBandIdForBookings = '';
 
@@ -317,6 +377,8 @@ mixin _BookingState on _AppStateCore {
     _bookingSides.clear();
     _bookingById.clear();
     _safetyReportsByBooking.clear();
+    _disputesByBooking.clear();
+    _disputesLoadTokens.clear();
     organizationBookings = const [];
     bandBookings = const [];
     organizationBookingsStatus = DataStatus.connecting;

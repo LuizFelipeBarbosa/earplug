@@ -829,6 +829,8 @@ class RootShell extends StatelessWidget {
       ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminSafety => AdminSafetyScreen(key: key),
+      Screen.adminDisputes => SizedBox.shrink(key: key),
+      Screen.adminBookings => SizedBox.shrink(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,
         applicationId: entry.param!,

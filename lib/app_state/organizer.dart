@@ -30,6 +30,7 @@ mixin _OrganizerState on _AppStateCore {
   );
 
   bool get privateBookingsEnabled => features.privateBookings;
+  bool get disputesEnabled => features.disputes;
 
   Future<void> loadFeatureFlags() async {
     try {
