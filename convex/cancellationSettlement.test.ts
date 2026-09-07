@@ -211,6 +211,7 @@ describe("explicit settlement", () => {
           booking: (await ctx.db.get(f.bookingId))!,
           refundMinor: 4000,
           reason: "dispute",
+          releaseUnpaidInstallmentHold: false,
           now: NOW,
         }),
       );
@@ -305,6 +306,28 @@ describe("explicit settlement", () => {
       (await f.ledger()).filter((row) => row.kind === "commission"),
     ).toEqual([]);
   });
+
+  test.each(["processing", "failed"] as const)(
+    "does not create a second payout or commission for a %s transfer",
+    async (status) => {
+      const f = await setupSettlement([10000], status);
+      const payouts = await f.payouts();
+      const result = await f.settle(4000);
+      expect(result).toEqual({
+        refundIds: [expect.any(String)],
+        forfeitPayoutIds: [],
+        reversedPayoutIds: [],
+      });
+      expect(await f.refunds()).toMatchObject([
+        { paymentRecordId: f.paymentRecordIds[0], amountMinor: 4000 },
+      ]);
+      expect(await f.payouts()).toEqual(payouts);
+      expect(await f.ledger()).toEqual([]);
+      expect((await f.scheduled()).map((job) => job.name)).toEqual([
+        "refunds:executeRefund",
+      ]);
+    },
+  );
 
   test("records commission for two partial settlements on the same booking", async () => {
     const f = await setupSettlement();
@@ -440,6 +463,7 @@ describe("explicit settlement", () => {
         booking: (await ctx.db.get(f.bookingId))!,
         refundMinor: 0,
         reason: "organizer_cancel",
+        releaseUnpaidInstallmentHold: true,
         now: NOW,
       }),
     );
@@ -477,6 +501,7 @@ describe("explicit settlement", () => {
         booking: (await ctx.db.get(f.bookingId))!,
         refundMinor: 0,
         reason: "organizer_cancel",
+        releaseUnpaidInstallmentHold: true,
         now: NOW,
       }),
     );
@@ -507,6 +532,28 @@ describe("explicit settlement", () => {
       expect(await f.scheduled()).toEqual([]);
     },
   );
+
+  test("rejects a dispute refund that includes an unpaid installment", async () => {
+    const f = await setupSettlement([4000, 6000]);
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.paymentRecordIds[1], {
+        status: "pending",
+        paidAt: undefined,
+        stripeChargeId: undefined,
+        stripePaymentIntentId: undefined,
+      });
+      await ctx.db.delete(f.payoutIds[1]);
+      await ctx.db.patch(f.bookingId, { paidMinor: 4000 });
+    });
+    const payouts = await f.payouts();
+    await expect(f.settle(5000)).rejects.toThrow(
+      "Dispute refund must be a positive integer within the paid amount",
+    );
+    expect(await f.refunds()).toEqual([]);
+    expect(await f.payouts()).toEqual(payouts);
+    expect(await f.ledger()).toEqual([]);
+    expect(await f.scheduled()).toEqual([]);
+  });
 
   test("allows a dispute refund equal to the booking's paid amount", async () => {
     const f = await setupSettlement();

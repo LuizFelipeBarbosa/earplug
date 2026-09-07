@@ -121,9 +121,8 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
     stripeDisputeStatus: outcome,
     updatedAt: now,
   });
-  const otherOpenDisputes = (
-    await paymentRecordsForBooking(ctx, booking._id)
-  ).some(
+  const paymentRecords = await paymentRecordsForBooking(ctx, booking._id);
+  const otherOpenDisputes = paymentRecords.some(
     (payment) =>
       payment._id !== record._id &&
       payment.stripeDisputeId &&
@@ -172,26 +171,19 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
       `Dispute ${disputeId}: fee data unavailable; recorded a $0 fee for later reconciliation`,
     );
   }
-  if (booking.status === "disputed")
-    assertBookingTransition("disputed", "refunded");
   // Only the charged-back amount leaves the record; the artist's transfer is
   // reconciled against that, never against the whole payment.
   const newRefundedMinor = Math.min(
     record.amountMinor,
     record.refundedMinor + disputedMinor,
   );
-  const payoutHoldReasons = (booking.payoutHoldReasons ?? []).filter(
-    (reason) => reason !== "dispute" || otherOpenDisputes,
+  const retainedMinor = paymentRecords.reduce(
+    (sum, payment) =>
+      sum +
+      payment.amountMinor -
+      (payment._id === record._id ? newRefundedMinor : payment.refundedMinor),
+    0,
   );
-  await ctx.db.patch(booking._id, {
-    status: booking.status === "disputed" ? "refunded" : booking.status,
-    payoutHoldReasons,
-    payoutHold: payoutHoldReasons.length > 0,
-    disputedFromStatus: undefined,
-    refundedMinor: (booking.refundedMinor ?? 0) + disputedMinor,
-    revision: booking.revision + 1,
-    updatedAt: now,
-  });
   if (record.status !== "refunded") {
     const status =
       newRefundedMinor === record.amountMinor
@@ -234,6 +226,37 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
   await reconcilePaymentPayouts(ctx, {
     ...record,
     refundedMinor: newRefundedMinor,
+  });
+  if (retainedMinor > 0) {
+    // Release only after trimming the affected payout, so other installments
+    // retain their completion payouts and the original payout timing.
+    await releaseDisputeHold(ctx, booking, {
+      now,
+      keepHoldIf: async () => otherOpenDisputes,
+      respectScheduledFor: true,
+    });
+  } else {
+    const status = booking.status === "disputed" ? "refunded" : booking.status;
+    if (status !== booking.status)
+      assertBookingTransition(booking.status, status);
+    const payoutHoldReasons = (booking.payoutHoldReasons ?? []).filter(
+      (reason) => reason !== "dispute" || otherOpenDisputes,
+    );
+    await ctx.db.patch(booking._id, {
+      status,
+      payoutHoldReasons,
+      payoutHold: payoutHoldReasons.length > 0,
+    });
+  }
+  await ctx.db.patch(booking._id, {
+    disputedFromStatus:
+      retainedMinor > 0 && otherOpenDisputes
+        ? booking.disputedFromStatus
+        : undefined,
+    refundedMinor:
+      (booking.refundedMinor ?? 0) + (newRefundedMinor - record.refundedMinor),
+    revision: booking.revision + 1,
+    updatedAt: now,
   });
 };
 

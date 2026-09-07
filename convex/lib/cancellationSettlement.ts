@@ -93,6 +93,7 @@ export async function settleBookingCancellation(
     booking,
     refundMinor: settlement.refundMinor,
     reason: args.reason,
+    releaseUnpaidInstallmentHold: true,
     now,
   });
   return settlement;
@@ -102,7 +103,7 @@ export async function settleDisputeRefund(
   ctx: MutationCtx,
   args: { booking: Doc<"bookings">; refundMinor: number; now: number },
 ): Promise<SettlementResult> {
-  const records = await paymentRecordsForBooking(ctx, args.booking._id);
+  const records = await availablePaidRecords(ctx, args.booking._id);
   const refundableMinor = records.reduce(
     (sum, record) => sum + record.amountMinor - record.refundedMinor,
     0,
@@ -116,7 +117,11 @@ export async function settleDisputeRefund(
       "Dispute refund must be a positive integer within the paid amount",
     );
   }
-  return await applySettlement(ctx, { ...args, reason: "dispute" });
+  return await applySettlement(ctx, {
+    ...args,
+    reason: "dispute",
+    releaseUnpaidInstallmentHold: false,
+  });
 }
 
 export async function applySettlement(
@@ -125,6 +130,7 @@ export async function applySettlement(
     booking: Doc<"bookings">;
     refundMinor: number;
     reason: Infer<typeof refundReasonValidator>;
+    releaseUnpaidInstallmentHold: boolean;
     now: number;
   },
 ): Promise<SettlementResult> {
@@ -132,9 +138,11 @@ export async function applySettlement(
   // The caller may already have cleared a hold while changing booking status.
   const currentBooking = await ctx.db.get(booking._id);
   if (!currentBooking) throw new Error("Booking not found");
-  // The cancelled balance is no longer collectible. Dispute/admin holds still apply.
+  // Cancellation makes the balance uncollectible; a partial dispute refund keeps
+  // the booking live and its remaining balance owed. Preserve its installment hold.
   const payoutHoldReasons = (currentBooking.payoutHoldReasons ?? []).filter(
-    (reason) => reason !== "unpaid_installment",
+    (reason) =>
+      !args.releaseUnpaidInstallmentHold || reason !== "unpaid_installment",
   );
   await ctx.db.patch(booking._id, {
     payoutHoldReasons,
@@ -149,6 +157,8 @@ export async function applySettlement(
     if (payout.status === "scheduled" || payout.status === "held") {
       assertPayoutTransition(payout.status, "reversed");
       await ctx.db.patch(payout._id, { status: "reversed", updatedAt: now });
+      // Keep the retained-record check below in sync with this reversal.
+      payout.status = "reversed";
       reversedPayoutIds.push(payout._id);
     }
   }
@@ -185,7 +195,7 @@ export async function applySettlement(
     }
   }
   // Paid transfers are settled by refund reconciliation, including paid forfeits.
-  // Only retained charges without a paid payout fund new forfeits and commission.
+  // Only retained charges without a non-reversed payout fund new forfeits and commission.
   const retainedRecords = records.filter(
     (record) =>
       record.amountMinor -
@@ -194,7 +204,7 @@ export async function applySettlement(
         0 &&
       !existingPayouts.some(
         (payout) =>
-          payout.paymentRecordId === record._id && payout.status === "paid",
+          payout.paymentRecordId === record._id && payout.status !== "reversed",
       ),
   );
   const forfeitedMinor = retainedRecords.reduce(

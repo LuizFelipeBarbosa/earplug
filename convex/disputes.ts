@@ -376,10 +376,13 @@ export const resolve = mutation({
       .query("paymentRecords")
       .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
       .collect();
-    const refundableMinor = paymentRecords.reduce(
-      (sum, record) => sum + record.amountMinor - record.refundedMinor,
-      0,
-    );
+    const refundableMinor = paymentRecords
+      .filter(
+        (record) =>
+          (record.status === "paid" || record.status === "partially_refunded") &&
+          record.amountMinor - record.refundedMinor > 0,
+      )
+      .reduce((sum, record) => sum + record.amountMinor - record.refundedMinor, 0);
     const check = disputeResolutionCheck({
       resolution: args.resolution,
       refundMinor: args.refundMinor,

@@ -655,7 +655,59 @@ describe("disputes review and resolution", () => {
     });
   });
 
-  test("partial settlement without a prior payout creates only the forfeit and preserves admin holds", async () => {
+  test("completion after a confirmed booking's partial refund keeps only its forfeit payout", async () => {
+    const f = await setupDisputes({
+      status: "confirmed",
+      completedAt: undefined,
+    });
+    await f.t.run((ctx) => ctx.db.delete(f.payoutId));
+    const { disputeId } = await f.open();
+    await f.as("platformAdmin").mutation(api.disputes.resolve, {
+      disputeId,
+      resolution: "refunded_partial",
+      refundMinor: 2000,
+    });
+    const resolved = await f.state();
+    expect(resolved.booking.status).toBe("confirmed");
+    expect(resolved.booking.completedAt).toBeUndefined();
+    expect(resolved.jobs).toContainEqual(
+      expect.objectContaining({
+        name: "bookings:markCompleted",
+        args: [{ bookingId: f.bookingId }],
+      }),
+    );
+
+    await f.t.mutation(internal.bookings.markCompleted, {
+      bookingId: f.bookingId,
+    });
+    const state = await f.state();
+    expect(state.booking).toMatchObject({ status: "completed", completedAt: NOW });
+    expect(state.payouts).toHaveLength(1);
+    expect(state.payouts).toMatchObject([
+      {
+        kind: "forfeit",
+        paymentRecordId: f.paymentRecordId,
+        amountMinor: 7000,
+        status: "scheduled",
+        scheduledFor: NOW + PAYOUT_DELAY_MS,
+      },
+    ]);
+    expect(state.payouts).toEqual(resolved.payouts);
+    const ledger = await f.t.run((ctx) =>
+      ctx.db
+        .query("ledgerEntries")
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", f.bookingId))
+        .collect(),
+    );
+    expect(ledger.filter((row) => row.kind === "commission")).toMatchObject([
+      {
+        idempotencyKey: `forfeit-commission:${state.refunds[0]._id}`,
+        amountMinor: 1000,
+      },
+    ]);
+  });
+
+  test("partial settlement without a prior payout creates only the forfeit and preserves admin and installment holds", async () => {
     const f = await setupDisputes({
       payoutHoldReasons: ["admin", "unpaid_installment"],
       payoutHold: true,
@@ -668,9 +720,10 @@ describe("disputes review and resolution", () => {
       refundMinor: 2000,
     });
     const state = await f.state();
+    // Partial dispute refunds keep the booking live, so the unpaid balance is still owed.
     expect(state.booking).toMatchObject({
       status: "completed",
-      payoutHoldReasons: ["admin"],
+      payoutHoldReasons: ["admin", "unpaid_installment"],
       payoutHold: true,
     });
     expect(state.payouts).toMatchObject([
@@ -789,6 +842,68 @@ describe("disputes review and resolution", () => {
       expect(email.args[0].text).toContain("Refund: 70.00 USD");
       expect(email.args[0].text).not.toContain("Refund: 100.00 USD");
     }
+  });
+
+  test("refund resolutions count only the paid installment and full refunds release its balance hold", async () => {
+    const f = await setupDisputes({
+      paidMinor: 4000,
+      payoutHold: true,
+      payoutHoldReasons: ["unpaid_installment"],
+    });
+    const pendingRecordId = await f.t.run(async (ctx) => {
+      const { _id, _creationTime, ...record } = (await ctx.db.get(
+        f.paymentRecordId,
+      ))!;
+      await ctx.db.patch(f.paymentRecordId, { amountMinor: 4000 });
+      await ctx.db.patch(f.payoutId, { amountMinor: 3500 });
+      return await ctx.db.insert("paymentRecords", {
+        ...record,
+        installmentIndex: 1,
+        label: "Remaining balance",
+        amountMinor: 6000,
+        status: "pending",
+        paidAt: undefined,
+        stripeChargeId: undefined,
+        stripePaymentIntentId: undefined,
+      });
+    });
+    const { disputeId } = await f.open();
+    const before = await f.state();
+    await expect(
+      f.as("platformAdmin").mutation(api.disputes.resolve, {
+        disputeId,
+        resolution: "refunded_partial",
+        refundMinor: 5000,
+      }),
+    ).rejects.toThrow(
+      "A partial refund must be a positive whole number in minor units below the amount paid",
+    );
+    expect(await f.state()).toEqual(before);
+
+    expect(
+      await f.as("platformAdmin").mutation(api.disputes.resolve, {
+        disputeId,
+        resolution: "refunded_full",
+      }),
+    ).toEqual({ status: "resolved", refundMinor: 4000 });
+    const state = await f.state();
+    expect(state.booking).toMatchObject({
+      status: "refunded",
+      payoutHoldReasons: [],
+      payoutHold: false,
+    });
+    expect(state.refunds).toMatchObject([
+      {
+        paymentRecordId: f.paymentRecordId,
+        amountMinor: 4000,
+        status: "pending",
+      },
+    ]);
+    expect(state.disputes[0].resolvedRefundMinor).toBe(4000);
+    expect(await f.t.run((ctx) => ctx.db.get(pendingRecordId))).toMatchObject({
+      status: "pending",
+      refundedMinor: 0,
+    });
   });
 
   test("full refund rejects a booking whose payments are already fully refunded", async () => {

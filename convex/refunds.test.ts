@@ -1820,6 +1820,13 @@ describe("Stripe disputes", () => {
     "a lost Stripe dispute resolves a %s in-app dispute with the disputed amount",
     async (status) => {
       const f = await setupRefunds();
+      const payoutId = await f.addPayout();
+      const otherPayoutId = await f.addPayout({
+        paymentRecordId: f.paymentRecordIds[1],
+        amountMinor: 7200,
+        sourceChargeId: "ch_b",
+      });
+      const otherRecord = (await f.records())[1];
       const inAppDisputeId = await f.t.run((ctx) =>
         ctx.db.insert("disputes", {
           bookingId: f.bookingId,
@@ -1855,13 +1862,291 @@ describe("Stripe disputes", () => {
         refundedMinor: 7000,
       });
       expect(await f.readBooking()).toMatchObject({
-        status: "refunded",
+        status: "confirmed",
         refundedMinor: 7000,
+        payoutHold: false,
+        payoutHoldReasons: [],
       });
+      expect((await f.readBooking())?.disputedFromStatus).toBeUndefined();
+      expect((await f.records())[1]).toEqual(otherRecord);
+      expect(await f.payouts()).toMatchObject([
+        {
+          _id: payoutId,
+          status: "scheduled",
+          amountMinor: 4500,
+          originalAmountMinor: 10800,
+          scheduledFor: STARTS_AT + PAYOUT_DELAY_MS,
+        },
+        {
+          _id: otherPayoutId,
+          status: "scheduled",
+          amountMinor: 7200,
+          scheduledFor: STARTS_AT + PAYOUT_DELAY_MS,
+        },
+      ]);
       expect((await f.ledger()).filter((row) => row.kind === "dispute_loss"))
         .toMatchObject([{ amountMinor: -7000 }]);
     },
   );
+
+  test.each(["confirmed", "completed"] as const)(
+    "losing 7000 of a 20000 installment restores %s and preserves the untouched payout",
+    async (status) => {
+      const f = await setupRefunds();
+      await f.t.run(async (ctx) => {
+        await ctx.db.patch(f.bookingId, {
+          status,
+          ...(status === "completed" ? { completedAt: NOW } : {}),
+          grossMinor: 28000,
+          commissionMinor: 2800,
+          artistNetMinor: 25200,
+          paidMinor: 28000,
+        });
+        await ctx.db.patch(f.paymentRecordIds[0], { amountMinor: 20000 });
+      });
+      const payoutId = await f.addPayout({ amountMinor: 18000 });
+      const otherPayoutId = await f.addPayout({
+        paymentRecordId: f.paymentRecordIds[1],
+        amountMinor: 7200,
+        sourceChargeId: "ch_b",
+      });
+      const otherRecord = (await f.records())[1];
+      await f.deliver(disputeEvent("charge.dispute.created", { amount: 7000 }));
+      expect(await f.readBooking()).toMatchObject({
+        status: "disputed",
+        disputedFromStatus: status,
+        payoutHoldReasons: ["dispute"],
+      });
+      expect(await f.payouts()).toMatchObject([
+        { _id: payoutId, status: "held", holdReason: "dispute" },
+        { _id: otherPayoutId, status: "held", holdReason: "dispute" },
+      ]);
+
+      const closed = disputeEvent("charge.dispute.closed", {
+        status: "lost",
+        balance_transactions: [{ fee: 0 }],
+      });
+      expect(await f.deliver(closed)).toEqual({ outcome: "applied" });
+      const booking = await f.readBooking();
+      expect(booking).toMatchObject({
+        status,
+        refundedMinor: 7000,
+        revision: 5,
+        payoutHold: false,
+        payoutHoldReasons: [],
+      });
+      expect(booking?.disputedFromStatus).toBeUndefined();
+      expect((await f.records())[0]).toMatchObject({
+        amountMinor: 20000,
+        refundedMinor: 7000,
+        status: "partially_refunded",
+        stripeDisputeStatus: "lost",
+      });
+      expect((await f.records())[1]).toEqual(otherRecord);
+      const payouts = await f.payouts();
+      expect(payouts).toMatchObject([
+        {
+          _id: payoutId,
+          status: "scheduled",
+          amountMinor: 11700,
+          originalAmountMinor: 18000,
+          scheduledFor: STARTS_AT + PAYOUT_DELAY_MS,
+        },
+        {
+          _id: otherPayoutId,
+          status: "scheduled",
+          amountMinor: 7200,
+          scheduledFor: STARTS_AT + PAYOUT_DELAY_MS,
+        },
+      ]);
+      const jobs = await f.scheduled();
+      expect(jobs.filter((job) => job.name === "payouts:releasePayout"))
+        .toMatchObject([
+          {
+            args: [{ payoutId }],
+            scheduledTime: STARTS_AT + PAYOUT_DELAY_MS,
+          },
+          {
+            args: [{ payoutId: otherPayoutId }],
+            scheduledTime: STARTS_AT + PAYOUT_DELAY_MS,
+          },
+        ]);
+      await f.deliver({ ...closed, id: "evt_partial_loss_again" });
+      expect(await f.readBooking()).toEqual(booking);
+      expect(await f.payouts()).toEqual(payouts);
+      expect(await f.scheduled()).toEqual(jobs);
+
+      vi.setSystemTime(STARTS_AT + PAYOUT_DELAY_MS);
+      for (const payout of payouts) {
+        await f.t.mutation(internal.payouts.releasePayout, {
+          payoutId: payout._id,
+        });
+        expect(await f.t.run((ctx) => ctx.db.get(payout._id))).toMatchObject({
+          status: "processing",
+          amountMinor: payout.amountMinor,
+        });
+      }
+    },
+  );
+
+  test("a loss with no retained booking balance marks the booking refunded", async () => {
+    const f = await setupRefunds();
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.paymentRecordIds[1], {
+        status: "refunded",
+        refundedMinor: 8000,
+      });
+      await ctx.db.patch(f.bookingId, { refundedMinor: 8000 });
+    });
+    const payoutId = await f.addPayout();
+    const otherPayoutId = await f.addPayout({
+      paymentRecordId: f.paymentRecordIds[1],
+      amountMinor: 7200,
+      sourceChargeId: "ch_b",
+      status: "reversed",
+    });
+    const otherPayout = await f.t.run((ctx) => ctx.db.get(otherPayoutId));
+    await f.deliver(disputeEvent("charge.dispute.created"));
+    expect(await f.deliver(disputeEvent("charge.dispute.closed", {
+      status: "lost",
+      balance_transactions: [{ fee: 0 }],
+    }))).toEqual({ outcome: "applied" });
+    const booking = await f.readBooking();
+    expect(booking).toMatchObject({
+      status: "refunded",
+      refundedMinor: 20000,
+      payoutHold: false,
+      payoutHoldReasons: [],
+      revision: 5,
+    });
+    expect(booking?.disputedFromStatus).toBeUndefined();
+    expect((await f.records())[0]).toMatchObject({
+      status: "refunded",
+      refundedMinor: 12000,
+      stripeDisputeStatus: "lost",
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+      status: "reversed",
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(otherPayoutId))).toEqual(otherPayout);
+    expect(await f.scheduled()).toEqual([]);
+  });
+
+  test("a loss adds only the remaining refundable amount to an already partially refunded booking", async () => {
+    const f = await setupRefunds();
+    const payoutId = await f.addPayout();
+    const otherPayoutId = await f.addPayout({
+      paymentRecordId: f.paymentRecordIds[1],
+      amountMinor: 7200,
+      sourceChargeId: "ch_b",
+    });
+    const refundId = await f.addRefund({ amountMinor: 6000 });
+    await f.t.mutation(internal.refunds.markRefundSucceeded, {
+      refundId,
+      stripeRefundId: "re_before_dispute",
+    });
+    expect((await f.records())[0]).toMatchObject({
+      status: "partially_refunded",
+      refundedMinor: 6000,
+    });
+    expect(await f.readBooking()).toMatchObject({ refundedMinor: 6000 });
+    expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+      amountMinor: 5400,
+      originalAmountMinor: 10800,
+    });
+    await f.deliver(disputeEvent("charge.dispute.created", { amount: 9000 }));
+    const closed = disputeEvent("charge.dispute.closed", {
+      status: "lost",
+      balance_transactions: [{ fee: 0 }],
+    });
+    expect(await f.deliver(closed)).toEqual({ outcome: "applied" });
+    const booking = await f.readBooking();
+    expect(booking).toMatchObject({
+      status: "confirmed",
+      refundedMinor: 12000,
+      payoutHold: false,
+      payoutHoldReasons: [],
+    });
+    expect(booking?.disputedFromStatus).toBeUndefined();
+    expect((await f.records())[0]).toMatchObject({
+      status: "refunded",
+      refundedMinor: 12000,
+      stripeDisputeStatus: "lost",
+    });
+    expect(await f.payouts()).toMatchObject([
+      { _id: payoutId, status: "reversed" },
+      { _id: otherPayoutId, status: "scheduled", amountMinor: 7200 },
+    ]);
+    expect((await f.ledger()).filter((row) => row.kind === "dispute_loss"))
+      .toMatchObject([{ amountMinor: -9000 }]);
+    const ledger = await f.ledger();
+    await f.deliver({ ...closed, id: "evt_capped_loss_again" });
+    expect(await f.readBooking()).toEqual(booking);
+    expect(await f.ledger()).toEqual(ledger);
+  });
+
+  test("a partial loss preserves the prior status and payout holds until another Stripe dispute closes", async () => {
+    const f = await setupRefunds();
+    const payoutId = await f.addPayout();
+    const otherPayoutId = await f.addPayout({
+      paymentRecordId: f.paymentRecordIds[1],
+      amountMinor: 7200,
+      sourceChargeId: "ch_b",
+    });
+    await f.deliver(disputeEvent("charge.dispute.created", { amount: 7000 }));
+    const second = disputeEvent("charge.dispute.created", {
+      id: "dp_second",
+      payment_intent: "pi_b",
+      amount: 2000,
+    });
+    await f.deliver({ ...second, id: "evt_second_created" });
+    expect(await f.deliver(disputeEvent("charge.dispute.closed", {
+      status: "lost",
+      balance_transactions: [{ fee: 0 }],
+    }))).toEqual({ outcome: "applied" });
+    expect(await f.readBooking()).toMatchObject({
+      status: "disputed",
+      disputedFromStatus: "confirmed",
+      refundedMinor: 7000,
+      payoutHold: true,
+      payoutHoldReasons: ["dispute"],
+    });
+    expect(await f.payouts()).toMatchObject([
+      {
+        _id: payoutId,
+        amountMinor: 4500,
+        originalAmountMinor: 10800,
+        status: "held",
+        holdReason: "dispute",
+      },
+      {
+        _id: otherPayoutId,
+        amountMinor: 7200,
+        status: "held",
+        holdReason: "dispute",
+      },
+    ]);
+    expect(await f.scheduled()).toEqual([]);
+
+    expect(await f.deliver({
+      ...disputeEvent("charge.dispute.closed", {
+        ...second.data.object,
+        status: "won",
+      }),
+      id: "evt_second_closed",
+    })).toEqual({ outcome: "applied" });
+    expect(await f.readBooking()).toMatchObject({
+      status: "confirmed",
+      refundedMinor: 7000,
+      payoutHold: false,
+      payoutHoldReasons: [],
+    });
+    expect((await f.readBooking())?.disputedFromStatus).toBeUndefined();
+    expect(await f.payouts()).toMatchObject([
+      { _id: payoutId, amountMinor: 4500, status: "scheduled" },
+      { _id: otherPayoutId, amountMinor: 7200, status: "scheduled" },
+    ]);
+  });
 
   test("a lost Stripe dispute records its outcome when the payment was already refunded", async () => {
     const f = await setupRefunds();
@@ -2014,11 +2299,12 @@ describe("Stripe disputes", () => {
         stripeTransferId: "tr_paid",
         reversedMinor: 1800,
       });
-      await f.addPayout({
+      const otherPayoutId = await f.addPayout({
         status: "paid",
         paymentRecordId: f.paymentRecordIds[1],
         stripeTransferId: "tr_other",
       });
+      const otherPayout = await f.t.run((ctx) => ctx.db.get(otherPayoutId));
       expect(
         await f.deliver(
           disputeEvent("charge.dispute.created", { amount: "invalid" }),
@@ -2041,7 +2327,7 @@ describe("Stripe disputes", () => {
       }
       const booking = await f.readBooking();
       expect(booking).toMatchObject({
-        status: "refunded",
+        status: "confirmed",
         refundedMinor: 12000,
         payoutHold: false,
         payoutHoldReasons: [],
@@ -2050,6 +2336,11 @@ describe("Stripe disputes", () => {
       expect((await f.records())[0]).toMatchObject({
         status: "refunded",
         refundedMinor: 12000,
+      });
+      expect(await f.t.run((ctx) => ctx.db.get(otherPayoutId))).toEqual(otherPayout);
+      expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+        status: "paid",
+        reversalReservedMinor: 10800,
       });
       const ledger = await f.ledger();
       expect(ledger).toHaveLength(3);
@@ -2074,6 +2365,11 @@ describe("Stripe disputes", () => {
         {
           name: "refunds:reverseTransfer",
           args: [{ payoutId, reversalMinor: 9000 }],
+        },
+        {
+          name: "bookings:markCompleted",
+          args: [{ bookingId: f.bookingId }],
+          scheduledTime: STARTS_AT + 6 * 60 * 60 * 1000,
         },
       ]);
       vi.spyOn(console, "log").mockImplementation(() => {});
@@ -2128,7 +2424,13 @@ describe("Stripe disputes", () => {
         }),
       ),
     ).toEqual({ outcome: "applied" });
-    expect(await f.scheduled()).toEqual([]);
+    expect(await f.scheduled()).toMatchObject([
+      {
+        name: "bookings:markCompleted",
+        args: [{ bookingId: f.bookingId }],
+        scheduledTime: STARTS_AT + 6 * 60 * 60 * 1000,
+      },
+    ]);
   });
 
   test("holds and releases a forfeit payout on a cancelled booking without changing its status", async () => {
@@ -2267,13 +2569,18 @@ describe("Stripe disputes", () => {
         refundedMinor: outcome === "lost" ? 3000 : 0,
       });
       expect(await f.readBooking()).toMatchObject({
-        status:
-          outcome === "won" || status === "cancelled_by_organizer"
-            ? status
-            : "refunded",
+        status,
         payoutHoldReasons: ["admin"],
         payoutHold: true,
         refundedMinor: outcome === "lost" ? 3000 : 0,
+      });
+      expect((await f.readBooking())?.disputedFromStatus).toBeUndefined();
+      expect((await f.payouts())[0]).toMatchObject({
+        status: status === "paid" ? "paid" : "scheduled",
+        amountMinor: outcome === "lost" && status !== "paid" ? 8100 : 10800,
+        ...(outcome === "lost" && status === "paid"
+          ? { reversalReservedMinor: 2700 }
+          : {}),
       });
       const ledger = await f.ledger();
       expect(ledger).toEqual(
@@ -2723,10 +3030,14 @@ describe("refund status and payout reconciliation", () => {
         }),
       ).toEqual({ outcome: "applied" });
       expect(await f.readBooking()).toMatchObject({
-        status: outcome === "won" ? "confirmed" : "refunded",
+        status: "confirmed",
         payoutHoldReasons: [],
         payoutHold: false,
       });
+      expect((await f.readBooking())?.disputedFromStatus).toBeUndefined();
+      expect(await f.payouts()).toMatchObject([
+        { status: "scheduled", amountMinor: 10800 },
+      ]);
       expect((await f.records())[1].stripeDisputeStatus).toBe(outcome);
       expect(
         (await f.ledger()).some(
