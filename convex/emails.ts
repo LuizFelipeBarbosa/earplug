@@ -19,6 +19,8 @@ export const emailKindValidator = v.union(
   v.literal("bookingCancelled"),
   v.literal("safetyCancellation"),
   v.literal("safetyReportReceived"),
+  v.literal("disputeOpened"),
+  v.literal("disputeResolved"),
   v.literal("reviewRequested"),
   v.literal("ticketReceipt"),
   v.literal("ticketRefunded"),
@@ -70,6 +72,8 @@ export type BookingEmailKind =
   | "bookingCancelled"
   | "safetyCancellation"
   | "safetyReportReceived"
+  | "disputeOpened"
+  | "disputeResolved"
   | "reviewRequested";
 
 function bookingDateLabel(timestamp: number): string {
@@ -90,6 +94,9 @@ export function bookingEmail(
     venueName: string;
     startsAt: number;
     grossLabel?: string;
+    categoryLabel?: string;
+    resolutionLabel?: string;
+    amountLabel?: string;
     reason?: string;
     link: string;
   },
@@ -133,6 +140,20 @@ export function bookingEmail(
     case "safetyReportReceived":
       subject = `We received your report about ${input.opportunityTitle}`;
       text = `We received your report about the booking for ${performance}. Our team will review it.`;
+      break;
+    case "disputeOpened":
+      subject = `A dispute was opened on ${input.opportunityTitle}`;
+      text = `A dispute was opened on the booking between ${input.bandName} and ${input.orgName} for ${performance}. Category: ${input.categoryLabel ?? "other"}.`;
+      if (input.amountLabel !== undefined) {
+        text += `\n\nRequested refund: ${input.amountLabel}`;
+      }
+      break;
+    case "disputeResolved":
+      subject = `Dispute resolved on ${input.opportunityTitle}`;
+      text = `The dispute on the booking between ${input.bandName} and ${input.orgName} for ${performance} was resolved. Resolution: ${input.resolutionLabel ?? "resolved"}.`;
+      if (input.amountLabel !== undefined) {
+        text += `\n\nRefund: ${input.amountLabel}`;
+      }
       break;
     case "reviewRequested":
       subject = `Review requested for ${input.venueName}: ${input.opportunityTitle}`;

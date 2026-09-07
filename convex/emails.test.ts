@@ -67,6 +67,67 @@ describe("bookingEmail", () => {
     expect(text).toContain(reason);
     expect(text.split("\n").at(-1)).toBe(input.link);
   });
+
+  test("formats a refund request with a category and requested amount", () => {
+    const { subject, text } = bookingEmail("disputeOpened", {
+      ...input,
+      categoryLabel: "late or short set",
+      amountLabel: "25.00 USD",
+    });
+
+    expect(subject).toBe("A dispute was opened on Autumn Sessions");
+    expect(text).toContain("Category: late or short set.");
+    expect(text).toContain("Requested refund: 25.00 USD");
+    expect(text).toContain(input.bandName);
+    expect(text).toContain(input.orgName);
+    expect(text).toContain(input.venueName);
+    expect(text).toContain("Sat, Oct 17");
+    expect(text).not.toContain("Fee:");
+    expect(text.endsWith(`\n\n${input.link}`)).toBe(true);
+  });
+
+  test("formats an artist dispute without a refund request", () => {
+    const { subject, text } = bookingEmail("disputeOpened", {
+      ...input,
+      categoryLabel: "payment",
+      venueName: "Private event",
+    });
+
+    expect(subject).toBe("A dispute was opened on Autumn Sessions");
+    expect(text).toContain("Category: payment.");
+    expect(text).toContain("Private event");
+    expect(text).not.toContain("Requested refund:");
+    expect(text).not.toContain("undefined");
+    expect(`${subject} ${text}`).not.toMatch(/insurance|escrow/i);
+  });
+
+  test.each([
+    { resolutionLabel: "artist payout released", amountLabel: undefined },
+    { resolutionLabel: "dismissed", amountLabel: undefined },
+    { resolutionLabel: "full refund", amountLabel: "100.00 USD" },
+    { resolutionLabel: "partial refund", amountLabel: "20.00 USD" },
+  ])("formats a resolution as $resolutionLabel", (details) => {
+    const { subject, text } = bookingEmail("disputeResolved", {
+      ...input,
+      ...details,
+      venueName: "Private event",
+    });
+
+    expect(subject).toBe("Dispute resolved on Autumn Sessions");
+    expect(text).toContain(`Resolution: ${details.resolutionLabel}.`);
+    expect(text).toContain("Private event");
+    expect(text).toContain(input.bandName);
+    expect(text).toContain(input.orgName);
+    if (details.amountLabel) {
+      expect(text).toContain(`Refund: ${details.amountLabel}`);
+    } else {
+      expect(text).not.toContain("Refund:");
+    }
+    expect(text).not.toContain("Fee:");
+    expect(text).not.toContain("undefined");
+    expect(`${subject} ${text}`).not.toMatch(/insurance|escrow/i);
+    expect(text.endsWith(`\n\n${input.link}`)).toBe(true);
+  });
 });
 
 describe("ticketEmail", () => {
@@ -242,6 +303,26 @@ describe("send", () => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
+
+  test.each(["disputeOpened", "disputeResolved"] as const)(
+    "accepts the %s email kind",
+    async (kind) => {
+      vi.stubEnv("RESEND_SEND_ENABLED", "false");
+      vi.spyOn(console, "log").mockImplementation(() => {});
+      const t = convexTest(schema, modules);
+      await expect(
+        t.action(internal.emails.send, {
+          kind,
+          to: "party@disputes.test",
+          ...bookingEmail(kind, {
+            ...input,
+            categoryLabel: "payment",
+            resolutionLabel: "dismissed",
+          }),
+        }),
+      ).resolves.toBeNull();
+    },
+  );
 
   test("disabled sending logs the kind and subject without the recipient address", async () => {
     vi.stubEnv("RESEND_API_KEY", undefined);
