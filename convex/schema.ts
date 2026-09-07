@@ -185,6 +185,33 @@ export const refundReasonValidator = v.union(
   v.literal("late_payment"),
 );
 
+export const disputeSideValidator = v.union(
+  v.literal("organizer"),
+  v.literal("artist"),
+);
+
+export const disputeCategoryValidator = v.union(
+  v.literal("no_show"),
+  v.literal("late_or_short_set"),
+  v.literal("misrepresentation"),
+  v.literal("payment"),
+  v.literal("safety"),
+  v.literal("other"),
+);
+
+export const disputeStatusValidator = v.union(
+  v.literal("open"),
+  v.literal("under_review"),
+  v.literal("resolved"),
+);
+
+export const disputeResolutionValidator = v.union(
+  v.literal("released"),
+  v.literal("refunded_full"),
+  v.literal("refunded_partial"),
+  v.literal("dismissed"),
+);
+
 export const ledgerKindValidator = v.union(
   v.literal("charge"),
   v.literal("refund"),
@@ -354,6 +381,7 @@ export default defineSchema({
     reviewSummary: v.optional(reviewSummaryValidator),
     verifiedAt: v.optional(v.number()),
     suspendedAt: v.optional(v.number()),
+    suspensionNote: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -679,6 +707,25 @@ export default defineSchema({
     resolvedAt: v.optional(v.number()),
     resolvedBy: v.optional(v.id("users")),
     adminNote: v.optional(v.string()),
+  })
+    .index("by_status_and_createdAt", ["status", "createdAt"])
+    .index("by_bookingId", ["bookingId"]),
+
+  disputes: defineTable({
+    bookingId: v.id("bookings"),
+    openedByUserId: v.id("users"),
+    side: disputeSideValidator,
+    category: disputeCategoryValidator,
+    text: v.string(),
+    requestedRefundMinor: v.optional(v.number()),
+    status: disputeStatusValidator,
+    resolution: v.optional(disputeResolutionValidator),
+    resolvedRefundMinor: v.optional(v.number()),
+    adminNote: v.optional(v.string()),
+    resolvedBy: v.optional(v.id("users")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    resolvedAt: v.optional(v.number()),
   })
     .index("by_status_and_createdAt", ["status", "createdAt"])
     .index("by_bookingId", ["bookingId"]),

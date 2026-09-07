@@ -31,6 +31,7 @@ import type * as lib_cancellationPolicy from "../lib/cancellationPolicy.js";
 import type * as lib_cancellationSettlement from "../lib/cancellationSettlement.js";
 import type * as lib_clerkUser from "../lib/clerkUser.js";
 import type * as lib_discovery from "../lib/discovery.js";
+import type * as lib_disputeStatus from "../lib/disputeStatus.js";
 import type * as lib_docCache from "../lib/docCache.js";
 import type * as lib_env from "../lib/env.js";
 import type * as lib_fees from "../lib/fees.js";
@@ -118,6 +119,7 @@ declare const fullApi: ApiFromModules<{
   "lib/cancellationSettlement": typeof lib_cancellationSettlement;
   "lib/clerkUser": typeof lib_clerkUser;
   "lib/discovery": typeof lib_discovery;
+  "lib/disputeStatus": typeof lib_disputeStatus;
   "lib/docCache": typeof lib_docCache;
   "lib/env": typeof lib_env;
   "lib/fees": typeof lib_fees;

@@ -26,6 +26,7 @@ describe("features: public flags", () => {
       tickets: false,
       payments: false,
       bandGigWrites: true,
+      disputes: false,
     });
   });
 
@@ -35,12 +36,14 @@ describe("features: public flags", () => {
     vi.stubEnv("TICKETS_ENABLED", "true");
     vi.stubEnv("PAYMENTS_ENABLED", "true");
     vi.stubEnv("BAND_GIG_WRITES", "false");
+    vi.stubEnv("DISPUTES_ENABLED", "true");
 
     expect(await t.query(api.features.flags, {})).toEqual({
       privateBookings: true,
       tickets: true,
       payments: true,
       bandGigWrites: false,
+      disputes: true,
     });
   });
 
@@ -50,12 +53,29 @@ describe("features: public flags", () => {
     vi.stubEnv("TICKETS_ENABLED", "1");
     vi.stubEnv("PAYMENTS_ENABLED", "0");
     vi.stubEnv("BAND_GIG_WRITES", "1");
+    vi.stubEnv("DISPUTES_ENABLED", "0");
 
     expect(await t.query(api.features.flags, {})).toEqual({
       privateBookings: false,
       tickets: true,
       payments: false,
       bandGigWrites: true,
+      disputes: false,
     });
+  });
+
+  test.each([
+    { value: undefined, enabled: false },
+    { value: "", enabled: false },
+    { value: "invalid", enabled: false },
+    { value: "true", enabled: true },
+    { value: "1", enabled: true },
+    { value: "false", enabled: false },
+    { value: "0", enabled: false },
+  ])("reads DISPUTES_ENABLED=$value as $enabled", async ({ value, enabled }) => {
+    const t = convexTest(schema);
+    vi.stubEnv("DISPUTES_ENABLED", value);
+
+    expect((await t.query(api.features.flags, {})).disputes).toBe(enabled);
   });
 });
