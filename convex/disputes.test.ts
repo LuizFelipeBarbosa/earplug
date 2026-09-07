@@ -712,6 +712,95 @@ describe("disputes review and resolution", () => {
     },
   );
 
+  test("full refund reports and emails the remaining refundable amount across installments", async () => {
+    const f = await setupDisputes({ refundedMinor: 3000 });
+    await f.t.run(async (ctx) => {
+      const { _id, _creationTime, ...record } = (await ctx.db.get(
+        f.paymentRecordId,
+      ))!;
+      await ctx.db.patch(f.paymentRecordId, {
+        amountMinor: 4000,
+        refundedMinor: 1000,
+      });
+      await ctx.db.insert("paymentRecords", {
+        ...record,
+        installmentIndex: 1,
+        amountMinor: 6000,
+        refundedMinor: 2000,
+        stripeChargeId: "ch_dispute_second",
+        stripePaymentIntentId: "pi_dispute_second",
+      });
+      const { _id: bookingId, _creationTime: bookingCreatedAt, ...booking } =
+        (await ctx.db.get(f.bookingId))!;
+      const otherBookingId = await ctx.db.insert("bookings", booking);
+      await ctx.db.insert("paymentRecords", {
+        ...record,
+        bookingId: otherBookingId,
+      });
+    });
+    const { disputeId } = await f.open();
+
+    expect(
+      await f.as("platformAdmin").mutation(api.disputes.resolve, {
+        disputeId,
+        resolution: "refunded_full",
+      }),
+    ).toEqual({ status: "resolved", refundMinor: 7000 });
+    const state = await f.state();
+    expect(state.disputes[0]).toMatchObject({
+      status: "resolved",
+      resolution: "refunded_full",
+      resolvedRefundMinor: 7000,
+    });
+    const emails = state.jobs.filter(
+      (job) => job.args[0].kind === "disputeResolved",
+    );
+    expect(emails).toHaveLength(3);
+    for (const email of emails) {
+      expect(email.args[0].text).toContain("Refund: 70.00 USD");
+      expect(email.args[0].text).not.toContain("Refund: 100.00 USD");
+    }
+  });
+
+  test("full refund rejects a booking whose payments are already fully refunded", async () => {
+    const f = await setupDisputes({ refundedMinor: 10000 });
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.paymentRecordId, { refundedMinor: 10000 }),
+    );
+    const { disputeId } = await f.open();
+    const before = await f.state();
+
+    await expect(
+      f.as("platformAdmin").mutation(api.disputes.resolve, {
+        disputeId,
+        resolution: "refunded_full",
+      }),
+    ).rejects.toThrow("A full refund requires a positive amount paid");
+    expect(await f.state()).toEqual(before);
+  });
+
+  test("partial refund cannot reach or exceed the remaining refundable amount", async () => {
+    const f = await setupDisputes({ refundedMinor: 3000 });
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.paymentRecordId, { refundedMinor: 3000 }),
+    );
+    const { disputeId } = await f.open();
+    const before = await f.state();
+
+    for (const refundMinor of [7000, 8000]) {
+      await expect(
+        f.as("platformAdmin").mutation(api.disputes.resolve, {
+          disputeId,
+          resolution: "refunded_partial",
+          refundMinor,
+        }),
+      ).rejects.toThrow(
+        "A partial refund must be a positive whole number in minor units below the amount paid",
+      );
+      expect(await f.state()).toEqual(before);
+    }
+  });
+
   test("an artist's partial refund after payout uses the existing transfer reversal pipeline", async () => {
     const f = await setupDisputes({ status: "paid" });
     await f.t.run((ctx) =>
@@ -887,15 +976,50 @@ describe("disputes queries", () => {
     },
   );
 
-  test("listOpen paginates open rows newest first with booking names and money", async () => {
+  test("forBooking returns only the 50 newest disputes", async () => {
+    const f = await setupDisputes();
+    const disputeIds = await f.t.run(async (ctx) => {
+      const ids = [];
+      for (let index = 0; index < 52; index++) {
+        ids.push(
+          await ctx.db.insert("disputes", {
+            bookingId: f.bookingId,
+            openedByUserId: f.users.owner,
+            side: "organizer",
+            category: "payment",
+            text: `Historical dispute ${index}`,
+            status: "resolved",
+            resolution: "dismissed",
+            createdAt: NOW + index,
+            updatedAt: NOW + index,
+          }),
+        );
+      }
+      return ids;
+    });
+
+    const rows = await f.as("owner").query(api.disputes.forBooking, {
+      bookingId: f.bookingId,
+    });
+    expect(rows.map((row) => row.disputeId)).toEqual(
+      disputeIds.reverse().slice(0, 50),
+    );
+  });
+
+  test("listOpen paginates open rows and appends under-review rows only on the first page", async () => {
     const f = await setupDisputes();
     const first = await f.open();
     vi.setSystemTime(NOW + 1000);
-    const newestId = await f.t.run(async (ctx) => {
+    const { newestId, underReviewId, newestUnderReviewId } = await f.t.run(async (ctx) => {
       const { _id, _creationTime, ...dispute } = (await ctx.db.get(
         first.disputeId,
       ))!;
-      await ctx.db.insert("disputes", {
+      const newestUnderReviewId = await ctx.db.insert("disputes", {
+        ...dispute,
+        status: "under_review",
+        createdAt: NOW + 4000,
+      });
+      const underReviewId = await ctx.db.insert("disputes", {
         ...dispute,
         status: "under_review",
         createdAt: NOW + 2000,
@@ -905,7 +1029,11 @@ describe("disputes queries", () => {
         status: "resolved",
         createdAt: NOW + 3000,
       });
-      return ctx.db.insert("disputes", { ...dispute, createdAt: NOW + 1000 });
+      const newestId = await ctx.db.insert("disputes", {
+        ...dispute,
+        createdAt: NOW + 1000,
+      });
+      return { newestId, underReviewId, newestUnderReviewId };
     });
     const admin = f.as("platformAdmin");
     const firstPage = await admin.query(api.disputes.listOpen, {
@@ -921,6 +1049,8 @@ describe("disputes queries", () => {
         paidMinor: 10000,
         bookingStatus: "disputed",
       },
+      { disputeId: newestUnderReviewId, status: "under_review" },
+      { disputeId: underReviewId, status: "under_review" },
     ]);
     expect(firstPage.page[0]).not.toHaveProperty("_creationTime");
     const secondPage = await admin.query(api.disputes.listOpen, {
@@ -935,6 +1065,36 @@ describe("disputes queries", () => {
       paginationOpts: { numItems: 1, cursor: null },
     });
     expect(withoutPaidMinor.page[0].paidMinor).toBe(0);
+  });
+
+  test("listOpen keeps a dispute visible when review leaves no open rows", async () => {
+    const f = await setupDisputes();
+    const { disputeId } = await f.open();
+    const admin = f.as("platformAdmin");
+    await admin.mutation(api.disputes.startReview, { disputeId });
+
+    const result = await admin.query(api.disputes.listOpen, {
+      paginationOpts: { numItems: 1, cursor: null },
+    });
+    expect(result.isDone).toBe(true);
+    expect(result.page).toMatchObject([{ disputeId, status: "under_review" }]);
+  });
+
+  test("listOpen preserves the placeholder for a deleted booking", async () => {
+    const f = await setupDisputes();
+    const { disputeId } = await f.open();
+    await f.t.run((ctx) => ctx.db.delete(f.bookingId));
+
+    const result = await f.as("platformAdmin").query(api.disputes.listOpen, {
+      paginationOpts: { numItems: 1, cursor: null },
+    });
+    expect(result.page).toMatchObject([
+      {
+        disputeId,
+        bookingTitle: "(deleted booking)",
+        bookingStatus: "(deleted booking)",
+      },
+    ]);
   });
 
   test.each(["owner", "artist", "stranger"] as const)(

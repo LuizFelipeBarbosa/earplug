@@ -6,7 +6,6 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
-  env,
   mutation,
   query,
   type MutationCtx,
@@ -41,6 +40,7 @@ import {
 import { appBaseUrl, flag } from "./lib/env";
 import { requireUser } from "./lib/helpers";
 import {
+  bookingStatusValidator,
   disputeCategoryValidator,
   disputeResolutionValidator,
   disputeSideValidator,
@@ -279,7 +279,7 @@ export const forBooking = query({
       .query("disputes")
       .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
       .order("desc")
-      .collect();
+      .take(50);
     return disputes.map(disputePayload);
   },
 });
@@ -292,7 +292,10 @@ export const listOpen = query({
       organizationName: v.string(),
       bandName: v.string(),
       paidMinor: v.number(),
-      bookingStatus: v.string(),
+      bookingStatus: v.union(
+        bookingStatusValidator,
+        v.literal("(deleted booking)"),
+      ),
     }),
   ),
   handler: async (ctx, args) => {
@@ -302,8 +305,20 @@ export const listOpen = query({
       .withIndex("by_status_and_createdAt", (q) => q.eq("status", "open"))
       .order("desc")
       .paginate(args.paginationOpts);
+    // Only open disputes drive the cursor. Append all under-review rows on the
+    // first page (which can exceed numItems) so later pages do not repeat them.
+    const underReview =
+      args.paginationOpts.cursor === null
+        ? await ctx.db
+            .query("disputes")
+            .withIndex("by_status_and_createdAt", (q) =>
+              q.eq("status", "under_review"),
+            )
+            .order("desc")
+            .collect()
+        : [];
     const page = await Promise.all(
-      result.page.map(async (dispute) => {
+      [...result.page, ...underReview].map(async (dispute) => {
         const booking = await ctx.db.get(dispute.bookingId);
         const [opportunity, organization, band] = booking
           ? await Promise.all([
@@ -318,7 +333,7 @@ export const listOpen = query({
           organizationName: organization?.name ?? "(deleted organization)",
           bandName: band?.name ?? "(deleted band)",
           paidMinor: booking?.paidMinor ?? 0,
-          bookingStatus: booking?.status ?? "(deleted booking)",
+          bookingStatus: booking?.status ?? ("(deleted booking)" as const),
         };
       }),
     );
@@ -357,10 +372,18 @@ export const resolve = mutation({
     assertDisputeTransition(dispute.status, "resolved");
     const booking = await ctx.db.get(dispute.bookingId);
     if (!booking) throw new Error("Booking not found");
+    const paymentRecords = await ctx.db
+      .query("paymentRecords")
+      .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
+      .collect();
+    const refundableMinor = paymentRecords.reduce(
+      (sum, record) => sum + record.amountMinor - record.refundedMinor,
+      0,
+    );
     const check = disputeResolutionCheck({
       resolution: args.resolution,
       refundMinor: args.refundMinor,
-      paidMinor: booking.paidMinor ?? 0,
+      paidMinor: refundableMinor,
       hasOpenStripeDispute: await hasOpenStripeDispute(ctx, booking._id),
     });
     if (!check.ok) throw new Error(check.reason);

@@ -1,12 +1,15 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
+import { COMPLETION_DELAY_MS } from "./lib/bookingStatus";
 import {
   holdForDispute,
   openInAppDispute,
   releaseDisputeHold,
 } from "./lib/disputeHold";
+import { PAYOUT_DELAY_MS } from "./lib/paymentStatus";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -282,17 +285,131 @@ describe("releaseDisputeHold", () => {
         })),
       );
       expect(await f.t.run((ctx) => ctx.db.get(adminPayoutId))).toEqual(adminPayout);
-      expect(released.jobs).toMatchObject(
-        payoutIds.map((payoutId) => ({
+      expect(released.jobs).toMatchObject([
+        ...(status === "confirmed"
+          ? [
+              {
+                name: "bookings:markCompleted",
+                args: [{ bookingId: f.bookingId }],
+                scheduledTime: NOW + COMPLETION_DELAY_MS,
+              },
+            ]
+          : []),
+        ...payoutIds.map((payoutId) => ({
           name: "payouts:releasePayout",
           args: [{ payoutId }],
           scheduledTime: NOW,
         })),
-      );
+      ]);
       expect(await f.release(NOW + 2000)).toEqual({ rescheduledPayoutIds: [] });
       expect(await f.readState()).toEqual(released);
     },
   );
+
+  test("restarts completion after its original job ran during a dispute and schedules payouts", async () => {
+    const f = await setupDisputeHold({ paidMinor: 20000 });
+    const paymentRecordIds = await f.t.run(async (ctx) => {
+      const ids = [];
+      for (const installmentIndex of [0, 1]) {
+        ids.push(
+          await ctx.db.insert("paymentRecords", {
+            bookingId: f.bookingId,
+            installmentIndex,
+            label: `Installment ${installmentIndex + 1}`,
+            amountMinor: 10000,
+            currency: "usd",
+            dueAt: NOW,
+            status: "paid",
+            stripeChargeId: `ch_completion_${installmentIndex}`,
+            attempt: 0,
+            paidAt: NOW,
+            refundedMinor: 0,
+            createdAt: NOW,
+            updatedAt: NOW,
+          }),
+        );
+      }
+      await ctx.scheduler.runAt(
+        NOW + COMPLETION_DELAY_MS,
+        internal.bookings.markCompleted,
+        { bookingId: f.bookingId },
+      );
+      return ids;
+    });
+    await f.hold();
+    vi.advanceTimersByTime(COMPLETION_DELAY_MS);
+    await f.t.finishInProgressScheduledFunctions();
+    const held = await f.readState();
+    expect(held.booking?.status).toBe("disputed");
+    expect(held.payouts).toEqual([]);
+    expect(held.jobs).toMatchObject([
+      { name: "bookings:markCompleted", state: { kind: "success" } },
+    ]);
+
+    const releasedAt = NOW + COMPLETION_DELAY_MS + 1000;
+    vi.setSystemTime(releasedAt);
+    expect(await f.release(releasedAt)).toEqual({
+      restoredStatus: "confirmed",
+      rescheduledPayoutIds: [],
+    });
+    const released = await f.readState();
+    expect(released.booking?.status).toBe("confirmed");
+    expect(
+      released.jobs.filter((job) => job.state.kind === "pending"),
+    ).toMatchObject([
+      {
+        name: "bookings:markCompleted",
+        args: [{ bookingId: f.bookingId }],
+        scheduledTime: releasedAt,
+      },
+    ]);
+
+    vi.advanceTimersByTime(0);
+    await f.t.finishInProgressScheduledFunctions();
+    const completed = await f.readState();
+    expect(completed.booking).toMatchObject({
+      status: "completed",
+      completedAt: releasedAt,
+      payoutHold: false,
+      payoutHoldReasons: [],
+      revision: 6,
+    });
+    expect(completed.payouts).toMatchObject(
+      paymentRecordIds.map((paymentRecordId) => ({
+        paymentRecordId,
+        kind: "completion",
+        amountMinor: 9000,
+        status: "scheduled",
+        scheduledFor: releasedAt + PAYOUT_DELAY_MS,
+      })),
+    );
+    expect(
+      completed.jobs.filter((job) => job.name === "payouts:releasePayout"),
+    ).toMatchObject(
+      completed.payouts.map((payout) => ({
+        args: [{ payoutId: payout._id }],
+        scheduledTime: releasedAt + PAYOUT_DELAY_MS,
+        state: { kind: "pending" },
+      })),
+    );
+    await f.t.mutation(internal.bookings.markCompleted, { bookingId: f.bookingId });
+    expect(await f.readState()).toEqual(completed);
+  });
+
+  test("rejects a disputed booking with no prior status without changing held state", async () => {
+    const f = await setupDisputeHold();
+    await f.addPayout();
+    await f.hold();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, { disputedFromStatus: undefined }),
+    );
+    const held = await f.readState();
+
+    await expect(f.release()).rejects.toThrow(
+      "Disputed booking has no prior status",
+    );
+    expect(await f.readState()).toEqual(held);
+  });
 
   test("does not patch or schedule anything when no dispute hold exists", async () => {
     const f = await setupDisputeHold();
@@ -303,11 +420,13 @@ describe("releaseDisputeHold", () => {
       const booking = await ctx.db.get(f.bookingId);
       const patch = vi.spyOn(ctx.db, "patch");
       const schedule = vi.spyOn(ctx.scheduler, "runAfter");
+      const scheduleAt = vi.spyOn(ctx.scheduler, "runAt");
       expect(await releaseDisputeHold(ctx, booking!, { now: NOW + 1000 })).toEqual({
         rescheduledPayoutIds: [],
       });
       expect(patch).not.toHaveBeenCalled();
       expect(schedule).not.toHaveBeenCalled();
+      expect(scheduleAt).not.toHaveBeenCalled();
     });
     expect(await f.readState()).toEqual(before);
   });

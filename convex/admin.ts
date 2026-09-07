@@ -9,6 +9,7 @@ import {
   requirePlatformAdmin,
   requirePlatformAdminQuery,
 } from "./lib/authz";
+import { openInAppDispute } from "./lib/disputeHold";
 import { currentUser } from "./lib/helpers";
 import { bookingStatusValidator } from "./schema";
 
@@ -177,11 +178,7 @@ export const bookings = query({
         ctx.db.get(booking.opportunityId),
       ]);
       if (!organization || !band || !opportunity) continue;
-      const openDispute = await ctx.db
-        .query("disputes")
-        .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
-        .filter((q) => q.eq(q.field("status"), "open"))
-        .first();
+      const openDispute = await openInAppDispute(ctx, booking._id);
       page.push({
         bookingId: booking._id,
         title: opportunity.title,

@@ -569,9 +569,9 @@ describe("admin:bookings", () => {
     expect(second.isDone).toBe(true);
   });
 
-  test("links only open disputes belonging to the booking", async () => {
+  test("links open or under-review disputes belonging to the booking and ignores resolved rows", async () => {
     const f = await setupBookings();
-    const disputeId = await f.t.run(async (ctx) => {
+    const { disputeId, underReviewId } = await f.t.run(async (ctx) => {
       const fields = {
         openedByUserId: f.adminUserId,
         side: "organizer" as const,
@@ -580,16 +580,24 @@ describe("admin:bookings", () => {
         createdAt: 1,
         updatedAt: 1,
       };
-      for (const status of ["under_review", "resolved"] as const) {
-        for (const bookingId of [f.disputedId, f.heldId]) {
-          await ctx.db.insert("disputes", { ...fields, bookingId, status });
-        }
+      const underReviewId = await ctx.db.insert("disputes", {
+        ...fields,
+        bookingId: f.heldId,
+        status: "under_review",
+      });
+      for (const bookingId of [f.disputedId, f.heldId, f.plainId]) {
+        await ctx.db.insert("disputes", {
+          ...fields,
+          bookingId,
+          status: "resolved",
+        });
       }
-      return await ctx.db.insert("disputes", {
+      const disputeId = await ctx.db.insert("disputes", {
         ...fields,
         bookingId: f.disputedId,
         status: "open",
       });
+      return { disputeId, underReviewId };
     });
     const result = await f.asAdmin.query(api.admin.bookings, {
       filter: "all",
@@ -598,7 +606,7 @@ describe("admin:bookings", () => {
     expect(result.page.map((row) => [row.bookingId, row.openDisputeId])).toEqual([
       [f.awaitingId, null],
       [f.plainId, null],
-      [f.heldId, null],
+      [f.heldId, underReviewId],
       [f.disputedId, disputeId],
     ]);
   });

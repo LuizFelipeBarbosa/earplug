@@ -1,9 +1,10 @@
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import {
   assertBookingTransition,
   BOOKING_LIVE_STATUSES,
+  COMPLETION_DELAY_MS,
 } from "./bookingStatus";
 import { assertPayoutTransition } from "./paymentStatus";
 
@@ -80,7 +81,10 @@ export async function releaseDisputeHold(
   const payoutHoldReasons = reasons.filter((reason) => reason !== "dispute");
   let restoredStatus: Doc<"bookings">["status"] | undefined;
   if (booking.status === "disputed") {
-    restoredStatus = booking.disputedFromStatus!;
+    if (booking.disputedFromStatus === undefined) {
+      throw new Error("Disputed booking has no prior status");
+    }
+    restoredStatus = booking.disputedFromStatus;
     assertBookingTransition("disputed", restoredStatus);
     await ctx.db.patch(booking._id, {
       status: restoredStatus,
@@ -90,6 +94,14 @@ export async function releaseDisputeHold(
       revision: booking.revision + 1,
       updatedAt: now,
     });
+    if (restoredStatus === "confirmed") {
+      // The original completion job may have run while the booking was disputed.
+      await ctx.scheduler.runAt(
+        Math.max(now, booking.startsAt + COMPLETION_DELAY_MS),
+        internal.bookings.markCompleted,
+        { bookingId: booking._id },
+      );
+    }
   } else {
     await ctx.db.patch(booking._id, {
       payoutHoldReasons,
@@ -111,7 +123,7 @@ export async function releaseDisputeHold(
 }
 
 export async function openInAppDispute(
-  ctx: MutationCtx,
+  ctx: QueryCtx,
   bookingId: Id<"bookings">,
 ): Promise<Doc<"disputes"> | null> {
   return await ctx.db
