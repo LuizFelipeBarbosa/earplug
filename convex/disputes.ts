@@ -273,7 +273,14 @@ export const forBooking = query({
     if (!booking) throw new Error("Booking not found");
     const user = await requireUser(ctx);
     if (!(await isPlatformAdmin(ctx, user._id))) {
-      await reportingSide(ctx, booking, user);
+      // The booking page asks for disputes on every live booking; viewers who
+      // are not a party (band members without admin, organization viewers)
+      // simply see none rather than an error.
+      try {
+        await reportingSide(ctx, booking, user);
+      } catch {
+        return [];
+      }
     }
     const disputes = await ctx.db
       .query("disputes")

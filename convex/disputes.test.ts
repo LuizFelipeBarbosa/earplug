@@ -1112,13 +1112,17 @@ describe("disputes queries", () => {
   );
 
   test.each(["stranger", "door", "member"] as const)(
-    "%s cannot read booking disputes",
+    "%s sees no booking disputes instead of an error",
     async (actor) => {
       const f = await setupDisputes();
       await f.open();
-      await expect(
-        f.as(actor).query(api.disputes.forBooking, { bookingId: f.bookingId }),
-      ).rejects.toThrow("Not permitted");
+      // The booking page loads disputes for every live booking; viewers who
+      // are not a party get an empty list rather than a logged failure.
+      expect(
+        await f
+          .as(actor)
+          .query(api.disputes.forBooking, { bookingId: f.bookingId }),
+      ).toEqual([]);
     },
   );
 
