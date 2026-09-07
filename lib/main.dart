@@ -13,6 +13,8 @@ import 'data/repository.dart';
 import 'env.dart';
 import 'errors.dart';
 import 'screens/admin_application.dart';
+import 'screens/admin_bookings.dart';
+import 'screens/admin_disputes.dart';
 import 'screens/admin_queue.dart';
 import 'screens/admin_safety.dart';
 import 'screens/analytics.dart';
@@ -829,8 +831,8 @@ class RootShell extends StatelessWidget {
       ),
       Screen.adminQueue => AdminQueueScreen(key: key),
       Screen.adminSafety => AdminSafetyScreen(key: key),
-      Screen.adminDisputes => SizedBox.shrink(key: key),
-      Screen.adminBookings => SizedBox.shrink(key: key),
+      Screen.adminDisputes => AdminDisputesScreen(key: key),
+      Screen.adminBookings => AdminBookingsScreen(key: key),
       Screen.adminApplication => AdminApplicationScreen(
         key: key,
         applicationId: entry.param!,

@@ -182,6 +182,131 @@ void main() {
     expect(find.textContaining('Finish Stripe setup first'), findsOneWidget);
   });
 
+  for (final (description, requirementsDue, needsTaxInformation) in [
+    ('ID number', ['external_account', 'individual.id_number'], true),
+    ('SSN', ['individual.ssn_last_4'], true),
+    ('tax ID', ['company.tax_id'], true),
+    ('verification document', ['individual.verification.document'], true),
+    ('no requirements', <String>[], false),
+    ('non-tax requirement', ['external_account'], false),
+  ]) {
+    testWidgets('band tax row handles $description', (tester) async {
+      final auth = FakeAuthService();
+      final detailsSubmitted = requirementsDue.isEmpty;
+      await pumpApp(
+        tester,
+        auth: auth,
+        repository: _StripeStatusRepository(
+          auth: auth,
+          state: detailsSubmitted
+              ? StripeAccountState.enabled
+              : StripeAccountState.restricted,
+          detailsSubmitted: detailsSubmitted,
+          requirementsDue: requirementsDue,
+        ),
+        home: const Scaffold(body: BandPayoutsScreen()),
+        beforePump: (app) => app.switchToBand('b1'),
+      );
+
+      final row = find.byKey(const Key('stripe-tax-row'));
+      await tester.scrollUntilVisible(
+        row,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.text('TAX DETAILS')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text(
+            'Stripe collects your tax information (W-9 / 1099) during onboarding. '
+            'Update it in your Stripe dashboard.',
+          ),
+        ),
+        findsOneWidget,
+      );
+      final pill = find.descendant(of: row, matching: find.byType(StatusPill));
+      if (needsTaxInformation) {
+        expect(tester.widget<StatusPill>(pill).label, 'ACTION NEEDED');
+        expect(tester.widget<StatusPill>(pill).tone, EpStatusPillTone.warning);
+      } else {
+        expect(pill, findsNothing);
+      }
+      expect(
+        find.descendant(of: row, matching: find.byIcon(Icons.check)),
+        needsTaxInformation ? findsNothing : findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text(
+            'Stripe needs your tax information before payouts continue.',
+          ),
+        ),
+        needsTaxInformation ? findsOneWidget : findsNothing,
+      );
+      expect(
+        find.byKey(const Key('band-payouts-tax-dashboard')),
+        detailsSubmitted ? findsOneWidget : findsNothing,
+      );
+      expectNoFieldInCard(tester);
+    });
+  }
+
+  testWidgets(
+    'restricted band with submitted details can manage tax details and retry errors',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = _StripeStatusRepository(
+        auth: auth,
+        state: StripeAccountState.restricted,
+        detailsSubmitted: true,
+        requirementsDue: const ['individual.id_number'],
+      );
+      // Enable the demo dashboard link while the displayed status stays restricted.
+      await repository.refreshBandAccountStatus('b1');
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const Scaffold(body: BandPayoutsScreen()),
+        beforePump: (app) => app.switchToBand('b1'),
+      );
+      final button = find.byKey(const Key('band-payouts-tax-dashboard'));
+      await tester.scrollUntilVisible(
+        button,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.descendant(of: button, matching: find.text('MANAGE IN STRIPE')),
+        findsOneWidget,
+      );
+      harness.app.hostedUrlLauncher = (_) async {
+        throw StateError('Could not open Stripe');
+      };
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('band-payouts-error')), findsOneWidget);
+      expect(find.textContaining('Could not open Stripe'), findsOneWidget);
+
+      final launched = <String>[];
+      harness.app.hostedUrlLauncher = (url) async => launched.add(url);
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(launched, ['https://demo.stripe/dashboard/b1']);
+      expect(find.byKey(const Key('band-payouts-error')), findsNothing);
+    },
+  );
+
   for (final (state, caption) in [
     (StripeAccountState.none, 'Set up payouts'),
     (StripeAccountState.unknown, 'Set up payouts'),
@@ -434,15 +559,20 @@ class _StripeStatusRepository extends DemoRepository {
   _StripeStatusRepository({
     required super.auth,
     required StripeAccountState state,
+    bool? detailsSubmitted,
+    List<String>? requirementsDue,
   }) : status = StripeAccountStatus(
          state: state,
          hasAccount: state != StripeAccountState.none,
          chargesEnabled: state == StripeAccountState.enabled,
          payoutsEnabled: state == StripeAccountState.enabled,
-         detailsSubmitted: state == StripeAccountState.enabled,
-         requirementsDue: state == StripeAccountState.restricted
-             ? const ['individual.verification.document', 'external_account']
-             : const [],
+         detailsSubmitted:
+             detailsSubmitted ?? (state == StripeAccountState.enabled),
+         requirementsDue:
+             requirementsDue ??
+             (state == StripeAccountState.restricted
+                 ? const ['individual.verification.document', 'external_account']
+                 : const []),
        );
 
   final StripeAccountStatus status;

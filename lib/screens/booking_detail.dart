@@ -9,6 +9,7 @@ import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/dispute_sheet.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/map_view.dart';
@@ -55,6 +56,11 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
       if (booking != null && mounted && widget.bookingId == booking.id) {
         unawaited(app.refreshPayments(booking.id));
         unawaited(app.refreshRefunds(booking.id));
+        if (booking.status.isLive ||
+            booking.status == BookingStatus.disputed ||
+            booking.status == BookingStatus.refunded) {
+          unawaited(app.loadDisputes(booking.id));
+        }
         if (booking.status.isLive) {
           unawaited(app.mySafetyReports(booking.id));
         }
@@ -197,6 +203,12 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
     }
   }
 
+  Future<void> _showDispute(Booking booking) async {
+    final app = context.read<AppState>();
+    await showEpSheet(context, (_) => DisputeSheet(app: app, booking: booking));
+    _reload();
+  }
+
   Widget? _stickyBar(Booking booking, List<PaymentRecord> payments) {
     final isOffer = booking.status == BookingStatus.offerSent;
     final awaitingPayment = booking.status == BookingStatus.awaitingPayment;
@@ -308,6 +320,19 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
         final payments = app.paymentsFor(booking.id).toList()
           ..sort((a, b) => a.installmentIndex.compareTo(b.installmentIndex));
         final refunds = app.refundsFor(booking.id);
+        final disputes = app.disputesFor(booking.id).toList()
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        final canOpenDispute =
+            app.disputesEnabled &&
+            !booking.viewerIsPlatformAdmin &&
+            booking.status.isLive &&
+            !DateTime.now().isBefore(booking.startsAt) &&
+            booking.fee.grossMinor > 0 &&
+            !disputes.any(
+              (dispute) =>
+                  dispute.status == DisputeStatus.open ||
+                  dispute.status == DisputeStatus.underReview,
+            );
         final stickyBar = _stickyBar(booking, payments);
         final offerMessage = booking.currentOffer?.message;
         return Stack(
@@ -475,6 +500,31 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                       children: [
                         for (final refund in refunds)
                           _RefundRow(refund: refund),
+                      ],
+                    ),
+                  if (canOpenDispute) ...[
+                    const SizedBox(height: 20),
+                    EpButton(
+                      booking.viewerSide == BookingSide.organizer
+                          ? 'REQUEST A REFUND'
+                          : 'OPEN A DISPUTE',
+                      key: const Key('booking-dispute-open'),
+                      kind: EpButtonKind.outline,
+                      onTap: () => _showDispute(booking),
+                    ),
+                  ],
+                  if (disputes.isNotEmpty)
+                    _BookingLedgerSection(
+                      label: 'DISPUTE',
+                      children: [
+                        for (final dispute in disputes)
+                          _DisputeRow(
+                            key: ValueKey(
+                              'booking-dispute-${dispute.disputeId}',
+                            ),
+                            dispute: dispute,
+                            currency: booking.fee.currency,
+                          ),
                       ],
                     ),
                   const SectionBar(label: 'TERMS'),
@@ -1043,6 +1093,64 @@ class _RefundRow extends StatelessWidget {
   }
 }
 
+class _DisputeRow extends StatelessWidget {
+  const _DisputeRow({super.key, required this.dispute, required this.currency});
+
+  final Dispute dispute;
+  final String currency;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final resolved = dispute.status == DisputeStatus.resolved;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            dispute.side == DisputeSide.organizer
+                ? 'Refund request'
+                : 'Dispute',
+            style: textTheme.epSectionHeading,
+          ),
+          Text(dispute.category.label, style: textTheme.epBody),
+          if (dispute.requestedRefundMinor case final amount?)
+            LedgerRow(
+              title: 'Requested refund',
+              trailing: Text(Money(amount, currency).label),
+            ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: StatusPill(
+              label: dispute.status.wireValue
+                  .replaceAll('_', ' ')
+                  .toUpperCase(),
+              tone: resolved
+                  ? EpStatusPillTone.success
+                  : EpStatusPillTone.warning,
+            ),
+          ),
+          if (resolved) ...[
+            const SizedBox(height: 8),
+            if (dispute.resolution case final resolution?)
+              Text(resolution.label, style: textTheme.epBody),
+            LedgerRow(
+              title: 'Refunded',
+              trailing: Text(
+                Money(dispute.resolvedRefundMinor ?? 0, currency).label,
+              ),
+            ),
+            if (dispute.adminNote?.trim().isNotEmpty == true)
+              Text(dispute.adminNote!, style: textTheme.epBody),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _BookingReviewsSection extends StatelessWidget {
   const _BookingReviewsSection({required this.bookingId, required this.future});
 
@@ -1332,10 +1440,14 @@ List<TimelineStep> _timelineSteps(Booking booking) {
   ];
 }
 
-String _statusLabel(Booking booking) =>
+String _statusLabel(Booking booking) => switch (booking.status) {
+  BookingStatus.disputed => 'Under dispute',
+  BookingStatus.refunded => 'Refunded',
+  _ =>
     booking.cancellationKind == CancellationKind.safety
-    ? 'Cancelled for safety'
-    : booking.status.label;
+        ? 'Cancelled for safety'
+        : booking.status.label,
+};
 
 String _statusCaption(BuildContext context, Booking booking) {
   if (booking.status == BookingStatus.awaitingPayment &&
@@ -1356,9 +1468,7 @@ String _statusCaption(BuildContext context, Booking booking) {
     BookingStatus.paid => ('Completed', booking.completedAt),
     BookingStatus.cancelledByOrganizer ||
     BookingStatus.cancelledByArtist ||
-    BookingStatus.forceMajeure ||
-    BookingStatus.refunded ||
-    BookingStatus.disputed => (
+    BookingStatus.forceMajeure => (
       booking.cancellationKind == CancellationKind.safety
           ? 'Cancelled for safety'
           : 'Cancelled',
