@@ -1662,6 +1662,48 @@ describe("charge refund reconciliation", () => {
 });
 
 describe("Stripe disputes", () => {
+  test.each([false, true])(
+    "a Stripe win schedules missing completion payouts when a first payout exists: %s",
+    async (hasFirstPayout) => {
+      const f = await setupRefunds();
+      await f.t.run((ctx) =>
+        ctx.db.patch(f.bookingId, {
+          status: "completed",
+          completedAt: NOW - DAY_MS,
+        }),
+      );
+      if (hasFirstPayout) await f.addPayout();
+      await f.deliver(disputeEvent("charge.dispute.created"));
+      const won = disputeEvent("charge.dispute.closed", { status: "won" });
+      expect(await f.deliver(won)).toEqual({ outcome: "applied" });
+      const payouts = await f.payouts();
+      expect(payouts).toMatchObject([
+        {
+          kind: "completion",
+          paymentRecordId: f.paymentRecordIds[0],
+          amountMinor: 10800,
+          status: "scheduled",
+        },
+        {
+          kind: "completion",
+          paymentRecordId: f.paymentRecordIds[1],
+          amountMinor: 7200,
+          status: "scheduled",
+        },
+      ]);
+      expect(await f.readBooking()).toMatchObject({
+        status: "completed",
+        payoutHold: false,
+        payoutHoldReasons: [],
+      });
+      const jobs = await f.scheduled();
+      expect(jobs).toHaveLength(2);
+      await f.deliver({ ...won, id: "evt_won_again" });
+      expect(await f.payouts()).toEqual(payouts);
+      expect(await f.scheduled()).toEqual(jobs);
+    },
+  );
+
   test("creation records the open Stripe dispute status", async () => {
     const f = await setupRefunds();
     expect(await f.deliver(disputeEvent("charge.dispute.created"))).toEqual({
@@ -1761,7 +1803,16 @@ describe("Stripe disputes", () => {
     expect((await f.records())[0]?.stripeDisputeStatus).toBe("won");
     expect(await f.t.run((ctx) => ctx.db.get(inAppDisputeId))).toEqual(inAppDispute);
     expect(await f.scheduled()).toMatchObject([
-      { name: "payouts:releasePayout", args: [{ payoutId }] },
+      {
+        name: "bookings:markCompleted",
+        args: [{ bookingId: f.bookingId }],
+        scheduledTime: STARTS_AT + 6 * 60 * 60 * 1000,
+      },
+      {
+        name: "payouts:releasePayout",
+        args: [{ payoutId }],
+        scheduledTime: STARTS_AT + PAYOUT_DELAY_MS,
+      },
     ]);
   });
 
@@ -1792,16 +1843,16 @@ describe("Stripe disputes", () => {
       ).toEqual({ outcome: "applied" });
       expect(await f.t.run((ctx) => ctx.db.get(inAppDisputeId))).toMatchObject({
         status: "resolved",
-        resolution: "refunded_full",
+        resolution: "refunded_partial",
         resolvedRefundMinor: 7000,
         adminNote: "Closed by a lost Stripe dispute",
         resolvedAt: NOW + 1000,
         updatedAt: NOW + 1000,
       });
       expect((await f.records())[0]).toMatchObject({
-        status: "refunded",
+        status: "partially_refunded",
         stripeDisputeStatus: "lost",
-        refundedMinor: 12000,
+        refundedMinor: 7000,
       });
       expect(await f.readBooking()).toMatchObject({
         status: "refunded",

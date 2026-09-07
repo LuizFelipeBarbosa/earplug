@@ -1,18 +1,14 @@
-import { internal } from "../_generated/api";
 import type { MutationCtx } from "../_generated/server";
+import { assertBookingTransition } from "../lib/bookingStatus";
 import {
-  assertBookingTransition,
-  BOOKING_LIVE_STATUSES,
-  COMPLETION_DELAY_MS,
-} from "../lib/bookingStatus";
+  holdForDispute,
+  openInAppDispute,
+  releaseDisputeHold,
+} from "../lib/disputeHold";
 import { appendLedgerEntry } from "../lib/ledger";
-import {
-  assertPaymentRecordTransition,
-  assertPayoutTransition,
-} from "../lib/paymentStatus";
+import { assertPaymentRecordTransition } from "../lib/paymentStatus";
 import { reconcilePaymentPayouts } from "../lib/payoutAccounting";
 import { paymentRecordsForBooking } from "../lib/paymentSchedule";
-import { schedulePayoutsForBooking } from "../payouts";
 import { applyStripeRefundStatus } from "../refunds";
 import type {
   StripeEvent,
@@ -73,25 +69,7 @@ const disputeCreated: StripeEventHandler = async (ctx, event) => {
   });
   const booking = await ctx.db.get(record.bookingId);
   if (!booking) throw new Error("Booking not found");
-  const reasons = [...(booking.payoutHoldReasons ?? [])];
-  if (!reasons.includes("dispute")) reasons.push("dispute");
-  if (BOOKING_LIVE_STATUSES.includes(booking.status)) {
-    assertBookingTransition(booking.status, "disputed");
-    await ctx.db.patch(booking._id, {
-      status: "disputed",
-      disputedFromStatus: booking.status,
-      payoutHoldReasons: reasons,
-      payoutHold: true,
-      revision: booking.revision + 1,
-      updatedAt: now,
-    });
-  } else {
-    await ctx.db.patch(booking._id, {
-      payoutHoldReasons: reasons,
-      payoutHold: true,
-      updatedAt: now,
-    });
-  }
+  await holdForDispute(ctx, booking, { now });
   await appendLedgerEntry(ctx, {
     idempotencyKey: `dispute-hold:${disputeId}`,
     kind: "dispute_hold",
@@ -104,19 +82,6 @@ const disputeCreated: StripeEventHandler = async (ctx, event) => {
     stripeRef: disputeId,
     occurredAt: now,
   });
-  const rows = await ctx.db
-    .query("payouts")
-    .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
-    .take(50);
-  for (const row of rows) {
-    if (row.status !== "scheduled") continue;
-    assertPayoutTransition("scheduled", "held");
-    await ctx.db.patch(row._id, {
-      status: "held",
-      holdReason: "dispute",
-      updatedAt: now,
-    });
-  }
 };
 
 const disputeClosed: StripeEventHandler = async (ctx, event) => {
@@ -150,16 +115,6 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
   }
   const booking = await ctx.db.get(record.bookingId);
   if (!booking) throw new Error("Booking not found");
-  if (
-    booking.status === "disputed" &&
-    outcome === "won" &&
-    !booking.disputedFromStatus
-  ) {
-    // Keep the event retryable if legacy state needs repair.
-    throw new Error(
-      `Disputed booking ${booking._id} is missing its prior status`,
-    );
-  }
   const disputedMinor = record.disputedMinor ?? record.amountMinor;
   const now = Date.now();
   await ctx.db.patch(record._id, {
@@ -175,9 +130,7 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
       (payment.stripeDisputeStatus === "open" ||
         payment.stripeDisputeStatus === undefined),
   );
-  const payoutHoldReasons = (booking.payoutHoldReasons ?? []).filter(
-    (reason) => reason !== "dispute" || otherOpenDisputes,
-  );
+  const inAppDispute = await openInAppDispute(ctx, booking._id);
   const ledgerFields = {
     currency: record.currency,
     bookingId: booking._id,
@@ -186,40 +139,12 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
     stripeRef: disputeId,
     occurredAt: now,
   };
-  const rows = await ctx.db
-    .query("payouts")
-    .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
-    .take(50);
   if (outcome === "won") {
-    if (booking.status === "disputed" && !otherOpenDisputes) {
-      const status = booking.disputedFromStatus!;
-      assertBookingTransition("disputed", status);
-      await ctx.db.patch(booking._id, {
-        status,
-        disputedFromStatus: undefined,
-        payoutHoldReasons,
-        payoutHold: payoutHoldReasons.length > 0,
-        revision: booking.revision + 1,
-        updatedAt: now,
-      });
-      if (status === "confirmed") {
-        await ctx.scheduler.runAt(
-          Math.max(now, booking.startsAt + COMPLETION_DELAY_MS),
-          internal.bookings.markCompleted,
-          { bookingId: booking._id },
-        );
-      } else if (status === "completed") {
-        // A Checkout already in flight may have paid another installment
-        // while the completed booking was disputed.
-        await schedulePayoutsForBooking(ctx, { ...booking, status });
-      }
-    } else {
-      await ctx.db.patch(booking._id, {
-        payoutHoldReasons,
-        payoutHold: payoutHoldReasons.length > 0,
-        updatedAt: now,
-      });
-    }
+    await releaseDisputeHold(ctx, booking, {
+      now,
+      keepHoldIf: async () => otherOpenDisputes || inAppDispute !== null,
+      respectScheduledFor: true,
+    });
     await appendLedgerEntry(ctx, {
       ...ledgerFields,
       idempotencyKey: `dispute-release:${disputeId}`,
@@ -227,19 +152,6 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
       amountMinor: disputedMinor,
       fundsState: "available",
     });
-    if (otherOpenDisputes) return;
-    for (const row of rows) {
-      if (row.status !== "held" || row.holdReason !== "dispute") continue;
-      assertPayoutTransition("held", "scheduled");
-      await ctx.db.patch(row._id, { status: "scheduled", updatedAt: now });
-      await ctx.scheduler.runAt(
-        Math.max(now, row.scheduledFor),
-        internal.payouts.releasePayout,
-        {
-          payoutId: row._id,
-        },
-      );
-    }
     return;
   }
 
@@ -262,9 +174,14 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
   }
   if (booking.status === "disputed")
     assertBookingTransition("disputed", "refunded");
+  // Only the charged-back amount leaves the record; the artist's transfer is
+  // reconciled against that, never against the whole payment.
   const newRefundedMinor = Math.min(
     record.amountMinor,
     record.refundedMinor + disputedMinor,
+  );
+  const payoutHoldReasons = (booking.payoutHoldReasons ?? []).filter(
+    (reason) => reason !== "dispute" || otherOpenDisputes,
   );
   await ctx.db.patch(booking._id, {
     status: booking.status === "disputed" ? "refunded" : booking.status,
@@ -284,6 +201,19 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
     await ctx.db.patch(record._id, {
       status,
       refundedMinor: newRefundedMinor,
+      updatedAt: now,
+    });
+  }
+  if (inAppDispute) {
+    await ctx.db.patch(inAppDispute._id, {
+      status: "resolved",
+      resolution:
+        newRefundedMinor >= record.amountMinor
+          ? "refunded_full"
+          : "refunded_partial",
+      resolvedRefundMinor: disputedMinor,
+      adminNote: "Closed by a lost Stripe dispute",
+      resolvedAt: now,
       updatedAt: now,
     });
   }

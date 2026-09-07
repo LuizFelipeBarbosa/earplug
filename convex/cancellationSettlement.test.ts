@@ -296,7 +296,9 @@ describe("explicit settlement", () => {
     expect(await f.scheduled()).toContainEqual(
       expect.objectContaining({
         name: "refunds:reverseTransfer",
-        args: [{ payoutId: f.payoutIds[0], reversalMinor: 3600 }],
+        args: [
+          { payoutId: f.payoutIds[0], reversalMinor: 3600, reversedMinor: 3600 },
+        ],
       }),
     );
     expect(
@@ -336,6 +338,62 @@ describe("explicit settlement", () => {
     ]);
   });
 
+  test.each(["completion", "forfeit"] as const)(
+    "excludes a record with a paid %s payout from new forfeits and commission",
+    async (kind) => {
+      const f = await setupSettlement([6000, 4000]);
+      const priorRefundMinor = kind === "forfeit" ? 1000 : 0;
+      await f.t.run(async (ctx) => {
+        await ctx.db.patch(f.paymentRecordIds[1], {
+          refundedMinor: priorRefundMinor,
+          status: priorRefundMinor > 0 ? "partially_refunded" : "paid",
+        });
+        await ctx.db.patch(f.payoutIds[1], {
+          kind,
+          status: "paid",
+          amountMinor: kind === "forfeit" ? 2700 : 3600,
+          refundBaselineMinor: priorRefundMinor,
+          stripeTransferId: "tr_already_paid",
+        });
+      });
+      const paidPayout = (await f.payouts())[1];
+      const result = await f.settle(1000);
+      expect(result.reversedPayoutIds).toEqual([f.payoutIds[0]]);
+      expect(await f.refunds()).toMatchObject([
+        { paymentRecordId: f.paymentRecordIds[1], amountMinor: 1000 },
+      ]);
+      expect(await f.payouts()).toMatchObject([
+        { _id: f.payoutIds[0], status: "reversed" },
+        paidPayout,
+        {
+          _id: result.forfeitPayoutIds[0],
+          paymentRecordId: f.paymentRecordIds[0],
+          amountMinor: 5400,
+          originalAmountMinor: 5400,
+          refundBaselineMinor: 0,
+        },
+      ]);
+      expect(await f.ledger()).toMatchObject([
+        {
+          idempotencyKey: `forfeit-commission:${result.refundIds[0]}`,
+          amountMinor: 600,
+        },
+      ]);
+      await f.t.mutation(internal.refunds.markRefundSucceeded, {
+        refundId: result.refundIds[0],
+        stripeRefundId: "re_mixed_payouts",
+      });
+      expect(await f.scheduled()).toContainEqual(
+        expect.objectContaining({
+          name: "refunds:reverseTransfer",
+          args: [
+            { payoutId: paidPayout._id, reversalMinor: 900, reversedMinor: 900 },
+          ],
+        }),
+      );
+    },
+  );
+
   test("allocates refunds newest-first and preserves proportional forfeit rounding", async () => {
     const f = await setupSettlement([3335, 3335, 3330]);
     const result = await f.settle(4000);
@@ -346,9 +404,18 @@ describe("explicit settlement", () => {
     expect(
       (await f.payouts()).filter((row) => row.kind === "forfeit"),
     ).toMatchObject([
-      { paymentRecordId: f.paymentRecordIds[2], amountMinor: 1798 },
-      { paymentRecordId: f.paymentRecordIds[1], amountMinor: 1801 },
-      { paymentRecordId: f.paymentRecordIds[0], amountMinor: 1801 },
+      {
+        paymentRecordId: f.paymentRecordIds[1],
+        amountMinor: 2399,
+        originalAmountMinor: 2399,
+        refundBaselineMinor: 670,
+      },
+      {
+        paymentRecordId: f.paymentRecordIds[0],
+        amountMinor: 3001,
+        originalAmountMinor: 3001,
+        refundBaselineMinor: 0,
+      },
     ]);
     expect(await f.ledger()).toMatchObject([
       {
@@ -356,6 +423,14 @@ describe("explicit settlement", () => {
         amountMinor: 600,
       },
     ]);
+    const payouts = await f.payouts();
+    for (const refundId of result.refundIds) {
+      await f.t.mutation(internal.refunds.markRefundSucceeded, {
+        refundId,
+        stripeRefundId: `re_${refundId}`,
+      });
+    }
+    expect(await f.payouts()).toEqual(payouts);
   });
 
   test("zero refunds still reverse payouts and create forfeits and commission", async () => {
@@ -393,6 +468,29 @@ describe("explicit settlement", () => {
       (await f.payouts()).filter((row) => row.kind === "forfeit"),
     ).toMatchObject([{ amountMinor: 2 }]);
     expect(await f.ledger()).toEqual([]);
+  });
+
+  test("keys commission by the retained record when there is no refund or artist payout", async () => {
+    const f = await setupSettlement([100], "scheduled", 10000);
+    const result = await f.t.run(async (ctx) =>
+      applySettlement(ctx, {
+        booking: (await ctx.db.get(f.bookingId))!,
+        refundMinor: 0,
+        reason: "organizer_cancel",
+        now: NOW,
+      }),
+    );
+    expect(result).toEqual({
+      refundIds: [],
+      forfeitPayoutIds: [],
+      reversedPayoutIds: f.payoutIds,
+    });
+    expect(await f.ledger()).toMatchObject([
+      {
+        idempotencyKey: `forfeit-commission:${f.paymentRecordIds[0]}`,
+        amountMinor: 100,
+      },
+    ]);
   });
 
   test.each([0, -1, 10001, 0.5, NaN, Infinity])(

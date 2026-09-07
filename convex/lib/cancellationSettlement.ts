@@ -9,6 +9,7 @@ import {
   type BookingCancelledBy,
   type CancellationTemplate,
 } from "./cancellationPolicy";
+import { splitFee } from "./fees";
 import { appendLedgerEntry } from "./ledger";
 import { paymentRecordsForBooking } from "./paymentSchedule";
 import { assertPayoutTransition, PAYOUT_DELAY_MS } from "./paymentStatus";
@@ -20,6 +21,12 @@ type CancellationSettlement = {
   platformKeepsMinor: number;
   paidMinor: number;
   shareBps: number;
+};
+
+type SettlementResult = {
+  refundIds: Id<"refunds">[];
+  forfeitPayoutIds: Id<"payouts">[];
+  reversedPayoutIds: Id<"payouts">[];
 };
 
 async function availablePaidRecords(
@@ -73,8 +80,60 @@ export async function settleBookingCancellation(
   },
 ): Promise<CancellationSettlement> {
   const { booking, now } = args;
+  const settlement = await computeCancellationSettlement(ctx, {
+    bookingId: booking._id,
+    template: booking.cancellationTemplate,
+    startsAt: booking.startsAt,
+    cancelledBy: args.cancelledBy,
+    artistNetMinor: booking.artistNetMinor,
+    commissionMinor: booking.commissionMinor,
+    now,
+  });
+  await applySettlement(ctx, {
+    booking,
+    refundMinor: settlement.refundMinor,
+    reason: args.reason,
+    now,
+  });
+  return settlement;
+}
+
+export async function settleDisputeRefund(
+  ctx: MutationCtx,
+  args: { booking: Doc<"bookings">; refundMinor: number; now: number },
+): Promise<SettlementResult> {
+  const records = await paymentRecordsForBooking(ctx, args.booking._id);
+  const refundableMinor = records.reduce(
+    (sum, record) => sum + record.amountMinor - record.refundedMinor,
+    0,
+  );
+  if (
+    !Number.isSafeInteger(args.refundMinor) ||
+    args.refundMinor <= 0 ||
+    args.refundMinor > refundableMinor
+  ) {
+    throw new Error(
+      "Dispute refund must be a positive integer within the paid amount",
+    );
+  }
+  return await applySettlement(ctx, { ...args, reason: "dispute" });
+}
+
+export async function applySettlement(
+  ctx: MutationCtx,
+  args: {
+    booking: Doc<"bookings">;
+    refundMinor: number;
+    reason: Infer<typeof refundReasonValidator>;
+    now: number;
+  },
+): Promise<SettlementResult> {
+  const { booking, refundMinor, now } = args;
+  // The caller may already have cleared a hold while changing booking status.
+  const currentBooking = await ctx.db.get(booking._id);
+  if (!currentBooking) throw new Error("Booking not found");
   // The cancelled balance is no longer collectible. Dispute/admin holds still apply.
-  const payoutHoldReasons = (booking.payoutHoldReasons ?? []).filter(
+  const payoutHoldReasons = (currentBooking.payoutHoldReasons ?? []).filter(
     (reason) => reason !== "unpaid_installment",
   );
   await ctx.db.patch(booking._id, {
@@ -85,27 +144,21 @@ export async function settleBookingCancellation(
     .query("payouts")
     .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
     .take(50);
+  const reversedPayoutIds: Id<"payouts">[] = [];
   for (const payout of existingPayouts) {
     if (payout.status === "scheduled" || payout.status === "held") {
       assertPayoutTransition(payout.status, "reversed");
       await ctx.db.patch(payout._id, { status: "reversed", updatedAt: now });
+      reversedPayoutIds.push(payout._id);
     }
   }
-  const settlement = await computeCancellationSettlement(ctx, {
-    bookingId: booking._id,
-    template: booking.cancellationTemplate,
-    startsAt: booking.startsAt,
-    cancelledBy: args.cancelledBy,
-    artistNetMinor: booking.artistNetMinor,
-    commissionMinor: booking.commissionMinor,
-    now,
-  });
   const records = (await availablePaidRecords(ctx, booking._id)).sort(
     (a, b) => b.installmentIndex - a.installmentIndex,
   );
+  const refundIds: Id<"refunds">[] = [];
   const refundAllocations = new Map<Id<"paymentRecords">, number>();
-  if (settlement.refundMinor > 0) {
-    let remaining = settlement.refundMinor;
+  if (refundMinor > 0) {
+    let remaining = refundMinor;
     for (const record of records) {
       const available = record.amountMinor - record.refundedMinor;
       const allocate = Math.min(remaining, available);
@@ -121,6 +174,7 @@ export async function settleBookingCancellation(
           createdAt: now,
           updatedAt: now,
         });
+        refundIds.push(refundId);
         await ctx.scheduler.runAfter(0, internal.refunds.executeRefund, {
           refundId,
           attempt: 0,
@@ -130,16 +184,33 @@ export async function settleBookingCancellation(
       if (remaining === 0) break;
     }
   }
-  if (settlement.artistPayoutMinor > 0) {
+  // Paid transfers are settled by refund reconciliation, including paid forfeits.
+  // Only retained charges without a paid payout fund new forfeits and commission.
+  const retainedRecords = records.filter(
+    (record) =>
+      record.amountMinor -
+        record.refundedMinor -
+        (refundAllocations.get(record._id) ?? 0) >
+        0 &&
+      !existingPayouts.some(
+        (payout) =>
+          payout.paymentRecordId === record._id && payout.status === "paid",
+      ),
+  );
+  const forfeitedMinor = retainedRecords.reduce(
+    (sum, record) =>
+      sum +
+      record.amountMinor -
+      record.refundedMinor -
+      (refundAllocations.get(record._id) ?? 0),
+    0,
+  );
+  const { artistNetMinor: artistPayoutMinor, commissionMinor: platformKeepsMinor } =
+    splitFee(forfeitedMinor, booking.commissionBps);
+  const forfeitPayoutIds: Id<"payouts">[] = [];
+  if (artistPayoutMinor > 0) {
     const scheduledFor = now + PAYOUT_DELAY_MS;
-    let remaining = settlement.artistPayoutMinor;
-    const retainedRecords = records.filter(
-      (record) =>
-        record.amountMinor -
-          record.refundedMinor -
-          (refundAllocations.get(record._id) ?? 0) >
-        0,
-    );
+    let remaining = artistPayoutMinor;
     for (const [index, record] of retainedRecords.entries()) {
       const refundBaselineMinor =
         record.refundedMinor + (refundAllocations.get(record._id) ?? 0);
@@ -148,11 +219,7 @@ export async function settleBookingCancellation(
       const amountMinor =
         index === retainedRecords.length - 1
           ? remaining
-          : Math.floor(
-              (settlement.artistPayoutMinor * available) /
-                settlement.forfeitedMinor +
-                0.5,
-            );
+          : Math.floor((artistPayoutMinor * available) / forfeitedMinor + 0.5);
       remaining -= amountMinor;
       if (amountMinor === 0) continue;
       const payoutId = await ctx.db.insert("payouts", {
@@ -171,16 +238,19 @@ export async function settleBookingCancellation(
         createdAt: now,
         updatedAt: now,
       });
+      forfeitPayoutIds.push(payoutId);
       await ctx.scheduler.runAt(scheduledFor, internal.payouts.releasePayout, {
         payoutId,
       });
     }
   }
-  if (settlement.platformKeepsMinor > 0) {
+  if (platformKeepsMinor > 0) {
+    const settlementId =
+      refundIds[0] ?? forfeitPayoutIds[0] ?? retainedRecords[0]._id;
     await appendLedgerEntry(ctx, {
-      idempotencyKey: `forfeit-commission:${booking._id}`,
+      idempotencyKey: `forfeit-commission:${settlementId}`,
       kind: "commission",
-      amountMinor: settlement.platformKeepsMinor,
+      amountMinor: platformKeepsMinor,
       currency: booking.currency,
       fundsState: "available",
       bandId: booking.bandId,
@@ -190,5 +260,5 @@ export async function settleBookingCancellation(
     });
   }
   // Pending refunds change the booking's refunded total only when they succeed.
-  return settlement;
+  return { refundIds, forfeitPayoutIds, reversedPayoutIds };
 }

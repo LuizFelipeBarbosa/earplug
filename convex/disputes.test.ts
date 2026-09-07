@@ -655,6 +655,35 @@ describe("disputes review and resolution", () => {
     });
   });
 
+  test("partial settlement without a prior payout creates only the forfeit and preserves admin holds", async () => {
+    const f = await setupDisputes({
+      payoutHoldReasons: ["admin", "unpaid_installment"],
+      payoutHold: true,
+    });
+    await f.t.run((ctx) => ctx.db.delete(f.payoutId));
+    const { disputeId } = await f.open();
+    await f.as("platformAdmin").mutation(api.disputes.resolve, {
+      disputeId,
+      resolution: "refunded_partial",
+      refundMinor: 2000,
+    });
+    const state = await f.state();
+    expect(state.booking).toMatchObject({
+      status: "completed",
+      payoutHoldReasons: ["admin"],
+      payoutHold: true,
+    });
+    expect(state.payouts).toMatchObject([
+      {
+        kind: "forfeit",
+        paymentRecordId: f.paymentRecordId,
+        amountMinor: 7000,
+        originalAmountMinor: 7000,
+        refundBaselineMinor: 2000,
+      },
+    ]);
+  });
+
   test.each([false, true])(
     "full refund preserves other holds (%s) and keeps the slot/application booked",
     async (adminHold) => {
@@ -826,7 +855,9 @@ describe("disputes review and resolution", () => {
       expect.arrayContaining([
         expect.objectContaining({
           name: "refunds:reverseTransfer",
-          args: [{ payoutId: f.payoutId, reversalMinor: 1750 }],
+          args: [
+            { payoutId: f.payoutId, reversalMinor: 1750, reversedMinor: 1750 },
+          ],
         }),
       ]),
     );

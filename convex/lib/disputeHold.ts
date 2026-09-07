@@ -1,6 +1,7 @@
 import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { schedulePayoutsForBooking } from "../payouts";
 import {
   assertBookingTransition,
   BOOKING_LIVE_STATUSES,
@@ -57,11 +58,20 @@ export async function holdForDispute(
 export async function releaseDisputeHold(
   ctx: MutationCtx,
   booking: Doc<"bookings">,
-  opts: { now: number; keepHoldIf?: () => Promise<boolean> },
+  opts: {
+    now: number;
+    keepHoldIf?: () => Promise<boolean>;
+    // Stripe wins preserve payout timing; admin resolutions recheck holds now.
+    respectScheduledFor?: boolean;
+  },
 ): Promise<{ restoredStatus?: string; rescheduledPayoutIds: Id<"payouts">[] }> {
   if (await opts.keepHoldIf?.()) return { rescheduledPayoutIds: [] };
 
   const { now } = opts;
+  // A partial settlement may have removed the unpaid-installment hold already.
+  const currentBooking = await ctx.db.get(booking._id);
+  if (!currentBooking) throw new Error("Booking not found");
+  booking = currentBooking;
   const rows = await ctx.db
     .query("payouts")
     .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
@@ -101,6 +111,13 @@ export async function releaseDisputeHold(
         internal.bookings.markCompleted,
         { bookingId: booking._id },
       );
+    } else if (
+      restoredStatus === "completed" &&
+      !rows.some((row) => row.kind === "forfeit")
+    ) {
+      // An in-flight Checkout may have paid an installment during the dispute.
+      // A partial settlement's forfeits already replace the payable remainder.
+      await schedulePayoutsForBooking(ctx, { ...booking, status: restoredStatus });
     }
   } else {
     await ctx.db.patch(booking._id, {
@@ -114,9 +131,17 @@ export async function releaseDisputeHold(
   for (const row of heldPayouts) {
     assertPayoutTransition("held", "scheduled");
     await ctx.db.patch(row._id, { status: "scheduled", updatedAt: now });
-    await ctx.scheduler.runAfter(0, internal.payouts.releasePayout, {
-      payoutId: row._id,
-    });
+    if (opts.respectScheduledFor) {
+      await ctx.scheduler.runAt(
+        Math.max(now, row.scheduledFor),
+        internal.payouts.releasePayout,
+        { payoutId: row._id },
+      );
+    } else {
+      await ctx.scheduler.runAfter(0, internal.payouts.releasePayout, {
+        payoutId: row._id,
+      });
+    }
     rescheduledPayoutIds.push(row._id);
   }
   return { restoredStatus, rescheduledPayoutIds };
