@@ -28,8 +28,7 @@ async function availablePaidRecords(
 ): Promise<Doc<"paymentRecords">[]> {
   return (await paymentRecordsForBooking(ctx, bookingId)).filter(
     (record) =>
-      (record.status === "paid" ||
-        record.status === "partially_refunded") &&
+      (record.status === "paid" || record.status === "partially_refunded") &&
       record.amountMinor - record.refundedMinor > 0,
   );
 }
@@ -74,6 +73,14 @@ export async function settleBookingCancellation(
   },
 ): Promise<CancellationSettlement> {
   const { booking, now } = args;
+  // The cancelled balance is no longer collectible. Dispute/admin holds still apply.
+  const payoutHoldReasons = (booking.payoutHoldReasons ?? []).filter(
+    (reason) => reason !== "unpaid_installment",
+  );
+  await ctx.db.patch(booking._id, {
+    payoutHoldReasons,
+    payoutHold: payoutHoldReasons.length > 0,
+  });
   const existingPayouts = await ctx.db
     .query("payouts")
     .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
@@ -96,12 +103,14 @@ export async function settleBookingCancellation(
   const records = (await availablePaidRecords(ctx, booking._id)).sort(
     (a, b) => b.installmentIndex - a.installmentIndex,
   );
+  const refundAllocations = new Map<Id<"paymentRecords">, number>();
   if (settlement.refundMinor > 0) {
     let remaining = settlement.refundMinor;
     for (const record of records) {
       const available = record.amountMinor - record.refundedMinor;
       const allocate = Math.min(remaining, available);
       if (allocate > 0) {
+        refundAllocations.set(record._id, allocate);
         const refundId = await ctx.db.insert("refunds", {
           bookingId: booking._id,
           paymentRecordId: record._id,
@@ -124,21 +133,34 @@ export async function settleBookingCancellation(
   if (settlement.artistPayoutMinor > 0) {
     const scheduledFor = now + PAYOUT_DELAY_MS;
     let remaining = settlement.artistPayoutMinor;
-    for (const [index, record] of records.entries()) {
-      const available = record.amountMinor - record.refundedMinor;
+    const retainedRecords = records.filter(
+      (record) =>
+        record.amountMinor -
+          record.refundedMinor -
+          (refundAllocations.get(record._id) ?? 0) >
+        0,
+    );
+    for (const [index, record] of retainedRecords.entries()) {
+      const refundBaselineMinor =
+        record.refundedMinor + (refundAllocations.get(record._id) ?? 0);
+      const available = record.amountMinor - refundBaselineMinor;
       // The last charge absorbs rounding so the shares sum to the forfeited payout.
       const amountMinor =
-        index === records.length - 1
+        index === retainedRecords.length - 1
           ? remaining
           : Math.floor(
-              (settlement.artistPayoutMinor * available) / settlement.paidMinor +
+              (settlement.artistPayoutMinor * available) /
+                settlement.forfeitedMinor +
                 0.5,
             );
       remaining -= amountMinor;
+      if (amountMinor === 0) continue;
       const payoutId = await ctx.db.insert("payouts", {
         bookingId: booking._id,
         bandId: booking.bandId,
         amountMinor,
+        originalAmountMinor: amountMinor,
+        refundBaselineMinor,
         currency: booking.currency,
         status: "scheduled",
         scheduledFor,

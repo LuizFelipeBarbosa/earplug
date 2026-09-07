@@ -150,6 +150,16 @@ export const requiredClientFields = Object.freeze([
   ["bookingsRead.js:get", "return", "venue", false],
   ["bookingsRead.js:get", "return", "currentOffer", false],
   ["bookingsRead.js:forBand", "arrayReturn", "status", false],
+  ...[
+    "paidMinor",
+    "refundedMinor",
+    "paymentDueAt",
+    "payoutHoldReasons",
+  ].flatMap((field) => [
+    ["bookingsRead.js:get", "return", field, false],
+    ["bookingsRead.js:forBand", "arrayReturn", field, false],
+    ["bookingsRead.js:forOrganization", "arrayReturn", field, false],
+  ]),
   ["reviews.js:forBooking", "return", "canSubmit", false],
   ["reviews.js:forBand", "arrayReturn", "monthLabel", false],
   ["payments.js:paymentsForBooking", "arrayReturn", "canPay", false],

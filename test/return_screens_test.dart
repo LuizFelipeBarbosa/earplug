@@ -57,28 +57,47 @@ void main() {
     expect(harness.app.bookingById('bk1')?.viewerSide, BookingSide.organizer);
   });
 
-  testWidgets('CheckoutReturn accepts a confirmed booking before paid status', (
-    tester,
-  ) async {
-    repository.checkoutResult = const CheckoutStatus(
-      bookingId: 'bk1',
-      paymentStatus: PaymentRecordStatus.checkoutOpen,
-      bookingStatus: BookingStatus.confirmed,
-    );
-    await pumpApp(
-      tester,
-      home: const CheckoutReturnScreen(
-        sessionId: 'cs_confirmed',
-        interval: Duration(milliseconds: 5),
-        timeout: Duration(milliseconds: 25),
-      ),
-      auth: auth,
-      repository: repository,
-    );
+  for (final status in [
+    PaymentRecordStatus.pending,
+    PaymentRecordStatus.checkoutOpen,
+    PaymentRecordStatus.failed,
+    PaymentRecordStatus.expired,
+  ]) {
+    testWidgets(
+      'CheckoutReturn keeps a $status installment unconfirmed on a confirmed booking',
+      (tester) async {
+        repository.checkoutResult = CheckoutStatus(
+          bookingId: 'bk1',
+          paymentStatus: status,
+          bookingStatus: BookingStatus.confirmed,
+        );
+        await pumpApp(
+          tester,
+          home: const CheckoutReturnScreen(
+            sessionId: 'cs_confirmed',
+            interval: Duration(milliseconds: 5),
+            timeout: Duration(milliseconds: 25),
+          ),
+          auth: auth,
+          repository: repository,
+        );
 
-    expect(find.text('Payment received'), findsOneWidget);
-    expect(find.byKey(const Key('checkout-return-retry')), findsNothing);
-  });
+        expect(find.text('Payment received'), findsNothing);
+        expect(find.text("We haven't heard from Stripe yet"), findsOneWidget);
+        expect(find.byKey(const Key('checkout-return-retry')), findsOneWidget);
+
+        repository.checkoutResult = const CheckoutStatus(
+          bookingId: 'bk1',
+          paymentStatus: PaymentRecordStatus.paid,
+          bookingStatus: BookingStatus.confirmed,
+        );
+        await tester.tap(find.byKey(const Key('checkout-return-retry')));
+        await tester.pumpAndSettle();
+        expect(find.text('Payment received'), findsOneWidget);
+        expect(find.byKey(const Key('checkout-return-retry')), findsNothing);
+      },
+    );
+  }
 
   testWidgets('CheckoutReturn timeout offers the booking and retries polling', (
     tester,

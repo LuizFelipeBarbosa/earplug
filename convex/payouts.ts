@@ -13,6 +13,7 @@ import { assertBookingTransition } from "./lib/bookingStatus";
 import { currentUser, requireBandRole } from "./lib/helpers";
 import { appendLedgerEntry } from "./lib/ledger";
 import { paymentRecordsForBooking } from "./lib/paymentSchedule";
+import { reconcilePaymentPayouts } from "./lib/payoutAccounting";
 import {
   assertPayoutTransition,
   HELD_PAYOUT_MAX_DAYS,
@@ -57,17 +58,17 @@ export async function schedulePayoutsForBooking(
   ctx: MutationCtx,
   booking: Doc<"bookings">,
 ): Promise<void> {
-  const records = (await paymentRecordsForBooking(ctx, booking._id)).filter(
-    (record) => record.status === "paid",
-  );
+  const records = await paymentRecordsForBooking(ctx, booking._id);
   if (records.length === 0) return;
-
-  const totalPaidMinor = records.reduce(
-    (sum, record) => sum + record.amountMinor,
-    0,
-  );
+  const existing = await ctx.db
+    .query("payouts")
+    .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
+    .take(50);
   const now = Date.now();
-  const scheduledFor = (booking.completedAt ?? now) + PAYOUT_DELAY_MS;
+  const scheduledFor = Math.max(
+    now,
+    (booking.completedAt ?? now) + PAYOUT_DELAY_MS,
+  );
   let remaining = booking.artistNetMinor;
   for (const [index, record] of records.entries()) {
     // The last charge absorbs rounding so the shares sum to the snapshotted net.
@@ -75,14 +76,24 @@ export async function schedulePayoutsForBooking(
       index === records.length - 1
         ? remaining
         : Math.floor(
-            (booking.artistNetMinor * record.amountMinor) / totalPaidMinor +
+            (booking.artistNetMinor * record.amountMinor) / booking.grossMinor +
               0.5,
           );
     remaining -= amountMinor;
+    if (
+      !["paid", "partially_refunded"].includes(record.status) ||
+      amountMinor <= 0 ||
+      existing.some(
+        (payout) =>
+          payout.kind === "completion" && payout.paymentRecordId === record._id,
+      )
+    )
+      continue;
     const payoutId = await ctx.db.insert("payouts", {
       bookingId: booking._id,
       bandId: booking.bandId,
       amountMinor,
+      originalAmountMinor: amountMinor,
       currency: booking.currency,
       status: "scheduled",
       scheduledFor,
@@ -96,6 +107,7 @@ export async function schedulePayoutsForBooking(
     await ctx.scheduler.runAt(scheduledFor, internal.payouts.releasePayout, {
       payoutId,
     });
+    await reconcilePaymentPayouts(ctx, record);
   }
 }
 
@@ -125,9 +137,15 @@ async function releaseOrHold(
   ctx: MutationCtx,
   payoutId: Id<"payouts">,
 ): Promise<void> {
-  const payout = await ctx.db.get(payoutId);
+  let payout = await ctx.db.get(payoutId);
   if (!payout || (payout.status !== "scheduled" && payout.status !== "held")) {
     return;
+  }
+  if (payout.paymentRecordId) {
+    const record = await ctx.db.get(payout.paymentRecordId);
+    if (record) await reconcilePaymentPayouts(ctx, record);
+    payout = await ctx.db.get(payoutId);
+    if (!payout || payout.status === "reversed") return;
   }
   const booking = await ctx.db.get(payout.bookingId);
   if (!booking) throw new Error("Booking not found");
@@ -151,13 +169,14 @@ async function releaseOrHold(
     .unique();
   const accountReady = account?.payoutsEnabled === true;
   if (disputed || reasons.length > 0 || !accountReady) {
-    const holdReason = disputed || reasons.includes("dispute")
-      ? "dispute"
-      : reasons.includes("unpaid_installment")
-        ? "unpaid_installment"
-        : reasons.includes("admin")
-          ? "admin"
-          : "no_payout_account";
+    const holdReason =
+      disputed || reasons.includes("dispute")
+        ? "dispute"
+        : reasons.includes("unpaid_installment")
+          ? "unpaid_installment"
+          : reasons.includes("admin")
+            ? "admin"
+            : "no_payout_account";
     const wasAlreadyHeld = payout.status === "held";
     if (!wasAlreadyHeld) assertPayoutTransition(payout.status, "held");
     await ctx.db.patch(payoutId, {
@@ -239,7 +258,9 @@ export const executePayout = internalAction({
         sourceChargeId = intent.latest_charge ?? undefined;
       }
       if (!sourceChargeId) {
-        throw new Error("No source charge found for this payout's payment record");
+        throw new Error(
+          "No source charge found for this payout's payment record",
+        );
       }
       const transfer = await stripeRequest<{ id: string }>(
         "POST",
@@ -306,17 +327,22 @@ export const markPayoutPaid = internalMutation({
       bookingId: payout.bookingId,
       occurredAt: now,
     });
-    await appendLedgerEntry(ctx, {
-      idempotencyKey: `commission:${payout.bookingId}`,
-      kind: "commission",
-      amountMinor: booking.commissionMinor,
-      currency: booking.currency,
-      fundsState: "available",
-      bandId: booking.bandId,
-      organizationId: booking.organizationId,
-      bookingId: payout.bookingId,
-      occurredAt: now,
-    });
+    if (payout.kind === "completion")
+      await appendLedgerEntry(ctx, {
+        idempotencyKey: `commission:${payout.bookingId}`,
+        kind: "commission",
+        amountMinor: booking.commissionMinor,
+        currency: booking.currency,
+        fundsState: "available",
+        bandId: booking.bandId,
+        organizationId: booking.organizationId,
+        bookingId: payout.bookingId,
+        occurredAt: now,
+      });
+    if (payout.paymentRecordId) {
+      const record = await ctx.db.get(payout.paymentRecordId);
+      if (record) await reconcilePaymentPayouts(ctx, record);
+    }
     const bookingPayouts = await ctx.db
       .query("payouts")
       .withIndex("by_bookingId", (q) => q.eq("bookingId", payout.bookingId))

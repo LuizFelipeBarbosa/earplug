@@ -5,6 +5,7 @@ import { confirmBooking } from "../lib/bookingConfirm";
 import { BOOKING_ACTIVE_STATUSES } from "../lib/bookingStatus";
 import { appendLedgerEntry } from "../lib/ledger";
 import { recomputePayoutHold } from "../lib/paymentSchedule";
+import { schedulePayoutsForBooking } from "../payouts";
 import type { StripeEventHandler, StripeHandlerMap } from "../stripeWebhook";
 import {
   handleTicketCheckoutCompleted,
@@ -139,6 +140,9 @@ const checkoutCompleted: StripeEventHandler = async (ctx, event) => {
   const currentBooking = await ctx.db.get(booking._id);
   if (!currentBooking) throw new Error("Booking not found");
   await recomputePayoutHold(ctx, currentBooking);
+  if (currentBooking.status === "completed") {
+    await schedulePayoutsForBooking(ctx, currentBooking);
+  }
 };
 
 export const paymentHandlers: StripeHandlerMap = {
@@ -154,7 +158,7 @@ export const paymentHandlers: StripeHandlerMap = {
     const paymentRecordId = event.data.object.metadata?.paymentRecordId;
     const metadataPaymentRecordId =
       typeof paymentRecordId === "string"
-        ? ctx.db.normalizeId("paymentRecords", paymentRecordId) ?? undefined
+        ? (ctx.db.normalizeId("paymentRecords", paymentRecordId) ?? undefined)
         : undefined;
     await ctx.runMutation(internal.payments.markFailed, {
       paymentIntentId: event.data.object.id,

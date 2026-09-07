@@ -354,7 +354,7 @@ describe("completion payout scheduling", () => {
     const [payout] = await f.payouts();
     expect(await f.payouts()).toHaveLength(1);
     expect(payout).toMatchObject({
-      amountMinor: 13500,
+      amountMinor: 8100,
       paymentRecordId: f.paymentRecordIds[0],
     });
     await f.t.mutation(internal.payouts.releasePayout, {

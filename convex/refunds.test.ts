@@ -22,8 +22,7 @@ import schema from "./schema";
 import type { StripeEvent } from "./stripeWebhook";
 
 vi.mock("./lib/stripeClient", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("./lib/stripeClient")>();
+  const actual = await importOriginal<typeof import("./lib/stripeClient")>();
   return { ...actual, stripeRequest: vi.fn() };
 });
 
@@ -69,8 +68,10 @@ beforeEach(() => {
   stripeMock.mockReset();
   stripeMock.mockImplementation(async (method, path) => {
     if (method === "POST" && path === "/v1/refunds") {
-      return { id: `re_test_${++nextRefund}` };
+      return { id: `re_test_${++nextRefund}`, status: "succeeded" };
     }
+    if (method === "GET" && path.startsWith("/v1/refunds/"))
+      return { id: path.split("/").at(-1), status: "succeeded" };
     throw new Error(`Unexpected Stripe request: ${method} ${path}`);
   });
 });
@@ -84,8 +85,7 @@ afterEach(() => {
 
 async function setupRefunds() {
   const t = convexTest(schema, modules);
-  const as = (actor: Actor) =>
-    t.withIdentity({ subject: `refund_${actor}` });
+  const as = (actor: Actor) => t.withIdentity({ subject: `refund_${actor}` });
   const ids = await t.run(async (ctx) => {
     const users = {} as Record<Actor, Id<"users">>;
     for (const actor of ACTORS) {
@@ -278,33 +278,26 @@ async function setupRefunds() {
         reason: "Show cancelled",
       }),
     readBooking: () => t.run((ctx) => ctx.db.get(ids.bookingId)),
-    records: () =>
-      t.run((ctx) => paymentRecordsForBooking(ctx, ids.bookingId)),
+    records: () => t.run((ctx) => paymentRecordsForBooking(ctx, ids.bookingId)),
     refunds: () =>
       t.run((ctx) =>
         ctx.db
           .query("refunds")
-          .withIndex("by_bookingId", (q) =>
-            q.eq("bookingId", ids.bookingId),
-          )
+          .withIndex("by_bookingId", (q) => q.eq("bookingId", ids.bookingId))
           .take(50),
       ),
     payouts: () =>
       t.run((ctx) =>
         ctx.db
           .query("payouts")
-          .withIndex("by_bookingId", (q) =>
-            q.eq("bookingId", ids.bookingId),
-          )
+          .withIndex("by_bookingId", (q) => q.eq("bookingId", ids.bookingId))
           .take(50),
       ),
     ledger: () =>
       t.run((ctx) =>
         ctx.db
           .query("ledgerEntries")
-          .withIndex("by_bookingId", (q) =>
-            q.eq("bookingId", ids.bookingId),
-          )
+          .withIndex("by_bookingId", (q) => q.eq("bookingId", ids.bookingId))
           .take(50),
       ),
     scheduled: () =>
@@ -395,6 +388,34 @@ function chargeRefundedEvent(
   };
 }
 
+function refundEvent(
+  type:
+    | "refund.created"
+    | "refund.updated"
+    | "refund.failed"
+    | "charge.refund.updated",
+  fields: Record<string, unknown> = {},
+): StripeEvent {
+  return {
+    id: `evt_${type}`,
+    type,
+    livemode: false,
+    created: NOW / 1000,
+    data: {
+      object: {
+        id: "re_dashboard",
+        charge: "ch_a",
+        payment_intent: "pi_a",
+        amount: 2000,
+        currency: "usd",
+        status: "succeeded",
+        metadata: {},
+        ...fields,
+      },
+    },
+  };
+}
+
 describe("cancellation previews and access", () => {
   test.each([
     {
@@ -445,9 +466,7 @@ describe("cancellation previews and access", () => {
           now,
         }),
       );
-      expect(settlement.platformKeepsMinor).toBe(
-        amounts.forfeitedMinor / 10,
-      );
+      expect(settlement.platformKeepsMinor).toBe(amounts.forfeitedMinor / 10);
       expect(await f.refunds()).toEqual([]);
       expect(await f.scheduled()).toEqual([]);
     },
@@ -539,12 +558,7 @@ describe("cancellation previews and access", () => {
         })),
       );
     }
-    for (const actor of [
-      "finance",
-      "door",
-      "member",
-      "stranger",
-    ] as const) {
+    for (const actor of ["finance", "door", "member", "stranger"] as const) {
       await expect(
         f.as(actor).query(api.refunds.previewCancellation, {
           bookingId: f.bookingId,
@@ -609,7 +623,7 @@ describe("cancellation previews and access", () => {
 });
 
 describe("cancellation settlement", () => {
-  test("allocates refunds LIFO and splits the artist forfeiture across paid charges", async () => {
+  test("allocates refunds LIFO and funds the forfeiture from retained charges", async () => {
     const f = await setupRefunds();
     vi.setSystemTime(STARTS_AT - 10 * DAY_MS);
     await f.cancel();
@@ -630,19 +644,12 @@ describe("cancellation settlement", () => {
       },
     ]);
     const payouts = await f.payouts();
-    expect(payouts).toHaveLength(2);
+    expect(payouts).toHaveLength(1);
     expect(payouts[0]).toMatchObject({
       kind: "forfeit",
-      amountMinor: 3600,
-      status: "scheduled",
-      paymentRecordId: f.paymentRecordIds[1],
-      sourceChargeId: "ch_b",
-      scheduledFor: Date.now() + PAYOUT_DELAY_MS,
-      attempt: 0,
-    });
-    expect(payouts[1]).toMatchObject({
-      kind: "forfeit",
-      amountMinor: 5400,
+      amountMinor: 9000,
+      originalAmountMinor: 9000,
+      refundBaselineMinor: 2000,
       status: "scheduled",
       paymentRecordId: f.paymentRecordIds[0],
       sourceChargeId: "ch_a",
@@ -738,9 +745,7 @@ describe("cancellation settlement", () => {
     async (status) => {
       const f = await setupRefunds();
       if (status === "refunded") {
-        await f.t.run((ctx) =>
-          ctx.db.patch(f.bookingId, { status: "paid" }),
-        );
+        await f.t.run((ctx) => ctx.db.patch(f.bookingId, { status: "paid" }));
       }
       const args = {
         bookingId: f.bookingId,
@@ -770,9 +775,7 @@ describe("cancellation settlement", () => {
           status: "pending",
         },
       ]);
-      expect(rows.reduce((sum, row) => sum + row.amountMinor, 0)).toBe(
-        20000,
-      );
+      expect(rows.reduce((sum, row) => sum + row.amountMinor, 0)).toBe(20000);
       expect(await f.payouts()).toEqual([]);
       expect(await f.readBooking()).toMatchObject({
         status,
@@ -787,10 +790,11 @@ describe("cancellation settlement", () => {
     vi.setSystemTime(STARTS_AT - 10 * DAY_MS);
     await f.cancel();
     expect(await f.refunds()).toHaveLength(2);
-    expect(await f.payouts()).toHaveLength(2);
-    const actual = await vi.importActual<
-      typeof import("./lib/stripeClient")
-    >("./lib/stripeClient");
+    expect(await f.payouts()).toHaveLength(1);
+    const actual =
+      await vi.importActual<typeof import("./lib/stripeClient")>(
+        "./lib/stripeClient",
+      );
     stripeMock.mockImplementation(actual.stripeRequest);
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const [refund] = await f.refunds();
@@ -822,7 +826,7 @@ describe("refund execution", () => {
       await f.t.run((ctx) =>
         ctx.db.patch(f.paymentRecordIds[0], { status: "checkout_open" }),
       );
-      return { id: "re_post_succeeded" };
+      return { id: "re_post_succeeded", status: "succeeded" };
     });
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     await expect(
@@ -1003,9 +1007,7 @@ describe("refund execution", () => {
     }
     expect(
       stripeMock.mock.calls.map((call) => call[3]?.idempotencyKey),
-    ).toEqual(
-      [0, 1, 2].map(() => `refund:${refund._id}`),
-    );
+    ).toEqual([0, 1, 2].map(() => `refund:${refund._id}`));
     expect(log).toHaveBeenCalledTimes(3);
     expect(await f.readBooking()).toMatchObject({ refundedMinor: 0 });
     expect(await f.ledger()).toEqual([]);
@@ -1175,9 +1177,7 @@ describe("late payments", () => {
         status: "paid",
         stripeTransferId: "tr_original",
       });
-      await f.t.run((ctx) =>
-        ctx.db.patch(f.paymentRecordIds[0], { status }),
-      );
+      await f.t.run((ctx) => ctx.db.patch(f.paymentRecordIds[0], { status }));
       const records = await f.records();
       const booking = await f.readBooking();
       const payouts = await f.payouts();
@@ -1292,9 +1292,7 @@ describe("late payments", () => {
     const rows = await f.t.run((ctx) =>
       ctx.db
         .query("refunds")
-        .withIndex("by_bookingId", (q) =>
-          q.eq("bookingId", offer.bookingId),
-        )
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", offer.bookingId))
         .take(50),
     );
     expect(rows).toHaveLength(1);
@@ -1315,9 +1313,7 @@ describe("late payments", () => {
         scheduledTime: NOW,
       },
     ]);
-    expect(
-      await f.t.run((ctx) => ctx.db.get(offer.bookingId)),
-    ).toMatchObject({
+    expect(await f.t.run((ctx) => ctx.db.get(offer.bookingId))).toMatchObject({
       status: "cancelled_by_organizer",
       paidMinor: 20000,
       payoutHold: true,
@@ -1329,13 +1325,130 @@ describe("late payments", () => {
       eventId: "evt_replay",
     });
     expect(await f.scheduled()).toEqual(jobs);
-    expect(
-      await f.t.run((ctx) => ctx.db.query("refunds").take(50)),
-    ).toEqual(rows);
+    expect(await f.t.run((ctx) => ctx.db.query("refunds").take(50))).toEqual(
+      rows,
+    );
   });
 });
 
 describe("charge refund reconciliation", () => {
+  test.each([
+    "refund.created",
+    "refund.updated",
+    "charge.refund.updated",
+  ] as const)(
+    "%s reconciles a dashboard refund without expanded charge refunds exactly once",
+    async (type) => {
+      const f = await setupRefunds();
+      const payoutId = await f.addPayout({
+        status: "paid",
+        stripeTransferId: "tr_paid",
+      });
+      const chargeEvent = chargeRefundedEvent();
+      delete chargeEvent.data.object.refunds;
+      chargeEvent.data.object.amount_refunded = 2000;
+      expect(await f.deliver(chargeEvent)).toEqual({ outcome: "applied" });
+      const event = refundEvent(type);
+      expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+
+      expect(await f.refunds()).toMatchObject([
+        {
+          paymentRecordId: f.paymentRecordIds[0],
+          amountMinor: 2000,
+          stripeRefundId: "re_dashboard",
+          stripePaymentIntentId: "pi_a",
+          reason: "admin",
+          status: "succeeded",
+        },
+      ]);
+      expect((await f.records())[0]).toMatchObject({
+        status: "partially_refunded",
+        refundedMinor: 2000,
+      });
+      expect(await f.readBooking()).toMatchObject({ refundedMinor: 2000 });
+      const ledger = await f.ledger();
+      expect(ledger).toMatchObject([
+        { idempotencyKey: "refund:re_dashboard", amountMinor: -2000 },
+      ]);
+      const jobs = await f.scheduled();
+      expect(jobs).toMatchObject([
+        {
+          name: "refunds:reverseTransfer",
+          args: [{ payoutId, reversalMinor: 1800 }],
+        },
+      ]);
+      await f.deliver({ ...event, id: "evt_dashboard_duplicate" });
+      await f.deliver({
+        ...chargeRefundedEvent(),
+        id: "evt_expanded_duplicate",
+      });
+      expect(await f.refunds()).toHaveLength(1);
+      expect(await f.ledger()).toEqual(ledger);
+      expect(await f.scheduled()).toEqual(jobs);
+    },
+  );
+
+  test("a dashboard refund cancels its unpaid payout without affecting other installments", async () => {
+    const f = await setupRefunds();
+    const payoutId = await f.addPayout();
+    const otherPayoutId = await f.addPayout({
+      paymentRecordId: f.paymentRecordIds[1],
+      amountMinor: 7200,
+    });
+    await f.deliver(refundEvent("refund.created", { amount: 12000 }));
+    expect(await f.payouts()).toMatchObject([
+      { _id: payoutId, status: "reversed" },
+      { _id: otherPayoutId, status: "scheduled", amountMinor: 7200 },
+    ]);
+    expect((await f.readBooking())!.refundedMinor).toBe(12000);
+  });
+
+  test("a pending dashboard refund is tracked and polled without a second POST", async () => {
+    const f = await setupRefunds();
+    await f.deliver(refundEvent("refund.created", { status: "pending" }));
+    expect(await f.refunds()).toMatchObject([
+      { stripeRefundId: "re_dashboard", status: "pending" },
+    ]);
+    expect(await f.ledger()).toEqual([]);
+    await f.t.mutation(internal.refunds.reconcilePendingRefunds, {});
+    const [job] = await f.scheduled();
+    await f.t.action(internal.refunds.executeRefund, job.args[0]);
+    expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
+      "GET",
+      "/v1/refunds/re_dashboard",
+    );
+    expect((await f.readBooking())!.refundedMinor).toBe(2000);
+    // An older creation event must not undo a terminal processor result.
+    await f.deliver({
+      ...refundEvent("refund.created", { status: "pending" }),
+      id: "evt_pending_late",
+    });
+    expect(await f.refunds()).toMatchObject([{ status: "succeeded" }]);
+  });
+
+  test.each(["pi_a", "pi_extra"])(
+    "an individual refund event reuses the pending request for %s before its Stripe id is saved",
+    async (paymentIntentId) => {
+      const f = await setupRefunds();
+      const refundId = await f.addRefund({
+        stripePaymentIntentId: paymentIntentId,
+      });
+      await f.deliver(
+        refundEvent("refund.created", {
+          payment_intent: { id: paymentIntentId },
+          metadata: { refundId },
+        }),
+      );
+      expect(await f.refunds()).toMatchObject([
+        { _id: refundId, stripeRefundId: "re_dashboard", status: "succeeded" },
+      ]);
+      expect((await f.readBooking())!.refundedMinor).toBe(
+        paymentIntentId === "pi_a" ? 2000 : 0,
+      );
+      expect(await f.ledger()).toHaveLength(1);
+    },
+  );
+
   test("reconciles a dashboard refund and its proportional reversal exactly once", async () => {
     const f = await setupRefunds();
     const payoutId = await f.addPayout({
@@ -1395,7 +1508,7 @@ describe("charge refund reconciliation", () => {
     expect(stripeMock).not.toHaveBeenCalled();
   });
 
-  test("a full dashboard refund reverses scheduled and held payouts across the booking", async () => {
+  test("a full dashboard refund reverses only payouts funded by that payment", async () => {
     const f = await setupRefunds();
     const scheduledId = await f.addPayout();
     const heldId = await f.addPayout({
@@ -1415,7 +1528,7 @@ describe("charge refund reconciliation", () => {
     ).toEqual({ outcome: "applied" });
     expect(await f.payouts()).toMatchObject([
       { _id: scheduledId, status: "reversed", updatedAt: NOW },
-      { _id: heldId, status: "reversed", updatedAt: NOW },
+      { _id: heldId, status: "held", updatedAt: NOW },
     ]);
     expect((await f.records())[0]).toMatchObject({
       status: "refunded",
@@ -1602,9 +1715,9 @@ describe("Stripe disputes", () => {
           }),
         );
       }
-      expect(
-        await f.deliver(disputeEvent("charge.dispute.created")),
-      ).toEqual({ outcome: "applied" });
+      expect(await f.deliver(disputeEvent("charge.dispute.created"))).toEqual({
+        outcome: "applied",
+      });
       const event = disputeEvent("charge.dispute.closed", {
         status: "won",
         payment_intent: { id: "pi_a" },
@@ -1634,16 +1747,21 @@ describe("Stripe disputes", () => {
       const jobs = await f.scheduled();
       expect(jobs).toMatchObject([
         {
+          name: "bookings:markCompleted",
+          args: [{ bookingId: f.bookingId }],
+          scheduledTime: STARTS_AT + 6 * 60 * 60 * 1000,
+        },
+        {
           name: "payouts:releasePayout",
           args: [{ payoutId }],
-          scheduledTime: NOW,
+          scheduledTime: STARTS_AT + PAYOUT_DELAY_MS,
         },
       ]);
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
       await f.t.mutation(internal.stripeWebhook.applyEventHandler, {
         eventJson: JSON.stringify(event),
       });
-      expect(log).toHaveBeenCalledTimes(1);
+      expect(log).not.toHaveBeenCalled();
       expect(await f.readBooking()).toEqual(booking);
       expect(await f.ledger()).toEqual(ledger);
       expect(await f.scheduled()).toEqual(jobs);
@@ -1702,8 +1820,8 @@ describe("Stripe disputes", () => {
       expect(booking).toMatchObject({
         status: "refunded",
         refundedMinor: 12000,
-        payoutHold: true,
-        payoutHoldReasons: ["dispute"],
+        payoutHold: false,
+        payoutHoldReasons: [],
       });
       expect(booking?.disputedFromStatus).toBeUndefined();
       expect((await f.records())[0]).toMatchObject({
@@ -1712,18 +1830,16 @@ describe("Stripe disputes", () => {
       });
       const ledger = await f.ledger();
       expect(ledger).toHaveLength(3);
-      expect(
-        ledger.filter((row) => row.kind === "dispute_loss"),
-      ).toMatchObject([
-        {
-          idempotencyKey: "dispute-loss:dp_test",
-          amountMinor: -12000,
-          fundsState: "refunded",
-        },
-      ]);
-      expect(
-        ledger.filter((row) => row.kind === "dispute_fee"),
-      ).toMatchObject([
+      expect(ledger.filter((row) => row.kind === "dispute_loss")).toMatchObject(
+        [
+          {
+            idempotencyKey: "dispute-loss:dp_test",
+            amountMinor: -12000,
+            fundsState: "refunded",
+          },
+        ],
+      );
+      expect(ledger.filter((row) => row.kind === "dispute_fee")).toMatchObject([
         {
           idempotencyKey: "dispute-fee:dp_test",
           amountMinor: -fee,
@@ -1757,9 +1873,7 @@ describe("Stripe disputes", () => {
       "charge.dispute.closed",
     ] as const) {
       expect(
-        await f.deliver(
-          disputeEvent(type, { payment_intent: "pi_unknown" }),
-        ),
+        await f.deliver(disputeEvent(type, { payment_intent: "pi_unknown" })),
       ).toEqual({ outcome: "applied" });
     }
     await f.t.mutation(internal.stripeWebhook.applyEventHandler, {
@@ -1780,14 +1894,16 @@ describe("Stripe disputes", () => {
       stripeTransferId: "tr_reversed",
       reversedMinor: 10800,
     });
+    expect(await f.deliver(disputeEvent("charge.dispute.created"))).toEqual({
+      outcome: "applied",
+    });
     expect(
-      await f.deliver(disputeEvent("charge.dispute.created")),
-    ).toEqual({ outcome: "applied" });
-    expect(
-      await f.deliver(disputeEvent("charge.dispute.closed", {
-        status: "lost",
-        balance_transactions: [{ fee: 0 }],
-      })),
+      await f.deliver(
+        disputeEvent("charge.dispute.closed", {
+          status: "lost",
+          balance_transactions: [{ fee: 0 }],
+        }),
+      ),
     ).toEqual({ outcome: "applied" });
     expect(await f.scheduled()).toEqual([]);
   });
@@ -1798,7 +1914,10 @@ describe("Stripe disputes", () => {
       ctx.db.patch(f.bookingId, { status: "cancelled_by_organizer" }),
     );
     const booking = await f.readBooking();
-    const payoutId = await f.addPayout({ kind: "forfeit", status: "scheduled" });
+    const payoutId = await f.addPayout({
+      kind: "forfeit",
+      status: "scheduled",
+    });
 
     expect(await f.deliver(disputeEvent("charge.dispute.created"))).toEqual({
       outcome: "applied",
@@ -1847,9 +1966,11 @@ describe("Stripe disputes", () => {
     const jobs = await f.scheduled();
     expect(
       jobs.filter(
-        (job) => job.name === "payouts:releasePayout" && job.scheduledTime === NOW,
+        (job) =>
+          job.name === "payouts:releasePayout" &&
+          job.scheduledTime === NOW + DAY_MS,
       ),
-    ).toMatchObject([{ args: [{ payoutId }] }]);
+    ).toMatchObject([{ args: [{ payoutId }] }, { args: [{ payoutId }] }]);
 
     await f.t.mutation(internal.payouts.releasePayout, { payoutId });
     expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
@@ -1888,46 +2009,512 @@ describe("Stripe disputes", () => {
     });
   });
 
-  test.each([
-    {
-      status: "cancelled_by_organizer",
-      outcome: "lost",
-      payoutHoldReasons: ["dispute"],
-    },
-    { status: "cancelled_by_organizer", outcome: "won", payoutHoldReasons: [] },
-    { status: "disputed", outcome: "won", payoutHoldReasons: ["dispute"] },
-  ] as const)(
-    "ignores a $outcome dispute on a $status booking without a resolvable status or hold",
-    async ({ status, outcome, payoutHoldReasons }) => {
+  test.each(
+    (
+      ["confirmed", "completed", "paid", "cancelled_by_organizer"] as const
+    ).flatMap((status) =>
+      (["won", "lost"] as const).map((outcome) => ({ status, outcome })),
+    ),
+  )(
+    "settles a $outcome dispute delivered before creation on a $status booking",
+    async ({ status, outcome }) => {
       const f = await setupRefunds();
       await f.t.run((ctx) =>
         ctx.db.patch(f.bookingId, {
           status,
-          payoutHoldReasons: [...payoutHoldReasons],
-          payoutHold: payoutHoldReasons.length > 0,
+          payoutHoldReasons: ["admin"],
+          payoutHold: true,
         }),
       );
       await f.addPayout({
-        kind: "forfeit",
-        status: "held",
-        holdReason: "dispute",
+        kind: status === "cancelled_by_organizer" ? "forfeit" : "completion",
+        status: status === "paid" ? "paid" : "scheduled",
+        ...(status === "paid" ? { stripeTransferId: "tr_paid" } : {}),
       });
+      const closed = disputeEvent("charge.dispute.closed", {
+        status: outcome,
+        amount: 3000,
+        balance_transactions: [{ fee: 0 }],
+      });
+      expect(await f.deliver(closed)).toEqual({ outcome: "applied" });
+      expect((await f.records())[0]).toMatchObject({
+        stripeDisputeId: "dp_test",
+        stripeDisputeStatus: outcome,
+        disputedMinor: 3000,
+        refundedMinor: outcome === "lost" ? 3000 : 0,
+      });
+      expect(await f.readBooking()).toMatchObject({
+        status:
+          outcome === "won" || status === "cancelled_by_organizer"
+            ? status
+            : "refunded",
+        payoutHoldReasons: ["admin"],
+        payoutHold: true,
+        refundedMinor: outcome === "lost" ? 3000 : 0,
+      });
+      const ledger = await f.ledger();
+      expect(ledger).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            idempotencyKey: "dispute-hold:dp_test",
+            amountMinor: -3000,
+          }),
+          expect.objectContaining({
+            idempotencyKey: `dispute-${outcome === "won" ? "release" : "loss"}:dp_test`,
+            amountMinor: outcome === "won" ? 3000 : -3000,
+          }),
+        ]),
+      );
       const booking = await f.readBooking();
       const records = await f.records();
       const payouts = await f.payouts();
-      const log = vi.spyOn(console, "log").mockImplementation(() => {});
-
-      expect(
-        await f.deliver(disputeEvent("charge.dispute.closed", { status: outcome })),
-      ).toEqual({ outcome: "applied" });
-      expect(log).toHaveBeenCalledExactlyOnceWith(
-        "charge.dispute.closed ignored: nothing to resolve for dp_test",
-      );
+      const jobs = await f.scheduled();
+      expect(await f.deliver(closed)).toEqual({ outcome: "duplicate" });
+      await f.deliver(disputeEvent("charge.dispute.created"));
+      await f.deliver({ ...closed, id: "evt_closure_duplicate" });
       expect(await f.readBooking()).toEqual(booking);
       expect(await f.records()).toEqual(records);
       expect(await f.payouts()).toEqual(payouts);
+      expect(await f.ledger()).toEqual(ledger);
+      expect(await f.scheduled()).toEqual(jobs);
+    },
+  );
+
+  test("a closure remains retryable when a disputed booking is missing its prior status", async () => {
+    const f = await setupRefunds();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, {
+        status: "disputed",
+        payoutHoldReasons: ["dispute"],
+        payoutHold: true,
+      }),
+    );
+    const booking = await f.readBooking();
+    const records = await f.records();
+    const closed = disputeEvent("charge.dispute.closed", { status: "won" });
+    expect(await f.deliver(closed)).toEqual({ outcome: "failed" });
+    expect(await f.readBooking()).toEqual(booking);
+    expect(await f.records()).toEqual(records);
+    expect(await f.ledger()).toEqual([]);
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, { disputedFromStatus: "confirmed" }),
+    );
+    expect(await f.deliver(closed)).toEqual({ outcome: "applied" });
+    expect(await f.readBooking()).toMatchObject({
+      status: "confirmed",
+      payoutHold: false,
+    });
+    expect((await f.records())[0].stripeDisputeStatus).toBe("won");
+  });
+});
+
+describe("marketplace settlement regressions", () => {
+  test("installment offers remain readable", async () => {
+    const f = await setupRefunds();
+    await f.t.run(async (ctx) => {
+      await ctx.db.delete(f.bookingId);
+      await ctx.db.patch(f.slotId, {
+        status: "open",
+        bookingId: undefined,
+        bandId: undefined,
+      });
+      await ctx.db.patch(f.applicationId, { status: "shortlisted" });
+      await ctx.db.patch(f.opportunityId, {
+        status: "open",
+        applicationCount: 1,
+      });
+    });
+    const offer = await f.as("owner").mutation(api.bookings.sendOffer, {
+      applicationId: f.applicationId,
+      grossMinor: 20000,
+      cancellationTemplate: "standard",
+      installments: [
+        { label: "Deposit", amountMinor: 12000, dueAfterAcceptanceDays: 0 },
+        { label: "Balance", amountMinor: 8000, dueAfterAcceptanceDays: 3 },
+      ],
+    });
+    const booking = await f
+      .as("admin")
+      .query(api.bookingsRead.get, { bookingId: offer.bookingId });
+    expect(booking).not.toBeNull();
+  });
+  test("cancellation refunds preserve and pay the artist forfeiture exactly once", async () => {
+    const f = await setupRefunds();
+    vi.setSystemTime(STARTS_AT - 10 * DAY_MS);
+    await f.cancel();
+    for (const refund of await f.refunds()) {
+      await f.t.action(internal.refunds.executeRefund, {
+        refundId: refund._id,
+        attempt: 0,
+      });
+      const saved = await f.t.run((ctx) => ctx.db.get(refund._id));
+      const record = await f.t.run((ctx) => ctx.db.get(refund.paymentRecordId));
+      const event = chargeRefundedEvent(
+        [
+          {
+            id: saved!.stripeRefundId,
+            amount: refund.amountMinor,
+            status: "succeeded",
+            metadata: { refundId: refund._id },
+          },
+        ],
+        record!.stripePaymentIntentId,
+      );
+      event.id = `evt_${refund._id}`;
+      expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+    }
+    const [payout] = await f.payouts();
+    expect(payout).toMatchObject({ status: "scheduled", amountMinor: 9000 });
+    vi.setSystemTime(Date.now() + DAY_MS);
+    await f.t.mutation(internal.payouts.releasePayout, {
+      payoutId: payout._id,
+    });
+    stripeMock.mockResolvedValueOnce({ id: "tr_forfeit" });
+    await f.t.action(internal.payouts.executePayout, {
+      payoutId: payout._id,
+      attempt: 0,
+    });
+    expect(stripeMock).toHaveBeenLastCalledWith(
+      "POST",
+      "/v1/transfers",
+      expect.objectContaining({ amount: 9000, source_transaction: "ch_a" }),
+      expect.anything(),
+    );
+    expect(
+      (await f.ledger())
+        .filter((row) => row.kind === "commission")
+        .map((row) => row.amountMinor),
+    ).toEqual([1000]);
+  });
+  test("cancellation after only the deposit releases forfeited funds", async () => {
+    const f = await setupRefunds();
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.paymentRecordIds[1], {
+        status: "pending",
+        paidAt: undefined,
+      });
+      await ctx.db.patch(f.bookingId, {
+        paidMinor: 12000,
+        payoutHold: true,
+        payoutHoldReasons: ["unpaid_installment"],
+      });
+    });
+    vi.setSystemTime(STARTS_AT - DAY_MS);
+    await f.cancel();
+    vi.setSystemTime(STARTS_AT);
+    const [payout] = await f.payouts();
+    await f.t.mutation(internal.payouts.releasePayout, {
+      payoutId: payout._id,
+    });
+    expect((await f.payouts())[0].status).toBe("processing");
+  });
+  test("Stripe pending refunds remain pending locally", async () => {
+    const f = await setupRefunds();
+    const refundId = await f.addRefund();
+    stripeMock.mockResolvedValueOnce({ id: "re_pending", status: "pending" });
+    await f.t.action(internal.refunds.executeRefund, { refundId, attempt: 0 });
+    expect((await f.refunds())[0].status).toBe("pending");
+  });
+  test("a balance paid after completion adds only its share of the payout", async () => {
+    const f = await setupRefunds();
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.paymentRecordIds[1], {
+        status: "pending",
+        paidAt: undefined,
+      });
+      await ctx.db.patch(f.bookingId, {
+        paidMinor: 12000,
+        payoutHold: true,
+        payoutHoldReasons: ["unpaid_installment"],
+      });
+    });
+    vi.setSystemTime(STARTS_AT + 6 * 60 * 60 * 1000);
+    await f.t.mutation(internal.bookings.markCompleted, {
+      bookingId: f.bookingId,
+    });
+    const context = await f
+      .as("owner")
+      .query(internal.payments.loadCheckoutContext, {
+        paymentRecordId: f.paymentRecordIds[1],
+      });
+    expect(context.record.status).toBe("pending");
+    expect(await f.payouts()).toMatchObject([{ amountMinor: 10800 }]);
+    const permissions = await f
+      .as("owner")
+      .query(api.payments.paymentsForBooking, { bookingId: f.bookingId });
+    expect(permissions[1].canPay).toBe(true);
+    await f.t.mutation(internal.payments.markCheckoutOpen, {
+      paymentRecordId: f.paymentRecordIds[1],
+      sessionId: "cs_balance",
+      attempt: 0,
+      checkoutExpiresAt: Date.now() + CHECKOUT_TTL_MS,
+    });
+    const event: StripeEvent = {
+      id: "evt_balance",
+      type: "checkout.session.completed",
+      livemode: false,
+      created: Date.now() / 1000,
+      data: {
+        object: {
+          id: "cs_balance",
+          payment_status: "paid",
+          amount_total: 8000,
+          payment_intent: { id: "pi_b", latest_charge: "ch_b" },
+          metadata: { paymentRecordId: f.paymentRecordIds[1] },
+        },
+      },
+    };
+    expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+    const payouts = await f.payouts();
+    expect(payouts.map((p) => p.amountMinor)).toEqual([10800, 7200]);
+    expect(await f.readBooking()).toMatchObject({
+      status: "completed",
+      paidMinor: 20000,
+      payoutHold: false,
+    });
+    expect(await f.deliver({ ...event, id: "evt_balance_replay" })).toEqual({
+      outcome: "applied",
+    });
+    expect(await f.payouts()).toEqual(payouts);
+    for (const payout of payouts) {
+      vi.setSystemTime(payout.scheduledFor);
+      await f.t.mutation(internal.payouts.releasePayout, {
+        payoutId: payout._id,
+      });
+      stripeMock.mockResolvedValueOnce({ id: `tr_${payout._id}` });
+      await f.t.action(internal.payouts.executePayout, {
+        payoutId: payout._id,
+        attempt: 0,
+      });
+    }
+    expect(await f.readBooking()).toMatchObject({ status: "paid" });
+  });
+  test("winning a dispute resumes a completion job that fired while disputed", async () => {
+    const f = await setupRefunds();
+    await f.deliver(disputeEvent("charge.dispute.created"));
+    vi.setSystemTime(STARTS_AT + 6 * 60 * 60 * 1000);
+    await f.t.mutation(internal.bookings.markCompleted, {
+      bookingId: f.bookingId,
+    });
+    await f.deliver(disputeEvent("charge.dispute.closed", { status: "won" }));
+    const b = await f.readBooking();
+    const completionScheduled = (await f.scheduled()).some(
+      (j) => j.name === "bookings:markCompleted",
+    );
+    expect(b!.status === "completed" || completionScheduled).toBe(true);
+  });
+  test("back-to-back refunds do not schedule overlapping transfer reversals", async () => {
+    const f = await setupRefunds();
+    await f.addPayout({ status: "paid", stripeTransferId: "tr_paid" });
+    for (let i = 0; i < 2; i++) {
+      const refundId = await f.addRefund({ amountMinor: 1000 });
+      await f.t.mutation(internal.refunds.markRefundSucceeded, {
+        refundId,
+        stripeRefundId: `re_${i}`,
+      });
+    }
+    const reversals = (await f.scheduled()).filter(
+      (j) => j.name === "refunds:reverseTransfer",
+    );
+    expect(reversals.reduce((sum, j) => sum + j.args[0].reversalMinor, 0)).toBe(
+      1800,
+    );
+    stripeMock.mockImplementation(async (_method, _path, _params, options) => ({
+      id: `trr_${options?.idempotencyKey?.split(":").at(-1)}`,
+    }));
+    for (const job of reversals.toReversed()) {
+      await f.t.action(internal.refunds.reverseTransfer, job.args[0]);
+    }
+    expect((await f.payouts())[0]).toMatchObject({
+      reversedMinor: 1800,
+      reversalReservedMinor: 1800,
+    });
+    await f.t.action(internal.refunds.reverseTransfer, reversals[0].args[0]);
+    expect((await f.payouts())[0].reversedMinor).toBe(1800);
+    expect(
+      (await f.ledger()).filter((row) => row.kind === "transfer_reversal"),
+    ).toHaveLength(2);
+  });
+  test("booking reads expose the newly maintained payment totals", async () => {
+    const f = await setupRefunds();
+    const booking = await f
+      .as("owner")
+      .query(api.bookingsRead.get, { bookingId: f.bookingId });
+    expect(booking).toMatchObject({ paidMinor: 20000, refundedMinor: 0 });
+  });
+  test("winning one of two disputes preserves the remaining hold", async () => {
+    const f = await setupRefunds();
+    await f.addPayout();
+    const first = disputeEvent("charge.dispute.created");
+    await f.deliver(first);
+    await f.deliver({
+      ...first,
+      id: "evt_second",
+      data: {
+        object: { id: "dp_second", payment_intent: "pi_b", amount: 8000 },
+      },
+    });
+    await f.deliver(disputeEvent("charge.dispute.closed", { status: "won" }));
+    expect((await f.readBooking())!.payoutHoldReasons).toContain("dispute");
+  });
+});
+
+describe("refund status and payout reconciliation", () => {
+  test.each(["succeeded", "failed", "canceled"])(
+    "a pending Stripe refund settles as %s without another refund request",
+    async (status) => {
+      const f = await setupRefunds();
+      const refundId = await f.addRefund();
+      stripeMock.mockResolvedValueOnce({ id: "re_pending", status: "pending" });
+      await f.t.action(internal.refunds.executeRefund, {
+        refundId,
+        attempt: 0,
+      });
+      expect(await f.refunds()).toMatchObject([
+        { status: "pending", stripeRefundId: "re_pending" },
+      ]);
       expect(await f.ledger()).toEqual([]);
+      expect(await f.readBooking()).toMatchObject({ refundedMinor: 0 });
+      const event: StripeEvent = {
+        id: "evt_refund_update",
+        type: status === "failed" ? "refund.failed" : "refund.updated",
+        livemode: false,
+        created: NOW / 1000,
+        data: {
+          object: {
+            id: "re_pending",
+            status,
+            amount: 2000,
+            payment_intent: "pi_a",
+          },
+        },
+      };
+      expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+      expect((await f.refunds())[0].status).toBe(
+        status === "succeeded" ? "succeeded" : "failed",
+      );
+      expect((await f.readBooking())!.refundedMinor).toBe(
+        status === "succeeded" ? 2000 : 0,
+      );
+      const ledger = await f.ledger();
+      await f.deliver({ ...event, id: "evt_refund_update_again" });
+      await f.t.mutation(internal.refunds.retryFailedRefunds, {});
+      expect(await f.ledger()).toEqual(ledger);
       expect(await f.scheduled()).toEqual([]);
+      expect(stripeMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test("a pending refund is polled by id when its webhook is missed", async () => {
+    const f = await setupRefunds();
+    const refundId = await f.addRefund();
+    stripeMock.mockResolvedValueOnce({ id: "re_pending", status: "pending" });
+    await f.t.action(internal.refunds.executeRefund, { refundId, attempt: 0 });
+    await f.t.mutation(internal.refunds.reconcilePendingRefunds, {});
+    const [job] = await f.scheduled();
+    expect(job.name).toBe("refunds:executeRefund");
+    await f.t.action(internal.refunds.executeRefund, job.args[0]);
+    expect(stripeMock).toHaveBeenLastCalledWith(
+      "GET",
+      "/v1/refunds/re_pending",
+    );
+    expect((await f.refunds())[0].status).toBe("succeeded");
+    expect((await f.readBooking())!.refundedMinor).toBe(2000);
+  });
+
+  test("partial refunds reduce only the affected pending payout without compounding", async () => {
+    const f = await setupRefunds();
+    const payoutId = await f.addPayout();
+    const otherId = await f.addPayout({
+      paymentRecordId: f.paymentRecordIds[1],
+      amountMinor: 7200,
+    });
+    for (let index = 0; index < 2; index++) {
+      const refundId = await f.addRefund({ amountMinor: 1000 });
+      await f.t.mutation(internal.refunds.markRefundSucceeded, {
+        refundId,
+        stripeRefundId: `re_${index}`,
+      });
+    }
+    expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+      amountMinor: 9000,
+      originalAmountMinor: 10800,
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(otherId))).toMatchObject({
+      amountMinor: 7200,
+    });
+  });
+
+  test("a refund while a transfer is processing is reconciled when the transfer completes", async () => {
+    const f = await setupRefunds();
+    const payoutId = await f.addPayout({ status: "processing" });
+    const refundId = await f.addRefund();
+    await f.t.mutation(internal.refunds.markRefundSucceeded, {
+      refundId,
+      stripeRefundId: "re_processing",
+    });
+    expect(await f.scheduled()).toEqual([]);
+    await f.t.mutation(internal.payouts.markPayoutPaid, {
+      payoutId,
+      transferId: "tr_processing",
+    });
+    expect(await f.scheduled()).toMatchObject([
+      {
+        name: "refunds:reverseTransfer",
+        args: [{ payoutId, reversalMinor: 1800, reversedMinor: 1800 }],
+      },
+    ]);
+  });
+
+  test.each(["won", "lost"] as const)(
+    "the second installment dispute closes as %s after the first is won",
+    async (outcome) => {
+      const f = await setupRefunds();
+      await f.addPayout();
+      await f.deliver(disputeEvent("charge.dispute.created"));
+      const second = disputeEvent("charge.dispute.created", {
+        id: "dp_b",
+        payment_intent: "pi_b",
+        amount: 8000,
+      });
+      second.id = "evt_second_dispute";
+      await f.deliver(second);
+      await f.deliver(disputeEvent("charge.dispute.closed", { status: "won" }));
+      expect(await f.readBooking()).toMatchObject({
+        status: "disputed",
+        payoutHoldReasons: ["dispute"],
+      });
+      expect(await f.scheduled()).toEqual([]);
+      expect(
+        await f.deliver({
+          ...second,
+          id: "evt_second_closed",
+          type: "charge.dispute.closed",
+          data: {
+            object: {
+              ...second.data.object,
+              status: outcome,
+              balance_transactions: [{ fee: 0 }],
+            },
+          },
+        }),
+      ).toEqual({ outcome: "applied" });
+      expect(await f.readBooking()).toMatchObject({
+        status: outcome === "won" ? "confirmed" : "refunded",
+        payoutHoldReasons: [],
+        payoutHold: false,
+      });
+      expect((await f.records())[1].stripeDisputeStatus).toBe(outcome);
+      expect(
+        (await f.ledger()).some(
+          (row) =>
+            row.idempotencyKey ===
+            `dispute-${outcome === "won" ? "release" : "loss"}:dp_b`,
+        ),
+      ).toBe(true);
+      // A duplicate creation delivered after closure cannot reapply the hold.
+      await f.deliver({ ...second, id: "evt_second_created_late" });
+      expect((await f.readBooking())!.payoutHold).toBe(false);
     },
   );
 });
