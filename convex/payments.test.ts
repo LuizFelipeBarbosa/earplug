@@ -481,6 +481,39 @@ describe("paid booking acceptance", () => {
 });
 
 describe("installment Checkout", () => {
+  test("checkout expiration remains valid after transport crosses a second boundary", async () => {
+    const f = await setupPayments();
+    const offer = await f.accept();
+    const [record] = await f.records(offer.bookingId);
+    vi.setSystemTime(NOW + 999);
+    const stripeMock = vi.mocked(stripeRequest);
+    const respond = stripeMock.getMockImplementation()!;
+    stripeMock.mockImplementation(async (method, path, params, options) => {
+      if (path === "/v1/checkout/sessions") {
+        vi.setSystemTime(Date.now() + 2000);
+        // Stripe validates against its creation time, after the request arrives.
+        const minimumExpiry = Math.floor(Date.now() / 1000) + 30 * 60;
+        if (Number(params?.expires_at) < minimumExpiry) {
+          throw new StripeApiError("expires_at is less than 30 minutes away", {
+            status: 400,
+          });
+        }
+      }
+      return respond(method, path, params, options);
+    });
+
+    await expect(
+      f.as("finance").action(api.payments.startInstallmentCheckout, {
+        paymentRecordId: record._id,
+      }),
+    ).resolves.toMatchObject({ sessionId: "cs_test_1" });
+    const [checkout] = await f.records(offer.bookingId);
+    expect(checkout.status).toBe("checkout_open");
+    expect(checkout.checkoutExpiresAt).toBeGreaterThan(
+      Date.now() + 30 * 60 * 1000,
+    );
+  });
+
   test("finance creates and reuses the customer, with exact session params and attempt keys", async () => {
     const f = await setupPayments();
     const offer = await f.accept();

@@ -78,7 +78,9 @@ export const PAYMENT_OPEN_STATUSES: readonly PaymentRecordStatus[] = [
   "expired",
 ];
 
-export const CHECKOUT_TTL_MS = 30 * 60 * 1000;
+// Stripe requires at least 30 minutes from session creation. Leave five minutes
+// for clock differences, transport, and processing after we compute expires_at.
+export const CHECKOUT_TTL_MS = 35 * 60 * 1000;
 export const PAYMENT_REMINDER_LEAD_MS = 24 * 60 * 60 * 1000;
 export const AUTO_CANCEL_GRACE_MS = 48 * 60 * 60 * 1000;
 export const DEFAULT_PAYMENT_DUE_MS = 48 * 60 * 60 * 1000;

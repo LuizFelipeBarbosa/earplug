@@ -560,6 +560,10 @@ payment status of `pending`, `checkout_open`, `failed`, or `expired`;
 both eligibility and `startInstallmentCheckout` require an `awaiting_payment`,
 `confirmed`, or `completed` booking. Restarting
 an open Checkout expires the previous session before creating its replacement.
+New sessions expire after 35 minutes, leaving five minutes of margin above
+Stripe's minimum lifetime for request latency and clock differences. The return
+screen reports success only when that installment's payment status is `paid`;
+an already-confirmed booking does not establish that a later installment was paid.
 The account-status queries, `paymentsForBooking`, `payoutsForBand`, and refund
 queries throw when their required access is absent; `checkoutStatus` also
 checks payment-reader access when the session exists.
@@ -672,10 +676,19 @@ transactionally before scheduling, use a fixed idempotency key per reservation,
 and record completed amounts once even if actions finish out of order. Ambiguous
 reversal failures retain their reservation for manual reconciliation.
 
+Individual refund events also discover dashboard refunds through their payment
+intent, without requiring EarPlug metadata or an expanded `charge.refunds` list.
+Expanded charge events from older webhook versions share the same reconciliation
+path, and both deduplicate by Stripe refund id.
+
 Each installment tracks its dispute outcome. Winning one dispute preserves the
 hold while another is open. Winning the last dispute restores the prior state,
 reschedules completion if necessary, and reconciles any installments collected
 while a completed booking was disputed.
+A closure delivered before creation applies the missing opening and settlement
+in one transaction. Its terminal outcome prevents delayed creation events from
+reopening the dispute. A disputed booking missing its prior status leaves a won
+closure retryable until the booking state is repaired.
 
 The internal `bookings.js:markCompleted` settles a `grossMinor === 0` booking
 through `confirmed -> completed -> paid` in the same call and schedules no

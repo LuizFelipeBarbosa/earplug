@@ -388,6 +388,34 @@ function chargeRefundedEvent(
   };
 }
 
+function refundEvent(
+  type:
+    | "refund.created"
+    | "refund.updated"
+    | "refund.failed"
+    | "charge.refund.updated",
+  fields: Record<string, unknown> = {},
+): StripeEvent {
+  return {
+    id: `evt_${type}`,
+    type,
+    livemode: false,
+    created: NOW / 1000,
+    data: {
+      object: {
+        id: "re_dashboard",
+        charge: "ch_a",
+        payment_intent: "pi_a",
+        amount: 2000,
+        currency: "usd",
+        status: "succeeded",
+        metadata: {},
+        ...fields,
+      },
+    },
+  };
+}
+
 describe("cancellation previews and access", () => {
   test.each([
     {
@@ -1304,6 +1332,123 @@ describe("late payments", () => {
 });
 
 describe("charge refund reconciliation", () => {
+  test.each([
+    "refund.created",
+    "refund.updated",
+    "charge.refund.updated",
+  ] as const)(
+    "%s reconciles a dashboard refund without expanded charge refunds exactly once",
+    async (type) => {
+      const f = await setupRefunds();
+      const payoutId = await f.addPayout({
+        status: "paid",
+        stripeTransferId: "tr_paid",
+      });
+      const chargeEvent = chargeRefundedEvent();
+      delete chargeEvent.data.object.refunds;
+      chargeEvent.data.object.amount_refunded = 2000;
+      expect(await f.deliver(chargeEvent)).toEqual({ outcome: "applied" });
+      const event = refundEvent(type);
+      expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+
+      expect(await f.refunds()).toMatchObject([
+        {
+          paymentRecordId: f.paymentRecordIds[0],
+          amountMinor: 2000,
+          stripeRefundId: "re_dashboard",
+          stripePaymentIntentId: "pi_a",
+          reason: "admin",
+          status: "succeeded",
+        },
+      ]);
+      expect((await f.records())[0]).toMatchObject({
+        status: "partially_refunded",
+        refundedMinor: 2000,
+      });
+      expect(await f.readBooking()).toMatchObject({ refundedMinor: 2000 });
+      const ledger = await f.ledger();
+      expect(ledger).toMatchObject([
+        { idempotencyKey: "refund:re_dashboard", amountMinor: -2000 },
+      ]);
+      const jobs = await f.scheduled();
+      expect(jobs).toMatchObject([
+        {
+          name: "refunds:reverseTransfer",
+          args: [{ payoutId, reversalMinor: 1800 }],
+        },
+      ]);
+      await f.deliver({ ...event, id: "evt_dashboard_duplicate" });
+      await f.deliver({
+        ...chargeRefundedEvent(),
+        id: "evt_expanded_duplicate",
+      });
+      expect(await f.refunds()).toHaveLength(1);
+      expect(await f.ledger()).toEqual(ledger);
+      expect(await f.scheduled()).toEqual(jobs);
+    },
+  );
+
+  test("a dashboard refund cancels its unpaid payout without affecting other installments", async () => {
+    const f = await setupRefunds();
+    const payoutId = await f.addPayout();
+    const otherPayoutId = await f.addPayout({
+      paymentRecordId: f.paymentRecordIds[1],
+      amountMinor: 7200,
+    });
+    await f.deliver(refundEvent("refund.created", { amount: 12000 }));
+    expect(await f.payouts()).toMatchObject([
+      { _id: payoutId, status: "reversed" },
+      { _id: otherPayoutId, status: "scheduled", amountMinor: 7200 },
+    ]);
+    expect((await f.readBooking())!.refundedMinor).toBe(12000);
+  });
+
+  test("a pending dashboard refund is tracked and polled without a second POST", async () => {
+    const f = await setupRefunds();
+    await f.deliver(refundEvent("refund.created", { status: "pending" }));
+    expect(await f.refunds()).toMatchObject([
+      { stripeRefundId: "re_dashboard", status: "pending" },
+    ]);
+    expect(await f.ledger()).toEqual([]);
+    await f.t.mutation(internal.refunds.reconcilePendingRefunds, {});
+    const [job] = await f.scheduled();
+    await f.t.action(internal.refunds.executeRefund, job.args[0]);
+    expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
+      "GET",
+      "/v1/refunds/re_dashboard",
+    );
+    expect((await f.readBooking())!.refundedMinor).toBe(2000);
+    // An older creation event must not undo a terminal processor result.
+    await f.deliver({
+      ...refundEvent("refund.created", { status: "pending" }),
+      id: "evt_pending_late",
+    });
+    expect(await f.refunds()).toMatchObject([{ status: "succeeded" }]);
+  });
+
+  test.each(["pi_a", "pi_extra"])(
+    "an individual refund event reuses the pending request for %s before its Stripe id is saved",
+    async (paymentIntentId) => {
+      const f = await setupRefunds();
+      const refundId = await f.addRefund({
+        stripePaymentIntentId: paymentIntentId,
+      });
+      await f.deliver(
+        refundEvent("refund.created", {
+          payment_intent: { id: paymentIntentId },
+          metadata: { refundId },
+        }),
+      );
+      expect(await f.refunds()).toMatchObject([
+        { _id: refundId, stripeRefundId: "re_dashboard", status: "succeeded" },
+      ]);
+      expect((await f.readBooking())!.refundedMinor).toBe(
+        paymentIntentId === "pi_a" ? 2000 : 0,
+      );
+      expect(await f.ledger()).toHaveLength(1);
+    },
+  );
+
   test("reconciles a dashboard refund and its proportional reversal exactly once", async () => {
     const f = await setupRefunds();
     const payoutId = await f.addPayout({
@@ -1864,50 +2009,103 @@ describe("Stripe disputes", () => {
     });
   });
 
-  test.each([
-    {
-      status: "cancelled_by_organizer",
-      outcome: "lost",
-      payoutHoldReasons: ["dispute"],
-    },
-    { status: "cancelled_by_organizer", outcome: "won", payoutHoldReasons: [] },
-    { status: "disputed", outcome: "won", payoutHoldReasons: ["dispute"] },
-  ] as const)(
-    "ignores a $outcome dispute on a $status booking without a resolvable status or hold",
-    async ({ status, outcome, payoutHoldReasons }) => {
+  test.each(
+    (
+      ["confirmed", "completed", "paid", "cancelled_by_organizer"] as const
+    ).flatMap((status) =>
+      (["won", "lost"] as const).map((outcome) => ({ status, outcome })),
+    ),
+  )(
+    "settles a $outcome dispute delivered before creation on a $status booking",
+    async ({ status, outcome }) => {
       const f = await setupRefunds();
       await f.t.run((ctx) =>
         ctx.db.patch(f.bookingId, {
           status,
-          payoutHoldReasons: [...payoutHoldReasons],
-          payoutHold: payoutHoldReasons.length > 0,
+          payoutHoldReasons: ["admin"],
+          payoutHold: true,
         }),
       );
       await f.addPayout({
-        kind: "forfeit",
-        status: "held",
-        holdReason: "dispute",
+        kind: status === "cancelled_by_organizer" ? "forfeit" : "completion",
+        status: status === "paid" ? "paid" : "scheduled",
+        ...(status === "paid" ? { stripeTransferId: "tr_paid" } : {}),
       });
+      const closed = disputeEvent("charge.dispute.closed", {
+        status: outcome,
+        amount: 3000,
+        balance_transactions: [{ fee: 0 }],
+      });
+      expect(await f.deliver(closed)).toEqual({ outcome: "applied" });
+      expect((await f.records())[0]).toMatchObject({
+        stripeDisputeId: "dp_test",
+        stripeDisputeStatus: outcome,
+        disputedMinor: 3000,
+        refundedMinor: outcome === "lost" ? 3000 : 0,
+      });
+      expect(await f.readBooking()).toMatchObject({
+        status:
+          outcome === "won" || status === "cancelled_by_organizer"
+            ? status
+            : "refunded",
+        payoutHoldReasons: ["admin"],
+        payoutHold: true,
+        refundedMinor: outcome === "lost" ? 3000 : 0,
+      });
+      const ledger = await f.ledger();
+      expect(ledger).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            idempotencyKey: "dispute-hold:dp_test",
+            amountMinor: -3000,
+          }),
+          expect.objectContaining({
+            idempotencyKey: `dispute-${outcome === "won" ? "release" : "loss"}:dp_test`,
+            amountMinor: outcome === "won" ? 3000 : -3000,
+          }),
+        ]),
+      );
       const booking = await f.readBooking();
       const records = await f.records();
       const payouts = await f.payouts();
-      const log = vi.spyOn(console, "log").mockImplementation(() => {});
-
-      expect(
-        await f.deliver(
-          disputeEvent("charge.dispute.closed", { status: outcome }),
-        ),
-      ).toEqual({ outcome: "applied" });
-      expect(log).toHaveBeenCalledExactlyOnceWith(
-        "charge.dispute.closed ignored: nothing to resolve for dp_test",
-      );
+      const jobs = await f.scheduled();
+      expect(await f.deliver(closed)).toEqual({ outcome: "duplicate" });
+      await f.deliver(disputeEvent("charge.dispute.created"));
+      await f.deliver({ ...closed, id: "evt_closure_duplicate" });
       expect(await f.readBooking()).toEqual(booking);
       expect(await f.records()).toEqual(records);
       expect(await f.payouts()).toEqual(payouts);
-      expect(await f.ledger()).toEqual([]);
-      expect(await f.scheduled()).toEqual([]);
+      expect(await f.ledger()).toEqual(ledger);
+      expect(await f.scheduled()).toEqual(jobs);
     },
   );
+
+  test("a closure remains retryable when a disputed booking is missing its prior status", async () => {
+    const f = await setupRefunds();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, {
+        status: "disputed",
+        payoutHoldReasons: ["dispute"],
+        payoutHold: true,
+      }),
+    );
+    const booking = await f.readBooking();
+    const records = await f.records();
+    const closed = disputeEvent("charge.dispute.closed", { status: "won" });
+    expect(await f.deliver(closed)).toEqual({ outcome: "failed" });
+    expect(await f.readBooking()).toEqual(booking);
+    expect(await f.records()).toEqual(records);
+    expect(await f.ledger()).toEqual([]);
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.bookingId, { disputedFromStatus: "confirmed" }),
+    );
+    expect(await f.deliver(closed)).toEqual({ outcome: "applied" });
+    expect(await f.readBooking()).toMatchObject({
+      status: "confirmed",
+      payoutHold: false,
+    });
+    expect((await f.records())[0].stripeDisputeStatus).toBe("won");
+  });
 });
 
 describe("marketplace settlement regressions", () => {

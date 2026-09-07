@@ -96,7 +96,7 @@ test("payment open statuses have the expected order", () => {
 });
 
 test("payment and payout deadlines use the expected durations", () => {
-  expect(CHECKOUT_TTL_MS).toBe(1_800_000);
+  expect(CHECKOUT_TTL_MS).toBe(2_100_000);
   expect(PAYMENT_REMINDER_LEAD_MS).toBe(86_400_000);
   expect(AUTO_CANCEL_GRACE_MS).toBe(172_800_000);
   expect(DEFAULT_PAYMENT_DUE_MS).toBe(172_800_000);

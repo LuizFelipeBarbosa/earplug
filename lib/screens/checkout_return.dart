@@ -116,9 +116,7 @@ class _CheckoutReturnScreenState extends State<CheckoutReturnScreen> {
           );
         }
 
-        final paid =
-            status.paymentStatus == PaymentRecordStatus.paid ||
-            status.bookingStatus == BookingStatus.confirmed;
+        final paid = status.paymentStatus == PaymentRecordStatus.paid;
         return _CheckoutPage(
           children: [
             Text(

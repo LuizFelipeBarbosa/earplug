@@ -9,12 +9,11 @@ import { appendLedgerEntry } from "../lib/ledger";
 import {
   assertPaymentRecordTransition,
   assertPayoutTransition,
-  assertRefundTransition,
 } from "../lib/paymentStatus";
 import { reconcilePaymentPayouts } from "../lib/payoutAccounting";
 import { paymentRecordsForBooking } from "../lib/paymentSchedule";
 import { schedulePayoutsForBooking } from "../payouts";
-import { applyRefundSucceeded, applyStripeRefundStatus } from "../refunds";
+import { applyStripeRefundStatus } from "../refunds";
 import type {
   StripeEvent,
   StripeEventHandler,
@@ -125,7 +124,7 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
   if (charge && typeof charge === "object" && isTicketSession(charge)) {
     return handleTicketDisputeClosed(ctx, event, charge);
   }
-  const record = await paymentRecordForDispute(ctx, event);
+  let record = await paymentRecordForDispute(ctx, event);
   if (!record) return;
   const dispute = event.data.object;
   const disputeId = dispute.id;
@@ -136,28 +135,30 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
     );
     return;
   }
-  const booking = await ctx.db.get(record.bookingId);
-  if (!booking) throw new Error("Booking not found");
   if (record.stripeDisputeId && record.stripeDisputeId !== disputeId) return;
   if (
     record.stripeDisputeStatus === "won" ||
     record.stripeDisputeStatus === "lost"
   )
     return;
-  const openDispute = record.stripeDisputeId === disputeId;
-  const hasDisputeHold = (booking.payoutHoldReasons ?? []).includes("dispute");
+  if (!record.stripeDisputeId) {
+    // Stripe may deliver the closure first. Apply the missing opening and its
+    // settlement in this transaction, so a delayed creation cannot reopen it.
+    await disputeCreated(ctx, event);
+    record = await ctx.db.get(record._id);
+    if (!record) throw new Error("Payment record not found");
+  }
+  const booking = await ctx.db.get(record.bookingId);
+  if (!booking) throw new Error("Booking not found");
   if (
-    (booking.status === "disputed" &&
-      outcome === "won" &&
-      !booking.disputedFromStatus) ||
-    (!openDispute &&
-      booking.status !== "disputed" &&
-      (outcome !== "won" || !hasDisputeHold))
+    booking.status === "disputed" &&
+    outcome === "won" &&
+    !booking.disputedFromStatus
   ) {
-    console.log(
-      `charge.dispute.closed ignored: nothing to resolve for ${disputeId}`,
+    // Keep the event retryable if legacy state needs repair.
+    throw new Error(
+      `Disputed booking ${booking._id} is missing its prior status`,
     );
-    return;
   }
   const disputedMinor = record.disputedMinor ?? record.amountMinor;
   const now = Date.now();
@@ -306,6 +307,97 @@ const disputeClosed: StripeEventHandler = async (ctx, event) => {
   });
 };
 
+async function reconcileStripeRefund(
+  ctx: MutationCtx,
+  object: unknown,
+  chargePaymentIntentId?: string,
+): Promise<void> {
+  if (!object || typeof object !== "object") return;
+  const { id, status, amount, payment_intent, metadata } = object as Record<
+    string,
+    unknown
+  >;
+  if (
+    typeof id !== "string" ||
+    typeof status !== "string" ||
+    typeof amount !== "number" ||
+    !Number.isSafeInteger(amount) ||
+    amount <= 0
+  ) {
+    return;
+  }
+  const paymentIntent = payment_intent ?? chargePaymentIntentId;
+  const paymentIntentId =
+    typeof paymentIntent === "string"
+      ? paymentIntent
+      : paymentIntent &&
+          typeof paymentIntent === "object" &&
+          "id" in paymentIntent
+        ? paymentIntent.id
+        : undefined;
+  let refund = await ctx.db
+    .query("refunds")
+    .withIndex("by_stripeRefundId", (q) => q.eq("stripeRefundId", id))
+    .unique();
+  if (
+    !refund &&
+    typeof paymentIntentId === "string" &&
+    metadata &&
+    typeof metadata === "object" &&
+    "refundId" in metadata &&
+    typeof metadata.refundId === "string"
+  ) {
+    // The POST can succeed before the accounting mutation saves its Stripe id.
+    const refundId = ctx.db.normalizeId("refunds", metadata.refundId);
+    const candidate = refundId ? await ctx.db.get(refundId) : null;
+    if (candidate && candidate.amountMinor === amount) {
+      const record = await ctx.db.get(candidate.paymentRecordId);
+      if (
+        (candidate.stripePaymentIntentId ?? record?.stripePaymentIntentId) ===
+        paymentIntentId
+      ) {
+        refund = candidate;
+      }
+    }
+  }
+  if (!refund && typeof paymentIntentId === "string") {
+    let record = await ctx.db
+      .query("paymentRecords")
+      .withIndex("by_stripePaymentIntentId", (q) =>
+        q.eq("stripePaymentIntentId", paymentIntentId),
+      )
+      .unique();
+    if (!record) {
+      // Extra Checkout intents are tracked on their refund, not the installment.
+      const extraRefund = await ctx.db
+        .query("refunds")
+        .withIndex("by_stripePaymentIntentId", (q) =>
+          q.eq("stripePaymentIntentId", paymentIntentId),
+        )
+        .first();
+      if (extraRefund) record = await ctx.db.get(extraRefund.paymentRecordId);
+    }
+    if (!record) return;
+    // Dashboard refunds have no EarPlug metadata. Track the processor refund
+    // itself so pending outcomes can be polled and duplicate events are safe.
+    const now = Date.now();
+    const refundId = await ctx.db.insert("refunds", {
+      bookingId: record.bookingId,
+      paymentRecordId: record._id,
+      amountMinor: amount,
+      currency: record.currency,
+      reason: "admin",
+      status: "pending",
+      stripeRefundId: id,
+      stripePaymentIntentId: paymentIntentId,
+      createdAt: now,
+      updatedAt: now,
+    });
+    refund = await ctx.db.get(refundId);
+  }
+  if (refund) await applyStripeRefundStatus(ctx, refund, id, status);
+}
+
 const chargeRefunded: StripeEventHandler = async (ctx, event) => {
   const charge = event.data.object;
   if (isTicketSession(charge)) return handleTicketChargeRefunded(ctx, event);
@@ -313,24 +405,9 @@ const chargeRefunded: StripeEventHandler = async (ctx, event) => {
   const paymentIntentId =
     typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id;
   if (typeof paymentIntentId !== "string") return;
-  let record = await ctx.db
-    .query("paymentRecords")
-    .withIndex("by_stripePaymentIntentId", (q) =>
-      q.eq("stripePaymentIntentId", paymentIntentId),
-    )
-    .unique();
-  if (!record) {
-    // Extra Checkout intents are tracked on their refund, not the installment.
-    const refund = await ctx.db
-      .query("refunds")
-      .withIndex("by_stripePaymentIntentId", (q) =>
-        q.eq("stripePaymentIntentId", paymentIntentId),
-      )
-      .first();
-    if (refund) record = await ctx.db.get(refund.paymentRecordId);
-  }
-  if (!record) return;
   const refunds: unknown = charge.refunds;
+  // Older webhook versions can include expanded refunds. Modern versions send
+  // individual refund events instead; both use the same reconciliation path.
   if (
     !refunds ||
     typeof refunds !== "object" ||
@@ -339,102 +416,20 @@ const chargeRefunded: StripeEventHandler = async (ctx, event) => {
   ) {
     return;
   }
-  const now = Date.now();
   for (const entry of refunds.data as unknown[]) {
     if (
-      !entry ||
-      typeof entry !== "object" ||
-      !("status" in entry) ||
-      entry.status !== "succeeded" ||
-      !("id" in entry) ||
-      typeof entry.id !== "string" ||
-      !("amount" in entry) ||
-      typeof entry.amount !== "number" ||
-      !Number.isSafeInteger(entry.amount) ||
-      entry.amount <= 0
+      entry &&
+      typeof entry === "object" &&
+      "status" in entry &&
+      entry.status === "succeeded"
     ) {
-      continue;
-    }
-    const stripeRefundId = entry.id;
-    let refund = await ctx.db
-      .query("refunds")
-      .withIndex("by_stripeRefundId", (q) =>
-        q.eq("stripeRefundId", stripeRefundId),
-      )
-      .unique();
-    if (!refund && "metadata" in entry) {
-      // The POST can succeed before markRefundSucceeded commits its Stripe id.
-      const metadata = entry.metadata;
-      if (
-        metadata &&
-        typeof metadata === "object" &&
-        "refundId" in metadata &&
-        typeof metadata.refundId === "string"
-      ) {
-        const refundId = ctx.db.normalizeId("refunds", metadata.refundId);
-        const candidate = refundId ? await ctx.db.get(refundId) : null;
-        if (
-          candidate &&
-          !candidate.stripeRefundId &&
-          candidate.paymentRecordId === record._id &&
-          candidate.amountMinor === entry.amount &&
-          (candidate.stripePaymentIntentId ?? record.stripePaymentIntentId) ===
-            paymentIntentId
-        ) {
-          refund = candidate;
-        }
-      }
-    }
-    if (!refund) {
-      const refundId = await ctx.db.insert("refunds", {
-        bookingId: record.bookingId,
-        paymentRecordId: record._id,
-        amountMinor: entry.amount,
-        currency: record.currency,
-        reason: "admin",
-        status: "pending",
-        stripeRefundId,
-        stripePaymentIntentId: paymentIntentId,
-        createdAt: now,
-        updatedAt: now,
-      });
-      refund = await ctx.db.get(refundId);
-    }
-    if (!refund) throw new Error("Refund not found");
-    if (refund.status !== "succeeded") {
-      if (refund.status === "failed") {
-        assertRefundTransition("failed", "pending");
-        await ctx.db.patch(refund._id, { status: "pending", updatedAt: now });
-        refund = { ...refund, status: "pending" };
-      }
-      await applyRefundSucceeded(ctx, refund, stripeRefundId);
+      await reconcileStripeRefund(ctx, entry, paymentIntentId);
     }
   }
 };
 
 const refundUpdated: StripeEventHandler = async (ctx, event) => {
-  const object = event.data.object;
-  if (typeof object.id !== "string" || typeof object.status !== "string")
-    return;
-  let refund = await ctx.db
-    .query("refunds")
-    .withIndex("by_stripeRefundId", (q) => q.eq("stripeRefundId", object.id))
-    .unique();
-  if (!refund && typeof object.metadata?.refundId === "string") {
-    const id = ctx.db.normalizeId("refunds", object.metadata.refundId);
-    const candidate = id ? await ctx.db.get(id) : null;
-    if (candidate && candidate.amountMinor === object.amount) {
-      const record = await ctx.db.get(candidate.paymentRecordId);
-      if (
-        (candidate.stripePaymentIntentId ?? record?.stripePaymentIntentId) ===
-        object.payment_intent
-      ) {
-        refund = candidate;
-      }
-    }
-  }
-  if (refund)
-    await applyStripeRefundStatus(ctx, refund, object.id, object.status);
+  await reconcileStripeRefund(ctx, event.data.object);
 };
 
 export const disputeHandlers: StripeHandlerMap = {
