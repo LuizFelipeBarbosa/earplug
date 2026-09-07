@@ -1,4 +1,8 @@
-import { v } from "convex/values";
+import {
+  paginationOptsValidator,
+  paginationResultValidator,
+} from "convex/server";
+import { type Infer, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import {
   isPlatformAdmin,
@@ -6,6 +10,7 @@ import {
   requirePlatformAdminQuery,
 } from "./lib/authz";
 import { currentUser } from "./lib/helpers";
+import { bookingStatusValidator } from "./schema";
 
 export const me = query({
   args: {},
@@ -121,6 +126,79 @@ export const overview = query({
   },
 });
 
+const bookingRowValidator = v.object({
+  bookingId: v.id("bookings"),
+  title: v.string(),
+  organizationName: v.string(),
+  bandName: v.string(),
+  status: bookingStatusValidator,
+  startsAt: v.number(),
+  paidMinor: v.number(),
+  refundedMinor: v.number(),
+  payoutHoldReasons: v.array(v.string()),
+  openDisputeId: v.union(v.id("disputes"), v.null()),
+});
+
+export const bookings = query({
+  args: {
+    filter: v.union(
+      v.literal("all"),
+      v.literal("disputed"),
+      v.literal("held"),
+      v.literal("awaiting_payment"),
+    ),
+    paginationOpts: paginationOptsValidator,
+  },
+  returns: paginationResultValidator(bookingRowValidator),
+  handler: async (ctx, args) => {
+    await requirePlatformAdminQuery(ctx);
+    const filter = args.filter;
+    const source = ctx.db.query("bookings");
+    const result =
+      filter === "disputed" || filter === "awaiting_payment"
+        ? await source
+            .withIndex("by_status_and_startsAt", (q) => q.eq("status", filter))
+            .order("desc")
+            .paginate(args.paginationOpts)
+        : await source.order("desc").paginate(args.paginationOpts);
+
+    let rows = result.page;
+    // Known limitation: filtering after pagination can return fewer (even zero)
+    // rows than requested while more held bookings exist on later pages.
+    if (filter === "held") {
+      rows = rows.filter((booking) => (booking.payoutHoldReasons?.length ?? 0) > 0);
+    }
+
+    const page: Infer<typeof bookingRowValidator>[] = [];
+    for (const booking of rows) {
+      const [organization, band, opportunity] = await Promise.all([
+        ctx.db.get(booking.organizationId),
+        ctx.db.get(booking.bandId),
+        ctx.db.get(booking.opportunityId),
+      ]);
+      if (!organization || !band || !opportunity) continue;
+      const openDispute = await ctx.db
+        .query("disputes")
+        .withIndex("by_bookingId", (q) => q.eq("bookingId", booking._id))
+        .filter((q) => q.eq(q.field("status"), "open"))
+        .first();
+      page.push({
+        bookingId: booking._id,
+        title: opportunity.title,
+        organizationName: organization.name,
+        bandName: band.name,
+        status: booking.status,
+        startsAt: booking.startsAt,
+        paidMinor: booking.paidMinor ?? 0,
+        refundedMinor: booking.refundedMinor ?? 0,
+        payoutHoldReasons: booking.payoutHoldReasons ?? [],
+        openDisputeId: openDispute?._id ?? null,
+      });
+    }
+    return { ...result, page };
+  },
+});
+
 export const suspendOrganization = mutation({
   args: {
     organizationId: v.id("organizations"),
@@ -137,11 +215,13 @@ export const suspendOrganization = mutation({
       await ctx.db.patch(args.organizationId, {
         status: "suspended",
         suspendedAt: Date.now(),
+        suspensionNote: args.note,
       });
     } else {
       await ctx.db.patch(args.organizationId, {
         status: "verified",
         suspendedAt: undefined,
+        suspensionNote: undefined,
       });
     }
 
@@ -156,9 +236,6 @@ export const suspendOrganization = mutation({
         status: args.suspended ? "suspended" : "verified",
       });
     }
-    // Reserved for a future audit-log field; the current schema has nowhere
-    // appropriate to persist this note.
-    void args.note;
     return null;
   },
 });

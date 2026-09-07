@@ -344,3 +344,336 @@ describe("admin:grantPlatformAdmin", () => {
     expect(activeRows[0].note).toBe("Initial operator");
   });
 });
+
+describe("admin:bookings", () => {
+  async function setupBookings() {
+    const t = convexTest(schema, import.meta.glob("./**/*.ts"));
+    const asAdmin = t.withIdentity({ subject: "bookings_admin" });
+    const asRegular = t.withIdentity({ subject: "bookings_regular" });
+    const { userId: adminUserId } = await asAdmin.mutation(
+      api.users.ensureUser,
+      {},
+    );
+    await asRegular.mutation(api.users.ensureUser, {});
+    const ids = await t.run(async (ctx) => {
+      await ctx.db.insert("platformAdmins", {
+        userId: adminUserId,
+        grantedAt: 1,
+      });
+      const organizationId = await ctx.db.insert("organizations", {
+        name: "Booking Collective",
+        slug: "booking-collective",
+        orgType: "venueOperator",
+        status: "verified",
+        ownerUserId: adminUserId,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const bandId = await ctx.db.insert("bands", {
+        name: "Static Bloom",
+        slug: "static-bloom",
+        genres: ["Indie"],
+        bio: "Local live music.",
+        area: "Oakland",
+        colorHex: "#7B8FFF",
+        initials: "SB",
+        followerCount: 0,
+        pastShows: [],
+      });
+      const opportunityId = await ctx.db.insert("talentOpportunities", {
+        organizationId,
+        mode: "publicEvent",
+        area: "Oakland",
+        title: "Friday at the Hall",
+        desc: "An evening of local music.",
+        genres: ["Indie"],
+        startsAt: 5000,
+        ageRequirement: "allAges",
+        flyKey: "xerox",
+        applicationsCloseAt: 1000,
+        visibility: "public",
+        ticketing: "rsvp",
+        currency: "usd",
+        status: "confirmed",
+        slug: "friday-at-the-hall",
+        createdBy: adminUserId,
+        revision: 1,
+        applicationCount: 0,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const slotId = await ctx.db.insert("opportunitySlots", {
+        opportunityId,
+        order: 0,
+        role: "headliner",
+        guaranteeMinor: 5000,
+        required: true,
+        status: "booked",
+        bandId,
+      });
+      const applicationId = await ctx.db.insert("artistApplications", {
+        opportunityId,
+        slotId,
+        bandId,
+        submittedBy: adminUserId,
+        message: "Available",
+        status: "booked",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+      const bookingFields = {
+        opportunityId,
+        slotId,
+        organizationId,
+        bandId,
+        applicationId,
+        revision: 1,
+        grossMinor: 5000,
+        commissionBps: 1000,
+        commissionMinor: 500,
+        artistNetMinor: 4500,
+        currency: "usd",
+        cancellationTemplate: "standard" as const,
+        organizerAcceptedTermsAt: 1,
+        payoutHold: false,
+        createdBy: adminUserId,
+        createdAt: 1,
+        updatedAt: 1,
+      };
+      // Event times deliberately run opposite to insertion order.
+      const disputedId = await ctx.db.insert("bookings", {
+        ...bookingFields,
+        status: "disputed",
+        startsAt: 5000,
+      });
+      const heldId = await ctx.db.insert("bookings", {
+        ...bookingFields,
+        status: "confirmed",
+        startsAt: 4000,
+        payoutHold: true,
+        payoutHoldReasons: ["admin"],
+        paidMinor: 5000,
+        refundedMinor: 750,
+      });
+      const plainId = await ctx.db.insert("bookings", {
+        ...bookingFields,
+        status: "confirmed",
+        startsAt: 3000,
+        payoutHoldReasons: [],
+      });
+      const awaitingId = await ctx.db.insert("bookings", {
+        ...bookingFields,
+        status: "awaiting_payment",
+        startsAt: 2000,
+      });
+      return {
+        organizationId,
+        bandId,
+        opportunityId,
+        disputedId,
+        heldId,
+        plainId,
+        awaitingId,
+      };
+    });
+    return { t, asAdmin, asRegular, adminUserId, ...ids };
+  }
+
+  test("rejects non-admin and signed-out callers", async () => {
+    const f = await setupBookings();
+    const args = {
+      filter: "all" as const,
+      paginationOpts: { numItems: 50, cursor: null },
+    };
+    await expect(f.asRegular.query(api.admin.bookings, args)).rejects.toThrow(
+      "Not an EarPlug admin",
+    );
+    await expect(f.t.query(api.admin.bookings, args)).rejects.toThrow();
+  });
+
+  test("all pages by creation newest-first and includes related names and money", async () => {
+    const f = await setupBookings();
+    const first = await f.asAdmin.query(api.admin.bookings, {
+      filter: "all",
+      paginationOpts: { numItems: 2, cursor: null },
+    });
+    expect(first.page).toEqual([
+      {
+        bookingId: f.awaitingId,
+        title: "Friday at the Hall",
+        organizationName: "Booking Collective",
+        bandName: "Static Bloom",
+        status: "awaiting_payment",
+        startsAt: 2000,
+        paidMinor: 0,
+        refundedMinor: 0,
+        payoutHoldReasons: [],
+        openDisputeId: null,
+      },
+      {
+        bookingId: f.plainId,
+        title: "Friday at the Hall",
+        organizationName: "Booking Collective",
+        bandName: "Static Bloom",
+        status: "confirmed",
+        startsAt: 3000,
+        paidMinor: 0,
+        refundedMinor: 0,
+        payoutHoldReasons: [],
+        openDisputeId: null,
+      },
+    ]);
+    expect(first.isDone).toBe(false);
+    const second = await f.asAdmin.query(api.admin.bookings, {
+      filter: "all",
+      paginationOpts: { numItems: 2, cursor: first.continueCursor },
+    });
+    expect(second.page.map((row) => row.bookingId)).toEqual([
+      f.heldId,
+      f.disputedId,
+    ]);
+    expect(second.page[0]).toMatchObject({
+      paidMinor: 5000,
+      refundedMinor: 750,
+      payoutHoldReasons: ["admin"],
+    });
+    expect(second.isDone).toBe(true);
+  });
+
+  test.each([
+    ["disputed", "disputedId"],
+    ["held", "heldId"],
+    ["awaiting_payment", "awaitingId"],
+  ] as const)("%s includes only matching bookings", async (filter, key) => {
+    const f = await setupBookings();
+    const result = await f.asAdmin.query(api.admin.bookings, {
+      filter,
+      paginationOpts: { numItems: 50, cursor: null },
+    });
+    expect(result.page.map((row) => row.bookingId)).toEqual([f[key]]);
+  });
+
+  test("held preserves the cursor when an empty page precedes a held booking", async () => {
+    const f = await setupBookings();
+    const first = await f.asAdmin.query(api.admin.bookings, {
+      filter: "held",
+      paginationOpts: { numItems: 2, cursor: null },
+    });
+    expect(first.page).toEqual([]);
+    expect(first.isDone).toBe(false);
+    const second = await f.asAdmin.query(api.admin.bookings, {
+      filter: "held",
+      paginationOpts: { numItems: 2, cursor: first.continueCursor },
+    });
+    expect(second.page.map((row) => row.bookingId)).toEqual([f.heldId]);
+    expect(second.isDone).toBe(true);
+  });
+
+  test("links only open disputes belonging to the booking", async () => {
+    const f = await setupBookings();
+    const disputeId = await f.t.run(async (ctx) => {
+      const fields = {
+        openedByUserId: f.adminUserId,
+        side: "organizer" as const,
+        category: "payment" as const,
+        text: "Payment review requested.",
+        createdAt: 1,
+        updatedAt: 1,
+      };
+      for (const status of ["under_review", "resolved"] as const) {
+        for (const bookingId of [f.disputedId, f.heldId]) {
+          await ctx.db.insert("disputes", { ...fields, bookingId, status });
+        }
+      }
+      return await ctx.db.insert("disputes", {
+        ...fields,
+        bookingId: f.disputedId,
+        status: "open",
+      });
+    });
+    const result = await f.asAdmin.query(api.admin.bookings, {
+      filter: "all",
+      paginationOpts: { numItems: 50, cursor: null },
+    });
+    expect(result.page.map((row) => [row.bookingId, row.openDisputeId])).toEqual([
+      [f.awaitingId, null],
+      [f.plainId, null],
+      [f.heldId, null],
+      [f.disputedId, disputeId],
+    ]);
+  });
+
+  test.each([
+    ["organizationId", "organizations"],
+    ["bandId", "bands"],
+    ["opportunityId", "talentOpportunities"],
+  ] as const)("skips a booking with a missing %s", async (field, table) => {
+    const f = await setupBookings();
+    await f.t.run(async (ctx) => {
+      const related = (await ctx.db.get(f[field]))!;
+      const { _id, _creationTime, ...fields } = related;
+      const missingId = await ctx.db.insert(table, fields);
+      await ctx.db.patch(f.plainId, { [field]: missingId });
+      await ctx.db.delete(missingId);
+    });
+    const result = await f.asAdmin.query(api.admin.bookings, {
+      filter: "all",
+      paginationOpts: { numItems: 50, cursor: null },
+    });
+    expect(result.page.map((row) => row.bookingId)).toEqual([
+      f.awaitingId,
+      f.heldId,
+      f.disputedId,
+    ]);
+    expect(result.isDone).toBe(true);
+  });
+});
+
+describe("admin:suspendOrganization notes", () => {
+  test("stores a suspension note and clears it when omitted or unsuspended", async () => {
+    const t = convexTest(schema, import.meta.glob("./**/*.ts"));
+    const asAdmin = t.withIdentity({ subject: "suspension_note_admin" });
+    const { userId } = await asAdmin.mutation(api.users.ensureUser, {});
+    const organizationId = await t.run(async (ctx) => {
+      await ctx.db.insert("platformAdmins", { userId, grantedAt: 1 });
+      return await ctx.db.insert("organizations", {
+        name: "Suspension Review",
+        slug: "suspension-review",
+        orgType: "venueOperator",
+        status: "verified",
+        ownerUserId: userId,
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
+    await asAdmin.mutation(api.admin.suspendOrganization, {
+      organizationId,
+      suspended: true,
+      note: "Policy review",
+    });
+    expect(await t.run((ctx) => ctx.db.get(organizationId))).toMatchObject({
+      status: "suspended",
+      suspensionNote: "Policy review",
+    });
+    await asAdmin.mutation(api.admin.suspendOrganization, {
+      organizationId,
+      suspended: true,
+    });
+    expect(
+      (await t.run((ctx) => ctx.db.get(organizationId)))?.suspensionNote,
+    ).toBeUndefined();
+    await asAdmin.mutation(api.admin.suspendOrganization, {
+      organizationId,
+      suspended: true,
+      note: "Follow-up review",
+    });
+    await asAdmin.mutation(api.admin.suspendOrganization, {
+      organizationId,
+      suspended: false,
+      note: "Must not persist after reinstatement",
+    });
+    const organization = await t.run((ctx) => ctx.db.get(organizationId));
+    expect(organization?.status).toBe("verified");
+    expect(organization?.suspensionNote).toBeUndefined();
+  });
+});

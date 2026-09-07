@@ -659,7 +659,9 @@ describe("cancellation settlement", () => {
     expect(await f.ledger()).toMatchObject([
       {
         kind: "commission",
-        idempotencyKey: `forfeit-commission:${f.bookingId}`,
+        // Keyed by the settlement's first refund so repeated partial settlements
+        // on one booking each land their own commission row.
+        idempotencyKey: expect.stringMatching(/^forfeit-commission:.*refunds$/),
         amountMinor: 1000,
         fundsState: "available",
         organizationId: f.organizationId,
@@ -1660,6 +1662,176 @@ describe("charge refund reconciliation", () => {
 });
 
 describe("Stripe disputes", () => {
+  test("creation records the open Stripe dispute status", async () => {
+    const f = await setupRefunds();
+    expect(await f.deliver(disputeEvent("charge.dispute.created"))).toEqual({
+      outcome: "applied",
+    });
+    expect((await f.records())[0]).toMatchObject({
+      stripeDisputeId: "dp_test",
+      stripeDisputeStatus: "open",
+      disputedMinor: 12000,
+      updatedAt: NOW,
+    });
+  });
+
+  test.each(["open", "under_review"] as const)(
+    "a won Stripe dispute preserves the booking and payout holds while an in-app dispute is %s",
+    async (status) => {
+      const f = await setupRefunds();
+      const payoutIds = [await f.addPayout(), await f.addPayout()];
+      const inAppDisputeId = await f.t.run((ctx) =>
+        ctx.db.insert("disputes", {
+          bookingId: f.bookingId,
+          openedByUserId: f.users.owner,
+          side: "organizer",
+          category: "no_show",
+          text: "The artist did not arrive",
+          requestedRefundMinor: 12000,
+          status,
+          createdAt: NOW,
+          updatedAt: NOW,
+        }),
+      );
+      await f.deliver(disputeEvent("charge.dispute.created"));
+      const heldBooking = await f.readBooking();
+      const heldPayouts = await f.payouts();
+      const inAppDispute = await f.t.run((ctx) => ctx.db.get(inAppDisputeId));
+      expect(heldBooking).toMatchObject({ status: "disputed" });
+      expect(heldPayouts).toMatchObject(
+        payoutIds.map((_id) => ({ _id, status: "held", holdReason: "dispute" })),
+      );
+
+      vi.setSystemTime(NOW + 1000);
+      expect(
+        await f.deliver(disputeEvent("charge.dispute.closed", { status: "won" })),
+      ).toEqual({ outcome: "applied" });
+      expect(await f.readBooking()).toEqual(heldBooking);
+      expect(await f.payouts()).toEqual(heldPayouts);
+      expect(await f.t.run((ctx) => ctx.db.get(inAppDisputeId))).toEqual(inAppDispute);
+      expect((await f.records())[0]).toMatchObject({
+        status: "paid",
+        stripeDisputeStatus: "won",
+        updatedAt: NOW + 1000,
+      });
+      expect((await f.ledger()).filter((row) => row.kind === "dispute_release"))
+        .toMatchObject([
+          {
+            idempotencyKey: "dispute-release:dp_test",
+            amountMinor: 12000,
+            fundsState: "available",
+            stripeRef: "dp_test",
+            occurredAt: NOW + 1000,
+          },
+        ]);
+      expect(await f.scheduled()).toEqual([]);
+    },
+  );
+
+  test("a resolved in-app dispute does not prevent a Stripe win from releasing holds", async () => {
+    const f = await setupRefunds();
+    const payoutId = await f.addPayout();
+    const inAppDisputeId = await f.t.run((ctx) =>
+      ctx.db.insert("disputes", {
+        bookingId: f.bookingId,
+        openedByUserId: f.users.owner,
+        side: "organizer",
+        category: "no_show",
+        text: "The artist did not arrive",
+        status: "resolved",
+        resolution: "dismissed",
+        createdAt: NOW,
+        updatedAt: NOW,
+        resolvedAt: NOW,
+      }),
+    );
+    const inAppDispute = await f.t.run((ctx) => ctx.db.get(inAppDisputeId));
+    await f.deliver(disputeEvent("charge.dispute.created"));
+    expect(
+      await f.deliver(disputeEvent("charge.dispute.closed", { status: "won" })),
+    ).toEqual({ outcome: "applied" });
+    expect(await f.readBooking()).toMatchObject({
+      status: "confirmed",
+      payoutHold: false,
+      payoutHoldReasons: [],
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(payoutId))).toMatchObject({
+      status: "scheduled",
+    });
+    expect((await f.records())[0]?.stripeDisputeStatus).toBe("won");
+    expect(await f.t.run((ctx) => ctx.db.get(inAppDisputeId))).toEqual(inAppDispute);
+    expect(await f.scheduled()).toMatchObject([
+      { name: "payouts:releasePayout", args: [{ payoutId }] },
+    ]);
+  });
+
+  test.each(["open", "under_review"] as const)(
+    "a lost Stripe dispute resolves a %s in-app dispute with the disputed amount",
+    async (status) => {
+      const f = await setupRefunds();
+      const inAppDisputeId = await f.t.run((ctx) =>
+        ctx.db.insert("disputes", {
+          bookingId: f.bookingId,
+          openedByUserId: f.users.owner,
+          side: "organizer",
+          category: "no_show",
+          text: "The artist did not arrive",
+          requestedRefundMinor: 12000,
+          status,
+          createdAt: NOW,
+          updatedAt: NOW,
+        }),
+      );
+      await f.deliver(disputeEvent("charge.dispute.created", { amount: 7000 }));
+      vi.setSystemTime(NOW + 1000);
+      expect(
+        await f.deliver(disputeEvent("charge.dispute.closed", {
+          status: "lost",
+          balance_transactions: [{ fee: 0 }],
+        })),
+      ).toEqual({ outcome: "applied" });
+      expect(await f.t.run((ctx) => ctx.db.get(inAppDisputeId))).toMatchObject({
+        status: "resolved",
+        resolution: "refunded_full",
+        resolvedRefundMinor: 7000,
+        adminNote: "Closed by a lost Stripe dispute",
+        resolvedAt: NOW + 1000,
+        updatedAt: NOW + 1000,
+      });
+      expect((await f.records())[0]).toMatchObject({
+        status: "refunded",
+        stripeDisputeStatus: "lost",
+        refundedMinor: 12000,
+      });
+      expect(await f.readBooking()).toMatchObject({
+        status: "refunded",
+        refundedMinor: 7000,
+      });
+      expect((await f.ledger()).filter((row) => row.kind === "dispute_loss"))
+        .toMatchObject([{ amountMinor: -7000 }]);
+    },
+  );
+
+  test("a lost Stripe dispute records its outcome when the payment was already refunded", async () => {
+    const f = await setupRefunds();
+    await f.deliver(disputeEvent("charge.dispute.created"));
+    await f.t.run((ctx) => ctx.db.patch(f.paymentRecordIds[0], {
+      status: "refunded",
+      refundedMinor: 12000,
+    }));
+    expect(
+      await f.deliver(disputeEvent("charge.dispute.closed", {
+        status: "lost",
+        balance_transactions: [{ fee: 0 }],
+      })),
+    ).toEqual({ outcome: "applied" });
+    expect((await f.records())[0]).toMatchObject({
+      status: "refunded",
+      stripeDisputeStatus: "lost",
+      refundedMinor: 12000,
+    });
+  });
+
   test("creation holds the booking and scheduled payouts and replays without duplicating ledger entries", async () => {
     const f = await setupRefunds();
     const payoutId = await f.addPayout();

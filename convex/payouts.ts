@@ -348,7 +348,10 @@ export const markPayoutPaid = internalMutation({
       .withIndex("by_bookingId", (q) => q.eq("bookingId", payout.bookingId))
       .take(50);
     if (
-      bookingPayouts.every((row) => row.status === "paid") &&
+      bookingPayouts.every(
+        (row) => row.status === "paid" || row.status === "reversed",
+      ) &&
+      bookingPayouts.some((row) => row.status === "paid") &&
       booking.status === "completed"
     ) {
       assertBookingTransition("completed", "paid");

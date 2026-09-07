@@ -898,6 +898,40 @@ describe("Stripe execution and settlement", () => {
     ).toBe(-13500);
   });
 
+  test("settles a completed booking when its other payout is reversed", async () => {
+    const f = await setupPayouts([9000, 6000]);
+    await f.addAccount();
+    await f.complete();
+    const [payable, reversed] = await f.payouts();
+    await f.t.run((ctx) => ctx.db.patch(reversed._id, { status: "reversed" }));
+    await f.t.mutation(internal.payouts.releasePayout, {
+      payoutId: payable._id,
+    });
+    await f.t.mutation(internal.payouts.markPayoutPaid, {
+      payoutId: payable._id,
+      transferId: "tr_remaining",
+    });
+    expect(await f.readBooking()).toMatchObject({
+      status: "paid",
+      revision: 5,
+    });
+    expect(await f.payouts()).toMatchObject([
+      { _id: payable._id, status: "paid", stripeTransferId: "tr_remaining" },
+      { _id: reversed._id, status: "reversed" },
+    ]);
+    const ledger = await f.ledger();
+    expect(ledger.filter((row) => row.kind === "payout")).toMatchObject([
+      { idempotencyKey: "payout:tr_remaining", amountMinor: -8100 },
+    ]);
+    expect(ledger.filter((row) => row.kind === "commission")).toHaveLength(1);
+    await f.t.mutation(internal.payouts.markPayoutPaid, {
+      payoutId: payable._id,
+      transferId: "tr_remaining",
+    });
+    expect((await f.readBooking())?.revision).toBe(5);
+    expect(await f.ledger()).toEqual(ledger);
+  });
+
   test("uses the current account and looks up the charge on the payment intent when needed", async () => {
     const f = await setupPayouts();
     const accountId = await f.addAccount();
