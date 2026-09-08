@@ -234,8 +234,11 @@ class DemoRepository implements EarplugRepository {
   late final Map<String, Organization> _organizations;
   late final Map<String, PrivateLocation> _privateLocations;
   final Map<String, SafetyReport> _safetyReports = {};
+  final Map<String, Dispute> _disputes = {};
+  final Map<String, BookingStatus> _disputedFromStatus = {};
   int _nextPrivateLocationId = 1;
   int _nextSafetyReportId = 1;
+  int _nextDisputeId = 1;
   late final List<OrganizationMembership> _organizationMemberships;
   late final Map<String, Map<String, OrganizationMember>> _organizationMembers;
   late final Map<String, OrganizationPrivateDetails>
@@ -834,6 +837,7 @@ class DemoRepository implements EarplugRepository {
     tickets: true,
     payments: true,
     bandGigWrites: true,
+    disputes: true,
   );
 
   @override
@@ -1043,6 +1047,335 @@ class DemoRepository implements EarplugRepository {
         .where((report) => report.bookingId == bookingId)
         .toList();
   }
+
+  @override
+  Future<String> openDispute({
+    required String bookingId,
+    required DisputeSide side,
+    required DisputeCategory category,
+    required String text,
+    int? requestedRefundMinor,
+  }) async {
+    final booking = _requireBooking(bookingId);
+    if (!_callerHoldsDisputeSide(booking, side)) {
+      throw StateError('Not permitted to access disputes for this booking');
+    }
+    if (category == DisputeCategory.unknown) {
+      throw StateError('Unknown dispute category');
+    }
+    final details = text.trim();
+    if (details.length < 10 || details.length > 2000) {
+      throw StateError(
+        'Dispute details must be between 10 and 2000 characters',
+      );
+    }
+    if (_disputes.values.any(
+      (dispute) =>
+          dispute.bookingId == bookingId &&
+          (dispute.status == DisputeStatus.open ||
+              dispute.status == DisputeStatus.underReview),
+    )) {
+      throw StateError('This booking already has an open dispute');
+    }
+    if (!booking.status.isLive) {
+      throw StateError(
+        'Disputes can only be opened for confirmed, completed, or paid bookings',
+      );
+    }
+    if (booking.fee.grossMinor <= 0) {
+      throw StateError('Disputes require a booking with a positive fee');
+    }
+    final now = DateTime.now();
+    if (now.isBefore(booking.startsAt)) {
+      throw StateError('Disputes can only be opened after the show starts');
+    }
+    // The demo omits the completion window and external payment disputes.
+    if (side == DisputeSide.organizer) {
+      if (requestedRefundMinor == null ||
+          requestedRefundMinor <= 0 ||
+          requestedRefundMinor > booking.paidMinor) {
+        throw StateError(
+          'The refund amount must be positive and no more than the amount paid',
+        );
+      }
+      if ((_payoutsByBooking[bookingId] ?? const <Payout>[]).any(
+        (payout) => payout.status == PayoutStatus.paid,
+      )) {
+        throw StateError('Refund requests close once the artist has been paid');
+      }
+    } else if (requestedRefundMinor != null) {
+      throw StateError('Artists cannot request a refund');
+    }
+
+    final id = 'demo-dispute-${_nextDisputeId++}';
+    _disputes[id] = Dispute(
+      disputeId: id,
+      bookingId: bookingId,
+      side: side,
+      category: category,
+      text: details,
+      requestedRefundMinor: requestedRefundMinor,
+      status: DisputeStatus.open,
+      createdAt: now,
+    );
+    _disputedFromStatus[bookingId] = booking.status;
+    _bookings[bookingId] = _copyBooking(
+      booking,
+      status: BookingStatus.disputed,
+      revision: booking.revision + 1,
+      payoutHoldReasons: {...booking.payoutHoldReasons, 'dispute'}.toList(),
+    );
+    return id;
+  }
+
+  @override
+  Future<List<Dispute>> disputesForBooking(String bookingId) async {
+    final booking = _requireBooking(bookingId);
+    if (!platformAdmin) _disputeReportingSide(booking);
+    return _disputes.values
+        .where((dispute) => dispute.bookingId == bookingId)
+        .toList()
+      ..sort((left, right) => right.createdAt.compareTo(left.createdAt));
+  }
+
+  @override
+  Future<DisputesPage> openDisputes({String? cursor, int numItems = 25}) async {
+    if (!platformAdmin) throw StateError('Platform admin access required.');
+    final disputes =
+        _disputes.values
+            .where((dispute) => dispute.status == DisputeStatus.open)
+            .toList()
+          ..sort((left, right) => right.createdAt.compareTo(left.createdAt));
+    final start = (int.tryParse(cursor ?? '') ?? 0).clamp(0, disputes.length);
+    final end = (start + numItems).clamp(start, disputes.length);
+    return DisputesPage(
+      items: [
+        for (final dispute in disputes.sublist(start, end))
+          _disputeRow(dispute),
+      ],
+      continueCursor: end.toString(),
+      isDone: end == disputes.length,
+    );
+  }
+
+  @override
+  Future<void> startDisputeReview(String disputeId) async {
+    if (!platformAdmin) throw StateError('Platform admin access required.');
+    final dispute = _disputes[disputeId];
+    if (dispute == null) throw StateError('Dispute not found');
+    if (dispute.status != DisputeStatus.open) {
+      throw StateError('Only open disputes can be put under review');
+    }
+    _disputes[disputeId] = _copyDispute(
+      dispute,
+      status: DisputeStatus.underReview,
+    );
+  }
+
+  @override
+  Future<void> resolveDispute(
+    String disputeId, {
+    required DisputeResolution resolution,
+    int? refundMinor,
+    String? adminNote,
+  }) async {
+    if (!platformAdmin) throw StateError('Platform admin access required.');
+    final dispute = _disputes[disputeId];
+    if (dispute == null) throw StateError('Dispute not found');
+    if (dispute.status == DisputeStatus.resolved) {
+      throw StateError('Dispute is already resolved');
+    }
+    final booking = _requireBooking(dispute.bookingId);
+    final int resolvedRefundMinor;
+    switch (resolution) {
+      case DisputeResolution.released:
+      case DisputeResolution.dismissed:
+        if (refundMinor != null && refundMinor != 0) {
+          throw StateError(
+            'Releasing or dismissing a dispute cannot include a refund',
+          );
+        }
+        resolvedRefundMinor = 0;
+      case DisputeResolution.refundedFull:
+        if (booking.paidMinor <= 0) {
+          throw StateError('A full refund requires a positive amount paid');
+        }
+        resolvedRefundMinor = booking.paidMinor;
+      case DisputeResolution.refundedPartial:
+        if (refundMinor == null ||
+            refundMinor <= 0 ||
+            refundMinor >= booking.paidMinor) {
+          throw StateError(
+            'A partial refund must be positive and below the amount paid',
+          );
+        }
+        resolvedRefundMinor = refundMinor;
+      case DisputeResolution.unknown:
+        throw StateError('Unknown dispute resolution');
+    }
+    final restoredStatus = resolution == DisputeResolution.refundedFull
+        ? BookingStatus.refunded
+        : _disputedFromStatus[booking.id];
+    if (restoredStatus == null) {
+      throw StateError('The booking has no pre-dispute status to restore');
+    }
+    _bookings[booking.id] = _copyBooking(
+      booking,
+      status: restoredStatus,
+      revision: booking.revision + 1,
+      refundedMinor: booking.refundedMinor + resolvedRefundMinor,
+      payoutHoldReasons: [
+        for (final reason in booking.payoutHoldReasons)
+          if (reason != 'dispute') reason,
+      ],
+    );
+    _disputedFromStatus.remove(booking.id);
+    _disputes[disputeId] = _copyDispute(
+      dispute,
+      status: DisputeStatus.resolved,
+      resolution: resolution,
+      resolvedRefundMinor: resolvedRefundMinor,
+      adminNote: adminNote,
+      resolvedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<AdminBookingsPage> adminBookings({
+    required AdminBookingFilter filter,
+    String? cursor,
+    int numItems = 25,
+  }) async {
+    if (!platformAdmin) throw StateError('Platform admin access required.');
+    if (filter == AdminBookingFilter.unknown) {
+      throw StateError('Unknown admin booking filter');
+    }
+    final bookings =
+        _bookings.values
+            .where(
+              (booking) => switch (filter) {
+                AdminBookingFilter.all => true,
+                AdminBookingFilter.disputed =>
+                  booking.status == BookingStatus.disputed,
+                AdminBookingFilter.held => booking.payoutHoldReasons.isNotEmpty,
+                AdminBookingFilter.awaitingPayment =>
+                  booking.status == BookingStatus.awaitingPayment,
+                AdminBookingFilter.unknown => false,
+              },
+            )
+            .toList()
+          ..sort((left, right) => right.startsAt.compareTo(left.startsAt));
+    final start = (int.tryParse(cursor ?? '') ?? 0).clamp(0, bookings.length);
+    final end = (start + numItems).clamp(start, bookings.length);
+    return AdminBookingsPage(
+      items: [
+        for (final booking in bookings.sublist(start, end))
+          AdminBookingRow(
+            bookingId: booking.id,
+            title: booking.opportunityTitle,
+            organizationName: booking.organizationName,
+            bandName: booking.bandName,
+            status: booking.status,
+            startsAt: booking.startsAt,
+            paidMinor: booking.paidMinor,
+            refundedMinor: booking.refundedMinor,
+            payoutHoldReasons: List.of(booking.payoutHoldReasons),
+            openDisputeId: _disputes.values
+                .where(
+                  (dispute) =>
+                      dispute.bookingId == booking.id &&
+                      dispute.status == DisputeStatus.open,
+                )
+                .firstOrNull
+                ?.disputeId,
+          ),
+      ],
+      continueCursor: end.toString(),
+      isDone: end == bookings.length,
+    );
+  }
+
+  bool _callerHoldsDisputeSide(Booking booking, DisputeSide side) =>
+      switch (side) {
+        DisputeSide.artist => _memberships.any(
+          (membership) =>
+              membership.band.id == booking.bandId &&
+              membership.role == 'admin',
+        ),
+        DisputeSide.organizer => _organizationMemberships.any(
+          (membership) =>
+              membership.organization.id == booking.organizationId &&
+              (membership.role == OrganizationRole.owner ||
+                  membership.role == OrganizationRole.manager ||
+                  membership.role == OrganizationRole.finance),
+        ),
+        DisputeSide.unknown => false,
+      };
+
+  DisputeSide _disputeReportingSide(Booking booking) {
+    // Band admins take precedence even when they also manage the organizer.
+    if (_memberships.any(
+      (membership) =>
+          membership.band.id == booking.bandId && membership.role == 'admin',
+    )) {
+      return DisputeSide.artist;
+    }
+    if (_organizationMemberships.any(
+      (membership) =>
+          membership.organization.id == booking.organizationId &&
+          (membership.role == OrganizationRole.owner ||
+              membership.role == OrganizationRole.manager ||
+              membership.role == OrganizationRole.finance),
+    )) {
+      return DisputeSide.organizer;
+    }
+    throw StateError('Not permitted to access disputes for this booking');
+  }
+
+  DisputeRow _disputeRow(Dispute dispute) {
+    final booking = _requireBooking(dispute.bookingId);
+    return DisputeRow(
+      disputeId: dispute.disputeId,
+      bookingId: dispute.bookingId,
+      side: dispute.side,
+      category: dispute.category,
+      text: dispute.text,
+      requestedRefundMinor: dispute.requestedRefundMinor,
+      status: dispute.status,
+      resolution: dispute.resolution,
+      resolvedRefundMinor: dispute.resolvedRefundMinor,
+      adminNote: dispute.adminNote,
+      createdAt: dispute.createdAt,
+      resolvedAt: dispute.resolvedAt,
+      bookingTitle: booking.opportunityTitle,
+      organizationName: booking.organizationName,
+      bandName: booking.bandName,
+      paidMinor: booking.paidMinor,
+      bookingStatus: booking.status,
+    );
+  }
+
+  Dispute _copyDispute(
+    Dispute dispute, {
+    required DisputeStatus status,
+    DisputeResolution? resolution,
+    int? resolvedRefundMinor,
+    String? adminNote,
+    DateTime? resolvedAt,
+  }) => Dispute(
+    disputeId: dispute.disputeId,
+    bookingId: dispute.bookingId,
+    side: dispute.side,
+    category: dispute.category,
+    text: dispute.text,
+    requestedRefundMinor: dispute.requestedRefundMinor,
+    status: status,
+    resolution: resolution ?? dispute.resolution,
+    resolvedRefundMinor: resolvedRefundMinor ?? dispute.resolvedRefundMinor,
+    adminNote: adminNote ?? dispute.adminNote,
+    createdAt: dispute.createdAt,
+    resolvedAt: resolvedAt ?? dispute.resolvedAt,
+  );
 
   @override
   Future<OrganizationApplication?> myOrganizationApplication() async {
@@ -4927,6 +5260,7 @@ class DemoRepository implements EarplugRepository {
     String? publicGigId,
     String? publicGigSlug,
     BookingSide? viewerSide,
+    bool? viewerIsPlatformAdmin,
     String? counterpartyEmail,
   }) => Booking(
     id: booking.id,
@@ -4974,6 +5308,8 @@ class DemoRepository implements EarplugRepository {
         ? booking.counterpartyEmail
         : counterpartyEmail,
     viewerSide: viewerSide ?? booking.viewerSide,
+    viewerIsPlatformAdmin:
+        viewerIsPlatformAdmin ?? booking.viewerIsPlatformAdmin,
   );
 
   BookingOffer _respondedOffer(BookingOffer offer, OfferResponse response) =>

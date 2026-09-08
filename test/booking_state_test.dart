@@ -10,26 +10,31 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/harness.dart';
 
 void main() {
-  testWidgets('booking links wait for the restored session token', (
+  testWidgets('booking and dispute loads wait for the restored session token', (
     tester,
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _ControlledBookingRepository(auth: auth)
-      ..pendingAuth = Completer<void>();
+      ..pendingAuth = Completer<void>()
+      ..disputesForBookingResult = [_dispute()];
     final app = AppState.demo(
       auth: auth,
       repository: repository,
       initialBookingId: 'booking1',
     );
+    final disputeLoad = app.loadDisputes('booking1');
 
     await tester.pump();
     expect(repository.bookingCalls, 0);
+    expect(repository.disputesForBookingCalls, isEmpty);
     repository.pendingAuth!.complete();
     await tester.pumpAndSettle();
 
     expect(repository.bookingCalls, 1);
     expect(app.bookingById('booking1'), same(repository.bookingResult));
+    expect(await disputeLoad, same(repository.disputesForBookingResult));
+    expect(repository.disputesForBookingCalls, ['booking1']);
     app.dispose();
   });
 
@@ -436,13 +441,185 @@ void main() {
     harness.app.dispose();
   });
 
+  for (final (viewerSide, disputeSide) in [
+    (BookingSide.organizer, DisputeSide.organizer),
+    (BookingSide.artist, DisputeSide.artist),
+  ]) {
+    testWidgets(
+      'openDispute forwards arguments and refreshes booking state as ${viewerSide.wireValue}',
+      (tester) async {
+        final auth = FakeAuthService();
+        final booking = _booking(
+          viewerSide: viewerSide,
+          status: BookingStatus.confirmed,
+        );
+        final disputed = _booking(
+          viewerSide: viewerSide,
+          status: BookingStatus.disputed,
+          revision: 2,
+        );
+        final disputes = [_dispute(side: disputeSide)];
+        final repository = _ControlledBookingRepository(auth: auth)
+          ..bookingResult = booking
+          ..organizationResults = [booking]
+          ..bandResults = [booking]
+          ..disputedBooking = disputed
+          ..disputesForBookingResult = disputes;
+        final harness = await pumpApp(
+          tester,
+          auth: auth,
+          repository: repository,
+          home: const SizedBox.shrink(),
+        );
+        await harness.auth.signInDemo();
+        await tester.pumpAndSettle();
+        if (viewerSide == BookingSide.organizer) {
+          harness.app.switchToOrganization('org1');
+        } else {
+          harness.app.switchToBand('b1');
+        }
+        await tester.pumpAndSettle();
+        harness.app.openBooking(booking.id);
+        await tester.pumpAndSettle();
+
+        final requestedRefundMinor = viewerSide == BookingSide.organizer
+            ? 2500
+            : null;
+        final refreshed = await harness.app.openDispute(
+          booking,
+          category: DisputeCategory.lateOrShortSet,
+          text: 'Only half the agreed set was played.',
+          requestedRefundMinor: requestedRefundMinor,
+        );
+
+        expect(repository.openDisputeRequest, (
+          bookingId: booking.id,
+          side: disputeSide,
+          category: DisputeCategory.lateOrShortSet,
+          text: 'Only half the agreed set was played.',
+          requestedRefundMinor: requestedRefundMinor,
+        ));
+        expect(repository.disputesForBookingCalls, [booking.id]);
+        expect(harness.app.disputesFor(booking.id), same(disputes));
+        expect(refreshed, same(disputed));
+        expect(harness.app.bookingById(booking.id), same(disputed));
+        expect(
+          harness.app.bookingById(booking.id)!.status,
+          BookingStatus.disputed,
+        );
+        expect(repository.bookingCalls, 2);
+        expect(repository.viewAsCalls, [viewerSide, viewerSide]);
+        if (viewerSide == BookingSide.organizer) {
+          expect(harness.app.organizationBookings, [disputed]);
+          expect(repository.organizationRequests, ['org1']);
+          expect(repository.bandRequests, ['b1']);
+        } else {
+          expect(harness.app.bandBookings, [disputed]);
+          expect(repository.bandRequests, ['b1', 'b1']);
+          expect(repository.organizationRequests, isEmpty);
+        }
+        harness.app.dispose();
+      },
+    );
+  }
+
+  testWidgets('loadDisputes caches per booking and retains values on error', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final disputes = [_dispute()];
+    final repository = _ControlledBookingRepository(auth: auth)
+      ..disputesForBookingResult = disputes;
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    expect(harness.app.disputesFor('booking1'), isEmpty);
+
+    final loaded = await harness.app.loadDisputes('booking1');
+
+    expect(loaded, same(disputes));
+    expect(harness.app.disputesFor('booking1'), same(disputes));
+    expect(harness.app.disputesFor('booking2'), isEmpty);
+    repository.failLoads = true;
+
+    expect(await harness.app.loadDisputes('booking1'), same(disputes));
+    expect(harness.app.disputesFor('booking1'), same(disputes));
+    expect(await harness.app.loadDisputes('booking2'), isEmpty);
+    expect(repository.disputesForBookingCalls, [
+      'booking1',
+      'booking1',
+      'booking2',
+    ]);
+    harness.app.dispose();
+  });
+
+  testWidgets('admin dispute actions forward their arguments', (tester) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledBookingRepository(auth: auth)
+      ..platformAdmin = true;
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+
+    await harness.app.startDisputeReview('dispute1');
+    await harness.app.resolveDispute(
+      'dispute1',
+      resolution: DisputeResolution.refundedPartial,
+      refundMinor: 2500,
+      adminNote: 'note',
+    );
+
+    expect(repository.startDisputeReviewCalls, ['dispute1']);
+    expect(repository.resolveDisputeRequest, (
+      disputeId: 'dispute1',
+      resolution: DisputeResolution.refundedPartial,
+      refundMinor: 2500,
+      adminNote: 'note',
+    ));
+    harness.app.dispose();
+  });
+
+  testWidgets('admin dispute and booking routes use the admin identity', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _ControlledBookingRepository(auth: auth)
+      ..platformAdmin = true;
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const SizedBox.shrink(),
+    );
+    await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+
+    harness.app.go(Screen.adminDisputes);
+    expect(harness.app.current.screen, Screen.adminDisputes);
+    expect(harness.app.identity, isA<AdminIdentity>());
+
+    harness.app.go(Screen.adminBookings);
+    expect(harness.app.current.screen, Screen.adminBookings);
+    expect(harness.app.identity, isA<AdminIdentity>());
+    harness.app.dispose();
+  });
+
   testWidgets('sign-out clears booking state', (tester) async {
     final auth = FakeAuthService();
     final booking = _booking();
     final repository = _ControlledBookingRepository(auth: auth)
       ..bookingResult = booking
       ..organizationResults = [booking]
-      ..bandResults = [_booking(viewerSide: BookingSide.artist)];
+      ..bandResults = [_booking(viewerSide: BookingSide.artist)]
+      ..disputesForBookingResult = [_dispute()];
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -455,15 +632,18 @@ void main() {
     await tester.pumpAndSettle();
     await harness.app.refreshOrganizationBookings('org1');
     await harness.app.loadBooking(booking.id, viewAs: BookingSide.artist);
+    await harness.app.loadDisputes(booking.id);
     expect(harness.app.organizationBookings, isNotEmpty);
     expect(harness.app.bandBookings, isNotEmpty);
     expect(harness.app.bookingById(booking.id), same(booking));
+    expect(harness.app.disputesFor(booking.id), isNotEmpty);
 
     await harness.app.signOut();
 
     expect(harness.app.organizationBookings, isEmpty);
     expect(harness.app.bandBookings, isEmpty);
     expect(harness.app.bookingById(booking.id), isNull);
+    expect(harness.app.disputesFor(booking.id), isEmpty);
     expect(harness.app.organizationBookingsStatus, DataStatus.connecting);
     expect(harness.app.bandBookingsStatus, DataStatus.connecting);
     await harness.auth.signInDemo();
@@ -492,24 +672,32 @@ void main() {
     final pendingOrganization = Completer<List<Booking>>();
     final pendingBand = Completer<List<Booking>>();
     final pendingBooking = Completer<Booking?>();
+    final pendingDisputes = Completer<List<Dispute>>();
     repository.pendingOrganization = pendingOrganization;
     repository.pendingBand = pendingBand;
     repository.pendingBooking = pendingBooking;
+    repository.pendingDisputes = pendingDisputes;
     final organizationLoad = harness.app.refreshOrganizationBookings('org1');
     final bandLoad = harness.app.refreshBandBookings();
     final detailLoad = harness.app.loadBooking(booking.id);
+    final disputeLoad = harness.app.loadDisputes(booking.id);
+    await tester.pump();
+    expect(repository.disputesForBookingCalls, [booking.id]);
 
     await harness.app.signOut();
     pendingOrganization.complete([booking]);
     pendingBand.complete([booking]);
     pendingBooking.complete(booking);
+    pendingDisputes.complete([_dispute()]);
     await organizationLoad;
     await bandLoad;
 
     expect(await detailLoad, isNull);
+    expect(await disputeLoad, isEmpty);
     expect(harness.app.organizationBookings, isEmpty);
     expect(harness.app.bandBookings, isEmpty);
     expect(harness.app.bookingById(booking.id), isNull);
+    expect(harness.app.disputesFor(booking.id), isEmpty);
     expect(harness.app.organizationBookingsStatus, DataStatus.connecting);
     expect(harness.app.bandBookingsStatus, DataStatus.connecting);
     harness.app.dispose();
@@ -551,6 +739,17 @@ Booking _booking({
   viewerSide: viewerSide,
 );
 
+Dispute _dispute({DisputeSide side = DisputeSide.organizer}) => Dispute(
+  disputeId: 'dispute1',
+  bookingId: 'booking1',
+  side: side,
+  category: DisputeCategory.lateOrShortSet,
+  text: 'Only half the agreed set was played.',
+  requestedRefundMinor: side == DisputeSide.organizer ? 2500 : null,
+  status: DisputeStatus.open,
+  createdAt: DateTime(2026, 10, 3),
+);
+
 class _ControlledBookingRepository extends DemoRepository {
   _ControlledBookingRepository({required super.auth});
 
@@ -566,10 +765,15 @@ class _ControlledBookingRepository extends DemoRepository {
   Booking bookingResult = _booking();
   Booking? acceptedBooking;
   Booking? cancelledBooking;
+  Booking? disputedBooking;
+  List<Dispute> disputesForBookingResult = const [];
+  final disputesForBookingCalls = <String>[];
+  final startDisputeReviewCalls = <String>[];
   Completer<void>? pendingAuth;
   Completer<List<Booking>>? pendingOrganization;
   Completer<List<Booking>>? pendingBand;
   Completer<Booking?>? pendingBooking;
+  Completer<List<Dispute>>? pendingDisputes;
   ({
     String applicationId,
     int grossMinor,
@@ -588,6 +792,21 @@ class _ControlledBookingRepository extends DemoRepository {
     bool? safety,
   })?
   cancelRequest;
+  ({
+    String bookingId,
+    DisputeSide side,
+    DisputeCategory category,
+    String text,
+    int? requestedRefundMinor,
+  })?
+  openDisputeRequest;
+  ({
+    String disputeId,
+    DisputeResolution resolution,
+    int? refundMinor,
+    String? adminNote,
+  })?
+  resolveDisputeRequest;
 
   @override
   Future<void> refreshAuth() => pendingAuth?.future ?? super.refreshAuth();
@@ -680,5 +899,54 @@ class _ControlledBookingRepository extends DemoRepository {
     bookingResult = cancelled;
     bandResults = [cancelled];
     return (status: cancelled.status, revision: cancelled.revision);
+  }
+
+  @override
+  Future<String> openDispute({
+    required String bookingId,
+    required DisputeSide side,
+    required DisputeCategory category,
+    required String text,
+    int? requestedRefundMinor,
+  }) async {
+    openDisputeRequest = (
+      bookingId: bookingId,
+      side: side,
+      category: category,
+      text: text,
+      requestedRefundMinor: requestedRefundMinor,
+    );
+    final disputed = disputedBooking!;
+    bookingResult = disputed;
+    organizationResults = [disputed];
+    bandResults = [disputed];
+    return 'dispute1';
+  }
+
+  @override
+  Future<List<Dispute>> disputesForBooking(String bookingId) {
+    disputesForBookingCalls.add(bookingId);
+    if (failLoads) throw StateError('disputesForBooking failed');
+    return pendingDisputes?.future ?? Future.value(disputesForBookingResult);
+  }
+
+  @override
+  Future<void> startDisputeReview(String disputeId) async {
+    startDisputeReviewCalls.add(disputeId);
+  }
+
+  @override
+  Future<void> resolveDispute(
+    String disputeId, {
+    required DisputeResolution resolution,
+    int? refundMinor,
+    String? adminNote,
+  }) async {
+    resolveDisputeRequest = (
+      disputeId: disputeId,
+      resolution: resolution,
+      refundMinor: refundMinor,
+      adminNote: adminNote,
+    );
   }
 }

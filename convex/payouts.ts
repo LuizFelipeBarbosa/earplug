@@ -80,12 +80,15 @@ export async function schedulePayoutsForBooking(
               0.5,
           );
     remaining -= amountMinor;
+    // A forfeited charge never gets a second completion payout, so its
+    // settlement commission cannot be booked again by markPayoutPaid.
     if (
       !["paid", "partially_refunded"].includes(record.status) ||
       amountMinor <= 0 ||
       existing.some(
         (payout) =>
-          payout.kind === "completion" && payout.paymentRecordId === record._id,
+          payout.paymentRecordId === record._id &&
+          (payout.kind === "completion" || payout.status !== "reversed"),
       )
     )
       continue;
@@ -348,7 +351,10 @@ export const markPayoutPaid = internalMutation({
       .withIndex("by_bookingId", (q) => q.eq("bookingId", payout.bookingId))
       .take(50);
     if (
-      bookingPayouts.every((row) => row.status === "paid") &&
+      bookingPayouts.every(
+        (row) => row.status === "paid" || row.status === "reversed",
+      ) &&
+      bookingPayouts.some((row) => row.status === "paid") &&
       booking.status === "completed"
     ) {
       assertBookingTransition("completed", "paid");

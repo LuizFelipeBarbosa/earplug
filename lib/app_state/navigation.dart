@@ -129,6 +129,8 @@ mixin _NavigationState on _AppStateCore {
     Screen.orgFinance => '/org/finance',
     Screen.orgTransactions => '/org/finance/transactions',
     Screen.adminSafety => '/admin/safety',
+    Screen.adminDisputes => '/admin/disputes',
+    Screen.adminBookings => '/admin/bookings',
     Screen.ticket => '/t/${param ?? ''}',
     Screen.myTickets => '/tickets',
     _ => '/',

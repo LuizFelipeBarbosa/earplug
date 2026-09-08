@@ -63,18 +63,21 @@ class FeatureFlags {
     required this.tickets,
     required this.payments,
     required this.bandGigWrites,
+    this.disputes = false,
   });
 
   final bool privateBookings;
   final bool tickets;
   final bool payments;
   final bool bandGigWrites;
+  final bool disputes;
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
     privateBookings: json['privateBookings'] == true,
     tickets: json['tickets'] == true,
     payments: json['payments'] == true,
     bandGigWrites: json['bandGigWrites'] == true,
+    disputes: json['disputes'] == true,
   );
 }
 
@@ -2181,6 +2184,7 @@ class Booking {
     this.publicGigSlug,
     this.counterpartyEmail,
     required this.viewerSide,
+    this.viewerIsPlatformAdmin = false,
   });
 
   final String id;
@@ -2224,6 +2228,7 @@ class Booking {
   final String? publicGigSlug;
   final String? counterpartyEmail;
   final BookingSide viewerSide;
+  final bool viewerIsPlatformAdmin;
 
   factory Booking.fromJson(Map<String, dynamic> json) => Booking(
     id: _marketplaceString(json['_id']),
@@ -2285,7 +2290,305 @@ class Booking {
     publicGigSlug: _marketplaceOptionalString(json['publicGigSlug']),
     counterpartyEmail: _marketplaceOptionalString(json['counterpartyEmail']),
     viewerSide: BookingSide.fromWire(json['viewerSide']),
+    viewerIsPlatformAdmin: json['viewerIsPlatformAdmin'] == true,
   );
+}
+
+enum DisputeSide {
+  organizer('organizer'),
+  artist('artist'),
+  unknown('unknown');
+
+  const DisputeSide(this.wireValue);
+
+  final String wireValue;
+
+  static DisputeSide fromWire(Object? value) => switch (value) {
+    'organizer' => DisputeSide.organizer,
+    'artist' => DisputeSide.artist,
+    _ => DisputeSide.unknown,
+  };
+}
+
+enum DisputeCategory {
+  noShow('no_show'),
+  lateOrShortSet('late_or_short_set'),
+  misrepresentation('misrepresentation'),
+  payment('payment'),
+  safety('safety'),
+  other('other'),
+  unknown('unknown');
+
+  const DisputeCategory(this.wireValue);
+
+  final String wireValue;
+
+  static DisputeCategory fromWire(Object? value) => switch (value) {
+    'no_show' => DisputeCategory.noShow,
+    'late_or_short_set' => DisputeCategory.lateOrShortSet,
+    'misrepresentation' => DisputeCategory.misrepresentation,
+    'payment' => DisputeCategory.payment,
+    'safety' => DisputeCategory.safety,
+    'other' => DisputeCategory.other,
+    _ => DisputeCategory.unknown,
+  };
+
+  String get label => switch (this) {
+    DisputeCategory.noShow => 'No-show',
+    DisputeCategory.lateOrShortSet => 'Late or short set',
+    DisputeCategory.misrepresentation => 'Misrepresentation',
+    DisputeCategory.payment => 'Payment',
+    DisputeCategory.safety => 'Safety',
+    DisputeCategory.other => 'Other',
+    DisputeCategory.unknown => 'Unknown',
+  };
+}
+
+enum DisputeStatus {
+  open('open'),
+  underReview('under_review'),
+  resolved('resolved'),
+  unknown('unknown');
+
+  const DisputeStatus(this.wireValue);
+
+  final String wireValue;
+
+  static DisputeStatus fromWire(Object? value) => switch (value) {
+    'open' => DisputeStatus.open,
+    'under_review' => DisputeStatus.underReview,
+    'resolved' => DisputeStatus.resolved,
+    _ => DisputeStatus.unknown,
+  };
+}
+
+enum DisputeResolution {
+  released('released'),
+  refundedFull('refunded_full'),
+  refundedPartial('refunded_partial'),
+  dismissed('dismissed'),
+  unknown('unknown');
+
+  const DisputeResolution(this.wireValue);
+
+  final String wireValue;
+
+  static DisputeResolution fromWire(Object? value) => switch (value) {
+    'released' => DisputeResolution.released,
+    'refunded_full' => DisputeResolution.refundedFull,
+    'refunded_partial' => DisputeResolution.refundedPartial,
+    'dismissed' => DisputeResolution.dismissed,
+    _ => DisputeResolution.unknown,
+  };
+
+  String get label => switch (this) {
+    DisputeResolution.released => 'Released to artist',
+    DisputeResolution.refundedFull => 'Refunded in full',
+    DisputeResolution.refundedPartial => 'Partial refund',
+    DisputeResolution.dismissed => 'Dismissed',
+    DisputeResolution.unknown => 'Unknown',
+  };
+}
+
+class Dispute {
+  const Dispute({
+    required this.disputeId,
+    required this.bookingId,
+    required this.side,
+    required this.category,
+    required this.text,
+    this.requestedRefundMinor,
+    required this.status,
+    this.resolution,
+    this.resolvedRefundMinor,
+    this.adminNote,
+    required this.createdAt,
+    this.resolvedAt,
+  });
+
+  final String disputeId;
+  final String bookingId;
+  final DisputeSide side;
+  final DisputeCategory category;
+  final String text;
+  final int? requestedRefundMinor;
+  final DisputeStatus status;
+  final DisputeResolution? resolution;
+  final int? resolvedRefundMinor;
+  final String? adminNote;
+  final DateTime createdAt;
+  final DateTime? resolvedAt;
+
+  factory Dispute.fromJson(Map<String, dynamic> json) => Dispute(
+    disputeId: _marketplaceString(json['disputeId']),
+    bookingId: _marketplaceString(json['bookingId']),
+    side: DisputeSide.fromWire(json['side']),
+    category: DisputeCategory.fromWire(json['category']),
+    text: _marketplaceString(json['text']),
+    requestedRefundMinor: _marketplaceOptionalInt(json['requestedRefundMinor']),
+    status: DisputeStatus.fromWire(json['status']),
+    resolution: json['resolution'] == null
+        ? null
+        : DisputeResolution.fromWire(json['resolution']),
+    resolvedRefundMinor: _marketplaceOptionalInt(json['resolvedRefundMinor']),
+    adminNote: _marketplaceOptionalString(json['adminNote']),
+    createdAt: _marketplaceDate(json['createdAt']),
+    resolvedAt: _marketplaceOptionalDate(json['resolvedAt']),
+  );
+}
+
+class DisputeRow extends Dispute {
+  const DisputeRow({
+    required super.disputeId,
+    required super.bookingId,
+    required super.side,
+    required super.category,
+    required super.text,
+    super.requestedRefundMinor,
+    required super.status,
+    super.resolution,
+    super.resolvedRefundMinor,
+    super.adminNote,
+    required super.createdAt,
+    super.resolvedAt,
+    required this.bookingTitle,
+    required this.organizationName,
+    required this.bandName,
+    required this.paidMinor,
+    required this.bookingStatus,
+  });
+
+  final String bookingTitle;
+  final String organizationName;
+  final String bandName;
+  final int paidMinor;
+  final BookingStatus bookingStatus;
+
+  factory DisputeRow.fromJson(Map<String, dynamic> json) {
+    final dispute = Dispute.fromJson(json);
+    return DisputeRow(
+      disputeId: dispute.disputeId,
+      bookingId: dispute.bookingId,
+      side: dispute.side,
+      category: dispute.category,
+      text: dispute.text,
+      requestedRefundMinor: dispute.requestedRefundMinor,
+      status: dispute.status,
+      resolution: dispute.resolution,
+      resolvedRefundMinor: dispute.resolvedRefundMinor,
+      adminNote: dispute.adminNote,
+      createdAt: dispute.createdAt,
+      resolvedAt: dispute.resolvedAt,
+      bookingTitle: _marketplaceString(json['bookingTitle']),
+      organizationName: _marketplaceString(json['organizationName']),
+      bandName: _marketplaceString(json['bandName']),
+      paidMinor: _marketplaceInt(json['paidMinor']),
+      bookingStatus: BookingStatus.fromWire(json['bookingStatus']),
+    );
+  }
+}
+
+class DisputesPage {
+  const DisputesPage({
+    required this.items,
+    required this.continueCursor,
+    required this.isDone,
+  });
+
+  final List<DisputeRow> items;
+  final String? continueCursor;
+  final bool isDone;
+
+  factory DisputesPage.fromJson(Map<String, dynamic> json) => DisputesPage(
+    items: [
+      for (final row in _marketplaceMapList(json['page'] ?? json['items']))
+        DisputeRow.fromJson(row),
+    ],
+    continueCursor: _marketplaceOptionalString(json['continueCursor']),
+    isDone: json['isDone'] == true,
+  );
+}
+
+enum AdminBookingFilter {
+  all('all'),
+  disputed('disputed'),
+  held('held'),
+  awaitingPayment('awaiting_payment'),
+  unknown('unknown');
+
+  const AdminBookingFilter(this.wireValue);
+
+  final String wireValue;
+
+  static AdminBookingFilter fromWire(Object? value) => switch (value) {
+    'all' => AdminBookingFilter.all,
+    'disputed' => AdminBookingFilter.disputed,
+    'held' => AdminBookingFilter.held,
+    'awaiting_payment' => AdminBookingFilter.awaitingPayment,
+    _ => AdminBookingFilter.unknown,
+  };
+}
+
+class AdminBookingRow {
+  const AdminBookingRow({
+    required this.bookingId,
+    required this.title,
+    required this.organizationName,
+    required this.bandName,
+    required this.status,
+    required this.startsAt,
+    required this.paidMinor,
+    required this.refundedMinor,
+    required this.payoutHoldReasons,
+    this.openDisputeId,
+  });
+
+  final String bookingId;
+  final String title;
+  final String organizationName;
+  final String bandName;
+  final BookingStatus status;
+  final DateTime startsAt;
+  final int paidMinor;
+  final int refundedMinor;
+  final List<String> payoutHoldReasons;
+  final String? openDisputeId;
+
+  factory AdminBookingRow.fromJson(Map<String, dynamic> json) =>
+      AdminBookingRow(
+        bookingId: _marketplaceString(json['bookingId']),
+        title: _marketplaceString(json['title']),
+        organizationName: _marketplaceString(json['organizationName']),
+        bandName: _marketplaceString(json['bandName']),
+        status: BookingStatus.fromWire(json['status']),
+        startsAt: _marketplaceDate(json['startsAt']),
+        paidMinor: _marketplaceInt(json['paidMinor']),
+        refundedMinor: _marketplaceInt(json['refundedMinor']),
+        payoutHoldReasons: _marketplaceStringList(json['payoutHoldReasons']),
+        openDisputeId: _marketplaceOptionalString(json['openDisputeId']),
+      );
+}
+
+class AdminBookingsPage {
+  const AdminBookingsPage({
+    required this.items,
+    required this.continueCursor,
+    required this.isDone,
+  });
+
+  final List<AdminBookingRow> items;
+  final String? continueCursor;
+  final bool isDone;
+
+  factory AdminBookingsPage.fromJson(Map<String, dynamic> json) =>
+      AdminBookingsPage(
+        items: [
+          for (final row in _marketplaceMapList(json['page'] ?? json['items']))
+            AdminBookingRow.fromJson(row),
+        ],
+        continueCursor: _marketplaceOptionalString(json['continueCursor']),
+        isDone: json['isDone'] == true,
+      );
 }
 
 enum SafetyCategory {

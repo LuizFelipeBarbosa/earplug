@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query } from "./_generated/server";
+import { env, query } from "./_generated/server";
 import { flag } from "./lib/env";
 
 export const flags = query({
@@ -9,6 +9,7 @@ export const flags = query({
     tickets: v.boolean(),
     payments: v.boolean(),
     bandGigWrites: v.boolean(),
+    disputes: v.boolean(),
   }),
   handler: async () => {
     return {
@@ -16,6 +17,7 @@ export const flags = query({
       tickets: flag("TICKETS_ENABLED", false),
       payments: flag("PAYMENTS_ENABLED", false),
       bandGigWrites: flag("BAND_GIG_WRITES", true),
+      disputes: flag("DISPUTES_ENABLED", false),
     };
   },
 });

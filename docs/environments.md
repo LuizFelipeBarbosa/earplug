@@ -69,6 +69,9 @@ for production:
   opportunity creation, private-location management, and the client's
   `features:flags.privateBookings` surface (private bookings not yet enabled
   in production).
+- `DISPUTES_ENABLED` — dev: `true`; prod: unset; gates
+  `disputes:open` and the client's `features:flags.disputes` surface
+  (disputes not yet enabled in production).
 - `BAND_GIG_WRITES`
 
 `convex/lib/env.ts` enforces the pairing at runtime: it refuses a `sk_live_`

@@ -234,6 +234,11 @@ class _BookingCard extends StatelessWidget {
                       : 'No fee',
                   style: textTheme.epCaption,
                 ),
+                if (booking.refundedMinor > 0)
+                  Text(
+                    'Refunded ${Money(booking.refundedMinor, 'usd').label}',
+                    style: textTheme.epCaption,
+                  ),
                 const SizedBox(height: 8),
                 StatusPill(label: booking.status.label),
               ],

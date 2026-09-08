@@ -373,6 +373,82 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
+  Future<String> openDispute({
+    required String bookingId,
+    required DisputeSide side,
+    required DisputeCategory category,
+    required String text,
+    int? requestedRefundMinor,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('disputes:open', {
+        'bookingId': bookingId,
+        'side': side.wireValue,
+        'category': category.wireValue,
+        'text': text,
+        'requestedRefundMinor': ?requestedRefundMinor,
+      }),
+    );
+    return result['disputeId'] as String;
+  }
+
+  @override
+  Future<List<Dispute>> disputesForBooking(String bookingId) async {
+    final result = await _convexService.query('disputes:forBooking', {
+      'bookingId': bookingId,
+    });
+    return [for (final json in _mapList(result)) Dispute.fromJson(json)];
+  }
+
+  @override
+  Future<DisputesPage> openDisputes({
+    String? cursor,
+    int numItems = 25,
+  }) async => DisputesPage.fromJson(
+    _asMap(
+      await _convexService.query('disputes:listOpen', {
+        'paginationOpts': {'numItems': numItems, 'cursor': cursor},
+      }),
+    ),
+  );
+
+  @override
+  Future<void> startDisputeReview(String disputeId) async {
+    await _convexService.mutation('disputes:startReview', {
+      'disputeId': disputeId,
+    });
+  }
+
+  @override
+  Future<void> resolveDispute(
+    String disputeId, {
+    required DisputeResolution resolution,
+    int? refundMinor,
+    String? adminNote,
+  }) async {
+    await _convexService.mutation('disputes:resolve', {
+      'disputeId': disputeId,
+      'resolution': resolution.wireValue,
+      'refundMinor': ?refundMinor,
+      'adminNote': ?adminNote,
+    });
+  }
+
+  @override
+  Future<AdminBookingsPage> adminBookings({
+    required AdminBookingFilter filter,
+    String? cursor,
+    int numItems = 25,
+  }) async => AdminBookingsPage.fromJson(
+    _asMap(
+      await _convexService.query('admin:bookings', {
+        'filter': filter.wireValue,
+        'paginationOpts': {'numItems': numItems, 'cursor': cursor},
+      }),
+    ),
+  );
+
+  @override
   Future<OrganizationApplication?> myOrganizationApplication() async {
     final json = _asMap(
       await _convexService.query('organizationApplications:mine'),

@@ -738,6 +738,83 @@ describe("bookings read: get", () => {
   });
 });
 
+describe("bookings read: platform admin viewer flag", () => {
+  test("marks access granted solely through platform administration", async () => {
+    const f = await setupBookings();
+    const payload = await f.as("platformAdmin").query(api.bookingsRead.get, {
+      bookingId: f.bookingId,
+    });
+    expect(payload).toMatchObject({
+      viewerSide: "organizer",
+      viewerIsPlatformAdmin: true,
+    });
+  });
+
+  test.each(["owner", "manager", "finance", "door", "bandAdmin"] as const)(
+    "does not mark %s viewing as a booking party",
+    async (actor) => {
+      const f = await setupBookings();
+      const payload = await f.as(actor).query(api.bookingsRead.get, {
+        bookingId: f.bookingId,
+      });
+      expect(payload).toMatchObject({
+        viewerSide: actor === "bandAdmin" ? "artist" : "organizer",
+      });
+      expect(payload?.viewerIsPlatformAdmin).not.toBe(true);
+    },
+  );
+
+  test("organization members with an admin grant still view as a party", async () => {
+    const f = await setupBookings();
+    await f.t.run((ctx) =>
+      ctx.db.insert("platformAdmins", { userId: f.users.owner, grantedAt: NOW }),
+    );
+    const payload = await f.as("owner").query(api.bookingsRead.get, {
+      bookingId: f.bookingId,
+    });
+    expect(payload?.viewerSide).toBe("organizer");
+    expect(payload?.viewerIsPlatformAdmin).not.toBe(true);
+  });
+
+  test.each([undefined, "artist", "organizer"] as const)(
+    "band admins with an admin grant use the flag only for organizer view: %s",
+    async (viewAs) => {
+      const f = await setupBookings();
+      await f.t.run((ctx) =>
+        ctx.db.insert("platformAdmins", {
+          userId: f.users.bandAdmin,
+          grantedAt: NOW,
+        }),
+      );
+      const payload = await f.as("bandAdmin").query(api.bookingsRead.get, {
+        bookingId: f.bookingId,
+        viewAs,
+      });
+      expect(payload?.viewerSide).toBe(viewAs ?? "artist");
+      if (viewAs === "organizer") {
+        expect(payload?.viewerIsPlatformAdmin).toBe(true);
+      } else {
+        expect(payload?.viewerIsPlatformAdmin).not.toBe(true);
+      }
+    },
+  );
+
+  test("list payloads omit the optional flag even for platform admins", async () => {
+    const f = await setupBookings();
+    const organizationRows = await f.as("platformAdmin").query(
+      api.bookingsRead.forOrganization,
+      { organizationId: f.organizationId },
+    );
+    const bandRows = await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+      bandId: f.bandId,
+    });
+    for (const rows of [organizationRows, bandRows]) {
+      expect(rows).toHaveLength(1);
+      expect(rows[0].viewerIsPlatformAdmin).toBeUndefined();
+    }
+  });
+});
+
 describe("bookings read: lists", () => {
   test("forOrganization filters statuses and merges results newest first", async () => {
     const f = await setupBookings();
@@ -792,13 +869,21 @@ describe("bookings read: lists", () => {
         venue: { exactAddress: EXACT_ADDRESS },
         counterpartyEmail: null,
       });
+      if (actor === "platformAdmin") {
+        expect(payload?.viewerIsPlatformAdmin).toBe(true);
+      } else {
+        expect(payload?.viewerIsPlatformAdmin).not.toBe(true);
+      }
+      const { viewerIsPlatformAdmin: _payloadFlag, ...payloadForListComparison } =
+        payload!;
+      const listRows = await f
+        .as(actor)
+        .query(api.bookingsRead.forOrganization, {
+          organizationId: f.organizationId,
+        });
       expect(
-        await f
-          .as(actor)
-          .query(api.bookingsRead.forOrganization, {
-            organizationId: f.organizationId,
-          }),
-      ).toEqual([payload]);
+        listRows.map(({ viewerIsPlatformAdmin: _rowFlag, ...rest }) => rest),
+      ).toEqual([payloadForListComparison]);
     },
   );
 

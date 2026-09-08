@@ -316,6 +316,30 @@ void main() {
     expect(result.harness.app.current.screen, Screen.adminSafety);
   });
 
+  testWidgets('admin queue opens disputes', (tester) async {
+    final result = await _pumpAdmin(tester, const AdminQueueScreen());
+    final entry = find.byKey(const Key('admin-disputes-entry'));
+    expect(tester.widget<EpButton>(entry).kind, EpButtonKind.outline);
+
+    await tester.ensureVisible(entry);
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+
+    expect(result.harness.app.current.screen, Screen.adminDisputes);
+  });
+
+  testWidgets('admin queue opens bookings', (tester) async {
+    final result = await _pumpAdmin(tester, const AdminQueueScreen());
+    final entry = find.byKey(const Key('admin-bookings-entry'));
+    expect(tester.widget<EpButton>(entry).kind, EpButtonKind.outline);
+
+    await tester.ensureVisible(entry);
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+
+    expect(result.harness.app.current.screen, Screen.adminBookings);
+  });
+
   testWidgets('non-admins cannot view an admin application', (tester) async {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);

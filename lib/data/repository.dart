@@ -480,6 +480,28 @@ abstract class EarplugRepository {
   Future<void> resolveSafetyReport(String reportId, {String? adminNote});
   Future<List<SafetyReport>> safetyReportsForBookingAdmin(String bookingId);
 
+  Future<String> openDispute({
+    required String bookingId,
+    required DisputeSide side,
+    required DisputeCategory category,
+    required String text,
+    int? requestedRefundMinor,
+  });
+  Future<List<Dispute>> disputesForBooking(String bookingId);
+  Future<DisputesPage> openDisputes({String? cursor, int numItems = 25});
+  Future<void> startDisputeReview(String disputeId);
+  Future<void> resolveDispute(
+    String disputeId, {
+    required DisputeResolution resolution,
+    int? refundMinor,
+    String? adminNote,
+  });
+  Future<AdminBookingsPage> adminBookings({
+    required AdminBookingFilter filter,
+    String? cursor,
+    int numItems = 25,
+  });
+
   /// The signed-in user's profile, or null when the backend holds none.
   Future<UserProfile?> me();
 

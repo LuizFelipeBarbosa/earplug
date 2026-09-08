@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
@@ -6,19 +8,281 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
+Map<String, dynamic> _jsonRoundTrip(Map<String, dynamic> json) =>
+    jsonDecode(jsonEncode(json)) as Map<String, dynamic>;
+
 void main() {
+  group('dispute and admin booking models', () {
+    test('wire enums round-trip and tolerate unknown values', () {
+      for (final value in DisputeSide.values) {
+        expect(DisputeSide.fromWire(value.wireValue), value);
+      }
+      for (final value in DisputeCategory.values) {
+        expect(DisputeCategory.fromWire(value.wireValue), value);
+      }
+      for (final value in DisputeStatus.values) {
+        expect(DisputeStatus.fromWire(value.wireValue), value);
+      }
+      for (final value in DisputeResolution.values) {
+        expect(DisputeResolution.fromWire(value.wireValue), value);
+      }
+      for (final value in AdminBookingFilter.values) {
+        expect(AdminBookingFilter.fromWire(value.wireValue), value);
+      }
+      for (final value in <Object?>[null, 'future', 1, false, []]) {
+        expect(DisputeSide.fromWire(value), DisputeSide.unknown);
+        expect(DisputeCategory.fromWire(value), DisputeCategory.unknown);
+        expect(DisputeStatus.fromWire(value), DisputeStatus.unknown);
+        expect(DisputeResolution.fromWire(value), DisputeResolution.unknown);
+        expect(AdminBookingFilter.fromWire(value), AdminBookingFilter.unknown);
+      }
+      expect(DisputeCategory.values.map((value) => value.label), [
+        'No-show',
+        'Late or short set',
+        'Misrepresentation',
+        'Payment',
+        'Safety',
+        'Other',
+        'Unknown',
+      ]);
+      expect(DisputeResolution.values.map((value) => value.label), [
+        'Released to artist',
+        'Refunded in full',
+        'Partial refund',
+        'Dismissed',
+        'Unknown',
+      ]);
+    });
+
+    test('Dispute and DisputeRow parse all fields and pagination shapes', () {
+      final disputeJson = <String, dynamic>{
+        'disputeId': 'dispute-1',
+        'bookingId': 'booking-1',
+        'side': 'organizer',
+        'category': 'late_or_short_set',
+        'text': 'The set ended early.',
+        'requestedRefundMinor': 5000.0,
+        'status': 'resolved',
+        'resolution': 'refunded_partial',
+        'resolvedRefundMinor': 2500.0,
+        'adminNote': 'Partial refund issued.',
+        'createdAt': 1800000000000.0,
+        'resolvedAt': 1800000001000,
+      };
+      final rowJson = <String, dynamic>{
+        ...disputeJson,
+        'bookingTitle': 'Friday Showcase',
+        'organizationName': 'Signal Collective',
+        'bandName': 'The Night Shifts',
+        'paidMinor': 10000.0,
+        'bookingStatus': 'confirmed',
+      };
+      for (final dispute in [
+        Dispute.fromJson(_jsonRoundTrip(disputeJson)),
+        DisputeRow.fromJson(_jsonRoundTrip(rowJson)),
+      ]) {
+        expect(dispute.disputeId, 'dispute-1');
+        expect(dispute.bookingId, 'booking-1');
+        expect(dispute.side, DisputeSide.organizer);
+        expect(dispute.category, DisputeCategory.lateOrShortSet);
+        expect(dispute.text, 'The set ended early.');
+        expect(dispute.requestedRefundMinor, 5000);
+        expect(dispute.status, DisputeStatus.resolved);
+        expect(dispute.resolution, DisputeResolution.refundedPartial);
+        expect(dispute.resolvedRefundMinor, 2500);
+        expect(dispute.adminNote, 'Partial refund issued.');
+        expect(dispute.createdAt.millisecondsSinceEpoch, 1800000000000);
+        expect(dispute.resolvedAt!.millisecondsSinceEpoch, 1800000001000);
+      }
+      final row = DisputeRow.fromJson(_jsonRoundTrip(rowJson));
+      expect(row.bookingTitle, 'Friday Showcase');
+      expect(row.organizationName, 'Signal Collective');
+      expect(row.bandName, 'The Night Shifts');
+      expect(row.paidMinor, 10000);
+      expect(row.bookingStatus, BookingStatus.confirmed);
+      for (final key in ['page', 'items']) {
+        final page = DisputesPage.fromJson({
+          key: [rowJson, null, false],
+          'continueCursor': 'next',
+          'isDone': true,
+        });
+        expect(page.items.single.disputeId, 'dispute-1');
+        expect(page.continueCursor, 'next');
+        expect(page.isDone, isTrue);
+      }
+    });
+
+    test('disputes tolerate missing, malformed and future fields', () {
+      expect(Dispute.fromJson({}).resolution, isNull);
+      for (final json in <Map<String, dynamic>>[
+        {},
+        {
+          'disputeId': 7,
+          'bookingId': <Object?>[],
+          'side': 'future',
+          'category': 'future',
+          'text': false,
+          'requestedRefundMinor': '100',
+          'status': 'future',
+          'resolution': 'future',
+          'resolvedRefundMinor': double.infinity,
+          'adminNote': 1,
+          'createdAt': 'bad',
+          'resolvedAt': double.nan,
+          'bookingTitle': false,
+          'organizationName': 1,
+          'bandName': <Object?>[],
+          'paidMinor': '100',
+          'bookingStatus': 'future',
+        },
+      ]) {
+        final row = DisputeRow.fromJson(json);
+        expect(row.disputeId, '');
+        expect(row.bookingId, '');
+        expect(row.side, DisputeSide.unknown);
+        expect(row.category, DisputeCategory.unknown);
+        expect(row.text, '');
+        expect(row.requestedRefundMinor, isNull);
+        expect(row.status, DisputeStatus.unknown);
+        expect(
+          row.resolution,
+          json.isEmpty ? isNull : DisputeResolution.unknown,
+        );
+        expect(row.resolvedRefundMinor, isNull);
+        expect(row.adminNote, isNull);
+        expect(row.createdAt.millisecondsSinceEpoch, 0);
+        expect(row.resolvedAt, isNull);
+        expect(row.bookingTitle, '');
+        expect(row.organizationName, '');
+        expect(row.bandName, '');
+        expect(row.paidMinor, 0);
+        expect(row.bookingStatus, BookingStatus.unknown);
+      }
+      final empty = DisputesPage.fromJson({
+        'page': false,
+        'continueCursor': 1,
+        'isDone': 'true',
+      });
+      expect(empty.items, isEmpty);
+      expect(empty.continueCursor, isNull);
+      expect(empty.isDone, isFalse);
+    });
+
+    test('AdminBookingRow parses nullable dispute ids and paginated rows', () {
+      final json = <String, dynamic>{
+        'bookingId': 'booking-1',
+        'title': 'Friday Showcase',
+        'organizationName': 'Signal Collective',
+        'bandName': 'The Night Shifts',
+        'status': 'disputed',
+        'startsAt': 1800000000000.0,
+        'paidMinor': 10000.0,
+        'refundedMinor': 2500.0,
+        'payoutHoldReasons': ['dispute', 'other_hold'],
+        'openDisputeId': 'dispute-1',
+      };
+      final row = AdminBookingRow.fromJson(_jsonRoundTrip(json));
+      expect(row.bookingId, 'booking-1');
+      expect(row.title, 'Friday Showcase');
+      expect(row.organizationName, 'Signal Collective');
+      expect(row.bandName, 'The Night Shifts');
+      expect(row.status, BookingStatus.disputed);
+      expect(row.startsAt.millisecondsSinceEpoch, 1800000000000);
+      expect(row.paidMinor, 10000);
+      expect(row.refundedMinor, 2500);
+      expect(row.payoutHoldReasons, ['dispute', 'other_hold']);
+      expect(row.openDisputeId, 'dispute-1');
+      expect(
+        AdminBookingRow.fromJson({
+          ...json,
+          'openDisputeId': null,
+        }).openDisputeId,
+        isNull,
+      );
+      expect(AdminBookingRow.fromJson({}).openDisputeId, isNull);
+      for (final key in ['page', 'items']) {
+        final page = AdminBookingsPage.fromJson({
+          key: [json, null, false],
+          'continueCursor': 'next',
+          'isDone': true,
+        });
+        expect(page.items.single.bookingId, 'booking-1');
+        expect(page.continueCursor, 'next');
+        expect(page.isDone, isTrue);
+      }
+      final empty = AdminBookingRow.fromJson({
+        'status': 'future',
+        'startsAt': 'bad',
+        'paidMinor': 'bad',
+        'refundedMinor': double.infinity,
+        'payoutHoldReasons': [false, 'future_hold', null],
+        'openDisputeId': false,
+      });
+      expect(empty.bookingId, '');
+      expect(empty.title, '');
+      expect(empty.organizationName, '');
+      expect(empty.bandName, '');
+      expect(empty.status, BookingStatus.unknown);
+      expect(empty.startsAt.millisecondsSinceEpoch, 0);
+      expect(empty.paidMinor, 0);
+      expect(empty.refundedMinor, 0);
+      expect(empty.payoutHoldReasons, ['future_hold']);
+      expect(empty.openDisputeId, isNull);
+      final page = AdminBookingsPage.fromJson({
+        'items': false,
+        'continueCursor': false,
+        'isDone': 1,
+      });
+      expect(page.items, isEmpty);
+      expect(page.continueCursor, isNull);
+      expect(page.isDone, isFalse);
+    });
+
+    test('Booking admin viewer marker is optional and strictly boolean', () {
+      expect(Booking.fromJson({}).viewerIsPlatformAdmin, isFalse);
+      expect(DemoData.bookings['bk1']!.viewerIsPlatformAdmin, isFalse);
+      expect(
+        Booking.fromJson(
+          _jsonRoundTrip({'viewerIsPlatformAdmin': true}),
+        ).viewerIsPlatformAdmin,
+        isTrue,
+      );
+      for (final value in <Object?>[null, false, 'true', 1, []]) {
+        expect(
+          Booking.fromJson({
+            'viewerIsPlatformAdmin': value,
+          }).viewerIsPlatformAdmin,
+          isFalse,
+        );
+      }
+    });
+  });
+
   group('private booking and safety models', () {
     test('FeatureFlags defaults missing and malformed flags to false', () {
-      final enabled = FeatureFlags.fromJson({
-        'privateBookings': true,
-        'tickets': true,
-        'payments': true,
-        'bandGigWrites': true,
-      });
+      final enabled = FeatureFlags.fromJson(
+        _jsonRoundTrip({
+          'privateBookings': true,
+          'tickets': true,
+          'payments': true,
+          'bandGigWrites': true,
+          'disputes': true,
+        }),
+      );
       expect(enabled.privateBookings, isTrue);
       expect(enabled.tickets, isTrue);
       expect(enabled.payments, isTrue);
       expect(enabled.bandGigWrites, isTrue);
+      expect(enabled.disputes, isTrue);
+      expect(
+        const FeatureFlags(
+          privateBookings: true,
+          tickets: true,
+          payments: true,
+          bandGigWrites: true,
+        ).disputes,
+        isFalse,
+      );
       for (final json in <Map<String, dynamic>>[
         {},
         {
@@ -26,6 +290,7 @@ void main() {
           'tickets': 1,
           'payments': null,
           'bandGigWrites': <Object?>[],
+          'disputes': 'true',
         },
       ]) {
         final flags = FeatureFlags.fromJson(json);
@@ -33,6 +298,7 @@ void main() {
         expect(flags.tickets, isFalse);
         expect(flags.payments, isFalse);
         expect(flags.bandGigWrites, isFalse);
+        expect(flags.disputes, isFalse);
       }
     });
 

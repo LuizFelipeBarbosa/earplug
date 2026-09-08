@@ -16,6 +16,7 @@ const app = defineApp({
     PAYMENTS_ENABLED: v.optional(v.string()),
     TICKETS_ENABLED: v.optional(v.string()),
     PRIVATE_BOOKINGS_ENABLED: v.optional(v.string()),
+    DISPUTES_ENABLED: v.optional(v.string()),
     BAND_GIG_WRITES: v.optional(v.string()),
   },
 });

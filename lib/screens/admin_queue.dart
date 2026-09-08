@@ -181,6 +181,20 @@ class _AdminQueueScreenState extends State<AdminQueueScreen> {
                     onTap: () => app.go(Screen.adminSafety),
                   ),
                   const SizedBox(height: 16),
+                  EpButton(
+                    'DISPUTES',
+                    key: const Key('admin-disputes-entry'),
+                    kind: EpButtonKind.outline,
+                    onTap: () => app.go(Screen.adminDisputes),
+                  ),
+                  const SizedBox(height: 16),
+                  EpButton(
+                    'BOOKINGS',
+                    key: const Key('admin-bookings-entry'),
+                    kind: EpButtonKind.outline,
+                    onTap: () => app.go(Screen.adminBookings),
+                  ),
+                  const SizedBox(height: 16),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(

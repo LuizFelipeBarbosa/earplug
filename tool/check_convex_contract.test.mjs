@@ -202,6 +202,8 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing venues.js:resolvePublic",
     "missing venues.js:privateDetail",
     "missing admin.js:me",
+    "missing admin.js:bookings",
+    "missing admin.js:suspendOrganization",
     "missing talentOpportunities.js:create",
     "missing talentOpportunities.js:update",
     "missing talentOpportunities.js:open",
@@ -272,6 +274,11 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing privateLocations.js:update",
     "missing privateLocations.js:remove",
     "missing privateLocations.js:forOrganization",
+    "missing disputes.js:open",
+    "missing disputes.js:forBooking",
+    "missing disputes.js:listOpen",
+    "missing disputes.js:startReview",
+    "missing disputes.js:resolve",
     "missing safety.js:report",
     "missing safety.js:mine",
     "missing safety.js:listOpen",
@@ -422,5 +429,55 @@ test("reports missing Phase 5 private-booking fields", () => {
     "privateLocations.js:create is missing return.locationId",
     "safety.js:report is missing return.reportId",
     "bookingsRead.js:get is missing return.privateEvent",
+  ]);
+});
+
+test("reports missing Phase 6 dispute and admin-booking fields", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const flags = functions.find(
+    (entry) => entry.identifier === "features.js:flags",
+  );
+  delete flags.returns.value.disputes;
+  const openDispute = functions.find(
+    (entry) => entry.identifier === "disputes.js:open",
+  );
+  delete openDispute.args.value.side;
+  const disputes = functions.find(
+    (entry) => entry.identifier === "disputes.js:forBooking",
+  );
+  delete disputes.returns.value.value.resolution;
+  const adminBookings = functions.find(
+    (entry) => entry.identifier === "admin.js:bookings",
+  );
+  delete adminBookings.args.value.filter;
+  const booking = functions.find(
+    (entry) => entry.identifier === "bookingsRead.js:get",
+  );
+  delete booking.returns.value[0].value.viewerIsPlatformAdmin;
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "features.js:flags is missing return.disputes",
+    "disputes.js:open is missing args.side",
+    "disputes.js:forBooking is missing arrayReturn.resolution",
+    "admin.js:bookings is missing args.filter",
+    "bookingsRead.js:get is missing return.viewerIsPlatformAdmin",
+  ]);
+});
+
+test("reports a wrongly required dispute side argument", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const openDispute = functions.find(
+    (entry) => entry.identifier === "disputes.js:open",
+  );
+  openDispute.args.value.side.optional = false;
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "disputes.js:open args.side optional=false, expected true",
   ]);
 });

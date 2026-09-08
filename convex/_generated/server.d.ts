@@ -33,6 +33,7 @@ type Env = {
   readonly APP_BASE_URL: string | undefined;
   readonly BAND_GIG_WRITES: string | undefined;
   readonly BOOKING_COMMISSION_BPS: string | undefined;
+  readonly DISPUTES_ENABLED: string | undefined;
   readonly PAYMENTS_ENABLED: string | undefined;
   readonly PRIVATE_BOOKINGS_ENABLED: string | undefined;
   readonly RESEND_API_KEY: string | undefined;

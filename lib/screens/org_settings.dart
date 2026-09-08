@@ -160,6 +160,66 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
     }
   }
 
+  Widget _buildTaxDetails(AppState app) {
+    final status = app.organizationStripeStatus;
+    final needsTaxInformation =
+        status?.requirementsDue.any(
+          RegExp(r'tax|ssn|id_number|verification\.document').hasMatch,
+        ) ??
+        false;
+
+    return Column(
+      key: const Key('stripe-tax-row'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            if (needsTaxInformation)
+              const StatusPill(
+                label: 'ACTION NEEDED',
+                tone: EpStatusPillTone.warning,
+              )
+            else
+              Icon(
+                Icons.check,
+                size: 18,
+                color: context.epColors.contentSecondary,
+              ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'TAX DETAILS',
+                style: Theme.of(context).textTheme.epLabel,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (needsTaxInformation) ...[
+          Text(
+            'Stripe needs your tax information before payouts continue.',
+            style: Theme.of(context).textTheme.epBody,
+          ),
+          const SizedBox(height: 8),
+        ],
+        Text(
+          'Stripe collects your tax information (W-9 / 1099) during onboarding. '
+          'Update it in your Stripe dashboard.',
+          style: Theme.of(context).textTheme.epCaption,
+        ),
+        if (status?.detailsSubmitted == true) ...[
+          const SizedBox(height: 12),
+          EpButton(
+            'MANAGE IN STRIPE',
+            key: const Key('org-settings-tax-dashboard'),
+            kind: EpButtonKind.outline,
+            onTap: () => _runStripeAction(app.openOrganizationExpressDashboard),
+          ),
+        ],
+      ],
+    );
+  }
+
   ({bool publicProfile, bool privateDetails}) get _changesSinceLoad => (
     publicProfile:
         _name.text != _loadedName ||
@@ -515,6 +575,8 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
                     onTap: () =>
                         _runStripeAction(app.refreshOrganizationStripeStatus),
                   ),
+                  const SizedBox(height: 12),
+                  _buildTaxDetails(app),
                   if (_stripeError != null) ...[
                     const SizedBox(height: 8),
                     InlineFormFeedback(

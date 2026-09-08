@@ -110,6 +110,7 @@ export const bookingPayloadValidator = v.object({
   publicGigSlug: v.union(v.string(), v.null()),
   counterpartyEmail: v.union(v.string(), v.null()),
   viewerSide: v.union(v.literal("organizer"), v.literal("artist")),
+  viewerIsPlatformAdmin: v.optional(v.boolean()),
 });
 
 export async function toBookingPayload(
@@ -119,6 +120,7 @@ export async function toBookingPayload(
     userId: Id<"users">;
     side: "organizer" | "artist";
     organizationRole?: OrganizationRole;
+    viewerIsPlatformAdmin?: boolean;
   },
   cache: DocCache = docCache(ctx),
 ): Promise<Infer<typeof bookingPayloadValidator>> {
@@ -302,6 +304,7 @@ export async function toBookingPayload(
     publicGigSlug: publicGig?.slug ?? null,
     counterpartyEmail,
     viewerSide: viewer.side,
+    viewerIsPlatformAdmin: viewer.viewerIsPlatformAdmin,
   };
 }
 
@@ -344,6 +347,10 @@ export const get = query({
       userId: user._id,
       side,
       organizationRole: side === "organizer" ? membership?.role : undefined,
+      viewerIsPlatformAdmin:
+        side === "organizer" && membership === null && platformAdmin
+          ? true
+          : undefined,
     });
   },
 });

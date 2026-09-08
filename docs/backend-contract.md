@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.25)
+# EarPlug Convex function contract (FROZEN — v1.26)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -894,6 +894,68 @@ organizer or venue name. The new `features:flags` query returns
 `{ privateBookings, tickets, payments, bandGigWrites }`, letting the client
 gate the private-booking UI on `PRIVATE_BOOKINGS_ENABLED` without guessing
 at server-side flags.
+
+**v1.26 — Phase 6 disputes and admin oversight.** The new `disputes` table
+stores `bookingId`, `openedByUserId`, `side` (`"organizer" | "artist"`),
+`category` (`no_show | late_or_short_set | misrepresentation | payment |
+safety | other`), `text`, optional `requestedRefundMinor`, `status`
+(`open | under_review | resolved`), optional `resolution`
+(`released | refunded_full | refunded_partial | dismissed`), optional
+`resolvedRefundMinor`, optional `adminNote`, optional `resolvedBy`,
+`createdAt`/`updatedAt`, and optional `resolvedAt`. Amounts are integer
+currency minor units. `paymentRecords` adds optional `stripeDisputeStatus`
+(`open | won | lost`) and optional `disputedMinor`, set by the Stripe
+chargeback webhook handler in `convex/stripeHandlers/disputes.ts`, not by
+`disputes:*`. Both `disputes:open` and `disputes:resolve` read
+`stripeDisputeStatus === "open"` to block conflicting in-app disputes.
+`organizations.suspensionNote` is an optional string, settable by a platform
+admin through `admin:suspendOrganization({ organizationId, suspended, note? })`;
+suspension sets the organization to `suspended`, restoration sets it to
+`verified` and clears the note, and both cascade the corresponding venue
+status to up to 50 managed venues. `disputes:open` is a Mutation gated by
+`DISPUTES_ENABLED`; an organization owner/manager/finance member or band admin
+can open a dispute on its side of a live booking (`confirmed`, `completed`,
+or `paid`) with a positive `grossMinor` and no existing open or under-review
+in-app dispute. The window in `convex/lib/disputeStatus.ts` is inclusive from
+`startsAt` through `completedAt` (or `startsAt + COMPLETION_DELAY_MS` when
+unset) plus `DISPUTE_WINDOW_AFTER_COMPLETION_MS` (14 days). Only the organizer
+side may supply `requestedRefundMinor`; although optional in the validator,
+it is required for that side, must be a positive whole-minor-unit amount no
+greater than `paidMinor`, and is accepted only while no payout has been paid.
+The optional `side` argument lets callers eligible for both sides (such as an
+organization owner who is also a band admin) choose which side to act as;
+the mutation refuses a supplied side the caller is not eligible for, while
+omitting it preserves the pre-v1.26 automatic single-side resolution, with
+band admin taking priority when the caller is both.
+`disputes:forBooking` is a Query letting either side with those roles, or a
+platform admin, list a booking's disputes newest-first. `disputes:listOpen`
+is a platform-admin-only Query returning a paginated queue of `open` disputes
+with denormalized booking, organization, and band context.
+`disputes:startReview` is a platform-admin-only Mutation taking an `open`
+dispute to `under_review`. `disputes:resolve` is a platform-admin-only
+Mutation taking an `open` or `under_review` dispute to `resolved` with one of
+the four resolutions: `released`/`dismissed` require a zero refund (omitted
+`refundMinor` means zero), `refunded_full` refunds the full positive
+`paidMinor`, and `refunded_partial` requires a whole-minor-unit `refundMinor`
+strictly between zero and `paidMinor`. As implemented in `convex/disputes.ts`,
+a full refund transitions the booking to `refunded` and settles cancellation;
+a partial refund settles just the refund amount. Both the partial-refund
+and zero-refund paths release the dispute payout hold. Resolution remains
+blocked while a Stripe dispute is open. `admin:bookings({ filter:
+"all" | "disputed" | "held" | "awaiting_payment", paginationOpts })` is a
+platform-admin-only Query returning paginated booking oversight rows with
+denormalized organization/band names and opportunity titles,
+`payoutHoldReasons`, and `openDisputeId`. The `held` filter runs in memory in
+the query handler after pagination, so clients can receive fewer (even zero)
+rows per page while more held bookings exist on later pages; this is a known
+limitation. `bookingsRead:get` adds optional `viewerIsPlatformAdmin`, true
+only when the viewer reached the booking as an organizer through
+platform-admin access rather than organization membership. A client built
+before v1.26 does not read this field and silently treats a platform admin
+viewing a booking exactly like an organization member; this remains safe
+because the field is additive and optional. `features:flags` adds required
+`disputes: boolean`, mirroring `privateBookings` so the client gates its
+dispute UI on `DISPUTES_ENABLED`.
 
 ## Reconciliation
 

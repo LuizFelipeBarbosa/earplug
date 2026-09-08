@@ -22,6 +22,301 @@ import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 void main() {
+  for (final side in [BookingSide.organizer, BookingSide.artist]) {
+    testWidgets('${side.name} opens a dispute and sees review and resolution', (
+      tester,
+    ) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      final booking = await _createDisputeEligibleBooking(
+        repository,
+        bandId: side == BookingSide.organizer ? 'b2' : 'b1',
+      );
+      final harness = await pumpApp(
+        tester,
+        home: Scaffold(body: BookingDetailScreen(bookingId: booking.id)),
+        auth: auth,
+        repository: repository,
+        beforePump: (app) async {
+          if (side == BookingSide.artist) {
+            app.switchToBand(booking.bandId);
+          } else {
+            app.switchToOrganization('org1');
+          }
+          await app.loadBooking(booking.id, viewAs: side);
+        },
+      );
+      expect(harness.app.disputesEnabled, isTrue);
+      expect(
+        harness.app.bookingById(booking.id)?.status,
+        BookingStatus.confirmed,
+      );
+      expect(find.byKey(const Key('booking-cancel')), findsOneWidget);
+      final open = find.byKey(const Key('booking-dispute-open'));
+      await _reveal(tester, open);
+      expect(tester.widget<EpButton>(open).kind, EpButtonKind.outline);
+      expect(
+        tester.widget<EpButton>(open).label,
+        side == BookingSide.organizer ? 'REQUEST A REFUND' : 'OPEN A DISPUTE',
+      );
+      await tester.tap(open);
+      await tester.pumpAndSettle();
+      expectNoFieldInCard(tester);
+      await tester.enterText(
+        find.byKey(const Key('dispute-text')),
+        'Please review what happened at this performance.',
+      );
+      final submit = find.byKey(const Key('dispute-submit'));
+      await tester.ensureVisible(submit);
+      await tester.pumpAndSettle();
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(EpFormSheet), findsNothing);
+      expect(
+        harness.app.bookingById(booking.id)?.status,
+        BookingStatus.disputed,
+      );
+      expect(find.byKey(const Key('booking-cancel')), findsNothing);
+      expect(open, findsNothing);
+      await _reveal(
+        tester,
+        find.widgetWithText(StatusPill, 'UNDER DISPUTE'),
+        delta: -300,
+      );
+      expect(
+        tester
+            .widget<StatusPill>(
+              find.widgetWithText(StatusPill, 'UNDER DISPUTE'),
+            )
+            .label,
+        'Under dispute',
+      );
+      expect(
+        tester
+            .widget<StatusTimeline>(find.byType(StatusTimeline))
+            .steps
+            .single
+            .label,
+        'Under dispute',
+      );
+      expect(find.text('Cancelled'), findsNothing);
+      final dispute = harness.app.disputesFor(booking.id).single;
+      expect(
+        dispute.side,
+        side == BookingSide.organizer
+            ? DisputeSide.organizer
+            : DisputeSide.artist,
+      );
+      final row = find.byKey(Key('booking-dispute-${dispute.disputeId}'));
+      await _reveal(tester, row);
+      expect(find.widgetWithText(SectionBar, 'DISPUTE'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.widgetWithText(StatusPill, 'OPEN'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text(
+            side == BookingSide.organizer ? 'Refund request' : 'Dispute',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('No-show')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text(Money(booking.paidMinor).label),
+        ),
+        side == BookingSide.organizer ? findsOneWidget : findsNothing,
+      );
+
+      repository.platformAdmin = true;
+      await repository.startDisputeReview(dispute.disputeId);
+      await _refreshDisputeBooking(tester);
+      await _reveal(tester, row);
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.widgetWithText(StatusPill, 'UNDER REVIEW'),
+        ),
+        findsOneWidget,
+      );
+      expect(open, findsNothing);
+      expect(find.byKey(const Key('booking-cancel')), findsNothing);
+
+      await repository.resolveDispute(
+        dispute.disputeId,
+        resolution: DisputeResolution.released,
+        adminNote: 'The performance met the agreed terms.',
+      );
+      repository.platformAdmin = false;
+      await _refreshDisputeBooking(tester);
+      await _reveal(tester, row);
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.widgetWithText(StatusPill, 'RESOLVED'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('Released to artist')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text(r'$0.00')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text('The performance met the agreed terms.'),
+        ),
+        findsOneWidget,
+      );
+      expectNoFieldInCard(tester);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final (name, enabled, future, grossMinor, pay) in [
+    ('disabled feature flag', false, false, 10005, true),
+    ('event has not started', true, true, 10005, true),
+    ('zero booking fee', true, false, 0, false),
+    ('awaiting payment', true, false, 10005, false),
+  ]) {
+    testWidgets('dispute action stays hidden: $name', (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = _DisputeFeatureRepository(
+        auth: auth,
+        enabled: enabled,
+      );
+      final booking = await _createDisputeEligibleBooking(
+        repository,
+        startsAt: future ? DateTime.now().add(const Duration(days: 2)) : null,
+        grossMinor: grossMinor,
+        pay: pay,
+      );
+      await pumpApp(
+        tester,
+        home: Scaffold(body: BookingDetailScreen(bookingId: booking.id)),
+        auth: auth,
+        repository: repository,
+      );
+      // TERMS follows the dispute action, so its reveal builds that part of the list.
+      await _reveal(tester, find.widgetWithText(SectionBar, 'TERMS'));
+      expect(find.byKey(const Key('booking-dispute-open')), findsNothing);
+      expect(find.widgetWithText(SectionBar, 'DISPUTE'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('refunded booking loads dispute history newest first', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final booking = await _createDisputeEligibleBooking(repository);
+    final firstId = await repository.openDispute(
+      bookingId: booking.id,
+      side: DisputeSide.organizer,
+      category: DisputeCategory.payment,
+      text: 'Please review the payment for this event.',
+      requestedRefundMinor: 1000,
+    );
+    repository.platformAdmin = true;
+    await repository.resolveDispute(
+      firstId,
+      resolution: DisputeResolution.dismissed,
+    );
+    final latestId = await repository.openDispute(
+      bookingId: booking.id,
+      side: DisputeSide.organizer,
+      category: DisputeCategory.noShow,
+      text: 'The artist never arrived for the performance.',
+      requestedRefundMinor: booking.paidMinor,
+    );
+    await repository.resolveDispute(
+      latestId,
+      resolution: DisputeResolution.refundedFull,
+      adminNote: 'The full payment has been refunded.',
+    );
+    repository.platformAdmin = false;
+    final harness = await pumpApp(
+      tester,
+      home: Scaffold(body: BookingDetailScreen(bookingId: booking.id)),
+      auth: auth,
+      repository: repository,
+    );
+    expect(harness.app.bookingById(booking.id)?.status, BookingStatus.refunded);
+    expect(
+      tester
+          .widget<StatusPill>(find.widgetWithText(StatusPill, 'REFUNDED'))
+          .label,
+      'Refunded',
+    );
+    expect(
+      tester
+          .widget<StatusTimeline>(find.byType(StatusTimeline))
+          .steps
+          .single
+          .label,
+      'Refunded',
+    );
+    expect(find.text('Cancelled'), findsNothing);
+    expect(find.byKey(const Key('booking-cancel')), findsNothing);
+
+    final firstRow = find.byKey(Key('booking-dispute-$firstId'));
+    final latestRow = find.byKey(Key('booking-dispute-$latestId'));
+    await _reveal(tester, latestRow);
+    expect(harness.app.disputesFor(booking.id), hasLength(2));
+    expect(
+      tester.getTopLeft(latestRow).dy,
+      lessThan(tester.getTopLeft(firstRow).dy),
+    );
+    expect(find.byKey(const Key('booking-dispute-open')), findsNothing);
+    expect(
+      find.descendant(
+        of: latestRow,
+        matching: find.widgetWithText(StatusPill, 'RESOLVED'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: latestRow, matching: find.text('Refunded in full')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: latestRow,
+        matching: find.widgetWithText(LedgerRow, 'Refunded'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: latestRow,
+        matching: find.text(Money(booking.paidMinor).label),
+      ),
+      findsNWidgets(2),
+    );
+    expect(find.text('The full payment has been refunded.'), findsOneWidget);
+    expectNoFieldInCard(tester);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('private address and host notes appear only after payment', (
     tester,
   ) async {
@@ -968,6 +1263,80 @@ void main() {
     expect(tester.takeException(), isNull);
     harness.app.dispose();
   });
+}
+
+Future<void> _refreshDisputeBooking(WidgetTester tester) async {
+  final refresh = find.byKey(const Key('booking-refresh'));
+  await _reveal(tester, refresh, delta: -300);
+  await tester.tap(refresh);
+  await tester.pumpAndSettle();
+}
+
+Future<Booking> _createDisputeEligibleBooking(
+  DemoRepository repository, {
+  String bandId = 'b2',
+  DateTime? startsAt,
+  int grossMinor = 10005,
+  bool pay = true,
+}) async {
+  repository.demoPaymentsEnabled = true;
+  final created = await repository.createOpportunity(
+    organizationId: 'org1',
+    title: 'Booking dispute show',
+    venueId: 'v1',
+    startsAt: startsAt ?? DateTime.now().subtract(const Duration(hours: 2)),
+    slots: const [
+      SlotInput(role: SlotRole.headliner, guaranteeMinor: 0, required: true),
+    ],
+  );
+  await repository.openOpportunity(
+    opportunityId: created.opportunityId,
+    expectedRevision: 1,
+  );
+  final opportunity = (await repository.opportunity(created.opportunityId))!;
+  final applicationId = await repository.applyToOpportunity(
+    opportunityId: opportunity.id,
+    slotId: opportunity.slots.single.id,
+    bandId: bandId,
+    message: 'Ready to play.',
+  );
+  await repository.reviewApplication(
+    applicationId: applicationId,
+    action: ArtistApplicationReviewAction.shortlisted,
+  );
+  final sent = await repository.sendOffer(
+    applicationId: applicationId,
+    grossMinor: grossMinor,
+    cancellationTemplate: CancellationTemplate.standard,
+  );
+  await repository.respondToOffer(
+    bookingId: sent.bookingId,
+    accept: true,
+    expectedRevision: sent.revision,
+  );
+  if (pay && grossMinor > 0) {
+    final payment = (await repository.paymentsForBooking(
+      sent.bookingId,
+    )).single;
+    final checkout = await repository.startInstallmentCheckout(payment.id);
+    await repository.simulateCheckoutCompleted(checkout.sessionId);
+  }
+  return (await repository.booking(sent.bookingId))!;
+}
+
+class _DisputeFeatureRepository extends DemoRepository {
+  _DisputeFeatureRepository({required super.auth, required this.enabled});
+
+  final bool enabled;
+
+  @override
+  Future<FeatureFlags> featureFlags() async => FeatureFlags(
+    privateBookings: true,
+    tickets: true,
+    payments: true,
+    bandGigWrites: true,
+    disputes: enabled,
+  );
 }
 
 Future<String> _createPrivateBookingAwaitingPayment(

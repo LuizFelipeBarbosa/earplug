@@ -53,6 +53,8 @@ enum Screen {
   privateLocations,
   privateLocationEdit,
   adminSafety,
+  adminDisputes,
+  adminBookings,
 }
 
 sealed class ActiveIdentity {
@@ -124,6 +126,8 @@ const adminScreens = {
   Screen.adminQueue,
   Screen.adminApplication,
   Screen.adminSafety,
+  Screen.adminDisputes,
+  Screen.adminBookings,
 };
 
 class ScreenEntry {
