@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:earplug/models.dart';
 import 'package:earplug/services/statement_pdf.dart';
@@ -15,6 +16,64 @@ void main() {
     );
 
     expect(latin1.decode(bytes.sublist(0, 5)), '%PDF-');
+    expect(_pdfText(bytes), contains('Generated 1 Sep 2026, 04:05'));
+  });
+
+  for (final entry in const {
+    FundsState.pending: 'Pending',
+    FundsState.available: 'Available',
+    FundsState.reserved: 'Reserved',
+    FundsState.paid: 'Paid',
+    FundsState.refunded: 'Refunded',
+    FundsState.disputed: 'Disputed',
+    FundsState.unknown: 'Unknown',
+  }.entries) {
+    test('organizer statement labels ${entry.key.name} funds', () async {
+      final bytes = await buildOrganizerStatement(
+        organizationName: 'Local music collective',
+        from: _from,
+        to: _to,
+        export: StatementExport(
+          transactions: [
+            StatementTransaction(
+              id: 'transaction-1',
+              kind: LedgerKind.charge,
+              amountMinor: 15000,
+              currency: 'usd',
+              fundsState: entry.key,
+              occurredAt: _from,
+              label: 'Summer session',
+            ),
+          ],
+          totalsByKind: const [],
+          csv: '',
+          rows: 1,
+          truncated: false,
+        ),
+        generatedAt: _generatedAt,
+      );
+
+      final text = _pdfText(bytes);
+      expect(text, contains(entry.value));
+      if (entry.key != FundsState.unknown) {
+        expect(text, isNot(contains('Unknown')));
+      }
+    });
+  }
+
+  test('generated timestamp converts UTC to local 24-hour time', () async {
+    final generatedAt = DateTime(2026, 9, 1, 14, 5).toUtc();
+    final bytes = await buildOrganizerStatement(
+      organizationName: 'Local music collective',
+      from: _from,
+      to: _to,
+      export: _organizerExport(),
+      generatedAt: generatedAt,
+    );
+
+    final text = _pdfText(bytes);
+    expect(text, contains('Generated 1 Sep 2026, 14:05'));
+    expect(text, isNot(contains(generatedAt.toIso8601String())));
   });
 
   test('payout statement with payouts returns PDF bytes', () async {
@@ -27,6 +86,7 @@ void main() {
     );
 
     expect(latin1.decode(bytes.sublist(0, 5)), '%PDF-');
+    expect(_pdfText(bytes), contains('Generated 1 Sep 2026, 04:05'));
   });
 
   test('organizer statement accepts Latin-1, CJK, and emoji text', () async {
@@ -138,7 +198,28 @@ void main() {
 
 final _from = DateTime.utc(2026, 8, 1);
 final _to = DateTime.utc(2026, 8, 31);
-final _generatedAt = DateTime.utc(2026, 9, 1, 10, 30);
+final _generatedAt = DateTime(2026, 9, 1, 4, 5).toUtc();
+
+// Probe the simple Helvetica text in these fixtures. PDF streams may be
+// compressed, and each word is written as a separate literal text operand.
+String _pdfText(List<int> bytes) {
+  final pdf = latin1.decode(bytes);
+  final words = <String>[];
+  for (final stream in RegExp(r'<<([^<>]*)>>\s*stream\r?\n').allMatches(pdf)) {
+    final dictionary = stream.group(1)!;
+    final length = int.parse(
+      RegExp(r'/Length\s+(\d+)').firstMatch(dictionary)!.group(1)!,
+    );
+    final data = bytes.sublist(stream.end, stream.end + length);
+    final content = latin1.decode(
+      dictionary.contains('/FlateDecode') ? zlib.decode(data) : data,
+    );
+    words.addAll(
+      RegExp(r'\(([^()]*)\)').allMatches(content).map((word) => word.group(1)!),
+    );
+  }
+  return words.join(' ');
+}
 
 StatementExport _organizerExport({bool unicode = false}) => StatementExport(
   csv: '',
@@ -164,7 +245,7 @@ StatementExport _organizerExport({bool unicode = false}) => StatementExport(
       kind: LedgerKind.ticketRefund,
       amountMinor: -2500,
       currency: 'usd',
-      fundsState: FundsState.reversed,
+      fundsState: FundsState.refunded,
       occurredAt: DateTime.utc(2026, 8, 20),
       label: 'Ticket refund',
     ),

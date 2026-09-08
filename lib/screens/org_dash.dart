@@ -126,7 +126,8 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
                   label: 'VENUES',
                   value: '${dashboard.venues.length}',
                   caption: dashboard.pendingVenueConsents > 0
-                      ? '${dashboard.pendingVenueConsents} venue requests'
+                      ? '${dashboard.pendingVenueConsents} venue '
+                            '${dashboard.pendingVenueConsents == 1 ? 'request' : 'requests'}'
                       : 'managed profiles',
                 ),
                 const SizedBox(width: 8),

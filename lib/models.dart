@@ -3591,8 +3591,10 @@ enum LedgerKind {
 enum FundsState {
   pending('pending'),
   available('available'),
-  paidOut('paidOut'),
-  reversed('reversed'),
+  reserved('reserved'),
+  paid('paid'),
+  refunded('refunded'),
+  disputed('disputed'),
   unknown('unknown');
 
   const FundsState(this.wireValue);
@@ -3602,8 +3604,14 @@ enum FundsState {
   static FundsState fromWire(Object? value) => switch (value) {
     'pending' => FundsState.pending,
     'available' => FundsState.available,
-    'paidOut' => FundsState.paidOut,
-    'reversed' => FundsState.reversed,
+    'reserved' => FundsState.reserved,
+    'paid' => FundsState.paid,
+    'refunded' => FundsState.refunded,
+    'disputed' => FundsState.disputed,
+    // Legacy aliases: earlier client builds used these wire values; keep
+    // accepting them here only (no corresponding enum members).
+    'paidOut' => FundsState.paid,
+    'reversed' => FundsState.refunded,
     _ => FundsState.unknown,
   };
 }

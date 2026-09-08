@@ -4316,6 +4316,41 @@ void main() {
       }
     });
 
+    test('finance and statement transactions preserve every funds state', () {
+      const states = {
+        'pending': FundsState.pending,
+        'available': FundsState.available,
+        'reserved': FundsState.reserved,
+        'paid': FundsState.paid,
+        'refunded': FundsState.refunded,
+        'disputed': FundsState.disputed,
+        'unknown': FundsState.unknown,
+      };
+      expect(FundsState.values.map((state) => state.wireValue), states.keys);
+      for (final entry in states.entries) {
+        final json = {...transactionJson, 'fundsState': entry.key};
+        expect(FundsState.fromWire(entry.key), entry.value);
+        expect(entry.value.wireValue, entry.key);
+        expect(FinanceTransaction.fromJson(json).fundsState, entry.value);
+        expect(StatementTransaction.fromJson(json).fundsState, entry.value);
+      }
+    });
+
+    test('legacy funds states parse to canonical members and wire values', () {
+      const aliases = {
+        'paidOut': FundsState.paid,
+        'reversed': FundsState.refunded,
+      };
+      for (final entry in aliases.entries) {
+        final json = {...transactionJson, 'fundsState': entry.key};
+        expect(FundsState.fromWire(entry.key), entry.value);
+        expect(FinanceTransaction.fromJson(json).fundsState, entry.value);
+        expect(StatementTransaction.fromJson(json).fundsState, entry.value);
+      }
+      expect(FundsState.fromWire('paidOut').wireValue, 'paid');
+      expect(FundsState.fromWire('reversed').wireValue, 'refunded');
+    });
+
     test('FinanceTransaction parses money, references, and wire enums', () {
       final transaction = FinanceTransaction.fromJson(transactionJson);
       expect(transaction.id, 'ledger-1');

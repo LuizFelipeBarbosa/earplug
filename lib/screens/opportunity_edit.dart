@@ -728,6 +728,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         !isVenueOperator &&
         !_isPrivate &&
         draft &&
+        _venueId != null &&
         _venueConsent?.status != VenueConsentStatus.granted;
     final venueApproval = _venueApprovalStatus(_venueConsent?.status);
     final venueQuery = _venueSearch.text.trim().toLowerCase();

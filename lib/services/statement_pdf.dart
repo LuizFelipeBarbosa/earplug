@@ -60,7 +60,7 @@ Future<Uint8List> buildOrganizerStatement({
                 transaction.label,
                 _ledgerLabel(transaction.kind),
                 Money(transaction.amountMinor, transaction.currency).label,
-                _enumLabel(transaction.fundsState.name),
+                _fundsStateLabel(transaction.fundsState),
                 transaction.stripeRef ?? '',
               ],
           ],
@@ -190,7 +190,7 @@ Future<Uint8List> _buildStatement({
           pw.SizedBox(height: 4),
           pw.Text('${_formatDate(from)} - ${_formatDate(to)}'),
           pw.Text(
-            'Generated ${generatedAt.toIso8601String()}',
+            'Generated ${_formatGeneratedAt(generatedAt)}',
             style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700),
           ),
           pw.SizedBox(height: 18),
@@ -250,6 +250,16 @@ String _ledgerLabel(LedgerKind kind) => switch (kind) {
   _ => _enumLabel(kind.name),
 };
 
+String _fundsStateLabel(FundsState state) => switch (state) {
+  FundsState.pending => 'Pending',
+  FundsState.available => 'Available',
+  FundsState.reserved => 'Reserved',
+  FundsState.paid => 'Paid',
+  FundsState.refunded => 'Refunded',
+  FundsState.disputed => 'Disputed',
+  FundsState.unknown => 'Unknown',
+};
+
 String _enumLabel(String name) {
   final words = name.replaceAllMapped(
     RegExp(r'([a-z])([A-Z])'),
@@ -275,6 +285,13 @@ String _formatDate(DateTime date) {
     'Dec',
   ];
   return '${date.day} ${months[date.month - 1]} ${date.year}';
+}
+
+String _formatGeneratedAt(DateTime generatedAt) {
+  final local = generatedAt.toLocal();
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${_formatDate(local)}, $hour:$minute';
 }
 
 String _latin1Safe(String input) => String.fromCharCodes(

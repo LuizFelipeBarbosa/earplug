@@ -46,9 +46,11 @@ void main() {
             )
             .having((card) => card.label, 'label', 'VENUES')
             .having((card) => card.value, 'value', '1')
-            .having((card) => card.caption, 'caption', '1 venue requests'),
+            .having((card) => card.caption, 'caption', '1 venue request'),
       ),
     );
+    expect(find.text('1 venue request'), findsOneWidget);
+    expect(find.text('1 venue requests'), findsNothing);
     expect(
       stats,
       contains(

@@ -146,6 +146,33 @@ void main() {
     await _disposeApp(tester, harness.app);
   });
 
+  testWidgets('promoter draft without a venue shows a disabled open action', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final harness = await _pumpEditor(
+      tester,
+      auth,
+      repository,
+      'new',
+      organizationId: 'org3',
+    );
+
+    expect(harness.app.currentIsVenueOperator, isFalse);
+    expect(find.byKey(const Key('opp-edit-venue-search')), findsOneWidget);
+    expect(
+      tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).active,
+      isFalse,
+    );
+    expect(_action(tester, 'open').primaryLabel, 'OPEN FOR APPLICATIONS');
+    expect(_action(tester, 'open').onPrimary, isNull);
+    expect(find.text('OPEN FOR APPLICATIONS'), findsOneWidget);
+    expect(find.text('WAITING FOR VENUE APPROVAL'), findsNothing);
+
+    await _disposeApp(tester, harness.app);
+  });
+
   testWidgets('promoters search verified managed venues on a new draft', (
     tester,
   ) async {

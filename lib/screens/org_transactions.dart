@@ -156,9 +156,11 @@ class _TransactionRow extends StatelessWidget {
     };
     final amount = transaction.amount.label.replaceFirst(RegExp(r'^-'), '');
     final tone = switch (transaction.fundsState) {
-      FundsState.available || FundsState.paidOut => EpStatusPillTone.success,
-      FundsState.reversed => EpStatusPillTone.warning,
-      _ => EpStatusPillTone.neutral,
+      FundsState.available || FundsState.paid => EpStatusPillTone.success,
+      FundsState.refunded || FundsState.disputed => EpStatusPillTone.warning,
+      FundsState.pending ||
+      FundsState.reserved ||
+      FundsState.unknown => EpStatusPillTone.neutral,
     };
     return LedgerRow(
       title: transaction.label,
@@ -174,9 +176,15 @@ class _TransactionRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           StatusPill(
-            label: transaction.fundsState == FundsState.paidOut
-                ? 'paid out'
-                : transaction.fundsState.name,
+            label: switch (transaction.fundsState) {
+              FundsState.pending => 'PENDING',
+              FundsState.available => 'AVAILABLE',
+              FundsState.reserved => 'RESERVED',
+              FundsState.paid => 'PAID',
+              FundsState.refunded => 'REFUNDED',
+              FundsState.disputed => 'DISPUTED',
+              FundsState.unknown => 'UNKNOWN',
+            },
             tone: tone,
           ),
         ],
