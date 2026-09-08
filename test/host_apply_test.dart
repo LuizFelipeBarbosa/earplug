@@ -478,7 +478,10 @@ void main() {
     final repository = _HostTestRepository(
       auth: auth,
       hostRole: OrganizationRole.door,
-      excludedOrganizationTypes: const {OrganizationType.venueOperator},
+      excludedOrganizationTypes: const {
+        OrganizationType.venueOperator,
+        OrganizationType.promoter,
+      },
     );
     final harness = await pumpApp(
       tester,
@@ -572,6 +575,7 @@ void main() {
         excludedOrganizationTypes: const {
           OrganizationType.venueOperator,
           OrganizationType.privateHost,
+          OrganizationType.promoter,
         },
       );
       final draft = await _seedHostDraft(repository);
