@@ -449,6 +449,72 @@ class ConvexRepository implements EarplugRepository {
   );
 
   @override
+  Future<String> requestVenueConsent({
+    required String opportunityId,
+    String? message,
+  }) async {
+    final result = _asMap(
+      await _convexService.mutation('venueConsents:request', {
+        'opportunityId': opportunityId,
+        'message': ?message,
+      }),
+    );
+    return result['consentId'] as String;
+  }
+
+  @override
+  Future<void> withdrawVenueConsent(String consentId) async {
+    await _convexService.mutation('venueConsents:withdraw', {
+      'consentId': consentId,
+    });
+  }
+
+  @override
+  Future<void> decideVenueConsent({
+    required String consentId,
+    required bool granted,
+    String? note,
+  }) async {
+    await _convexService.mutation('venueConsents:decide', {
+      'consentId': consentId,
+      'decision': granted ? 'granted' : 'declined',
+      'note': ?note,
+    });
+  }
+
+  @override
+  Future<void> revokeVenueConsent(String consentId, {String? note}) async {
+    await _convexService.mutation('venueConsents:revoke', {
+      'consentId': consentId,
+      'note': ?note,
+    });
+  }
+
+  @override
+  Future<VenueConsent?> venueConsentForOpportunity(String opportunityId) async {
+    final json = _asMap(
+      await _convexService.query('venueConsents:forOpportunity', {
+        'opportunityId': opportunityId,
+      }),
+    );
+    return json.isEmpty ? null : VenueConsent.fromJson(json);
+  }
+
+  @override
+  Future<List<VenueConsentRow>> venueConsentsForOrganization(
+    String organizationId, {
+    VenueConsentStatus? status,
+  }) async {
+    final result = await _convexService.query(
+      'venueConsents:forVenueOrganization',
+      {'organizationId': organizationId, 'status': ?status?.wireValue},
+    );
+    return [
+      for (final json in _mapList(result)) VenueConsentRow.fromJson(json),
+    ];
+  }
+
+  @override
   Future<OrganizationApplication?> myOrganizationApplication() async {
     final json = _asMap(
       await _convexService.query('organizationApplications:mine'),
@@ -2159,6 +2225,20 @@ class ConvexRepository implements EarplugRepository {
       'bandId': bandId,
     });
     return [for (final json in _mapList(result)) Payout.fromJson(json)];
+  }
+
+  @override
+  Future<PayoutStatement> bandPayoutStatement(
+    String bandId, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final result = await _convexService.query('payouts:statementForBand', {
+      'bandId': bandId,
+      'fromMs': from.millisecondsSinceEpoch,
+      'toMs': to.millisecondsSinceEpoch,
+    });
+    return PayoutStatement.fromJson(_asMap(result));
   }
 
   @override

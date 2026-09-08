@@ -94,6 +94,16 @@ abstract final class DemoData {
   };
 
   static final organizations = <String, Organization>{
+    'org3': Organization(
+      id: 'org3',
+      slug: 'night-shift-collective',
+      name: 'Night Shift Collective',
+      orgType: OrganizationType.promoter,
+      status: OrganizationStatus.verified,
+      verified: true,
+      photoUrls: const [],
+      createdAt: DateTime(2025, 7, 1),
+    ),
     'org2': Organization(
       id: 'org2',
       slug: 'jordan-host',
@@ -203,6 +213,16 @@ abstract final class DemoData {
       );
 
   static final opportunitySlots = <String, List<OpportunitySlot>>{
+    'opp-promoter': [
+      OpportunitySlot(
+        id: 'opp-promoter-headliner',
+        order: 0,
+        role: SlotRole.headliner,
+        guaranteeMinor: 0,
+        required: true,
+        status: SlotStatus.open,
+      ),
+    ],
     'opp-private': [
       OpportunitySlot(
         id: 'opp-private-headliner',
@@ -255,6 +275,33 @@ abstract final class DemoData {
 
   /// Upcoming bookings and deadlines stay useful whenever the demo is opened.
   static final opportunities = <String, Opportunity>{
+    'opp-promoter': Opportunity(
+      id: 'opp-promoter',
+      organizationId: 'org3',
+      mode: OpportunityMode.publicEvent,
+      venueId: 'v1',
+      venue: venues['v1'],
+      title: 'Night Shift at The Foghorn Club',
+      desc: 'A late-night showcase of local bands from Night Shift Collective.',
+      genres: List<String>.of(bands['b1']!.genres),
+      startsAt: _demoStartsAt(40, 21),
+      ageRequirement: AgeRequirement.allAges,
+      flyKey: 'xerox',
+      applicationsCloseAt: _demoStartsAt(33, 21),
+      visibility: OpportunityVisibility.publicListing,
+      ticketing: OpportunityTicketing.none,
+      status: OpportunityStatus.draft,
+      slug: 'night-shift-at-the-foghorn-club',
+      revision: 1,
+      applicationCount: 0,
+      slots: opportunitySlots['opp-promoter']!,
+      invitedBandIds: const [],
+      createdAt: _demoToday.subtract(const Duration(days: 1)),
+      updatedAt: _demoToday.subtract(const Duration(days: 1)),
+      area: venues['v1']!.area,
+      venueType: venues['v1']!.venueType,
+      currency: 'usd',
+    ),
     'opp-private': Opportunity(
       id: 'opp-private',
       organizationId: 'org2',
@@ -362,6 +409,18 @@ abstract final class DemoData {
       area: venues['v1']!.approx.label,
       venueType: venues['v1']!.venueType,
       currency: 'usd',
+    ),
+  };
+
+  static final venueConsents = <String, VenueConsent>{
+    'consent-1': VenueConsent(
+      id: 'consent-1',
+      opportunityId: 'opp-promoter',
+      venueId: 'v1',
+      venueOrganizationId: 'org1',
+      requestingOrganizationId: 'org3',
+      status: VenueConsentStatus.pending,
+      createdAt: _demoToday.subtract(const Duration(hours: 6)),
     ),
   };
 

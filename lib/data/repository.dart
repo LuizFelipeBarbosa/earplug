@@ -502,6 +502,23 @@ abstract class EarplugRepository {
     int numItems = 25,
   });
 
+  Future<String> requestVenueConsent({
+    required String opportunityId,
+    String? message,
+  });
+  Future<void> withdrawVenueConsent(String consentId);
+  Future<void> decideVenueConsent({
+    required String consentId,
+    required bool granted,
+    String? note,
+  });
+  Future<void> revokeVenueConsent(String consentId, {String? note});
+  Future<VenueConsent?> venueConsentForOpportunity(String opportunityId);
+  Future<List<VenueConsentRow>> venueConsentsForOrganization(
+    String organizationId, {
+    VenueConsentStatus? status,
+  });
+
   /// The signed-in user's profile, or null when the backend holds none.
   Future<UserProfile?> me();
 
@@ -712,6 +729,12 @@ abstract class EarplugRepository {
 
   Future<StatementExport> exportStatement(
     String organizationId, {
+    required DateTime from,
+    required DateTime to,
+  });
+
+  Future<PayoutStatement> bandPayoutStatement(
+    String bandId, {
     required DateTime from,
     required DateTime to,
   });

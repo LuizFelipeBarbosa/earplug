@@ -136,8 +136,15 @@ class DemoRepository implements EarplugRepository {
         organization: _organizations['org2']!,
         role: OrganizationRole.owner,
       ),
+      OrganizationMembership(
+        organization: _organizations['org3']!,
+        role: OrganizationRole.owner,
+      ),
     ];
     _organizationMembers = {
+      'org3': {
+        DemoData.demoUserId: DemoData.organizationMembers[DemoData.demoUserId]!,
+      },
       'org2': {
         DemoData.demoUserId: DemoData.organizationMembers[DemoData.demoUserId]!,
       },
@@ -156,6 +163,7 @@ class DemoRepository implements EarplugRepository {
           DemoData.submittedOrganizationApplication,
     };
     _opportunities = Map<String, Opportunity>.of(DemoData.opportunities);
+    _venueConsents.addAll(DemoData.venueConsents);
     _artistApplications = Map<String, ArtistApplication>.of(
       DemoData.artistApplications,
     );
@@ -235,10 +243,12 @@ class DemoRepository implements EarplugRepository {
   late final Map<String, PrivateLocation> _privateLocations;
   final Map<String, SafetyReport> _safetyReports = {};
   final Map<String, Dispute> _disputes = {};
+  final Map<String, VenueConsent> _venueConsents = {};
   final Map<String, BookingStatus> _disputedFromStatus = {};
   int _nextPrivateLocationId = 1;
   int _nextSafetyReportId = 1;
   int _nextDisputeId = 1;
+  int _nextVenueConsentId = 1;
   late final List<OrganizationMembership> _organizationMemberships;
   late final Map<String, Map<String, OrganizationMember>> _organizationMembers;
   late final Map<String, OrganizationPrivateDetails>
@@ -1241,6 +1251,227 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
+  Future<String> requestVenueConsent({
+    required String opportunityId,
+    String? message,
+  }) async {
+    final opportunity = _requireOpportunity(opportunityId);
+    if (opportunity.status != OpportunityStatus.draft) {
+      throw StateError(
+        'Request venue approval while the event is still a draft',
+      );
+    }
+    final venueId = opportunity.venueId;
+    if (venueId == null) throw StateError('This opportunity has no venue');
+    final venue = _requireVenue(venueId);
+    if (venue.managedByOrganizationId == null ||
+        venue.managedByOrganizationId == opportunity.organizationId) {
+      throw StateError('This is one of your own venues');
+    }
+    if (_currentVenueConsent(opportunityId) != null) {
+      throw StateError('A venue request is already open');
+    }
+    final trimmedMessage = (message ?? '').trim();
+    if (trimmedMessage.length > 1000) {
+      throw StateError('Message must be 1000 characters or fewer');
+    }
+    final id = 'demo-consent-${_nextVenueConsentId++}';
+    _venueConsents[id] = VenueConsent(
+      id: id,
+      opportunityId: opportunityId,
+      venueId: venueId,
+      venueOrganizationId: venue.managedByOrganizationId!,
+      requestingOrganizationId: opportunity.organizationId,
+      status: VenueConsentStatus.pending,
+      message: trimmedMessage.isEmpty ? null : trimmedMessage,
+      createdAt: DateTime.now(),
+    );
+    return id;
+  }
+
+  @override
+  Future<void> withdrawVenueConsent(String consentId) async {
+    final consent = _requireVenueConsent(consentId);
+    if (consent.status != VenueConsentStatus.pending) {
+      throw StateError(
+        'Venue approval cannot go from ${consent.status.wireValue} to withdrawn',
+      );
+    }
+    final opportunity = _requireOpportunity(consent.opportunityId);
+    if (opportunity.status != OpportunityStatus.draft) {
+      throw StateError('Withdraw is only possible while the event is a draft');
+    }
+    _venueConsents[consentId] = _copyVenueConsent(
+      consent,
+      status: VenueConsentStatus.withdrawn,
+      note: consent.note,
+      decidedAt: consent.decidedAt,
+    );
+  }
+
+  @override
+  Future<void> decideVenueConsent({
+    required String consentId,
+    required bool granted,
+    String? note,
+  }) async {
+    final consent = _requireVenueConsent(consentId);
+    final status = granted
+        ? VenueConsentStatus.granted
+        : VenueConsentStatus.declined;
+    if (consent.status != VenueConsentStatus.pending) {
+      throw StateError(
+        'Venue approval cannot go from ${consent.status.wireValue} to ${status.wireValue}',
+      );
+    }
+    final trimmedNote = (note ?? '').trim();
+    if (trimmedNote.length > 1000) {
+      throw StateError('Note must be 1000 characters or fewer');
+    }
+    _venueConsents[consentId] = _copyVenueConsent(
+      consent,
+      status: status,
+      note: trimmedNote.isEmpty ? null : trimmedNote,
+      decidedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> revokeVenueConsent(String consentId, {String? note}) async {
+    final consent = _requireVenueConsent(consentId);
+    if (consent.status != VenueConsentStatus.granted) {
+      throw StateError(
+        'Venue approval cannot go from ${consent.status.wireValue} to revoked',
+      );
+    }
+    final opportunity = _requireOpportunity(consent.opportunityId);
+    const blockingStatuses = {
+      BookingStatus.confirmed,
+      BookingStatus.completed,
+      BookingStatus.paid,
+      BookingStatus.disputed,
+    };
+    if (_bookings.values.any(
+      (booking) =>
+          booking.opportunityId == opportunity.id &&
+          blockingStatuses.contains(booking.status),
+    )) {
+      throw StateError(
+        'This event already has a confirmed booking. Contact EarPlug support.',
+      );
+    }
+    final trimmedNote = (note ?? '').trim();
+    if (trimmedNote.length > 1000) {
+      throw StateError('Note must be 1000 characters or fewer');
+    }
+    _venueConsents[consentId] = _copyVenueConsent(
+      consent,
+      status: VenueConsentStatus.revoked,
+      note: trimmedNote.isEmpty ? null : trimmedNote,
+      decidedAt: DateTime.now(),
+    );
+    if (opportunity.status != OpportunityStatus.draft &&
+        opportunity.status != OpportunityStatus.cancelled &&
+        opportunity.status != OpportunityStatus.completed) {
+      await cancelOpportunity(opportunity.id, reason: 'Venue approval revoked');
+    }
+  }
+
+  @override
+  Future<VenueConsent?> venueConsentForOpportunity(String opportunityId) async {
+    _requireOpportunity(opportunityId);
+    final active = _currentVenueConsent(opportunityId);
+    if (active != null) return active;
+    VenueConsent? latest;
+    for (final consent in _venueConsents.values) {
+      if (consent.opportunityId == opportunityId &&
+          (consent.status == VenueConsentStatus.declined ||
+              consent.status == VenueConsentStatus.revoked) &&
+          (latest == null || consent.createdAt.isAfter(latest.createdAt))) {
+        latest = consent;
+      }
+    }
+    return latest;
+  }
+
+  @override
+  Future<List<VenueConsentRow>> venueConsentsForOrganization(
+    String organizationId, {
+    VenueConsentStatus? status,
+  }) async {
+    final rows = <VenueConsentRow>[];
+    for (final consent in _venueConsents.values) {
+      if (consent.venueOrganizationId != organizationId) continue;
+      final matchesStatus = status == null
+          ? consent.status == VenueConsentStatus.pending ||
+                consent.status == VenueConsentStatus.granted
+          : consent.status == status;
+      if (!matchesStatus) continue;
+      final opportunity = _requireOpportunity(consent.opportunityId);
+      final venue = _requireVenue(consent.venueId);
+      final organization = _requireOrganization(
+        consent.requestingOrganizationId,
+      );
+      rows.add(
+        VenueConsentRow(
+          id: consent.id,
+          opportunityId: consent.opportunityId,
+          venueId: consent.venueId,
+          venueOrganizationId: consent.venueOrganizationId,
+          requestingOrganizationId: consent.requestingOrganizationId,
+          status: consent.status,
+          message: consent.message,
+          note: consent.note,
+          createdAt: consent.createdAt,
+          decidedAt: consent.decidedAt,
+          opportunityTitle: opportunity.title,
+          opportunityStatus: opportunity.status,
+          startsAt: opportunity.startsAt,
+          endsAt: opportunity.endsAt,
+          venueName: venue.name,
+          requestingOrganizationName: organization.name,
+        ),
+      );
+    }
+    rows.sort((left, right) => right.createdAt.compareTo(left.createdAt));
+    return rows;
+  }
+
+  VenueConsent _requireVenueConsent(String consentId) {
+    final consent = _venueConsents[consentId];
+    if (consent == null) throw StateError('Venue request not found');
+    return consent;
+  }
+
+  VenueConsent? _currentVenueConsent(String opportunityId) => _venueConsents
+      .values
+      .where(
+        (consent) =>
+            consent.opportunityId == opportunityId &&
+            (consent.status == VenueConsentStatus.pending ||
+                consent.status == VenueConsentStatus.granted),
+      )
+      .firstOrNull;
+
+  VenueConsent _copyVenueConsent(
+    VenueConsent consent, {
+    required VenueConsentStatus status,
+    required String? note,
+    required DateTime? decidedAt,
+  }) => VenueConsent(
+    id: consent.id,
+    opportunityId: consent.opportunityId,
+    venueId: consent.venueId,
+    venueOrganizationId: consent.venueOrganizationId,
+    requestingOrganizationId: consent.requestingOrganizationId,
+    status: status,
+    message: consent.message,
+    note: note,
+    createdAt: consent.createdAt,
+    decidedAt: decidedAt,
+  );
+
+  @override
   Future<AdminBookingsPage> adminBookings({
     required AdminBookingFilter filter,
     String? cursor,
@@ -1734,6 +1965,13 @@ class DemoRepository implements EarplugRepository {
       ],
       memberCount: _organizationMembers[organizationId]?.length ?? 0,
       privateDetails: _organizationPrivateDetails[organizationId],
+      pendingVenueConsents: _venueConsents.values
+          .where(
+            (consent) =>
+                consent.status == VenueConsentStatus.pending &&
+                consent.venueOrganizationId == organizationId,
+          )
+          .length,
     );
   }
 
@@ -2647,10 +2885,39 @@ class DemoRepository implements EarplugRepository {
               transaction.id,
         ].map(csvField).join(','),
     ];
+    final totals = <LedgerKind, StatementTotal>{};
+    for (final transaction in transactions) {
+      final previous = totals[transaction.kind];
+      totals[transaction.kind] = StatementTotal(
+        kind: transaction.kind,
+        amountMinor: (previous?.amountMinor ?? 0) + transaction.amountMinor,
+        count: (previous?.count ?? 0) + 1,
+      );
+    }
+    final totalsByKind = totals.values.toList()
+      ..sort(
+        (left, right) => left.kind.wireValue.compareTo(right.kind.wireValue),
+      );
     return StatementExport(
       csv: lines.join('\n'),
       rows: transactions.length,
       truncated: false,
+      transactions: [
+        for (final transaction in transactions)
+          StatementTransaction(
+            id: transaction.id,
+            kind: transaction.kind,
+            amountMinor: transaction.amountMinor,
+            currency: transaction.currency,
+            fundsState: transaction.fundsState,
+            occurredAt: transaction.occurredAt,
+            label: transaction.label,
+            bookingId: transaction.bookingId,
+            ticketOrderId: transaction.ticketOrderId,
+            stripeRef: transaction.stripeRef,
+          ),
+      ],
+      totalsByKind: totalsByKind,
     );
   }
 
@@ -3614,6 +3881,15 @@ class DemoRepository implements EarplugRepository {
     if (!existing.applicationsCloseAt.isBefore(existing.startsAt)) {
       throw StateError('Applications must close before the event starts');
     }
+    if (existing.venueId != null) {
+      final venue = _requireVenue(existing.venueId!);
+      if (venue.managedByOrganizationId != null &&
+          venue.managedByOrganizationId != existing.organizationId &&
+          _currentVenueConsent(opportunityId)?.status !=
+              VenueConsentStatus.granted) {
+        throw StateError('The venue has not approved this event yet');
+      }
+    }
     final updated = _copyOpportunity(
       existing,
       status: OpportunityStatus.open,
@@ -3767,10 +4043,16 @@ class DemoRepository implements EarplugRepository {
     final rest = <Opportunity>[];
     for (final opportunity in _opportunities.values) {
       if (opportunity.organizationId != organizationId) continue;
+      final result = _copyOpportunity(
+        opportunity,
+        venueConsentStatus: (await venueConsentForOpportunity(
+          opportunity.id,
+        ))?.status,
+      );
       if (opportunity.status == OpportunityStatus.draft) {
-        drafts.add(opportunity);
+        drafts.add(result);
       } else {
-        rest.add(opportunity);
+        rest.add(result);
       }
     }
     drafts.sort((a, b) => a.startsAt.compareTo(b.startsAt));
@@ -3779,8 +4061,14 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
-  Future<Opportunity?> opportunity(String opportunityId) async =>
-      _opportunities[opportunityId];
+  Future<Opportunity?> opportunity(String opportunityId) async {
+    final stored = _opportunities[opportunityId];
+    if (stored == null) return null;
+    return _copyOpportunity(
+      stored,
+      venueConsentStatus: (await venueConsentForOpportunity(stored.id))?.status,
+    );
+  }
 
   @override
   Future<List<ApplicantRow>> applicantsFor(String opportunityId) async => [
@@ -4503,6 +4791,69 @@ class DemoRepository implements EarplugRepository {
       throw StateError('Not permitted for this band');
     }
     return List<Payout>.of(_payoutsByBand[bandId] ?? const []);
+  }
+
+  @override
+  Future<PayoutStatement> bandPayoutStatement(
+    String bandId, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final payouts = await payoutsForBand(bandId);
+    if (from.isAfter(to)) throw StateError('fromMs must not be after toMs');
+    if (to.difference(from) > const Duration(days: 366)) {
+      throw StateError('Choose a range of one year or less');
+    }
+    final rows = <PayoutStatementRow>[];
+    for (final payout in payouts) {
+      final paidAt = payout.paidAt;
+      if ((payout.status != PayoutStatus.paid &&
+              payout.status != PayoutStatus.reversed) ||
+          paidAt == null ||
+          paidAt.isBefore(from) ||
+          paidAt.isAfter(to)) {
+        continue;
+      }
+      final bookingId = _payoutsByBooking.entries
+          .where((entry) => entry.value.any((item) => item.id == payout.id))
+          .firstOrNull
+          ?.key;
+      final booking = _bookings[bookingId];
+      if (booking == null) continue;
+      final opportunity = _opportunities[booking.opportunityId];
+      final organization = _organizations[booking.organizationId];
+      if (opportunity == null || organization == null) continue;
+      rows.add(
+        PayoutStatementRow(
+          payoutId: payout.id,
+          bookingId: booking.id,
+          bookingTitle: opportunity.title,
+          organizationName: organization.name,
+          kind: payout.kind,
+          status: payout.status,
+          paidAt: paidAt,
+          netMinor: payout.amountMinor,
+          // Demo payouts do not carry reversal amounts or Stripe transfers.
+          reversedMinor: 0,
+          currency: payout.currency,
+          grossMinor: payout.kind == PayoutKind.completion
+              ? booking.fee.grossMinor
+              : null,
+          commissionMinor: payout.kind == PayoutKind.completion
+              ? booking.fee.commissionMinor
+              : null,
+        ),
+      );
+    }
+    rows.sort((left, right) => right.paidAt.compareTo(left.paidAt));
+    return PayoutStatement(
+      payouts: rows,
+      totalNetMinor: rows.fold(
+        0,
+        (total, row) => total + row.netMinor - row.reversedMinor,
+      ),
+      truncated: false,
+    );
   }
 
   @override
@@ -5710,6 +6061,7 @@ class DemoRepository implements EarplugRepository {
     String? ticketCurrency,
     String? externalUrl,
     OpportunityStatus? status,
+    VenueConsentStatus? venueConsentStatus,
     int? revision,
     int? applicationCount,
     List<OpportunitySlot>? slots,
@@ -5752,6 +6104,7 @@ class DemoRepository implements EarplugRepository {
       ticketCurrency: ticketCurrency ?? opportunity.ticketCurrency,
       externalUrl: externalUrl ?? opportunity.externalUrl,
       status: status ?? opportunity.status,
+      venueConsentStatus: venueConsentStatus ?? opportunity.venueConsentStatus,
       slug: slug ?? opportunity.slug,
       revision: revision ?? opportunity.revision,
       applicationCount: applicationCount ?? opportunity.applicationCount,
