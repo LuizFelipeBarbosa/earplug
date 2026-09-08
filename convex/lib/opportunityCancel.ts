@@ -48,7 +48,7 @@ export async function cancelOpportunity(
       cancelledBy: "organizer",
       cancelledByUserId: args.actorUserId,
       cancelledAt: now,
-      cancelReason: "Opportunity cancelled",
+      cancelReason: args.reason,
       revision: booking.revision + 1,
       updatedAt: now,
     });

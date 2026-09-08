@@ -330,7 +330,7 @@ describe("cancelOpportunity", () => {
         cancelledBy: "organizer",
         cancelledByUserId: f.managerId,
         cancelledAt: NOW + 1000,
-        cancelReason: "Opportunity cancelled",
+        cancelReason: CUSTOM_REASON,
         revision: 2,
         updatedAt: NOW + 1000,
       });
@@ -365,8 +365,8 @@ describe("cancelOpportunity", () => {
         "artist@opportunity.test",
       ]);
       expect(emails[0].scheduledTime).toBe(NOW + 1000);
-      expect(emails[0].args[0].text).toContain("Reason: Opportunity cancelled");
-      expect(emails[0].args[0].text).not.toContain(CUSTOM_REASON);
+      expect(emails[0].args[0].text).toContain(`Reason: ${CUSTOM_REASON}`);
+      expect(emails[0].args[0].text).toContain(CUSTOM_REASON);
       await expect(f.cancel(f.managerId)).rejects.toThrow(
         "Opportunity cannot go from cancelled to cancelled",
       );
@@ -400,7 +400,7 @@ describe("cancelOpportunity", () => {
       cancelledBy: "organizer",
       cancelledByUserId: f.ownerId,
       cancelledAt: NOW + 1000,
-      cancelReason: "Opportunity cancelled",
+      cancelReason: CUSTOM_REASON,
       revision: 4,
       updatedAt: NOW + 1000,
     });
@@ -434,8 +434,8 @@ describe("cancelOpportunity", () => {
       "artist@opportunity.test",
     ]);
     expect(emails[0].scheduledTime).toBe(NOW + 1000);
-    expect(emails[0].args[0].text).toContain("Reason: Opportunity cancelled");
-    expect(emails[0].args[0].text).not.toContain(CUSTOM_REASON);
+    expect(emails[0].args[0].text).toContain(`Reason: ${CUSTOM_REASON}`);
+    expect(emails[0].args[0].text).toContain(CUSTOM_REASON);
   });
 
   test("requests ticket refunds and emails buyers for a paid-ticket gig", async () => {
