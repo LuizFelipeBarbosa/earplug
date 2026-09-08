@@ -114,6 +114,7 @@ void main() {
     final booking = await _paidBooking(repository);
     final disputeId = await repository.openDispute(
       bookingId: booking.id,
+      side: DisputeSide.organizer,
       category: DisputeCategory.noShow,
       text: 'The band did not arrive for the show.',
       requestedRefundMinor: 5000,
@@ -208,6 +209,7 @@ void main() {
     final booking = await _paidBooking(repository, bandId: 'b1');
     final disputeId = await repository.openDispute(
       bookingId: booking.id,
+      side: DisputeSide.artist,
       category: DisputeCategory.other,
       text: 'The performance was cut short without notice.',
     );
@@ -254,6 +256,7 @@ void main() {
     final booking = await _paidBooking(repository);
     final disputeId = await repository.openDispute(
       bookingId: booking.id,
+      side: DisputeSide.organizer,
       category: DisputeCategory.payment,
       text: 'Please review the payment for this show.',
       requestedRefundMinor: 5000,
@@ -327,6 +330,7 @@ void main() {
       disputeIds.add(
         await repository.openDispute(
           bookingId: booking.id,
+          side: DisputeSide.organizer,
           category: DisputeCategory.other,
           text: 'Please review performance $index.',
           requestedRefundMinor: 5000,

@@ -375,6 +375,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<String> openDispute({
     required String bookingId,
+    required DisputeSide side,
     required DisputeCategory category,
     required String text,
     int? requestedRefundMinor,
@@ -382,6 +383,7 @@ class ConvexRepository implements EarplugRepository {
     final result = _asMap(
       await _convexService.mutation('disputes:open', {
         'bookingId': bookingId,
+        'side': side.wireValue,
         'category': category.wireValue,
         'text': text,
         'requestedRefundMinor': ?requestedRefundMinor,

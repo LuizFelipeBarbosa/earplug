@@ -1051,12 +1051,15 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<String> openDispute({
     required String bookingId,
+    required DisputeSide side,
     required DisputeCategory category,
     required String text,
     int? requestedRefundMinor,
   }) async {
     final booking = _requireBooking(bookingId);
-    final side = _disputeReportingSide(booking);
+    if (!_callerHoldsDisputeSide(booking, side)) {
+      throw StateError('Not permitted to access disputes for this booking');
+    }
     if (category == DisputeCategory.unknown) {
       throw StateError('Unknown dispute category');
     }
@@ -1291,6 +1294,23 @@ class DemoRepository implements EarplugRepository {
       isDone: end == bookings.length,
     );
   }
+
+  bool _callerHoldsDisputeSide(Booking booking, DisputeSide side) =>
+      switch (side) {
+        DisputeSide.artist => _memberships.any(
+          (membership) =>
+              membership.band.id == booking.bandId &&
+              membership.role == 'admin',
+        ),
+        DisputeSide.organizer => _organizationMemberships.any(
+          (membership) =>
+              membership.organization.id == booking.organizationId &&
+              (membership.role == OrganizationRole.owner ||
+                  membership.role == OrganizationRole.manager ||
+                  membership.role == OrganizationRole.finance),
+        ),
+        DisputeSide.unknown => false,
+      };
 
   DisputeSide _disputeReportingSide(Booking booking) {
     // Band admins take precedence even when they also manage the organizer.

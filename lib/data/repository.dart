@@ -482,6 +482,7 @@ abstract class EarplugRepository {
 
   Future<String> openDispute({
     required String bookingId,
+    required DisputeSide side,
     required DisputeCategory category,
     required String text,
     int? requestedRefundMinor,

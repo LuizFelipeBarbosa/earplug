@@ -231,6 +231,7 @@ void main() {
     final booking = await _createDisputeEligibleBooking(repository);
     final firstId = await repository.openDispute(
       bookingId: booking.id,
+      side: DisputeSide.organizer,
       category: DisputeCategory.payment,
       text: 'Please review the payment for this event.',
       requestedRefundMinor: 1000,
@@ -242,6 +243,7 @@ void main() {
     );
     final latestId = await repository.openDispute(
       bookingId: booking.id,
+      side: DisputeSide.organizer,
       category: DisputeCategory.noShow,
       text: 'The artist never arrived for the performance.',
       requestedRefundMinor: booking.paidMinor,

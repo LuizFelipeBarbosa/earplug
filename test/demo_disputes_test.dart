@@ -73,6 +73,7 @@ void main() {
     expect(booking.paidMinor, 10000);
     final disputeId = await repo.openDispute(
       bookingId: booking.id,
+      side: DisputeSide.organizer,
       category: DisputeCategory.noShow,
       text: '  The band did not show up for the performance.  ',
       requestedRefundMinor: 5000,
@@ -93,6 +94,7 @@ void main() {
     await expectLater(
       repo.openDispute(
         bookingId: booking.id,
+        side: DisputeSide.organizer,
         category: DisputeCategory.payment,
         text: 'A second refund request.',
         requestedRefundMinor: 5000,
@@ -145,6 +147,7 @@ void main() {
     await expectLater(
       repo.openDispute(
         bookingId: booking.id,
+        side: DisputeSide.organizer,
         category: DisputeCategory.payment,
         text: 'Another request while under review.',
         requestedRefundMinor: 5000,
@@ -174,13 +177,14 @@ void main() {
   });
 
   test(
-    'band admin takes precedence and release restores the booking',
+    'opening as artist rejects refunds and release restores the booking',
     () async {
       final repo = DemoRepository(auth: FakeAuthService());
       final booking = await _paidBooking(repo, bandId: 'b1');
       await expectLater(
         repo.openDispute(
           bookingId: booking.id,
+          side: DisputeSide.artist,
           category: DisputeCategory.other,
           text: 'Set was cut short without notice.',
           requestedRefundMinor: 100,
@@ -189,6 +193,7 @@ void main() {
       );
       final id = await repo.openDispute(
         bookingId: booking.id,
+        side: DisputeSide.artist,
         category: DisputeCategory.other,
         text: 'Set was cut short without notice.',
       );
@@ -213,6 +218,85 @@ void main() {
     },
   );
 
+  test('a caller with both roles can open disputes as either side', () async {
+    final repo = DemoRepository(auth: FakeAuthService());
+    // The demo caller owns org1 and is an admin of b1.
+    final booking = await _paidBooking(repo, bandId: 'b1');
+    final organizerId = await repo.openDispute(
+      bookingId: booking.id,
+      side: DisputeSide.organizer,
+      category: DisputeCategory.lateOrShortSet,
+      text: 'Only half the agreed set was played.',
+      requestedRefundMinor: 2500,
+    );
+    final organizerDispute = (await repo.disputesForBooking(booking.id)).single;
+    expect(organizerDispute.disputeId, organizerId);
+    expect(organizerDispute.side, DisputeSide.organizer);
+    expect(organizerDispute.requestedRefundMinor, 2500);
+
+    // Close the first dispute before opening another on the same booking.
+    repo.platformAdmin = true;
+    await repo.resolveDispute(
+      organizerId,
+      resolution: DisputeResolution.dismissed,
+    );
+    repo.platformAdmin = false;
+    final artistId = await repo.openDispute(
+      bookingId: booking.id,
+      side: DisputeSide.artist,
+      category: DisputeCategory.other,
+      text: 'The organizer ended our performance early.',
+    );
+    final history = await repo.disputesForBooking(booking.id);
+    expect(history, hasLength(2));
+    final artistDispute = history.singleWhere(
+      (dispute) => dispute.disputeId == artistId,
+    );
+    expect(artistDispute.side, DisputeSide.artist);
+    expect(artistDispute.requestedRefundMinor, isNull);
+    expect(artistDispute.status, DisputeStatus.open);
+  });
+
+  test('a caller must hold the role for the requested dispute side', () async {
+    final repo = DemoRepository(auth: FakeAuthService());
+    final organizerBooking = await _paidBooking(repo);
+    await expectLater(
+      repo.openDispute(
+        bookingId: organizerBooking.id,
+        side: DisputeSide.artist,
+        category: DisputeCategory.other,
+        text: 'The organizer ended our performance early.',
+      ),
+      _stateError('Not permitted to access disputes for this booking'),
+    );
+    expect(await repo.disputesForBooking(organizerBooking.id), isEmpty);
+    expect(
+      (await repo.booking(organizerBooking.id))!.status,
+      organizerBooking.status,
+    );
+
+    final artistBooking = await _paidBooking(repo, bandId: 'b1');
+    await repo.removeOrganizationMember(
+      organizationId: 'org1',
+      userId: DemoData.demoUserId,
+    );
+    await expectLater(
+      repo.openDispute(
+        bookingId: artistBooking.id,
+        side: DisputeSide.organizer,
+        category: DisputeCategory.payment,
+        text: 'Please review this payment.',
+        requestedRefundMinor: 2500,
+      ),
+      _stateError('Not permitted to access disputes for this booking'),
+    );
+    expect(await repo.disputesForBooking(artistBooking.id), isEmpty);
+    expect(
+      (await repo.booking(artistBooking.id))!.status,
+      artistBooking.status,
+    );
+  });
+
   test(
     'invalid requests leave bookings and dispute history unchanged',
     () async {
@@ -222,6 +306,7 @@ void main() {
         await expectLater(
           repo.openDispute(
             bookingId: booking.id,
+            side: DisputeSide.organizer,
             category: DisputeCategory.payment,
             text: 'Please review this payment.',
             requestedRefundMinor: amount,
@@ -233,6 +318,7 @@ void main() {
         await expectLater(
           repo.openDispute(
             bookingId: booking.id,
+            side: DisputeSide.organizer,
             category: DisputeCategory.payment,
             text: details,
             requestedRefundMinor: 100,
@@ -254,6 +340,7 @@ void main() {
         await expectLater(
           repo.openDispute(
             bookingId: invalid.id,
+            side: DisputeSide.organizer,
             category: DisputeCategory.payment,
             text: 'Please review this payment.',
             requestedRefundMinor: 100,
@@ -273,6 +360,7 @@ void main() {
     final booking = await _paidBooking(repo);
     final id = await repo.openDispute(
       bookingId: booking.id,
+      side: DisputeSide.organizer,
       category: DisputeCategory.payment,
       text: 'Please review this payment.',
       requestedRefundMinor: 1000,
@@ -304,6 +392,7 @@ void main() {
     await expectLater(
       repo.openDispute(
         bookingId: booking.id,
+        side: DisputeSide.organizer,
         category: DisputeCategory.payment,
         text: 'Another refund request.',
         requestedRefundMinor: 100,
@@ -327,6 +416,7 @@ void main() {
     final booking = await _paidBooking(repo);
     final id = await repo.openDispute(
       bookingId: booking.id,
+      side: DisputeSide.organizer,
       category: DisputeCategory.noShow,
       text: 'The band did not show up for the performance.',
       requestedRefundMinor: booking.paidMinor,
@@ -370,6 +460,7 @@ void main() {
     expect((await repo.booking(booking.id))!.status, booking.status);
     final secondId = await repo.openDispute(
       bookingId: booking.id,
+      side: DisputeSide.organizer,
       category: DisputeCategory.noShow,
       text: 'Additional details about the missed performance.',
       requestedRefundMinor: booking.paidMinor,
@@ -402,6 +493,9 @@ void main() {
     for (final booking in [first, second]) {
       await repo.openDispute(
         bookingId: booking.id,
+        side: booking.bandId == 'b2'
+            ? DisputeSide.organizer
+            : DisputeSide.artist,
         category: DisputeCategory.other,
         text: 'Please review the performance details.',
         requestedRefundMinor: booking.bandId == 'b2' ? 100 : null,

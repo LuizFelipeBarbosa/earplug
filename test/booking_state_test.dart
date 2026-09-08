@@ -441,58 +441,87 @@ void main() {
     harness.app.dispose();
   });
 
-  testWidgets('openDispute forwards arguments and refreshes booking state', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    final booking = _booking(status: BookingStatus.confirmed);
-    final disputed = _booking(status: BookingStatus.disputed, revision: 2);
-    final disputes = [_dispute()];
-    final repository = _ControlledBookingRepository(auth: auth)
-      ..bookingResult = booking
-      ..organizationResults = [booking]
-      ..disputedBooking = disputed
-      ..disputesForBookingResult = disputes;
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const SizedBox.shrink(),
-    );
-    await harness.auth.signInDemo();
-    await tester.pumpAndSettle();
-    harness.app.switchToOrganization('org1');
-    await tester.pumpAndSettle();
-    harness.app.openBooking(booking.id);
-    await tester.pumpAndSettle();
+  for (final (viewerSide, disputeSide) in [
+    (BookingSide.organizer, DisputeSide.organizer),
+    (BookingSide.artist, DisputeSide.artist),
+  ]) {
+    testWidgets(
+      'openDispute forwards arguments and refreshes booking state as ${viewerSide.wireValue}',
+      (tester) async {
+        final auth = FakeAuthService();
+        final booking = _booking(
+          viewerSide: viewerSide,
+          status: BookingStatus.confirmed,
+        );
+        final disputed = _booking(
+          viewerSide: viewerSide,
+          status: BookingStatus.disputed,
+          revision: 2,
+        );
+        final disputes = [_dispute(side: disputeSide)];
+        final repository = _ControlledBookingRepository(auth: auth)
+          ..bookingResult = booking
+          ..organizationResults = [booking]
+          ..bandResults = [booking]
+          ..disputedBooking = disputed
+          ..disputesForBookingResult = disputes;
+        final harness = await pumpApp(
+          tester,
+          auth: auth,
+          repository: repository,
+          home: const SizedBox.shrink(),
+        );
+        await harness.auth.signInDemo();
+        await tester.pumpAndSettle();
+        if (viewerSide == BookingSide.organizer) {
+          harness.app.switchToOrganization('org1');
+        } else {
+          harness.app.switchToBand('b1');
+        }
+        await tester.pumpAndSettle();
+        harness.app.openBooking(booking.id);
+        await tester.pumpAndSettle();
 
-    final refreshed = await harness.app.openDispute(
-      booking,
-      category: DisputeCategory.lateOrShortSet,
-      text: 'Only half the agreed set was played.',
-      requestedRefundMinor: 2500,
-    );
+        final requestedRefundMinor = viewerSide == BookingSide.organizer
+            ? 2500
+            : null;
+        final refreshed = await harness.app.openDispute(
+          booking,
+          category: DisputeCategory.lateOrShortSet,
+          text: 'Only half the agreed set was played.',
+          requestedRefundMinor: requestedRefundMinor,
+        );
 
-    expect(repository.openDisputeRequest, (
-      bookingId: booking.id,
-      category: DisputeCategory.lateOrShortSet,
-      text: 'Only half the agreed set was played.',
-      requestedRefundMinor: 2500,
-    ));
-    expect(repository.disputesForBookingCalls, [booking.id]);
-    expect(harness.app.disputesFor(booking.id), same(disputes));
-    expect(refreshed, same(disputed));
-    expect(harness.app.bookingById(booking.id), same(disputed));
-    expect(harness.app.bookingById(booking.id)!.status, BookingStatus.disputed);
-    expect(repository.bookingCalls, 2);
-    expect(repository.viewAsCalls, [
-      BookingSide.organizer,
-      BookingSide.organizer,
-    ]);
-    expect(harness.app.organizationBookings, [disputed]);
-    expect(repository.organizationRequests, ['org1']);
-    harness.app.dispose();
-  });
+        expect(repository.openDisputeRequest, (
+          bookingId: booking.id,
+          side: disputeSide,
+          category: DisputeCategory.lateOrShortSet,
+          text: 'Only half the agreed set was played.',
+          requestedRefundMinor: requestedRefundMinor,
+        ));
+        expect(repository.disputesForBookingCalls, [booking.id]);
+        expect(harness.app.disputesFor(booking.id), same(disputes));
+        expect(refreshed, same(disputed));
+        expect(harness.app.bookingById(booking.id), same(disputed));
+        expect(
+          harness.app.bookingById(booking.id)!.status,
+          BookingStatus.disputed,
+        );
+        expect(repository.bookingCalls, 2);
+        expect(repository.viewAsCalls, [viewerSide, viewerSide]);
+        if (viewerSide == BookingSide.organizer) {
+          expect(harness.app.organizationBookings, [disputed]);
+          expect(repository.organizationRequests, ['org1']);
+          expect(repository.bandRequests, ['b1']);
+        } else {
+          expect(harness.app.bandBookings, [disputed]);
+          expect(repository.bandRequests, ['b1', 'b1']);
+          expect(repository.organizationRequests, isEmpty);
+        }
+        harness.app.dispose();
+      },
+    );
+  }
 
   testWidgets('loadDisputes caches per booking and retains values on error', (
     tester,
@@ -710,13 +739,13 @@ Booking _booking({
   viewerSide: viewerSide,
 );
 
-Dispute _dispute() => Dispute(
+Dispute _dispute({DisputeSide side = DisputeSide.organizer}) => Dispute(
   disputeId: 'dispute1',
   bookingId: 'booking1',
-  side: DisputeSide.organizer,
+  side: side,
   category: DisputeCategory.lateOrShortSet,
   text: 'Only half the agreed set was played.',
-  requestedRefundMinor: 2500,
+  requestedRefundMinor: side == DisputeSide.organizer ? 2500 : null,
   status: DisputeStatus.open,
   createdAt: DateTime(2026, 10, 3),
 );
@@ -765,6 +794,7 @@ class _ControlledBookingRepository extends DemoRepository {
   cancelRequest;
   ({
     String bookingId,
+    DisputeSide side,
     DisputeCategory category,
     String text,
     int? requestedRefundMinor,
@@ -874,12 +904,14 @@ class _ControlledBookingRepository extends DemoRepository {
   @override
   Future<String> openDispute({
     required String bookingId,
+    required DisputeSide side,
     required DisputeCategory category,
     required String text,
     int? requestedRefundMinor,
   }) async {
     openDisputeRequest = (
       bookingId: bookingId,
+      side: side,
       category: category,
       text: text,
       requestedRefundMinor: requestedRefundMinor,
@@ -887,6 +919,7 @@ class _ControlledBookingRepository extends DemoRepository {
     final disputed = disputedBooking!;
     bookingResult = disputed;
     organizationResults = [disputed];
+    bandResults = [disputed];
     return 'dispute1';
   }
 

@@ -239,6 +239,10 @@ mixin _BookingState on _AppStateCore {
   }) async {
     await repository.openDispute(
       bookingId: booking.id,
+      side: switch (booking.viewerSide) {
+        BookingSide.organizer => DisputeSide.organizer,
+        BookingSide.artist => DisputeSide.artist,
+      },
       category: category,
       text: text,
       requestedRefundMinor: requestedRefundMinor,

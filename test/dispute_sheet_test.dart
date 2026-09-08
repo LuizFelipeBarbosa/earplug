@@ -135,6 +135,7 @@ void main() {
       );
       await repository.openDispute(
         bookingId: booking.id,
+        side: DisputeSide.organizer,
         category: DisputeCategory.noShow,
         text: 'A request opened in another session.',
         requestedRefundMinor: 1000,

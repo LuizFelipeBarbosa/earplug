@@ -93,6 +93,7 @@ void main() {
     final confirmed = await _paidBooking(repository, title: 'Confirmed show');
     await repository.openDispute(
       bookingId: disputed.id,
+      side: DisputeSide.organizer,
       category: DisputeCategory.noShow,
       text: 'The band did not arrive for the show.',
       requestedRefundMinor: 5000,
@@ -162,6 +163,7 @@ void main() {
     );
     await repository.openDispute(
       bookingId: held.id,
+      side: DisputeSide.organizer,
       category: DisputeCategory.payment,
       text: 'Please review the show payment.',
       requestedRefundMinor: 5000,
@@ -212,6 +214,7 @@ void main() {
     for (final booking in [first, second]) {
       await repository.openDispute(
         bookingId: booking.id,
+        side: DisputeSide.organizer,
         category: DisputeCategory.payment,
         text: 'Please review this show payment.',
         requestedRefundMinor: 5000,
