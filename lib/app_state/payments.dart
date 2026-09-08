@@ -5,6 +5,8 @@ mixin _PaymentState on _AppStateCore {
   String get bandId;
   String get organizationId;
   Future<bool>? get _authReady;
+  Future<void> Function(String filename, Uint8List bytes, String mimeType)
+  get bytesFileDownloader;
   void switchToBand(String id);
   void switchToOrganization(String id);
   void resetTo(Screen s);
@@ -244,6 +246,33 @@ mixin _PaymentState on _AppStateCore {
     } catch (error) {
       logError('payoutsForBand', error);
     }
+  }
+
+  Future<PayoutStatement> exportBandPayoutStatementPdf(
+    String bandId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    final statement = await repository.bandPayoutStatement(
+      bandId,
+      from: from,
+      to: to,
+    );
+    await statement_pdf.loadLibrary();
+    final band = await repository.band(bandId);
+    final bytes = await statement_pdf.buildPayoutStatement(
+      bandName: band?.name ?? bandId,
+      from: from,
+      to: to,
+      statement: statement,
+      generatedAt: DateTime.now(),
+    );
+    await bytesFileDownloader(
+      'earplug-payouts-$bandId-${_dateStamp(from)}-${_dateStamp(to)}.pdf',
+      bytes,
+      'application/pdf',
+    );
+    return statement;
   }
 
   final Map<String, List<RefundRecord>> _refundsByBooking = {};

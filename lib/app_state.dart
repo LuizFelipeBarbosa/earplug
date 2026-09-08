@@ -25,6 +25,7 @@ import 'services/flyer_text_extractor.dart';
 import 'services/location_service.dart';
 import 'services/media_picker.dart';
 import 'services/media_upload_service.dart';
+import 'services/statement_pdf.dart' deferred as statement_pdf;
 import 'services/web_shell.dart';
 
 export 'date_names.dart' show dateLabel, monthLabel, timeLabel;

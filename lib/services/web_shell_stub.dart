@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'web_shell.dart';
 
 WebShell createWebShell() => _StubWebShell();
@@ -20,4 +22,7 @@ class _StubWebShell implements WebShell {
 
   @override
   void downloadTextFile(String filename, String text) {}
+
+  @override
+  void downloadBytes(String filename, Uint8List bytes, String mimeType) {}
 }

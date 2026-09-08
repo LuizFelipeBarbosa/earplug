@@ -3,6 +3,7 @@ part of '../app_state.dart';
 mixin _FinanceState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   String get organizationId;
+  OrganizationMembership? get currentOrganization;
   Future<bool>? get _authReady;
   void resetTo(Screen s);
   void go(Screen s, [String? param]);
@@ -19,6 +20,10 @@ mixin _FinanceState on _AppStateCore {
 
   Future<void> Function(String filename, String text) textFileDownloader =
       (filename, text) async => webShell.downloadTextFile(filename, text);
+
+  Future<void> Function(String filename, Uint8List bytes, String mimeType)
+  bytesFileDownloader = (filename, bytes, mimeType) async =>
+      webShell.downloadBytes(filename, bytes, mimeType);
 
   // Invalidate pending loads when superseded or when the session is cleared.
   Object? _financeLoadToken;
@@ -152,6 +157,29 @@ mixin _FinanceState on _AppStateCore {
     await textFileDownloader(
       'earplug-statement-${_dateStamp(from)}-${_dateStamp(to)}.csv',
       result.csv,
+    );
+    return result;
+  }
+
+  Future<StatementExport> exportStatementPdf(DateTime from, DateTime to) async {
+    final result = await repository.exportStatement(
+      organizationId,
+      from: from,
+      to: to,
+    );
+    await statement_pdf.loadLibrary();
+    final bytes = await statement_pdf.buildOrganizerStatement(
+      organizationName:
+          currentOrganization?.organization.name ?? organizationId,
+      from: from,
+      to: to,
+      export: result,
+      generatedAt: DateTime.now(),
+    );
+    await bytesFileDownloader(
+      'earplug-statement-${_dateStamp(from)}-${_dateStamp(to)}.pdf',
+      bytes,
+      'application/pdf',
     );
     return result;
   }

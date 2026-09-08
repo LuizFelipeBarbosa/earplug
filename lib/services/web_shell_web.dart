@@ -15,9 +15,14 @@ class _BrowserWebShell implements WebShell {
   @override
   void downloadTextFile(String filename, String text) {
     final bytes = Uint8List.fromList(utf8.encode(text));
+    downloadBytes(filename, bytes, 'text/csv');
+  }
+
+  @override
+  void downloadBytes(String filename, Uint8List bytes, String mimeType) {
     final blob = web.Blob(
       <JSAny>[bytes.toJS].toJS,
-      web.BlobPropertyBag(type: 'text/csv'),
+      web.BlobPropertyBag(type: mimeType),
     );
     final objectUrl = web.URL.createObjectURL(blob);
     final anchor = web.HTMLAnchorElement()
