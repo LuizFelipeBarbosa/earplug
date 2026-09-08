@@ -238,6 +238,55 @@ async function setupConfirmedBooking() {
 }
 
 describe("cancelOpportunity", () => {
+  test.each(["pending", "granted", "declined", "withdrawn", "revoked"] as const)(
+    "withdraws %s consent only when it is still active",
+    async (status) => {
+      const f = await setupOpportunity();
+      const consentId = await f.t.run(async (ctx) => {
+        const venueOrganizationId = await ctx.db.insert("organizations", {
+          name: "Venue Operator",
+          slug: "venue-operator",
+          orgType: "venueOperator",
+          status: "verified",
+          ownerUserId: f.managerId,
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+        await ctx.db.patch(f.venueId, {
+          managedByOrganizationId: venueOrganizationId,
+        });
+        return await ctx.db.insert("venueConsents", {
+          opportunityId: f.opportunityId,
+          venueId: f.venueId,
+          venueOrganizationId,
+          requestingOrganizationId: f.organizationId,
+          status,
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      });
+      const consentBefore = await f.t.run((ctx) => ctx.db.get(consentId));
+      vi.setSystemTime(NOW + 1000);
+
+      await f.cancel();
+
+      const consent = await f.t.run((ctx) => ctx.db.get(consentId));
+      if (status === "pending" || status === "granted") {
+        expect(consent).toEqual({
+          ...consentBefore,
+          status: "withdrawn",
+          updatedAt: NOW + 1000,
+        });
+      } else {
+        expect(consent).toEqual(consentBefore);
+      }
+      expect((await f.readOpportunity()).opportunity).toMatchObject({
+        status: "cancelled",
+        updatedAt: NOW + 1000,
+      });
+    },
+  );
+
   test("declines active applications with the actor and cancels only open slots", async () => {
     const f = await setupOpportunity("draft");
     await f.t.run(async (ctx) => {

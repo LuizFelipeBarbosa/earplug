@@ -72,6 +72,9 @@ export async function readVenuePrivateFor(
       )
       .take(50);
     for (const consent of grantedConsents) {
+      if (venue.managedByOrganizationId !== consent.venueOrganizationId) {
+        continue;
+      }
       const opportunity = await ctx.db.get(consent.opportunityId);
       if (
         opportunity === null ||

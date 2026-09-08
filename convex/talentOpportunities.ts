@@ -21,7 +21,7 @@ import {
   assertOpportunityTransition,
   type ArtistApplicationStatus,
 } from "./lib/opportunityStatus";
-import { consentRequiredFor, currentConsentFor } from "./lib/venueConsentStatus";
+import { assertVenueUsable, currentConsentFor } from "./lib/venueConsentStatus";
 import { requireOwnedPrivateLocation } from "./privateLocations";
 import {
   ageRequirementValidator,
@@ -256,16 +256,9 @@ async function requireUsableVenue(
 ): Promise<{ venue: Doc<"venues">; consentRequired: boolean }> {
   const venue = await ctx.db.get(venueId);
   if (!venue) throw new Error("Venue not found");
-  if (venue.managedByOrganizationId === organizationId) {
-    if (venue.status !== "verified") {
-      throw new Error("Choose one of your verified venues");
-    }
-    return { venue, consentRequired: false };
-  }
-  const consentRequired = consentRequiredFor(venue, organizationId);
-  if (consentRequired && !flag("PROMOTERS_ENABLED", false)) {
-    throw new Error("Venue approval is not available yet");
-  }
+  const { consentRequired } = assertVenueUsable(venue, organizationId, {
+    promotersEnabled: flag("PROMOTERS_ENABLED", false),
+  });
   return { venue, consentRequired };
 }
 
@@ -469,7 +462,9 @@ export const update = mutation({
     if (venueChanged || startsAtChanged || doorsAtChanged || endsAtChanged) {
       if (await currentConsentFor(ctx, opportunity._id)) {
         throw new Error(
-          "Withdraw the venue request before changing the venue or date",
+          opportunity.status === "draft"
+            ? "Withdraw the venue request before changing the venue or date"
+            : "The venue approved this date. Contact the venue to change it.",
         );
       }
     }
@@ -716,7 +711,10 @@ export const open = mutation({
     if (opportunity.venueId !== undefined) {
       const venue = await ctx.db.get(opportunity.venueId);
       if (!venue) throw new Error("Venue not found");
-      if (consentRequiredFor(venue, opportunity.organizationId)) {
+      if (venue.managedByOrganizationId !== opportunity.organizationId) {
+        if (!flag("PROMOTERS_ENABLED", false)) {
+          throw new Error("Choose one of your verified venues");
+        }
         const consent = await currentConsentFor(ctx, opportunity._id);
         if (consent?.status !== "granted") {
           throw new Error("The venue has not approved this event yet");
@@ -831,10 +829,14 @@ export const cancel = mutation({
       ctx,
       args.opportunityId,
     );
+    const reason = args.reason?.trim();
+    if (reason !== undefined && (reason.length === 0 || reason.length > 500)) {
+      throw new Error("Cancellation reason must be 1 to 500 characters");
+    }
     await cancelOpportunity(ctx, {
       opportunity,
       actorUserId: user._id,
-      reason: args.reason ?? "Opportunity cancelled",
+      reason: reason ?? "Opportunity cancelled",
       now,
     });
     return null;
@@ -845,12 +847,17 @@ export const deleteDraft = mutation({
   args: { opportunityId: v.id("talentOpportunities") },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const now = Date.now();
     const { opportunity } = await requireOpportunityManager(
       ctx,
       args.opportunityId,
     );
     if (opportunity.status !== "draft")
       throw new Error("Only a draft can be deleted");
+    const consent = await currentConsentFor(ctx, opportunity._id);
+    if (consent) {
+      await ctx.db.patch(consent._id, { status: "withdrawn", updatedAt: now });
+    }
     const slots = await ctx.db
       .query("opportunitySlots")
       .withIndex("by_opportunityId_and_order", (q) =>

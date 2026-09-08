@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { type Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
@@ -71,20 +71,33 @@ function toVenueConsentPayload(consent: Doc<"venueConsents">) {
 async function toVenueConsentRow(
   ctx: QueryCtx | MutationCtx,
   consent: Doc<"venueConsents">,
-) {
-  const payload = toVenueConsentPayload(consent);
-  const [opportunity, venue, requestingOrganization] = await Promise.all([
-    ctx.db.get(consent.opportunityId),
-    ctx.db.get(consent.venueId),
-    ctx.db.get(consent.requestingOrganizationId),
-  ]);
-  if (!opportunity) throw new Error("Opportunity not found");
-  if (!venue) throw new Error("Venue not found");
-  if (!requestingOrganization) {
-    throw new Error("Requesting organization not found");
+  opportunities: Map<Id<"talentOpportunities">, Doc<"talentOpportunities"> | null>,
+  venues: Map<Id<"venues">, Doc<"venues"> | null>,
+  requestingOrganizations: Map<Id<"organizations">, Doc<"organizations"> | null>,
+): Promise<Infer<typeof venueConsentRowValidator> | null> {
+  // Cache missing records too so repeated references do not repeat reads.
+  if (!opportunities.has(consent.opportunityId)) {
+    opportunities.set(consent.opportunityId, await ctx.db.get(consent.opportunityId));
+  }
+  if (!venues.has(consent.venueId)) {
+    venues.set(consent.venueId, await ctx.db.get(consent.venueId));
+  }
+  if (!requestingOrganizations.has(consent.requestingOrganizationId)) {
+    requestingOrganizations.set(
+      consent.requestingOrganizationId,
+      await ctx.db.get(consent.requestingOrganizationId),
+    );
+  }
+  const opportunity = opportunities.get(consent.opportunityId);
+  const venue = venues.get(consent.venueId);
+  const requestingOrganization = requestingOrganizations.get(
+    consent.requestingOrganizationId,
+  );
+  if (!opportunity || !venue || !requestingOrganization) {
+    return null;
   }
   return {
-    ...payload,
+    ...toVenueConsentPayload(consent),
     opportunityTitle: opportunity.title,
     opportunityStatus: opportunity.status,
     startsAt: opportunity.startsAt,
@@ -155,6 +168,10 @@ export const request = mutation({
     if (venueOrganizationId === undefined) {
       throw new Error("This venue has not joined EarPlug yet");
     }
+    const venueOrganization = await ctx.db.get(venueOrganizationId);
+    if (venueOrganization?.status === "suspended") {
+      throw new Error("This venue is not accepting requests");
+    }
     if (await currentConsentFor(ctx, args.opportunityId)) {
       throw new Error("A venue request is already open");
     }
@@ -224,6 +241,19 @@ export const decide = mutation({
       consent.venueOrganizationId,
       ["owner", "manager"],
     );
+    const opportunity = await ctx.db.get(consent.opportunityId);
+    if (
+      !opportunity ||
+      opportunity.status === "cancelled" ||
+      opportunity.status === "completed"
+    ) {
+      throw new Error("This event is no longer open for approval");
+    }
+    const venue = await ctx.db.get(consent.venueId);
+    if (!venue) throw new Error("Venue not found");
+    if (venue.managedByOrganizationId !== consent.venueOrganizationId) {
+      throw new Error("This venue is no longer managed by your organization");
+    }
     assertVenueConsentTransition(consent.status, args.decision);
     const trimmedNote = args.note?.trim();
     if (trimmedNote !== undefined && trimmedNote.length > 1000) {
@@ -237,10 +267,6 @@ export const decide = mutation({
       updatedAt: now,
     });
 
-    const opportunity = await ctx.db.get(consent.opportunityId);
-    if (!opportunity) throw new Error("Opportunity not found");
-    const venue = await ctx.db.get(consent.venueId);
-    if (!venue) throw new Error("Venue not found");
     const requestingOrganization = await ctx.db.get(
       consent.requestingOrganizationId,
     );
@@ -279,6 +305,11 @@ export const revoke = mutation({
     assertVenueConsentTransition(consent.status, "revoked");
     const opportunity = await ctx.db.get(consent.opportunityId);
     if (!opportunity) throw new Error("Opportunity not found");
+    const venue = await ctx.db.get(consent.venueId);
+    if (!venue) throw new Error("Venue not found");
+    if (venue.managedByOrganizationId !== consent.venueOrganizationId) {
+      throw new Error("This venue is no longer managed by your organization");
+    }
     const bookings = await ctx.db
       .query("bookings")
       .withIndex("by_opportunityId", (q) =>
@@ -318,8 +349,6 @@ export const revoke = mutation({
       });
     }
 
-    const venue = await ctx.db.get(consent.venueId);
-    if (!venue) throw new Error("Venue not found");
     const requestingOrganization = await ctx.db.get(
       consent.requestingOrganizationId,
     );
@@ -351,8 +380,6 @@ export const forOpportunity = query({
       opportunity.organizationId,
       ALL_ORGANIZATION_ROLES,
     );
-    const active = await currentConsentFor(ctx, args.opportunityId);
-    if (active) return toVenueConsentPayload(active);
     const consents = await ctx.db
       .query("venueConsents")
       .withIndex("by_opportunityId", (q) =>
@@ -360,6 +387,10 @@ export const forOpportunity = query({
       )
       .order("desc")
       .take(20);
+    const active = consents.find(
+      (consent) => consent.status === "pending" || consent.status === "granted",
+    );
+    if (active) return toVenueConsentPayload(active);
     const decided = consents.find(
       (consent) => consent.status === "declined" || consent.status === "revoked",
     );
@@ -391,8 +422,26 @@ export const forVenueOrganization = query({
         .take(100);
       consents.push(...rows);
     }
-    return await Promise.all(
-      consents.map((consent) => toVenueConsentRow(ctx, consent)),
-    );
+    const opportunities = new Map<
+      Id<"talentOpportunities">,
+      Doc<"talentOpportunities"> | null
+    >();
+    const venues = new Map<Id<"venues">, Doc<"venues"> | null>();
+    const requestingOrganizations = new Map<
+      Id<"organizations">,
+      Doc<"organizations"> | null
+    >();
+    const rows: Infer<typeof venueConsentRowValidator>[] = [];
+    for (const consent of consents) {
+      const row = await toVenueConsentRow(
+        ctx,
+        consent,
+        opportunities,
+        venues,
+        requestingOrganizations,
+      );
+      if (row !== null) rows.push(row);
+    }
+    return rows;
   },
 });

@@ -1,14 +1,18 @@
+/// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   VENUE_CONSENT_TRANSITIONS,
   assertVenueConsentTransition,
+  assertVenueUsable,
   consentRequiredFor,
   currentConsentFor,
   type VenueConsentStatus,
 } from "./lib/venueConsentStatus";
 import schema from "./schema";
+
+const modules = import.meta.glob("./**/*.ts");
 
 const venueFields = {
   name: "The Lantern",
@@ -80,13 +84,13 @@ describe("consentRequiredFor", () => {
     "pending",
     "verified",
     "suspended",
-  ])("rejects an unmanaged venue with status %s", (status) => {
-    expect(() =>
+  ])("does not require consent for an unmanaged venue with status %s", (status) => {
+    expect(
       consentRequiredFor(
         { ...venue, managedByOrganizationId: undefined, status },
         organizationId,
       ),
-    ).toThrowError(new Error("This venue has not joined EarPlug yet"));
+    ).toBe(false);
   });
 
   describe.each([
@@ -98,19 +102,115 @@ describe("consentRequiredFor", () => {
       "legacy",
       "pending",
       "suspended",
-    ])("rejects unverified status %s", (status) => {
-      expect(() =>
+    ])("does not require consent for unverified status %s", (status) => {
+      expect(
         consentRequiredFor(
           { ...venue, managedByOrganizationId, status },
           organizationId,
         ),
-      ).toThrowError(new Error("Choose a verified venue"));
+      ).toBe(false);
     });
   });
 });
 
+describe("assertVenueUsable", () => {
+  const organizationId = "requesting-organization" as Id<"organizations">;
+  const venueOrganizationId = "venue-organization" as Id<"organizations">;
+  const venue: Doc<"venues"> = {
+    ...venueFields,
+    _id: "venue" as Id<"venues">,
+    _creationTime: 0,
+    managedByOrganizationId: venueOrganizationId,
+  };
+
+  describe.each([false, true])("promotersEnabled: %s", (promotersEnabled) => {
+    test("accepts the organization's own verified venue without consent", () => {
+      expect(
+        assertVenueUsable(
+          { ...venue, managedByOrganizationId: organizationId },
+          organizationId,
+          { promotersEnabled },
+        ),
+      ).toEqual({ consentRequired: false });
+    });
+
+    test.each<Doc<"venues">["status"]>([
+      undefined,
+      "legacy",
+      "pending",
+      "suspended",
+    ])("rejects an own venue with unverified status %s", (status) => {
+      expect(() =>
+        assertVenueUsable(
+          { ...venue, managedByOrganizationId: organizationId, status },
+          organizationId,
+          { promotersEnabled },
+        ),
+      ).toThrowError(new Error("Choose one of your verified venues"));
+    });
+  });
+
+  describe.each([
+    { label: "foreign managed", managedByOrganizationId: venueOrganizationId },
+    { label: "unmanaged", managedByOrganizationId: undefined },
+  ])("$label venue with promoters disabled", ({ managedByOrganizationId }) => {
+    test.each<Doc<"venues">["status"]>([
+      undefined,
+      "legacy",
+      "pending",
+      "verified",
+      "suspended",
+    ])("preserves the original venue error for status %s", (status) => {
+      expect(() =>
+        assertVenueUsable(
+          { ...venue, managedByOrganizationId, status },
+          organizationId,
+          { promotersEnabled: false },
+        ),
+      ).toThrowError(new Error("Choose one of your verified venues"));
+    });
+  });
+
+  test.each<Doc<"venues">["status"]>([
+    undefined,
+    "legacy",
+    "pending",
+    "verified",
+    "suspended",
+  ])("rejects an unmanaged venue with promoters enabled and status %s", (status) => {
+    expect(() =>
+      assertVenueUsable(
+        { ...venue, managedByOrganizationId: undefined, status },
+        organizationId,
+        { promotersEnabled: true },
+      ),
+    ).toThrowError(new Error("This venue has not joined EarPlug yet"));
+  });
+
+  test.each<Doc<"venues">["status"]>([
+    undefined,
+    "legacy",
+    "pending",
+    "suspended",
+  ])("rejects a foreign unverified venue with promoters enabled and status %s", (status) => {
+    expect(() =>
+      assertVenueUsable(
+        { ...venue, status },
+        organizationId,
+        { promotersEnabled: true },
+      ),
+    ).toThrowError(new Error("Choose a verified venue"));
+  });
+
+  test("requires consent for a foreign verified venue with promoters enabled", () => {
+    expect(
+      assertVenueUsable(venue, organizationId, { promotersEnabled: true }),
+    ).toEqual({ consentRequired: true });
+  });
+});
+
 async function setupConsents(statuses: readonly VenueConsentStatus[]) {
-  const t = convexTest(schema);
+  const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
     const createdAt = Date.UTC(2026, 8, 8);
     const userId = await ctx.db.insert("users", {
@@ -239,22 +339,24 @@ describe("currentConsentFor", () => {
     ).toBeNull();
   });
 
-  test("returns the first match if multiple active rows exist", async () => {
+  test("returns the newest match if multiple active rows exist", async () => {
     const { t, opportunityId, consentIds } = await setupConsents([
       "granted",
       "pending",
     ]);
     const consent = await t.run((ctx) => currentConsentFor(ctx, opportunityId));
 
-    expect(consent?._id).toBe(consentIds[0]);
+    expect(consent?._id).toBe(consentIds[1]);
   });
 
-  test("only checks the first ten rows for the opportunity", async () => {
-    const { t, opportunityId } = await setupConsents([
-      ...Array.from({ length: 10 }, () => "declined" as const),
+  test("finds a new pending consent after twelve inactive rows", async () => {
+    const { t, opportunityId, consentIds } = await setupConsents([
+      ...Array.from({ length: 12 }, () => "declined" as const),
       "pending",
     ]);
 
-    expect(await t.run((ctx) => currentConsentFor(ctx, opportunityId))).toBeNull();
+    expect(
+      await t.run((ctx) => currentConsentFor(ctx, opportunityId)),
+    ).toMatchObject({ _id: consentIds[12], status: "pending" });
   });
 });

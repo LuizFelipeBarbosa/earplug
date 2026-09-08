@@ -38,21 +38,41 @@ export const VENUE_CONSENT_ACTIVE_STATUSES: readonly VenueConsentStatus[] = [
   "granted",
 ];
 
-// All venues must be managed and verified, including an organization's own venue.
 export function consentRequiredFor(
   venue: Doc<"venues">,
   organizationId: Id<"organizations">,
 ): boolean {
+  return (
+    venue.status === "verified" &&
+    venue.managedByOrganizationId !== undefined &&
+    venue.managedByOrganizationId !== organizationId
+  );
+}
+
+export function assertVenueUsable(
+  venue: Doc<"venues">,
+  organizationId: Id<"organizations">,
+  options: { promotersEnabled: boolean },
+): { consentRequired: boolean } {
+  if (venue.managedByOrganizationId === organizationId) {
+    if (venue.status !== "verified") {
+      throw new Error("Choose one of your verified venues");
+    }
+    return { consentRequired: false };
+  }
+  if (!options.promotersEnabled) {
+    throw new Error("Choose one of your verified venues");
+  }
   if (venue.managedByOrganizationId === undefined) {
     throw new Error("This venue has not joined EarPlug yet");
   }
   if (venue.status !== "verified") {
     throw new Error("Choose a verified venue");
   }
-  return venue.managedByOrganizationId !== organizationId;
+  return { consentRequired: consentRequiredFor(venue, organizationId) };
 }
 
-// Return the first active consent among the opportunity's first ten rows.
+// Return the newest active consent among the opportunity's ten newest rows.
 export async function currentConsentFor(
   ctx: QueryCtx | MutationCtx,
   opportunityId: Id<"talentOpportunities">,
@@ -60,6 +80,7 @@ export async function currentConsentFor(
   const consents = await ctx.db
     .query("venueConsents")
     .withIndex("by_opportunityId", (q) => q.eq("opportunityId", opportunityId))
+    .order("desc")
     .take(10);
   return (
     consents.find((consent) =>

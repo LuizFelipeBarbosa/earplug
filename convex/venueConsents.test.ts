@@ -206,6 +206,29 @@ async function setupConsentFixture() {
 }
 
 describe("venueConsents.request", () => {
+  test("refuses a request to a suspended venue organization", async () => {
+    const f = await setupConsentFixture();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.venueOrganizationId, { status: "suspended" }),
+    );
+
+    await expect(
+      f.asRequestingManager.mutation(api.venueConsents.request, {
+        opportunityId: f.opportunityId,
+      }),
+    ).rejects.toThrow(/^This venue is not accepting requests$/);
+    expect(
+      await f.t.run((ctx) =>
+        ctx.db
+          .query("venueConsents")
+          .withIndex("by_opportunityId", (q) =>
+            q.eq("opportunityId", f.opportunityId),
+          )
+          .take(20),
+      ),
+    ).toEqual([]);
+  });
+
   test("creates a pending request with a trimmed message and emails the venue", async () => {
     const f = await setupConsentFixture();
 
@@ -313,6 +336,57 @@ describe("venueConsents.request", () => {
 });
 
 describe("venueConsents.decide", () => {
+  test.each(["cancelled", "completed", "deleted"] as const)(
+    "refuses approval for a %s opportunity and preserves the pending consent",
+    async (status) => {
+      const f = await setupConsentFixture();
+      const { consentId } = await f.asRequestingOwner.mutation(
+        api.venueConsents.request,
+        { opportunityId: f.opportunityId },
+      );
+      const consentBefore = await f.t.run((ctx) => ctx.db.get(consentId));
+      await f.t.run(async (ctx) => {
+        if (status === "deleted") {
+          await ctx.db.delete(f.opportunityId);
+        } else {
+          await ctx.db.patch(f.opportunityId, { status });
+        }
+      });
+
+      await expect(
+        f.asVenueManager.mutation(api.venueConsents.decide, {
+          consentId,
+          decision: "granted",
+        }),
+      ).rejects.toThrow(/^This event is no longer open for approval$/);
+      const consentAfter = await f.t.run((ctx) => ctx.db.get(consentId));
+      expect(consentAfter?.status).toBe("pending");
+      expect(consentAfter).toEqual(consentBefore);
+    },
+  );
+
+  test("refuses a decision by the former venue organization after management transfers", async () => {
+    const f = await setupConsentFixture();
+    const { consentId } = await f.asRequestingOwner.mutation(
+      api.venueConsents.request,
+      { opportunityId: f.opportunityId },
+    );
+    const consentBefore = await f.t.run((ctx) => ctx.db.get(consentId));
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.foreignVenueId, {
+        managedByOrganizationId: f.requestingOrganizationId,
+      }),
+    );
+
+    await expect(
+      f.asVenueOwner.mutation(api.venueConsents.decide, {
+        consentId,
+        decision: "granted",
+      }),
+    ).rejects.toThrow(/^This venue is no longer managed by your organization$/);
+    expect(await f.t.run((ctx) => ctx.db.get(consentId))).toEqual(consentBefore);
+  });
+
   test.each([
     ["granted", "approved"],
     ["declined", "declined"],
@@ -411,6 +485,29 @@ describe("venueConsents.withdraw", () => {
 });
 
 describe("venueConsents.revoke", () => {
+  test("refuses revocation by the former venue organization after management transfers", async () => {
+    const f = await setupConsentFixture();
+    const { consentId } = await f.asRequestingOwner.mutation(
+      api.venueConsents.request,
+      { opportunityId: f.opportunityId },
+    );
+    await f.asVenueOwner.mutation(api.venueConsents.decide, {
+      consentId,
+      decision: "granted",
+    });
+    const consentBefore = await f.t.run((ctx) => ctx.db.get(consentId));
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.foreignVenueId, {
+        managedByOrganizationId: f.requestingOrganizationId,
+      }),
+    );
+
+    await expect(
+      f.asVenueManager.mutation(api.venueConsents.revoke, { consentId }),
+    ).rejects.toThrow(/^This venue is no longer managed by your organization$/);
+    expect(await f.t.run((ctx) => ctx.db.get(consentId))).toEqual(consentBefore);
+  });
+
   test("cancels an open opportunity and declines its active application", async () => {
     const f = await setupConsentFixture();
     const { consentId } = await f.asRequestingOwner.mutation(
@@ -559,6 +656,81 @@ describe("venueConsents.revoke", () => {
 });
 
 describe("venueConsents.forOpportunity", () => {
+  test.each(["pending", "granted"] as const)(
+    "prefers an older %s consent over newer decisions",
+    async (activeStatus) => {
+      const f = await setupConsentFixture();
+      const consentIds: Id<"venueConsents">[] = [];
+      const statuses = ["declined", activeStatus, "revoked"] as const;
+      for (const [index, status] of statuses.entries()) {
+        // Separate transactions and clock values establish creation order.
+        const createdAt = NOW + index * 1000;
+        vi.setSystemTime(createdAt);
+        consentIds.push(
+          await f.t.run((ctx) =>
+            ctx.db.insert("venueConsents", {
+              opportunityId: f.opportunityId,
+              venueId: f.foreignVenueId,
+              venueOrganizationId: f.venueOrganizationId,
+              requestingOrganizationId: f.requestingOrganizationId,
+              status,
+              createdAt,
+              updatedAt: createdAt,
+            }),
+          ),
+        );
+      }
+
+      expect(
+        await f.asRequestingOwner.query(api.venueConsents.forOpportunity, {
+          opportunityId: f.opportunityId,
+        }),
+      ).toMatchObject({
+        consentId: consentIds[1],
+        status: activeStatus,
+        createdAt: NOW + 1000,
+      });
+    },
+  );
+
+  test.each(["declined", "revoked"] as const)(
+    "returns the newest %s consent when the history contains only decisions",
+    async (newestStatus) => {
+      const f = await setupConsentFixture();
+      const consentIds: Id<"venueConsents">[] = [];
+      const statuses = ["declined", "revoked", newestStatus] as const;
+      for (const [index, status] of statuses.entries()) {
+        const createdAt = NOW + index * 1000;
+        vi.setSystemTime(createdAt);
+        consentIds.push(
+          await f.t.run((ctx) =>
+            ctx.db.insert("venueConsents", {
+              opportunityId: f.opportunityId,
+              venueId: f.foreignVenueId,
+              venueOrganizationId: f.venueOrganizationId,
+              requestingOrganizationId: f.requestingOrganizationId,
+              status,
+              note: `Decision ${index + 1}`,
+              createdAt,
+              updatedAt: createdAt,
+            }),
+          ),
+        );
+      }
+
+      expect(
+        await f.asRequestingOwner.query(api.venueConsents.forOpportunity, {
+          opportunityId: f.opportunityId,
+        }),
+      ).toMatchObject({
+        consentId: consentIds[2],
+        status: newestStatus,
+        note: "Decision 3",
+        createdAt: NOW + 2000,
+      });
+    },
+  );
+
   test("returns the active pending request with nullable optional fields", async () => {
     const f = await setupConsentFixture();
     const { consentId } = await f.asRequestingManager.mutation(
@@ -631,6 +803,106 @@ describe("venueConsents.forOpportunity", () => {
 });
 
 describe("venueConsents.forVenueOrganization", () => {
+  test("omits a consent whose opportunity was deleted and keeps valid rows", async () => {
+    const f = await setupConsentFixture();
+    const orphaned = await f.asRequestingOwner.mutation(api.venueConsents.request, {
+      opportunityId: f.opportunityId,
+    });
+    const { opportunityId } = await f.asRequestingOwner.mutation(
+      api.talentOpportunities.create,
+      {
+        organizationId: f.requestingOrganizationId,
+        venueId: f.foreignVenueId,
+        title: "Saturday at the Hall",
+        startsAt: NOW + 15 * DAY_MS,
+      },
+    );
+    const valid = await f.asRequestingOwner.mutation(api.venueConsents.request, {
+      opportunityId,
+    });
+    await f.t.run((ctx) => ctx.db.delete(f.opportunityId));
+
+    const rows = await f.asVenueOwner.query(api.venueConsents.forVenueOrganization, {
+      organizationId: f.venueOrganizationId,
+    });
+    expect(rows.map((row) => row.consentId)).toEqual([valid.consentId]);
+    expect(rows[0]).toMatchObject({
+      opportunityId,
+      opportunityTitle: "Saturday at the Hall",
+      venueName: "Neighborhood Hall",
+      requestingOrganizationName: "Requesting Collective",
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(orphaned.consentId))).not.toBeNull();
+  });
+
+  test("populates distinct opportunities that share a venue and requesting organization", async () => {
+    const f = await setupConsentFixture();
+    const first = await f.asRequestingOwner.mutation(api.venueConsents.request, {
+      opportunityId: f.opportunityId,
+      message: "Friday request",
+    });
+    await f.asVenueOwner.mutation(api.venueConsents.decide, {
+      consentId: first.consentId,
+      decision: "granted",
+      note: "Friday approved",
+    });
+    const { opportunityId } = await f.asRequestingOwner.mutation(
+      api.talentOpportunities.create,
+      {
+        organizationId: f.requestingOrganizationId,
+        venueId: f.foreignVenueId,
+        title: "Saturday at the Hall",
+        startsAt: NOW + 15 * DAY_MS,
+      },
+    );
+    await f.t.run((ctx) =>
+      ctx.db.patch(opportunityId, { endsAt: NOW + 15 * DAY_MS + 3_600_000 }),
+    );
+    const second = await f.asRequestingOwner.mutation(api.venueConsents.request, {
+      opportunityId,
+      message: "Saturday request",
+    });
+
+    const rows = await f.asVenueOwner.query(api.venueConsents.forVenueOrganization, {
+      organizationId: f.venueOrganizationId,
+    });
+    const sharedFields = {
+      venueId: f.foreignVenueId,
+      venueOrganizationId: f.venueOrganizationId,
+      requestingOrganizationId: f.requestingOrganizationId,
+      venueName: "Neighborhood Hall",
+      requestingOrganizationName: "Requesting Collective",
+      opportunityStatus: "draft",
+      createdAt: NOW,
+    };
+    expect(rows).toEqual([
+      {
+        ...sharedFields,
+        consentId: second.consentId,
+        opportunityId,
+        opportunityTitle: "Saturday at the Hall",
+        startsAt: NOW + 15 * DAY_MS,
+        endsAt: NOW + 15 * DAY_MS + 3_600_000,
+        status: "pending",
+        message: "Saturday request",
+        note: null,
+        decidedAt: null,
+      },
+      {
+        ...sharedFields,
+        consentId: first.consentId,
+        opportunityId: f.opportunityId,
+        opportunityTitle: "Friday at the Hall",
+        startsAt: NOW + 14 * DAY_MS,
+        endsAt: null,
+        status: "granted",
+        message: "Friday request",
+        note: "Friday approved",
+        decidedAt: NOW,
+      },
+    ]);
+  });
+
   test("filters by status and lists pending before granted, newest first within each", async () => {
     const f = await setupConsentFixture();
     const [pendingNew, declinedNew, grantedNew, pendingOld, declinedOld, grantedOld] =

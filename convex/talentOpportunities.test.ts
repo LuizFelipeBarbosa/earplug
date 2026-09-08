@@ -404,7 +404,7 @@ describe("talent opportunity drafts", () => {
     const { createDraft, otherVenueId, unverifiedVenueId } =
       await setupOrganization();
     await expect(createDraft({ venueId: otherVenueId })).rejects.toThrow(
-      "Venue approval is not available yet",
+      "Choose one of your verified venues",
     );
     await expect(createDraft({ venueId: unverifiedVenueId })).rejects.toThrow(
       "Choose one of your verified venues",
@@ -575,7 +575,7 @@ describe("talent opportunity drafts", () => {
         expectedRevision: 1,
         venueId: otherVenueId,
       }),
-    ).rejects.toThrow("Venue approval is not available yet");
+    ).rejects.toThrow("Choose one of your verified venues");
     await expect(
       asOwner.mutation(api.talentOpportunities.update, {
         opportunityId,
@@ -907,7 +907,7 @@ describe("opportunity venue approval", () => {
     const { createDraft, readOpportunity, otherVenueId } =
       await setupOrganization();
     await expect(createDraft({ venueId: otherVenueId })).rejects.toThrow(
-      "Venue approval is not available yet",
+      "Choose one of your verified venues",
     );
 
     vi.stubEnv("PROMOTERS_ENABLED", "true");
@@ -918,15 +918,15 @@ describe("opportunity venue approval", () => {
     });
   });
 
-  test.each([undefined, "true"])(
+  test.each(["false", "true"])(
     "rejects an unmanaged legacy venue (PROMOTERS_ENABLED: %s)",
     async (promotersEnabled) => {
-      if (promotersEnabled !== undefined) {
-        vi.stubEnv("PROMOTERS_ENABLED", promotersEnabled);
-      }
+      vi.stubEnv("PROMOTERS_ENABLED", promotersEnabled);
       const { createDraft, legacyVenueId } = await setupOrganization();
       await expect(createDraft({ venueId: legacyVenueId })).rejects.toThrow(
-        "This venue has not joined EarPlug yet",
+        promotersEnabled === "true"
+          ? "This venue has not joined EarPlug yet"
+          : "Choose one of your verified venues",
       );
     },
   );
@@ -964,12 +964,80 @@ describe("opportunity venue approval", () => {
     });
 
     await f.t.run((ctx) => ctx.db.patch(consentId, { status: "granted" }));
+    vi.stubEnv("PROMOTERS_ENABLED", "false");
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.open, openArgs),
+    ).rejects.toThrow("Choose one of your verified venues");
+    expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+      status: "draft",
+      revision: 1,
+    });
+
+    vi.stubEnv("PROMOTERS_ENABLED", "true");
     expect(
       await f.asOwner.mutation(api.talentOpportunities.open, openArgs),
     ).toEqual({ revision: 2, applicationsCloseAt });
     expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
       status: "open",
     });
+  });
+
+  describe.each(["false", "true"])("opening with PROMOTERS_ENABLED: %s", (flagValue) => {
+    test.each<Doc<"venues">["status"]>([
+      undefined,
+      "legacy",
+      "pending",
+      "verified",
+      "suspended",
+    ])("does not recheck an own venue's verification status: %s", async (status) => {
+      vi.stubEnv("PROMOTERS_ENABLED", flagValue);
+      const f = await setupOrganization();
+      const { opportunityId } = await f.createDraft();
+      await f.t.run((ctx) => ctx.db.patch(f.venueId, { status }));
+
+      await f.asOwner.mutation(api.talentOpportunities.open, {
+        opportunityId,
+        expectedRevision: 1,
+      });
+
+      expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+        status: "open",
+        revision: 2,
+      });
+    });
+
+    test.each(["unmanaged", "unverified"])(
+      "still requires approval for a foreign venue that became %s",
+      async (venueState) => {
+        vi.stubEnv("PROMOTERS_ENABLED", "true");
+        const f = await setupOrganization();
+        const { opportunityId } = await f.createDraft({ venueId: f.otherVenueId });
+        await f.t.run((ctx) =>
+          ctx.db.patch(
+            f.otherVenueId,
+            venueState === "unmanaged"
+              ? { managedByOrganizationId: undefined }
+              : { status: "suspended" },
+          ),
+        );
+        vi.stubEnv("PROMOTERS_ENABLED", flagValue);
+
+        await expect(
+          f.asOwner.mutation(api.talentOpportunities.open, {
+            opportunityId,
+            expectedRevision: 1,
+          }),
+        ).rejects.toThrow(
+          flagValue === "true"
+            ? "The venue has not approved this event yet"
+            : "Choose one of your verified venues",
+        );
+        expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+          status: "draft",
+          revision: 1,
+        });
+      },
+    );
   });
 
   test.each(["pending", "granted"] as const)(
@@ -1043,6 +1111,56 @@ describe("opportunity venue approval", () => {
     },
   );
 
+  test.each(["pending", "granted"] as const)(
+    "an open opportunity with %s consent directs date changes to the venue",
+    async (status) => {
+      vi.stubEnv("PROMOTERS_ENABLED", "true");
+      const f = await setupOrganization();
+      const { opportunityId } = await f.createDraft({ venueId: f.otherVenueId });
+      const consentId = await f.t.run((ctx) =>
+        ctx.db.insert("venueConsents", {
+          opportunityId,
+          venueId: f.otherVenueId,
+          venueOrganizationId: f.otherOrganizationId,
+          requestingOrganizationId: f.organizationId,
+          status: "granted",
+          createdAt: NOW,
+          updatedAt: NOW,
+        }),
+      );
+      await f.asOwner.mutation(api.talentOpportunities.open, {
+        opportunityId,
+        expectedRevision: 1,
+      });
+      await f.t.run((ctx) => ctx.db.patch(consentId, { status }));
+      const before = await f.readOpportunity(opportunityId);
+      const startsAt = NOW + 15 * DAY_MS;
+      for (const change of [
+        { startsAt },
+        { doorsAt: startsAt - 3600000 },
+        { endsAt: startsAt + 3600000 },
+      ]) {
+        await expect(
+          f.asOwner.mutation(api.talentOpportunities.update, {
+            opportunityId,
+            expectedRevision: 2,
+            ...change,
+          }),
+        ).rejects.toThrow(
+          "The venue approved this date. Contact the venue to change it.",
+        );
+      }
+      expect(await f.readOpportunity(opportunityId)).toEqual(before);
+      expect(
+        await f.asOwner.mutation(api.talentOpportunities.update, {
+          opportunityId,
+          expectedRevision: 2,
+          desc: "Updated event description",
+        }),
+      ).toEqual({ revision: 3 });
+    },
+  );
+
   test("duplicating a foreign-venue opportunity revalidates its venue", async () => {
     vi.stubEnv("PROMOTERS_ENABLED", "true");
     const f = await setupOrganization();
@@ -1058,10 +1176,10 @@ describe("opportunity venue approval", () => {
     vi.stubEnv("PROMOTERS_ENABLED", "false");
     await expect(
       f.asOwner.mutation(api.talentOpportunities.duplicate, { opportunityId }),
-    ).rejects.toThrow("Venue approval is not available yet");
+    ).rejects.toThrow("Choose one of your verified venues");
   });
 
-  test("organizer and artist payloads carry the current venue consent status", async () => {
+  test("only organizer payloads carry the current venue consent status", async () => {
     vi.stubEnv("PROMOTERS_ENABLED", "true");
     const f = await setupOrganization();
     const own = await f.createDraft();
@@ -1082,7 +1200,7 @@ describe("opportunity venue approval", () => {
       [own.opportunityId, null],
       [foreign.opportunityId, "pending"],
     ] as const) {
-      const payloads = await f.t.run(async (ctx) => {
+      const [organizerPayload, artistPayload] = await f.t.run(async (ctx) => {
         const opportunity = await ctx.db.get(opportunityId);
         if (!opportunity) throw new Error("Fixture opportunity missing");
         return await Promise.all([
@@ -1090,9 +1208,8 @@ describe("opportunity venue approval", () => {
           toArtistOpportunityPayload(ctx, opportunity),
         ]);
       });
-      for (const payload of payloads) {
-        expect(payload).toMatchObject({ venueConsentStatus });
-      }
+      expect(organizerPayload).toMatchObject({ venueConsentStatus });
+      expect(artistPayload).not.toHaveProperty("venueConsentStatus");
     }
   });
 
@@ -1933,6 +2050,55 @@ describe("talent opportunity lifecycle", () => {
     ).rejects.toThrow("Every slot is booked");
   });
 
+  test.each([
+    { label: "empty", reason: "" },
+    { label: "whitespace-only", reason: " \n\t " },
+    { label: "over 500 characters", reason: "x".repeat(501) },
+  ])("cancel rejects a $label reason without changing the opportunity or booking", async ({ reason }) => {
+    const f = await setupOrganization();
+    const { opportunityId } = await f.createDraft();
+    const { bookingId, offerId } = await f.seedBooking(opportunityId);
+    const before = await f.readOpportunity(opportunityId);
+    const bookingBefore = await f.t.run((ctx) => ctx.db.get(bookingId));
+    const offerBefore = await f.t.run((ctx) => ctx.db.get(offerId));
+
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.cancel, { opportunityId, reason }),
+    ).rejects.toThrow("Cancellation reason must be 1 to 500 characters");
+
+    expect(await f.readOpportunity(opportunityId)).toEqual(before);
+    expect(await f.t.run((ctx) => ctx.db.get(bookingId))).toEqual(bookingBefore);
+    expect(await f.t.run((ctx) => ctx.db.get(offerId))).toEqual(offerBefore);
+  });
+
+  test.each([
+    { label: "surrounding whitespace", reason: " \n Venue unavailable \t ", expected: "Venue unavailable" },
+    { label: "one character", reason: " x ", expected: "x" },
+    { label: "500 characters", reason: ` ${"x".repeat(500)} `, expected: "x".repeat(500) },
+  ])("cancel trims a valid reason with $label before storing and emailing it", async ({ reason, expected }) => {
+    const f = await setupOrganization();
+    const { opportunityId } = await f.createDraft();
+    const { bookingId } = await f.seedBooking(opportunityId);
+
+    await f.asOwner.mutation(api.talentOpportunities.cancel, { opportunityId, reason });
+
+    expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+      status: "cancelled",
+    });
+    expect(await f.t.run((ctx) => ctx.db.get(bookingId))).toMatchObject({
+      status: "withdrawn",
+      cancelReason: expected,
+    });
+    const scheduled = await f.t.run((ctx) =>
+      ctx.db.system.query("_scheduled_functions").take(100),
+    );
+    const emails = scheduled.filter(
+      (job) => job.name === "emails:send" && job.args[0].kind === "bookingCancelled",
+    );
+    expect(emails).toHaveLength(1);
+    expect(emails[0].args[0].text).toContain(`Reason: ${expected}`);
+  });
+
   test("cancel declines active applications with the caller and cancels only open slots", async () => {
     const {
       t,
@@ -2262,6 +2428,45 @@ describe("talent opportunity lifecycle", () => {
       }),
     ).resolves.toBeNull();
   });
+
+  test.each(["pending", "granted"] as const)(
+    "deleteDraft withdraws %s consent while deleting the opportunity and its children",
+    async (status) => {
+      vi.stubEnv("PROMOTERS_ENABLED", "true");
+      const f = await setupOrganization();
+      const { opportunityId } = await f.createDraft({ venueId: f.otherVenueId });
+      await f.asOwner.mutation(api.talentOpportunities.inviteBand, {
+        opportunityId,
+        bandId: f.bandId,
+      });
+      const consentId = await f.t.run((ctx) =>
+        ctx.db.insert("venueConsents", {
+          opportunityId,
+          venueId: f.otherVenueId,
+          venueOrganizationId: f.otherOrganizationId,
+          requestingOrganizationId: f.organizationId,
+          status,
+          createdAt: NOW,
+          updatedAt: NOW,
+        }),
+      );
+      vi.setSystemTime(NOW + 1000);
+
+      await f.asOwner.mutation(api.talentOpportunities.deleteDraft, { opportunityId });
+
+      expect(await f.t.run((ctx) => ctx.db.get(consentId))).toMatchObject({
+        opportunityId,
+        status: "withdrawn",
+        createdAt: NOW,
+        updatedAt: NOW + 1000,
+      });
+      expect(await f.readOpportunity(opportunityId)).toEqual({
+        opportunity: null,
+        slots: [],
+        invites: [],
+      });
+    },
+  );
 
   test("deleteDraft removes its children and refuses an open opportunity", async () => {
     const { createDraft, asOwner, bandId, readOpportunity } =
@@ -2765,7 +2970,7 @@ describe("private talent opportunity drafts", () => {
     ]) {
       expect(payload).not.toHaveProperty(field);
     }
-    const { invitedBandIds, ...expectedArtistPayload } = payload;
+    const { invitedBandIds, venueConsentStatus, ...expectedArtistPayload } = payload;
     expect(artistPayload).toEqual(expectedArtistPayload);
   });
 });

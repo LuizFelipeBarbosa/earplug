@@ -13,6 +13,7 @@ import {
   type ArtistApplicationStatus,
 } from "./opportunityStatus";
 import { cancelTicketSalesForGig } from "./ticketCancellation";
+import { currentConsentFor } from "./venueConsentStatus";
 
 export async function cancelOpportunity(
   ctx: MutationCtx,
@@ -25,6 +26,10 @@ export async function cancelOpportunity(
 ): Promise<void> {
   const { opportunity, now } = args;
   assertOpportunityTransition(opportunity.status, "cancelled");
+  const consent = await currentConsentFor(ctx, opportunity._id);
+  if (consent && (consent.status === "pending" || consent.status === "granted")) {
+    await ctx.db.patch(consent._id, { status: "withdrawn", updatedAt: now });
+  }
   const bookings = await ctx.db
     .query("bookings")
     .withIndex("by_opportunityId", (q) =>
