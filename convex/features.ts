@@ -10,6 +10,7 @@ export const flags = query({
     payments: v.boolean(),
     bandGigWrites: v.boolean(),
     disputes: v.boolean(),
+    promoters: v.boolean(),
   }),
   handler: async () => {
     return {
@@ -18,6 +19,7 @@ export const flags = query({
       payments: flag("PAYMENTS_ENABLED", false),
       bandGigWrites: flag("BAND_GIG_WRITES", true),
       disputes: flag("DISPUTES_ENABLED", false),
+      promoters: flag("PROMOTERS_ENABLED", false),
     };
   },
 });

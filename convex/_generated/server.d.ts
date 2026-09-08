@@ -36,6 +36,7 @@ type Env = {
   readonly DISPUTES_ENABLED: string | undefined;
   readonly PAYMENTS_ENABLED: string | undefined;
   readonly PRIVATE_BOOKINGS_ENABLED: string | undefined;
+  readonly PROMOTERS_ENABLED: string | undefined;
   readonly RESEND_API_KEY: string | undefined;
   readonly RESEND_SEND_ENABLED: string | undefined;
   readonly STRIPE_CONNECT_WEBHOOK_SECRET: string | undefined;
