@@ -284,6 +284,13 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing safety.js:listOpen",
     "missing safety.js:resolve",
     "missing safety.js:forBookingAdmin",
+    "missing venueConsents.js:request",
+    "missing venueConsents.js:withdraw",
+    "missing venueConsents.js:decide",
+    "missing venueConsents.js:revoke",
+    "missing venueConsents.js:forOpportunity",
+    "missing venueConsents.js:forVenueOrganization",
+    "missing payouts.js:statementForBand",
   ]);
 });
 

@@ -128,6 +128,13 @@ export const requiredClientFunctions = Object.freeze({
   "safety.js:listOpen": "Query",
   "safety.js:resolve": "Mutation",
   "safety.js:forBookingAdmin": "Query",
+  "venueConsents.js:request": "Mutation",
+  "venueConsents.js:withdraw": "Mutation",
+  "venueConsents.js:decide": "Mutation",
+  "venueConsents.js:revoke": "Mutation",
+  "venueConsents.js:forOpportunity": "Query",
+  "venueConsents.js:forVenueOrganization": "Query",
+  "payouts.js:statementForBand": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -208,6 +215,12 @@ export const requiredClientFields = Object.freeze([
   ["admin.js:bookings", "args", "filter", false],
   ["bookingsRead.js:get", "return", "viewerIsPlatformAdmin", true],
   ["admin.js:suspendOrganization", "args", "note", true],
+  ["features.js:flags", "return", "promoters", false],
+  ["financeActions.js:exportStatement", "return", "transactions", false],
+  ["financeActions.js:exportStatement", "return", "totalsByKind", false],
+  ["financeActions.js:exportStatement", "return", "rows", false],
+  ["talentOpportunitiesRead.js:manageForOrganization", "arrayReturn", "venueConsentStatus", true],
+  ["organizations.js:dashboard", "return", "pendingVenueConsents", true],
 ]);
 
 export function deploymentNameFromUrl(value) {

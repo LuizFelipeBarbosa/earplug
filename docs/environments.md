@@ -72,6 +72,10 @@ for production:
 - `DISPUTES_ENABLED` — dev: `true`; prod: unset; gates
   `disputes:open` and the client's `features:flags.disputes` surface
   (disputes not yet enabled in production).
+- `PROMOTERS_ENABLED` — dev: `true`; prod: unset; gates
+  `venueConsents:request`, foreign-venue opportunities, and the client's
+  `features:flags.promoters` surface (promoter organizers not yet enabled
+  in production).
 - `BAND_GIG_WRITES`
 
 `convex/lib/env.ts` enforces the pairing at runtime: it refuses a `sk_live_`

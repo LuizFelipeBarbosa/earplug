@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.26)
+# EarPlug Convex function contract (FROZEN — v1.27)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -956,6 +956,60 @@ viewing a booking exactly like an organization member; this remains safe
 because the field is additive and optional. `features:flags` adds required
 `disputes: boolean`, mirroring `privateBookings` so the client gates its
 dispute UI on `DISPUTES_ENABLED`.
+
+**v1.27 — Promoter organizers, venue approval, statement data.** The new
+`venueConsents` table stores `opportunityId`, `venueId`, `venueOrganizationId`,
+`requestingOrganizationId`, `status` (`pending | granted | declined |
+withdrawn | revoked`), optional `message`, optional `note`, optional
+`decidedByUserId`, optional `decidedAt`, and `createdAt`/`updatedAt`.
+`convex/lib/venueConsentStatus.ts` allows `pending` to transition to
+`granted`, `declined`, or `withdrawn`, and `granted` to transition to
+`revoked` or `withdrawn`; `declined`, `withdrawn`, and `revoked` are terminal.
+`venueConsents:request` is a Mutation gated by `PROMOTERS_ENABLED`; an
+organization owner/manager requests approval for a draft opportunity at a
+verified venue managed by a different organization. One active (`pending`
+or `granted`) consent is allowed per opportunity; `currentConsentFor` checks
+the opportunity's first ten consent rows for an existing active request.
+`venueConsents:withdraw` is a Mutation letting the requesting organization's
+owner/manager withdraw a pending or granted consent only while the
+opportunity is still a draft. `venueConsents:decide` is a Mutation letting
+the venue-managing organization's owner/manager grant or decline a pending
+request, with an optional `note`. `venueConsents:revoke` is a Mutation
+letting that organization's owner/manager revoke a granted consent, also
+with an optional `note`; it is blocked if the opportunity has a `confirmed`,
+`completed`, `paid`, or `disputed` booking. Otherwise, revocation cancels the
+opportunity through `cancelOpportunity` unless it is already `draft`,
+`cancelled`, or `completed`. These mutations enforce the consent transitions;
+request emails the venue-managing organization, and decide/revoke email the
+requesting organization when a business email is available. Withdraw does
+not schedule an email. The organization role checks retain platform-admin
+access through `convex/lib/authz.ts`. `venueConsents:forOpportunity` is a
+Query available to any organization role on the requester's side; it returns
+an active consent, otherwise a recent declined or revoked consent, or
+`null`. `venueConsents:forVenueOrganization` is a Query for the venue-managing
+organization's owner/manager, optionally filtered by `status`, defaulting to
+pending and granted requests. The opportunity payload returned in the plain
+array from `talentOpportunitiesRead:manageForOrganization` adds optional
+`venueConsentStatus`, carrying the active consent's status or `null`.
+`organizations:dashboard` adds optional `pendingVenueConsents`, a count of
+pending approval requests against venues the organization manages, capped
+at 50. `payouts:statementForBand({ bandId, fromMs, toMs })` is a band-admin-only
+Query with a maximum range of one year (366 days), returning
+`{ payouts, totalNetMinor, truncated }`. Rows include paid or reversed
+payouts whose `paidAt` falls within the inclusive range and denormalize
+`bookingTitle`, `organizationName`, payout `kind`/`status`, `paidAt`,
+`netMinor`, `reversedMinor`, and `currency`, alongside `payoutId`/`bookingId`.
+`grossMinor` and `commissionMinor` come from the booking for `completion`
+payouts and are `null` for `forfeit` payouts; `stripeTransferId` is the
+payout's transfer id or `null` for either kind. `totalNetMinor` sums
+`netMinor - reversedMinor` over the returned rows; `truncated` is true when
+the initial scan reaches 1000 payouts, before filtering by status and date.
+`financeActions:exportStatement` adds `transactions`, the structured rows
+used to generate its `csv`, and `totalsByKind`, per-kind `amountMinor`
+subtotals and `count` values, alongside the existing `csv`, `rows`, and
+`truncated` fields. `features:flags` adds required `promoters: boolean`,
+mirroring `disputes` so the client gates its promoter-organizer and
+venue-approval UI on `PROMOTERS_ENABLED`.
 
 ## Reconciliation
 
