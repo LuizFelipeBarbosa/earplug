@@ -6,6 +6,9 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/approx_area_map.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
+import '../widgets/form_bits.dart';
+import '../widgets/sheets.dart';
 
 class OrgVenuesScreen extends StatefulWidget {
   const OrgVenuesScreen({super.key});
@@ -16,6 +19,7 @@ class OrgVenuesScreen extends StatefulWidget {
 
 class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
   OrganizationDashboard? _dashboard;
+  List<VenueConsentRow> _consents = const [];
   Object? _error;
   bool _loading = true;
   String? _loadedOrganizationId;
@@ -30,6 +34,7 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
   }
 
   Future<void> _refresh() async {
+    if (!mounted) return;
     final app = context.read<AppState>();
     final organizationId = app.organizationId;
     setState(() {
@@ -40,9 +45,13 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
       final dashboard = await app.repository.organizationDashboard(
         organizationId,
       );
+      final consents = await app.repository.venueConsentsForOrganization(
+        organizationId,
+      );
       if (!mounted || app.organizationId != organizationId) return;
       setState(() {
         _dashboard = dashboard;
+        _consents = consents;
         _loading = false;
       });
     } catch (error) {
@@ -52,6 +61,108 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
         _loading = false;
       });
     }
+  }
+
+  Widget _venueRequestCard(AppState app, VenueConsentRow consent) {
+    final startsAt = consent.startsAt.toLocal();
+    final endsAt = consent.endsAt?.toLocal();
+    final message = consent.message?.trim();
+    return EpCard(
+      key: Key('venue-request-${consent.id}'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            consent.opportunityTitle,
+            style: Theme.of(context).textTheme.epSectionHeading,
+          ),
+          const SizedBox(height: 6),
+          Text(consent.requestingOrganizationName),
+          const SizedBox(height: 4),
+          Text(
+            '${dateLabel(startsAt)} · ${timeLabel(TimeOfDay.fromDateTime(startsAt))}'
+            '${endsAt == null ? '' : ' – ${dateLabel(endsAt)} · ${timeLabel(TimeOfDay.fromDateTime(endsAt))}'}',
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+          const SizedBox(height: 4),
+          Text(consent.venueName),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: StatusPill(
+              label: switch (consent.status) {
+                VenueConsentStatus.pending => 'PENDING APPROVAL',
+                VenueConsentStatus.granted => 'APPROVED',
+                VenueConsentStatus.declined => 'DECLINED',
+                VenueConsentStatus.withdrawn => 'WITHDRAWN',
+                VenueConsentStatus.revoked => 'REVOKED',
+                VenueConsentStatus.unknown => 'UNKNOWN',
+              },
+              tone: switch (consent.status) {
+                VenueConsentStatus.granted => EpStatusPillTone.success,
+                VenueConsentStatus.pending => EpStatusPillTone.warning,
+                _ => EpStatusPillTone.neutral,
+              },
+            ),
+          ),
+          if (message != null && message.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(message),
+          ],
+          if (app.canManageOrganization(app.organizationId)) ...[
+            if (consent.status == VenueConsentStatus.pending) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: EpButton(
+                      'APPROVE',
+                      key: Key('venue-request-approve-${consent.id}'),
+                      onTap: () async {
+                        final approved = await app.decideVenueApproval(
+                          consent.id,
+                          granted: true,
+                        );
+                        if (approved) await _refresh();
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: EpButton(
+                      'DECLINE',
+                      key: Key('venue-request-decline-${consent.id}'),
+                      kind: EpButtonKind.outline,
+                      onTap: () => _showDecisionSheet(app, consent),
+                    ),
+                  ),
+                ],
+              ),
+            ] else if (consent.status == VenueConsentStatus.granted) ...[
+              const SizedBox(height: 12),
+              EpButton(
+                'REVOKE',
+                key: Key('venue-request-revoke-${consent.id}'),
+                kind: EpButtonKind.outline,
+                onTap: () => _showDecisionSheet(app, consent),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showDecisionSheet(AppState app, VenueConsentRow consent) {
+    showEpSheet(
+      context,
+      (_) => _VenueConsentNoteSheet(
+        app: app,
+        consentId: consent.id,
+        revoke: consent.status == VenueConsentStatus.granted,
+        onDecided: _refresh,
+      ),
+    );
   }
 
   @override
@@ -82,62 +193,158 @@ class _OrgVenuesScreenState extends State<OrgVenuesScreen> {
           )
         else if (_error != null)
           _LoadError(onRetry: _refresh)
-        else if (venues.isEmpty)
-          const EpCard(
-            child: Text('No venues are connected to this organization.'),
-          )
-        else
-          for (final venue in venues) ...[
-            EpCard(
-              key: ValueKey('org-venue-${venue.id}'),
-              onTap: () =>
-                  context.read<AppState>().go(Screen.orgVenueEdit, venue.id),
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              venue.name,
-                              style: Theme.of(
-                                context,
-                              ).textTheme.epSectionHeading,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              venue.approx.label,
-                              style: Theme.of(context).textTheme.epCaption,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      StatusPill(
-                        label: venue.verified ? 'VERIFIED' : 'SUSPENDED',
-                        tone: venue.verified
-                            ? EpStatusPillTone.success
-                            : EpStatusPillTone.warning,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ApproxAreaMap(
-                    centroid: venue.approx.centroid,
-                    label: venue.approx.label,
-                    height: 130,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
+        else ...[
+          if (_consents.isNotEmpty) ...[
+            const SectionBar(label: 'VENUE REQUESTS'),
+            for (final consent in _consents) ...[
+              _venueRequestCard(app, consent),
+              const SizedBox(height: 12),
+            ],
           ],
+          if (venues.isEmpty)
+            const EpCard(
+              child: Text('No venues are connected to this organization.'),
+            )
+          else
+            for (final venue in venues) ...[
+              EpCard(
+                key: ValueKey('org-venue-${venue.id}'),
+                onTap: () =>
+                    context.read<AppState>().go(Screen.orgVenueEdit, venue.id),
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                venue.name,
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.epSectionHeading,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                venue.approx.label,
+                                style: Theme.of(context).textTheme.epCaption,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        StatusPill(
+                          label: venue.verified ? 'VERIFIED' : 'SUSPENDED',
+                          tone: venue.verified
+                              ? EpStatusPillTone.success
+                              : EpStatusPillTone.warning,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ApproxAreaMap(
+                      centroid: venue.approx.centroid,
+                      label: venue.approx.label,
+                      height: 130,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+        ],
       ],
+    );
+  }
+}
+
+class _VenueConsentNoteSheet extends StatefulWidget {
+  const _VenueConsentNoteSheet({
+    required this.app,
+    required this.consentId,
+    required this.revoke,
+    required this.onDecided,
+  });
+
+  final AppState app;
+  final String consentId;
+  final bool revoke;
+  final VoidCallback onDecided;
+
+  @override
+  State<_VenueConsentNoteSheet> createState() => _VenueConsentNoteSheetState();
+}
+
+class _VenueConsentNoteSheetState extends State<_VenueConsentNoteSheet> {
+  final _note = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    final note = _note.text.trim();
+    final succeeded = widget.revoke
+        ? await widget.app.revokeVenueApproval(
+            widget.consentId,
+            note: note.isEmpty ? null : note,
+          )
+        : await widget.app.decideVenueApproval(
+            widget.consentId,
+            granted: false,
+            note: note.isEmpty ? null : note,
+          );
+    if (succeeded) {
+      if (mounted) Navigator.pop(context);
+      widget.onDecided();
+    } else if (mounted) {
+      setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return EpFormSheet(
+      title: widget.revoke ? 'REVOKE APPROVAL' : 'DECLINE REQUEST',
+      padBody: false,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.revoke) ...[
+              const Text(
+                'Revoking cancels the event if it is already open. After a confirmed booking, contact EarPlug support.',
+              ),
+              const SizedBox(height: 14),
+            ],
+            EpLabeledField(
+              label: 'NOTE (OPTIONAL)',
+              hint: 'Add a note for the organizer',
+              fieldKey: const Key('venue-request-note'),
+              controller: _note,
+              enabled: !_submitting,
+              minLines: 2,
+              maxLines: 4,
+            ),
+            const SizedBox(height: 16),
+            EpButton(
+              widget.revoke ? 'REVOKE' : 'DECLINE',
+              key: const Key('venue-request-note-submit'),
+              onTap: _submitting ? null : _submit,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -21,6 +21,296 @@ import 'support/fakes.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets('organizer type picker is visible when promoters are enabled', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) async {
+        // Finish the initial feature-flag load before overriding it.
+        await app.commitAuth();
+        app.features = _promotersEnabled;
+        app.go(Screen.orgApply);
+      },
+      home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
+    );
+    addTearDown(() => _disposeApp(harness.app));
+
+    expect(harness.app.promotersEnabled, isTrue);
+    for (final type in [
+      OrganizationType.venueOperator,
+      OrganizationType.promoter,
+      OrganizationType.studentOrg,
+    ]) {
+      final chip = find.byKey(Key('org-apply-type-${type.wireValue}'));
+      expect(chip, findsOneWidget);
+      expect(
+        tester.widget<EpChip>(chip).active,
+        type == OrganizationType.venueOperator,
+      );
+    }
+    expect(find.text('ORGANIZATION TYPE'), findsOneWidget);
+    expect(
+      find.text('Promoters and student organizations are coming next.'),
+      findsNothing,
+    );
+    await _scrollDownToKey(tester, const ValueKey('org-apply-kind-bar'));
+    expect(find.byKey(const ValueKey('org-apply-kind-club')), findsOneWidget);
+    await _scrollDownToKey(tester, const ValueKey('org-apply-venue-name'));
+    await _scrollDownToKey(tester, const ValueKey('org-apply-capacity'));
+  });
+
+  testWidgets('organizer type picker is hidden when promoters are disabled', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.go(Screen.orgApply),
+      home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
+    );
+    addTearDown(() => _disposeApp(harness.app));
+
+    expect(harness.app.promotersEnabled, isFalse);
+    expect(find.byKey(const Key('org-apply-type-venueOperator')), findsNothing);
+    expect(find.byKey(const Key('org-apply-type-promoter')), findsNothing);
+    expect(find.byKey(const Key('org-apply-type-studentOrg')), findsNothing);
+    expect(find.text('ORGANIZATION TYPE'), findsNothing);
+    expect(find.byKey(const ValueKey('org-apply-kind-bar')), findsOneWidget);
+    expect(find.byKey(const ValueKey('org-apply-kind-club')), findsOneWidget);
+    expect(
+      find.text('Promoters and student organizations are coming next.'),
+      findsOneWidget,
+    );
+    await _scrollDownToKey(tester, const ValueKey('org-apply-venue-name'));
+    await _scrollDownToKey(tester, const ValueKey('org-apply-capacity'));
+  });
+
+  testWidgets('selecting promoter hides venue fields and clears saved venue', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    await repository.saveOrganizationApplicationDraft(
+      orgName: 'Night Heron Collective',
+      orgType: OrganizationType.venueOperator,
+      contactName: '',
+      businessEmail: '',
+      venue: const ApplicationVenueDraft(
+        name: 'Night Heron Club',
+        addr: '22 Valencia Street',
+        point: LatLng(37.76, -122.42),
+        area: 'Mission',
+        capacity: 180,
+        venueType: VenueType.club,
+      ),
+    );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) async {
+        await app.commitAuth();
+        app.features = _promotersEnabled;
+        app.go(Screen.orgApply);
+      },
+      home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
+    );
+    addTearDown(() => _disposeApp(harness.app));
+
+    await tester.tap(find.byKey(const Key('org-apply-type-promoter')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('org-apply-kind-bar')), findsNothing);
+    expect(find.byKey(const ValueKey('org-apply-kind-club')), findsNothing);
+    expect(find.byKey(const ValueKey('org-apply-venue-name')), findsNothing);
+    expect(find.byKey(const ValueKey('org-apply-venue-address')), findsNothing);
+    expect(find.byKey(const ValueKey('org-apply-capacity')), findsNothing);
+    expect(
+      find.text(
+        "You'll post events at verified venues and ask each venue for approval.",
+      ),
+      findsOneWidget,
+    );
+    final saved = (await repository.myOrganizationApplication())!;
+    expect(saved.orgType, OrganizationType.promoter);
+    expect(saved.venue, isNull);
+    expect(
+      tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
+      isNotNull,
+    );
+
+    await tester.tap(find.byKey(const Key('org-apply-type-promoter')));
+    await tester.pumpAndSettle();
+    expect(
+      (await repository.myOrganizationApplication())!.revision,
+      saved.revision,
+    );
+  });
+
+  testWidgets('promoter application submits without a venue', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final picker = FakeMediaPicker();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) async {
+        await app.commitAuth();
+        app.features = _promotersEnabled;
+        app.go(Screen.orgApply);
+      },
+      home: _ApplicationHost(mediaPicker: picker),
+    );
+    addTearDown(() => _disposeApp(harness.app));
+
+    await tester.tap(find.byKey(const Key('org-apply-type-promoter')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
+      isNull,
+    );
+    await _enterText(
+      tester,
+      const ValueKey('org-apply-name'),
+      'Night Heron Collective',
+    );
+    await _continueToContact(tester);
+    expect(find.byKey(const Key('org-apply-type-promoter')), findsNothing);
+    await _enterText(
+      tester,
+      const ValueKey('org-apply-contact-name'),
+      'Rae Booker',
+    );
+    await _enterText(
+      tester,
+      const ValueKey('org-apply-email'),
+      'rae@nightheron.example',
+    );
+    picker.nextPhoto = _licensePhoto;
+    await _scrollDownToKey(tester, const ValueKey('org-apply-doc-add'));
+    expect(
+      find.text(
+        'Upload something that proves your organization exists (registration, a flyer with your name, or a social page screenshot).',
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const ValueKey('org-apply-doc-add')));
+    await tester.pumpAndSettle();
+    await _scrollDownToKey(tester, const ValueKey('org-apply-agree'));
+    await tester.tap(find.byKey(const ValueKey('org-apply-agree')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
+      isNotNull,
+    );
+    await tester.tap(find.byKey(const ValueKey('org-apply-submit')));
+    await tester.pumpAndSettle();
+
+    final submitted = (await repository.myOrganizationApplication())!;
+    expect(submitted.status, OrganizationApplicationStatus.submitted);
+    expect(submitted.orgType, OrganizationType.promoter);
+    expect(submitted.venue, isNull);
+    expect(submitted.documents, hasLength(1));
+    expect(harness.app.current.screen, Screen.orgApplicationStatus);
+    expect(find.byKey(const ValueKey('org-apply-feedback')), findsNothing);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('org-status-type'))).data,
+      'Promoter or collective',
+    );
+  });
+
+  testWidgets('student organization draft restores its type without a venue', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    await repository.saveOrganizationApplicationDraft(
+      orgName: 'Campus Music Society',
+      orgType: OrganizationType.studentOrg,
+      contactName: '',
+      businessEmail: '',
+    );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) async {
+        await app.commitAuth();
+        app.features = _promotersEnabled;
+        app.go(Screen.orgApply);
+      },
+      home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
+    );
+    addTearDown(() => _disposeApp(harness.app));
+
+    expect(
+      tester
+          .widget<EpChip>(find.byKey(const Key('org-apply-type-studentOrg')))
+          .active,
+      isTrue,
+    );
+    expect(find.byKey(const ValueKey('org-apply-kind-bar')), findsNothing);
+    expect(find.byKey(const ValueKey('org-apply-venue-name')), findsNothing);
+    await _continueToContact(tester);
+    final saved = (await repository.myOrganizationApplication())!;
+    expect(saved.orgType, OrganizationType.studentOrg);
+    expect(saved.venue, isNull);
+  });
+
+  testWidgets(
+    'disabled promoters flag saves stale promoter as venue operator',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      await repository.saveOrganizationApplicationDraft(
+        orgName: 'Night Heron Collective',
+        orgType: OrganizationType.promoter,
+        contactName: '',
+        businessEmail: '',
+      );
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        beforePump: (app) => app.go(Screen.orgApply),
+        home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
+      );
+      addTearDown(() => _disposeApp(harness.app));
+
+      expect(find.byKey(const Key('org-apply-type-promoter')), findsNothing);
+      expect(find.byKey(const ValueKey('org-apply-kind-bar')), findsOneWidget);
+      expect(
+        tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
+        isNull,
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('org-apply-name')),
+        'Night Heron Club',
+      );
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+      expect(
+        (await repository.myOrganizationApplication())!.orgType,
+        OrganizationType.venueOperator,
+      );
+    },
+  );
+
   testWidgets(
     'rejected applicants start a new draft and retain the rejection',
     (tester) async {
@@ -175,6 +465,10 @@ void main() {
       OrganizationApplicationStatus.submitted,
     );
     expect(find.text('Submitted'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('org-status-type'))).data,
+      'Bar or club',
+    );
   });
 
   testWidgets('draft application reopens in the editor from the switcher', (
@@ -755,6 +1049,14 @@ class _NonOwningAppHost extends StatelessWidget {
   Widget build(BuildContext context) =>
       ChangeNotifierProvider<AppState>.value(value: app(), child: child);
 }
+
+const _promotersEnabled = FeatureFlags(
+  privateBookings: false,
+  tickets: false,
+  payments: false,
+  bandGigWrites: true,
+  promoters: true,
+);
 
 final _licensePhoto = PickedMedia(
   bytes: Uint8List.fromList([1, 2, 3]),

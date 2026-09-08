@@ -37,6 +37,8 @@ void main() {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);
     final harness = await _pumpEditor(tester, auth, repository, 'new');
+    expect(find.byKey(const Key('opp-edit-venue-search')), findsNothing);
+    expect(find.byKey(const Key('opp-edit-venue-v1')), findsOneWidget);
     final originalIds = (await repository.manageOpportunities(
       'org1',
     )).map((opportunity) => opportunity.id).toSet();
@@ -143,6 +145,241 @@ void main() {
     );
     await _disposeApp(tester, harness.app);
   });
+
+  testWidgets('promoters search verified managed venues on a new draft', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final harness = await _pumpEditor(
+      tester,
+      auth,
+      repository,
+      'new',
+      organizationId: 'org3',
+    );
+    expect(find.byKey(const Key('opp-edit-venue-search')), findsOneWidget);
+    expect(find.byKey(const Key('opp-edit-venue-v1')), findsOneWidget);
+    expect(find.byKey(const Key('opp-edit-venue-v2')), findsNothing);
+    expect(find.byKey(const Key('opp-edit-venue-v3')), findsNothing);
+    expect(find.byKey(const Key('opp-edit-venue-approval')), findsNothing);
+
+    await _enterText(tester, 'opp-edit-venue-search', '  FOGHORN  ');
+    expect(find.byKey(const Key('opp-edit-venue-v1')), findsOneWidget);
+    await _enterText(tester, 'opp-edit-venue-search', 'Nightcrawler');
+    expect(find.byKey(const Key('opp-edit-venue-v1')), findsNothing);
+    expect(find.byKey(const Key('opp-edit-venue-v2')), findsNothing);
+    await _enterText(tester, 'opp-edit-venue-search', '  MISSION  ');
+    await _tap(tester, 'opp-edit-venue-v1');
+    expect(
+      tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).active,
+      isTrue,
+    );
+    await _enterText(tester, 'opp-edit-venue-search', 'No matching venue');
+    expect(find.byKey(const Key('opp-edit-venue-v1')), findsNothing);
+    expect(
+      find.text('The Foghorn Club · Mission, San Francisco'),
+      findsOneWidget,
+    );
+    expectNoFieldInCard(tester);
+    await _disposeApp(tester, harness.app);
+  });
+
+  testWidgets('withdrawing pending approval unlocks the venue and dates', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final harness = await _pumpEditor(
+      tester,
+      auth,
+      repository,
+      'opp-promoter',
+      organizationId: 'org3',
+    );
+    expect(_field(tester, 'opp-edit-venue-search').enabled, isFalse);
+    expect(
+      tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).onTap,
+      isNull,
+    );
+    final card = find.byKey(const Key('opp-edit-venue-approval'));
+    await _reveal(tester, card);
+    expect(
+      find.descendant(of: card, matching: find.text('PENDING APPROVAL')),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<EpButton>(find.byKey(const Key('opp-edit-withdraw-approval')))
+          .onTap,
+      isNotNull,
+    );
+    expect(find.byKey(const Key('opp-edit-request-approval')), findsNothing);
+    expect(_action(tester, 'open').primaryLabel, 'WAITING FOR VENUE APPROVAL');
+    expect(_action(tester, 'open').onPrimary, isNull);
+    await _reveal(tester, find.byKey(const Key('opp-edit-date')));
+    for (final key in ['date', 'doors', 'start', 'deadline']) {
+      expect(
+        tester
+            .widget<OutlinedButton>(find.byKey(Key('opp-edit-$key')))
+            .onPressed,
+        isNull,
+      );
+    }
+
+    await _tap(tester, 'opp-edit-withdraw-approval');
+    expect(await repository.venueConsentForOpportunity('opp-promoter'), isNull);
+    await _reveal(tester, card);
+    expect(
+      find.descendant(of: card, matching: find.text('NOT REQUESTED')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('opp-edit-withdraw-approval')), findsNothing);
+    expect(
+      tester
+          .widget<EpButton>(find.byKey(const Key('opp-edit-request-approval')))
+          .onTap,
+      isNotNull,
+    );
+    await _reveal(tester, find.byKey(const Key('opp-edit-date')));
+    for (final key in ['date', 'doors', 'start', 'deadline']) {
+      expect(
+        tester
+            .widget<OutlinedButton>(find.byKey(Key('opp-edit-$key')))
+            .onPressed,
+        isNotNull,
+      );
+    }
+    await _reveal(tester, find.byKey(const Key('opp-edit-venue-search')));
+    expect(_field(tester, 'opp-edit-venue-search').enabled, isTrue);
+    expect(
+      tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).onTap,
+      isNotNull,
+    );
+    expect(_action(tester, 'open').onPrimary, isNull);
+    await _disposeApp(tester, harness.app);
+  });
+
+  testWidgets('a newly saved promoter draft requests approval with a message', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    final harness = await _pumpEditor(
+      tester,
+      auth,
+      repository,
+      'new',
+      organizationId: 'org3',
+    );
+    await _enterText(tester, 'opp-edit-title', 'Promoter showcase');
+    await _tap(tester, 'opp-edit-venue-v1');
+    await _pickDate(tester, 'opp-edit-date', _futureDate(40));
+    await _tapAction(tester, 'save');
+    final saved = (await repository.manageOpportunities(
+      'org3',
+    )).singleWhere((opportunity) => opportunity.title == 'Promoter showcase');
+    await _tap(tester, 'opp-edit-request-approval');
+    final message = find.byKey(const Key('opp-edit-approval-message'));
+    final submit = find.byKey(const Key('opp-edit-send-approval'));
+    expectNoFieldInCard(tester);
+    await tester.enterText(message, '  Please reserve the stage.  ');
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+
+    final consent = await repository.venueConsentForOpportunity(saved.id);
+    expect(consent?.message, 'Please reserve the stage.');
+    expect(consent?.status, VenueConsentStatus.pending);
+    expect(message, findsNothing);
+    await _reveal(tester, find.byKey(const Key('opp-edit-venue-approval')));
+    expect(find.text('PENDING APPROVAL'), findsOneWidget);
+    expect(find.byKey(const Key('opp-edit-withdraw-approval')), findsOneWidget);
+    await _reveal(tester, find.byKey(const Key('opp-edit-title')));
+    expect(
+      _field(tester, 'opp-edit-title').controller!.text,
+      'Promoter showcase',
+    );
+    expect(_action(tester, 'open').onPrimary, isNull);
+    await _disposeApp(tester, harness.app);
+  });
+
+  testWidgets('a failed approval request preserves the message for retry', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = DemoRepository(auth: auth);
+    await repository.withdrawVenueConsent('consent-1');
+    final harness = await _pumpEditor(
+      tester,
+      auth,
+      repository,
+      'opp-promoter',
+      organizationId: 'org3',
+    );
+    await _tap(tester, 'opp-edit-request-approval');
+    final message = find.byKey(const Key('opp-edit-approval-message'));
+    final submit = find.byKey(const Key('opp-edit-send-approval'));
+    final tooLong = List.filled(1001, 'x').join();
+    await tester.enterText(message, tooLong);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(message).controller!.text, tooLong);
+    expect(tester.widget<EpButton>(submit).onTap, isNotNull);
+    expect(await repository.venueConsentForOpportunity('opp-promoter'), isNull);
+
+    await tester.enterText(message, '   ');
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    final consent = await repository.venueConsentForOpportunity('opp-promoter');
+    expect(consent?.status, VenueConsentStatus.pending);
+    expect(consent?.message, isNull);
+    expect(message, findsNothing);
+    await _disposeApp(tester, harness.app);
+  });
+
+  testWidgets(
+    'granted approval enables opening while venue and dates stay locked',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = DemoRepository(auth: auth);
+      await repository.decideVenueConsent(
+        consentId: 'consent-1',
+        granted: true,
+      );
+      final harness = await _pumpEditor(
+        tester,
+        auth,
+        repository,
+        'opp-promoter',
+        organizationId: 'org3',
+      );
+      await _reveal(tester, find.byKey(const Key('opp-edit-venue-approval')));
+      expect(find.text('APPROVED'), findsOneWidget);
+      expect(find.byKey(const Key('opp-edit-request-approval')), findsNothing);
+      expect(
+        find.byKey(const Key('opp-edit-withdraw-approval')),
+        findsOneWidget,
+      );
+      expect(_action(tester, 'open').primaryLabel, 'OPEN FOR APPLICATIONS');
+      expect(_action(tester, 'open').onPrimary, isNotNull);
+      await _reveal(tester, find.byKey(const Key('opp-edit-date')));
+      expect(
+        tester
+            .widget<OutlinedButton>(find.byKey(const Key('opp-edit-date')))
+            .onPressed,
+        isNull,
+      );
+      await _tapAction(tester, 'open');
+      expect(
+        (await repository.opportunity('opp-promoter'))!.status,
+        OpportunityStatus.open,
+      );
+      expect(_action(tester, 'close').onPrimary, isNotNull);
+      await _reveal(tester, find.byKey(const Key('opp-edit-venue-approval')));
+      expect(find.byKey(const Key('opp-edit-withdraw-approval')), findsNothing);
+      await _disposeApp(tester, harness.app);
+    },
+  );
 
   testWidgets('paid tickets save dollar prices and validate before opening', (
     tester,
@@ -889,15 +1126,16 @@ Future<AppHarness> _pumpEditor(
   WidgetTester tester,
   FakeAuthService auth,
   DemoRepository repository,
-  String id,
-) async {
+  String id, {
+  String organizationId = 'org1',
+}) async {
   final harness = await pumpApp(
     tester,
     auth: auth,
     repository: repository,
     home: _EditorHost(opportunityId: id),
   );
-  await enterOrganizer(tester, harness, 'org1');
+  await enterOrganizer(tester, harness, organizationId);
   harness.app.openOpportunityEditor(id);
   await tester.pumpAndSettle();
   return harness;

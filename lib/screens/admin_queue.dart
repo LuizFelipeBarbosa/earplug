@@ -402,11 +402,14 @@ class _ApplicationRow extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 5),
-          Text(
-            organizationTypeLabel(application.orgType),
-            style: Theme.of(context).textTheme.epCaption,
-          ),
+          if (!isHost) ...[
+            const SizedBox(height: 5),
+            StatusPill(
+              key: Key('admin-row-${application.id}-type'),
+              label: organizationTypeLabel(application.orgType).toUpperCase(),
+              tone: EpStatusPillTone.neutral,
+            ),
+          ],
           const SizedBox(height: 10),
           Text(
             '${row.applicantName} · ${dateLabel(application.createdAt)}',

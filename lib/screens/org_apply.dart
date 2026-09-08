@@ -80,6 +80,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
 
   String? _applicationId;
   int _revision = 0;
+  OrganizationType _orgType = OrganizationType.venueOperator;
   String? _kind;
   VenueLocationDraft _venueLocation = const VenueLocationDraft();
   List<ApplicationDocument> _documents = const [];
@@ -107,9 +108,14 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   bool get _busy => _blockingSave || _documentWorking || _submitting;
   List<({String label, bool complete})> get _venueRequirements => [
     (label: 'Organization name', complete: _orgName.text.trim().isNotEmpty),
-    (label: 'Bar or club selection', complete: _kind != null),
-    (label: 'Venue name', complete: _venueLocation.isNamed),
-    (label: 'Street address and map pin', complete: _venueLocation.isComplete),
+    if (_orgType == OrganizationType.venueOperator) ...[
+      (label: 'Bar or club selection', complete: _kind != null),
+      (label: 'Venue name', complete: _venueLocation.isNamed),
+      (
+        label: 'Street address and map pin',
+        complete: _venueLocation.isComplete,
+      ),
+    ],
   ];
 
   List<({String label, bool complete})> get _contactRequirements => [
@@ -189,6 +195,11 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
     _applicationId = application.id;
     _revision = application.revision;
     _orgName.text = application.orgName;
+    _orgType = switch (application.orgType) {
+      OrganizationType.promoter => OrganizationType.promoter,
+      OrganizationType.studentOrg => OrganizationType.studentOrg,
+      _ => OrganizationType.venueOperator,
+    };
     _kind = switch (venue?.venueType) {
       VenueType.bar => 'bar',
       VenueType.club => 'club',
@@ -263,11 +274,17 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
     _changed(() => _kind = kind, immediate: true);
   }
 
+  void _selectOrgType(OrganizationType type) {
+    if (_orgType == type) return;
+    _changed(() => _orgType = type, immediate: true);
+  }
+
   void _saveOnBlur() {
     if (_hasUnsavedChanges) unawaited(_saveDraft());
   }
 
   ApplicationVenueDraft? get _applicationVenue {
+    if (_orgType != OrganizationType.venueOperator) return null;
     final location = _venueLocation;
     if (!location.isComplete) return null;
     return ApplicationVenueDraft(
@@ -310,12 +327,13 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   Future<bool> _performDraftSave() async {
     final savedEditVersion = _editVersion;
     final app = context.read<AppState>();
+    if (!app.promotersEnabled) _orgType = OrganizationType.venueOperator;
     try {
       final saved = await app.repository.saveOrganizationApplicationDraft(
         applicationId: _applicationId,
         expectedRevision: _applicationId == null ? null : _revision,
         orgName: _orgName.text.trim(),
-        orgType: OrganizationType.venueOperator,
+        orgType: _orgType,
         website: _website.text.trim().isEmpty ? null : _website.text.trim(),
         contactName: _contactName.text.trim(),
         businessEmail: _businessEmail.text.trim(),
@@ -537,12 +555,14 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final application = context.watch<AppState>().myOrganizationApplication;
+    final app = context.watch<AppState>();
+    final application = app.myOrganizationApplication;
     if (_applicationId == null &&
         !_hasUnsavedChanges &&
         application?.editable == true) {
       _loadApplication(application!);
     }
+    if (!app.promotersEnabled) _orgType = OrganizationType.venueOperator;
 
     if (application != null &&
         application.status != OrganizationApplicationStatus.withdrawn &&
@@ -704,8 +724,53 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
 
   List<Widget> _venueFields(BuildContext context) {
     final enabled = !_busy;
+    final promotersEnabled = context.read<AppState>().promotersEnabled;
     return [
-      const SectionBar.form(label: 'YOUR VENUE'),
+      if (promotersEnabled) ...[
+        const SectionBar.form(label: 'ORGANIZATION TYPE'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            EpChip(
+              key: const Key('org-apply-type-venueOperator'),
+              label: 'BAR OR CLUB',
+              active: _orgType == OrganizationType.venueOperator,
+              onTap: enabled
+                  ? () => _selectOrgType(OrganizationType.venueOperator)
+                  : null,
+            ),
+            EpChip(
+              key: const Key('org-apply-type-promoter'),
+              label: 'PROMOTER OR COLLECTIVE',
+              active: _orgType == OrganizationType.promoter,
+              onTap: enabled
+                  ? () => _selectOrgType(OrganizationType.promoter)
+                  : null,
+            ),
+            EpChip(
+              key: const Key('org-apply-type-studentOrg'),
+              label: 'STUDENT ORGANIZATION',
+              active: _orgType == OrganizationType.studentOrg,
+              onTap: enabled
+                  ? () => _selectOrgType(OrganizationType.studentOrg)
+                  : null,
+            ),
+          ],
+        ),
+        if (_orgType != OrganizationType.venueOperator) ...[
+          const SizedBox(height: 5),
+          Text(
+            "You'll post events at verified venues and ask each venue for approval.",
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+        ],
+      ],
+      SectionBar.form(
+        label: _orgType == OrganizationType.venueOperator
+            ? 'YOUR VENUE'
+            : 'YOUR ORGANIZATION',
+      ),
       Focus(
         onFocusChange: (focused) {
           if (!focused) _saveOnBlur();
@@ -721,86 +786,90 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
           onChanged: _organizationNameChanged,
         ),
       ),
-      const SizedBox(height: EpLayout.fieldGap),
-      const FieldLabel('WHAT ARE YOU', required: true),
-      const SizedBox(height: 7),
-      SegmentedButton<String>(
-        expandedInsets: EdgeInsets.zero,
-        emptySelectionAllowed: true,
-        showSelectedIcon: false,
-        segments: const [
-          ButtonSegment(
-            value: 'bar',
-            label: Text('BAR', key: ValueKey('org-apply-kind-bar')),
+      if (_orgType == OrganizationType.venueOperator) ...[
+        const SizedBox(height: EpLayout.fieldGap),
+        const FieldLabel('WHAT ARE YOU', required: true),
+        const SizedBox(height: 7),
+        SegmentedButton<String>(
+          expandedInsets: EdgeInsets.zero,
+          emptySelectionAllowed: true,
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(
+              value: 'bar',
+              label: Text('BAR', key: ValueKey('org-apply-kind-bar')),
+            ),
+            ButtonSegment(
+              value: 'club',
+              label: Text('CLUB', key: ValueKey('org-apply-kind-club')),
+            ),
+          ],
+          selected: {?_kind},
+          onSelectionChanged: enabled
+              ? (selection) {
+                  if (selection.isNotEmpty) _selectKind(selection.single);
+                }
+              : null,
+          style: ButtonStyle(
+            minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+            textStyle: WidgetStatePropertyAll(
+              Theme.of(context).textTheme.epLabel,
+            ),
+            backgroundColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.selected)
+                  ? context.epColors.surfaceSelected
+                  : context.epColors.surface,
+            ),
+            foregroundColor: WidgetStateProperty.resolveWith(
+              (states) => states.contains(WidgetState.disabled)
+                  ? context.epColors.contentDisabled
+                  : states.contains(WidgetState.selected)
+                  ? context.epColors.contentPrimary
+                  : context.epColors.contentSecondary,
+            ),
+            side: WidgetStatePropertyAll(
+              BorderSide(color: context.epColors.border),
+            ),
           ),
-          ButtonSegment(
-            value: 'club',
-            label: Text('CLUB', key: ValueKey('org-apply-kind-club')),
+        ),
+        if (!promotersEnabled) ...[
+          const SizedBox(height: 5),
+          Text(
+            'Promoters and student organizations are coming next.',
+            style: Theme.of(context).textTheme.epCaption,
           ),
         ],
-        selected: {?_kind},
-        onSelectionChanged: enabled
-            ? (selection) {
-                if (selection.isNotEmpty) _selectKind(selection.single);
-              }
-            : null,
-        style: ButtonStyle(
-          minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-          textStyle: WidgetStatePropertyAll(
-            Theme.of(context).textTheme.epLabel,
-          ),
-          backgroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.selected)
-                ? context.epColors.surfaceSelected
-                : context.epColors.surface,
-          ),
-          foregroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.disabled)
-                ? context.epColors.contentDisabled
-                : states.contains(WidgetState.selected)
-                ? context.epColors.contentPrimary
-                : context.epColors.contentSecondary,
-          ),
-          side: WidgetStatePropertyAll(
-            BorderSide(color: context.epColors.border),
+        const SizedBox(height: EpLayout.fieldGap),
+        Focus(
+          onFocusChange: (focused) {
+            if (!focused) _saveOnBlur();
+          },
+          child: VenueLocationEditor(
+            key: ValueKey(_venueEditorGeneration),
+            keyPrefix: 'org-apply-venue',
+            compactMap: true,
+            showNameField: true,
+            initial: _venueLocation,
+            onChanged: _venueChanged,
+            helperText:
+                'Fans only ever see the neighborhood. The exact '
+                'address stays private.',
+            enabled: enabled,
           ),
         ),
-      ),
-      const SizedBox(height: 5),
-      Text(
-        'Promoters and student organizations are coming next.',
-        style: Theme.of(context).textTheme.epCaption,
-      ),
-      const SizedBox(height: EpLayout.fieldGap),
-      Focus(
-        onFocusChange: (focused) {
-          if (!focused) _saveOnBlur();
-        },
-        child: VenueLocationEditor(
-          key: ValueKey(_venueEditorGeneration),
-          keyPrefix: 'org-apply-venue',
-          compactMap: true,
-          showNameField: true,
-          initial: _venueLocation,
-          onChanged: _venueChanged,
-          helperText:
-              'Fans only ever see the neighborhood. The exact '
-              'address stays private.',
+        const SizedBox(height: EpLayout.fieldGap),
+        EpLabeledField(
+          fieldKey: const ValueKey('org-apply-capacity'),
+          label: 'CAPACITY · OPTIONAL',
+          hint: 'Roughly how many people fit',
+          controller: _capacity,
+          focusNode: _capacityFocus,
           enabled: enabled,
+          keyboardType: TextInputType.number,
+          onChanged: _textChanged,
+          onEditingComplete: _saveOnBlur,
         ),
-      ),
-      const SizedBox(height: EpLayout.fieldGap),
-      EpLabeledField(
-        fieldKey: const ValueKey('org-apply-capacity'),
-        label: 'CAPACITY · OPTIONAL',
-        hint: 'Roughly how many people fit',
-        controller: _capacity,
-        focusNode: _capacityFocus,
-        enabled: enabled,
-        keyboardType: TextInputType.number,
-        onChanged: _textChanged,
-        onEditingComplete: _saveOnBlur,
-      ),
+      ],
     ];
   }
 
@@ -874,7 +943,13 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         const SizedBox(height: 12),
       ],
       if (_documents.length < 5)
-        _AddDocumentTile(enabled: enabled, onTap: _addDocument),
+        _AddDocumentTile(
+          enabled: enabled,
+          onTap: _addDocument,
+          caption: _orgType == OrganizationType.venueOperator
+              ? 'Business license, lease, or utility bill. Visible to reviewers only.'
+              : 'Upload something that proves your organization exists (registration, a flyer with your name, or a social page screenshot).',
+        ),
       const SizedBox(height: EpLayout.fieldGap),
       Material(
         color: Colors.transparent,
@@ -1004,10 +1079,16 @@ class _DocumentTile extends StatelessWidget {
 }
 
 class _AddDocumentTile extends StatelessWidget {
-  const _AddDocumentTile({required this.enabled, required this.onTap});
+  const _AddDocumentTile({
+    required this.enabled,
+    required this.onTap,
+    this.caption =
+        'Business license, lease, or utility bill. Visible to reviewers only.',
+  });
 
   final bool enabled;
   final VoidCallback onTap;
+  final String caption;
 
   @override
   Widget build(BuildContext context) {
@@ -1042,7 +1123,7 @@ class _AddDocumentTile extends StatelessWidget {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Business license, lease, or utility bill. Visible to reviewers only.',
+                        caption,
                         style: Theme.of(context).textTheme.epCaption,
                       ),
                     ],

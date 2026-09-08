@@ -39,8 +39,14 @@ void main() {
       stats,
       contains(
         isA<EpStatCard>()
+            .having(
+              (card) => card.key,
+              'key',
+              const Key('org-dash-venue-requests'),
+            )
             .having((card) => card.label, 'label', 'VENUES')
-            .having((card) => card.value, 'value', '1'),
+            .having((card) => card.value, 'value', '1')
+            .having((card) => card.caption, 'caption', '1 venue requests'),
       ),
     );
     expect(
@@ -66,6 +72,56 @@ void main() {
 
     expect(harness.app.current.screen, Screen.orgOpportunities);
   });
+
+  testWidgets('promoter dashboard hides venue management and keeps members', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      beforePump: (app) => app.switchToOrganization('org3'),
+      home: const Scaffold(body: OrgDashScreen()),
+    );
+    await enterOrganizer(tester, harness, 'org3');
+
+    final stats = tester.widgetList<EpStatCard>(find.byType(EpStatCard));
+    expect(stats.where((card) => card.label == 'VENUES'), isEmpty);
+    expect(stats.where((card) => card.label == 'MEMBERS'), hasLength(1));
+    expect(find.byKey(const Key('org-dash-venue-requests')), findsNothing);
+    expect(find.byKey(const Key('org-dash-command-venues')), findsNothing);
+    expect(find.byKey(const Key('org-dash-locations')), findsNothing);
+  });
+
+  testWidgets(
+    'venue dashboard keeps its caption when no requests are pending',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      await repository.decideVenueConsent(
+        consentId: 'consent-1',
+        granted: true,
+      );
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        beforePump: (app) => app.switchToOrganization('org1'),
+        home: const Scaffold(body: OrgDashScreen()),
+      );
+      await enterOrganizer(tester, harness, 'org1');
+
+      final card = tester.widget<EpStatCard>(
+        find.byKey(const Key('org-dash-venue-requests')),
+      );
+      expect(card.caption, 'managed profiles');
+      expect(find.byKey(const Key('org-dash-command-venues')), findsOneWidget);
+    },
+  );
 
   testWidgets('organizer dashboard opens a new opportunity draft', (
     tester,

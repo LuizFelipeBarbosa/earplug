@@ -7,6 +7,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
@@ -74,12 +75,21 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
             EpActionSheetItem(
               label: label,
               icon: Icons.date_range_outlined,
-              onPressed: () => _exportStatement(from, to),
+              onPressed: () => _showExportFormatSheet(from, to),
             ),
         ],
       ),
     );
   }
+
+  Future<void> _showExportFormatSheet(DateTime from, DateTime to) =>
+      showEpSheet(
+        context,
+        (_) => _ExportFormatSheet(
+          onCsv: () => _exportStatement(from, to),
+          onPdf: () => _exportStatementPdf(from, to),
+        ),
+      );
 
   Future<void> _exportStatement(DateTime from, DateTime to) =>
       _runAction(() async {
@@ -89,6 +99,21 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
           SnackBar(content: Text('Statement downloaded (${result.rows} rows)')),
         );
       });
+
+  Future<void> _exportStatementPdf(
+    DateTime from,
+    DateTime to,
+  ) => _runAction(() async {
+    final result = await context.read<AppState>().exportStatementPdf(from, to);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Statement downloaded (${result.transactions.length} transactions)',
+        ),
+      ),
+    );
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -283,6 +308,43 @@ class _OrgFinanceScreenState extends State<OrgFinanceScreen> {
       ),
     );
   }
+}
+
+class _ExportFormatSheet extends StatelessWidget {
+  const _ExportFormatSheet({required this.onCsv, required this.onPdf});
+
+  final VoidCallback onCsv;
+  final VoidCallback onPdf;
+
+  @override
+  Widget build(BuildContext context) => EpSheetShell(
+    padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+    mainAxisSize: MainAxisSize.min,
+    header: Text(
+      'Export format',
+      style: Theme.of(context).textTheme.epSectionHeading,
+    ),
+    children: [
+      const SizedBox(height: 16),
+      EpButton(
+        'CSV',
+        key: const Key('org-finance-export-csv'),
+        onTap: () {
+          Navigator.pop(context);
+          onCsv();
+        },
+      ),
+      const SizedBox(height: 10),
+      EpButton(
+        'PDF',
+        key: const Key('org-finance-export-pdf'),
+        onTap: () {
+          Navigator.pop(context);
+          onPdf();
+        },
+      ),
+    ],
+  );
 }
 
 class _FinanceStats extends StatelessWidget {

@@ -172,6 +172,14 @@ class _OrgApplicationStatusScreenState
     final app = context.watch<AppState>();
     final application = app.myOrganizationApplication;
     final isHost = application?.kind == ApplicationKind.host;
+    final typeCaption = isHost
+        ? null
+        : switch (application?.orgType) {
+            OrganizationType.venueOperator => 'Bar or club',
+            OrganizationType.promoter => 'Promoter or collective',
+            OrganizationType.studentOrg => 'Student organization',
+            _ => null,
+          };
     if (!_startingNewApplication &&
         application?.status == OrganizationApplicationStatus.draft) {
       _scheduleApplyRedirect();
@@ -194,6 +202,20 @@ class _OrgApplicationStatusScreenState
               ],
             ),
           ),
+          if (typeCaption != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  typeCaption,
+                  key: const Key('org-status-type'),
+                  style: Theme.of(context).textTheme.epCaption.copyWith(
+                    color: context.epColors.contentSecondary,
+                  ),
+                ),
+              ),
+            ),
           Expanded(
             child: application == null
                 ? Center(
