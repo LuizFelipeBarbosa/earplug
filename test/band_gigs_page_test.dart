@@ -2,6 +2,7 @@ import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
+import 'package:earplug/money.dart';
 import 'package:earplug/screens/gig_manager.dart';
 import 'package:earplug/screens/opportunity_detail.dart';
 import 'package:earplug/screens/org_opportunities.dart';
@@ -16,6 +17,17 @@ import 'package:provider/provider.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+
+class _BookingCardRepository extends DemoRepository {
+  _BookingCardRepository({required super.auth, required this.gigBooking});
+
+  final Booking gigBooking;
+
+  @override
+  Future<List<Booking>> bandBookings(String bandId) async => [
+    if (gigBooking.bandId == bandId) gigBooking,
+  ];
+}
 
 void main() {
   testWidgets('OPEN identifies private requests and explains disclosure', (
@@ -52,10 +64,12 @@ void main() {
     await tester.scrollUntilVisible(
       card,
       300,
-      scrollable: find.descendant(
-        of: find.byType(GigManagerScreen),
-        matching: find.byType(Scrollable),
-      ).first,
+      scrollable: find
+          .descendant(
+            of: find.byType(GigManagerScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     await tester.pumpAndSettle();
     expect(card, findsOneWidget);
@@ -106,10 +120,12 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('EXPECTED GUESTS · 45'),
       300,
-      scrollable: find.descendant(
-        of: find.byType(OpportunityDetailScreen),
-        matching: find.byType(Scrollable),
-      ).first,
+      scrollable: find
+          .descendant(
+            of: find.byType(OpportunityDetailScreen),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     await tester.pumpAndSettle();
     expect(find.text('EXPECTED GUESTS · 45'), findsOneWidget);
@@ -379,6 +395,10 @@ void main() {
       find.descendant(of: card, matching: find.text('No fee')),
       findsOneWidget,
     );
+    expect(
+      find.descendant(of: card, matching: find.textContaining('Refunded')),
+      findsNothing,
+    );
     expect(find.byKey(const ValueKey('band-booking-bk1')), findsNothing);
     expect(find.byKey(const ValueKey('band-booking-bk3')), findsNothing);
 
@@ -388,6 +408,94 @@ void main() {
     expect(harness.app.current.param, 'bk2');
     harness.app.dispose();
   });
+
+  for (final refundedMinor in [0, 2550]) {
+    testWidgets(
+      refundedMinor == 0
+          ? 'BOOKED keeps artist net without a refund caption when nothing was refunded'
+          : 'BOOKED keeps artist net and shows the refunded amount',
+      (tester) async {
+        final auth = FakeAuthService();
+        await auth.signInDemo();
+        final booking = Booking(
+          id: 'paid-booking',
+          opportunityId: 'opp1',
+          opportunityTitle: 'Paid show',
+          opportunitySlug: 'paid-show',
+          slotId: 'opp1-headliner',
+          slotRole: SlotRole.headliner,
+          slotRequired: true,
+          organizationId: 'org1',
+          organizationName: 'The Foghorn Club',
+          bandId: 'b1',
+          bandName: 'Foghorn Diet',
+          bandSlug: 'foghorn-diet',
+          applicationId: 'app1',
+          status: BookingStatus.confirmed,
+          revision: 3,
+          startsAt: DateTime.now().add(const Duration(days: 5)),
+          fee: const FeeBreakdown(
+            grossMinor: 10000,
+            commissionBps: 1000,
+            commissionMinor: 1000,
+            artistNetMinor: 9000,
+            currency: 'usd',
+          ),
+          paidMinor: 10000,
+          refundedMinor: refundedMinor,
+          cancellationTemplate: CancellationTemplate.standard,
+          organizerAcceptedTermsAt: DateTime.now(),
+          viewerSide: BookingSide.artist,
+        );
+        final repository = _BookingCardRepository(
+          auth: auth,
+          gigBooking: booking,
+        );
+        await pumpApp(
+          tester,
+          home: const Scaffold(body: GigManagerScreen()),
+          auth: auth,
+          repository: repository,
+          beforePump: (app) => app.switchToBand('b1'),
+        );
+        await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
+        await tester.pumpAndSettle();
+
+        final card = find.byKey(ValueKey('band-booking-${booking.id}'));
+        expect(card, findsOneWidget);
+        expect(
+          find.descendant(
+            of: card,
+            matching: find.text(
+              'Artist receives ${booking.fee.artistNet.label}',
+            ),
+          ),
+          findsOneWidget,
+        );
+        if (refundedMinor > 0) {
+          expect(
+            find.descendant(
+              of: card,
+              matching: find.text(
+                'Refunded ${Money(refundedMinor, 'usd').label}',
+              ),
+            ),
+            findsOneWidget,
+          );
+        } else {
+          expect(
+            find.descendant(
+              of: card,
+              matching: find.textContaining('Refunded'),
+            ),
+            findsNothing,
+          );
+        }
+        expectNoFieldInCard(tester);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   testWidgets('PAST lists completed bookings and opens booking detail', (
     tester,

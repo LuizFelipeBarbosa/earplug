@@ -460,6 +460,8 @@ class _ResolveSheetState extends State<_ResolveSheet> {
         return;
       }
     }
+    // Resolve the sheet's navigator while its context is known to be active.
+    final navigator = Navigator.of(context);
     setState(() {
       _submitting = true;
       _error = null;
@@ -471,7 +473,7 @@ class _ResolveSheetState extends State<_ResolveSheet> {
         refundMinor,
         note.isEmpty ? null : note,
       );
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) navigator.pop();
     } catch (error) {
       logError('adminDisputeResolve', error);
       if (!mounted) return;

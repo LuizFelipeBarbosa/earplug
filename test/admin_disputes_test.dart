@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/date_names.dart';
 import 'package:earplug/errors.dart';
@@ -82,6 +84,49 @@ class _FailingResolutionRepository extends DemoRepository {
   }
 }
 
+class _DelayedResolutionRepository extends DemoRepository {
+  _DelayedResolutionRepository({
+    required super.auth,
+    required this.completeResolution,
+    this.acknowledgeResolution,
+  });
+
+  final Completer<void> completeResolution;
+  final Completer<void>? acknowledgeResolution;
+  bool resolutionStarted = false;
+  bool resolutionApplied = false;
+  int openDisputesCalls = 0;
+  VoidCallback? onOpenDisputes;
+
+  @override
+  Future<void> resolveDispute(
+    String disputeId, {
+    required DisputeResolution resolution,
+    int? refundMinor,
+    String? adminNote,
+  }) async {
+    resolutionStarted = true;
+    await completeResolution.future;
+    // The demo mutation removes the case from openDisputes and restores the
+    // booking's status, so the review queue also stops returning it.
+    await super.resolveDispute(
+      disputeId,
+      resolution: resolution,
+      refundMinor: refundMinor,
+      adminNote: adminNote,
+    );
+    resolutionApplied = true;
+    await acknowledgeResolution?.future;
+  }
+
+  @override
+  Future<DisputesPage> openDisputes({String? cursor, int numItems = 25}) {
+    openDisputesCalls++;
+    onOpenDisputes?.call();
+    return super.openDisputes(cursor: cursor, numItems: numItems);
+  }
+}
+
 class _PagedDisputesRepository extends DemoRepository {
   _PagedDisputesRepository({required super.auth});
 
@@ -105,6 +150,128 @@ class _PagedDisputesRepository extends DemoRepository {
 }
 
 void main() {
+  // Exercise both response orderings: the queue stays unchanged until success,
+  // or it receives resolved data before the mutation response arrives.
+  for (final refreshBeforeAcknowledgement in [false, true]) {
+    testWidgets(
+      refreshBeforeAcknowledgement
+          ? 'late dispute resolution closes after the queue refreshes to empty'
+          : 'late dispute resolution closes the sheet before refreshing',
+      (tester) async {
+        final auth = FakeAuthService();
+        await auth.signInDemo();
+        final completeResolution = Completer<void>();
+        final acknowledgeResolution = refreshBeforeAcknowledgement
+            ? Completer<void>()
+            : null;
+        final repository = _DelayedResolutionRepository(
+          auth: auth,
+          completeResolution: completeResolution,
+          acknowledgeResolution: acknowledgeResolution,
+        )..platformAdmin = true;
+        final booking = await _paidBooking(repository);
+        final disputeId = await repository.openDispute(
+          bookingId: booking.id,
+          side: DisputeSide.organizer,
+          category: DisputeCategory.noShow,
+          text: 'The band did not arrive for the show.',
+          requestedRefundMinor: 5000,
+        );
+        final harness = await pumpApp(
+          tester,
+          auth: auth,
+          repository: repository,
+          home: const AdminDisputesScreen(),
+        );
+        final row = find.byKey(Key('admin-dispute-$disputeId'));
+        expect(row, findsOneWidget);
+        expect(repository.openDisputesCalls, 1);
+        final adminRoute = ModalRoute.of(
+          tester.element(find.byType(AdminDisputesScreen)),
+        )!;
+        final routeCurrentOnReload = <bool>[];
+        repository.onOpenDisputes = () =>
+            routeCurrentOnReload.add(adminRoute.isCurrent);
+
+        await tester.tap(find.byKey(Key('admin-dispute-resolve-$disputeId')));
+        await tester.pumpAndSettle();
+        expect(adminRoute.isCurrent, isFalse);
+        expectNoFieldInCard(tester);
+        final confirm = find.byKey(const Key('admin-dispute-confirm'));
+        await tester.ensureVisible(confirm);
+        await tester.tap(confirm);
+        await tester.pump();
+
+        expect(repository.resolutionStarted, isTrue);
+        expect(completeResolution.isCompleted, isFalse);
+        expect(repository.resolutionApplied, isFalse);
+        expect(find.text('RESOLVE DISPUTE'), findsOneWidget);
+        expect(tester.widget<EpButton>(confirm).onTap, isNull);
+        expect(repository.openDisputesCalls, 1);
+
+        // Rebuild the listening screen while the mutation is still in flight.
+        await harness.app.refreshOrganizationBookings(booking.organizationId);
+        await tester.pump(const Duration(seconds: 3));
+        expect(find.text('RESOLVE DISPUTE'), findsOneWidget);
+        expect(tester.widget<EpButton>(confirm).onTap, isNull);
+        expect(repository.openDisputesCalls, 1);
+
+        completeResolution.complete();
+        if (acknowledgeResolution != null) {
+          await tester.pump();
+          expect(repository.resolutionApplied, isTrue);
+          expect(acknowledgeResolution.isCompleted, isFalse);
+
+          // Model the queue receiving resolved data before the mutation response
+          // reaches onConfirm. Drive the screen's real reload while the sheet stays
+          // open, rather than replacing the screen or disposing its route.
+          await tester
+              .widget<RefreshIndicator>(find.byType(RefreshIndicator))
+              .onRefresh();
+          await tester.pump();
+          expect(find.text('No open disputes.'), findsOneWidget);
+          expect(row, findsNothing);
+          expect(find.text('RESOLVE DISPUTE'), findsOneWidget);
+          expect(tester.widget<EpButton>(confirm).onTap, isNull);
+          expect(adminRoute.isCurrent, isFalse);
+          expect(routeCurrentOnReload, [false]);
+
+          acknowledgeResolution.complete();
+        }
+        await tester.pumpAndSettle();
+
+        expect(find.text('RESOLVE DISPUTE'), findsNothing);
+        expect(confirm, findsNothing);
+        expect(row, findsNothing);
+        expect(find.text('No open disputes.'), findsOneWidget);
+        expect(adminRoute.isCurrent, isTrue);
+        // Observing the route when the query starts also catches a refresh moved
+        // inside onConfirm, even if the sheet eventually closes after that query.
+        expect(routeCurrentOnReload, [
+          if (refreshBeforeAcknowledgement) false,
+          true,
+        ]);
+        expect(
+          repository.openDisputesCalls,
+          refreshBeforeAcknowledgement ? 3 : 2,
+        );
+        repository.onOpenDisputes = null;
+        expect(
+          (await repository.disputesForBooking(booking.id)).single.status,
+          DisputeStatus.resolved,
+        );
+        expect((await repository.openDisputes()).items, isEmpty);
+        expect(
+          (await repository.adminBookings(
+            filter: AdminBookingFilter.disputed,
+          )).items,
+          isEmpty,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('admin reviews a refund request and issues a partial refund', (
     tester,
   ) async {
@@ -305,7 +472,9 @@ void main() {
     await tester.tap(confirm);
     await tester.pumpAndSettle();
     expect(find.text(genericErrorMessage), findsOneWidget);
+    expect(find.byType(InlineFormFeedback), findsOneWidget);
     expect(find.text('RESOLVE DISPUTE'), findsOneWidget);
+    expect(tester.widget<EpButton>(confirm).onTap, isNotNull);
     expect(tester.takeException(), isNull);
     expectNoFieldInCard(tester);
 
