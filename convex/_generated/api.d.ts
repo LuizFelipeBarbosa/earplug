@@ -17,6 +17,7 @@ import type * as bookings from "../bookings.js";
 import type * as bookingsRead from "../bookingsRead.js";
 import type * as clock from "../clock.js";
 import type * as crons from "../crons.js";
+import type * as devTools from "../devTools.js";
 import type * as disputes from "../disputes.js";
 import type * as emails from "../emails.js";
 import type * as features from "../features.js";
@@ -107,6 +108,7 @@ declare const fullApi: ApiFromModules<{
   bookingsRead: typeof bookingsRead;
   clock: typeof clock;
   crons: typeof crons;
+  devTools: typeof devTools;
   disputes: typeof disputes;
   emails: typeof emails;
   features: typeof features;

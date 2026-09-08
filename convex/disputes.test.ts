@@ -503,6 +503,95 @@ describe("disputes.open", () => {
   });
 });
 
+describe("disputes.open side selection", () => {
+  async function setupDualRoleDisputes() {
+    const f = await setupDisputes();
+    await f.t.run((ctx) =>
+      ctx.db.insert("bandMembers", {
+        bandId: f.bandId,
+        userId: f.users.owner,
+        role: "admin",
+      }),
+    );
+    return f;
+  }
+
+  test("an owner who is also a band admin can request a refund as organizer", async () => {
+    const f = await setupDualRoleDisputes();
+    const { disputeId } = await f.open("owner", {
+      side: "organizer",
+      requestedRefundMinor: 2500,
+    });
+    const state = await f.state();
+    expect(state.disputes).toMatchObject([
+      {
+        _id: disputeId,
+        openedByUserId: f.users.owner,
+        side: "organizer",
+        requestedRefundMinor: 2500,
+        status: "open",
+      },
+    ]);
+    expect(state.jobs.map((job) => job.args[0].to).sort()).toEqual([
+      "artist@disputes.test",
+      "owner@disputes.test",
+      "secondArtist@disputes.test",
+    ]);
+    for (const job of state.jobs) {
+      expect(job.args[0].kind).toBe("disputeOpened");
+      expect(job.args[0].text).toContain("Requested refund: 25.00 USD");
+    }
+  });
+
+  test("an owner who is also a band admin can open as artist without an amount", async () => {
+    const f = await setupDualRoleDisputes();
+    await f.open("owner", { side: "artist", requestedRefundMinor: undefined });
+    const state = await f.state();
+    expect(state.disputes[0].side).toBe("artist");
+    expect(state.disputes[0].requestedRefundMinor).toBeUndefined();
+    expect(state.jobs).toHaveLength(1);
+    expect(state.jobs[0].args[0]).toMatchObject({
+      kind: "disputeOpened",
+      to: "contact@disputes.test",
+    });
+  });
+
+  test.each(["owner", "manager", "finance"] as const)(
+    "%s can explicitly select organizer",
+    async (actor) => {
+      const f = await setupDisputes();
+      await f.open(actor, { side: "organizer" });
+      expect((await f.state()).disputes[0].side).toBe("organizer");
+    },
+  );
+
+  test.each([
+    ["artist", "organizer"],
+    ["owner", "artist"],
+    ["door", "organizer"],
+    ["member", "artist"],
+  ] as const)("%s cannot select %s without permission", async (actor, side) => {
+    const f = await setupDisputes();
+    const before = await f.state();
+    await expect(f.open(actor, { side })).rejects.toThrow(
+      `Not permitted to act as ${side} on this booking`,
+    );
+    expect(await f.state()).toEqual(before);
+  });
+
+  test("omitting side still gives band admin priority over organization owner", async () => {
+    const f = await setupDualRoleDisputes();
+    const before = await f.state();
+    await expect(f.open("owner")).rejects.toThrow(
+      "Artists cannot request a refund",
+    );
+    expect(await f.state()).toEqual(before);
+
+    await f.open("owner", { requestedRefundMinor: undefined });
+    expect((await f.state()).disputes[0].side).toBe("artist");
+  });
+});
+
 describe("disputes review and resolution", () => {
   test("only an admin can start review, and review cannot be started twice", async () => {
     const f = await setupDisputes();

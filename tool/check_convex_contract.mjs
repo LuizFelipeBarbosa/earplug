@@ -201,6 +201,7 @@ export const requiredClientFields = Object.freeze([
   ["talentOpportunities.js:create", "args", "privateLocationId", true],
   ["features.js:flags", "return", "disputes", false],
   ["disputes.js:open", "args", "requestedRefundMinor", true],
+  ["disputes.js:open", "args", "side", true],
   ["disputes.js:resolve", "args", "refundMinor", true],
   ["disputes.js:forBooking", "arrayReturn", "status", false],
   ["disputes.js:forBooking", "arrayReturn", "resolution", true],

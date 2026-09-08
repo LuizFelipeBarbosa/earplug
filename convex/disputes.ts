@@ -105,6 +105,35 @@ async function reportingSide(
   throw new Error("Not permitted to access disputes for this booking");
 }
 
+async function resolveActingSides(
+  ctx: QueryCtx,
+  booking: Doc<"bookings">,
+  user: Doc<"users">,
+): Promise<DisputeSide[]> {
+  const sides: DisputeSide[] = [];
+  const membership = await organizationMembershipFor(
+    ctx,
+    booking.organizationId,
+    user._id,
+  );
+  if (
+    membership?.role === "owner" ||
+    membership?.role === "manager" ||
+    membership?.role === "finance"
+  ) {
+    sides.push("organizer");
+  }
+
+  const bandMembership = await ctx.db
+    .query("bandMembers")
+    .withIndex("by_band_user", (q) =>
+      q.eq("bandId", booking.bandId).eq("userId", user._id),
+    )
+    .unique();
+  if (bandMembership?.role === "admin") sides.push("artist");
+  return sides;
+}
+
 async function hasOpenStripeDispute(
   ctx: QueryCtx,
   bookingId: Id<"bookings">,
@@ -205,6 +234,7 @@ export const open = mutation({
     category: disputeCategoryValidator,
     text: v.string(),
     requestedRefundMinor: v.optional(v.number()),
+    side: v.optional(disputeSideValidator),
   },
   returns: v.object({ disputeId: v.id("disputes") }),
   handler: async (ctx, args) => {
@@ -214,7 +244,13 @@ export const open = mutation({
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
     const user = await requireUser(ctx);
-    const side = await reportingSide(ctx, booking, user);
+    const side = args.side ?? (await reportingSide(ctx, booking, user));
+    if (args.side !== undefined) {
+      const actingSides = await resolveActingSides(ctx, booking, user);
+      if (!actingSides.includes(side)) {
+        throw new Error(`Not permitted to act as ${side} on this booking`);
+      }
+    }
     const text = args.text.trim();
     if (text.length < 10 || text.length > 2000) {
       throw new Error("Dispute details must be between 10 and 2000 characters");

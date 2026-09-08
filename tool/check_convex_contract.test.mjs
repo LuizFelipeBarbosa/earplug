@@ -441,6 +441,10 @@ test("reports missing Phase 6 dispute and admin-booking fields", () => {
     (entry) => entry.identifier === "features.js:flags",
   );
   delete flags.returns.value.disputes;
+  const openDispute = functions.find(
+    (entry) => entry.identifier === "disputes.js:open",
+  );
+  delete openDispute.args.value.side;
   const disputes = functions.find(
     (entry) => entry.identifier === "disputes.js:forBooking",
   );
@@ -456,8 +460,24 @@ test("reports missing Phase 6 dispute and admin-booking fields", () => {
 
   assert.deepEqual(contractProblems(url, { url, functions }), [
     "features.js:flags is missing return.disputes",
+    "disputes.js:open is missing args.side",
     "disputes.js:forBooking is missing arrayReturn.resolution",
     "admin.js:bookings is missing args.filter",
     "bookingsRead.js:get is missing return.viewerIsPlatformAdmin",
+  ]);
+});
+
+test("reports a wrongly required dispute side argument", () => {
+  const url = "https://brilliant-cardinal-773.convex.cloud";
+  const functions = Object.entries(requiredClientFunctions).map(
+    ([identifier, functionType]) => completeFunction(identifier, functionType),
+  );
+  const openDispute = functions.find(
+    (entry) => entry.identifier === "disputes.js:open",
+  );
+  openDispute.args.value.side.optional = false;
+
+  assert.deepEqual(contractProblems(url, { url, functions }), [
+    "disputes.js:open args.side optional=false, expected true",
   ]);
 });

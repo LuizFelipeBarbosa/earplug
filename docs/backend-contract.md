@@ -922,6 +922,11 @@ unset) plus `DISPUTE_WINDOW_AFTER_COMPLETION_MS` (14 days). Only the organizer
 side may supply `requestedRefundMinor`; although optional in the validator,
 it is required for that side, must be a positive whole-minor-unit amount no
 greater than `paidMinor`, and is accepted only while no payout has been paid.
+The optional `side` argument lets callers eligible for both sides (such as an
+organization owner who is also a band admin) choose which side to act as;
+the mutation refuses a supplied side the caller is not eligible for, while
+omitting it preserves the pre-v1.26 automatic single-side resolution, with
+band admin taking priority when the caller is both.
 `disputes:forBooking` is a Query letting either side with those roles, or a
 platform admin, list a booking's disputes newest-first. `disputes:listOpen`
 is a platform-admin-only Query returning a paginated queue of `open` disputes
