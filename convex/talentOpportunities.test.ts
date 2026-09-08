@@ -118,6 +118,9 @@ async function setupOrganization(
       ...venueFields,
       managedByOrganizationId: otherOrganizationId,
     });
+    const { managedByOrganizationId: _managedByOrganizationId, ...legacyFields } =
+      venueFields;
+    const legacyVenueId = await ctx.db.insert("venues", legacyFields);
     const unverifiedVenueId = await ctx.db.insert("venues", {
       ...venueFields,
       status: "pending",
@@ -150,6 +153,7 @@ async function setupOrganization(
       otherOrganizationId,
       venueId,
       otherVenueId,
+      legacyVenueId,
       unverifiedVenueId,
       alternateVenueId,
       bandId,
@@ -399,11 +403,12 @@ describe("talent opportunity drafts", () => {
   test("rejects another organization's venue, an unverified venue, and private bookings", async () => {
     const { createDraft, otherVenueId, unverifiedVenueId } =
       await setupOrganization();
-    for (const venueId of [otherVenueId, unverifiedVenueId]) {
-      await expect(createDraft({ venueId })).rejects.toThrow(
-        "Choose one of your verified venues",
-      );
-    }
+    await expect(createDraft({ venueId: otherVenueId })).rejects.toThrow(
+      "Venue approval is not available yet",
+    );
+    await expect(createDraft({ venueId: unverifiedVenueId })).rejects.toThrow(
+      "Choose one of your verified venues",
+    );
     await expect(createDraft({ mode: "privateBooking" })).rejects.toThrow(
       "Private bookings are not available yet",
     );
@@ -570,7 +575,7 @@ describe("talent opportunity drafts", () => {
         expectedRevision: 1,
         venueId: otherVenueId,
       }),
-    ).rejects.toThrow("Choose one of your verified venues");
+    ).rejects.toThrow("Venue approval is not available yet");
     await expect(
       asOwner.mutation(api.talentOpportunities.update, {
         opportunityId,
@@ -894,6 +899,231 @@ describe("talent opportunity drafts", () => {
     await expect(
       createDraft({ flyKey: "custom", flyStorageId }),
     ).rejects.toThrow("can't be posted as a photo");
+  });
+});
+
+describe("opportunity venue approval", () => {
+  test("creating at a foreign verified venue requires PROMOTERS_ENABLED", async () => {
+    const { createDraft, readOpportunity, otherVenueId } =
+      await setupOrganization();
+    await expect(createDraft({ venueId: otherVenueId })).rejects.toThrow(
+      "Venue approval is not available yet",
+    );
+
+    vi.stubEnv("PROMOTERS_ENABLED", "true");
+    const { opportunityId } = await createDraft({ venueId: otherVenueId });
+    expect((await readOpportunity(opportunityId)).opportunity).toMatchObject({
+      venueId: otherVenueId,
+      status: "draft",
+    });
+  });
+
+  test.each([undefined, "true"])(
+    "rejects an unmanaged legacy venue (PROMOTERS_ENABLED: %s)",
+    async (promotersEnabled) => {
+      if (promotersEnabled !== undefined) {
+        vi.stubEnv("PROMOTERS_ENABLED", promotersEnabled);
+      }
+      const { createDraft, legacyVenueId } = await setupOrganization();
+      await expect(createDraft({ venueId: legacyVenueId })).rejects.toThrow(
+        "This venue has not joined EarPlug yet",
+      );
+    },
+  );
+
+  test("opening a foreign-venue opportunity requires granted consent", async () => {
+    vi.stubEnv("PROMOTERS_ENABLED", "true");
+    const f = await setupOrganization();
+    const applicationsCloseAt = NOW + DAY_MS;
+    const { opportunityId } = await f.createDraft({
+      venueId: f.otherVenueId,
+      applicationsCloseAt,
+    });
+    const openArgs = { opportunityId, expectedRevision: 1 };
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.open, openArgs),
+    ).rejects.toThrow("The venue has not approved this event yet");
+
+    const consentId = await f.t.run((ctx) =>
+      ctx.db.insert("venueConsents", {
+        opportunityId,
+        venueId: f.otherVenueId,
+        venueOrganizationId: f.otherOrganizationId,
+        requestingOrganizationId: f.organizationId,
+        status: "pending",
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
+    );
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.open, openArgs),
+    ).rejects.toThrow("The venue has not approved this event yet");
+    expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+      status: "draft",
+      revision: 1,
+    });
+
+    await f.t.run((ctx) => ctx.db.patch(consentId, { status: "granted" }));
+    expect(
+      await f.asOwner.mutation(api.talentOpportunities.open, openArgs),
+    ).toEqual({ revision: 2, applicationsCloseAt });
+    expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+      status: "open",
+    });
+  });
+
+  test.each(["pending", "granted"] as const)(
+    "%s consent locks venue and date changes until withdrawal but permits other edits",
+    async (status) => {
+      vi.stubEnv("PROMOTERS_ENABLED", "true");
+      const f = await setupOrganization();
+      const { opportunityId } = await f.createDraft({ venueId: f.otherVenueId });
+      const consentId = await f.t.run((ctx) =>
+        ctx.db.insert("venueConsents", {
+          opportunityId,
+          venueId: f.otherVenueId,
+          venueOrganizationId: f.otherOrganizationId,
+          requestingOrganizationId: f.organizationId,
+          status,
+          createdAt: NOW,
+          updatedAt: NOW,
+        }),
+      );
+      const before = await f.readOpportunity(opportunityId);
+      const startsAt = NOW + 15 * DAY_MS;
+      for (const change of [
+        { startsAt },
+        { doorsAt: startsAt - 3600000 },
+        { endsAt: startsAt + 3600000 },
+        { venueId: f.venueId },
+        { venueId: f.unverifiedVenueId },
+      ]) {
+        await expect(
+          f.asOwner.mutation(api.talentOpportunities.update, {
+            opportunityId,
+            expectedRevision: 1,
+            ...change,
+          }),
+        ).rejects.toThrow(
+          "Withdraw the venue request before changing the venue or date",
+        );
+      }
+      expect(await f.readOpportunity(opportunityId)).toEqual(before);
+
+      expect(
+        await f.asOwner.mutation(api.talentOpportunities.update, {
+          opportunityId,
+          expectedRevision: 1,
+          desc: "Updated event description",
+        }),
+      ).toEqual({ revision: 2 });
+      expect(
+        await f.asOwner.mutation(api.talentOpportunities.update, {
+          opportunityId,
+          expectedRevision: 2,
+          venueId: f.otherVenueId,
+          startsAt: f.createArgs.startsAt,
+          doorsAt: null,
+          endsAt: null,
+        }),
+      ).toEqual({ revision: 3 });
+
+      await f.t.run((ctx) => ctx.db.patch(consentId, { status: "withdrawn" }));
+      expect(
+        await f.asOwner.mutation(api.talentOpportunities.update, {
+          opportunityId,
+          expectedRevision: 3,
+          startsAt,
+        }),
+      ).toEqual({ revision: 4 });
+      expect((await f.readOpportunity(opportunityId)).opportunity).toMatchObject({
+        desc: "Updated event description",
+        startsAt,
+      });
+    },
+  );
+
+  test("duplicating a foreign-venue opportunity revalidates its venue", async () => {
+    vi.stubEnv("PROMOTERS_ENABLED", "true");
+    const f = await setupOrganization();
+    const { opportunityId } = await f.createDraft({ venueId: f.otherVenueId });
+    const copy = await f.asOwner.mutation(api.talentOpportunities.duplicate, {
+      opportunityId,
+    });
+    expect(copy.opportunityId).not.toBe(opportunityId);
+    expect(
+      (await f.readOpportunity(copy.opportunityId)).opportunity,
+    ).toMatchObject({ venueId: f.otherVenueId, status: "draft" });
+
+    vi.stubEnv("PROMOTERS_ENABLED", "false");
+    await expect(
+      f.asOwner.mutation(api.talentOpportunities.duplicate, { opportunityId }),
+    ).rejects.toThrow("Venue approval is not available yet");
+  });
+
+  test("organizer and artist payloads carry the current venue consent status", async () => {
+    vi.stubEnv("PROMOTERS_ENABLED", "true");
+    const f = await setupOrganization();
+    const own = await f.createDraft();
+    const foreign = await f.createDraft({ venueId: f.otherVenueId });
+    await f.t.run((ctx) =>
+      ctx.db.insert("venueConsents", {
+        opportunityId: foreign.opportunityId,
+        venueId: f.otherVenueId,
+        venueOrganizationId: f.otherOrganizationId,
+        requestingOrganizationId: f.organizationId,
+        status: "pending",
+        createdAt: NOW,
+        updatedAt: NOW,
+      }),
+    );
+
+    for (const [opportunityId, venueConsentStatus] of [
+      [own.opportunityId, null],
+      [foreign.opportunityId, "pending"],
+    ] as const) {
+      const payloads = await f.t.run(async (ctx) => {
+        const opportunity = await ctx.db.get(opportunityId);
+        if (!opportunity) throw new Error("Fixture opportunity missing");
+        return await Promise.all([
+          toOpportunityPayload(ctx, opportunity),
+          toArtistOpportunityPayload(ctx, opportunity),
+        ]);
+      });
+      for (const payload of payloads) {
+        expect(payload).toMatchObject({ venueConsentStatus });
+      }
+    }
+  });
+
+  test("the venue operator dashboard counts only incoming pending consents", async () => {
+    vi.stubEnv("PROMOTERS_ENABLED", "true");
+    const f = await setupOrganization();
+    for (const status of ["pending", "granted"] as const) {
+      const { opportunityId } = await f.createDraft({ venueId: f.otherVenueId });
+      await f.t.run((ctx) =>
+        ctx.db.insert("venueConsents", {
+          opportunityId,
+          venueId: f.otherVenueId,
+          venueOrganizationId: f.otherOrganizationId,
+          requestingOrganizationId: f.organizationId,
+          status,
+          createdAt: NOW,
+          updatedAt: NOW,
+        }),
+      );
+    }
+
+    expect(
+      await f.asOtherOwner.query(api.organizations.dashboard, {
+        organizationId: f.otherOrganizationId,
+      }),
+    ).toMatchObject({ pendingVenueConsents: 1 });
+    expect(
+      await f.asOwner.query(api.organizations.dashboard, {
+        organizationId: f.organizationId,
+      }),
+    ).toMatchObject({ pendingVenueConsents: 0 });
   });
 });
 

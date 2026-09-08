@@ -129,6 +129,7 @@ const dashboardValidator = v.object({
     teamInvited: v.boolean(),
   }),
   venues: v.array(venuePayloadValidator),
+  pendingVenueConsents: v.optional(v.number()),
   memberCount: v.number(),
   privateDetails: v.union(
     v.object({
@@ -150,7 +151,7 @@ export const dashboard = query({
       args.organizationId,
       ALL_ORGANIZATION_ROLES,
     );
-    const [privateDetails, venues, members] = await Promise.all([
+    const [privateDetails, venues, members, pendingConsents] = await Promise.all([
       ctx.db
         .query("organizationPrivateDetails")
         .withIndex("by_organizationId", (q) =>
@@ -169,6 +170,12 @@ export const dashboard = query({
           q.eq("organizationId", args.organizationId),
         )
         .take(101),
+      ctx.db
+        .query("venueConsents")
+        .withIndex("by_venueOrganizationId_and_status_and_createdAt", (q) =>
+          q.eq("venueOrganizationId", args.organizationId).eq("status", "pending"),
+        )
+        .take(50),
     ]);
     const role = access.membership?.role ?? null;
     return {
@@ -188,6 +195,7 @@ export const dashboard = query({
         teamInvited: members.length >= 2,
       },
       venues: venues.map(toVenuePayload),
+      pendingVenueConsents: pendingConsents.length,
       memberCount: Math.min(members.length, 100),
       privateDetails:
         role === "door" || privateDetails === null

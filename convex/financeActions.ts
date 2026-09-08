@@ -1,6 +1,7 @@
 import { internal } from "./_generated/api";
 import { v, type Infer } from "convex/values";
 import { action, internalQuery } from "./_generated/server";
+import { transactionValidator } from "./finance";
 import { requireOrganizationRole, type OrganizationRole } from "./lib/authz";
 import { stripeRequest } from "./lib/stripeClient";
 
@@ -127,11 +128,21 @@ export const exportStatement = action({
     csv: v.string(),
     rows: v.number(),
     truncated: v.boolean(),
+    transactions: v.array(transactionValidator),
+    totalsByKind: v.array(
+      v.object({ kind: v.string(), amountMinor: v.number(), count: v.number() }),
+    ),
   }),
   handler: async (
     ctx,
     args,
-  ): Promise<{ csv: string; rows: number; truncated: boolean }> => {
+  ): Promise<{
+    csv: string;
+    rows: number;
+    truncated: boolean;
+    transactions: Infer<typeof transactionValidator>[];
+    totalsByKind: { kind: string; amountMinor: number; count: number }[];
+  }> => {
     await ctx.runQuery(internal.financeActions.requireFinanceAccess, {
       organizationId: args.organizationId,
       roles: FINANCE_WRITE_ROLES,
@@ -148,7 +159,19 @@ export const exportStatement = action({
       args,
     );
     const lines = ["date,type,label,amount,currency,funds_state,reference"];
+    const totals = new Map<
+      string,
+      { kind: string; amountMinor: number; count: number }
+    >();
     for (const row of rows) {
+      const total = totals.get(row.kind) ?? {
+        kind: row.kind,
+        amountMinor: 0,
+        count: 0,
+      };
+      total.amountMinor += row.amountMinor;
+      total.count += 1;
+      totals.set(row.kind, total);
       lines.push(
         [
           csvField(new Date(row.occurredAt).toISOString()),
@@ -165,6 +188,10 @@ export const exportStatement = action({
       csv: lines.join("\r\n"),
       rows: rows.length,
       truncated,
+      transactions: rows,
+      totalsByKind: [...totals.values()].sort((a, b) =>
+        a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0,
+      ),
     };
   },
 });

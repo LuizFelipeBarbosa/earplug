@@ -64,6 +64,38 @@ export async function readVenuePrivateFor(
     }
   }
 
+  if (user !== null && !operational) {
+    const grantedConsents = await ctx.db
+      .query("venueConsents")
+      .withIndex("by_venueId_and_status", (q) =>
+        q.eq("venueId", venue._id).eq("status", "granted"),
+      )
+      .take(50);
+    for (const consent of grantedConsents) {
+      const opportunity = await ctx.db.get(consent.opportunityId);
+      if (
+        opportunity === null ||
+        opportunity.status === "cancelled" ||
+        opportunity.status === "completed"
+      ) {
+        continue;
+      }
+      const organization = await ctx.db.get(consent.requestingOrganizationId);
+      if (
+        organization !== null &&
+        organization.status !== "suspended" &&
+        (await organizationMembershipFor(
+          ctx,
+          consent.requestingOrganizationId,
+          user._id,
+        )) !== null
+      ) {
+        operational = true;
+        break;
+      }
+    }
+  }
+
   if (effectiveAddressDisclosure(venue) === "public") {
     return { details: privateDetails, operational };
   }

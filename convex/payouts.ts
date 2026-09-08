@@ -39,15 +39,34 @@ const executionContextValidator = v.object({
   stripeAccountId: v.string(),
   fallbackPaymentIntentId: v.optional(v.string()),
 });
+export const payoutKindValidator = v.union(
+  v.literal("completion"),
+  v.literal("forfeit"),
+);
 const payoutSummaryValidator = v.object({
   _id: v.id("payouts"),
-  kind: v.union(v.literal("completion"), v.literal("forfeit")),
+  kind: payoutKindValidator,
   amountMinor: v.number(),
   currency: v.string(),
   status: payoutStatusValidator,
   scheduledFor: v.number(),
   paidAt: v.optional(v.number()),
   holdReason: v.optional(payoutHoldReasonValidator),
+});
+const payoutStatementRowValidator = v.object({
+  payoutId: v.id("payouts"),
+  bookingId: v.id("bookings"),
+  bookingTitle: v.string(),
+  organizationName: v.string(),
+  kind: payoutKindValidator,
+  status: v.union(v.literal("paid"), v.literal("reversed")),
+  paidAt: v.number(),
+  netMinor: v.number(),
+  reversedMinor: v.number(),
+  currency: v.string(),
+  grossMinor: v.union(v.number(), v.null()),
+  commissionMinor: v.union(v.number(), v.null()),
+  stripeTransferId: v.union(v.string(), v.null()),
 });
 
 export function reversibleMinor(payout: Doc<"payouts">): number {
@@ -469,5 +488,90 @@ export const payoutsForBand = query({
       .order("desc")
       .take(100);
     return rows.map(toPayoutSummary);
+  },
+});
+
+export const statementForBand = query({
+  args: {
+    bandId: v.id("bands"),
+    fromMs: v.number(),
+    toMs: v.number(),
+  },
+  returns: v.object({
+    payouts: v.array(payoutStatementRowValidator),
+    totalNetMinor: v.number(),
+    truncated: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    await requireBandRole(ctx, args.bandId, { role: "admin" });
+    if (args.fromMs > args.toMs) {
+      throw new Error("fromMs must not be after toMs");
+    }
+    if (args.toMs - args.fromMs > 366 * 24 * 60 * 60 * 1000) {
+      throw new Error("Choose a range of one year or less");
+    }
+
+    const rows = await ctx.db
+      .query("payouts")
+      .withIndex("by_bandId", (q) => q.eq("bandId", args.bandId))
+      .order("desc")
+      .take(1000);
+    const bookings = new Map<Id<"bookings">, Doc<"bookings"> | null>();
+    const opportunityTitles = new Map<
+      Id<"talentOpportunities">,
+      string | undefined
+    >();
+    const organizationNames = new Map<Id<"organizations">, string | undefined>();
+    const payouts: Infer<typeof payoutStatementRowValidator>[] = [];
+    let totalNetMinor = 0;
+    for (const payout of rows) {
+      if (
+        (payout.status !== "paid" && payout.status !== "reversed") ||
+        payout.paidAt === undefined ||
+        payout.paidAt < args.fromMs ||
+        payout.paidAt > args.toMs
+      ) {
+        continue;
+      }
+
+      // Cache missing records too so repeated references do not repeat reads.
+      if (!bookings.has(payout.bookingId)) {
+        bookings.set(payout.bookingId, await ctx.db.get(payout.bookingId));
+      }
+      const booking = bookings.get(payout.bookingId);
+      if (!booking) continue;
+      if (!opportunityTitles.has(booking.opportunityId)) {
+        const opportunity = await ctx.db.get(booking.opportunityId);
+        opportunityTitles.set(booking.opportunityId, opportunity?.title);
+      }
+      if (!organizationNames.has(booking.organizationId)) {
+        const organization = await ctx.db.get(booking.organizationId);
+        organizationNames.set(booking.organizationId, organization?.name);
+      }
+      const bookingTitle = opportunityTitles.get(booking.opportunityId);
+      const organizationName = organizationNames.get(booking.organizationId);
+      if (bookingTitle === undefined || organizationName === undefined) continue;
+
+      const netMinor = payout.amountMinor;
+      const reversedMinor = payout.reversedMinor ?? 0;
+      payouts.push({
+        payoutId: payout._id,
+        bookingId: payout.bookingId,
+        bookingTitle,
+        organizationName,
+        kind: payout.kind,
+        status: payout.status,
+        paidAt: payout.paidAt,
+        netMinor,
+        reversedMinor,
+        currency: payout.currency,
+        grossMinor: payout.kind === "completion" ? booking.grossMinor : null,
+        commissionMinor:
+          payout.kind === "completion" ? booking.commissionMinor : null,
+        stripeTransferId: payout.stripeTransferId ?? null,
+      });
+      totalNetMinor += netMinor - reversedMinor;
+    }
+    return { payouts, totalNetMinor, truncated: rows.length === 1000 };
   },
 });

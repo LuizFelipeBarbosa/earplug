@@ -1,8 +1,10 @@
 /// <reference types="vite/client" />
 import { makeFunctionReference } from "convex/server";
+import type { Infer } from "convex/values";
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Doc, Id } from "./_generated/dataModel";
+import type { transactionValidator } from "./finance";
 import { StripeApiError, stripeRequest } from "./lib/stripeClient";
 import schema from "./schema";
 
@@ -24,7 +26,13 @@ const refreshBalance = makeFunctionReference<
 const exportStatement = makeFunctionReference<
   "action",
   { organizationId: Id<"organizations">; fromMs: number; toMs: number },
-  { csv: string; rows: number; truncated: boolean }
+  {
+    csv: string;
+    rows: number;
+    truncated: boolean;
+    transactions: Infer<typeof transactionValidator>[];
+    totalsByKind: { kind: string; amountMinor: number; count: number }[];
+  }
 >("financeActions:exportStatement");
 
 const modules = import.meta.glob("./**/*.ts");
@@ -121,8 +129,8 @@ async function seedLedger(
       >
   >,
 ) {
-  await t.run(async (ctx) => {
-    await Promise.all(
+  return await t.run(async (ctx) => {
+    return await Promise.all(
       entries.map((entry, index) =>
         ctx.db.insert("ledgerEntries", {
           organizationId,
@@ -438,7 +446,13 @@ describe("finance action access", () => {
         fromMs: 0,
         toMs: 1000,
       }),
-    ).toEqual({ csv: HEADER, rows: 0, truncated: false });
+    ).toEqual({
+      csv: HEADER,
+      rows: 0,
+      truncated: false,
+      transactions: [],
+      totalsByKind: [],
+    });
   });
 
   test("refuses both actions for a suspended organization's owner", async () => {
@@ -507,7 +521,7 @@ describe("exportStatement", () => {
         updatedAt: NOW,
       });
     });
-    await seedLedger(setup, [
+    const ledgerIds = await seedLedger(setup, [
       { kind: "ticket_sale", amountMinor: 5, occurredAt: 3000 },
       {
         kind: "ticket_sale",
@@ -544,8 +558,98 @@ describe("exportStatement", () => {
       ].join("\r\n"),
       rows: 5,
       truncated: false,
+      transactions: [
+        {
+          id: ledgerIds[1],
+          kind: "ticket_sale",
+          amountMinor: 15_000,
+          currency: "usd",
+          fundsState: "pending",
+          occurredAt: 1000,
+          label: 'Ticket sale · Friday, "Live"',
+          ticketOrderId,
+          stripeRef: "pi_sale",
+        },
+        {
+          id: ledgerIds[2],
+          kind: "charge",
+          amountMinor: -15_000,
+          currency: "usd",
+          fundsState: "available",
+          occurredAt: 2000,
+          label: "Booking payment",
+          stripeRef: "pi_line\rbreak\nend",
+        },
+        {
+          id: ledgerIds[0],
+          kind: "ticket_sale",
+          amountMinor: 5,
+          currency: "usd",
+          fundsState: "available",
+          occurredAt: 3000,
+          label: "Ticket sale",
+        },
+        {
+          id: ledgerIds[3],
+          kind: "ticket_refund",
+          amountMinor: 5,
+          currency: "usd",
+          fundsState: "available",
+          occurredAt: 4000,
+          label: "Ticket refund",
+        },
+        {
+          id: ledgerIds[4],
+          kind: "refund",
+          amountMinor: -0,
+          currency: "eur",
+          fundsState: "available",
+          occurredAt: 5000,
+          label: "Booking refund",
+        },
+      ],
+      totalsByKind: [
+        { kind: "charge", amountMinor: -15_000, count: 1 },
+        { kind: "refund", amountMinor: 0, count: 1 },
+        { kind: "ticket_refund", amountMinor: 5, count: 1 },
+        { kind: "ticket_sale", amountMinor: 15_005, count: 2 },
+      ],
     });
+    expect(result.transactions).toHaveLength(result.rows);
     expect(stripeMock).not.toHaveBeenCalled();
+  });
+
+  test("totals each distinct transaction kind in ascending order", async () => {
+    const setup = await setupFinance();
+    await seedLedger(setup, [
+      { kind: "ticket_sale", amountMinor: 1500, occurredAt: 1000 },
+      { kind: "refund", amountMinor: 500, occurredAt: 2000 },
+      { kind: "charge", amountMinor: 1000, occurredAt: 3000 },
+      { kind: "ticket_sale", amountMinor: 2500, occurredAt: 4000 },
+      { kind: "charge", amountMinor: 2000, occurredAt: 5000 },
+      { kind: "commission", amountMinor: 300, occurredAt: 6000 },
+    ]);
+
+    const result = await setup.as("owner").action(exportStatement, {
+      organizationId: setup.organizationId,
+      fromMs: 1000,
+      toMs: 6000,
+    });
+    const kinds = [...new Set(result.transactions.map((row) => row.kind))].sort();
+    expect(result.totalsByKind).toEqual(
+      kinds.map((kind) => {
+        const transactions = result.transactions.filter(
+          (row) => row.kind === kind,
+        );
+        return {
+          kind,
+          amountMinor: transactions.reduce((sum, row) => sum + row.amountMinor, 0),
+          count: transactions.length,
+        };
+      }),
+    );
+    expect(result.transactions).toHaveLength(5);
+    expect(result.transactions).toHaveLength(result.rows);
   });
 
   test.each([
@@ -573,6 +677,19 @@ describe("exportStatement", () => {
         csv: `${HEADER}\r\n1970-01-01T00:00:01.000Z,charge,Booking payment,-150.00,usd,available,${expectedReference}`,
         rows: 1,
         truncated: false,
+        transactions: [
+          {
+            id: expect.any(String),
+            kind: "charge",
+            amountMinor: -15_000,
+            currency: "usd",
+            fundsState: "available",
+            occurredAt: 1000,
+            label: "Booking payment",
+            stripeRef,
+          },
+        ],
+        totalsByKind: [{ kind: "charge", amountMinor: -15_000, count: 1 }],
       });
     },
   );
@@ -612,7 +729,13 @@ describe("exportStatement", () => {
           fromMs: 1000,
           toMs: 1000 + span,
         }),
-      ).toEqual({ csv: HEADER, rows: 0, truncated: false });
+      ).toEqual({
+        csv: HEADER,
+        rows: 0,
+        truncated: false,
+        transactions: [],
+        totalsByKind: [],
+      });
     },
   );
 
@@ -634,6 +757,10 @@ describe("exportStatement", () => {
     });
     expect(result.rows).toBe(2000);
     expect(result.truncated).toBe(true);
+    expect(result.transactions).toHaveLength(result.rows);
+    expect(result.totalsByKind).toEqual([
+      { kind: "ticket_sale", amountMinor: 200_000, count: 2000 },
+    ]);
     const lines = result.csv.split("\r\n");
     expect(lines).toHaveLength(2001);
     expect(lines[0]).toBe(HEADER);
@@ -660,6 +787,10 @@ describe("exportStatement", () => {
     });
     expect(result.rows).toBe(1800);
     expect(result.truncated).toBe(true);
+    expect(result.transactions).toHaveLength(result.rows);
+    expect(result.totalsByKind).toEqual([
+      { kind: "ticket_sale", amountMinor: 180_000, count: 1800 },
+    ]);
     expect(result.csv.split("\r\n")).toHaveLength(1801);
   });
 });

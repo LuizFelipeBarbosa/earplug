@@ -12,6 +12,10 @@ import {
   venueTypeValidator,
 } from "../schema";
 import { toVenuePayload, venuePayloadValidator } from "./helpers";
+import {
+  currentConsentFor,
+  venueConsentStatusValidator,
+} from "./venueConsentStatus";
 
 export const MAX_OPPORTUNITY_SLOTS = 8;
 
@@ -35,6 +39,7 @@ export const opportunityPayloadValidator = v.object({
   venue: v.union(venuePayloadValidator, v.null()),
   area: v.string(),
   venueType: v.union(venueTypeValidator, v.literal("private"), v.null()),
+  venueConsentStatus: v.optional(v.union(venueConsentStatusValidator, v.null())),
   title: v.string(),
   desc: v.string(),
   eventType: v.union(v.string(), v.null()),
@@ -110,6 +115,8 @@ export async function toOpportunityPayload(
     venue: isPrivate ? null : (venue ? toVenuePayload(venue) : null),
     area: opportunity.area,
     venueType: isPrivate ? "private" : (opportunity.venueType ?? null),
+    venueConsentStatus:
+      (await currentConsentFor(ctx, opportunity._id))?.status ?? null,
     title: opportunity.title,
     desc: opportunity.desc,
     eventType: opportunity.eventType ?? null,

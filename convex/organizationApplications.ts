@@ -304,11 +304,18 @@ function normalizeAndValidateDraft(args: {
     };
   }
 
-  if (args.kind !== "host" && args.orgType !== "venueOperator") {
+  const isPromoterOrStudentOrg =
+    args.orgType === "promoter" || args.orgType === "studentOrg";
+  if (
+    args.kind !== "host" &&
+    args.orgType !== "venueOperator" &&
+    (!isPromoterOrStudentOrg || !flag("PROMOTERS_ENABLED", false))
+  ) {
     throw new Error(
       "Only bars and clubs that control their location can apply right now",
     );
   }
+  if (isPromoterOrStudentOrg) venue = undefined;
 
   const hostDisplayName = optionalText(args.hostDisplayName);
   if (hostDisplayName !== undefined && hostDisplayName.length > 60) {
@@ -550,6 +557,15 @@ export const submit = mutation({
         );
       }
     } else {
+      if (
+        (application.orgType === "promoter" ||
+          application.orgType === "studentOrg") &&
+        !flag("PROMOTERS_ENABLED", false)
+      ) {
+        throw new Error(
+          "Only bars and clubs that control their location can apply right now",
+        );
+      }
       if (!application.orgName.trim()) {
         throw new Error("Organization name is required");
       }
@@ -572,10 +588,7 @@ export const submit = mutation({
       ) {
         throw new Error("Add your venue's details before submitting");
       }
-      if (
-        application.orgType === "venueOperator" &&
-        application.verificationDocStorageIds.length === 0
-      ) {
+      if (application.verificationDocStorageIds.length === 0) {
         throw new Error(
           "Attach at least one verification document before submitting",
         );

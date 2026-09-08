@@ -1184,3 +1184,239 @@ describe("payout query access", () => {
     ).rejects.toThrow("Not signed in");
   });
 });
+
+describe("statementForBand", () => {
+  test("requires band admin membership and a signed-in caller", async () => {
+    const f = await setupPayouts();
+    const args = { bandId: f.bandId, fromMs: NOW - DAY_MS, toMs: NOW };
+    for (const actor of [
+      "owner",
+      "member",
+      "platformAdmin",
+      "stranger",
+    ] as const) {
+      await expect(
+        f.as(actor).query(api.payouts.statementForBand, args),
+      ).rejects.toThrow("Not an admin of this band");
+    }
+    await expect(
+      f.t.query(api.payouts.statementForBand, args),
+    ).rejects.toThrow("Not signed in");
+  });
+
+  test.each([
+    { span: -1, error: "fromMs must not be after toMs" },
+    { span: 366 * DAY_MS + 1, error: "Choose a range of one year or less" },
+  ])(
+    "rejects an invalid range spanning $span milliseconds",
+    async ({ span, error }) => {
+      const f = await setupPayouts();
+      await expect(
+        f.as("admin").query(api.payouts.statementForBand, {
+          bandId: f.bandId,
+          fromMs: NOW,
+          toMs: NOW + span,
+        }),
+      ).rejects.toThrow(error);
+    },
+  );
+
+  test.each([0, 366 * DAY_MS])(
+    "accepts a range spanning %i milliseconds",
+    async (span) => {
+      const f = await setupPayouts();
+      expect(
+        await f.as("admin").query(api.payouts.statementForBand, {
+          bandId: f.bandId,
+          fromMs: NOW,
+          toMs: NOW + span,
+        }),
+      ).toEqual({ payouts: [], totalNetMinor: 0, truncated: false });
+    },
+  );
+
+  test("returns both payout kinds in scan order, includes range boundaries, and deducts reversals", async () => {
+    const f = await setupPayouts([6000, 5000, 4000]);
+    await f.complete();
+    const [completion, forfeit, reversed] = await f.payouts();
+    const fromMs = NOW - DAY_MS;
+    const toMs = NOW + DAY_MS;
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(completion._id, {
+        status: "paid",
+        paidAt: toMs,
+        reversedMinor: 1200,
+        stripeTransferId: "tr_completion",
+      });
+      await ctx.db.patch(forfeit._id, {
+        kind: "forfeit",
+        status: "paid",
+        paidAt: fromMs,
+      });
+      await ctx.db.patch(reversed._id, {
+        status: "reversed",
+        paidAt: NOW,
+        reversedMinor: 3600,
+        stripeTransferId: "tr_reversed",
+      });
+    });
+
+    const result = await f.as("admin").query(api.payouts.statementForBand, {
+      bandId: f.bandId,
+      fromMs,
+      toMs,
+    });
+    const bookingFields = {
+      bookingId: f.bookingId,
+      bookingTitle: "Friday at the Hall",
+      organizationName: "Payout Collective",
+      currency: "usd",
+    };
+    expect(result).toEqual({
+      payouts: [
+        {
+          ...bookingFields,
+          payoutId: reversed._id,
+          kind: "completion",
+          status: "reversed",
+          paidAt: NOW,
+          netMinor: 3600,
+          reversedMinor: 3600,
+          grossMinor: 15000,
+          commissionMinor: 1500,
+          stripeTransferId: "tr_reversed",
+        },
+        {
+          ...bookingFields,
+          payoutId: forfeit._id,
+          kind: "forfeit",
+          status: "paid",
+          paidAt: fromMs,
+          netMinor: 4500,
+          reversedMinor: 0,
+          grossMinor: null,
+          commissionMinor: null,
+          stripeTransferId: null,
+        },
+        {
+          ...bookingFields,
+          payoutId: completion._id,
+          kind: "completion",
+          status: "paid",
+          paidAt: toMs,
+          netMinor: 5400,
+          reversedMinor: 1200,
+          grossMinor: 15000,
+          commissionMinor: 1500,
+          stripeTransferId: "tr_completion",
+        },
+      ],
+      totalNetMinor: 8700,
+      truncated: false,
+    });
+    expect(stripeMock).not.toHaveBeenCalled();
+  });
+
+  test("excludes unsettled payouts, missing or out-of-range paidAt, and other bands", async () => {
+    const f = await setupPayouts();
+    await f.complete();
+    const [payout] = await f.payouts();
+    const fromMs = NOW - DAY_MS;
+    const toMs = NOW;
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(payout._id, { status: "paid", paidAt: NOW });
+      const { _id, _creationTime, ...fields } = payout;
+      for (const status of ["scheduled", "held", "processing", "failed"] as const) {
+        await ctx.db.insert("payouts", { ...fields, status, paidAt: NOW });
+      }
+      for (const status of ["paid", "reversed"] as const) {
+        for (const paidAt of [undefined, fromMs - 1, toMs + 1]) {
+          await ctx.db.insert("payouts", { ...fields, status, paidAt });
+        }
+      }
+      const bandId = await ctx.db.insert("bands", {
+        name: "Other Band",
+        slug: "other-band",
+        genres: [],
+        area: "Oakland",
+        colorHex: "#000000",
+        initials: "OB",
+        followerCount: 0,
+        pastShows: [],
+      });
+      await ctx.db.insert("payouts", {
+        ...fields,
+        bandId,
+        status: "paid",
+        paidAt: NOW,
+      });
+    });
+
+    const result = await f.as("admin").query(api.payouts.statementForBand, {
+      bandId: f.bandId,
+      fromMs,
+      toMs,
+    });
+    expect(result.payouts.map((row) => row.payoutId)).toEqual([payout._id]);
+    expect(result.totalNetMinor).toBe(13500);
+    expect(result.truncated).toBe(false);
+  });
+
+  test.each(["bookingId", "opportunityId", "organizationId"] as const)(
+    "skips payouts whose referenced %s is missing",
+    async (missingId) => {
+      const f = await setupPayouts([9000, 6000]);
+      await f.complete();
+      const rows = await f.payouts();
+      await f.t.run(async (ctx) => {
+        for (const payout of rows) {
+          await ctx.db.patch(payout._id, { status: "paid", paidAt: NOW });
+        }
+        await ctx.db.delete(f[missingId]);
+      });
+
+      expect(
+        await f.as("admin").query(api.payouts.statementForBand, {
+          bandId: f.bandId,
+          fromMs: NOW,
+          toMs: NOW,
+        }),
+      ).toEqual({ payouts: [], totalNetMinor: 0, truncated: false });
+    },
+  );
+
+  test.each([999, 1000, 1001])(
+    "reports truncation from the bounded scan of %i source rows before filtering",
+    async (count) => {
+      const f = await setupPayouts();
+      await f.t.run(async (ctx) => {
+        for (let index = 0; index < count; index++) {
+          await ctx.db.insert("payouts", {
+            bookingId: f.bookingId,
+            bandId: f.bandId,
+            kind: "completion",
+            status: "scheduled",
+            amountMinor: 100,
+            currency: "usd",
+            scheduledFor: NOW,
+            attempt: 0,
+            createdAt: NOW,
+            updatedAt: NOW,
+          });
+        }
+      });
+
+      expect(
+        await f.as("admin").query(api.payouts.statementForBand, {
+          bandId: f.bandId,
+          fromMs: NOW,
+          toMs: NOW,
+        }),
+      ).toEqual({
+        payouts: [],
+        totalNetMinor: 0,
+        truncated: count >= 1000,
+      });
+    },
+  );
+});

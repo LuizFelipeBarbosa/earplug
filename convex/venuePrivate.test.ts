@@ -250,6 +250,175 @@ describe("readVenuePrivateFor", () => {
     });
   });
 
+  test.each(["onTicket", "public"] as const)(
+    "reveals the exact address and operational details to a requesting organization member with granted consent at a venue with %s disclosure",
+    async (addressDisclosure) => {
+      const { t, memberId, organizationId, venueId, opportunityId } =
+        await setupFixture();
+      await t.run(async (ctx) => {
+        const venueOrganizationId = await ctx.db.insert("organizations", {
+          name: "Lantern Operators",
+          slug: "lantern-operators",
+          orgType: "venueOperator",
+          status: "verified",
+          ownerUserId: memberId,
+          createdAt,
+          updatedAt: createdAt,
+        });
+        await ctx.db.patch(venueId, {
+          addressDisclosure,
+          managedByOrganizationId: venueOrganizationId,
+        });
+        await ctx.db.insert("organizationMembers", {
+          organizationId,
+          userId: memberId,
+          role: "door",
+          createdAt,
+        });
+        await ctx.db.insert("venueConsents", {
+          opportunityId,
+          venueId,
+          venueOrganizationId,
+          requestingOrganizationId: organizationId,
+          status: "granted",
+          createdAt,
+          updatedAt: createdAt,
+        });
+        const venue = (await ctx.db.get(venueId))!;
+        const member = (await ctx.db.get(memberId))!;
+        const result = await readVenuePrivateFor(ctx, venue, member);
+
+        expect(result).not.toBeNull();
+        expect(result!.details.addr).toBe(exactAddress);
+        expect(result!.operational).toBe(true);
+        const payload = toVenuePrivatePayload(result!.details, result!.operational);
+        expect(payload).toMatchObject({
+          addr: exactAddress,
+          loadInNotes: "Use the side entrance.",
+          capacity: 200,
+        });
+      });
+    },
+  );
+
+  test("denies a requesting organization member whose venue consent is pending", async () => {
+    const { t, memberId, organizationId, venueId, opportunityId } =
+      await setupFixture();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("organizationMembers", {
+        organizationId,
+        userId: memberId,
+        role: "door",
+        createdAt,
+      });
+      await ctx.db.insert("venueConsents", {
+        opportunityId,
+        venueId,
+        venueOrganizationId: organizationId,
+        requestingOrganizationId: organizationId,
+        status: "pending",
+        createdAt,
+        updatedAt: createdAt,
+      });
+      const venue = (await ctx.db.get(venueId))!;
+      const member = (await ctx.db.get(memberId))!;
+
+      expect(await readVenuePrivateFor(ctx, venue, member)).toBeNull();
+    });
+  });
+
+  test.each(["cancelled", "completed"] as const)(
+    "denies a requesting organization member with granted consent for a %s opportunity",
+    async (status) => {
+      const { t, memberId, organizationId, venueId, opportunityId } =
+        await setupFixture();
+      await t.run(async (ctx) => {
+        await ctx.db.patch(opportunityId, { status });
+        await ctx.db.insert("organizationMembers", {
+          organizationId,
+          userId: memberId,
+          role: "door",
+          createdAt,
+        });
+        await ctx.db.insert("venueConsents", {
+          opportunityId,
+          venueId,
+          venueOrganizationId: organizationId,
+          requestingOrganizationId: organizationId,
+          status: "granted",
+          createdAt,
+          updatedAt: createdAt,
+        });
+        const venue = (await ctx.db.get(venueId))!;
+        const member = (await ctx.db.get(memberId))!;
+
+        expect(await readVenuePrivateFor(ctx, venue, member)).toBeNull();
+      });
+    },
+  );
+
+  test("denies a suspended requesting organization's member despite granted consent", async () => {
+    const { t, memberId, organizationId, venueId, opportunityId } =
+      await setupFixture();
+    await t.run(async (ctx) => {
+      await ctx.db.patch(organizationId, { status: "suspended" });
+      await ctx.db.insert("organizationMembers", {
+        organizationId,
+        userId: memberId,
+        role: "door",
+        createdAt,
+      });
+      await ctx.db.insert("venueConsents", {
+        opportunityId,
+        venueId,
+        venueOrganizationId: organizationId,
+        requestingOrganizationId: organizationId,
+        status: "granted",
+        createdAt,
+        updatedAt: createdAt,
+      });
+      const venue = (await ctx.db.get(venueId))!;
+      const member = (await ctx.db.get(memberId))!;
+
+      expect(await readVenuePrivateFor(ctx, venue, member)).toBeNull();
+    });
+  });
+
+  test("denies an unrelated organization's member when another organization has granted consent", async () => {
+    const { t, memberId, organizationId, venueId, opportunityId } =
+      await setupFixture();
+    await t.run(async (ctx) => {
+      const unrelatedOrganizationId = await ctx.db.insert("organizations", {
+        name: "Unrelated Shows",
+        slug: "unrelated-shows",
+        orgType: "promoter",
+        status: "verified",
+        ownerUserId: memberId,
+        createdAt,
+        updatedAt: createdAt,
+      });
+      await ctx.db.insert("organizationMembers", {
+        organizationId: unrelatedOrganizationId,
+        userId: memberId,
+        role: "door",
+        createdAt,
+      });
+      await ctx.db.insert("venueConsents", {
+        opportunityId,
+        venueId,
+        venueOrganizationId: organizationId,
+        requestingOrganizationId: organizationId,
+        status: "granted",
+        createdAt,
+        updatedAt: createdAt,
+      });
+      const venue = (await ctx.db.get(venueId))!;
+      const member = (await ctx.db.get(memberId))!;
+
+      expect(await readVenuePrivateFor(ctx, venue, member)).toBeNull();
+    });
+  });
+
   test("preserves organization access and the suspended-organization guard", async () => {
     const { t, memberId, organizationId, venueId } = await setupFixture();
     await t.run(async (ctx) => {
