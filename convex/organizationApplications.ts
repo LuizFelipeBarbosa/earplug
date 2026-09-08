@@ -364,7 +364,7 @@ function assertEditable(application: Doc<"organizationApplications">): void {
   }
 }
 
-async function uniqueOrganizationSlug(
+export async function uniqueOrganizationSlug(
   ctx: MutationCtx,
   name: string,
 ): Promise<string> {
@@ -380,7 +380,7 @@ async function uniqueOrganizationSlug(
   }
 }
 
-async function uniqueHostOrganizationSlug(ctx: MutationCtx): Promise<string> {
+export async function uniqueHostOrganizationSlug(ctx: MutationCtx): Promise<string> {
   for (;;) {
     const bytes = new Uint8Array(6);
     crypto.getRandomValues(bytes);
