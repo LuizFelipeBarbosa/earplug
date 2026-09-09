@@ -7,7 +7,6 @@ import {
   ensureInventory,
 } from "./lib/ticketInventory";
 import {
-  assertSellerFlags,
   assertSellerOpen,
   resolveOrderSeller,
   resolveTicketSeller,
@@ -409,38 +408,6 @@ describe.each(["organization", "band"] as const)("%s seller guards", (kind) => {
   test("accepts an open seller", () => {
     expect(() => assertSellerOpen(openSeller)).not.toThrow();
   });
-
-  test.each([undefined, "false", "0"])(
-    "blocks sales when TICKETS_ENABLED is %s",
-    (value) => {
-      vi.stubEnv("TICKETS_ENABLED", value);
-      vi.stubEnv("BAND_GIG_WRITES", "false");
-      expect(() => assertSellerFlags(openSeller)).toThrow(
-        "Ticket sales are not open yet",
-      );
-    },
-  );
-
-  test("applies BAND_GIG_WRITES only to band sellers", () => {
-    vi.stubEnv("TICKETS_ENABLED", "true");
-    vi.stubEnv("BAND_GIG_WRITES", "false");
-    if (kind === "band") {
-      expect(() => assertSellerFlags(openSeller)).toThrow(
-        "Bands are not selling tickets right now",
-      );
-    } else {
-      expect(() => assertSellerFlags(openSeller)).not.toThrow();
-    }
-  });
-
-  test.each([undefined, "true"])(
-    "allows sales when tickets are enabled and BAND_GIG_WRITES is %s",
-    (value) => {
-      vi.stubEnv("TICKETS_ENABLED", "true");
-      vi.stubEnv("BAND_GIG_WRITES", value);
-      expect(() => assertSellerFlags(openSeller)).not.toThrow();
-    },
-  );
 
   test("includes only the chosen seller's reference fields", async () => {
     const f = await setupSeller(kind);

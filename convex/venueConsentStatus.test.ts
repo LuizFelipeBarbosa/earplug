@@ -123,52 +123,27 @@ describe("assertVenueUsable", () => {
     managedByOrganizationId: venueOrganizationId,
   };
 
-  describe.each([false, true])("promotersEnabled: %s", (promotersEnabled) => {
-    test("accepts the organization's own verified venue without consent", () => {
-      expect(
-        assertVenueUsable(
-          { ...venue, managedByOrganizationId: organizationId },
-          organizationId,
-          { promotersEnabled },
-        ),
-      ).toEqual({ consentRequired: false });
-    });
-
-    test.each<Doc<"venues">["status"]>([
-      undefined,
-      "legacy",
-      "pending",
-      "suspended",
-    ])("rejects an own venue with unverified status %s", (status) => {
-      expect(() =>
-        assertVenueUsable(
-          { ...venue, managedByOrganizationId: organizationId, status },
-          organizationId,
-          { promotersEnabled },
-        ),
-      ).toThrowError(new Error("Choose one of your verified venues"));
-    });
+  test("accepts the organization's own verified venue without consent", () => {
+    expect(
+      assertVenueUsable(
+        { ...venue, managedByOrganizationId: organizationId },
+        organizationId,
+      ),
+    ).toEqual({ consentRequired: false });
   });
 
-  describe.each([
-    { label: "foreign managed", managedByOrganizationId: venueOrganizationId },
-    { label: "unmanaged", managedByOrganizationId: undefined },
-  ])("$label venue with promoters disabled", ({ managedByOrganizationId }) => {
-    test.each<Doc<"venues">["status"]>([
-      undefined,
-      "legacy",
-      "pending",
-      "verified",
-      "suspended",
-    ])("preserves the original venue error for status %s", (status) => {
-      expect(() =>
-        assertVenueUsable(
-          { ...venue, managedByOrganizationId, status },
-          organizationId,
-          { promotersEnabled: false },
-        ),
-      ).toThrowError(new Error("Choose one of your verified venues"));
-    });
+  test.each<Doc<"venues">["status"]>([
+    undefined,
+    "legacy",
+    "pending",
+    "suspended",
+  ])("rejects an own venue with unverified status %s", (status) => {
+    expect(() =>
+      assertVenueUsable(
+        { ...venue, managedByOrganizationId: organizationId, status },
+        organizationId,
+      ),
+    ).toThrowError(new Error("Choose one of your verified venues"));
   });
 
   test.each<Doc<"venues">["status"]>([
@@ -177,12 +152,11 @@ describe("assertVenueUsable", () => {
     "pending",
     "verified",
     "suspended",
-  ])("rejects an unmanaged venue with promoters enabled and status %s", (status) => {
+  ])("rejects an unmanaged venue with status %s", (status) => {
     expect(() =>
       assertVenueUsable(
         { ...venue, managedByOrganizationId: undefined, status },
         organizationId,
-        { promotersEnabled: true },
       ),
     ).toThrowError(new Error("This venue has not joined EarPlug yet"));
   });
@@ -192,19 +166,18 @@ describe("assertVenueUsable", () => {
     "legacy",
     "pending",
     "suspended",
-  ])("rejects a foreign unverified venue with promoters enabled and status %s", (status) => {
+  ])("rejects a foreign unverified venue with status %s", (status) => {
     expect(() =>
       assertVenueUsable(
         { ...venue, status },
         organizationId,
-        { promotersEnabled: true },
       ),
     ).toThrowError(new Error("Choose a verified venue"));
   });
 
-  test("requires consent for a foreign verified venue with promoters enabled", () => {
+  test("requires consent for a foreign verified venue", () => {
     expect(
-      assertVenueUsable(venue, organizationId, { promotersEnabled: true }),
+      assertVenueUsable(venue, organizationId),
     ).toEqual({ consentRequired: true });
   });
 });

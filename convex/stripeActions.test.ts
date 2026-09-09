@@ -59,7 +59,6 @@ const baseUrl = "https://preview.earplug.test";
 
 beforeEach(() => {
   stripeMock.mockReset();
-  vi.stubEnv("PAYMENTS_ENABLED", "true");
   vi.stubEnv("APP_BASE_URL", baseUrl);
 });
 
@@ -215,8 +214,7 @@ describe("startBandOnboarding", () => {
     }
   });
 
-  test("preserves the payments gate error without a Stripe prefix", async () => {
-    vi.stubEnv("PAYMENTS_ENABLED", "false");
+  test("preserves a plain Error message without a Stripe prefix", async () => {
     const { asUser, bandId } = await setupBand();
     stripeMock.mockImplementation(() => {
       throw new Error("Payments are not enabled");

@@ -3,7 +3,6 @@ import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { MutationCtx, internalMutation, mutation } from "./_generated/server";
 import { requireOrganizationRole } from "./lib/authz";
-import { flag } from "./lib/env";
 import { BOOKING_ACTIVE_STATUSES } from "./lib/bookingStatus";
 import { syncGigTicketing } from "./lib/gigPublish";
 import {
@@ -77,12 +76,6 @@ function resolveClearable<T>(
   return provided === null ? undefined : provided;
 }
 
-export function requirePrivateBookingsEnabled(): void {
-  if (!flag("PRIVATE_BOOKINGS_ENABLED", false)) {
-    throw new Error("Private bookings are not available yet");
-  }
-}
-
 async function normalizeAndValidateFields(
   ctx: MutationCtx,
   args: Infer<typeof opportunityFieldsValidator>,
@@ -117,9 +110,6 @@ async function normalizeAndValidateFields(
     throw new Error("Applications must close before the event starts");
   }
   const ticketing = args.ticketing ?? "rsvp";
-  if (ticketing === "paid" && !flag("TICKETS_ENABLED", false)) {
-    throw new Error("Paid ticketing is not available yet");
-  }
   if (ticketing === "external" && !isValidHttpsUrl(args.externalUrl)) {
     throw new Error("External ticketing requires a valid HTTPS URL");
   }
@@ -235,9 +225,7 @@ async function requireUsableVenue(
 ): Promise<{ venue: Doc<"venues">; consentRequired: boolean }> {
   const venue = await ctx.db.get(venueId);
   if (!venue) throw new Error("Venue not found");
-  const { consentRequired } = assertVenueUsable(venue, organizationId, {
-    promotersEnabled: flag("PROMOTERS_ENABLED", false),
-  });
+  const { consentRequired } = assertVenueUsable(venue, organizationId);
   return { venue, consentRequired };
 }
 
@@ -304,7 +292,6 @@ export const create = mutation({
       "area" | "venueId" | "venueType" | "privateLocationId"
     >;
     if (mode === "privateBooking") {
-      requirePrivateBookingsEnabled();
       if (organization.orgType !== "privateHost") {
         throw new Error("Only verified hosts post private requests");
       }
@@ -406,9 +393,6 @@ export const update = mutation({
     );
     if (args.expectedRevision !== opportunity.revision) {
       throw new Error("Opportunity changed elsewhere");
-    }
-    if (opportunity.mode === "privateBooking") {
-      requirePrivateBookingsEnabled();
     }
     if (opportunity.status !== "draft" && opportunity.status !== "open") {
       throw new Error("Opportunity can no longer be edited");
@@ -667,9 +651,6 @@ export const open = mutation({
     if (args.expectedRevision !== opportunity.revision) {
       throw new Error("Opportunity changed elsewhere");
     }
-    if (opportunity.mode === "privateBooking") {
-      requirePrivateBookingsEnabled();
-    }
     assertOpportunityTransition(opportunity.status, "open");
     const slots = await ctx.db
       .query("opportunitySlots")
@@ -691,9 +672,6 @@ export const open = mutation({
       const venue = await ctx.db.get(opportunity.venueId);
       if (!venue) throw new Error("Venue not found");
       if (venue.managedByOrganizationId !== opportunity.organizationId) {
-        if (!flag("PROMOTERS_ENABLED", false)) {
-          throw new Error("Choose one of your verified venues");
-        }
         const consent = await currentConsentFor(ctx, opportunity._id);
         if (consent?.status !== "granted") {
           throw new Error("The venue has not approved this event yet");
@@ -727,9 +705,6 @@ export const closeApplications = mutation({
       ctx,
       args.opportunityId,
     );
-    if (opportunity.mode === "privateBooking") {
-      requirePrivateBookingsEnabled();
-    }
     assertOpportunityTransition(opportunity.status, "applications_closed");
     await ctx.db.patch(opportunity._id, {
       status: "applications_closed",
@@ -756,9 +731,6 @@ export const reopen = mutation({
       ctx,
       args.opportunityId,
     );
-    if (opportunity.mode === "privateBooking") {
-      requirePrivateBookingsEnabled();
-    }
     assertOpportunityTransition(opportunity.status, "open");
     if (opportunity.status === "booking") {
       const slots = await ctx.db
@@ -873,7 +845,6 @@ export const duplicate = mutation({
     }
     let privateLocationId = source.privateLocationId;
     if (source.mode === "privateBooking") {
-      requirePrivateBookingsEnabled();
       if (source.privateLocationId !== undefined) {
         const location = await ctx.db.get(source.privateLocationId);
         if (location && location.archivedAt !== undefined) {

@@ -1,6 +1,5 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { flag } from "./env";
 
 export type TicketSellerKind = "organization" | "band";
 
@@ -121,14 +120,5 @@ export function assertSellerOpen(seller: TicketSeller): void {
         ? "This organizer is not ready to sell tickets yet"
         : "This band is not ready to sell tickets yet",
     );
-  }
-}
-
-export function assertSellerFlags(seller: TicketSeller): void {
-  if (!flag("TICKETS_ENABLED", false)) {
-    throw new Error("Ticket sales are not open yet");
-  }
-  if (seller.kind === "band" && !flag("BAND_GIG_WRITES", true)) {
-    throw new Error("Bands are not selling tickets right now");
   }
 }

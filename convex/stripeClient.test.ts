@@ -148,7 +148,6 @@ describe("stripeRequest", () => {
   );
 
   test("sends POST headers and form body and returns typed JSON", async () => {
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     vi.stubEnv("STRIPE_SECRET_KEY", undefined);
     const payload = { id: "pi_1", amount: 1234 };
     const fetchImpl = vi
@@ -197,7 +196,6 @@ describe("stripeRequest", () => {
   });
 
   test("sends DELETE params as a form body", async () => {
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     const payload = { id: "cus_1", deleted: true };
     const fetchImpl = vi
       .fn<typeof fetch>()
@@ -222,7 +220,6 @@ describe("stripeRequest", () => {
   });
 
   test("maps a Stripe error and its Request-Id header into StripeApiError", async () => {
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json(
         {
@@ -351,47 +348,10 @@ describe("stripeRequest", () => {
   });
 });
 
-describe("money gate", () => {
+describe("non-GET requests", () => {
   test.each(["POST", "DELETE"] as const)(
-    "blocks %s before fetching when payments are unset or disabled",
+    "sends %s requests",
     async (method) => {
-      const fetchImpl = vi.fn<typeof fetch>();
-
-      for (const value of [undefined, "false", "0", "invalid"]) {
-        vi.stubEnv("PAYMENTS_ENABLED", value);
-        const request = stripeRequest(method, "/v1/accounts", {}, {
-          fetchImpl,
-          secretKey: "sk_test_injected",
-        });
-
-        await expect(request).rejects.toStrictEqual(
-          new Error("Payments are not enabled"),
-        );
-        expect(fetchImpl).not.toHaveBeenCalled();
-      }
-    },
-  );
-
-  test.each([undefined, "false", "0", "invalid"])(
-    "allows GET when PAYMENTS_ENABLED is %s",
-    async (value) => {
-      vi.stubEnv("PAYMENTS_ENABLED", value);
-      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(Response.json({}));
-
-      await expect(
-        stripeRequest("GET", "/v1/balance", undefined, {
-          fetchImpl,
-          secretKey: "sk_test_injected",
-        }),
-      ).resolves.toEqual({});
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  test.each(["POST", "DELETE"] as const)(
-    "allows %s when payments are explicitly enabled",
-    async (method) => {
-      vi.stubEnv("PAYMENTS_ENABLED", "true");
       const fetchImpl = vi
         .fn<typeof fetch>()
         .mockResolvedValue(Response.json({ id: "acct_1" }));

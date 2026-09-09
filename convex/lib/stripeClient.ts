@@ -1,4 +1,4 @@
-import { flag, stripeSecretKey } from "./env";
+import { stripeSecretKey } from "./env";
 
 // Pinned on purpose: do not "helpfully" bump this to "latest". Changing the
 // Stripe API version is a deliberate, tested migration, not an incidental edit.
@@ -73,10 +73,6 @@ export async function stripeRequest<T = Record<string, unknown>>(
     secretKey?: string;
   },
 ): Promise<T> {
-  if (method !== "GET" && !flag("PAYMENTS_ENABLED", false)) {
-    throw new Error("Payments are not enabled");
-  }
-
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options?.secretKey ?? stripeSecretKey()}`,
     "Stripe-Version": STRIPE_API_VERSION,

@@ -10,11 +10,17 @@ import {
   api as generatedApi,
   internal as generatedInternal,
 } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import { computeCancellationSettlement } from "./lib/cancellationSettlement";
 import { paymentRecordsForBooking } from "./lib/paymentSchedule";
 import { CHECKOUT_TTL_MS, PAYOUT_DELAY_MS } from "./lib/paymentStatus";
 import { stripeRequest } from "./lib/stripeClient";
+import {
+  asActor,
+  DAY_MS,
+  readers,
+  seedMarketplace,
+} from "./marketplaceFixtures.test-helpers";
 import type * as payments from "./payments";
 import type * as payouts from "./payouts";
 import type * as refunds from "./refunds";
@@ -42,19 +48,7 @@ const internal = generatedInternal as typeof generatedInternal &
   >;
 const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T12:00:00Z");
-const DAY_MS = 24 * 60 * 60 * 1000;
 const STARTS_AT = NOW + 30 * DAY_MS;
-const ACTORS = [
-  "owner",
-  "manager",
-  "finance",
-  "door",
-  "admin",
-  "member",
-  "platformAdmin",
-  "stranger",
-] as const;
-type Actor = (typeof ACTORS)[number];
 const stripeMock = vi.mocked(stripeRequest);
 
 beforeEach(() => {
@@ -84,187 +78,25 @@ afterEach(() => {
 
 async function setupRefunds() {
   const t = convexTest(schema, modules);
-  const as = (actor: Actor) => t.withIdentity({ subject: `refund_${actor}` });
-  const ids = await t.run(async (ctx) => {
-    const users = {} as Record<Actor, Id<"users">>;
-    for (const actor of ACTORS) {
-      users[actor] = await ctx.db.insert("users", {
-        clerkId: `refund_${actor}`,
-        name: actor,
-        email: `${actor}@refund.test`,
-        genres: [],
-        attendedCount: 0,
-      });
-    }
-    await ctx.db.insert("platformAdmins", {
-      userId: users.platformAdmin,
-      grantedAt: NOW,
-    });
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Refund Collective",
-      slug: "refund-collective",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: users.owner,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    for (const role of ["owner", "manager", "finance", "door"] as const) {
-      await ctx.db.insert("organizationMembers", {
-        organizationId,
-        userId: users[role],
-        role,
-        createdAt: NOW,
-      });
-    }
-    await ctx.db.insert("organizationPrivateDetails", {
-      organizationId,
-      businessEmail: "billing@refund.test",
-      contactName: "Owner",
-      stripeChargesEnabled: false,
-      stripePayoutsEnabled: false,
-      stripeDetailsSubmitted: false,
-      verificationDocStorageIds: [],
-      updatedAt: NOW,
-    });
-    const venueId = await ctx.db.insert("venues", {
-      name: "Neighborhood Hall",
-      area: "Oakland",
-      addr: "100 Main Street",
-      distSF: "8 mi",
-      distOak: "1 mi",
-      lat: 37.8,
-      lng: -122.27,
-      managedByOrganizationId: organizationId,
-      status: "verified",
-      venueType: "hall",
-    });
-    const bandId = await ctx.db.insert("bands", {
-      name: "Static Bloom",
-      slug: "static-bloom",
-      genres: ["Indie"],
-      area: "Oakland",
-      colorHex: "#7B8FFF",
-      initials: "SB",
-      followerCount: 0,
-      pastShows: [],
-    });
-    for (const role of ["admin", "member"] as const) {
-      await ctx.db.insert("bandMembers", {
-        bandId,
-        userId: users[role],
-        role,
-      });
-    }
-    await ctx.db.insert("bandPayoutAccounts", {
-      bandId,
-      stripeAccountId: "acct_band",
-      chargesEnabled: true,
-      payoutsEnabled: true,
-      detailsSubmitted: true,
-      requirementsDue: [],
-      updatedAt: NOW,
-    });
-    const opportunityId = await ctx.db.insert("talentOpportunities", {
-      organizationId,
-      venueId,
-      mode: "publicEvent",
-      area: "Oakland",
-      venueType: "hall",
-      title: "Friday at the Hall",
-      desc: "An evening of local music.",
-      genres: ["Indie"],
-      startsAt: STARTS_AT,
-      ageRequirement: "allAges",
-      flyKey: "xerox",
-      applicationsCloseAt: STARTS_AT - DAY_MS,
-      visibility: "public",
-      ticketing: "rsvp",
+  const as = asActor(t, "refund");
+  const ids = await seedMarketplace(t, {
+    prefix: "refund",
+    now: NOW,
+    paymentRecords: [12000, 8000].map((amountMinor, index) => ({
+      installmentIndex: index,
+      label: index === 0 ? "Deposit" : "Balance",
+      amountMinor,
       currency: "usd",
-      status: "confirmed",
-      slug: "friday-at-the-hall",
-      createdBy: users.owner,
-      revision: 1,
-      applicationCount: 0,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const slotId = await ctx.db.insert("opportunitySlots", {
-      opportunityId,
-      order: 0,
-      role: "headliner",
-      guaranteeMinor: 20000,
-      required: true,
-      status: "booked",
-      bandId,
-    });
-    const applicationId = await ctx.db.insert("artistApplications", {
-      opportunityId,
-      slotId,
-      bandId,
-      submittedBy: users.admin,
-      status: "booked",
-      message: "We are available",
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const bookingId = await ctx.db.insert("bookings", {
-      opportunityId,
-      slotId,
-      organizationId,
-      bandId,
-      applicationId,
-      status: "confirmed",
-      revision: 3,
-      startsAt: STARTS_AT,
-      grossMinor: 20000,
-      commissionBps: 1000,
-      commissionMinor: 2000,
-      artistNetMinor: 18000,
-      currency: "usd",
-      cancellationTemplate: "standard",
-      organizerAcceptedTermsAt: NOW,
-      artistAcceptedTermsAt: NOW,
-      confirmedAt: NOW,
-      payoutHold: false,
-      paidMinor: 20000,
+      dueAt: NOW,
+      status: "paid",
+      stripeChargeId: index === 0 ? "ch_a" : "ch_b",
+      stripePaymentIntentId: index === 0 ? "pi_a" : "pi_b",
+      attempt: 0,
+      paidAt: NOW,
       refundedMinor: 0,
-      createdBy: users.owner,
       createdAt: NOW,
       updatedAt: NOW,
-    });
-    await ctx.db.patch(slotId, { bookingId });
-    const paymentRecordIds: Id<"paymentRecords">[] = [];
-    for (const [index, amountMinor] of [12000, 8000].entries()) {
-      paymentRecordIds.push(
-        await ctx.db.insert("paymentRecords", {
-          bookingId,
-          installmentIndex: index,
-          label: index === 0 ? "Deposit" : "Balance",
-          amountMinor,
-          currency: "usd",
-          dueAt: NOW,
-          status: "paid",
-          stripeChargeId: index === 0 ? "ch_a" : "ch_b",
-          stripePaymentIntentId: index === 0 ? "pi_a" : "pi_b",
-          attempt: 0,
-          paidAt: NOW,
-          refundedMinor: 0,
-          createdAt: NOW,
-          updatedAt: NOW,
-        }),
-      );
-    }
-    return {
-      users,
-      organizationId,
-      bandId,
-      opportunityId,
-      slotId,
-      applicationId,
-      bookingId,
-      paymentRecordIds,
-    };
+    })),
   });
   return {
     t,
@@ -276,31 +108,7 @@ async function setupRefunds() {
         expectedRevision: 3,
         reason: "Show cancelled",
       }),
-    readBooking: () => t.run((ctx) => ctx.db.get(ids.bookingId)),
-    records: () => t.run((ctx) => paymentRecordsForBooking(ctx, ids.bookingId)),
-    refunds: () =>
-      t.run((ctx) =>
-        ctx.db
-          .query("refunds")
-          .withIndex("by_bookingId", (q) => q.eq("bookingId", ids.bookingId))
-          .take(50),
-      ),
-    payouts: () =>
-      t.run((ctx) =>
-        ctx.db
-          .query("payouts")
-          .withIndex("by_bookingId", (q) => q.eq("bookingId", ids.bookingId))
-          .take(50),
-      ),
-    ledger: () =>
-      t.run((ctx) =>
-        ctx.db
-          .query("ledgerEntries")
-          .withIndex("by_bookingId", (q) => q.eq("bookingId", ids.bookingId))
-          .take(50),
-      ),
-    scheduled: () =>
-      t.run((ctx) => ctx.db.system.query("_scheduled_functions").take(100)),
+    ...readers(t, ids),
     deliver: (event: StripeEvent) =>
       t.mutation(internal.stripeWebhook.recordAndApply, {
         kind: "platform",
@@ -619,6 +427,44 @@ describe("cancellation previews and access", () => {
       }),
     ).toMatchObject({ cancelledBy: "artist", refundMinor: 20000 });
   });
+
+  test("installment offers remain readable", async () => {
+    const f = await setupRefunds();
+    await f.t.run(async (ctx) => {
+      await ctx.db.delete(f.bookingId);
+      await ctx.db.patch(f.slotId, {
+        status: "open",
+        bookingId: undefined,
+        bandId: undefined,
+      });
+      await ctx.db.patch(f.applicationId, { status: "shortlisted" });
+      await ctx.db.patch(f.opportunityId, {
+        status: "open",
+        applicationCount: 1,
+      });
+    });
+    const offer = await f.as("owner").mutation(api.bookings.sendOffer, {
+      applicationId: f.applicationId,
+      grossMinor: 20000,
+      cancellationTemplate: "standard",
+      installments: [
+        { label: "Deposit", amountMinor: 12000, dueAfterAcceptanceDays: 0 },
+        { label: "Balance", amountMinor: 8000, dueAfterAcceptanceDays: 3 },
+      ],
+    });
+    const booking = await f
+      .as("admin")
+      .query(api.bookingsRead.get, { bookingId: offer.bookingId });
+    expect(booking).not.toBeNull();
+  });
+
+  test("booking reads expose the newly maintained payment totals", async () => {
+    const f = await setupRefunds();
+    const booking = await f
+      .as("owner")
+      .query(api.bookingsRead.get, { bookingId: f.bookingId });
+    expect(booking).toMatchObject({ paidMinor: 20000, refundedMinor: 0 });
+  });
 });
 
 describe("cancellation settlement", () => {
@@ -784,6 +630,78 @@ describe("cancellation settlement", () => {
       });
     },
   );
+
+  test("cancellation refunds preserve and pay the artist forfeiture exactly once", async () => {
+    const f = await setupRefunds();
+    vi.setSystemTime(STARTS_AT - 10 * DAY_MS);
+    await f.cancel();
+    for (const refund of await f.refunds()) {
+      await f.t.action(internal.refunds.executeRefund, {
+        refundId: refund._id,
+        attempt: 0,
+      });
+      const saved = await f.t.run((ctx) => ctx.db.get(refund._id));
+      const record = await f.t.run((ctx) => ctx.db.get(refund.paymentRecordId));
+      const event = chargeRefundedEvent(
+        [
+          {
+            id: saved!.stripeRefundId,
+            amount: refund.amountMinor,
+            status: "succeeded",
+            metadata: { refundId: refund._id },
+          },
+        ],
+        record!.stripePaymentIntentId,
+      );
+      event.id = `evt_${refund._id}`;
+      expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+    }
+    const [payout] = await f.payouts();
+    expect(payout).toMatchObject({ status: "scheduled", amountMinor: 9000 });
+    vi.setSystemTime(Date.now() + DAY_MS);
+    await f.t.mutation(internal.payouts.releasePayout, {
+      payoutId: payout._id,
+    });
+    stripeMock.mockResolvedValueOnce({ id: "tr_forfeit" });
+    await f.t.action(internal.payouts.executePayout, {
+      payoutId: payout._id,
+      attempt: 0,
+    });
+    expect(stripeMock).toHaveBeenLastCalledWith(
+      "POST",
+      "/v1/transfers",
+      expect.objectContaining({ amount: 9000, source_transaction: "ch_a" }),
+      expect.anything(),
+    );
+    expect(
+      (await f.ledger())
+        .filter((row) => row.kind === "commission")
+        .map((row) => row.amountMinor),
+    ).toEqual([1000]);
+  });
+
+  test("cancellation after only the deposit releases forfeited funds", async () => {
+    const f = await setupRefunds();
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.paymentRecordIds[1], {
+        status: "pending",
+        paidAt: undefined,
+      });
+      await ctx.db.patch(f.bookingId, {
+        paidMinor: 12000,
+        payoutHold: true,
+        payoutHoldReasons: ["unpaid_installment"],
+      });
+    });
+    vi.setSystemTime(STARTS_AT - DAY_MS);
+    await f.cancel();
+    vi.setSystemTime(STARTS_AT);
+    const [payout] = await f.payouts();
+    await f.t.mutation(internal.payouts.releasePayout, {
+      payoutId: payout._id,
+    });
+    expect((await f.payouts())[0].status).toBe("processing");
+  });
 });
 
 describe("refund execution", () => {
@@ -1127,6 +1045,114 @@ describe("refund execution", () => {
     expect(await f.scheduled()).toEqual(jobs);
     expect(await f.ledger()).toEqual(ledger);
     expect(await f.readBooking()).toMatchObject({ refundedMinor: 12000 });
+  });
+
+  test("a balance paid after completion adds only its share of the payout", async () => {
+    const f = await setupRefunds();
+    await f.t.run(async (ctx) => {
+      await ctx.db.patch(f.paymentRecordIds[1], {
+        status: "pending",
+        paidAt: undefined,
+      });
+      await ctx.db.patch(f.bookingId, {
+        paidMinor: 12000,
+        payoutHold: true,
+        payoutHoldReasons: ["unpaid_installment"],
+      });
+    });
+    vi.setSystemTime(STARTS_AT + 6 * 60 * 60 * 1000);
+    await f.t.mutation(internal.bookings.markCompleted, {
+      bookingId: f.bookingId,
+    });
+    const context = await f
+      .as("owner")
+      .query(internal.payments.loadCheckoutContext, {
+        paymentRecordId: f.paymentRecordIds[1],
+      });
+    expect(context.record.status).toBe("pending");
+    expect(await f.payouts()).toMatchObject([{ amountMinor: 10800 }]);
+    const permissions = await f
+      .as("owner")
+      .query(api.payments.paymentsForBooking, { bookingId: f.bookingId });
+    expect(permissions[1].canPay).toBe(true);
+    await f.t.mutation(internal.payments.markCheckoutOpen, {
+      paymentRecordId: f.paymentRecordIds[1],
+      sessionId: "cs_balance",
+      attempt: 0,
+      checkoutExpiresAt: Date.now() + CHECKOUT_TTL_MS,
+    });
+    const event: StripeEvent = {
+      id: "evt_balance",
+      type: "checkout.session.completed",
+      livemode: false,
+      created: Date.now() / 1000,
+      data: {
+        object: {
+          id: "cs_balance",
+          payment_status: "paid",
+          amount_total: 8000,
+          payment_intent: { id: "pi_b", latest_charge: "ch_b" },
+          metadata: { paymentRecordId: f.paymentRecordIds[1] },
+        },
+      },
+    };
+    expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+    const payouts = await f.payouts();
+    expect(payouts.map((p) => p.amountMinor)).toEqual([10800, 7200]);
+    expect(await f.readBooking()).toMatchObject({
+      status: "completed",
+      paidMinor: 20000,
+      payoutHold: false,
+    });
+    expect(await f.deliver({ ...event, id: "evt_balance_replay" })).toEqual({
+      outcome: "applied",
+    });
+    expect(await f.payouts()).toEqual(payouts);
+    for (const payout of payouts) {
+      vi.setSystemTime(payout.scheduledFor);
+      await f.t.mutation(internal.payouts.releasePayout, {
+        payoutId: payout._id,
+      });
+      stripeMock.mockResolvedValueOnce({ id: `tr_${payout._id}` });
+      await f.t.action(internal.payouts.executePayout, {
+        payoutId: payout._id,
+        attempt: 0,
+      });
+    }
+    expect(await f.readBooking()).toMatchObject({ status: "paid" });
+  });
+
+  test("back-to-back refunds do not schedule overlapping transfer reversals", async () => {
+    const f = await setupRefunds();
+    await f.addPayout({ status: "paid", stripeTransferId: "tr_paid" });
+    for (let i = 0; i < 2; i++) {
+      const refundId = await f.addRefund({ amountMinor: 1000 });
+      await f.t.mutation(internal.refunds.markRefundSucceeded, {
+        refundId,
+        stripeRefundId: `re_${i}`,
+      });
+    }
+    const reversals = (await f.scheduled()).filter(
+      (j) => j.name === "refunds:reverseTransfer",
+    );
+    expect(reversals.reduce((sum, j) => sum + j.args[0].reversalMinor, 0)).toBe(
+      1800,
+    );
+    stripeMock.mockImplementation(async (_method, _path, _params, options) => ({
+      id: `trr_${options?.idempotencyKey?.split(":").at(-1)}`,
+    }));
+    for (const job of reversals.toReversed()) {
+      await f.t.action(internal.refunds.reverseTransfer, job.args[0]);
+    }
+    expect((await f.payouts())[0]).toMatchObject({
+      reversedMinor: 1800,
+      reversalReservedMinor: 1800,
+    });
+    await f.t.action(internal.refunds.reverseTransfer, reversals[0].args[0]);
+    expect((await f.payouts())[0].reversedMinor).toBe(1800);
+    expect(
+      (await f.ledger()).filter((row) => row.kind === "transfer_reversal"),
+    ).toHaveLength(2);
   });
 });
 
@@ -1619,6 +1645,14 @@ describe("charge refund reconciliation", () => {
       expect(await f.payouts()).toEqual(payouts);
     },
   );
+
+  test("Stripe pending refunds remain pending locally", async () => {
+    const f = await setupRefunds();
+    const refundId = await f.addRefund();
+    stripeMock.mockResolvedValueOnce({ id: "re_pending", status: "pending" });
+    await f.t.action(internal.refunds.executeRefund, { refundId, attempt: 0 });
+    expect((await f.refunds())[0].status).toBe("pending");
+  });
 });
 
 describe("Stripe disputes", () => {
@@ -2596,189 +2630,7 @@ describe("Stripe disputes", () => {
     });
     expect((await f.records())[0].stripeDisputeStatus).toBe("won");
   });
-});
 
-describe("marketplace settlement regressions", () => {
-  test("installment offers remain readable", async () => {
-    const f = await setupRefunds();
-    await f.t.run(async (ctx) => {
-      await ctx.db.delete(f.bookingId);
-      await ctx.db.patch(f.slotId, {
-        status: "open",
-        bookingId: undefined,
-        bandId: undefined,
-      });
-      await ctx.db.patch(f.applicationId, { status: "shortlisted" });
-      await ctx.db.patch(f.opportunityId, {
-        status: "open",
-        applicationCount: 1,
-      });
-    });
-    const offer = await f.as("owner").mutation(api.bookings.sendOffer, {
-      applicationId: f.applicationId,
-      grossMinor: 20000,
-      cancellationTemplate: "standard",
-      installments: [
-        { label: "Deposit", amountMinor: 12000, dueAfterAcceptanceDays: 0 },
-        { label: "Balance", amountMinor: 8000, dueAfterAcceptanceDays: 3 },
-      ],
-    });
-    const booking = await f
-      .as("admin")
-      .query(api.bookingsRead.get, { bookingId: offer.bookingId });
-    expect(booking).not.toBeNull();
-  });
-  test("cancellation refunds preserve and pay the artist forfeiture exactly once", async () => {
-    const f = await setupRefunds();
-    vi.setSystemTime(STARTS_AT - 10 * DAY_MS);
-    await f.cancel();
-    for (const refund of await f.refunds()) {
-      await f.t.action(internal.refunds.executeRefund, {
-        refundId: refund._id,
-        attempt: 0,
-      });
-      const saved = await f.t.run((ctx) => ctx.db.get(refund._id));
-      const record = await f.t.run((ctx) => ctx.db.get(refund.paymentRecordId));
-      const event = chargeRefundedEvent(
-        [
-          {
-            id: saved!.stripeRefundId,
-            amount: refund.amountMinor,
-            status: "succeeded",
-            metadata: { refundId: refund._id },
-          },
-        ],
-        record!.stripePaymentIntentId,
-      );
-      event.id = `evt_${refund._id}`;
-      expect(await f.deliver(event)).toEqual({ outcome: "applied" });
-    }
-    const [payout] = await f.payouts();
-    expect(payout).toMatchObject({ status: "scheduled", amountMinor: 9000 });
-    vi.setSystemTime(Date.now() + DAY_MS);
-    await f.t.mutation(internal.payouts.releasePayout, {
-      payoutId: payout._id,
-    });
-    stripeMock.mockResolvedValueOnce({ id: "tr_forfeit" });
-    await f.t.action(internal.payouts.executePayout, {
-      payoutId: payout._id,
-      attempt: 0,
-    });
-    expect(stripeMock).toHaveBeenLastCalledWith(
-      "POST",
-      "/v1/transfers",
-      expect.objectContaining({ amount: 9000, source_transaction: "ch_a" }),
-      expect.anything(),
-    );
-    expect(
-      (await f.ledger())
-        .filter((row) => row.kind === "commission")
-        .map((row) => row.amountMinor),
-    ).toEqual([1000]);
-  });
-  test("cancellation after only the deposit releases forfeited funds", async () => {
-    const f = await setupRefunds();
-    await f.t.run(async (ctx) => {
-      await ctx.db.patch(f.paymentRecordIds[1], {
-        status: "pending",
-        paidAt: undefined,
-      });
-      await ctx.db.patch(f.bookingId, {
-        paidMinor: 12000,
-        payoutHold: true,
-        payoutHoldReasons: ["unpaid_installment"],
-      });
-    });
-    vi.setSystemTime(STARTS_AT - DAY_MS);
-    await f.cancel();
-    vi.setSystemTime(STARTS_AT);
-    const [payout] = await f.payouts();
-    await f.t.mutation(internal.payouts.releasePayout, {
-      payoutId: payout._id,
-    });
-    expect((await f.payouts())[0].status).toBe("processing");
-  });
-  test("Stripe pending refunds remain pending locally", async () => {
-    const f = await setupRefunds();
-    const refundId = await f.addRefund();
-    stripeMock.mockResolvedValueOnce({ id: "re_pending", status: "pending" });
-    await f.t.action(internal.refunds.executeRefund, { refundId, attempt: 0 });
-    expect((await f.refunds())[0].status).toBe("pending");
-  });
-  test("a balance paid after completion adds only its share of the payout", async () => {
-    const f = await setupRefunds();
-    await f.t.run(async (ctx) => {
-      await ctx.db.patch(f.paymentRecordIds[1], {
-        status: "pending",
-        paidAt: undefined,
-      });
-      await ctx.db.patch(f.bookingId, {
-        paidMinor: 12000,
-        payoutHold: true,
-        payoutHoldReasons: ["unpaid_installment"],
-      });
-    });
-    vi.setSystemTime(STARTS_AT + 6 * 60 * 60 * 1000);
-    await f.t.mutation(internal.bookings.markCompleted, {
-      bookingId: f.bookingId,
-    });
-    const context = await f
-      .as("owner")
-      .query(internal.payments.loadCheckoutContext, {
-        paymentRecordId: f.paymentRecordIds[1],
-      });
-    expect(context.record.status).toBe("pending");
-    expect(await f.payouts()).toMatchObject([{ amountMinor: 10800 }]);
-    const permissions = await f
-      .as("owner")
-      .query(api.payments.paymentsForBooking, { bookingId: f.bookingId });
-    expect(permissions[1].canPay).toBe(true);
-    await f.t.mutation(internal.payments.markCheckoutOpen, {
-      paymentRecordId: f.paymentRecordIds[1],
-      sessionId: "cs_balance",
-      attempt: 0,
-      checkoutExpiresAt: Date.now() + CHECKOUT_TTL_MS,
-    });
-    const event: StripeEvent = {
-      id: "evt_balance",
-      type: "checkout.session.completed",
-      livemode: false,
-      created: Date.now() / 1000,
-      data: {
-        object: {
-          id: "cs_balance",
-          payment_status: "paid",
-          amount_total: 8000,
-          payment_intent: { id: "pi_b", latest_charge: "ch_b" },
-          metadata: { paymentRecordId: f.paymentRecordIds[1] },
-        },
-      },
-    };
-    expect(await f.deliver(event)).toEqual({ outcome: "applied" });
-    const payouts = await f.payouts();
-    expect(payouts.map((p) => p.amountMinor)).toEqual([10800, 7200]);
-    expect(await f.readBooking()).toMatchObject({
-      status: "completed",
-      paidMinor: 20000,
-      payoutHold: false,
-    });
-    expect(await f.deliver({ ...event, id: "evt_balance_replay" })).toEqual({
-      outcome: "applied",
-    });
-    expect(await f.payouts()).toEqual(payouts);
-    for (const payout of payouts) {
-      vi.setSystemTime(payout.scheduledFor);
-      await f.t.mutation(internal.payouts.releasePayout, {
-        payoutId: payout._id,
-      });
-      stripeMock.mockResolvedValueOnce({ id: `tr_${payout._id}` });
-      await f.t.action(internal.payouts.executePayout, {
-        payoutId: payout._id,
-        attempt: 0,
-      });
-    }
-    expect(await f.readBooking()).toMatchObject({ status: "paid" });
-  });
   test("winning a dispute resumes a completion job that fired while disputed", async () => {
     const f = await setupRefunds();
     await f.deliver(disputeEvent("charge.dispute.created"));
@@ -2793,45 +2645,7 @@ describe("marketplace settlement regressions", () => {
     );
     expect(b!.status === "completed" || completionScheduled).toBe(true);
   });
-  test("back-to-back refunds do not schedule overlapping transfer reversals", async () => {
-    const f = await setupRefunds();
-    await f.addPayout({ status: "paid", stripeTransferId: "tr_paid" });
-    for (let i = 0; i < 2; i++) {
-      const refundId = await f.addRefund({ amountMinor: 1000 });
-      await f.t.mutation(internal.refunds.markRefundSucceeded, {
-        refundId,
-        stripeRefundId: `re_${i}`,
-      });
-    }
-    const reversals = (await f.scheduled()).filter(
-      (j) => j.name === "refunds:reverseTransfer",
-    );
-    expect(reversals.reduce((sum, j) => sum + j.args[0].reversalMinor, 0)).toBe(
-      1800,
-    );
-    stripeMock.mockImplementation(async (_method, _path, _params, options) => ({
-      id: `trr_${options?.idempotencyKey?.split(":").at(-1)}`,
-    }));
-    for (const job of reversals.toReversed()) {
-      await f.t.action(internal.refunds.reverseTransfer, job.args[0]);
-    }
-    expect((await f.payouts())[0]).toMatchObject({
-      reversedMinor: 1800,
-      reversalReservedMinor: 1800,
-    });
-    await f.t.action(internal.refunds.reverseTransfer, reversals[0].args[0]);
-    expect((await f.payouts())[0].reversedMinor).toBe(1800);
-    expect(
-      (await f.ledger()).filter((row) => row.kind === "transfer_reversal"),
-    ).toHaveLength(2);
-  });
-  test("booking reads expose the newly maintained payment totals", async () => {
-    const f = await setupRefunds();
-    const booking = await f
-      .as("owner")
-      .query(api.bookingsRead.get, { bookingId: f.bookingId });
-    expect(booking).toMatchObject({ paidMinor: 20000, refundedMinor: 0 });
-  });
+
   test("winning one of two disputes preserves the remaining hold", async () => {
     const f = await setupRefunds();
     await f.addPayout();
