@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -45,6 +47,8 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
   final _notes = TextEditingController();
   final _message = TextEditingController();
   CancellationTemplate _cancellationTemplate = CancellationTemplate.standard;
+  FeeRates? _feeRates;
+  bool _feeRatesLoaded = false;
   bool _submitting = false;
   String? _error;
 
@@ -54,6 +58,39 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
     _gross = TextEditingController(
       text: (widget.slot.guaranteeMinor ~/ 100).toString(),
     );
+    unawaited(_loadFeeRates());
+  }
+
+  Future<void> _loadFeeRates() async {
+    final app = context.read<AppState>();
+    FeeRates? feeRates;
+    try {
+      feeRates = await app.repository.feeRates(
+        organizationId: app.organizationId,
+      );
+    } catch (_) {
+      // Keep the existing caption when rates are unavailable.
+    }
+    if (!mounted) return;
+    setState(() {
+      _feeRates = feeRates;
+      _feeRatesLoaded = true;
+    });
+  }
+
+  String get _bookingCommissionCaption {
+    final feeRates = _feeRates;
+    var rate = '';
+    if (_feeRatesLoaded && feeRates != null && feeRates.configured) {
+      final bps = feeRates.bookingCommissionBps;
+      final percent = (bps / 100).toStringAsFixed(
+        bps % 100 == 0 ? 0 : (bps % 10 == 0 ? 1 : 2),
+      );
+      rate = ' ($percent%)';
+    }
+    return "EarPlug's booking commission$rate comes out of the guarantee; "
+        'the exact split shows on the booking. '
+        r'A $0 guarantee confirms on acceptance.';
   }
 
   @override
@@ -147,12 +184,7 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
                   ),
                 ],
                 const SizedBox(height: 12),
-                Text(
-                  "EarPlug's booking commission comes out of the guarantee; "
-                  'the exact split shows on the booking. '
-                  r'A $0 guarantee confirms on acceptance.',
-                  style: textTheme.epCaption,
-                ),
+                Text(_bookingCommissionCaption, style: textTheme.epCaption),
                 const SizedBox(height: 18),
                 const SectionBar(label: 'CANCELLATION TERMS'),
                 Wrap(

@@ -427,6 +427,89 @@ describe("organization applications", () => {
     ).toMatchObject({ status: "submitted", revision: 3 });
   });
 
+  test.each([
+    { organizerAgreementAccepted: true },
+    { organizerAgreementAccepted: false },
+    {},
+  ])("submit records optional organizer agreement acceptance: %j", async (args) => {
+    const { t, asApplicant } = await setupActors();
+    const { applicationId } = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      { ...draftFields, venue: venueFields },
+    );
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(new Blob(["license"], { type: "application/pdf" })),
+    );
+    const attached = await asApplicant.mutation(
+      api.organizationApplications.attachDocument,
+      { applicationId, storageId },
+    );
+
+    await expect(
+      asApplicant.mutation(api.organizationApplications.submit, {
+        applicationId,
+        expectedRevision: attached.revision,
+        ...args,
+      }),
+    ).resolves.toEqual({ revision: attached.revision + 1 });
+
+    const payload = await asApplicant.query(api.organizationApplications.get, {
+      applicationId,
+    });
+    expect(payload).toMatchObject({
+      kind: "organization",
+      status: "submitted",
+      organizerAgreementAcceptedAt:
+        args.organizerAgreementAccepted === true ? expect.any(Number) : null,
+    });
+    if (args.organizerAgreementAccepted === true) {
+      expect(payload?.organizerAgreementAcceptedAt).toBe(payload?.updatedAt);
+    }
+    const stored = await t.run((ctx) => ctx.db.get(applicationId));
+    expect(stored?.organizerAgreementAcceptedAt ?? null).toBe(
+      payload?.organizerAgreementAcceptedAt,
+    );
+  });
+
+  test.each([{ organizerAgreementAccepted: false }, {}])(
+    "submit preserves existing organizer agreement acceptance: %j",
+    async (args) => {
+      const { t, asApplicant } = await setupActors();
+      const { applicationId } = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        { ...draftFields, venue: venueFields },
+      );
+      const storageId = await t.run((ctx) =>
+        ctx.storage.store(new Blob(["license"], { type: "application/pdf" })),
+      );
+      const attached = await asApplicant.mutation(
+        api.organizationApplications.attachDocument,
+        { applicationId, storageId },
+      );
+      await t.run((ctx) =>
+        ctx.db.patch(applicationId, {
+          status: "needs_info",
+          organizerAgreementAcceptedAt: 1000,
+        }),
+      );
+
+      await asApplicant.mutation(api.organizationApplications.submit, {
+        applicationId,
+        expectedRevision: attached.revision,
+        ...args,
+      });
+
+      expect(
+        await asApplicant.query(api.organizationApplications.get, {
+          applicationId,
+        }),
+      ).toMatchObject({
+        status: "submitted",
+        organizerAgreementAcceptedAt: 1000,
+      });
+    },
+  );
+
   test("attachDocument enforces size, type, and five-document limits", async () => {
     const { t, asApplicant } = await setupActors();
     const application = await asApplicant.mutation(
@@ -1277,6 +1360,68 @@ describe("host applications", () => {
     expect(
       await asApplicant.query(api.organizationApplications.mine, {}),
     ).toMatchObject({ status: "submitted", kind: "host", venue: null });
+  });
+
+  test.each([
+    { organizerAgreementAccepted: true },
+    { organizerAgreementAccepted: false },
+    {},
+  ])("host submit ignores organizer agreement acceptance: %j", async (args) => {
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+    const { t, asApplicant } = await setupActors();
+    const { applicationId } = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      { ...hostDraftFields, ...hostDetails, hostAgreementAccepted: false },
+    );
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(
+        new Blob(["host verification"], { type: "application/pdf" }),
+      ),
+    );
+    const attached = await asApplicant.mutation(
+      api.organizationApplications.attachDocument,
+      { applicationId, storageId },
+    );
+    await expect(
+      asApplicant.mutation(api.organizationApplications.submit, {
+        applicationId,
+        expectedRevision: attached.revision,
+        ...args,
+      }),
+    ).rejects.toThrow("Accept the hosting agreement before submitting");
+
+    const accepted = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      {
+        ...hostDraftFields,
+        ...hostDetails,
+        applicationId,
+        expectedRevision: attached.revision,
+      },
+    );
+    const beforeSubmit = await asApplicant.query(
+      api.organizationApplications.get,
+      { applicationId },
+    );
+    expect(beforeSubmit?.hostAgreementAcceptedAt).toEqual(expect.any(Number));
+
+    await expect(
+      asApplicant.mutation(api.organizationApplications.submit, {
+        applicationId,
+        expectedRevision: accepted.revision,
+        ...args,
+      }),
+    ).resolves.toEqual({ revision: accepted.revision + 1 });
+    expect(
+      await asApplicant.query(api.organizationApplications.get, {
+        applicationId,
+      }),
+    ).toMatchObject({
+      kind: "host",
+      status: "submitted",
+      hostAgreementAcceptedAt: beforeSubmit?.hostAgreementAcceptedAt,
+      organizerAgreementAcceptedAt: null,
+    });
   });
 
   test("approval creates a privateHost organization and owner without a venue", async () => {

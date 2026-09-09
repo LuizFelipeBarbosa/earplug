@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import '../app_links.dart' show legalEffective, legalPrivacyUrl, legalTermsUrl;
 import '../app_state.dart';
 import '../services/auth_service.dart';
+import '../services/user_actions.dart' show openExternalForUser;
 import '../theme.dart';
 import '../widgets/branding.dart';
 import '../widgets/common.dart';
@@ -179,6 +182,8 @@ class _DoorStep extends StatefulWidget {
 class _DoorStepState extends State<_DoorStep> {
   final _emailController = TextEditingController();
   final _codeController = TextEditingController();
+  final _termsRecognizer = TapGestureRecognizer();
+  final _privacyRecognizer = TapGestureRecognizer();
 
   _EntryStage _stage = _EntryStage.providers;
   bool _loading = false;
@@ -188,6 +193,9 @@ class _DoorStepState extends State<_DoorStep> {
   void initState() {
     super.initState();
     _codeController.addListener(_codeChanged);
+    _termsRecognizer.onTap = () => openExternalForUser(context, legalTermsUrl);
+    _privacyRecognizer.onTap = () =>
+        openExternalForUser(context, legalPrivacyUrl);
   }
 
   void _codeChanged() {
@@ -198,6 +206,8 @@ class _DoorStepState extends State<_DoorStep> {
   void dispose() {
     _emailController.dispose();
     _codeController.dispose();
+    _termsRecognizer.dispose();
+    _privacyRecognizer.dispose();
     super.dispose();
   }
 
@@ -282,9 +292,42 @@ class _DoorStepState extends State<_DoorStep> {
       ],
       ?codeMethods,
       if (_error != null) ...[const SizedBox(height: 9), _InlineError(_error!)],
+      if (legalEffective) ...[
+        const SizedBox(height: 9),
+        _buildLegalConsentCaption(),
+      ],
       const SizedBox(height: 9),
       TextAction('← KEEP BROWSING', onTap: locked ? null : widget.app.back),
     ];
+  }
+
+  Widget _buildLegalConsentCaption() {
+    final linkStyle = TextStyle(
+      color: context.epColors.accent,
+      decoration: TextDecoration.underline,
+    );
+    return Text.rich(
+      TextSpan(
+        text: 'By continuing you agree to the ',
+        children: [
+          TextSpan(
+            text: 'Terms of Service',
+            style: linkStyle,
+            recognizer: _termsRecognizer,
+          ),
+          const TextSpan(text: ' and '),
+          TextSpan(
+            text: 'Privacy Policy',
+            style: linkStyle,
+            recognizer: _privacyRecognizer,
+          ),
+          const TextSpan(text: '.'),
+        ],
+      ),
+      key: const Key('auth-legal-consent'),
+      style: Theme.of(context).textTheme.epCaption,
+      textAlign: TextAlign.center,
+    );
   }
 
   List<Widget> _buildEntry() {

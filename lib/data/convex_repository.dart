@@ -250,6 +250,16 @@ class ConvexRepository implements EarplugRepository {
   );
 
   @override
+  Future<FeeRates> feeRates({String? organizationId}) async =>
+      FeeRates.fromJson(
+        _asMap(
+          await _convexService.query('features:fees', {
+            'organizationId': ?organizationId,
+          }),
+        ),
+      );
+
+  @override
   Future<List<PrivateLocation>> privateLocationsFor(
     String organizationId,
   ) async {
@@ -568,10 +578,12 @@ class ConvexRepository implements EarplugRepository {
   Future<int> submitOrganizationApplication({
     required String applicationId,
     required int expectedRevision,
+    bool organizerAgreementAccepted = false,
   }) async => _revisionFrom(
     await _convexService.mutation('organizationApplications:submit', {
       'applicationId': applicationId,
       'expectedRevision': expectedRevision,
+      'organizerAgreementAccepted': ?organizerAgreementAccepted ? true : null,
     }),
   );
 

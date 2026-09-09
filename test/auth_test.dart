@@ -451,6 +451,21 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'the door hides legal consent while legal text is not effective',
+    (tester) async {
+      await pumpApp(
+        tester,
+        beforePump: (app) => app.requestSave('g1'),
+        home: const Scaffold(body: AuthScreen()),
+        pumpFor: const Duration(milliseconds: 100),
+      );
+
+      expect(find.byKey(const Key('auth-legal-consent')), findsNothing);
+      expect(find.textContaining('Terms of Service'), findsNothing);
+    },
+  );
+
   testWidgets('the configured door offers only email and Google', (
     tester,
   ) async {

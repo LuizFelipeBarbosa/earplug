@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:earplug/app_links.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
@@ -1151,6 +1152,37 @@ void main() {
     expect(find.byKey(const Key('replay-profile-tutorial')), findsNothing);
   });
 
+  testWidgets('settings shows draft legal links and opens terms', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    Uri? captured;
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: DemoRepository(auth: auth),
+      home: Scaffold(
+        body: SettingsScreen(
+          launch: (uri) async {
+            captured = uri;
+            return true;
+          },
+        ),
+      ),
+    );
+
+    expect(find.text('LEGAL'), findsOneWidget);
+    expect(find.byKey(const Key('legal-terms')), findsOneWidget);
+    expect(find.byKey(const Key('legal-privacy')), findsOneWidget);
+    expect(find.byKey(const Key('legal-agreements')), findsOneWidget);
+    expect(find.text('Draft — not yet effective'), findsNWidgets(3));
+
+    await tester.tap(find.byKey(const Key('legal-terms')));
+    await tester.pumpAndSettle();
+    expect(captured, Uri.parse(legalTermsUrl));
+  });
+
   testWidgets('settings separates destructive controls and protects deletion', (
     tester,
   ) async {
@@ -1168,6 +1200,7 @@ void main() {
       240,
       scrollable: scrollable,
     );
+    await tester.pumpAndSettle();
 
     final signOut = tester.widget<OutlinedButton>(
       find.byKey(const Key('settings-sign-out')),

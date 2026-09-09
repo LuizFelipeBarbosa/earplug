@@ -94,16 +94,20 @@ void main() {
     ]);
   });
 
-  testWidgets('turnout by show renders newest first', (tester) async {
+  testWidgets('check-ins by show renders newest first', (tester) async {
     await pumpApp(tester, home: const Scaffold(body: AnalyticsScreen()));
 
     await tester.scrollUntilVisible(
-      find.text('TURNOUT BY SHOW'),
+      find.text('CHECK-INS BY SHOW'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
-    final title = find.text('TURNOUT BY SHOW', skipOffstage: false);
+    final title = find.text('CHECK-INS BY SHOW', skipOffstage: false);
     expect(title, findsOne);
+    expect(
+      find.textContaining(RegExp('turnout', caseSensitive: false)),
+      findsNothing,
+    );
 
     final card = find.ancestor(
       of: title,
@@ -146,7 +150,7 @@ void main() {
     );
 
     await tester.scrollUntilVisible(
-      find.text('TURNOUT BY SHOW'),
+      find.text('CHECK-INS BY SHOW'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
@@ -264,7 +268,7 @@ void main() {
     );
 
     expect(find.textContaining('No past gigs yet for'), findsOne);
-    expect(find.text('TURNOUT BY SHOW'), findsNothing);
+    expect(find.text('CHECK-INS BY SHOW'), findsNothing);
   });
 
   testWidgets(

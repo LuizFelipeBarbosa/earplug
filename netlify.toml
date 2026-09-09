@@ -75,6 +75,16 @@
   status = 301
   force = true
 
+[[redirects]]
+  from = "/legal/:page"
+  to = "/legal/:page.html"
+  status = 200
+
+[[headers]]
+  for = "/legal/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
 # Flutter web uses path-based URLs, so a hard refresh on any route must still
 # serve index.html instead of 404ing.
 [[redirects]]

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:earplug/app_links.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
@@ -759,7 +760,14 @@ void main() {
       addTearDown(screen.dispose);
       final harness = await _pumpScreen(tester, screen);
       await _enterArtist(tester, harness, 'b2');
-      screen.value = const BookingDetailScreen(bookingId: 'bk1');
+      final opened = <Uri>[];
+      screen.value = BookingDetailScreen(
+        bookingId: 'bk1',
+        launch: (uri) async {
+          opened.add(uri);
+          return true;
+        },
+      );
       await tester.pumpAndSettle();
 
       expect(harness.app.bookingById('bk1')?.viewerSide, BookingSide.artist);
@@ -779,6 +787,30 @@ void main() {
       expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
       expect(harness.app.bookingById('bk1')?.status, BookingStatus.offerSent);
       expect(find.byType(AlertDialog), findsOneWidget);
+      expect(
+        find.text(
+          'This booking is governed by the Artist Agreement.',
+          findRichText: true,
+        ),
+        findsOneWidget,
+      );
+      await tester.tapOnText(
+        find.textRange.ofSubstring(
+          'Artist Agreement',
+          descendentOf: find.byType(AlertDialog),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(opened, [Uri.parse(legalArtistAgreementUrl)]);
+      expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
+      expect(
+        tester
+            .widget<CheckboxListTile>(
+              find.byKey(const Key('booking-accept-terms')),
+            )
+            .value,
+        isFalse,
+      );
       await tester.tap(find.byKey(const Key('booking-accept-terms')));
       await tester.pumpAndSettle();
       expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);

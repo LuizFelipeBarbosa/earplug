@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:earplug/app_state.dart';
 import 'package:earplug/band_media_state.dart';
 import 'package:earplug/data/demo_repository.dart';
@@ -484,6 +486,83 @@ void main() {
     );
     harness.app.dispose();
   });
+
+  testWidgets('send offer discloses the configured booking commission', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        "EarPlug's booking commission (10%) comes out of the guarantee; "
+        'the exact split shows on the booking. '
+        r'A $0 guarantee confirms on acceptance.',
+      ),
+      findsOneWidget,
+    );
+    harness.app.dispose();
+  });
+
+  for (final fails in [false, true]) {
+    testWidgets(
+      'send offer keeps its caption while fees load and ${fails ? 'fail' : 'are unconfigured'}',
+      (tester) async {
+        late _FeeRatesRepository repository;
+        final harness = await _pumpOrganizerScreen(
+          tester,
+          const OpportunityApplicantsScreen(opportunityId: 'opp1'),
+          repositoryBuilder: (auth) =>
+              repository = _FeeRatesRepository(auth: auth),
+        );
+        await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
+        await tester.pumpAndSettle();
+
+        const caption =
+            "EarPlug's booking commission comes out of the guarantee; "
+            'the exact split shows on the booking. '
+            r'A $0 guarantee confirms on acceptance.';
+        expect(find.text(caption), findsOneWidget);
+        expect(repository.feeOrganizationId, harness.app.organizationId);
+        expect(find.byKey(const Key('send-offer-gross')), findsOneWidget);
+        expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key('send-offer-submit')))
+              .onPressed,
+          isNotNull,
+        );
+
+        if (fails) {
+          repository.feeResult.completeError(StateError('Fees unavailable'));
+        } else {
+          repository.feeResult.complete(
+            const FeeRates(
+              bookingCommissionBps: 1000,
+              ticketingFeeBps: 500,
+              ticketingFeeFixedMinor: 100,
+              configured: false,
+            ),
+          );
+        }
+        await tester.pumpAndSettle();
+
+        expect(find.text(caption), findsOneWidget);
+        expect(
+          tester
+              .widget<InlineFormFeedback>(find.byType(InlineFormFeedback))
+              .error,
+          isNull,
+        );
+        expect(tester.takeException(), isNull);
+        harness.app.dispose();
+      },
+    );
+  }
 
   testWidgets('paid offer failure stays in the sheet with an inline error', (
     tester,
@@ -1044,6 +1123,19 @@ Future<AppHarness> _pumpOrganizerScreen(
   await tester.pumpAndSettle();
   await enterOrganizer(tester, harness, 'org1');
   return harness;
+}
+
+class _FeeRatesRepository extends DemoRepository {
+  _FeeRatesRepository({required super.auth});
+
+  final feeResult = Completer<FeeRates>();
+  String? feeOrganizationId;
+
+  @override
+  Future<FeeRates> feeRates({String? organizationId}) {
+    feeOrganizationId = organizationId;
+    return feeResult.future;
+  }
 }
 
 class _ApplicantInsightsRepository extends DemoRepository {

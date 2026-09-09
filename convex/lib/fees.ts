@@ -1,7 +1,8 @@
-import type { Doc } from "../_generated/dataModel";
 import { bpsSetting } from "./env";
 
-export function resolveCommissionBps(organization: Doc<"organizations">): number {
+export function resolveCommissionBps(organization: {
+  bookingCommissionBps?: number;
+}): number {
   // An invalid override is a hard error. Only absent overrides use the env
   // setting, with -1 marking missing or invalid configuration.
   const commissionBps =

@@ -52,20 +52,21 @@ look for:
 
 Set each of these independently on both paired Convex deployments with
 `npx convex env set`, using test/service values for development and live values
-for production:
+for production. The annotations and dated correction below record the state
+verified on 2026-09-08:
 
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_CONNECT_WEBHOOK_SECRET`
-- `BOOKING_COMMISSION_BPS`
-- `TICKETING_FEE_BPS` — dev: `500`; prod: unset; percentage component of the per-ticket fee.
-- `TICKETING_FEE_FIXED_MINOR` — dev: `100`; prod: unset; fixed minor-unit component of the per-ticket fee, read by Phase 4a.
-- `APP_BASE_URL`
-- `RESEND_API_KEY`
-- `RESEND_SEND_ENABLED`
-- `PAYMENTS_ENABLED`
-- `TICKETS_ENABLED` — dev: `true`; prod: unset (ticketing not yet enabled in production).
-- `PRIVATE_BOOKINGS_ENABLED` — dev: `true`; prod: unset; gates private-booking
+- `BOOKING_COMMISSION_BPS` — dev: `1000`; prod: `1000` (10% booking commission).
+- `TICKETING_FEE_BPS` — dev: `500`; prod: `500`; percentage component of the per-ticket fee.
+- `TICKETING_FEE_FIXED_MINOR` — dev: `100`; prod: `100`; fixed minor-unit component of the per-ticket fee, read by Phase 4a.
+- `APP_BASE_URL` — dev: the current deploy preview's own origin (varies per preview); prod: `https://earplug.app`.
+- `RESEND_API_KEY` — prod: unset; configure a separate key for each environment that sends email.
+- `RESEND_SEND_ENABLED` — dev: `true`; prod: unset (sending disabled by default).
+- `PAYMENTS_ENABLED` — dev: `true`; prod: `true` (payments enabled).
+- `TICKETS_ENABLED` — dev: `true`; prod: `true` (ticketing enabled).
+- `PRIVATE_BOOKINGS_ENABLED` — dev: `true`; prod: explicitly `false`; gates private-booking
   opportunity creation, private-location management, and the client's
   `features:flags.privateBookings` surface (private bookings not yet enabled
   in production).
@@ -76,7 +77,11 @@ for production:
   `venueConsents:request`, foreign-venue opportunities, and the client's
   `features:flags.promoters` surface (promoter organizers not yet enabled
   in production).
-- `BAND_GIG_WRITES`
+- `BAND_GIG_WRITES` — dev: `true`; prod: unset (defaults to `true`).
+
+All feature flags above are `true` in development. In production,
+`DISPUTES_ENABLED` and `PROMOTERS_ENABLED` remain unset and default to
+`false`; `PRIVATE_BOOKINGS_ENABLED` is explicitly set to `false`.
 
 `convex/lib/env.ts` enforces the pairing at runtime: it refuses a `sk_live_`
 Stripe key on every deployment except production deployment
@@ -95,17 +100,24 @@ hours, so a missing webhook does not leave them pending indefinitely. Configure
 the connected-account endpoint as
 `POST /stripe-connect-webhook` on the same host, using
 `STRIPE_CONNECT_WEBHOOK_SECRET`, and subscribe it to
-`checkout.session.completed`, `checkout.session.expired`, `charge.refunded`,
-`payment_intent.payment_failed`, and `account.updated`. Create this endpoint
+`account.updated`, `charge.dispute.created`, `charge.dispute.closed`,
+`charge.refunded`, `checkout.session.async_payment_failed`,
+`checkout.session.completed`, `checkout.session.expired`,
+`payment_intent.payment_failed`, `payout.failed`, `transfer.created`, and
+`transfer.reversed`. Create this endpoint
 with `connect=true` in the Stripe API/CLI: a regular account webhook endpoint
 silently receives no connected-account events, regardless of its subscribed
-event types. The development endpoint was recreated with this Connect-enabled
-configuration on 2026-09-05. The production endpoint has not been recreated
-yet; recreate it with this configuration before enabling either
-`PAYMENTS_ENABLED` or `TICKETS_ENABLED` in production.
+event types.
+
+The development endpoint was recreated with this Connect-enabled
+configuration on 2026-09-05. The live Stripe Connect webhook endpoint
+`we_1UCkAuL1cr6HohouLdvDWmEG` (`stripe-connect-webhook`) was also recreated
+correctly with `connect=true`, subscribed to all eleven connected-account
+events listed above. The first live `account.updated` event was applied on
+production on 2026-09-07.
 
 `APP_BASE_URL` must match the deployed client's origin for the selected
-environment: the development client's origin for development, and
+environment: the current deploy preview's own origin for development, and
 `https://earplug.app` for production. Checkout and Connect append the return
 paths below to that origin; the ticket wallet uses the same origin:
 
@@ -137,6 +149,30 @@ non-`GET` Stripe API calls while disabled.
 Phase 4b's organizer finance balance refresh (`financeActions:refreshBalance`)
 calls Stripe's balance endpoint with `GET`, so it keeps working while
 `PAYMENTS_ENABLED` is false. Phase 4b introduces no new environment variables.
+
+### Launch diagnostics and legal pages
+
+- `admin:opsHealth({ days?, now })` is an `internalQuery` summarizing
+  feature-flag state, Resend configuration, and Stripe events by type/status.
+  Supply the current epoch-ms timestamp as `now`; use it for the A0 baseline
+  in [Launch readiness](launch-readiness.md).
+- `emails:send` requires both `RESEND_API_KEY` and
+  `RESEND_SEND_ENABLED=true`. It sends from `EarPlug <no-reply@earplug.app>`,
+  so `earplug.app` must be a verified Resend domain. DNS is hosted at Netlify
+  DNS, with nameservers `dns1-4.p03.nsone.net`: add Resend's MX and SPF records
+  on `send.earplug.app`, the `resend._domainkey` DKIM record, and a `_dmarc`
+  TXT record. `emails:sendTest({ to })` is the `internalAction` smoke test.
+- The public Query `features:fees({ organizationId? })` returns
+  `{ bookingCommissionBps, ticketingFeeBps, ticketingFeeFixedMinor, configured }`.
+  `organizationApplications:submit` accepts optional
+  `organizerAgreementAccepted: boolean`; the stored application payload gains
+  optional `organizerAgreementAcceptedAt`, an epoch-ms timestamp.
+- Static legal pages exist at `/legal/terms`, `/legal/privacy`,
+  `/legal/organizer-agreement`, `/legal/artist-agreement`, and
+  `/legal/host-agreement`. Each shows a DRAFT banner until counsel's real text
+  lands. To go live, paste the real text, remove the DRAFT banner and
+  `noindex` meta tag, set `legalEffective = true` in `lib/app_links.dart`,
+  and deploy through the normal production release workflow.
 
 ## Building
 

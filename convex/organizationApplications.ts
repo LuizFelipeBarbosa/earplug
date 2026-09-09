@@ -131,6 +131,7 @@ export const organizationApplicationPayloadValidator = v.object({
   hostPhone: v.union(v.string(), v.null()),
   hostArea: v.union(v.string(), v.null()),
   hostAgreementAcceptedAt: v.union(v.number(), v.null()),
+  organizerAgreementAcceptedAt: v.union(v.number(), v.null()),
   status: organizationApplicationStatusValidator,
   orgName: v.string(),
   orgType: organizationTypeValidator,
@@ -193,6 +194,7 @@ export async function toApplicationPayload(
     hostPhone: application.hostPhone ?? null,
     hostArea: application.hostArea ?? null,
     hostAgreementAcceptedAt: application.hostAgreementAcceptedAt ?? null,
+    organizerAgreementAcceptedAt: application.organizerAgreementAcceptedAt ?? null,
     status: application.status,
     orgName: application.orgName,
     orgType: application.orgType,
@@ -522,6 +524,7 @@ export const submit = mutation({
   args: {
     applicationId: v.id("organizationApplications"),
     expectedRevision: v.number(),
+    organizerAgreementAccepted: v.optional(v.boolean()),
   },
   returns: v.object({ revision: v.number() }),
   handler: async (ctx, args) => {
@@ -595,11 +598,15 @@ export const submit = mutation({
       }
     }
 
+    const now = Date.now();
     const revision = application.revision + 1;
     await ctx.db.patch(application._id, {
       status: "submitted",
       revision,
-      updatedAt: Date.now(),
+      updatedAt: now,
+      ...(application.kind !== "host" && args.organizerAgreementAccepted === true
+        ? { organizerAgreementAcceptedAt: now }
+        : {}),
     });
     await scheduleApplicationEmail(
       ctx,

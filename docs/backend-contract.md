@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.27)
+# EarPlug Convex function contract (FROZEN — v1.28)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -1010,6 +1010,19 @@ subtotals and `count` values, alongside the existing `csv`, `rows`, and
 `truncated` fields. `features:flags` adds required `promoters: boolean`,
 mirroring `disputes` so the client gates its promoter-organizer and
 venue-approval UI on `PROMOTERS_ENABLED`.
+
+**v1.28 — Launch readiness.** The new public Query
+`features:fees({ organizationId? })` returns
+`{ bookingCommissionBps: number, ticketingFeeBps: number,
+ticketingFeeFixedMinor: number, configured: boolean }`.
+`organizationApplications:submit` adds optional
+`organizerAgreementAccepted: boolean`; the stored application payload adds
+optional `organizerAgreementAcceptedAt`, a timestamp in UTC milliseconds
+since epoch. This release adds ops/docs/legal scaffolding: the internal
+`admin:opsHealth` Query and `emails:sendTest` Action provide ops diagnostics,
+static legal pages provide placeholders for counsel's text, and environment
+and launch-readiness docs record the rollout checks. No money-affecting
+behavior changed.
 
 ## Reconciliation
 

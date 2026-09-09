@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,6 +7,7 @@ import '../app_state.dart';
 import '../data/repository.dart';
 import '../genres.dart';
 import '../models.dart';
+import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
@@ -55,6 +58,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   bool _deadlineTouched = false;
   AgeRequirement _age = AgeRequirement.allAges;
   OpportunityTicketing _ticketing = OpportunityTicketing.rsvp;
+  FeeRates? _feeRates;
   bool _stripeChargesEnabled = false;
   OpportunityVisibility _visibility = OpportunityVisibility.publicListing;
   String? _loadedKey;
@@ -76,6 +80,20 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       (_status == OpportunityStatus.confirmed ||
           _status == OpportunityStatus.booking) &&
       _ticketing == OpportunityTicketing.paid;
+
+  String get _ticketingFeeCaption {
+    final feeRates = _feeRates;
+    var rate = '';
+    if (feeRates != null && feeRates.configured) {
+      final bps = feeRates.ticketingFeeBps;
+      final percent = (bps / 100).toStringAsFixed(
+        bps % 100 == 0 ? 0 : (bps % 10 == 0 ? 1 : 2),
+      );
+      rate = ' ($percent% + ${Money(feeRates.ticketingFeeFixedMinor).label})';
+    }
+    return 'Fans pay the EarPlug fee$rate on top · '
+        'you receive the ticket price minus Stripe processing';
+  }
 
   DateTime? _atTime(TimeOfDay time) {
     final date = _date;
@@ -158,7 +176,9 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     setState(() {
       _loading = true;
       _loadError = null;
+      _feeRates = null;
     });
+    unawaited(_loadFeeRates());
     try {
       final dashboard = await app.repository.organizationDashboard(
         organizationId,
@@ -210,6 +230,21 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
 
   Future<void> _reloadOpportunity() async {
     await _load();
+  }
+
+  Future<void> _loadFeeRates() async {
+    final app = context.read<AppState>();
+    final key = _loadedKey;
+    FeeRates? feeRates;
+    try {
+      feeRates = await app.repository.feeRates(
+        organizationId: app.organizationId,
+      );
+    } catch (_) {
+      // Keep the existing caption when rates are unavailable.
+    }
+    if (!mounted || key != _loadedKey) return;
+    setState(() => _feeRates = feeRates);
   }
 
   void _populate(Opportunity? opportunity) {
@@ -1123,7 +1158,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Fans pay the EarPlug fee on top · you receive the ticket price minus Stripe processing',
+                        _ticketingFeeCaption,
                         style: Theme.of(context).textTheme.epCaption,
                       ),
                       if (_ticketingEditable && canManage) ...[

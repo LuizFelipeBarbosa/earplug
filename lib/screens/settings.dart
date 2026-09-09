@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../app_links.dart';
 import '../app_state.dart';
 import '../services/appearance_controller.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({super.key, this.launch});
+
+  final ExternalUrlLauncher? launch;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -104,6 +108,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
+  Widget _buildLegalLink({
+    required Key key,
+    required IconData icon,
+    required String title,
+    required String url,
+    String? caption,
+  }) {
+    final displayCaption = legalEffective
+        ? caption
+        : 'Draft — not yet effective';
+    return EpCard(
+      key: key,
+      onTap: _deleting
+          ? null
+          : () => openExternalForUser(context, url, launch: widget.launch),
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Icon(icon, color: context.epColors.accent),
+          const SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: Theme.of(context).textTheme.epLabel),
+                if (displayCaption != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    displayCaption,
+                    style: Theme.of(context).textTheme.epCaption,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right, color: context.epColors.contentSecondary),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
@@ -178,6 +223,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 18),
+        const SectionLabel('LEGAL'),
+        const SizedBox(height: 8),
+        _buildLegalLink(
+          key: const Key('legal-terms'),
+          icon: Icons.description_outlined,
+          title: 'TERMS OF SERVICE',
+          url: legalTermsUrl,
+        ),
+        const SizedBox(height: 10),
+        _buildLegalLink(
+          key: const Key('legal-privacy'),
+          icon: Icons.privacy_tip_outlined,
+          title: 'PRIVACY POLICY',
+          url: legalPrivacyUrl,
+        ),
+        const SizedBox(height: 10),
+        _buildLegalLink(
+          key: const Key('legal-agreements'),
+          icon: Icons.handshake_outlined,
+          title: 'AGREEMENTS',
+          // The organizer agreement is the entry point for the agreements group.
+          url: legalOrganizerAgreementUrl,
+          caption: 'Organizer, artist and host agreements',
         ),
         if (app.profileTutorialAvailable) ...[
           const SizedBox(height: 18),

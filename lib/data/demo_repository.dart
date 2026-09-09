@@ -851,6 +851,14 @@ class DemoRepository implements EarplugRepository {
   );
 
   @override
+  Future<FeeRates> feeRates({String? organizationId}) async => const FeeRates(
+    bookingCommissionBps: 1000,
+    ticketingFeeBps: 500,
+    ticketingFeeFixedMinor: 100,
+    configured: true,
+  );
+
+  @override
   Future<List<PrivateLocation>> privateLocationsFor(
     String organizationId,
   ) async {
@@ -1694,14 +1702,17 @@ class DemoRepository implements EarplugRepository {
   Future<int> submitOrganizationApplication({
     required String applicationId,
     required int expectedRevision,
+    bool organizerAgreementAccepted = false,
   }) async {
     final application = _requireOrganizationApplication(applicationId);
     _checkApplicationRevision(application, expectedRevision);
+    final now = DateTime.now();
     final updated = _copyOrganizationApplication(
       application,
+      organizerAgreementAcceptedAt: organizerAgreementAccepted ? now : null,
       status: OrganizationApplicationStatus.submitted,
       revision: application.revision + 1,
-      updatedAt: DateTime.now(),
+      updatedAt: now,
     );
     _organizationApplications[applicationId] = updated;
     return updated.revision;
@@ -6363,6 +6374,7 @@ class DemoRepository implements EarplugRepository {
 
   OrganizationApplication _copyOrganizationApplication(
     OrganizationApplication application, {
+    DateTime? organizerAgreementAcceptedAt,
     OrganizationApplicationStatus? status,
     List<ApplicationDocument>? documents,
     String? reviewNote,
@@ -6378,6 +6390,9 @@ class DemoRepository implements EarplugRepository {
     hostPhone: application.hostPhone,
     hostArea: application.hostArea,
     hostAgreementAcceptedAt: application.hostAgreementAcceptedAt,
+    organizerAgreementAcceptedAt:
+        organizerAgreementAcceptedAt ??
+        application.organizerAgreementAcceptedAt,
     status: status ?? application.status,
     orgName: application.orgName,
     orgType: application.orgType,

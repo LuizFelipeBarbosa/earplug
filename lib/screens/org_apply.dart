@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
+import '../app_links.dart';
 import '../app_state.dart';
 import '../data/repository.dart';
 import '../models.dart';
 import '../services/media_picker.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
@@ -51,9 +54,10 @@ String _extractErrorMessage(Object error) {
 }
 
 class OrgApplyScreen extends StatefulWidget {
-  const OrgApplyScreen({super.key, this.mediaPicker});
+  const OrgApplyScreen({super.key, this.mediaPicker, this.launch});
 
   final MediaPicker? mediaPicker;
+  final ExternalUrlLauncher? launch;
 
   @override
   State<OrgApplyScreen> createState() => _OrgApplyScreenState();
@@ -65,6 +69,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   static const _autosaveDelay = Duration(milliseconds: 600);
 
   final _scroll = ScrollController();
+  final _agreementRecognizer = TapGestureRecognizer();
   final _orgName = TextEditingController();
   final _capacity = TextEditingController();
   final _contactName = TextEditingController();
@@ -144,6 +149,11 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   void initState() {
     super.initState();
     _mediaPicker = widget.mediaPicker ?? MediaPicker();
+    _agreementRecognizer.onTap = () => openExternalForUser(
+      context,
+      legalOrganizerAgreementUrl,
+      launch: widget.launch,
+    );
     for (final node in [
       _capacityFocus,
       _contactNameFocus,
@@ -168,6 +178,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   @override
   void dispose() {
     _autosaveTimer?.cancel();
+    _agreementRecognizer.dispose();
     _scroll.dispose();
     _orgName.dispose();
     _capacity.dispose();
@@ -539,6 +550,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
       final revision = await app.repository.submitOrganizationApplication(
         applicationId: _applicationId!,
         expectedRevision: _revision,
+        organizerAgreementAccepted: _agreed,
       );
       if (!mounted) return;
       setState(() => _revision = revision);
@@ -961,9 +973,21 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
           onChanged: enabled
               ? (value) => setState(() => _agreed = value ?? false)
               : null,
-          title: const Text(
-            'I confirm this information is accurate and accept the '
-            'Organizer Agreement.',
+          title: Text.rich(
+            TextSpan(
+              text: 'I confirm this information is accurate and accept the ',
+              children: [
+                TextSpan(
+                  text: 'Organizer Agreement',
+                  style: TextStyle(
+                    color: context.epColors.accent,
+                    decoration: TextDecoration.underline,
+                  ),
+                  recognizer: _agreementRecognizer,
+                ),
+                const TextSpan(text: '.'),
+              ],
+            ),
           ),
         ),
       ),
