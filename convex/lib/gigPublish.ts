@@ -2,6 +2,8 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { insertGigWithBandIndex, slugify } from "../lib/helpers";
 import { assertOpportunityTransition } from "./opportunityStatus";
+import { applyTicketInventoryCapacity } from "./ticketInventory";
+import { resolveTicketSeller } from "./ticketSeller";
 
 export function formattedTime(timestamp: number) {
   return new Intl.DateTimeFormat("en-US", {
@@ -86,36 +88,6 @@ function pricedTicketingGigFields(opportunity: Doc<"talentOpportunities">) {
   };
 }
 
-async function applyTicketInventoryCapacity(
-  ctx: MutationCtx,
-  gigId: Id<"gigs">,
-  organizationId: Id<"organizations">,
-  capacity: number | undefined,
-): Promise<void> {
-  if (capacity === undefined) {
-    throw new Error("Paid opportunity is missing a ticket capacity");
-  }
-  const existing = await ctx.db
-    .query("gigTicketInventory")
-    .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
-    .unique();
-  if (existing) {
-    await ctx.db.patch(existing._id, {
-      capacity: Math.max(capacity, existing.sold + existing.reserved),
-      updatedAt: Date.now(),
-    });
-  } else {
-    await ctx.db.insert("gigTicketInventory", {
-      gigId,
-      organizationId,
-      capacity,
-      sold: 0,
-      reserved: 0,
-      updatedAt: Date.now(),
-    });
-  }
-}
-
 export async function publishGigFromOpportunity(
   ctx: MutationCtx,
   opportunityId: Id<"talentOpportunities">,
@@ -197,10 +169,13 @@ export async function publishGigFromOpportunity(
     });
   }
   if (ticketing === "paid") {
+    const gig = await ctx.db.get(gigId);
+    const seller = gig ? await resolveTicketSeller(ctx, gig) : null;
+    if (!seller) throw new Error("This event is not selling tickets");
     await applyTicketInventoryCapacity(
       ctx,
       gigId,
-      opportunity.organizationId,
+      seller,
       opportunity.ticketCapacity,
     );
   }
@@ -227,10 +202,13 @@ export async function syncGigTicketing(
   const gig = await ctx.db.get(opportunity.publicGigId);
   if (!gig) return;
   await ctx.db.patch(gig._id, pricedTicketingGigFields(opportunity));
+  const updatedGig = await ctx.db.get(gig._id);
+  const seller = updatedGig ? await resolveTicketSeller(ctx, updatedGig) : null;
+  if (!seller) throw new Error("This event is not selling tickets");
   await applyTicketInventoryCapacity(
     ctx,
     gig._id,
-    opportunity.organizationId,
+    seller,
     opportunity.ticketCapacity,
   );
 }

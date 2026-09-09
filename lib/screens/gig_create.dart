@@ -8,6 +8,7 @@ import '../app_state.dart';
 import '../band_media_state.dart';
 import '../flyer_styles.dart';
 import '../models.dart';
+import '../money.dart';
 import '../services/flyer_text_extractor.dart';
 import '../services/media_picker.dart';
 import '../services/user_actions.dart';
@@ -478,6 +479,8 @@ class _PosterOverlay extends StatelessWidget {
         doorsLabel: app.gfDoorsLabel,
         venue: app.gfVenueId == null ? null : app.venue(app.gfVenueId!),
         price: app.gfPrice,
+        tix: app.gfTix,
+        ticketPriceMinor: app.gfTicketPriceMinor,
       ),
     );
     final venue = details.venue;
@@ -524,10 +527,14 @@ class _PosterOverlay extends StatelessWidget {
               ),
               const SizedBox(height: 7),
               _PosterLine(
-                label: details.price == 'FREE'
+                label: details.tix == Ticketing.paid
+                    ? 'TICKETS · ${details.ticketPriceMinor == null ? 'SET A PRICE' : Money(details.ticketPriceMinor!).label}'
+                    : details.price == 'FREE'
                     ? 'FREE'
                     : '${details.price} AT THE DOOR',
-                unset: false,
+                unset:
+                    details.tix == Ticketing.paid &&
+                    details.ticketPriceMinor == null,
                 ink: ink,
               ),
             ],
@@ -546,6 +553,8 @@ typedef _PosterDetails = ({
   String doorsLabel,
   Venue? venue,
   String price,
+  Ticketing tix,
+  int? ticketPriceMinor,
 });
 
 /// One detail printed on the flyer — dashed and dimmed until it is filled in.
@@ -691,6 +700,7 @@ class _SlotGrid extends StatelessWidget {
         doorsLabel: app.gfDoorsLabel,
         startLabel: app.gfStartLabel,
         price: app.gfPrice,
+        ticketPriceMinor: app.gfTicketPriceMinor,
         tix: app.gfTix,
         cap: app.gfCap,
         ext: app.gfExt,
@@ -727,10 +737,20 @@ class _SlotGrid extends StatelessWidget {
       SlotCard(
         key: const ValueKey('gig-slot-cover'),
         tag: 'COVER',
-        value: slot.price,
-        sub: slot.price == 'FREE' ? 'No cover' : 'At the door',
-        state: SlotState.done,
-        onTap: () => showPriceSheet(context),
+        value: slot.tix == Ticketing.paid
+            ? 'Tickets · ${slot.ticketPriceMinor == null ? 'Set a price' : Money(slot.ticketPriceMinor!).label}'
+            : slot.price,
+        sub: slot.tix == Ticketing.paid
+            ? 'In-app checkout'
+            : slot.price == 'FREE'
+            ? 'No cover'
+            : 'At the door',
+        state: slot.tix == Ticketing.paid && slot.ticketPriceMinor == null
+            ? SlotState.needed
+            : SlotState.done,
+        onTap: () => slot.tix == Ticketing.paid
+            ? showTicketsSheet(context)
+            : showPriceSheet(context),
       ),
       SlotCard(
         key: const ValueKey('gig-slot-access'),
@@ -789,6 +809,7 @@ typedef _SlotValues = ({
   String doorsLabel,
   String startLabel,
   String price,
+  int? ticketPriceMinor,
   Ticketing tix,
   String cap,
   String ext,

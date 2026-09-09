@@ -16,6 +16,7 @@ export const stripeAccountStatusValidator = v.object({
   ),
   stripeAccountId: v.boolean(),
   chargesEnabled: v.boolean(),
+  cardPaymentsStatus: v.optional(v.union(v.string(), v.null())),
   payoutsEnabled: v.boolean(),
   detailsSubmitted: v.boolean(),
   requirementsDue: v.array(v.string()),
@@ -55,7 +56,7 @@ export const bandPayoutStatus = query({
       .query("bandPayoutAccounts")
       .withIndex("by_bandId", (q) => q.eq("bandId", args.bandId))
       .unique();
-    return accountStatus(
+    const status = accountStatus(
       account === null
         ? null
         : {
@@ -66,6 +67,7 @@ export const bandPayoutStatus = query({
             requirementsDue: account.requirementsDue,
           },
     );
+    return { ...status, cardPaymentsStatus: account?.cardPaymentsStatus ?? null };
   },
 });
 
@@ -102,6 +104,7 @@ export const bandOnboardingContext = internalQuery({
   args: { bandId: v.id("bands") },
   returns: v.object({
     stripeAccountId: v.union(v.string(), v.null()),
+    cardPaymentsStatus: v.union(v.string(), v.null()),
     bandName: v.string(),
     contactEmail: v.union(v.string(), v.null()),
   }),
@@ -115,6 +118,7 @@ export const bandOnboardingContext = internalQuery({
       .unique();
     return {
       stripeAccountId: account?.stripeAccountId ?? null,
+      cardPaymentsStatus: account?.cardPaymentsStatus ?? null,
       bandName: band.name,
       contactEmail: user.email || null,
     };

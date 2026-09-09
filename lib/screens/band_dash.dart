@@ -24,10 +24,9 @@ class BandDashScreen extends StatelessWidget {
     final media = context.watch<BandMediaController>();
     final clips = media.videosFor(band.id);
     final isAdmin = app.isAdminOf(band.id);
-    final readiness = isAdmin ? app.discoveryReadinessFor(band.id) : null;
     final doorLaunch = next == null || !isAdmin
         ? null
-        : _doorLaunchFor(context, app, next, readiness);
+        : _doorLaunchFor(context, app, next);
 
     return ListView(
       padding: EdgeInsets.fromLTRB(
@@ -162,7 +161,10 @@ class BandDashScreen extends StatelessWidget {
           openAnalytics: () => app.resetTo(Screen.analytics),
           openPayouts: isAdmin ? () => app.resetTo(Screen.bandPayouts) : null,
           payoutsCaption: switch (app.bandPayoutStatus?.state) {
-            StripeAccountState.enabled => 'Enabled',
+            StripeAccountState.enabled =>
+              (app.bandPayoutStatus?.canSellTickets ?? false)
+                  ? 'Enabled'
+                  : 'Enable ticket sales',
             StripeAccountState.onboarding ||
             StripeAccountState.restricted => 'Finish setup',
             _ => 'Set up payouts',
@@ -190,37 +192,12 @@ class BandDashScreen extends StatelessWidget {
   }
 }
 
-DoorModeLaunch? _doorLaunchFor(
-  BuildContext context,
-  AppState app,
-  Gig next,
-  BandDiscoveryReadiness? readiness,
-) {
-  if (next.tix != Ticketing.rsvp) return null;
-
-  String? projectId;
-  final readinessShows = [readiness?.relevantShow, readiness?.nextEligibleShow];
-  for (final show in readinessShows) {
-    if (show?.gigId == next.id && show!.projectId.trim().isNotEmpty) {
-      projectId = show.projectId;
-      break;
-    }
-  }
-  if (projectId == null) {
-    for (final project in app.managedGigProjects) {
-      if (project.publicGigId == next.id && project.id.trim().isNotEmpty) {
-        projectId = project.id;
-        break;
-      }
-    }
-  }
-  if (projectId == null) return null;
-
+DoorModeLaunch _doorLaunchFor(BuildContext context, AppState app, Gig next) {
   final doorsTime = next.doorsAt == null
       ? next.time.split('/').first.trim()
       : TimeOfDay.fromDateTime(next.doorsAt!.toLocal()).format(context);
-  return DoorModeLaunch(
-    projectId: projectId,
+  return DoorModeLaunch.organizer(
+    gigId: next.id,
     gigTitle: next.title,
     venueName: app.venue(next.venueId).name,
     doorsTime: doorsTime,

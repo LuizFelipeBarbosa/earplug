@@ -136,6 +136,7 @@ export const requiredClientFunctions = Object.freeze({
   "venueConsents.js:forVenueOrganization": "Query",
   "payouts.js:statementForBand": "Query",
   "features.js:fees": "Query",
+  "stripeActions.js:enableBandTicketSales": "Action",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -181,6 +182,7 @@ export const requiredClientFields = Object.freeze([
   ["payments.js:startInstallmentCheckout", "return", "url", false],
   ["refunds.js:previewCancellation", "return", "refundMinor", false],
   ["payoutAccounts.js:bandPayoutStatus", "return", "state", false],
+  ["payoutAccounts.js:bandPayoutStatus", "return", "cardPaymentsStatus", true],
   ["tickets.js:reserve", "return", "orderId", false],
   ["tickets.js:reserve", "return", "totalMinor", false],
   ["tickets.js:reserve", "return", "reservedUntil", false],
@@ -224,6 +226,10 @@ export const requiredClientFields = Object.freeze([
   ["organizations.js:dashboard", "return", "pendingVenueConsents", true],
   ["features.js:fees", "return", "bookingCommissionBps", false],
   ["organizationApplications.js:submit", "args", "organizerAgreementAccepted", true],
+  ["gigs.js:resolvePublic", "return", "ticketSeller", true],
+  ["gigs.js:saveDraft", "args", "ticketPriceMinor", true],
+  ["gigs.js:saveDraft", "args", "ticketCapacity", true],
+  ["gigs.js:getProject", "return", "ticketPriceMinor", false],
 ]);
 
 export function deploymentNameFromUrl(value) {

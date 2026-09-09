@@ -907,8 +907,9 @@ class _GigCtaBar extends StatelessWidget {
             : () => app.requestTickets(gig.id),
       );
       return _CtaBar(
-        note:
-            'Tickets are sold by the organizer · EarPlug fee added at checkout',
+        note: gig.ticketSeller?.kind == TicketSellerKind.band
+            ? 'Tickets are sold by ${gig.ticketSeller!.name} · EarPlug fee added at checkout'
+            : 'Tickets are sold by the organizer · EarPlug fee added at checkout',
         child: button,
       );
     }

@@ -5,6 +5,7 @@ type StripeAccount = {
   charges_enabled?: boolean;
   payouts_enabled?: boolean;
   details_submitted?: boolean;
+  capabilities?: { card_payments?: string };
   requirements?: {
     currently_due?: string[];
     past_due?: string[];
@@ -36,6 +37,7 @@ export async function syncStripeAccount(
       chargesEnabled: account.charges_enabled ?? false,
       payoutsEnabled: account.payouts_enabled ?? false,
       detailsSubmitted: account.details_submitted ?? false,
+      cardPaymentsStatus: account.capabilities?.card_payments,
       requirementsDue: requirementsDue(account.requirements),
       updatedAt: Date.now(),
     });

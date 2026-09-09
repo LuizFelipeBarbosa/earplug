@@ -17,6 +17,7 @@ vi.mock("./lib/stripeClient", async (importOriginal) => {
 const modules = import.meta.glob("./**/*.ts");
 const NOW = Date.parse("2026-09-05T12:00:00Z");
 const ACCOUNT_ID = "acct_ticket_organization";
+const BAND_ACCOUNT_ID = "acct_ticket_band";
 const SESSION_ID = "cs_ticket";
 const stripeMock = vi.mocked(stripeRequest);
 
@@ -35,7 +36,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function setupTickets(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
+async function setupTickets(
+  orderOverrides: Partial<Doc<"ticketOrders">> = {},
+  sellerKind: "organization" | "band" = "organization",
+) {
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
     const buyerUserId = await ctx.db.insert("users", {
@@ -65,6 +69,34 @@ async function setupTickets(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
       verificationDocStorageIds: [],
       updatedAt: NOW,
     });
+    const bandId =
+      sellerKind === "band"
+        ? await ctx.db.insert("bands", {
+            name: "Static Bloom",
+            slug: "static-bloom",
+            genres: [],
+            area: "Oakland",
+            colorHex: "#7B8FFF",
+            initials: "SB",
+            followerCount: 0,
+            pastShows: [],
+          })
+        : undefined;
+    const payoutAccountId = bandId
+      ? await ctx.db.insert("bandPayoutAccounts", {
+          bandId,
+          stripeAccountId: BAND_ACCOUNT_ID,
+          chargesEnabled: true,
+          cardPaymentsStatus: "active",
+          payoutsEnabled: true,
+          detailsSubmitted: true,
+          requirementsDue: [],
+          updatedAt: NOW,
+        })
+      : undefined;
+    const sellerFields = bandId
+      ? { sellerKind: "band" as const, bandId }
+      : { organizationId };
     const venueId = await ctx.db.insert("venues", {
       name: "Neighborhood Hall",
       area: "Oakland",
@@ -88,12 +120,14 @@ async function setupTickets(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
       ticketCapacity: 100,
       cap: "100",
       goingCount: 0,
-      ownerKind: "organization",
-      createdByOrganization: organizationId,
+      ownerKind: sellerKind,
+      ...(bandId
+        ? { createdByBand: bandId }
+        : { createdByOrganization: organizationId }),
     });
     const orderId = await ctx.db.insert("ticketOrders", {
       gigId,
-      organizationId,
+      ...sellerFields,
       buyerUserId,
       quantity: 2,
       unitPriceMinor: 500,
@@ -114,7 +148,7 @@ async function setupTickets(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
     const order = (await ctx.db.get(orderId))!;
     const inventoryId = await ctx.db.insert("gigTicketInventory", {
       gigId,
-      organizationId,
+      ...sellerFields,
       capacity: 100,
       reserved:
         order.status === "checkout_open" || order.status === "reserved"
@@ -131,7 +165,7 @@ async function setupTickets(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
         await ctx.db.insert("tickets", {
           orderId,
           gigId,
-          organizationId,
+          ...sellerFields,
           holderUserId: buyerUserId,
           token: `ticket_${index}`,
           status: order.status === "paid" ? "valid" : "refunded",
@@ -143,6 +177,8 @@ async function setupTickets(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
       buyerUserId,
       organizationId,
       detailsId,
+      bandId,
+      payoutAccountId,
       venueId,
       gigId,
       orderId,
@@ -249,6 +285,27 @@ function ticketDisputeEvent(
 }
 
 describe("ticket Checkout completion", () => {
+  test("mints a band order paid on the band's connected account", async () => {
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+    const f = await setupTickets({}, "band");
+    const before = await f.state();
+    expect(before.order).toMatchObject({ sellerKind: "band", bandId: f.bandId });
+    expect(before.order).not.toHaveProperty("organizationId");
+    const event = { ...checkoutEvent(f.orderId), account: BAND_ACCOUNT_ID };
+    expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+    const state = await f.state();
+    expect(state.order).toMatchObject({
+      status: "paid",
+      stripePaymentIntentId: "pi_ticket",
+      paidAt: event.created * 1000,
+    });
+    expect(state.tickets).toHaveLength(2);
+    expect(state.tickets.map((ticket) => ticket.status)).toEqual(["valid", "valid"]);
+    expect(state.inventory).toMatchObject({ reserved: 0, sold: 2 });
+    expect(state.refunds).toEqual([]);
+    expect(stripeMock).not.toHaveBeenCalled();
+  });
+
   test.each(["checkout_open", "reserved"] as const)(
     "mints a matching %s order once, including deliveries with a new event id",
     async (status) => {
@@ -346,6 +403,39 @@ describe("ticket Checkout completion", () => {
 });
 
 describe("ticket event account checks", () => {
+  test.each(["seller", "account"] as const)(
+    "ignores a band Checkout event with a missing %s",
+    async (missing) => {
+      const f = await setupTickets({}, "band");
+      await f.t.run((ctx) =>
+        ctx.db.delete(missing === "seller" ? f.bandId! : f.payoutAccountId!),
+      );
+      const before = await f.state();
+      expect(
+        await f.deliver({ ...checkoutEvent(f.orderId), account: BAND_ACCOUNT_ID }),
+      ).toEqual({ outcome: "applied" });
+      expect(await f.state()).toEqual(before);
+    },
+  );
+
+  test.each([ACCOUNT_ID, "acct_other", undefined])(
+    "ignores a band Checkout event from the wrong account (%s)",
+    async (account) => {
+      const f = await setupTickets({}, "band");
+      const before = await f.state();
+      const event = { ...checkoutEvent(f.orderId), account };
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+      expect(warn).toHaveBeenCalledExactlyOnceWith(
+        `${event.type} ignored: Stripe account mismatch for ticket order ${f.orderId}`,
+      );
+      expect(await f.state()).toEqual(before);
+      expect(before.order.status).toBe("checkout_open");
+      expect(before.tickets).toEqual([]);
+      expect(stripeMock).not.toHaveBeenCalled();
+    },
+  );
+
   test.each([
     "checkout.session.completed",
     "checkout.session.expired",
@@ -398,6 +488,46 @@ describe("ticket event account checks", () => {
 });
 
 describe("late ticket payments", () => {
+  test("refunds a late band payment with band seller references while band gig writes are disabled", async () => {
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+    const f = await setupTickets({ status: "expired" }, "band");
+    const event = { ...checkoutEvent(f.orderId), account: BAND_ACCOUNT_ID };
+    expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+    const pending = await f.state();
+    expect(pending.refunds).toMatchObject([
+      {
+        sellerKind: "band",
+        bandId: f.bandId,
+        reason: "late_payment",
+        status: "pending",
+        stripePaymentIntentId: "pi_ticket",
+      },
+    ]);
+    expect(pending.refunds[0]).not.toHaveProperty("organizationId");
+    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
+      "POST",
+      "/v1/refunds",
+      expect.objectContaining({
+        payment_intent: "pi_ticket",
+        amount: 1100,
+        refund_application_fee: true,
+      }),
+      expect.objectContaining({ stripeAccount: BAND_ACCOUNT_ID }),
+    );
+    const state = await f.state();
+    expect(state.refunds).toMatchObject([
+      { sellerKind: "band", bandId: f.bandId, status: "succeeded" },
+    ]);
+    expect(state.refunds[0]).not.toHaveProperty("organizationId");
+    expect(state.order).toMatchObject({ status: "expired", refundedMinor: 0 });
+    expect(state.tickets).toEqual([]);
+    expect(state.ledger).toMatchObject([
+      { kind: "ticket_refund", amountMinor: -1100, bandId: f.bandId },
+    ]);
+    expect(state.ledger[0]).not.toHaveProperty("organizationId");
+  });
+
   test.each(["expired", "cancelled", "refunded"] as const)(
     "refunds a %s order asynchronously without minting or reversing an unrecorded fee",
     async (status) => {
@@ -669,6 +799,44 @@ describe("ticket Checkout expiry", () => {
 });
 
 describe("ticket dashboard refunds", () => {
+  test("records the band seller on dashboard refunds and their ledger entries", async () => {
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+    const f = await setupTickets(
+      { status: "paid", stripePaymentIntentId: "pi_ticket" },
+      "band",
+    );
+    const event = { ...refundedEvent(f.orderId), account: BAND_ACCOUNT_ID };
+    expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+    const state = await f.state();
+    expect(state.refunds).toMatchObject([
+      {
+        sellerKind: "band",
+        bandId: f.bandId,
+        reason: "dashboard",
+        status: "succeeded",
+        amountMinor: 1100,
+      },
+    ]);
+    expect(state.refunds[0]).not.toHaveProperty("organizationId");
+    expect(state.order).toMatchObject({ status: "refunded", refundedMinor: 1100 });
+    expect(state.tickets.map((ticket) => ticket.status)).toEqual([
+      "refunded",
+      "refunded",
+    ]);
+    expect(state.ledger).toMatchObject([
+      { kind: "ticket_refund", amountMinor: -1100, bandId: f.bandId },
+      { kind: "ticket_fee", amountMinor: -100, bandId: f.bandId },
+    ]);
+    for (const entry of state.ledger) {
+      expect(entry).not.toHaveProperty("organizationId");
+    }
+    expect(await f.deliver({ ...event, id: "evt_band_refund_replay" })).toEqual({
+      outcome: "applied",
+    });
+    expect(await f.state()).toEqual(state);
+    expect(stripeMock).not.toHaveBeenCalled();
+  });
+
   test("reconciles only the refund delta and deduplicates repeated charge events", async () => {
     const f = await setupTickets({
       status: "paid",
@@ -751,6 +919,62 @@ test.each([
 });
 
 describe("ticket disputes", () => {
+  test.each(["won", "lost"] as const)(
+    "records the band's dispute hold and %s outcome on its own ledger",
+    async (outcome) => {
+      vi.stubEnv("BAND_GIG_WRITES", "false");
+      const f = await setupTickets({ status: "paid" }, "band");
+      const before = await f.state();
+      const created = {
+        ...ticketDisputeEvent("charge.dispute.created", f.orderId),
+        account: BAND_ACCOUNT_ID,
+      };
+      const closed = {
+        ...ticketDisputeEvent("charge.dispute.closed", f.orderId, {
+          status: outcome,
+        }),
+        account: BAND_ACCOUNT_ID,
+      };
+      expect(await f.deliver(created)).toEqual({ outcome: "applied" });
+      expect(await f.deliver(closed)).toEqual({ outcome: "applied" });
+      const state = await f.state();
+      expect(state.ledger).toMatchObject([
+        { kind: "dispute_hold", amountMinor: -1100, fundsState: "disputed" },
+        {
+          kind: outcome === "won" ? "dispute_release" : "dispute_loss",
+          amountMinor: outcome === "won" ? 1100 : -1100,
+          fundsState: outcome === "won" ? "available" : "refunded",
+        },
+      ]);
+      for (const entry of state.ledger) {
+        expect(entry).toMatchObject({
+          bandId: f.bandId,
+          ticketOrderId: f.orderId,
+          currency: "usd",
+          stripeRef: "dispute:dp_ticket",
+        });
+        expect(entry).not.toHaveProperty("organizationId");
+      }
+      if (outcome === "won") {
+        expect(state.order).toEqual(before.order);
+        expect(state.tickets).toEqual(before.tickets);
+      } else {
+        expect(state.order).toMatchObject({
+          status: "refunded",
+          refundedMinor: 1100,
+        });
+        expect(state.tickets.map((ticket) => ticket.status)).toEqual([
+          "cancelled",
+          "cancelled",
+        ]);
+      }
+      expect(await f.deliver({ ...closed, id: "evt_band_dispute_replay" })).toEqual({
+        outcome: "applied",
+      });
+      expect(await f.state()).toEqual(state);
+    },
+  );
+
   test("created holds the disputed amount without changing the paid order or tickets", async () => {
     const f = await setupTickets({ status: "paid" });
     const before = await f.state();
@@ -851,17 +1075,67 @@ describe("ticket disputes", () => {
     ]);
   });
 
-  test("ignores a mismatched account without changing ticket state", async () => {
-    const f = await setupTickets({ status: "paid" });
-    const before = await f.state();
-    expect(
-      await f.deliver({
-        ...ticketDisputeEvent("charge.dispute.created", f.orderId),
-        account: "acct_other",
-      }),
-    ).toEqual({ outcome: "applied" });
-    expect(await f.state()).toEqual(before);
-  });
+  test.each(["organization", "band"] as const)(
+    "ignores %s disputes with mismatched or missing event accounts without ledger entries",
+    async (sellerKind) => {
+      const f = await setupTickets({ status: "paid" }, sellerKind);
+      const before = await f.state();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      for (const type of [
+        "charge.dispute.created",
+        "charge.dispute.closed",
+      ] as const) {
+        for (const account of ["acct_other", undefined]) {
+          const event = {
+            ...ticketDisputeEvent(type, f.orderId, { status: "lost" }),
+            id: `evt_${type}_${account}`,
+            account,
+          };
+          warn.mockClear();
+          expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+          expect(warn).toHaveBeenCalledExactlyOnceWith(
+            `${event.type} ignored: Stripe account mismatch for ticket order ${f.orderId}`,
+          );
+          const state = await f.state();
+          expect(state).toEqual(before);
+          expect(state.ledger).toEqual([]);
+        }
+      }
+      expect(stripeMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["organization", "band"] as const)(
+    "ignores %s disputes with no stored Stripe account, even without an event account",
+    async (sellerKind) => {
+      const f = await setupTickets({ status: "paid" }, sellerKind);
+      await f.t.run((ctx) =>
+        sellerKind === "band"
+          ? ctx.db.delete(f.payoutAccountId!)
+          : ctx.db.patch(f.detailsId, { stripeAccountId: undefined }),
+      );
+      const before = await f.state();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      for (const type of [
+        "charge.dispute.created",
+        "charge.dispute.closed",
+      ] as const) {
+        const event = {
+          ...ticketDisputeEvent(type, f.orderId, { status: "lost" }),
+          account: undefined,
+        };
+        warn.mockClear();
+        expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+        expect(warn).toHaveBeenCalledExactlyOnceWith(
+          `${event.type} ignored: Stripe account mismatch for ticket order ${f.orderId}`,
+        );
+        const state = await f.state();
+        expect(state).toEqual(before);
+        expect(state.ledger).toEqual([]);
+      }
+      expect(stripeMock).not.toHaveBeenCalled();
+    },
+  );
 });
 
 test("booking Checkout still applies through the existing payment-record handler", async () => {

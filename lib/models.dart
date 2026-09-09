@@ -74,6 +74,8 @@ class FeatureFlags {
   final bool disputes;
   final bool promoters;
 
+  bool get bandTicketing => tickets && bandGigWrites;
+
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
     privateBookings: json['privateBookings'] == true,
     tickets: json['tickets'] == true,
@@ -2895,6 +2897,7 @@ class StripeAccountStatus {
     required this.payoutsEnabled,
     required this.detailsSubmitted,
     required this.requirementsDue,
+    this.cardPaymentsStatus,
   });
 
   const StripeAccountStatus.none()
@@ -2903,6 +2906,7 @@ class StripeAccountStatus {
       chargesEnabled = false,
       payoutsEnabled = false,
       detailsSubmitted = false,
+      cardPaymentsStatus = null,
       requirementsDue = const [];
 
   final StripeAccountState state;
@@ -2911,6 +2915,9 @@ class StripeAccountStatus {
   final bool payoutsEnabled;
   final bool detailsSubmitted;
   final List<String> requirementsDue;
+  final String? cardPaymentsStatus;
+
+  bool get canSellTickets => chargesEnabled && cardPaymentsStatus == 'active';
 
   factory StripeAccountStatus.fromJson(Map<String, dynamic> json) =>
       StripeAccountStatus(
@@ -2920,6 +2927,7 @@ class StripeAccountStatus {
         payoutsEnabled: json['payoutsEnabled'] == true,
         detailsSubmitted: json['detailsSubmitted'] == true,
         requirementsDue: _marketplaceStringList(json['requirementsDue']),
+        cardPaymentsStatus: json['cardPaymentsStatus'] as String?,
       );
 }
 
@@ -4343,6 +4351,8 @@ class GigProject {
   final bool overlay;
   final String desc;
   final Ticketing ticketing;
+  final int? ticketPriceMinor;
+  final int? ticketCapacity;
   final AgeRequirement ageRequirement;
   final String? externalUrl;
   final String cap;
@@ -4373,6 +4383,8 @@ class GigProject {
     this.flyStorageId,
     this.flyerUrl,
     this.externalUrl,
+    this.ticketPriceMinor,
+    this.ticketCapacity,
   });
 
   factory GigProject.fromJson(Map<String, dynamic> json) => GigProject(
@@ -4394,6 +4406,8 @@ class GigProject {
     overlay: json['overlay'] as bool,
     desc: json['desc'] as String,
     ticketing: Ticketing.values.byName(json['ticketing'] as String),
+    ticketPriceMinor: _marketplaceOptionalInt(json['ticketPriceMinor']),
+    ticketCapacity: _marketplaceOptionalInt(json['ticketCapacity']),
     ageRequirement: AgeRequirement.fromJson(json['ageRequirement']),
     externalUrl: json['externalUrl'] as String?,
     cap: json['cap'] as String,
@@ -4448,6 +4462,21 @@ enum GigOwnerKind {
   };
 }
 
+enum TicketSellerKind { organization, band }
+
+class TicketSellerRef {
+  const TicketSellerRef({required this.kind, required this.name});
+
+  final TicketSellerKind kind;
+  final String name;
+
+  factory TicketSellerRef.fromJson(Map<String, dynamic> json) =>
+      TicketSellerRef(
+        kind: TicketSellerKind.values.byName(json['kind'] as String),
+        name: json['name'] as String,
+      );
+}
+
 class Gig {
   final String id;
   final String slug;
@@ -4456,6 +4485,7 @@ class Gig {
   final int price; // dollars; 0 == free
   final int? ticketPriceMinor;
   final String? ticketCurrency;
+  final TicketSellerRef? ticketSeller;
   final DateTime startsAt;
   final DateTime? doorsAt;
   final String dateShort; // "TUE JUL 28"
@@ -4487,6 +4517,7 @@ class Gig {
     required this.price,
     this.ticketPriceMinor,
     this.ticketCurrency,
+    this.ticketSeller,
     required this.startsAt,
     this.doorsAt,
     required this.dateShort,
@@ -4531,6 +4562,11 @@ class Gig {
       price: (json['price'] as num).toInt(),
       ticketPriceMinor: _marketplaceOptionalInt(json['ticketPriceMinor']),
       ticketCurrency: _marketplaceOptionalString(json['ticketCurrency']),
+      ticketSeller: json['ticketSeller'] == null
+          ? null
+          : TicketSellerRef.fromJson(
+              Map<String, dynamic>.from(json['ticketSeller'] as Map),
+            ),
       startsAt: startsAt,
       doorsAt: doorsAtMs == null
           ? startsAt
@@ -4700,6 +4736,7 @@ class Gig {
     int? price,
     int? ticketPriceMinor,
     String? ticketCurrency,
+    TicketSellerRef? ticketSeller,
     DateTime? startsAt,
     DateTime? doorsAt,
     String? dateShort,
@@ -4730,6 +4767,7 @@ class Gig {
     price: price ?? this.price,
     ticketPriceMinor: ticketPriceMinor ?? this.ticketPriceMinor,
     ticketCurrency: ticketCurrency ?? this.ticketCurrency,
+    ticketSeller: ticketSeller ?? this.ticketSeller,
     startsAt: startsAt ?? this.startsAt,
     doorsAt: doorsAt ?? this.doorsAt,
     dateShort: dateShort ?? this.dateShort,

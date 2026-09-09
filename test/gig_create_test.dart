@@ -6,6 +6,7 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/services/auth_service.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -203,6 +204,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('poster shows paid ticket pricing and a missing price prompt', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    app.setGfTix(Ticketing.paid);
+    await _scrollTo(tester, find.text('YOUR GIG NAME'));
+    expect(find.text('TICKETS · SET A PRICE'), findsOne);
+
+    app.setGfTicketPriceMinor(1000);
+    await tester.pump();
+    expect(find.text(r'TICKETS · $10.00'), findsOne);
+    expect(find.text('TICKETS · SET A PRICE'), findsNothing);
+  });
+
   testWidgets(
     'uploaded art swaps the press for a drop slot and an overlay toggle',
     (tester) async {
@@ -385,6 +400,316 @@ void main() {
     app.setGfExt('https://dice.fm/show');
     await tester.pump();
     expect(doneIndicator(), findsOne);
+  });
+
+  testWidgets('paid tickets stay disabled until Stripe can sell tickets', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    await app.refreshBandPayoutStatus();
+    await tester.pumpAndSettle();
+    expect(app.features.bandTicketing, isTrue);
+    expect(app.bandPayoutStatus?.hasAccount, isFalse);
+    expect(app.canSellTickets, isFalse);
+
+    final accessSlot = find.byKey(const ValueKey('gig-slot-access'));
+    await _scrollTo(tester, accessSlot);
+    await tester.tap(accessSlot);
+    await tester.pumpAndSettle();
+
+    final paidOption = find.byKey(const Key('gig-tickets-paid'));
+    expect(paidOption, findsOne);
+    expect(find.text('Enable ticket sales in PAYOUTS'), findsOne);
+    final card = tester.widget<EpCard>(paidOption);
+    expect(card.variant, EpCardVariant.disabled);
+    expect(card.onTap, isNull);
+    await tester.tap(paidOption);
+    await tester.pump();
+    expect(app.gfTix, Ticketing.rsvp);
+    expect(find.byKey(const Key('gig-ticket-price')), findsNothing);
+    expect(find.byKey(const Key('gig-ticket-capacity')), findsNothing);
+  });
+
+  testWidgets('paid tickets stay disabled when the feature is off', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    await app.repository.enableBandTicketSales(app.bandId);
+    await app.refreshBandPayoutStatus();
+    await tester.pumpAndSettle();
+    app.features = const FeatureFlags(
+      privateBookings: true,
+      tickets: false,
+      payments: true,
+      bandGigWrites: true,
+    );
+    expect(app.bandPayoutStatus?.canSellTickets, isTrue);
+    expect(app.canSellTickets, isFalse);
+
+    final accessSlot = find.byKey(const ValueKey('gig-slot-access'));
+    await _scrollTo(tester, accessSlot);
+    await tester.tap(accessSlot);
+    await tester.pumpAndSettle();
+
+    final paidOption = find.byKey(const Key('gig-tickets-paid'));
+    expect(find.text('Ticket sales are off'), findsOne);
+    expect(tester.widget<EpCard>(paidOption).variant, EpCardVariant.disabled);
+    expect(tester.widget<EpCard>(paidOption).onTap, isNull);
+    await tester.tap(paidOption);
+    await tester.pump();
+    expect(app.gfTix, Ticketing.rsvp);
+  });
+
+  testWidgets('enabled paid tickets explain direct Stripe payments', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    await app.repository.enableBandTicketSales(app.bandId);
+    await app.refreshBandPayoutStatus();
+    await tester.pumpAndSettle();
+    expect(app.canSellTickets, isTrue);
+
+    final accessSlot = find.byKey(const ValueKey('gig-slot-access'));
+    await _scrollTo(tester, accessSlot);
+    await tester.tap(accessSlot);
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.',
+      ),
+      findsOne,
+    );
+    expect(
+      find.text('In-app checkout, EarPlug handles the charge'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('paid draft autosave waits for valid pricing then saves', (
+    tester,
+  ) async {
+    final repository = _GatedSaveRepository(auth: FakeAuthService());
+    repository.saveGate.complete();
+    final app = (await _pumpGigCreate(tester, repository: repository)).app;
+    app.setGfTix(Ticketing.paid);
+    expect(app.gfTix, Ticketing.paid);
+    expect(app.gfTicketPriceMinor, isNull);
+    expect(app.gfTicketCapacity, isNull);
+
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(repository.saveCalls, 0);
+    expect(app.gfSaveState, 'UNSAVED');
+
+    app.setGfTicketPriceMinor(1000);
+    app.setGfTicketCapacity(80);
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(repository.saveCalls, 1);
+    expect(app.gfSaveState, 'SAVED');
+    expect(app.gfProject?.ticketPriceMinor, 1000);
+    expect(app.gfProject?.ticketCapacity, 80);
+  });
+
+  testWidgets(
+    'paid ticket fields autosave and the cover opens ticket pricing',
+    (tester) async {
+      final app = (await _pumpGigCreate(tester)).app;
+      await app.repository.enableBandTicketSales(app.bandId);
+      await app.refreshBandPayoutStatus();
+      await tester.pumpAndSettle();
+      expect(app.canSellTickets, isTrue);
+      app.setGfPrice(r'$7');
+
+      final accessSlot = find.byKey(const ValueKey('gig-slot-access'));
+      await _scrollTo(tester, accessSlot);
+      await tester.tap(accessSlot);
+      await tester.pumpAndSettle();
+      final paidOption = find.byKey(const Key('gig-tickets-paid'));
+      expect(tester.widget<EpCard>(paidOption).onTap, isNotNull);
+      await tester.tap(paidOption);
+      await tester.pumpAndSettle();
+      expect(app.gfTix, Ticketing.paid);
+      expect(tester.widget<EpCard>(paidOption).variant, EpCardVariant.selected);
+
+      final priceField = find.byKey(const Key('gig-ticket-price'));
+      final capacityField = find.byKey(const Key('gig-ticket-capacity'));
+      expect(priceField, findsOne);
+      expect(capacityField, findsOne);
+      expect(
+        find.ancestor(of: priceField, matching: find.byType(EpCard)),
+        findsNothing,
+      );
+      expect(
+        find.ancestor(of: capacityField, matching: find.byType(EpCard)),
+        findsNothing,
+      );
+      expect(
+        find.text(
+          r'Fans pay the EarPlug fee (5% + $1.00) on top · '
+          'you receive the ticket price minus Stripe processing',
+        ),
+        findsOne,
+      );
+
+      tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.enterText(priceField, '12');
+      await tester.enterText(capacityField, '80');
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+      expect(app.gfTicketPriceMinor, 1200);
+      expect(app.gfTicketCapacity, 80);
+      expect(app.gfSaveState, 'SAVED');
+      expect(app.gfProject?.ticketPriceMinor, 1200);
+      expect(app.gfProject?.ticketCapacity, 80);
+      final projectId = app.gfProject!.id;
+      final saved = await app.repository.getGigProject(projectId);
+      expect(saved.ticketing, Ticketing.paid);
+      expect(saved.ticketPriceMinor, 1200);
+      expect(saved.ticketCapacity, 80);
+
+      tester.view.viewInsets = const FakeViewPadding();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('DONE'));
+      await tester.pumpAndSettle();
+      final coverSlot = find.byKey(const ValueKey('gig-slot-cover'));
+      await _scrollTo(tester, coverSlot);
+      expect(
+        find.descendant(
+          of: coverSlot,
+          matching: find.text(r'Tickets · $12.00'),
+        ),
+        findsOne,
+      );
+      expect(
+        find.descendant(of: coverSlot, matching: find.byIcon(Icons.check)),
+        findsOne,
+      );
+      await tester.tap(coverSlot);
+      await tester.pumpAndSettle();
+      expect(find.text('TICKETS'), findsOne);
+      expect(tester.widget<TextField>(priceField).controller!.text, '12');
+      expect(tester.widget<TextField>(capacityField).controller!.text, '80');
+
+      await tester.tap(find.text('In-app RSVP'));
+      await tester.pump(const Duration(milliseconds: 700));
+      await tester.pumpAndSettle();
+      expect(app.gfTix, Ticketing.rsvp);
+      expect(priceField, findsNothing);
+      expect(capacityField, findsNothing);
+      expect(app.gfProject?.ticketPriceMinor, isNull);
+      expect(app.gfProject?.ticketCapacity, isNull);
+      final cleared = await app.repository.getGigProject(projectId);
+      expect(cleared.ticketing, Ticketing.rsvp);
+      expect(cleared.ticketPriceMinor, isNull);
+      expect(cleared.ticketCapacity, isNull);
+      await tester.tap(find.text('DONE'));
+      await tester.pumpAndSettle();
+      expect(app.gfPrice, r'$7');
+      expect(
+        find.descendant(of: coverSlot, matching: find.text(r'$7')),
+        findsOne,
+      );
+    },
+  );
+
+  testWidgets('paid tickets require a valid price and capacity to publish', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    await app.repository.enableBandTicketSales(app.bandId);
+    await app.refreshBandPayoutStatus();
+    await tester.pumpAndSettle();
+    app.setGfName('Paid Release Show');
+    app.setGfDate(DateTime.now().add(const Duration(days: 2)));
+    app.setGfVenue('v1');
+    app.setGfTix(Ticketing.paid);
+    await tester.pump();
+    expect(app.canPublishGig, isFalse);
+    expect(app.gigMissing, ['ticket price and capacity']);
+    expect(find.text('Still needs ticket price and capacity'), findsOne);
+
+    final coverSlot = find.byKey(const ValueKey('gig-slot-cover'));
+    await _scrollTo(tester, coverSlot);
+    expect(
+      find.descendant(
+        of: coverSlot,
+        matching: find.text('Tickets · Set a price'),
+      ),
+      findsOne,
+    );
+    expect(
+      find.descendant(of: coverSlot, matching: find.byIcon(Icons.check)),
+      findsNothing,
+    );
+    await tester.tap(coverSlot);
+    await tester.pumpAndSettle();
+    final priceField = find.byKey(const Key('gig-ticket-price'));
+    final capacityField = find.byKey(const Key('gig-ticket-capacity'));
+    expect(find.text(r'Enter a ticket price of at least $1.00.'), findsOne);
+    expect(find.text('Enter a whole number from 1 to 5000.'), findsOne);
+
+    await tester.enterText(capacityField, '80');
+    for (final invalid in ['', 'abc', '0.99', 'NaN', 'Infinity']) {
+      await tester.enterText(priceField, invalid);
+      await tester.pump();
+      expect(app.gfTicketPriceMinor, isNull);
+      expect(app.canPublishGig, isFalse);
+      expect(find.text(r'Enter a ticket price of at least $1.00.'), findsOne);
+    }
+    await tester.enterText(priceField, '1');
+    await tester.pump();
+    expect(app.gfTicketPriceMinor, 100);
+    expect(app.canPublishGig, isTrue);
+
+    for (final invalid in ['', 'abc', '1.5', '0', '5001']) {
+      await tester.enterText(capacityField, invalid);
+      await tester.pump();
+      expect(app.canPublishGig, isFalse);
+      expect(app.gigMissing, ['ticket price and capacity']);
+      expect(find.text('Enter a whole number from 1 to 5000.'), findsOne);
+    }
+    for (final valid in ['1', '5000']) {
+      await tester.enterText(capacityField, valid);
+      await tester.pump();
+      expect(app.gfTicketCapacity, int.parse(valid));
+      expect(app.canPublishGig, isTrue);
+      expect(app.gigMissing, isEmpty);
+    }
+    await tester.enterText(priceField, '12.345');
+    await tester.pump();
+    expect(app.gfTicketPriceMinor, 1235);
+    await tester.tap(find.text('DONE'));
+    await tester.pumpAndSettle();
+    await app.saveGigDraft();
+    final projectId = app.gfProject!.id;
+    await app.editGigProject(projectId);
+    await tester.pumpAndSettle();
+    expect(app.gfTix, Ticketing.paid);
+    expect(app.gfTicketPriceMinor, 1235);
+    expect(app.gfTicketCapacity, 5000);
+
+    await _scrollTo(tester, coverSlot);
+    await tester.tap(coverSlot);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(priceField).controller!.text, '12.35');
+    expect(tester.widget<TextField>(capacityField).controller!.text, '5000');
+    await tester.tap(find.text('DONE'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('PUBLISH GIG'));
+    await tester.pumpAndSettle();
+    expect(app.gfPublished, isTrue);
+    expect(app.gfProject?.ticketPriceMinor, 1235);
+    expect(app.gfProject?.ticketCapacity, 5000);
+    expect(app.allGigs.last.ticketPriceMinor, 1235);
+
+    await tester.tap(find.text('MAKE ANOTHER'));
+    await tester.pumpAndSettle();
+    expect(app.gfTix, Ticketing.rsvp);
+    expect(app.gfTicketPriceMinor, isNull);
+    expect(app.gfTicketCapacity, isNull);
   });
 
   testWidgets('venue sheet updates when the directory finishes loading', (
@@ -868,6 +1193,8 @@ class _GatedSaveRepository extends DemoRepository {
     required AgeRequirement ageRequirement,
     required String? externalUrl,
     required String cap,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
   }) async {
     saveCalls++;
     if (saveCalls == 1) await saveGate.future;
@@ -887,6 +1214,8 @@ class _GatedSaveRepository extends DemoRepository {
       ageRequirement: ageRequirement,
       externalUrl: externalUrl,
       cap: cap,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
     );
   }
 }

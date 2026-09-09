@@ -4,6 +4,7 @@ import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_dash.dart';
+import 'package:earplug/screens/door_mode.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
@@ -171,6 +172,68 @@ void main() {
     expect(harness.app.current.screen, Screen.gig);
     expect(harness.app.current.param, 'g2');
   });
+
+  for (final ticketing in Ticketing.values) {
+    testWidgets(
+      'dashboard uses the public gig door roster for ${ticketing.name}',
+      (tester) async {
+        final auth = FakeAuthService();
+        final repository = _DoorRepository(auth: auth, ticketing: ticketing);
+        await pumpApp(
+          tester,
+          auth: auth,
+          repository: repository,
+          home: const Scaffold(body: BandDashScreen()),
+        );
+
+        await tester.tap(find.text('DOOR MODE'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(DoorModeScreen), findsOne);
+        expect(repository.organizerRosterRequests, ['g2']);
+        expect(repository.projectRosterRequests, isEmpty);
+        expect(
+          tester
+              .widget<Text>(find.byKey(const Key('door-organizer-roster')))
+              .data,
+          'RSVPs 4/17 · Tickets 3/12',
+        );
+      },
+    );
+  }
+
+  for (final (cardPaymentsStatus, caption) in [
+    (null, 'Enable ticket sales'),
+    ('active', 'Enabled'),
+  ]) {
+    testWidgets(
+      'enabled payouts with card payments $cardPaymentsStatus show $caption',
+      (tester) async {
+        final auth = FakeAuthService();
+        await pumpApp(
+          tester,
+          auth: auth,
+          repository: _PayoutStatusRepository(
+            auth: auth,
+            cardPaymentsStatus: cardPaymentsStatus,
+          ),
+          home: const Scaffold(body: BandDashScreen()),
+          beforePump: (app) => app.switchToBand('b1'),
+        );
+
+        final tile = find.byKey(const Key('band-dash-payouts'));
+        await tester.scrollUntilVisible(
+          tile,
+          180,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(
+          find.descendant(of: tile, matching: find.text(caption)),
+          findsOne,
+        );
+      },
+    );
+  }
 
   testWidgets('discovery readiness is separate from the setup checklist', (
     tester,
@@ -381,6 +444,62 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(Scrollable), findsWidgets);
   });
+}
+
+class _DoorRepository extends DemoRepository {
+  _DoorRepository({required super.auth, required this.ticketing});
+
+  final Ticketing ticketing;
+  final organizerRosterRequests = <String>[];
+  final projectRosterRequests = <String>[];
+
+  @override
+  Stream<FeedSnapshot> feed() => super.feed().map(
+    (snapshot) => FeedSnapshot(
+      gigs: [
+        for (final gig in snapshot.gigs)
+          gig.id == 'g2' ? gig.copyWith(tix: ticketing) : gig,
+      ],
+      venues: snapshot.venues,
+      bands: snapshot.bands,
+    ),
+  );
+
+  @override
+  Future<DoorCounts> organizerDoorRoster(String gigId) async {
+    organizerRosterRequests.add(gigId);
+    return const DoorCounts(
+      rsvpTotal: 17,
+      rsvpCheckedIn: 4,
+      ticketsSold: 12,
+      ticketsCheckedIn: 3,
+      truncated: false,
+    );
+  }
+
+  @override
+  Future<DoorRoster> doorRoster(String projectId) async {
+    projectRosterRequests.add(projectId);
+    return super.doorRoster(projectId);
+  }
+}
+
+class _PayoutStatusRepository extends DemoRepository {
+  _PayoutStatusRepository({required super.auth, this.cardPaymentsStatus});
+
+  final String? cardPaymentsStatus;
+
+  @override
+  Future<StripeAccountStatus> bandPayoutStatus(String bandId) async =>
+      StripeAccountStatus(
+        state: StripeAccountState.enabled,
+        hasAccount: true,
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        detailsSubmitted: true,
+        requirementsDue: const [],
+        cardPaymentsStatus: cardPaymentsStatus,
+      );
 }
 
 class _MultiBandRepository extends DemoRepository {

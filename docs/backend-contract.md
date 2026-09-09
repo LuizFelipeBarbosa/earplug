@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.28)
+# EarPlug Convex function contract (FROZEN — v1.29)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -498,12 +498,15 @@ hidden-review filter.
 
 The stored `gigs` row now carries optional `ownerKind`,
 `createdByOrganization`, and `opportunityId` for publish/ownership
-bookkeeping. The wire `GigPayload` is unchanged: none of these three fields
-is exposed to clients by `gigPayloadValidator` or `toGigPayload` in
+bookkeeping. None of these three fields is exposed to clients by
+`gigPayloadValidator` or `toGigPayload` in
 `convex/lib/helpers.ts`; `createdByBand` remains present and nullable.
 `convex/lib/gigPublish.ts` inserts organization-owned gigs directly into
 `gigs` with their band index rows when the required slots are confirmed,
-without creating a `gigProjects` row.
+without creating a `gigProjects` row. The seller of a paid gig is resolved
+by `resolveTicketSeller` in `convex/lib/ticketSeller.ts`: an organization
+seller via `createdByOrganization`, otherwise a band seller via
+`ownerKind`/`createdByBand`.
 
 Band-side gig editing remains scoped to `gigProjects`: management reads and
 `requireProjectAdmin` admit admins only to their own band's projects, and
@@ -784,8 +787,8 @@ back to `paid` or `refunded`. Event cancellation relies on releasing the open
 orders before their late completions; the completion handler itself checks
 order/session state, not gig lifecycle.
 
-Paid-ticket Checkout uses direct charges on the organizer's connected
-account: `loadCheckoutContext` resolves
+Paid-ticket Checkout uses direct charges on the seller's connected account
+(organization or band): `loadCheckoutContext` resolves
 `organizationPrivateDetails.stripeAccountId`, and `startCheckout` passes it
 as `stripeAccount` to `stripeRequest`. Each line item charges
 `unitPriceMinor + unitFeeMinor`, and
@@ -1023,6 +1026,30 @@ since epoch. This release adds ops/docs/legal scaffolding: the internal
 static legal pages provide placeholders for counsel's text, and environment
 and launch-readiness docs record the rollout checks. No money-affecting
 behavior changed.
+
+**v1.29 — Band-hosted paid ticketing.** As of 2026-09-08,
+`resolveTicketSeller(ctx, gig)` and `resolveOrderSeller(ctx, order)` in
+`convex/lib/ticketSeller.ts` return
+`TicketSeller { kind: "organization" | "band", organizationId?, bandId?,
+name, stripeAccountId, chargesEnabled, suspended, feeSource }`.
+Organization sellers retain existing behavior; band sellers use their
+Stripe Express account's `bandPayoutAccounts.stripeAccountId` and
+`chargesEnabled`, with platform-only rates from `resolveTicketingFee({})`
+and no per-band fee overrides. Amounts remain integer minor units.
+`gigTicketInventory`, `ticketOrders`, `tickets`, and `ticketRefunds` widen
+`organizationId` to optional and add optional `bandId` and `sellerKind`;
+readers must tolerate an undefined `organizationId`. `gigs.js:saveDraft`
+adds optional `ticketPriceMinor` and `ticketCapacity` arguments for
+`gigProjects`, and `gigs.js:getProject` adds optional `ticketPriceMinor` to
+its return. The new `stripeActions.js:enableBandTicketSales` Action lets a
+band admin enable band-hosted ticket sales once its Stripe Express account
+is ready. `gigs.js:resolvePublic` adds optional `ticketSeller` to its
+nullable `GigPayload` return. Cancel/delete rules remain consistent with
+v1.23: band-hosted paid-gig cancellation reuses the same
+`cancelTicketSalesForGig` refund path, resolved against the band's seller
+instead of the organization's. `TICKETS_ENABLED` gates every seller; band
+sellers additionally require `flag("BAND_GIG_WRITES", true)` on `reserve`
+and `startCheckout` only, never on refunds.
 
 ## Reconciliation
 

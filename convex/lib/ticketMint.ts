@@ -78,7 +78,9 @@ export async function mintTickets(
       await ctx.db.insert("tickets", {
         orderId: order._id,
         gigId: order.gigId,
+        sellerKind: order.sellerKind,
         organizationId: order.organizationId,
+        bandId: order.bandId,
         holderUserId: order.buyerUserId,
         token,
         status: "valid",
@@ -91,6 +93,7 @@ export async function mintTickets(
     currency: order.currency,
     fundsState: "pending" as const,
     organizationId: order.organizationId,
+    bandId: order.bandId,
     ticketOrderId: order._id,
     stripeRef: `charge:${payment.stripeChargeId ?? payment.stripePaymentIntentId}`,
     stripeEventId: payment.stripeEventId,

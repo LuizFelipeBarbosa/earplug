@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../money.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
@@ -427,7 +430,14 @@ const _presetCaps = ['No cap', '50', '100', '150'];
 void showTicketsSheet(BuildContext context) {
   showEpSheet(
     context,
-    (_) => const EpFormSheet(title: 'Tickets', child: _TicketsBody()),
+    (_) => const EpFormSheet(
+      title: 'Tickets',
+      padBody: false,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, 40),
+        child: _TicketsBody(),
+      ),
+    ),
   );
 }
 
@@ -441,6 +451,9 @@ class _TicketsBody extends StatefulWidget {
 class _TicketsBodyState extends State<_TicketsBody> {
   late final TextEditingController _cap;
   late final TextEditingController _ext;
+  late final TextEditingController _ticketPrice;
+  late final TextEditingController _ticketCapacity;
+  FeeRates? _feeRates;
 
   @override
   void initState() {
@@ -450,12 +463,66 @@ class _TicketsBodyState extends State<_TicketsBody> {
       text: _presetCaps.contains(app.gfCap) ? '' : app.gfCap,
     );
     _ext = TextEditingController(text: app.gfExt);
+    final ticketPriceMinor = app.gfTicketPriceMinor;
+    _ticketPrice = TextEditingController(
+      text: ticketPriceMinor == null
+          ? ''
+          : (ticketPriceMinor / 100).toStringAsFixed(
+              ticketPriceMinor % 100 == 0 ? 0 : 2,
+            ),
+    );
+    _ticketCapacity = TextEditingController(
+      text: app.gfTicketCapacity?.toString() ?? '',
+    );
+    unawaited(_loadFeeRates());
+  }
+
+  Future<void> _loadFeeRates() async {
+    final app = context.read<AppState>();
+    FeeRates? feeRates;
+    try {
+      feeRates = await app.repository.feeRates();
+    } catch (_) {
+      // Keep the existing caption when rates are unavailable.
+    }
+    if (!mounted) return;
+    setState(() => _feeRates = feeRates);
+  }
+
+  String get _ticketingFeeCaption {
+    final feeRates = _feeRates;
+    var rate = '';
+    if (feeRates != null && feeRates.configured) {
+      final bps = feeRates.ticketingFeeBps;
+      final percent = (bps / 100).toStringAsFixed(
+        bps % 100 == 0 ? 0 : (bps % 10 == 0 ? 1 : 2),
+      );
+      rate = ' ($percent% + ${Money(feeRates.ticketingFeeFixedMinor).label})';
+    }
+    return 'Fans pay the EarPlug fee$rate on top · '
+        'you receive the ticket price minus Stripe processing';
+  }
+
+  String? get _ticketPriceError {
+    final dollars = double.tryParse(_ticketPrice.text.trim());
+    return dollars == null || dollars < 1 || !(dollars * 100).isFinite
+        ? 'Enter a ticket price of at least \$1.00.'
+        : null;
+  }
+
+  String? get _ticketCapacityError {
+    final capacity = int.tryParse(_ticketCapacity.text.trim());
+    return capacity == null || capacity < 1 || capacity > 5000
+        ? 'Enter a whole number from 1 to 5000.'
+        : null;
   }
 
   @override
   void dispose() {
     _cap.dispose();
     _ext.dispose();
+    _ticketPrice.dispose();
+    _ticketCapacity.dispose();
     super.dispose();
   }
 
@@ -511,6 +578,74 @@ class _TicketsBodyState extends State<_TicketsBody> {
                   : null,
             ),
           ),
+        const SizedBox(height: 10),
+        EpCard(
+          key: const Key('gig-tickets-paid'),
+          variant: app.gfTix == Ticketing.paid
+              ? EpCardVariant.selected
+              : app.canSellTickets
+              ? EpCardVariant.standard
+              : EpCardVariant.disabled,
+          onTap: app.canSellTickets ? () => app.setGfTix(Ticketing.paid) : null,
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Paid tickets',
+                style: epText(size: 12.5, weight: FontWeight.w800),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                app.canSellTickets
+                    ? 'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.'
+                    : app.features.bandTicketing
+                    ? 'Enable ticket sales in PAYOUTS'
+                    : 'Ticket sales are off',
+                style: epText(
+                  size: 11,
+                  color: context.epColors.contentSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (app.gfTix == Ticketing.paid) ...[
+          const SizedBox(height: EpLayout.fieldGap),
+          EpFieldRow(
+            first: EpLabeledField(
+              fieldKey: const Key('gig-ticket-price'),
+              label: 'TICKET PRICE (\$)',
+              hint: '25',
+              controller: _ticketPrice,
+              keyboardType: TextInputType.number,
+              onChanged: (value) {
+                final dollars = double.tryParse(value.trim());
+                app.setGfTicketPriceMinor(
+                  dollars == null || dollars < 1 || !(dollars * 100).isFinite
+                      ? null
+                      : (dollars * 100).round(),
+                );
+              },
+              errorText: _ticketPriceError,
+            ),
+            second: EpLabeledField(
+              fieldKey: const Key('gig-ticket-capacity'),
+              label: 'CAPACITY',
+              hint: '100',
+              controller: _ticketCapacity,
+              keyboardType: TextInputType.number,
+              onChanged: (value) =>
+                  app.setGfTicketCapacity(int.tryParse(value.trim())),
+              errorText: _ticketCapacityError,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _ticketingFeeCaption,
+            style: Theme.of(context).textTheme.epCaption,
+          ),
+        ],
         const SizedBox(height: 14),
         const DoneButton(),
       ],

@@ -3,6 +3,11 @@ import type { MutationCtx } from "../_generated/server";
 import { appendLedgerEntry } from "../lib/ledger";
 import { expireOrder, mintTickets } from "../lib/ticketMint";
 import {
+  resolveOrderSeller,
+  sellerRefFields,
+  type TicketSeller,
+} from "../lib/ticketSeller";
+import {
   assertTicketOrderTransition,
   assertTicketTransition,
 } from "../lib/ticketStatus";
@@ -40,20 +45,15 @@ async function assertTicketEventAccount(
   ctx: MutationCtx,
   order: Doc<"ticketOrders">,
   event: StripeEvent,
-): Promise<boolean> {
-  const details = await ctx.db
-    .query("organizationPrivateDetails")
-    .withIndex("by_organizationId", (q) =>
-      q.eq("organizationId", order.organizationId),
-    )
-    .unique();
-  if (!details?.stripeAccountId || event.account !== details.stripeAccountId) {
-    console.warn(
-      `${event.type} ignored: Stripe account mismatch for ticket order ${order._id}`,
-    );
-    return false;
+): Promise<TicketSeller | null> {
+  const seller = await resolveOrderSeller(ctx, order);
+  if (seller?.stripeAccountId && event.account === seller.stripeAccountId) {
+    return seller;
   }
-  return true;
+  console.warn(
+    `${event.type} ignored: Stripe account mismatch for ticket order ${order._id}`,
+  );
+  return null;
 }
 
 export async function handleTicketCheckoutCompleted(
@@ -149,15 +149,17 @@ export async function handleTicketDisputeCreated(
   );
   const order = orderId ? await ctx.db.get(orderId) : null;
   if (!order) return;
-  if (!(await assertTicketEventAccount(ctx, order, event))) return;
+  const seller = await assertTicketEventAccount(ctx, order, event);
+  if (!seller) return;
 
   const dispute = event.data.object;
   const disputeId = dispute.id;
   const disputedMinor =
     typeof dispute.amount === "number" ? dispute.amount : order.totalMinor;
-  const ledgerContext = {
+  // The ledger schema stores seller IDs without sellerKind.
+  const { sellerKind: _sellerKind, ...ledgerContext } = {
     currency: order.currency,
-    organizationId: order.organizationId,
+    ...sellerRefFields(seller),
     ticketOrderId: order._id,
     stripeRef: `dispute:${disputeId}`,
     stripeEventId: event.id,
@@ -183,7 +185,8 @@ export async function handleTicketDisputeClosed(
   );
   const order = orderId ? await ctx.db.get(orderId) : null;
   if (!order) return;
-  if (!(await assertTicketEventAccount(ctx, order, event))) return;
+  const seller = await assertTicketEventAccount(ctx, order, event);
+  if (!seller) return;
 
   const dispute = event.data.object;
   const disputeId = dispute.id;
@@ -197,9 +200,10 @@ export async function handleTicketDisputeClosed(
   const disputedMinor =
     typeof dispute.amount === "number" ? dispute.amount : order.totalMinor;
   const now = Date.now();
-  const ledgerContext = {
+  // The ledger schema stores seller IDs without sellerKind.
+  const { sellerKind: _sellerKind, ...ledgerContext } = {
     currency: order.currency,
-    organizationId: order.organizationId,
+    ...sellerRefFields(seller),
     ticketOrderId: order._id,
     stripeRef: `dispute:${disputeId}`,
     stripeEventId: event.id,

@@ -21,6 +21,7 @@ import {
   assertOpportunityTransition,
   type ArtistApplicationStatus,
 } from "./lib/opportunityStatus";
+import { validateTicketPriceAndCapacity } from "./lib/ticketFees";
 import { assertVenueUsable, currentConsentFor } from "./lib/venueConsentStatus";
 import { requireOwnedPrivateLocation } from "./privateLocations";
 import {
@@ -80,28 +81,6 @@ export function requirePrivateBookingsEnabled(): void {
   if (!flag("PRIVATE_BOOKINGS_ENABLED", false)) {
     throw new Error("Private bookings are not available yet");
   }
-}
-
-function validateTicketPriceAndCapacity(
-  ticketPriceMinor: number | undefined,
-  ticketCapacity: number | undefined,
-): { ticketPriceMinor: number; ticketCapacity: number } {
-  if (
-    ticketPriceMinor === undefined ||
-    !Number.isInteger(ticketPriceMinor) ||
-    ticketPriceMinor < 100
-  ) {
-    throw new Error("Ticket price must be at least $1.00");
-  }
-  if (
-    ticketCapacity === undefined ||
-    !Number.isInteger(ticketCapacity) ||
-    ticketCapacity < 1 ||
-    ticketCapacity > 5000
-  ) {
-    throw new Error("Ticket capacity must be between 1 and 5,000");
-  }
-  return { ticketPriceMinor, ticketCapacity };
 }
 
 async function normalizeAndValidateFields(

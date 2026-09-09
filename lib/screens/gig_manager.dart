@@ -8,6 +8,7 @@ import '../genres.dart';
 import '../models.dart';
 import '../money.dart';
 import '../theme.dart';
+import '../widgets/band_ticket_sales_sheet.dart';
 import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
@@ -729,7 +730,11 @@ class _ProjectSection extends StatelessWidget {
           )
         else
           for (var index = 0; index < projects.length; index++) ...[
-            _ProjectCard(project: projects[index], readOnly: readOnly),
+            _ProjectCard(
+              key: ValueKey('gig-project-card-${projects[index].id}'),
+              project: projects[index],
+              readOnly: readOnly,
+            ),
             if (index < projects.length - 1) const SizedBox(height: 10),
           ],
       ],
@@ -872,17 +877,54 @@ class _PastSection extends StatelessWidget {
   }
 }
 
-class _ProjectCard extends StatelessWidget {
-  const _ProjectCard({required this.project, this.readOnly = false});
+class _ProjectCard extends StatefulWidget {
+  const _ProjectCard({super.key, required this.project, this.readOnly = false});
 
   final GigProject project;
   final bool readOnly;
 
   @override
+  State<_ProjectCard> createState() => _ProjectCardState();
+}
+
+class _ProjectCardState extends State<_ProjectCard> {
+  String? _requestedSalesGigId;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _requestSales();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProjectCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _requestSales();
+  }
+
+  void _requestSales() {
+    final project = widget.project;
+    final gigId = project.publicGigId;
+    if (project.ticketing != Ticketing.paid || gigId == null) return;
+    final app = context.read<AppState>();
+    if (_requestedSalesGigId == gigId || app.salesFor(gigId) != null) return;
+    _requestedSalesGigId = gigId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || widget.project.publicGigId != gigId) return;
+      unawaited(app.loadTicketSales(gigId));
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final canManage = !readOnly && app.isAdminOf(app.bandId);
+    final project = widget.project;
+    final canManage = !widget.readOnly && app.isAdminOf(app.bandId);
     final canWrite = canManage && app.gigWritePolicy;
+    final sales =
+        project.ticketing == Ticketing.paid && project.publicGigId != null
+        ? app.salesFor(project.publicGigId!)
+        : null;
     final venue = project.venueId == null ? null : app.venue(project.venueId!);
     final cachedGig = project.publicGigId == null
         ? null
@@ -936,6 +978,14 @@ class _ProjectCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.epMeta,
                       ),
+                      if (sales != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          'SALES · ${sales.sold}/${sales.capacity}',
+                          key: ValueKey('gig-sales-${project.id}'),
+                          style: Theme.of(context).textTheme.epMeta,
+                        ),
+                      ],
                       const SizedBox(height: 7),
                       Align(
                         alignment: Alignment.centerLeft,
@@ -1048,7 +1098,22 @@ void _showProjectActions(
       project.status == GigProjectStatus.cancelled) {
     return;
   }
+  final hasSoldTickets =
+      project.ticketing == Ticketing.paid &&
+      (app.salesFor(project.publicGigId ?? '')?.sold ?? 0) > 0;
   final items = <EpActionSheetItem>[
+    if (project.ticketing == Ticketing.paid && project.publicGigId != null)
+      EpActionSheetItem(
+        label: 'Sales',
+        icon: Icons.confirmation_number_outlined,
+        onPressed: () => unawaited(
+          showBandTicketSalesSheet(
+            context,
+            gigId: project.publicGigId!,
+            title: _projectTitle(project),
+          ),
+        ),
+      ),
     if (app.gigWritePolicy)
       EpActionSheetItem(
         label: 'Duplicate',
@@ -1073,14 +1138,15 @@ void _showProjectActions(
           _runProjectAction(context, app, project, _ProjectAction.cancel),
         ),
       ),
-    EpActionSheetItem(
-      label: 'Delete',
-      icon: Icons.delete_outline,
-      destructive: true,
-      onPressed: () => unawaited(
-        _runProjectAction(context, app, project, _ProjectAction.delete),
+    if (!hasSoldTickets)
+      EpActionSheetItem(
+        label: 'Delete',
+        icon: Icons.delete_outline,
+        destructive: true,
+        onPressed: () => unawaited(
+          _runProjectAction(context, app, project, _ProjectAction.delete),
+        ),
       ),
-    ),
   ];
   unawaited(
     showEpActionSheet(context, header: _projectTitle(project), items: items),
@@ -1118,10 +1184,16 @@ Future<void> _runProjectAction(
         await app.unpublishGigProject(project.id);
       }
     case _ProjectAction.cancel:
+      final body =
+          project.ticketing == Ticketing.paid &&
+              project.publicGigId != null &&
+              (app.salesFor(project.publicGigId!)?.sold ?? 0) > 0
+          ? 'Sold tickets are refunded in full and buyers are emailed. The gig leaves discovery but its public page stays available as cancelled.'
+          : 'The gig leaves discovery but its public page stays available as cancelled.';
       if (await _confirm(
         context,
         'Cancel gig?',
-        'The gig leaves discovery but its public page stays available as cancelled.',
+        body,
       )) {
         await app.cancelGigProject(project.id);
       }
@@ -1141,8 +1213,7 @@ DoorModeLaunch? _doorLaunch(
   AppState app,
   GigProject project,
 ) {
-  if (project.status != GigProjectStatus.published ||
-      project.ticketing != Ticketing.rsvp) {
+  if (project.status != GigProjectStatus.published) {
     return null;
   }
   final venueName = project.venueId == null
@@ -1151,6 +1222,14 @@ DoorModeLaunch? _doorLaunch(
   final doorsTime = project.doorsAt == null
       ? 'TBD'
       : TimeOfDay.fromDateTime(project.doorsAt!.toLocal()).format(context);
+  if (project.publicGigId != null) {
+    return DoorModeLaunch.organizer(
+      gigId: project.publicGigId!,
+      gigTitle: _projectTitle(project),
+      venueName: venueName,
+      doorsTime: doorsTime,
+    );
+  }
   return DoorModeLaunch(
     projectId: project.id,
     gigTitle: _projectTitle(project),

@@ -4670,12 +4670,29 @@ class DemoRepository implements EarplugRepository {
     payoutsEnabled: true,
     detailsSubmitted: true,
     requirementsDue: [],
+    cardPaymentsStatus: 'active',
   );
 
   @override
   Future<String> startBandOnboarding(String bandId) async {
     _bandStripeStatus[bandId] = _onboardingStripeAccount;
     return 'https://demo.stripe/onboard/$bandId';
+  }
+
+  @override
+  Future<String> enableBandTicketSales(String bandId) async {
+    final current =
+        _bandStripeStatus[bandId] ?? const StripeAccountStatus.none();
+    _bandStripeStatus[bandId] = StripeAccountStatus(
+      state: current.hasAccount ? current.state : StripeAccountState.onboarding,
+      hasAccount: true,
+      chargesEnabled: true,
+      payoutsEnabled: current.payoutsEnabled,
+      detailsSubmitted: current.detailsSubmitted,
+      requirementsDue: current.requirementsDue,
+      cardPaymentsStatus: 'active',
+    );
+    return 'https://demo.stripe/ticketing/$bandId';
   }
 
   @override
@@ -5109,6 +5126,8 @@ class DemoRepository implements EarplugRepository {
     required AgeRequirement ageRequirement,
     required String? externalUrl,
     required String cap,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
   }) async {
     final project = _requireGigProject(projectId);
     if (project.revision != revision) {
@@ -5133,6 +5152,8 @@ class DemoRepository implements EarplugRepository {
       overlay: overlay,
       desc: desc,
       ticketing: ticketing,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
       ageRequirement: ageRequirement,
       externalUrl: externalUrl,
       cap: cap,
@@ -5266,6 +5287,14 @@ class DemoRepository implements EarplugRepository {
       genres: const ['punk'],
       desc: project.desc,
       tix: project.ticketing,
+      ticketPriceMinor: project.ticketPriceMinor,
+      ticketCurrency: project.ticketPriceMinor == null ? null : 'usd',
+      ticketSeller: project.ticketing == Ticketing.paid
+          ? TicketSellerRef(
+              kind: TicketSellerKind.band,
+              name: _bands[project.bandId]?.name ?? 'Your band',
+            )
+          : null,
       externalUrl: project.externalUrl,
       flyerUrl: project.flyerUrl,
       cap: project.cap,
@@ -5314,6 +5343,8 @@ class DemoRepository implements EarplugRepository {
       overlay: source.overlay,
       desc: source.desc,
       ticketing: source.ticketing,
+      ticketPriceMinor: source.ticketPriceMinor,
+      ticketCapacity: source.ticketCapacity,
       ageRequirement: source.ageRequirement,
       externalUrl: source.externalUrl,
       cap: source.cap,
@@ -6249,6 +6280,8 @@ class DemoRepository implements EarplugRepository {
     overlay: project.overlay,
     desc: project.desc,
     ticketing: project.ticketing,
+    ticketPriceMinor: project.ticketPriceMinor,
+    ticketCapacity: project.ticketCapacity,
     ageRequirement: project.ageRequirement,
     externalUrl: project.externalUrl,
     cap: project.cap,

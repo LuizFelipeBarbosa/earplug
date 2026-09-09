@@ -144,6 +144,117 @@ void main() {
     );
   });
 
+  test('band ticket sales enable charges and active card payments', () async {
+    final repo = DemoRepository(auth: FakeAuthService());
+    final initial = await repo.bandPayoutStatus('b1');
+    expect(initial.hasAccount, isFalse);
+    expect(initial.canSellTickets, isFalse);
+
+    expect(
+      await repo.enableBandTicketSales('b1'),
+      'https://demo.stripe/ticketing/b1',
+    );
+    final enabled = await repo.bandPayoutStatus('b1');
+    expect(enabled.state, StripeAccountState.onboarding);
+    expect(enabled.hasAccount, isTrue);
+    expect(enabled.chargesEnabled, isTrue);
+    expect(enabled.cardPaymentsStatus, 'active');
+    expect(enabled.canSellTickets, isTrue);
+    expect(enabled.payoutsEnabled, initial.payoutsEnabled);
+    expect(enabled.detailsSubmitted, initial.detailsSubmitted);
+    expect(enabled.requirementsDue, initial.requirementsDue);
+    expect((await repo.bandPayoutStatus('b2')).canSellTickets, isFalse);
+  });
+
+  test('band ticket sales preserve existing Stripe account state', () async {
+    final repo = DemoRepository(auth: FakeAuthService());
+    await repo.startBandOnboarding('b1');
+    final fullyOnboarded = await repo.refreshBandAccountStatus('b2');
+    expect(fullyOnboarded.cardPaymentsStatus, 'active');
+    expect(fullyOnboarded.canSellTickets, isTrue);
+
+    for (final bandId in ['b1', 'b2']) {
+      final initial = await repo.bandPayoutStatus(bandId);
+      await repo.enableBandTicketSales(bandId);
+      final enabled = await repo.bandPayoutStatus(bandId);
+      expect(enabled.state, initial.state);
+      expect(enabled.hasAccount, isTrue);
+      expect(enabled.payoutsEnabled, initial.payoutsEnabled);
+      expect(enabled.detailsSubmitted, initial.detailsSubmitted);
+      expect(enabled.requirementsDue, initial.requirementsDue);
+      expect(enabled.canSellTickets, isTrue);
+    }
+  });
+
+  for (final (ticketing, ticketPriceMinor, ticketCapacity) in [
+    (Ticketing.paid, 2500, 40),
+    (Ticketing.rsvp, null, null),
+  ]) {
+    test(
+      'band ${ticketing.name} draft retains ticket fields through publishing',
+      () async {
+        final repo = DemoRepository(auth: FakeAuthService());
+        final draft = await repo.createGigDraft('b1');
+        expect(draft.ticketPriceMinor, isNull);
+        expect(draft.ticketCapacity, isNull);
+        final startsAt = DateTime.now().add(const Duration(days: 30));
+        await repo.saveGigDraft(
+          projectId: draft.id,
+          revision: draft.revision,
+          title: 'Band Show',
+          doorsAt: startsAt.subtract(const Duration(hours: 1)),
+          startsAt: startsAt,
+          venueId: 'v1',
+          price: 0,
+          flyKey: draft.flyKey,
+          flyStorageId: null,
+          overlay: draft.overlay,
+          desc: 'An evening of local bands.',
+          ticketing: ticketing,
+          ageRequirement: AgeRequirement.allAges,
+          externalUrl: null,
+          cap: '40',
+          ticketPriceMinor: ticketPriceMinor,
+          ticketCapacity: ticketCapacity,
+        );
+        final saved = await repo.getGigProject(draft.id);
+        expect(saved.ticketing, ticketing);
+        expect(saved.ticketPriceMinor, ticketPriceMinor);
+        expect(saved.ticketCapacity, ticketCapacity);
+
+        final edited = await repo.addGigPerformer(
+          projectId: draft.id,
+          kind: GigPerformerKind.text,
+          role: GigPerformerRole.support,
+          name: 'Support Band',
+        );
+        expect(edited.ticketPriceMinor, ticketPriceMinor);
+        expect(edited.ticketCapacity, ticketCapacity);
+
+        final gigId = await repo.publishGigDraft(draft.id);
+        final gig = (await repo.publicGig(gigId).first)!;
+        expect(gig.tix, ticketing);
+        expect(gig.ticketPriceMinor, ticketPriceMinor);
+        if (ticketing == Ticketing.paid) {
+          expect(gig.ticketCurrency, 'usd');
+          expect(gig.ticketSeller!.kind, TicketSellerKind.band);
+          expect(gig.ticketSeller!.name, DemoData.bands['b1']!.name);
+        } else {
+          expect(gig.ticketCurrency, isNull);
+          expect(gig.ticketSeller, isNull);
+        }
+
+        final published = await repo.getGigProject(draft.id);
+        expect(published.ticketPriceMinor, ticketPriceMinor);
+        expect(published.ticketCapacity, ticketCapacity);
+        final duplicate = await repo.duplicateGig(draft.id);
+        expect(duplicate.ticketing, ticketing);
+        expect(duplicate.ticketPriceMinor, ticketPriceMinor);
+        expect(duplicate.ticketCapacity, ticketCapacity);
+      },
+    );
+  }
+
   test(
     'organization Stripe onboarding enables payouts and the dashboard',
     () async {

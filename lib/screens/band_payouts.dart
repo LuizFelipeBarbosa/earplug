@@ -98,6 +98,43 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
         );
       });
 
+  Widget _buildTicketSales(AppState app) {
+    final status = app.bandPayoutStatus;
+    if (!app.features.bandTicketing || status == null || !status.hasAccount) {
+      return const SizedBox.shrink();
+    }
+    final textTheme = Theme.of(context).textTheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('TICKET SALES', style: textTheme.epLabel),
+        const SizedBox(height: 8),
+        if (status.canSellTickets)
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: StatusPill(
+              label: 'TICKET SALES ENABLED',
+              tone: EpStatusPillTone.success,
+            ),
+          )
+        else
+          EpButton(
+            'ENABLE TICKET SALES',
+            key: const Key('band-payouts-enable-tickets'),
+            onTap: () =>
+                _runStripeAction(() => app.enableBandTicketSales(app.bandId)),
+          ),
+        const SizedBox(height: 8),
+        Text(
+          'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.',
+          style: textTheme.epCaption,
+        ),
+        const SizedBox(height: 12),
+      ],
+    );
+  }
+
   Widget _buildTaxDetails(AppState app) {
     final status = app.bandPayoutStatus;
     final needsTaxInformation =
@@ -233,6 +270,7 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        _buildTicketSales(app),
         _buildTaxDetails(app),
         const SizedBox(height: 12),
         InlineFormFeedback(
@@ -259,7 +297,9 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
           key: const Key('band-payouts-history'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (app.bandPayouts.isEmpty)
+            if (!app.bandPayoutsLoaded)
+              const SizedBox.shrink()
+            else if (app.bandPayouts.isEmpty)
               const EmptyNote(message: 'No payouts yet.')
             else
               for (final payout in app.bandPayouts) _PayoutRow(payout: payout),

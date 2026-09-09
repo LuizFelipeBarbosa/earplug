@@ -60,6 +60,7 @@ import type * as lib_ticketCancellation from "../lib/ticketCancellation.js";
 import type * as lib_ticketFees from "../lib/ticketFees.js";
 import type * as lib_ticketInventory from "../lib/ticketInventory.js";
 import type * as lib_ticketMint from "../lib/ticketMint.js";
+import type * as lib_ticketSeller from "../lib/ticketSeller.js";
 import type * as lib_ticketStatus from "../lib/ticketStatus.js";
 import type * as lib_venueConsentStatus from "../lib/venueConsentStatus.js";
 import type * as lib_venuePrivate from "../lib/venuePrivate.js";
@@ -154,6 +155,7 @@ declare const fullApi: ApiFromModules<{
   "lib/ticketFees": typeof lib_ticketFees;
   "lib/ticketInventory": typeof lib_ticketInventory;
   "lib/ticketMint": typeof lib_ticketMint;
+  "lib/ticketSeller": typeof lib_ticketSeller;
   "lib/ticketStatus": typeof lib_ticketStatus;
   "lib/venueConsentStatus": typeof lib_venueConsentStatus;
   "lib/venuePrivate": typeof lib_venuePrivate;

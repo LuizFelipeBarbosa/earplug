@@ -5,6 +5,8 @@ part of '../app_state.dart';
 mixin _GigEditorState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   String get bandId;
+  FeatureFlags get features;
+  StripeAccountStatus? get bandPayoutStatus;
   set _stack(List<ScreenEntry> value);
   Band? get myBand;
   void go(Screen s, [String? param]);
@@ -19,6 +21,8 @@ mixin _GigEditorState on _AppStateCore {
   String? gfVenueId;
   String gfPrice = 'FREE';
   Ticketing gfTix = Ticketing.rsvp;
+  int? gfTicketPriceMinor;
+  int? gfTicketCapacity;
   AgeRequirement gfAgeRequirement = AgeRequirement.allAges;
   String gfCap = 'No cap';
   String gfExt = '';
@@ -128,6 +132,8 @@ mixin _GigEditorState on _AppStateCore {
     gfVenueId = project.venueId;
     gfPrice = project.price == 0 ? 'FREE' : '\$${project.price}';
     gfTix = project.ticketing;
+    gfTicketPriceMinor = project.ticketPriceMinor;
+    gfTicketCapacity = project.ticketCapacity;
     gfAgeRequirement = project.ageRequirement;
     gfCap = project.cap;
     gfExt = project.externalUrl ?? '';
@@ -178,6 +184,11 @@ mixin _GigEditorState on _AppStateCore {
   void setGfPrice(String v) => _changeGig(() => gfPrice = v);
 
   void setGfTix(Ticketing t) => _changeGig(() => gfTix = t);
+
+  void setGfTicketPriceMinor(int? v) =>
+      _changeGig(() => gfTicketPriceMinor = v);
+
+  void setGfTicketCapacity(int? v) => _changeGig(() => gfTicketCapacity = v);
 
   void setGfAgeRequirement(AgeRequirement value) =>
       _changeGig(() => gfAgeRequirement = value);
@@ -237,7 +248,19 @@ mixin _GigEditorState on _AppStateCore {
       gfVenueId != null &&
       (gfProject == null || gfPerformers.isNotEmpty) &&
       (!gfCustomFlyer || gfFlyerStorageId != null) &&
+      validTicketPricing &&
       (gfTix != Ticketing.external || validExternalTicketUrl);
+
+  bool get canSellTickets =>
+      features.bandTicketing && (bandPayoutStatus?.canSellTickets ?? false);
+
+  bool get validTicketPricing =>
+      gfTix != Ticketing.paid ||
+      (gfTicketPriceMinor != null &&
+          gfTicketPriceMinor! >= 100 &&
+          gfTicketCapacity != null &&
+          gfTicketCapacity! >= 1 &&
+          gfTicketCapacity! <= 5000);
 
   bool get validExternalTicketUrl {
     final uri = Uri.tryParse(gfExt.trim());
@@ -253,6 +276,7 @@ mixin _GigEditorState on _AppStateCore {
     if (gfCustomFlyer && gfFlyerStorageId == null) 'your flyer art',
     if (gfTix == Ticketing.external && !validExternalTicketUrl)
       'a valid HTTPS ticket link',
+    if (!validTicketPricing) 'ticket price and capacity',
   ];
 
   String get gigUrl {
@@ -373,6 +397,8 @@ mixin _GigEditorState on _AppStateCore {
       overlay: gfOverlay,
       desc: gfDesc,
       ticketing: gfTix,
+      ticketPriceMinor: gfTix == Ticketing.paid ? gfTicketPriceMinor : null,
+      ticketCapacity: gfTix == Ticketing.paid ? gfTicketCapacity : null,
       ageRequirement: gfAgeRequirement,
       externalUrl: gfExt.trim().isEmpty ? null : gfExt.trim(),
       cap: gfCap,
@@ -386,6 +412,11 @@ mixin _GigEditorState on _AppStateCore {
       _gigSaveAgain = false;
       final project = await _ensureGigDraft();
       if (project == null || !_isCurrentGigEditor(editorGeneration)) return;
+      if (gfTix == Ticketing.paid && !validTicketPricing) {
+        gfSaveState = 'UNSAVED';
+        if (!_disposed) notifyListeners();
+        return;
+      }
       gfSaveState = 'SAVING…';
       notifyListeners();
       final editGeneration = _gigEditGeneration;
@@ -405,6 +436,8 @@ mixin _GigEditorState on _AppStateCore {
           overlay: gfOverlay,
           desc: gfDesc,
           ticketing: gfTix,
+          ticketPriceMinor: gfTix == Ticketing.paid ? gfTicketPriceMinor : null,
+          ticketCapacity: gfTix == Ticketing.paid ? gfTicketCapacity : null,
           ageRequirement: gfAgeRequirement,
           externalUrl: gfExt.trim().isEmpty ? null : gfExt.trim(),
           cap: gfCap,
@@ -507,6 +540,8 @@ mixin _GigEditorState on _AppStateCore {
       overlay: current.overlay,
       desc: current.desc,
       ticketing: current.ticketing,
+      ticketPriceMinor: current.ticketPriceMinor,
+      ticketCapacity: current.ticketCapacity,
       ageRequirement: current.ageRequirement,
       externalUrl: current.externalUrl,
       cap: current.cap,
@@ -746,6 +781,8 @@ mixin _GigEditorState on _AppStateCore {
     gfVenueId = null;
     gfPrice = 'FREE';
     gfTix = Ticketing.rsvp;
+    gfTicketPriceMinor = null;
+    gfTicketCapacity = null;
     gfAgeRequirement = AgeRequirement.allAges;
     gfCap = 'No cap';
     gfExt = '';

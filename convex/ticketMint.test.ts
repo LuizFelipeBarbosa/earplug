@@ -182,6 +182,71 @@ describe("mintTickets", () => {
     );
   });
 
+  test("copies the band seller from the order into tickets and ledger entries", async () => {
+    const f = await setupOrder();
+    const bandId = await f.t.run(async (ctx) => {
+      const bandId = await ctx.db.insert("bands", {
+        name: "Static Bloom",
+        slug: "static-bloom",
+        genres: ["Indie"],
+        area: "Oakland",
+        colorHex: "#7B8FFF",
+        initials: "SB",
+        followerCount: 0,
+        pastShows: [],
+      });
+      await ctx.db.patch(f.gigId, {
+        createdByOrganization: undefined,
+        createdByBand: bandId,
+        ownerKind: "band",
+      });
+      const sellerFields = {
+        sellerKind: "band" as const,
+        bandId,
+        organizationId: undefined,
+      };
+      await ctx.db.patch(f.orderId, sellerFields);
+      await ctx.db.patch(f.inventoryId, sellerFields);
+      return bandId;
+    });
+    const before = await f.state();
+    expect(before.order).not.toHaveProperty("organizationId");
+    expect(before.inventory).not.toHaveProperty("organizationId");
+
+    const ids = await f.mint();
+    const { order, inventory, tickets, ledger } = await f.state();
+    expect(ids).toHaveLength(3);
+    expect(tickets).toHaveLength(3);
+    for (const ticket of tickets) {
+      expect(ticket).toMatchObject({
+        orderId: f.orderId,
+        sellerKind: "band",
+        bandId,
+        holderUserId: f.buyerUserId,
+        status: "valid",
+      });
+      expect(ticket).not.toHaveProperty("organizationId");
+    }
+    expect(ledger).toHaveLength(2);
+    for (const entry of ledger) {
+      expect(entry).toMatchObject({
+        ticketOrderId: f.orderId,
+        bandId,
+        currency: "usd",
+        fundsState: "pending",
+      });
+      expect(entry).not.toHaveProperty("organizationId");
+    }
+    expect(ledger).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "ticket_sale", amountMinor: 6390 }),
+        expect.objectContaining({ kind: "ticket_fee", amountMinor: 390 }),
+      ]),
+    );
+    expect(order.status).toBe("paid");
+    expect(inventory).toMatchObject({ bandId, reserved: 2, sold: 7 });
+  });
+
   test("returns the same tickets on replay without changing any rows", async () => {
     const f = await setupOrder();
     const ids = await f.mint();

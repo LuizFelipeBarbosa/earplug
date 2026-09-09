@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { insertGigWithBandIndex } from "./lib/helpers";
+import { mintTickets } from "./lib/ticketMint";
+import { TICKET_TOKEN_PREFIX } from "./lib/ticketStatus";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -149,7 +151,7 @@ async function setupDoor() {
     };
     const ticketId = await ctx.db.insert("tickets", {
       ...ticketFields,
-      token: TICKET_TOKEN,
+      token: TICKET_TOKEN_PREFIX + TICKET_TOKEN,
       status: "valid",
     });
     const rsvpId = await ctx.db.insert("gigRsvps", {
@@ -181,6 +183,70 @@ async function setupDoor() {
 }
 
 describe("ticketsDoor.checkIn", () => {
+  test("checks in a ticket minted by mintTicketsForOrder", async () => {
+    const { t, as, gigId, users, ticketFields } = await setupDoor();
+    const ticket = await t.run(async (ctx) => {
+      await ctx.db.insert("gigTicketInventory", {
+        gigId,
+        organizationId: ticketFields.organizationId,
+        capacity: 500,
+        reserved: 1,
+        sold: 1,
+        updatedAt: NOW,
+      });
+      const orderId = await ctx.db.insert("ticketOrders", {
+        gigId,
+        organizationId: ticketFields.organizationId,
+        buyerUserId: users.fan,
+        quantity: 1,
+        unitPriceMinor: 1000,
+        unitFeeMinor: 0,
+        subtotalMinor: 1000,
+        feeMinor: 0,
+        totalMinor: 1000,
+        currency: "usd",
+        status: "checkout_open",
+        reservedUntil: NOW + 30 * 60_000,
+        stripeCheckoutSessionId: "cs_test",
+        checkoutExpiresAt: NOW + 30 * 60_000,
+        attempt: 1,
+        refundedMinor: 0,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+      const order = (await ctx.db.get(orderId))!;
+      const [ticketId] = await mintTickets(ctx, order, {
+        paidAt: NOW,
+        stripeChargeId: "ch_test",
+        stripeEventId: "evt_test",
+      });
+      return (await ctx.db.get(ticketId))!;
+    });
+
+    expect(ticket.status).toBe("valid");
+    expect(
+      await as("door").mutation(api.ticketsDoor.checkIn, {
+        gigId,
+        payload: ticket.token.slice(TICKET_TOKEN_PREFIX.length),
+      }),
+    ).toEqual({ kind: "unknown" });
+    expect(await t.run((ctx) => ctx.db.get(ticket._id))).toEqual(ticket);
+
+    expect(
+      await as("door").mutation(api.ticketsDoor.checkIn, {
+        gigId,
+        payload: ticket.token,
+      }),
+    ).toEqual({
+      kind: "checkedIn",
+      holderName: "Fan Guest",
+      checkedInAt: NOW,
+      source: "ticket",
+    });
+    const checkedIn = await t.run((ctx) => ctx.db.get(ticket._id));
+    expect(checkedIn?.status).toBe("used");
+  });
+
   test.each(["owner", "manager", "door"] as const)(
     "an organization %s checks in a v2 ticket exactly once",
     async (actor) => {
@@ -563,7 +629,7 @@ describe("ticketsDoor.doorRoster", () => {
       ).entries()) {
         await ctx.db.insert("tickets", {
           ...ticketFields,
-          token: (index + 1).toString(16).padStart(64, "0"),
+          token: TICKET_TOKEN_PREFIX + (index + 1).toString(16).padStart(64, "0"),
           status,
           checkedInAt: status === "used" ? 0 : undefined,
         });
@@ -571,7 +637,7 @@ describe("ticketsDoor.doorRoster", () => {
       await ctx.db.insert("tickets", {
         ...ticketFields,
         gigId: otherGigId,
-        token: "d".repeat(64),
+        token: TICKET_TOKEN_PREFIX + "d".repeat(64),
         status: "used",
         checkedInAt: NOW,
       });
@@ -600,7 +666,7 @@ describe("ticketsDoor.doorRoster", () => {
           } else {
             await ctx.db.insert("tickets", {
               ...ticketFields,
-              token: index.toString(16).padStart(64, "0"),
+              token: TICKET_TOKEN_PREFIX + index.toString(16).padStart(64, "0"),
               status: "valid",
             });
           }
@@ -629,7 +695,7 @@ describe("ticketsDoor.doorRoster", () => {
         } else {
           await ctx.db.insert("tickets", {
             ...ticketFields,
-            token: "e".repeat(64),
+            token: TICKET_TOKEN_PREFIX + "e".repeat(64),
             status: "used",
             checkedInAt: NOW,
           });

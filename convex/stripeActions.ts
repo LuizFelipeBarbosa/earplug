@@ -1,7 +1,7 @@
 import { makeFunctionReference } from "convex/server";
 import { type Infer, v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { action } from "./_generated/server";
+import { action, type ActionCtx } from "./_generated/server";
 import { appBaseUrl } from "./lib/env";
 import {
   StripeApiError,
@@ -16,6 +16,7 @@ const bandOnboardingContext = makeFunctionReference<
   { bandId: Id<"bands"> },
   {
     stripeAccountId: string | null;
+    cardPaymentsStatus: string | null;
     bandName: string;
     contactEmail: string | null;
   }
@@ -72,6 +73,55 @@ async function callStripe<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+async function createBandAccount(
+  ctx: ActionCtx,
+  bandId: Id<"bands">,
+  bandName: string,
+): Promise<string> {
+  const account = await callStripe(() =>
+    stripeRequest<{ id: string }>(
+      "POST",
+      "/v1/accounts",
+      {
+        type: "express",
+        country: "US",
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
+        business_type: "individual",
+        business_profile: {
+          name: bandName,
+          product_description: "Live music performances booked through EarPlug",
+        },
+        metadata: { bandId, earplug: "band" },
+        settings: { payouts: { schedule: { interval: "daily" } } },
+      },
+      { idempotencyKey: stripeIdempotencyKey("band-account", bandId) },
+    ),
+  );
+  await ctx.runMutation(attachBandAccount, {
+    bandId,
+    stripeAccountId: account.id,
+  });
+  return account.id;
+}
+
+async function createBandOnboardingLink(
+  bandId: Id<"bands">,
+  stripeAccountId: string,
+): Promise<{ url: string }> {
+  const link = await callStripe(() =>
+    stripeRequest<{ url: string }>("POST", "/v1/account_links", {
+      account: stripeAccountId,
+      type: "account_onboarding",
+      refresh_url: `${appBaseUrl()}/band/stripe/refresh?band=${bandId}`,
+      return_url: `${appBaseUrl()}/band/stripe/return?band=${bandId}`,
+    }),
+  );
+  return { url: link.url };
+}
+
 export const startBandOnboarding = action({
   args: { bandId: v.id("bands") },
   returns: v.object({ url: v.string() }),
@@ -81,42 +131,51 @@ export const startBandOnboarding = action({
     });
     let stripeAccountId = context.stripeAccountId;
     if (stripeAccountId === null) {
-      const account = await callStripe(() =>
-        stripeRequest<{ id: string }>(
+      stripeAccountId = await createBandAccount(
+        ctx,
+        args.bandId,
+        context.bandName,
+      );
+    }
+    return await createBandOnboardingLink(args.bandId, stripeAccountId);
+  },
+});
+
+export const enableBandTicketSales = action({
+  args: { bandId: v.id("bands") },
+  returns: v.object({ url: v.string() }),
+  handler: async (ctx, args) => {
+    const context = await ctx.runQuery(bandOnboardingContext, {
+      bandId: args.bandId,
+    });
+    let stripeAccountId = context.stripeAccountId;
+    if (stripeAccountId === null) {
+      stripeAccountId = await createBandAccount(
+        ctx,
+        args.bandId,
+        context.bandName,
+      );
+    } else if (context.cardPaymentsStatus !== "active") {
+      await callStripe(() =>
+        stripeRequest(
           "POST",
-          "/v1/accounts",
+          `/v1/accounts/${stripeAccountId}`,
+          { capabilities: { card_payments: { requested: true } } },
           {
-            type: "express",
-            country: "US",
-            capabilities: { transfers: { requested: true } },
-            business_type: "individual",
-            business_profile: {
-              name: context.bandName,
-              product_description:
-                "Live music performances booked through EarPlug",
-            },
-            metadata: { bandId: args.bandId, earplug: "band" },
-            settings: { payouts: { schedule: { interval: "daily" } } },
+            idempotencyKey: stripeIdempotencyKey(
+              "band-card-payments",
+              args.bandId,
+              Date.now(),
+            ),
           },
-          { idempotencyKey: stripeIdempotencyKey("band-account", args.bandId) },
         ),
       );
-      await ctx.runMutation(attachBandAccount, {
-        bandId: args.bandId,
-        stripeAccountId: account.id,
-      });
-      stripeAccountId = account.id;
+      const account = await callStripe(() =>
+        stripeRequest("GET", `/v1/accounts/${stripeAccountId}`),
+      );
+      await ctx.runMutation(applyAccountSnapshot, { account });
     }
-
-    const link = await callStripe(() =>
-      stripeRequest<{ url: string }>("POST", "/v1/account_links", {
-        account: stripeAccountId,
-        type: "account_onboarding",
-        refresh_url: `${appBaseUrl()}/band/stripe/refresh?band=${args.bandId}`,
-        return_url: `${appBaseUrl()}/band/stripe/return?band=${args.bandId}`,
-      }),
-    );
-    return { url: link.url };
+    return await createBandOnboardingLink(args.bandId, stripeAccountId);
   },
 });
 

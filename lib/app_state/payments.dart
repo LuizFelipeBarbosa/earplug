@@ -86,6 +86,12 @@ mixin _PaymentState on _AppStateCore {
     await hostedUrlLauncher(url);
   }
 
+  Future<void> enableBandTicketSales(String bandId) async {
+    final url = await repository.enableBandTicketSales(bandId);
+    if (_disposed) return;
+    await hostedUrlLauncher(url);
+  }
+
   Future<void> startOrganizationOnboarding() async {
     final url = await repository.startOrganizationOnboarding(organizationId);
     if (_disposed) return;
@@ -224,12 +230,15 @@ mixin _PaymentState on _AppStateCore {
   }
 
   List<Payout> bandPayouts = const [];
+  bool _bandPayoutsLoaded = false;
+  bool get bandPayoutsLoaded => _bandPayoutsLoaded;
 
   Future<void> refreshBandPayouts() async {
     if (_disposed) return;
     final target = bandId;
     if (target.isEmpty) {
       bandPayouts = const [];
+      _bandPayoutsLoaded = true;
       notifyListeners();
       return;
     }
@@ -242,6 +251,7 @@ mixin _PaymentState on _AppStateCore {
         return;
       }
       bandPayouts = payouts;
+      _bandPayoutsLoaded = true;
       notifyListeners();
     } catch (error) {
       logError('payoutsForBand', error);
@@ -314,6 +324,7 @@ mixin _PaymentState on _AppStateCore {
     super._onBandChanged();
     if (_lastKnownBandIdForPayments == bandId) return;
     _lastKnownBandIdForPayments = bandId;
+    _bandPayoutsLoaded = false;
     unawaited(refreshBandPayoutStatus());
   }
 
@@ -328,6 +339,7 @@ mixin _PaymentState on _AppStateCore {
     _payoutsByBooking.clear();
     _refundsByBooking.clear();
     bandPayouts = const [];
+    _bandPayoutsLoaded = false;
     _lastKnownBandIdForPayments = '';
   }
 }

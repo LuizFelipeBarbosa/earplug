@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { publishGigAsAdmin } from "./gigFixtures.test-helpers";
 import schema from "./schema";
 
@@ -721,7 +722,10 @@ describe("RSVP tickets and Door Mode", () => {
       });
     const first = await publish("Door One", 86_400_000);
     const second = await publish("Door Two", 2 * 86_400_000);
-    const projects = await asAdmin.query(api.gigs.manageForBand, { bandId });
+    const projects: {
+      _id: Id<"gigProjects">;
+      publicGigId: Id<"gigs"> | null;
+    }[] = await asAdmin.query(api.gigs.manageForBand, { bandId });
     const firstProject = projects.find((project) => project.publicGigId === first.gigId)!;
     const secondProject = projects.find((project) => project.publicGigId === second.gigId)!;
 
