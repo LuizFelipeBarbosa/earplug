@@ -100,7 +100,7 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
 
   Widget _buildTicketSales(AppState app) {
     final status = app.bandPayoutStatus;
-    if (!app.features.bandTicketing || status == null || !status.hasAccount) {
+    if (status == null || !status.hasAccount) {
       return const SizedBox.shrink();
     }
     final textTheme = Theme.of(context).textTheme;

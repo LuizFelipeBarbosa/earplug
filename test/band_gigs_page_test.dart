@@ -233,7 +233,6 @@ void main() {
     );
     await _signInNonAdminMember(tester, harness);
     expect(harness.app.isAdminOf('b2'), isFalse);
-    expect(harness.app.gigWritePolicy, isTrue);
 
     await tester.tap(find.byIcon(Icons.table_rows_outlined));
     await tester.pumpAndSettle();
@@ -254,23 +253,17 @@ void main() {
     await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
     await tester.pumpAndSettle();
 
-    for (final writesEnabled in [true, false]) {
-      repository.demoBandGigWrites = writesEnabled;
-      await harness.app.refreshGigWritePolicy();
-      await tester.pumpAndSettle();
-
-      expect(find.byType(GhostDraftRow), findsOneWidget);
-      expect(
-        tester.widget<GhostDraftRow>(find.byType(GhostDraftRow)).onResume,
-        isNull,
-      );
-      expect(find.text('RESUME →'), findsNothing);
-      expect(find.byIcon(Icons.more_horiz), findsNothing);
-      expect(find.byKey(Key('gig-actions-${draft.id}')), findsNothing);
-      expect(find.byKey(Key('gig-edit-${draft.id}')), findsNothing);
-      expect(find.byKey(Key('gig-preview-${draft.id}')), findsNothing);
-      expect(find.byKey(Key('gig-delete-${draft.id}')), findsNothing);
-    }
+    expect(find.byType(GhostDraftRow), findsOneWidget);
+    expect(
+      tester.widget<GhostDraftRow>(find.byType(GhostDraftRow)).onResume,
+      isNull,
+    );
+    expect(find.text('RESUME →'), findsNothing);
+    expect(find.byIcon(Icons.more_horiz), findsNothing);
+    expect(find.byKey(Key('gig-actions-${draft.id}')), findsNothing);
+    expect(find.byKey(Key('gig-edit-${draft.id}')), findsNothing);
+    expect(find.byKey(Key('gig-preview-${draft.id}')), findsNothing);
+    expect(find.byKey(Key('gig-delete-${draft.id}')), findsNothing);
     harness.app.dispose();
   });
 
@@ -670,46 +663,6 @@ void main() {
     harness.app.dispose();
   });
 
-  testWidgets(
-    'write policy hides new gig and leaves only deletion for drafts',
-    (tester) async {
-      final harness = await _pumpScreen(
-        tester,
-        home: const Scaffold(body: GigManagerScreen()),
-      );
-      await _signInBand(tester, harness);
-      final repository = harness.app.repository as DemoRepository;
-      final draft = await repository.createGigDraft('b1');
-      await harness.app.refreshManagedGigs();
-      expect(find.text('+ NEW GIG'), findsOneWidget);
-
-      repository.demoBandGigWrites = false;
-      await harness.app.refreshGigWritePolicy();
-      await tester.pumpAndSettle();
-      expect(find.text('+ NEW GIG'), findsNothing);
-
-      await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
-      await tester.pumpAndSettle();
-      expect(find.textContaining('LEGACY DRAFTS'), findsOneWidget);
-      expect(find.text('Drafts are read-only now'), findsOneWidget);
-      expect(
-        tester.widget<GhostDraftRow>(find.byType(GhostDraftRow)).onResume,
-        isNull,
-      );
-      expect(find.byKey(Key('gig-preview-${draft.id}')), findsNothing);
-      expect(find.byKey(Key('gig-edit-${draft.id}')), findsNothing);
-      expect(find.byKey(Key('gig-actions-${draft.id}')), findsNothing);
-
-      await tester.tap(find.byKey(Key('gig-delete-${draft.id}')));
-      await tester.pumpAndSettle();
-      expect(find.text('Delete gig permanently?'), findsOneWidget);
-      await tester.tap(find.text('CONFIRM'));
-      await tester.pumpAndSettle();
-      expect(harness.app.managedGigProjects, isEmpty);
-      harness.app.dispose();
-    },
-  );
-
   testWidgets('published gigs honor write policy and PAST is read-only', (
     tester,
   ) async {
@@ -745,21 +698,8 @@ void main() {
     expect(find.byKey(Key('gig-edit-${draft.id}')), findsOneWidget);
     expect(find.byKey(Key('gig-actions-${draft.id}')), findsOneWidget);
 
-    repository.demoBandGigWrites = false;
-    await harness.app.refreshGigWritePolicy();
-    await tester.pumpAndSettle();
-    expect(
-      tester.widget<EpCard>(find.byKey(Key('gig-project-${draft.id}'))).onTap,
-      isNull,
-    );
-    expect(find.byKey(Key('gig-edit-${draft.id}')), findsNothing);
-    expect(find.byKey(Key('gig-actions-${draft.id}')), findsOneWidget);
-    expect(find.byKey(Key('gig-preview-${draft.id}')), findsOneWidget);
-    expect(find.byKey(Key('gig-door-${draft.id}')), findsOneWidget);
-
     await tester.tap(find.byKey(Key('gig-actions-${draft.id}')));
     await tester.pumpAndSettle();
-    expect(find.text('Duplicate'), findsNothing);
     expect(find.text('Unpublish…'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
     await tester.tap(find.text('Cancel gig…'));
@@ -771,9 +711,6 @@ void main() {
       harness.app.managedGigProjects.single.status,
       GigProjectStatus.cancelled,
     );
-    // PAST remains read-only even when the write policy is enabled again.
-    repository.demoBandGigWrites = true;
-    await harness.app.refreshGigWritePolicy();
     await tester.tap(find.byKey(const Key('band-gigs-seg-past')));
     await tester.pumpAndSettle();
     expect(find.byKey(Key('gig-project-${draft.id}')), findsOneWidget);

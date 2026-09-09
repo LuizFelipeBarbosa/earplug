@@ -408,7 +408,6 @@ void main() {
     final app = (await _pumpGigCreate(tester)).app;
     await app.refreshBandPayoutStatus();
     await tester.pumpAndSettle();
-    expect(app.features.bandTicketing, isTrue);
     expect(app.bandPayoutStatus?.hasAccount, isFalse);
     expect(app.canSellTickets, isFalse);
 
@@ -428,36 +427,6 @@ void main() {
     expect(app.gfTix, Ticketing.rsvp);
     expect(find.byKey(const Key('gig-ticket-price')), findsNothing);
     expect(find.byKey(const Key('gig-ticket-capacity')), findsNothing);
-  });
-
-  testWidgets('paid tickets stay disabled when the feature is off', (
-    tester,
-  ) async {
-    final app = (await _pumpGigCreate(tester)).app;
-    await app.repository.enableBandTicketSales(app.bandId);
-    await app.refreshBandPayoutStatus();
-    await tester.pumpAndSettle();
-    app.features = const FeatureFlags(
-      privateBookings: true,
-      tickets: false,
-      payments: true,
-      bandGigWrites: true,
-    );
-    expect(app.bandPayoutStatus?.canSellTickets, isTrue);
-    expect(app.canSellTickets, isFalse);
-
-    final accessSlot = find.byKey(const ValueKey('gig-slot-access'));
-    await _scrollTo(tester, accessSlot);
-    await tester.tap(accessSlot);
-    await tester.pumpAndSettle();
-
-    final paidOption = find.byKey(const Key('gig-tickets-paid'));
-    expect(find.text('Ticket sales are off'), findsOne);
-    expect(tester.widget<EpCard>(paidOption).variant, EpCardVariant.disabled);
-    expect(tester.widget<EpCard>(paidOption).onTap, isNull);
-    await tester.tap(paidOption);
-    await tester.pump();
-    expect(app.gfTix, Ticketing.rsvp);
   });
 
   testWidgets('enabled paid tickets explain direct Stripe payments', (

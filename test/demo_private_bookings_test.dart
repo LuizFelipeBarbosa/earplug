@@ -50,12 +50,7 @@ void main() {
     repo = DemoRepository(auth: FakeAuthService());
   });
 
-  test('demo flags and the private host location are available', () async {
-    final flags = await repo.featureFlags();
-    expect(flags.privateBookings, isTrue);
-    expect(flags.tickets, isTrue);
-    expect(flags.payments, isTrue);
-    expect(flags.bandGigWrites, isTrue);
+  test('the demo private host location is available', () async {
     final host = (await repo.myOrganizations().first).singleWhere(
       (membership) => membership.organization.id == 'org2',
     );

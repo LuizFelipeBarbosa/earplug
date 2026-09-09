@@ -257,8 +257,6 @@ void main() {
       repository: repository,
       home: const Scaffold(body: BandPayoutsScreen()),
       beforePump: (app) async {
-        await app.loadFeatureFlags();
-        app.features = _bandTicketingEnabled;
         app.switchToBand('b1');
       },
     );
@@ -298,8 +296,6 @@ void main() {
       ),
       home: const Scaffold(body: BandPayoutsScreen()),
       beforePump: (app) async {
-        await app.loadFeatureFlags();
-        app.features = _bandTicketingEnabled;
         app.switchToBand('b1');
       },
     );
@@ -319,45 +315,6 @@ void main() {
     expectNoFieldInCard(tester);
   });
 
-  for (final cardPaymentsStatus in [null, 'active']) {
-    testWidgets(
-      'ticket sales are hidden when the feature is off with card payments $cardPaymentsStatus',
-      (tester) async {
-        final auth = FakeAuthService();
-        final harness = await pumpApp(
-          tester,
-          auth: auth,
-          repository: _StripeStatusRepository(
-            auth: auth,
-            state: StripeAccountState.enabled,
-            cardPaymentsStatus: cardPaymentsStatus,
-          ),
-          home: const Scaffold(body: BandPayoutsScreen()),
-          beforePump: (app) async {
-            await app.loadFeatureFlags();
-            app.features = const FeatureFlags(
-              privateBookings: false,
-              tickets: false,
-              payments: false,
-              bandGigWrites: true,
-            );
-            app.switchToBand('b1');
-          },
-        );
-
-        expect(harness.app.bandPayoutStatus?.hasAccount, isTrue);
-        expect(harness.app.features.bandTicketing, isFalse);
-        expect(find.text('TICKET SALES'), findsNothing);
-        expect(
-          find.byKey(const Key('band-payouts-enable-tickets')),
-          findsNothing,
-        );
-        expect(find.text('TICKET SALES ENABLED'), findsNothing);
-        expect(find.text(_ticketSalesCaption), findsNothing);
-      },
-    );
-  }
-
   testWidgets('ticket sales stay hidden until a band has a Stripe account', (
     tester,
   ) async {
@@ -365,13 +322,10 @@ void main() {
       tester,
       home: const Scaffold(body: BandPayoutsScreen()),
       beforePump: (app) async {
-        await app.loadFeatureFlags();
-        app.features = _bandTicketingEnabled;
         app.switchToBand('b1');
       },
     );
 
-    expect(harness.app.features.bandTicketing, isTrue);
     expect(harness.app.bandPayoutStatus?.hasAccount, isFalse);
     expect(find.text('SET UP PAYOUTS'), findsOneWidget);
     expect(find.text('TICKET SALES'), findsNothing);
@@ -393,8 +347,6 @@ void main() {
       ),
       home: const Scaffold(body: BandPayoutsScreen()),
       beforePump: (app) async {
-        await app.loadFeatureFlags();
-        app.features = _bandTicketingEnabled;
         app.switchToBand('b1');
       },
     );
@@ -902,13 +854,6 @@ void main() {
     });
   }
 }
-
-const _bandTicketingEnabled = FeatureFlags(
-  privateBookings: false,
-  tickets: true,
-  payments: false,
-  bandGigWrites: true,
-);
 
 const _ticketSalesCaption =
     'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.';

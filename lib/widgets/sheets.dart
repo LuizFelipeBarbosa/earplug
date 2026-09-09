@@ -523,15 +523,14 @@ void showSwitcherSheet(BuildContext context) {
               }),
             ),
           ),
-        if (app.privateBookingsEnabled &&
-            (_applicationInProgress(_hostApplication(app)) ||
-                (!app.myOrganizations.any(
-                      (membership) =>
-                          membership.organization.orgType ==
-                          OrganizationType.privateHost,
-                    ) &&
-                    _hostApplication(app)?.status !=
-                        OrganizationApplicationStatus.approved)))
+        if (_applicationInProgress(_hostApplication(app)) ||
+            (!app.myOrganizations.any(
+                  (membership) =>
+                      membership.organization.orgType ==
+                      OrganizationType.privateHost,
+                ) &&
+                _hostApplication(app)?.status !=
+                    OrganizationApplicationStatus.approved))
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: OutlinedButton.icon(

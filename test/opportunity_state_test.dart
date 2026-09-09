@@ -411,19 +411,6 @@ void main() {
     harness.app.dispose();
   });
 
-  testWidgets('gig write policy follows the repository flag', (tester) async {
-    final harness = await pumpApp(tester, home: const SizedBox.shrink());
-    await harness.auth.signInDemo();
-    await tester.pumpAndSettle();
-    expect(harness.app.gigWritePolicy, isTrue);
-
-    (harness.app.repository as DemoRepository).demoBandGigWrites = false;
-    await harness.app.refreshGigWritePolicy();
-
-    expect(harness.app.gigWritePolicy, isFalse);
-    harness.app.dispose();
-  });
-
   testWidgets('sign-out clears opportunity state', (tester) async {
     final harness = await pumpApp(tester, home: const SizedBox.shrink());
     await harness.auth.signInDemo();
@@ -440,7 +427,6 @@ void main() {
     expect(harness.app.browse.invited, isEmpty);
     expect(harness.app.myApplications, isEmpty);
     expect(harness.app.opportunitiesFor('org1'), isEmpty);
-    expect(harness.app.gigWritePolicy, isTrue);
     harness.app.dispose();
   });
 
@@ -475,8 +461,7 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
-    final repository = _ControlledOpportunityRepository(auth: auth)
-      ..demoBandGigWrites = false;
+    final repository = _ControlledOpportunityRepository(auth: auth);
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -498,7 +483,6 @@ void main() {
     expect(harness.app.browse.error, contains('UnimplementedError'));
     expect(harness.app.browse.items, same(items));
     expect(harness.app.myApplications, same(applications));
-    expect(harness.app.gigWritePolicy, isFalse);
     expect(await harness.app.resolveOpportunity('opp1'), isNull);
     harness.app.dispose();
   });
@@ -507,15 +491,8 @@ void main() {
 class _ControlledOpportunityRepository extends DemoRepository {
   _ControlledOpportunityRepository({required super.auth});
 
-  @override
-  Future<FeatureFlags> featureFlags() async => const FeatureFlags(
-    privateBookings: false,
-    tickets: true,
-    payments: true,
-    bandGigWrites: true,
-  );
-
   int browseCalls = 0;
+  int privateBrowseCalls = 0;
   int invitedCalls = 0;
   final browseRequests =
       <({String? cursor, String? bandId, OpportunityFilters? filters})>[];
@@ -532,6 +509,13 @@ class _ControlledOpportunityRepository extends DemoRepository {
     OpportunityFilters? filters,
     OpportunityMode? mode,
   }) {
+    if (mode == OpportunityMode.privateBooking) {
+      privateBrowseCalls++;
+      if (failLoads) throw UnimplementedError('browseOpportunities');
+      return Future.value(
+        const OpportunityPage(items: [], continueCursor: null, isDone: true),
+      );
+    }
     browseCalls++;
     browseRequests.add((cursor: cursor, bandId: bandId, filters: filters));
     if (failLoads) throw UnimplementedError('browseOpportunities');
@@ -557,12 +541,6 @@ class _ControlledOpportunityRepository extends DemoRepository {
   Future<List<BandApplication>> myApplications(String bandId) {
     if (failLoads) throw UnimplementedError('myApplications');
     return super.myApplications(bandId);
-  }
-
-  @override
-  Future<GigWritePolicy> gigWritePolicy() {
-    if (failLoads) throw UnimplementedError('gigWritePolicy');
-    return super.gigWritePolicy();
   }
 
   @override

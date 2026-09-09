@@ -91,7 +91,6 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
           app.refreshMyApplications(),
           app.refreshBandBookings(),
           app.refreshManagedGigs(),
-          app.refreshGigWritePolicy(),
         ]);
       },
       child: ListView(
@@ -107,7 +106,7 @@ class _GigManagerScreenState extends State<GigManagerScreen> {
           EpPageHeading(
             title: 'GIGS',
             description: 'Your next stage starts here.',
-            action: app.gigWritePolicy && app.isAdminOf(app.bandId)
+            action: app.isAdminOf(app.bandId)
                 ? FilledButton(
                     onPressed: app.startGigCreate,
                     child: Text('+ NEW GIG'),
@@ -750,7 +749,7 @@ class _DraftSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final canWrite = app.gigWritePolicy && app.isAdminOf(app.bandId);
+    final canWrite = app.isAdminOf(app.bandId);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -759,8 +758,6 @@ class _DraftSection extends StatelessWidget {
           count: projects.isEmpty ? null : projects.length,
         ),
         const SizedBox(height: 10),
-        if (!app.gigWritePolicy)
-          const EmptyNote(message: 'Drafts are read-only now'),
         if (projects.isEmpty)
           DashedBox(
             padding: const EdgeInsets.all(18),
@@ -799,19 +796,7 @@ class _DraftSection extends StatelessWidget {
                       ),
                   ],
                 ),
-                if (app.isAdminOf(app.bandId) && !app.gigWritePolicy)
-                  _FeatureAction(
-                    key: ValueKey('gig-delete-${projects[index].id}'),
-                    icon: Icons.delete_outline,
-                    label: 'DELETE',
-                    onTap: () => _runProjectAction(
-                      context,
-                      app,
-                      projects[index],
-                      _ProjectAction.delete,
-                    ),
-                  )
-                else if (canWrite)
+                if (canWrite)
                   Row(
                     children: [
                       Expanded(
@@ -920,7 +905,7 @@ class _ProjectCardState extends State<_ProjectCard> {
     final app = context.watch<AppState>();
     final project = widget.project;
     final canManage = !widget.readOnly && app.isAdminOf(app.bandId);
-    final canWrite = canManage && app.gigWritePolicy;
+    final canWrite = canManage;
     final sales =
         project.ticketing == Ticketing.paid && project.publicGigId != null
         ? app.salesFor(project.publicGigId!)
@@ -1114,14 +1099,13 @@ void _showProjectActions(
           ),
         ),
       ),
-    if (app.gigWritePolicy)
-      EpActionSheetItem(
-        label: 'Duplicate',
-        icon: Icons.copy,
-        onPressed: () => unawaited(
-          _runProjectAction(context, app, project, _ProjectAction.duplicate),
-        ),
+    EpActionSheetItem(
+      label: 'Duplicate',
+      icon: Icons.copy,
+      onPressed: () => unawaited(
+        _runProjectAction(context, app, project, _ProjectAction.duplicate),
       ),
+    ),
     if (project.status == GigProjectStatus.published)
       EpActionSheetItem(
         label: 'Unpublish…',
@@ -1161,10 +1145,7 @@ Future<void> _runProjectAction(
 ) async {
   if (action != _ProjectAction.preview &&
       (project.status == GigProjectStatus.cancelled ||
-          !app.isAdminOf(app.bandId) ||
-          (!app.gigWritePolicy &&
-              (action == _ProjectAction.edit ||
-                  action == _ProjectAction.duplicate)))) {
+          !app.isAdminOf(app.bandId))) {
     return;
   }
   switch (action) {

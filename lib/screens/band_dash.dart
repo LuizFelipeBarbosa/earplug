@@ -150,13 +150,9 @@ class BandDashScreen extends StatelessWidget {
         const SizedBox(height: 10),
         _CommandGrid(
           openMedia: app.openBandMedia,
-          publishGig: isAdmin
-              ? app.gigWritePolicy
-                    ? app.startGigCreate
-                    : () => app.resetTo(Screen.gigMgr)
-              : null,
-          gigCommandLabel: app.gigWritePolicy ? 'PUBLISH GIG' : 'FIND GIGS',
-          gigCommandIcon: app.gigWritePolicy ? Icons.add : Icons.search,
+          publishGig: isAdmin ? app.startGigCreate : null,
+          gigCommandLabel: 'PUBLISH GIG',
+          gigCommandIcon: Icons.add,
           editProfile: isAdmin ? app.openBandEditor : null,
           openAnalytics: () => app.resetTo(Screen.analytics),
           openPayouts: isAdmin ? () => app.resetTo(Screen.bandPayouts) : null,
@@ -233,7 +229,7 @@ class _DiscoveryReadinessCard extends StatelessWidget {
       );
     }
 
-    final showAction = readiness.relevantShow == null && app.gigWritePolicy
+    final showAction = readiness.relevantShow == null
         ? app.startGigCreate
         : app.openGigManager;
     final tasks = [

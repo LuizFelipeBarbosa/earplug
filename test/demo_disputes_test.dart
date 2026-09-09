@@ -67,7 +67,6 @@ Future<Booking> _paidBooking(
 void main() {
   test('organizer refund request is reviewed and partially refunded', () async {
     final repo = DemoRepository(auth: FakeAuthService());
-    expect((await repo.featureFlags()).disputes, isTrue);
     final booking = await _paidBooking(repo);
     expect(booking.status, BookingStatus.confirmed);
     expect(booking.paidMinor, 10000);

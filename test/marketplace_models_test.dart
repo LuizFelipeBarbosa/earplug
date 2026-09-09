@@ -421,80 +421,6 @@ void main() {
 
   group('private booking and safety models', () {
     test(
-      'FeatureFlags band ticketing requires tickets and band gig writes',
-      () {
-        for (final (tickets, bandGigWrites, expected) in [
-          (true, true, true),
-          (true, false, false),
-          (false, true, false),
-          (false, false, false),
-        ]) {
-          final flags = FeatureFlags.fromJson({
-            'tickets': tickets,
-            'bandGigWrites': bandGigWrites,
-          });
-          expect(flags.bandTicketing, expected);
-        }
-      },
-    );
-
-    test('FeatureFlags defaults missing and malformed flags to false', () {
-      final enabled = FeatureFlags.fromJson(
-        _jsonRoundTrip({
-          'privateBookings': true,
-          'tickets': true,
-          'payments': true,
-          'bandGigWrites': true,
-          'disputes': true,
-          'promoters': true,
-        }),
-      );
-      expect(enabled.privateBookings, isTrue);
-      expect(enabled.tickets, isTrue);
-      expect(enabled.payments, isTrue);
-      expect(enabled.bandGigWrites, isTrue);
-      expect(enabled.disputes, isTrue);
-      expect(enabled.promoters, isTrue);
-      expect(
-        const FeatureFlags(
-          privateBookings: true,
-          tickets: true,
-          payments: true,
-          bandGigWrites: true,
-        ).promoters,
-        isFalse,
-      );
-      expect(
-        const FeatureFlags(
-          privateBookings: true,
-          tickets: true,
-          payments: true,
-          bandGigWrites: true,
-        ).disputes,
-        isFalse,
-      );
-      for (final json in <Map<String, dynamic>>[
-        {},
-        {
-          'privateBookings': 'true',
-          'tickets': 1,
-          'payments': null,
-          'bandGigWrites': <Object?>[],
-          'disputes': 'true',
-          'promoters': 'true',
-        },
-      ]) {
-        final flags = FeatureFlags.fromJson(json);
-        expect(flags.privateBookings, isFalse);
-        expect(flags.tickets, isFalse);
-        expect(flags.payments, isFalse);
-        expect(flags.bandGigWrites, isFalse);
-        expect(flags.disputes, isFalse);
-        expect(flags.promoters, isFalse);
-      }
-    });
-
-    test(
       'PrivateLocation parses coordinates, notes, and timestamps defensively',
       () {
         final location = PrivateLocation.fromJson({
@@ -2778,7 +2704,7 @@ void main() {
     );
 
     test(
-      'missing mutation targets fail and gig writes can be disabled',
+      'missing mutation targets fail',
       () async {
         await expectLater(
           repository.cancelOpportunity('missing'),
@@ -2809,9 +2735,6 @@ void main() {
           ),
           throwsA(isA<StateError>()),
         );
-        expect((await repository.gigWritePolicy()).bandGigWrites, isTrue);
-        repository.demoBandGigWrites = false;
-        expect((await repository.gigWritePolicy()).bandGigWrites, isFalse);
       },
     );
   });
@@ -4425,22 +4348,6 @@ void main() {
       expect(BandApplication.fromJson(const {}).opportunity.id, '');
       expect(BrowseItem.fromJson(const {}).myApplicationStatus, isNull);
       expect(OpportunityPage.fromJson(const {}).items, isEmpty);
-    });
-
-    test('GigWritePolicy only enables writes for an explicit true', () {
-      expect(
-        GigWritePolicy.fromJson({'bandGigWrites': true}).bandGigWrites,
-        isTrue,
-      );
-      expect(
-        GigWritePolicy.fromJson({'bandGigWrites': false}).bandGigWrites,
-        isFalse,
-      );
-      expect(GigWritePolicy.fromJson(const {}).bandGigWrites, isFalse);
-      expect(
-        GigWritePolicy.fromJson({'bandGigWrites': 'true'}).bandGigWrites,
-        isFalse,
-      );
     });
   });
 

@@ -48,7 +48,6 @@ void main() {
           await app.loadBooking(booking.id, viewAs: side);
         },
       );
-      expect(harness.app.disputesEnabled, isTrue);
       expect(
         harness.app.bookingById(booking.id)?.status,
         BookingStatus.confirmed,
@@ -190,19 +189,15 @@ void main() {
     });
   }
 
-  for (final (name, enabled, future, grossMinor, pay) in [
-    ('disabled feature flag', false, false, 10005, true),
-    ('event has not started', true, true, 10005, true),
-    ('zero booking fee', true, false, 0, false),
-    ('awaiting payment', true, false, 10005, false),
+  for (final (name, future, grossMinor, pay) in [
+    ('event has not started', true, 10005, true),
+    ('zero booking fee', false, 0, false),
+    ('awaiting payment', false, 10005, false),
   ]) {
     testWidgets('dispute action stays hidden: $name', (tester) async {
       final auth = FakeAuthService();
       await auth.signInDemo();
-      final repository = _DisputeFeatureRepository(
-        auth: auth,
-        enabled: enabled,
-      );
+      final repository = DemoRepository(auth: auth);
       final booking = await _createDisputeEligibleBooking(
         repository,
         startsAt: future ? DateTime.now().add(const Duration(days: 2)) : null,
@@ -1354,21 +1349,6 @@ Future<Booking> _createDisputeEligibleBooking(
     await repository.simulateCheckoutCompleted(checkout.sessionId);
   }
   return (await repository.booking(sent.bookingId))!;
-}
-
-class _DisputeFeatureRepository extends DemoRepository {
-  _DisputeFeatureRepository({required super.auth, required this.enabled});
-
-  final bool enabled;
-
-  @override
-  Future<FeatureFlags> featureFlags() async => FeatureFlags(
-    privateBookings: true,
-    tickets: true,
-    payments: true,
-    bandGigWrites: true,
-    disputes: enabled,
-  );
 }
 
 Future<String> _createPrivateBookingAwaitingPayment(

@@ -338,7 +338,6 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   Future<bool> _performDraftSave() async {
     final savedEditVersion = _editVersion;
     final app = context.read<AppState>();
-    if (!app.promotersEnabled) _orgType = OrganizationType.venueOperator;
     try {
       final saved = await app.repository.saveOrganizationApplicationDraft(
         applicationId: _applicationId,
@@ -574,7 +573,6 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         application?.editable == true) {
       _loadApplication(application!);
     }
-    if (!app.promotersEnabled) _orgType = OrganizationType.venueOperator;
 
     if (application != null &&
         application.status != OrganizationApplicationStatus.withdrawn &&
@@ -736,47 +734,44 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
 
   List<Widget> _venueFields(BuildContext context) {
     final enabled = !_busy;
-    final promotersEnabled = context.read<AppState>().promotersEnabled;
     return [
-      if (promotersEnabled) ...[
-        const SectionBar.form(label: 'ORGANIZATION TYPE'),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            EpChip(
-              key: const Key('org-apply-type-venueOperator'),
-              label: 'BAR OR CLUB',
-              active: _orgType == OrganizationType.venueOperator,
-              onTap: enabled
-                  ? () => _selectOrgType(OrganizationType.venueOperator)
-                  : null,
-            ),
-            EpChip(
-              key: const Key('org-apply-type-promoter'),
-              label: 'PROMOTER OR COLLECTIVE',
-              active: _orgType == OrganizationType.promoter,
-              onTap: enabled
-                  ? () => _selectOrgType(OrganizationType.promoter)
-                  : null,
-            ),
-            EpChip(
-              key: const Key('org-apply-type-studentOrg'),
-              label: 'STUDENT ORGANIZATION',
-              active: _orgType == OrganizationType.studentOrg,
-              onTap: enabled
-                  ? () => _selectOrgType(OrganizationType.studentOrg)
-                  : null,
-            ),
-          ],
-        ),
-        if (_orgType != OrganizationType.venueOperator) ...[
-          const SizedBox(height: 5),
-          Text(
-            "You'll post events at verified venues and ask each venue for approval.",
-            style: Theme.of(context).textTheme.epCaption,
+      const SectionBar.form(label: 'ORGANIZATION TYPE'),
+      Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          EpChip(
+            key: const Key('org-apply-type-venueOperator'),
+            label: 'BAR OR CLUB',
+            active: _orgType == OrganizationType.venueOperator,
+            onTap: enabled
+                ? () => _selectOrgType(OrganizationType.venueOperator)
+                : null,
+          ),
+          EpChip(
+            key: const Key('org-apply-type-promoter'),
+            label: 'PROMOTER OR COLLECTIVE',
+            active: _orgType == OrganizationType.promoter,
+            onTap: enabled
+                ? () => _selectOrgType(OrganizationType.promoter)
+                : null,
+          ),
+          EpChip(
+            key: const Key('org-apply-type-studentOrg'),
+            label: 'STUDENT ORGANIZATION',
+            active: _orgType == OrganizationType.studentOrg,
+            onTap: enabled
+                ? () => _selectOrgType(OrganizationType.studentOrg)
+                : null,
           ),
         ],
+      ),
+      if (_orgType != OrganizationType.venueOperator) ...[
+        const SizedBox(height: 5),
+        Text(
+          "You'll post events at verified venues and ask each venue for approval.",
+          style: Theme.of(context).textTheme.epCaption,
+        ),
       ],
       SectionBar.form(
         label: _orgType == OrganizationType.venueOperator
@@ -844,13 +839,6 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
             ),
           ),
         ),
-        if (!promotersEnabled) ...[
-          const SizedBox(height: 5),
-          Text(
-            'Promoters and student organizations are coming next.',
-            style: Theme.of(context).textTheme.epCaption,
-          ),
-        ],
         const SizedBox(height: EpLayout.fieldGap),
         Focus(
           onFocusChange: (focused) {

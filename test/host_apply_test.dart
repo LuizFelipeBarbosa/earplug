@@ -375,70 +375,36 @@ void main() {
     });
   }
 
-  testWidgets('feature flag blocks the form before an existing application', (
+  testWidgets('switcher host entry opens the host application', (
     tester,
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _HostTestRepository(auth: auth, privateBookings: false);
-    await repository.saveOrganizationApplicationDraft(
-      orgName: 'The Foghorn Club',
-      orgType: OrganizationType.venueOperator,
-      contactName: '',
-      businessEmail: '',
+    final repository = _HostTestRepository(
+      auth: auth,
+      excludedOrganizationTypes: const {OrganizationType.privateHost},
     );
     final harness = await pumpApp(
       tester,
-      home: const HostApplyScreen(),
+      home: const Scaffold(bottomNavigationBar: FanTabBar()),
       auth: auth,
       repository: repository,
-      beforePump: (app) => app.openHostApply(),
     );
     addTearDown(() => _disposeApp(harness.app));
-
-    expect(find.text('Private bookings are not open yet.'), findsOneWidget);
-    expect(find.text('OPEN APPLICATION'), findsNothing);
-    expect(find.byType(TextField), findsNothing);
-    await tester.tap(find.text('BACK'));
+    await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(harness.app.current.screen, Screen.home);
+
+    final hostEntry = find.byKey(const Key('switcher-become-host'));
+    expect(hostEntry, findsOneWidget);
+    expect(find.byKey(const Key('switcher-org-org1')), findsOneWidget);
+    expect(find.byKey(const Key('switcher-org-org2')), findsNothing);
+    expect(find.byKey(const Key('switcher-become-organizer')), findsNothing);
+    expect(find.text('BECOME A HOST'), findsOneWidget);
+    await tester.ensureVisible(hostEntry);
+    await tester.tap(hostEntry);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.hostApply);
   });
-
-  for (final enabled in [true, false]) {
-    testWidgets('switcher host entry follows privateBookings=$enabled', (
-      tester,
-    ) async {
-      final auth = FakeAuthService();
-      await auth.signInDemo();
-      final repository = _HostTestRepository(
-        auth: auth,
-        privateBookings: enabled,
-        excludedOrganizationTypes: const {OrganizationType.privateHost},
-      );
-      final harness = await pumpApp(
-        tester,
-        home: const Scaffold(bottomNavigationBar: FanTabBar()),
-        auth: auth,
-        repository: repository,
-      );
-      addTearDown(() => _disposeApp(harness.app));
-      await tester.tap(find.text('SWITCH'));
-      await tester.pumpAndSettle();
-
-      final hostEntry = find.byKey(const Key('switcher-become-host'));
-      expect(hostEntry, enabled ? findsOneWidget : findsNothing);
-      expect(find.byKey(const Key('switcher-org-org1')), findsOneWidget);
-      expect(find.byKey(const Key('switcher-org-org2')), findsNothing);
-      expect(find.byKey(const Key('switcher-become-organizer')), findsNothing);
-      if (enabled) {
-        expect(find.text('BECOME A HOST'), findsOneWidget);
-        await tester.ensureVisible(hostEntry);
-        await tester.tap(hostEntry);
-        await tester.pumpAndSettle();
-        expect(harness.app.current.screen, Screen.hostApply);
-      }
-    });
-  }
 
   testWidgets(
     'memberships hide both entries without an application in progress',
@@ -453,7 +419,6 @@ void main() {
         repository: repository,
       );
       addTearDown(() => _disposeApp(harness.app));
-      expect(harness.app.privateBookingsEnabled, isTrue);
       expect(harness.app.myOrganizationApplication, isNull);
       await tester.tap(find.text('SWITCH'));
       await tester.pumpAndSettle();
@@ -480,7 +445,6 @@ void main() {
       repository: repository,
     );
     addTearDown(() => _disposeApp(harness.app));
-    expect(harness.app.privateBookingsEnabled, isTrue);
     expect(harness.app.myOrganizationApplication?.kind, ApplicationKind.host);
     expect(
       harness.app.myOrganizationApplication?.status,
@@ -527,7 +491,6 @@ void main() {
       repository: repository,
     );
     addTearDown(() => _disposeApp(harness.app));
-    expect(harness.app.privateBookingsEnabled, isTrue);
     await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
 
@@ -572,7 +535,6 @@ void main() {
           repository: repository,
         );
         addTearDown(() => _disposeApp(harness.app));
-        expect(harness.app.privateBookingsEnabled, isTrue);
         final application = harness.app.myOrganizationApplication!;
         expect(application.kind, ApplicationKind.host);
         expect(application.status, OrganizationApplicationStatus.approved);
@@ -854,22 +816,12 @@ void _disposeApp(AppState app) {
 class _HostTestRepository extends DemoRepository {
   _HostTestRepository({
     required super.auth,
-    this.privateBookings = true,
     this.hostRole = OrganizationRole.owner,
     this.excludedOrganizationTypes = const {},
   });
 
-  final bool privateBookings;
   final OrganizationRole hostRole;
   final Set<OrganizationType> excludedOrganizationTypes;
-
-  @override
-  Future<FeatureFlags> featureFlags() async => FeatureFlags(
-    privateBookings: privateBookings,
-    tickets: true,
-    payments: true,
-    bandGigWrites: true,
-  );
 
   @override
   Future<UserProfile?> me() async => UserProfile(
