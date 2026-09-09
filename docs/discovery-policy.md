@@ -72,24 +72,9 @@ collections, sponsorships, or paid promotion.
 
 ## Widen–migrate–narrow rollout
 
-The widen deploy keeps `bands.hasClip` and `gigs.discoveryListingReady`
-optional. All live writes maintain them, while absent values read as
-ineligible. After verifying `migrations:backfillGigProjects` is complete:
-
-1. Dry-run `migrations:backfillBandHasClip` and
-   `migrations:backfillGigDiscoveryListingReady`.
-2. Run `migrations:runDiscoveryReadinessBackfills` and monitor the migrations
-   component status until every job completes.
-3. Re-run both jobs with a reset in a non-production verification environment;
-   values must remain unchanged.
-4. Verify no band or gig document lacks its projection before a later deploy
-   makes both fields required and removes compatibility fallbacks.
-
-Operational commands:
-
-```sh
-npx convex run migrations:backfillBandHasClip '{"dryRun":true}'
-npx convex run migrations:backfillGigDiscoveryListingReady '{"dryRun":true}'
-npx convex run migrations:runDiscoveryReadinessBackfills
-npx convex run --component migrations lib:getStatus --watch
-```
+The widen deploy kept `bands.hasClip` and `gigs.discoveryListingReady`
+optional so absent values read as ineligible. The discovery-readiness backfills
+completed on production on 2026-09-04, so every row now carries its projection,
+maintained by live writes. The migration functions and operational commands
+have been removed now that the rollout is finished; the fields remain optional
+pending a separate narrowing change.

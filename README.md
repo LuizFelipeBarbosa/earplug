@@ -80,4 +80,3 @@ release sequence and required credentials.
 - [`docs/environments.md`](docs/environments.md) — deployments, Clerk pairing,
   build commands, outstanding native credentials.
 - [`config/README.md`](config/README.md) — why the build config is committed.
-- [`docs/history/`](docs/history/) — post-mortems. Not current design.

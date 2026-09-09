@@ -32,13 +32,8 @@
   EARPLUG_ENV = "dev"
 
   # When a production Convex deploy key is configured in Netlify, production
-  # builds deploy Convex and verify the contract before publishing; the build
-  # no longer runs release backfills. The deployment's own cron
-  # (convex/crons.ts, "apply release backfills") applies the idempotent release
-  # backfills within 30 minutes of deploy, without deploy-key permissions.
-  # npm run backfill:release -- --prod remains available to apply them immediately
-  # from an authenticated admin session (e.g. npx convex login) instead of waiting
-  # for the cron. Without a deploy key, deploy and verify the backend separately
+  # builds deploy Convex and verify the contract before building and publishing
+  # Flutter. Without a deploy key, deploy and verify the backend separately
   # before triggering the Netlify build.
 
   # Every key here is public by design, so finding its value in the repo or the

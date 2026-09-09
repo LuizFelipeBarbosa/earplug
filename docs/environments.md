@@ -64,28 +64,6 @@ verified on 2026-09-08:
 - `APP_BASE_URL` — dev: the current deploy preview's own origin (varies per preview); prod: `https://earplug.app`.
 - `RESEND_API_KEY` — prod: unset; configure a separate key for each environment that sends email.
 - `RESEND_SEND_ENABLED` — dev: `true`; prod: unset (sending disabled by default).
-- `PAYMENTS_ENABLED` — dev: `true`; prod: `true` (payments enabled).
-- `TICKETS_ENABLED` — dev: `true`; prod: `true` (ticketing enabled).
-- `PRIVATE_BOOKINGS_ENABLED` — dev: `true`; prod: explicitly `false`; gates private-booking
-  opportunity creation, private-location management, and the client's
-  `features:flags.privateBookings` surface (private bookings not yet enabled
-  in production).
-- `DISPUTES_ENABLED` — dev: `true`; prod: unset; gates
-  `disputes:open` and the client's `features:flags.disputes` surface
-  (disputes not yet enabled in production).
-- `PROMOTERS_ENABLED` — dev: `true`; prod: unset; gates
-  `venueConsents:request`, foreign-venue opportunities, and the client's
-  `features:flags.promoters` surface (promoter organizers not yet enabled
-  in production).
-- `BAND_GIG_WRITES` — dev: `true`; prod: unset (defaults to `true`).
-  Band ticket sales have no separate feature flag: they require both
-  `BAND_GIG_WRITES` and `TICKETS_ENABLED` to be true, plus per-band
-  `bandPayoutAccounts.chargesEnabled`. Setting `BAND_GIG_WRITES=false`
-  stops new band ticket sales but never blocks refunds.
-
-All feature flags above are `true` in development. In production,
-`DISPUTES_ENABLED` and `PROMOTERS_ENABLED` remain unset and default to
-`false`; `PRIVATE_BOOKINGS_ENABLED` is explicitly set to `false`.
 
 `convex/lib/env.ts` enforces the pairing at runtime: it refuses a `sk_live_`
 Stripe key on every deployment except production deployment
@@ -141,25 +119,20 @@ so development must set its own client origin explicitly. Development
 previews share one Convex deployment and therefore one configured return
 origin.
 
-Before setting `PAYMENTS_ENABLED=true`, also set `BOOKING_COMMISSION_BPS`
-to the intended commission (an integer from 0 to 10000 basis points) and
+Set `BOOKING_COMMISSION_BPS` to the intended commission (an integer from 0 to
+10000 basis points) and
 enable Stripe Connect on the Stripe account connected to the deployment
 through `STRIPE_SECRET_KEY`. Test mode suffices for development. Live mode
 requires the platform's Stripe account to have accepted the Connect platform
 terms in the Stripe dashboard; this repository does not configure that
-dashboard action. The payments flag defaults to false and blocks all
-non-`GET` Stripe API calls while disabled.
+dashboard action.
 
 Phase 4b's organizer finance balance refresh (`financeActions:refreshBalance`)
-calls Stripe's balance endpoint with `GET`, so it keeps working while
-`PAYMENTS_ENABLED` is false. Phase 4b introduces no new environment variables.
+calls Stripe's balance endpoint with `GET`. Phase 4b introduces no new
+environment variables.
 
 ### Launch diagnostics and legal pages
 
-- `admin:opsHealth({ days?, now })` is an `internalQuery` summarizing
-  feature-flag state, Resend configuration, and Stripe events by type/status.
-  Supply the current epoch-ms timestamp as `now`; use it for the A0 baseline
-  in [Launch readiness](launch-readiness.md).
 - `emails:send` requires both `RESEND_API_KEY` and
   `RESEND_SEND_ENABLED=true`. It sends from `EarPlug <no-reply@earplug.app>`,
   so `earplug.app` must be a verified Resend domain. DNS is hosted at Netlify
@@ -194,7 +167,6 @@ it:
 
 ```sh
 npx convex deploy --typecheck enable
-npm run backfill:release -- --prod
 npm run check:release-contract -- prod
 flutter build web --release --dart-define-from-file=config/prod.json
 ```
@@ -208,13 +180,7 @@ Netlify uses the same config-file mechanism. `netlify.toml` selects production
 configuration for production-context builds and development configuration for
 deploy previews and branch deploys. When Netlify has a production
 `CONVEX_DEPLOY_KEY`, production builds deploy Convex and verify the production
-contract before building Flutter. The build does not run the release-backfill
-runner itself. Instead, the deployment's own cron ("apply release backfills" in
-`convex/crons.ts`) applies the idempotent release backfills within roughly 30
-minutes of any deploy, without needing the
-`deployment:functions:runInternalMutations` permission that a Netlify deploy key
-lacks. `npm run backfill:release -- --prod` remains available to apply them
-immediately from an authenticated admin session instead of waiting for the cron.
+contract before building Flutter.
 Without that key, deploy and verify the backend separately before triggering the
 production build; Netlify then uses the already-deployed backend.
 Development builds do not deploy and can be
