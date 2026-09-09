@@ -418,6 +418,28 @@ class Organization {
           : null,
     );
   }
+
+  Organization copyWith({
+    String? name,
+    String? description,
+    String? website,
+    List<String>? photoUrls,
+    OrganizationStatus? status,
+    bool? verified,
+    ReviewSummary? reviewSummary,
+  }) => Organization(
+    id: id,
+    slug: slug,
+    name: name ?? this.name,
+    orgType: orgType,
+    status: status ?? this.status,
+    verified: verified ?? this.verified,
+    description: description ?? this.description,
+    website: website ?? this.website,
+    photoUrls: photoUrls ?? this.photoUrls,
+    createdAt: createdAt,
+    reviewSummary: reviewSummary ?? this.reviewSummary,
+  );
 }
 
 class OrganizationMembership {
@@ -867,6 +889,44 @@ class OrganizationApplication {
   bool get editable =>
       status == OrganizationApplicationStatus.draft ||
       status == OrganizationApplicationStatus.needsInfo;
+
+  OrganizationApplication copyWith({
+    DateTime? organizerAgreementAcceptedAt,
+    OrganizationApplicationStatus? status,
+    List<ApplicationDocument>? documents,
+    String? reviewNote,
+    DateTime? decidedAt,
+    String? resultingOrganizationId,
+    String? resultingVenueId,
+    int? revision,
+    DateTime? updatedAt,
+  }) => OrganizationApplication(
+    id: id,
+    kind: kind,
+    hostDisplayName: hostDisplayName,
+    hostPhone: hostPhone,
+    hostArea: hostArea,
+    hostAgreementAcceptedAt: hostAgreementAcceptedAt,
+    organizerAgreementAcceptedAt:
+        organizerAgreementAcceptedAt ?? this.organizerAgreementAcceptedAt,
+    status: status ?? this.status,
+    orgName: orgName,
+    orgType: orgType,
+    website: website,
+    contactName: contactName,
+    businessEmail: businessEmail,
+    phone: phone,
+    venue: venue,
+    documents: documents ?? this.documents,
+    reviewNote: reviewNote ?? this.reviewNote,
+    decidedAt: decidedAt ?? this.decidedAt,
+    resultingOrganizationId:
+        resultingOrganizationId ?? this.resultingOrganizationId,
+    resultingVenueId: resultingVenueId ?? this.resultingVenueId,
+    revision: revision ?? this.revision,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }
 
 class AdminApplicationRow {
@@ -1514,6 +1574,27 @@ class VenueConsent {
     createdAt: asDate(json['createdAt']),
     decidedAt: asOptionalDate(json['decidedAt']),
   );
+
+  static const _unchanged = Object();
+
+  VenueConsent copyWith({
+    VenueConsentStatus? status,
+    Object? note = _unchanged,
+    Object? decidedAt = _unchanged,
+  }) => VenueConsent(
+    id: id,
+    opportunityId: opportunityId,
+    venueId: venueId,
+    venueOrganizationId: venueOrganizationId,
+    requestingOrganizationId: requestingOrganizationId,
+    status: status ?? this.status,
+    message: message,
+    note: identical(note, _unchanged) ? this.note : note as String?,
+    createdAt: createdAt,
+    decidedAt: identical(decidedAt, _unchanged)
+        ? this.decidedAt
+        : decidedAt as DateTime?,
+  );
 }
 
 class VenueConsentRow extends VenueConsent {
@@ -1735,6 +1816,88 @@ class Opportunity {
         : null,
     currency: asString(json['currency']),
   );
+
+  static const _unchanged = Object();
+
+  Opportunity copyWith({
+    String? id,
+    String? slug,
+    String? title,
+    String? desc,
+    String? venueId,
+    String? privateLocationId,
+    String? eventType,
+    int? expectedAttendance,
+    List<String>? genres,
+    DateTime? startsAt,
+    DateTime? doorsAt,
+    DateTime? endsAt,
+    AgeRequirement? ageRequirement,
+    String? equipment,
+    String? requirements,
+    String? flyKey,
+    String? flyerUrl,
+    DateTime? applicationsCloseAt,
+    OpportunityVisibility? visibility,
+    OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
+    String? externalUrl,
+    OpportunityStatus? status,
+    VenueConsentStatus? venueConsentStatus,
+    int? revision,
+    int? applicationCount,
+    List<OpportunitySlot>? slots,
+    List<String>? invitedBandIds,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Object? venue = _unchanged,
+    String? area,
+    Object? venueType = _unchanged,
+  }) => Opportunity(
+    id: id ?? this.id,
+    organizationId: organizationId,
+    mode: mode,
+    privateEvent: privateEvent,
+    privateLocationId: privateLocationId ?? this.privateLocationId,
+    venueId: venueId ?? this.venueId,
+    venue: identical(venue, _unchanged) ? this.venue : venue as Venue?,
+    title: title ?? this.title,
+    desc: desc ?? this.desc,
+    eventType: eventType ?? this.eventType,
+    expectedAttendance: expectedAttendance ?? this.expectedAttendance,
+    genres: genres == null ? this.genres : List<String>.of(genres),
+    startsAt: startsAt ?? this.startsAt,
+    doorsAt: doorsAt ?? this.doorsAt,
+    endsAt: endsAt ?? this.endsAt,
+    ageRequirement: ageRequirement ?? this.ageRequirement,
+    equipment: equipment ?? this.equipment,
+    requirements: requirements ?? this.requirements,
+    flyKey: flyKey ?? this.flyKey,
+    flyerUrl: flyerUrl ?? this.flyerUrl,
+    applicationsCloseAt: applicationsCloseAt ?? this.applicationsCloseAt,
+    visibility: visibility ?? this.visibility,
+    ticketing: ticketing ?? this.ticketing,
+    ticketPriceMinor: ticketPriceMinor ?? this.ticketPriceMinor,
+    ticketCapacity: ticketCapacity ?? this.ticketCapacity,
+    ticketCurrency: ticketCurrency ?? this.ticketCurrency,
+    externalUrl: externalUrl ?? this.externalUrl,
+    status: status ?? this.status,
+    venueConsentStatus: venueConsentStatus ?? this.venueConsentStatus,
+    slug: slug ?? this.slug,
+    revision: revision ?? this.revision,
+    applicationCount: applicationCount ?? this.applicationCount,
+    slots: slots ?? this.slots,
+    invitedBandIds: invitedBandIds ?? this.invitedBandIds,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    area: area ?? this.area,
+    venueType: identical(venueType, _unchanged)
+        ? this.venueType
+        : venueType as VenueType?,
+    currency: currency,
+  );
 }
 
 class SlotInput {
@@ -1802,6 +1965,29 @@ class ArtistApplication {
         createdAt: asDate(json['createdAt']),
         updatedAt: asDate(json['updatedAt']),
       );
+
+  static const _unchanged = Object();
+
+  ArtistApplication copyWith({
+    ArtistApplicationStatus? status,
+    Object? decidedAt = _unchanged,
+    DateTime? updatedAt,
+  }) => ArtistApplication(
+    id: id,
+    opportunityId: opportunityId,
+    slotId: slotId,
+    bandId: bandId,
+    status: status ?? this.status,
+    message: message,
+    askMinor: askMinor,
+    availabilityNote: availabilityNote,
+    lineupNote: lineupNote,
+    decidedAt: identical(decidedAt, _unchanged)
+        ? this.decidedAt
+        : decidedAt as DateTime?,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }
 
 class ApplicantRow {
@@ -2378,6 +2564,75 @@ class Booking {
     viewerSide: BookingSide.fromWire(json['viewerSide']),
     viewerIsPlatformAdmin: json['viewerIsPlatformAdmin'] == true,
   );
+
+  Booking copyWith({
+    BookingStatus? status,
+    int? revision,
+    int? paidMinor,
+    int? refundedMinor,
+    DateTime? paymentDueAt,
+    List<String>? payoutHoldReasons,
+    DateTime? artistAcceptedTermsAt,
+    DateTime? confirmedAt,
+    DateTime? cancelledAt,
+    BookingCancelledBy? cancelledBy,
+    String? cancelReason,
+    BookingOffer? currentOffer,
+    BookingVenue? venue,
+    BookingPrivateLocation? privateLocation,
+    CancellationKind? cancellationKind,
+    String? publicGigId,
+    String? publicGigSlug,
+    BookingSide? viewerSide,
+    bool? viewerIsPlatformAdmin,
+    String? counterpartyEmail,
+  }) => Booking(
+    id: id,
+    opportunityId: opportunityId,
+    opportunityTitle: opportunityTitle,
+    opportunitySlug: opportunitySlug,
+    slotId: slotId,
+    slotRole: slotRole,
+    slotRequired: slotRequired,
+    organizationId: organizationId,
+    organizationName: organizationName,
+    bandId: bandId,
+    bandName: bandName,
+    bandSlug: bandSlug,
+    applicationId: applicationId,
+    status: status ?? this.status,
+    revision: revision ?? this.revision,
+    startsAt: startsAt,
+    doorsAt: doorsAt,
+    fee: fee,
+    paidMinor: paidMinor ?? this.paidMinor,
+    refundedMinor: refundedMinor ?? this.refundedMinor,
+    paymentDueAt: paymentDueAt ?? this.paymentDueAt,
+    payoutHoldReasons: payoutHoldReasons ?? this.payoutHoldReasons,
+    cancellationTemplate: cancellationTemplate,
+    termsNotes: termsNotes,
+    organizerAcceptedTermsAt: organizerAcceptedTermsAt,
+    artistAcceptedTermsAt: artistAcceptedTermsAt ?? this.artistAcceptedTermsAt,
+    confirmedAt: confirmedAt ?? this.confirmedAt,
+    completedAt: completedAt,
+    cancelledAt: cancelledAt ?? this.cancelledAt,
+    cancelledBy: cancelledBy ?? this.cancelledBy,
+    cancelReason: cancelReason ?? this.cancelReason,
+    expiresAt: expiresAt,
+    currentOffer: currentOffer ?? this.currentOffer,
+    venue: venue ?? this.venue,
+    privateEvent: privateEvent,
+    privateLocation: privateLocation ?? this.privateLocation,
+    cancellationKind: cancellationKind ?? this.cancellationKind,
+    publicGigId: publicGigId ?? this.publicGigId,
+    publicGigSlug: publicGigSlug ?? this.publicGigSlug,
+    // A query supplying a viewer must be able to explicitly hide the email.
+    counterpartyEmail: viewerSide == null
+        ? this.counterpartyEmail
+        : counterpartyEmail,
+    viewerSide: viewerSide ?? this.viewerSide,
+    viewerIsPlatformAdmin: viewerIsPlatformAdmin ?? this.viewerIsPlatformAdmin,
+  );
 }
 
 enum DisputeSide {
@@ -2520,6 +2775,27 @@ class Dispute {
     adminNote: asOptionalString(json['adminNote']),
     createdAt: asDate(json['createdAt']),
     resolvedAt: asOptionalDate(json['resolvedAt']),
+  );
+
+  Dispute copyWith({
+    DisputeStatus? status,
+    DisputeResolution? resolution,
+    int? resolvedRefundMinor,
+    String? adminNote,
+    DateTime? resolvedAt,
+  }) => Dispute(
+    disputeId: disputeId,
+    bookingId: bookingId,
+    side: side,
+    category: category,
+    text: text,
+    requestedRefundMinor: requestedRefundMinor,
+    status: status ?? this.status,
+    resolution: resolution ?? this.resolution,
+    resolvedRefundMinor: resolvedRefundMinor ?? this.resolvedRefundMinor,
+    adminNote: adminNote ?? this.adminNote,
+    createdAt: createdAt,
+    resolvedAt: resolvedAt ?? this.resolvedAt,
   );
 }
 
@@ -2928,6 +3204,21 @@ class PaymentRecord {
   );
 
   Money get amount => Money(amountMinor, currency);
+
+  PaymentRecord copyWith({PaymentRecordStatus? status, DateTime? paidAt}) {
+    final resolvedStatus = status ?? this.status;
+    return PaymentRecord(
+      id: id,
+      installmentIndex: installmentIndex,
+      label: label,
+      amountMinor: amountMinor,
+      currency: currency,
+      dueAt: dueAt,
+      status: resolvedStatus,
+      paidAt: paidAt ?? this.paidAt,
+      canPay: canPay && resolvedStatus.isOpen,
+    );
+  }
 }
 
 enum PayoutStatus {
@@ -4342,6 +4633,42 @@ class GigProject {
 
   bool get hasUnpublishedChanges =>
       status == GigProjectStatus.published && publishedRevision != revision;
+
+  /// Copies the project and refreshes [updatedAt] to the current time.
+  GigProject copyWith({
+    GigProjectStatus? status,
+    int? revision,
+    int? publishedRevision,
+    String? publicGigId,
+    String? publicSlug,
+    List<GigPerformer>? performers,
+  }) => GigProject(
+    id: id,
+    bandId: bandId,
+    publicGigId: publicGigId ?? this.publicGigId,
+    publicSlug: publicSlug ?? this.publicSlug,
+    status: status ?? this.status,
+    revision: revision ?? this.revision,
+    publishedRevision: publishedRevision ?? this.publishedRevision,
+    title: title,
+    doorsAt: doorsAt,
+    startsAt: startsAt,
+    venueId: venueId,
+    price: price,
+    flyKey: flyKey,
+    flyStorageId: flyStorageId,
+    flyerUrl: flyerUrl,
+    overlay: overlay,
+    desc: desc,
+    ticketing: ticketing,
+    ticketPriceMinor: ticketPriceMinor,
+    ticketCapacity: ticketCapacity,
+    ageRequirement: ageRequirement,
+    externalUrl: externalUrl,
+    cap: cap,
+    updatedAt: DateTime.now(),
+    performers: performers ?? this.performers,
+  );
 }
 
 DateTime? _optionalDate(Object? milliseconds) => milliseconds == null

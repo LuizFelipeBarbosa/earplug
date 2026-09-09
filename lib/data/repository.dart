@@ -808,10 +808,7 @@ abstract class EarplugRepository {
     String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('createOpportunity');
-  }
+  });
 
   Future<int> updateOpportunity({
     required String opportunityId,
@@ -839,87 +836,48 @@ abstract class EarplugRepository {
     String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('updateOpportunity');
-  }
+  });
 
   Future<({int revision, DateTime applicationsCloseAt})> openOpportunity({
     required String opportunityId,
     required int expectedRevision,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('openOpportunity');
-  }
+  });
 
-  Future<void> closeOpportunityApplications(String opportunityId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('closeOpportunityApplications');
-  }
+  Future<void> closeOpportunityApplications(String opportunityId);
 
   Future<void> reopenOpportunity({
     required String opportunityId,
     required DateTime applicationsCloseAt,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('reopenOpportunity');
-  }
+  });
 
-  Future<void> cancelOpportunity(String opportunityId, {String? reason}) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('cancelOpportunity');
-  }
+  Future<void> cancelOpportunity(String opportunityId, {String? reason});
 
-  Future<void> deleteOpportunityDraft(String opportunityId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('deleteOpportunityDraft');
-  }
+  Future<void> deleteOpportunityDraft(String opportunityId);
 
   Future<({String opportunityId, String slug})> duplicateOpportunity(
     String opportunityId,
-  ) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('duplicateOpportunity');
-  }
+  );
 
   Future<bool> inviteBandToOpportunity({
     required String opportunityId,
     required String bandId,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('inviteBandToOpportunity');
-  }
+  });
 
   Future<void> uninviteBandFromOpportunity({
     required String opportunityId,
     required String bandId,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('uninviteBandFromOpportunity');
-  }
+  });
 
-  Future<List<Opportunity>> manageOpportunities(String organizationId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('manageOpportunities');
-  }
+  Future<List<Opportunity>> manageOpportunities(String organizationId);
 
-  Future<Opportunity?> opportunity(String opportunityId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('opportunity');
-  }
+  Future<Opportunity?> opportunity(String opportunityId);
 
-  Future<List<ApplicantRow>> applicantsFor(String opportunityId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('applicantsFor');
-  }
+  Future<List<ApplicantRow>> applicantsFor(String opportunityId);
 
   Future<void> reviewApplication({
     required String applicationId,
     required ArtistApplicationReviewAction action,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('reviewApplication');
-  }
+  });
 
   // Band opportunity discovery and applications.
   Future<OpportunityPage> browseOpportunities({
@@ -928,20 +886,11 @@ abstract class EarplugRepository {
     String? bandId,
     OpportunityFilters? filters,
     OpportunityMode? mode,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('browseOpportunities');
-  }
+  });
 
-  Future<List<BrowseItem>> invitedOpportunities(String bandId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('invitedOpportunities');
-  }
+  Future<List<BrowseItem>> invitedOpportunities(String bandId);
 
-  Future<BrowseItem?> resolveOpportunity(String ref, {String? bandId}) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('resolveOpportunity');
-  }
+  Future<BrowseItem?> resolveOpportunity(String ref, {String? bandId});
 
   Future<String> applyToOpportunity({
     required String opportunityId,
@@ -951,28 +900,16 @@ abstract class EarplugRepository {
     int? askMinor,
     String? availabilityNote,
     String? lineupNote,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('applyToOpportunity');
-  }
+  });
 
-  Future<void> withdrawApplication(String applicationId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('withdrawApplication');
-  }
+  Future<void> withdrawApplication(String applicationId);
 
-  Future<List<BandApplication>> myApplications(String bandId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('myApplications');
-  }
+  Future<List<BandApplication>> myApplications(String bandId);
 
   Future<ArtistApplication?> myApplicationFor({
     required String opportunityId,
     required String bandId,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('myApplicationFor');
-  }
+  });
 
   Future<({String bookingId, String offerId, int revision})> sendOffer({
     required String applicationId,
@@ -981,28 +918,19 @@ abstract class EarplugRepository {
     String? termsNotes,
     String? message,
     List<OfferInstallmentInput>? installments,
-  }) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('sendOffer');
-  }
+  });
 
   Future<int> withdrawOffer({
     required String bookingId,
     required int expectedRevision,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('withdrawOffer');
-  }
+  });
 
   Future<({BookingStatus status, int revision})> respondToOffer({
     required String bookingId,
     required bool accept,
     required int expectedRevision,
     String? message,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('respondToOffer');
-  }
+  });
 
   Future<({BookingStatus status, int revision})> cancelBooking({
     required String bookingId,
@@ -1010,143 +938,72 @@ abstract class EarplugRepository {
     required int expectedRevision,
     BookingSide? side,
     bool? safety,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('cancelBooking');
-  }
+  });
 
-  Future<StripeAccountStatus> bandPayoutStatus(String bandId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('bandPayoutStatus');
-  }
+  Future<StripeAccountStatus> bandPayoutStatus(String bandId);
 
-  Future<StripeAccountStatus> organizationStripeStatus(String organizationId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('organizationStripeStatus');
-  }
+  Future<StripeAccountStatus> organizationStripeStatus(String organizationId);
 
-  Future<String> startBandOnboarding(String bandId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('startBandOnboarding');
-  }
+  Future<String> startBandOnboarding(String bandId);
 
-  Future<String> enableBandTicketSales(String bandId) {
-    throw UnimplementedError('enableBandTicketSales');
-  }
+  Future<String> enableBandTicketSales(String bandId);
 
-  Future<String> startOrganizationOnboarding(String organizationId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('startOrganizationOnboarding');
-  }
+  Future<String> startOrganizationOnboarding(String organizationId);
 
-  Future<StripeAccountStatus> refreshBandAccountStatus(String bandId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('refreshBandAccountStatus');
-  }
+  Future<StripeAccountStatus> refreshBandAccountStatus(String bandId);
 
   Future<StripeAccountStatus> refreshOrganizationAccountStatus(
     String organizationId,
-  ) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('refreshOrganizationAccountStatus');
-  }
+  );
 
-  Future<String> bandExpressDashboardLink(String bandId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('bandExpressDashboardLink');
-  }
+  Future<String> bandExpressDashboardLink(String bandId);
 
-  Future<String> organizationExpressDashboardLink(String organizationId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('organizationExpressDashboardLink');
-  }
+  Future<String> organizationExpressDashboardLink(String organizationId);
 
   Future<({String url, String sessionId})> startInstallmentCheckout(
     String paymentRecordId,
-  ) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('startInstallmentCheckout');
-  }
+  );
 
-  Future<List<PaymentRecord>> paymentsForBooking(String bookingId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('paymentsForBooking');
-  }
+  Future<List<PaymentRecord>> paymentsForBooking(String bookingId);
 
-  Future<CheckoutStatus?> checkoutStatus(String sessionId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('checkoutStatus');
-  }
+  Future<CheckoutStatus?> checkoutStatus(String sessionId);
 
-  Future<List<Payout>> payoutsForBooking(String bookingId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('payoutsForBooking');
-  }
+  Future<List<Payout>> payoutsForBooking(String bookingId);
 
-  Future<List<Payout>> payoutsForBand(String bandId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('payoutsForBand');
-  }
+  Future<List<Payout>> payoutsForBand(String bandId);
 
   Future<RefundPreview> previewCancellation(
     String bookingId, {
     BookingSide? side,
     required DateTime now,
-  }) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('previewCancellation');
-  }
+  });
 
-  Future<List<RefundRecord>> refundsForBooking(String bookingId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('refundsForBooking');
-  }
+  Future<List<RefundRecord>> refundsForBooking(String bookingId);
 
-  Future<Booking?> booking(String bookingId, {BookingSide? viewAs}) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('booking');
-  }
+  Future<Booking?> booking(String bookingId, {BookingSide? viewAs});
 
   Future<List<Booking>> organizationBookings(
     String organizationId, {
     List<BookingStatus>? statuses,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('organizationBookings');
-  }
+  });
 
-  Future<List<Booking>> bandBookings(String bandId) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('bandBookings');
-  }
+  Future<List<Booking>> bandBookings(String bandId);
 
   Future<({String reviewId, bool visible})> submitReview({
     required String bookingId,
     required int rating,
     required List<String> categories,
     required String text,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('submitReview');
-  }
+  });
 
-  Future<BookingReviews> reviewsForBooking(String bookingId) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('reviewsForBooking');
-  }
+  Future<BookingReviews> reviewsForBooking(String bookingId);
 
-  Future<List<PublicReview>> reviewsForBand(String bandId, {int? limit}) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('reviewsForBand');
-  }
+  Future<List<PublicReview>> reviewsForBand(String bandId, {int? limit});
 
   Future<List<PublicReview>> reviewsForOrganization(
     String organizationId, {
     int? limit,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('reviewsForOrganization');
-  }
+  });
 
   Future<List<GigProject>> manageGigs(String bandId);
   Future<GigProject> createGigDraft(String bandId);

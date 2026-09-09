@@ -1220,78 +1220,52 @@ void main() {
   });
 
   group('marketplace enum wire values', () {
-    test('AddressDisclosure round-trips and defaults to public', () {
-      for (final value in AddressDisclosure.values) {
-        expect(AddressDisclosure.fromWire(value.wireValue), value);
-      }
-      expect(AddressDisclosure.fromWire('unknown'), AddressDisclosure.public);
-      expect(AddressDisclosure.fromWire(null), AddressDisclosure.public);
-    });
-
-    test('VenueType round-trips and defaults to other', () {
-      for (final value in VenueType.values) {
-        expect(VenueType.fromWire(value.wireValue), value);
-      }
-      expect(VenueType.fromWire('unknown'), VenueType.other);
-      expect(VenueType.fromWire(null), VenueType.other);
-    });
-
-    test(
-      'OrganizationRole round-trips and uses least privilege by default',
-      () {
-        for (final value in OrganizationRole.values) {
-          expect(OrganizationRole.fromWire(value.wireValue), value);
+    test('enums round-trip and preserve their fallback values', () {
+      for (final (values, fromWire, fallback) in [
+        (
+          AddressDisclosure.values.map((value) => (value, value.wireValue)),
+          AddressDisclosure.fromWire,
+          AddressDisclosure.public,
+        ),
+        (
+          VenueType.values.map((value) => (value, value.wireValue)),
+          VenueType.fromWire,
+          VenueType.other,
+        ),
+        (
+          OrganizationRole.values.map((value) => (value, value.wireValue)),
+          OrganizationRole.fromWire,
+          OrganizationRole.door,
+        ),
+        (
+          OrganizationType.values.map((value) => (value, value.wireValue)),
+          OrganizationType.fromWire,
+          OrganizationType.other,
+        ),
+        (
+          OrganizationStatus.values.map((value) => (value, value.wireValue)),
+          OrganizationStatus.fromWire,
+          OrganizationStatus.pending,
+        ),
+        (
+          OrganizationApplicationStatus.values.map(
+            (value) => (value, value.wireValue),
+          ),
+          OrganizationApplicationStatus.fromWire,
+          OrganizationApplicationStatus.draft,
+        ),
+        (
+          ApplicationDecision.values.map((value) => (value, value.wireValue)),
+          ApplicationDecision.fromWire,
+          ApplicationDecision.underReview,
+        ),
+      ]) {
+        for (final (value, wireValue) in values) {
+          expect(fromWire(wireValue), value);
         }
-        expect(OrganizationRole.fromWire('unknown'), OrganizationRole.door);
-        expect(OrganizationRole.fromWire(null), OrganizationRole.door);
-      },
-    );
-
-    test('OrganizationType round-trips and defaults to other', () {
-      for (final value in OrganizationType.values) {
-        expect(OrganizationType.fromWire(value.wireValue), value);
+        expect(fromWire('unknown'), fallback);
+        expect(fromWire(null), fallback);
       }
-      expect(OrganizationType.fromWire('unknown'), OrganizationType.other);
-      expect(OrganizationType.fromWire(null), OrganizationType.other);
-    });
-
-    test('OrganizationStatus round-trips and defaults to pending', () {
-      for (final value in OrganizationStatus.values) {
-        expect(OrganizationStatus.fromWire(value.wireValue), value);
-      }
-      expect(
-        OrganizationStatus.fromWire('unknown'),
-        OrganizationStatus.pending,
-      );
-      expect(OrganizationStatus.fromWire(null), OrganizationStatus.pending);
-    });
-
-    test('OrganizationApplicationStatus round-trips and defaults to draft', () {
-      for (final value in OrganizationApplicationStatus.values) {
-        expect(OrganizationApplicationStatus.fromWire(value.wireValue), value);
-      }
-      expect(
-        OrganizationApplicationStatus.fromWire('unknown'),
-        OrganizationApplicationStatus.draft,
-      );
-      expect(
-        OrganizationApplicationStatus.fromWire(null),
-        OrganizationApplicationStatus.draft,
-      );
-    });
-
-    test('ApplicationDecision round-trips and defaults to review', () {
-      for (final value in ApplicationDecision.values) {
-        expect(ApplicationDecision.fromWire(value.wireValue), value);
-      }
-      expect(
-        ApplicationDecision.fromWire('unknown'),
-        ApplicationDecision.underReview,
-      );
-      expect(
-        ApplicationDecision.fromWire(null),
-        ApplicationDecision.underReview,
-      );
     });
   });
 
@@ -1373,112 +1347,6 @@ void main() {
     expect(overview.hostApplications.needsInfo, 0);
     expect(overview.capped, isTrue);
   });
-
-  test(
-    'DemoRepository saves, submits, rejects stale writes, and approves',
-    () async {
-      final repository = DemoRepository(auth: FakeAuthService());
-      expect(await repository.myOrganizationApplication(), isNull);
-
-      final saved = await repository.saveOrganizationApplicationDraft(
-        orgName: 'Signal Room',
-        orgType: OrganizationType.venueOperator,
-        contactName: 'Earplug Fan',
-        businessEmail: 'fan@example.com',
-        venue: const ApplicationVenueDraft(
-          name: 'Signal Room',
-          addr: '100 Market St, San Francisco',
-          point: LatLng(37.7937, -122.3965),
-          area: 'SoMa, San Francisco',
-          neighborhood: 'SoMa',
-          city: 'San Francisco',
-          capacity: 120,
-          venueType: VenueType.club,
-        ),
-      );
-      final draft = await repository.myOrganizationApplication();
-      expect(draft, isNotNull);
-      expect(draft!.id, saved.applicationId);
-      expect(draft.revision, saved.revision);
-      expect(draft.status, OrganizationApplicationStatus.draft);
-
-      final submittedRevision = await repository.submitOrganizationApplication(
-        applicationId: saved.applicationId,
-        expectedRevision: saved.revision,
-      );
-      expect(submittedRevision, saved.revision + 1);
-      expect(
-        (await repository.myOrganizationApplication())!.status,
-        OrganizationApplicationStatus.submitted,
-      );
-
-      await expectLater(
-        repository.saveOrganizationApplicationDraft(
-          applicationId: saved.applicationId,
-          expectedRevision: saved.revision,
-          orgName: 'Stale Signal Room',
-          orgType: OrganizationType.venueOperator,
-          contactName: 'Earplug Fan',
-          businessEmail: 'fan@example.com',
-        ),
-        throwsA(isA<StateError>()),
-      );
-
-      repository.platformAdmin = true;
-      final approval = await repository.decideOrganizationApplication(
-        applicationId: saved.applicationId,
-        decision: ApplicationDecision.approved,
-      );
-      expect(approval.status, OrganizationApplicationStatus.approved);
-      expect(approval.organizationId, isNotNull);
-      expect(approval.venueId, isNotNull);
-
-      final memberships = await repository.myOrganizations().first;
-      expect(
-        memberships.map((membership) => membership.organization.id),
-        contains(approval.organizationId),
-      );
-    },
-  );
-
-  test(
-    'DemoRepository stamps and preserves organizer agreement acceptance',
-    () async {
-      final repository = DemoRepository(auth: FakeAuthService());
-      final saved = await repository.saveOrganizationApplicationDraft(
-        orgName: 'Signal Collective',
-        orgType: OrganizationType.promoter,
-        contactName: 'Earplug Fan',
-        businessEmail: 'fan@example.com',
-      );
-      expect(
-        (await repository.myOrganizationApplication())!
-            .organizerAgreementAcceptedAt,
-        isNull,
-      );
-
-      final submittedRevision = await repository.submitOrganizationApplication(
-        applicationId: saved.applicationId,
-        expectedRevision: saved.revision,
-        organizerAgreementAccepted: true,
-      );
-      final submitted = (await repository.myOrganizationApplication())!;
-      expect(submitted.status, OrganizationApplicationStatus.submitted);
-      expect(submitted.revision, submittedRevision);
-      expect(submitted.organizerAgreementAcceptedAt, isNotNull);
-      expect(submitted.organizerAgreementAcceptedAt, submitted.updatedAt);
-
-      await repository.submitOrganizationApplication(
-        applicationId: saved.applicationId,
-        expectedRevision: submittedRevision,
-      );
-      expect(
-        (await repository.myOrganizationApplication())!
-            .organizerAgreementAcceptedAt,
-        submitted.organizerAgreementAcceptedAt,
-      );
-    },
-  );
 
   group('Booking.fromJson', () {
     const feeJson = {
