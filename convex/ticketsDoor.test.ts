@@ -8,7 +8,7 @@ import { mintTickets } from "./lib/ticketMint";
 import { TICKET_TOKEN_PREFIX } from "./lib/ticketStatus";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T20:00:00Z");
 const TICKET_TOKEN = "a".repeat(64);
 const RSVP_TOKEN = "b".repeat(64);

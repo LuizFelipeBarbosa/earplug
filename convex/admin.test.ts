@@ -6,7 +6,7 @@ import { isPlatformAdmin } from "./lib/authz";
 import schema from "./schema";
 
 describe("admin:opsHealth", () => {
-  const modules = import.meta.glob("./**/*.ts");
+  const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
   const now = Date.UTC(2026, 8, 8);
   const day = 24 * 60 * 60 * 1000;
 
@@ -432,7 +432,7 @@ describe("admin:overview host applications", () => {
   test("tracks host review counts and caps crowded queues", async () => {
     vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
     try {
-      const t = convexTest(schema, import.meta.glob("./**/*.ts"));
+      const t = convexTest(schema, import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]));
       const asAdmin = t.withIdentity({
         subject: "host_overview_admin",
         email: "host-overview-admin@example.com",
@@ -655,7 +655,7 @@ describe("admin:grantPlatformAdmin", () => {
 
 describe("admin:bookings", () => {
   async function setupBookings() {
-    const t = convexTest(schema, import.meta.glob("./**/*.ts"));
+    const t = convexTest(schema, import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]));
     const asAdmin = t.withIdentity({ subject: "bookings_admin" });
     const asRegular = t.withIdentity({ subject: "bookings_regular" });
     const { userId: adminUserId } = await asAdmin.mutation(
@@ -947,7 +947,7 @@ describe("admin:bookings", () => {
 
 describe("admin:suspendOrganization notes", () => {
   test("stores a suspension note and clears it when omitted or unsuspended", async () => {
-    const t = convexTest(schema, import.meta.glob("./**/*.ts"));
+    const t = convexTest(schema, import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]));
     const asAdmin = t.withIdentity({ subject: "suspension_note_admin" });
     const { userId } = await asAdmin.mutation(api.users.ensureUser, {});
     const organizationId = await t.run(async (ctx) => {

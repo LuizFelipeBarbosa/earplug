@@ -11,7 +11,7 @@ import { feeSnapshot } from "./lib/fees";
 import { PAYOUT_DELAY_MS } from "./lib/paymentStatus";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T12:00:00Z");
 
 beforeEach(() => {

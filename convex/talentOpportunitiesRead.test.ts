@@ -18,7 +18,7 @@ vi.mock("./lib/env", async (importOriginal) => {
 // Keep the new module typed locally until the integration lane runs codegen.
 const api = generatedApi as typeof generatedApi &
   ApiFromModules<{ talentOpportunitiesRead: typeof readModule }>;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-09-04T12:00:00Z");
 const paginationOpts = { numItems: 100, cursor: null };

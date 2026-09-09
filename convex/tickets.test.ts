@@ -13,7 +13,7 @@ import {
 } from "./lib/ticketInventory";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T12:00:00Z");
 const DAY_MS = 24 * 60 * 60_000;
 const FEE = { bps: 500, fixedMinor: 30 };

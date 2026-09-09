@@ -12,7 +12,7 @@ import {
 } from "./lib/venueConsentStatus";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 
 const venueFields = {
   name: "The Lantern",

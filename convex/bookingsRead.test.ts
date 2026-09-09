@@ -16,7 +16,7 @@ import schema from "./schema";
 // Keep references typed while intentionally leaving codegen untouched.
 const api = generatedApi as typeof generatedApi &
   ApiFromModules<{ bookingsRead: typeof bookingsRead }>;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-04T12:00:00Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STARTS_AT = NOW + 14 * DAY_MS;

@@ -30,7 +30,7 @@ const internal = generatedInternal as typeof generatedInternal &
     ApiFromModules<{ ticketCheckout: typeof ticketCheckout }>,
     FunctionReference<"query" | "mutation" | "action", "internal">
   >;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T12:00:00Z");
 const CHECKOUT_TTL_MS = 30 * 60_000;
 const ACCOUNT_ID = "acct_ticket_organizer";

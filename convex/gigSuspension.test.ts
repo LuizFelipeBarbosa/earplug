@@ -6,7 +6,7 @@ import { publishGigAsAdmin } from "./gigFixtures.test-helpers";
 import { insertGigWithBandIndex } from "./lib/helpers";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 
 test("organization suspension hides its gigs from public reads and restores them", async () => {
   const t = convexTest(schema, modules);

@@ -9,7 +9,7 @@ import schema from "./schema";
 const api = anyApi as unknown as ApiFromModules<{
   privateLocations: typeof privateLocations;
 }>;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-06T12:00:00Z");
 const locationFields = {
   label: "  Backyard  ",

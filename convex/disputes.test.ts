@@ -13,7 +13,7 @@ import schema from "./schema";
 // Keep references typed without editing generated files owned by another lane.
 const api = generatedApi as typeof generatedApi &
   ApiFromModules<{ disputes: typeof disputes }>;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-06T12:00:00Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTORS = [

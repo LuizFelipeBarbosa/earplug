@@ -35,7 +35,7 @@ const exportStatement = makeFunctionReference<
   }
 >("financeActions:exportStatement");
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const stripeMock = vi.mocked(stripeRequest);
 const NOW = Date.UTC(2026, 8, 6, 12);
 const FIVE_MINUTES = 5 * 60 * 1000;

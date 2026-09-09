@@ -46,7 +46,7 @@ const internal = generatedInternal as typeof generatedInternal &
     ApiFromModules<{ payments: typeof payments }>,
     FunctionReference<"query" | "mutation" | "action", "internal">
   >;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T12:00:00Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTORS = [

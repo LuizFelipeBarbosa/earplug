@@ -8,7 +8,7 @@ import * as stripeAccountSync from "./lib/stripeAccountSync";
 import schema from "./schema";
 import type { StripeEvent } from "./stripeWebhook";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const STRIPE_TEST_SECRET = "whsec_test";
 const STRIPE_CONNECT_TEST_SECRET = "whsec_test_connect";
 type TestBackend = TestConvex<typeof schema>;

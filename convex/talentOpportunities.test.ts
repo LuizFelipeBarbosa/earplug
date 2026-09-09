@@ -15,7 +15,7 @@ import {
 import { APPLICATION_ACTIVE_STATUSES } from "./lib/opportunityStatus";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-09-04T12:00:00Z");
 

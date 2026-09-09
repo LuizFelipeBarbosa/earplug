@@ -14,7 +14,7 @@ vi.mock("./lib/stripeClient", async (importOriginal) => {
   return { ...actual, stripeRequest: vi.fn() };
 });
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T12:00:00Z");
 const ACCOUNT_ID = "acct_ticket_organization";
 const BAND_ACCOUNT_ID = "acct_ticket_band";

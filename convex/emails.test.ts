@@ -12,7 +12,7 @@ import {
 import { appBaseUrl, deploymentName } from "./lib/env";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 
 const kinds: BookingEmailKind[] = [
   "offerSent",
