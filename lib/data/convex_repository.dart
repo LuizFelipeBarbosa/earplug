@@ -2,6 +2,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../models.dart';
 import '../services/convex_service.dart';
+import 'json_coercion.dart';
 import 'repository.dart';
 
 class ConvexRepository implements EarplugRepository {
@@ -15,7 +16,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<UserProfile?> me() async {
     final result = await _convexService.query('users:me');
-    final json = _asMap(result);
+    final json = asCastMap(result);
     return json.isEmpty ? null : UserProfile.fromJson(json);
   }
 
@@ -31,7 +32,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Stream<Gig?> publicGig(String ref) =>
       _convexService.subscribe('gigs:resolvePublic', {'ref': ref}, (decoded) {
-        final json = _asMap(decoded);
+        final json = asCastMap(decoded);
         return json.isEmpty ? null : Gig.fromJson(json);
       });
 
@@ -40,7 +41,7 @@ class ConvexRepository implements EarplugRepository {
     return _convexService.subscribe('gigs:forBand', {'bandId': bandId}, (
       decoded,
     ) {
-      return [for (final json in _mapList(decoded)) Gig.fromJson(json)];
+      return [for (final json in asCastMapList(decoded)) Gig.fromJson(json)];
     });
   }
 
@@ -59,7 +60,7 @@ class ConvexRepository implements EarplugRepository {
       'bands:myBands',
       const {},
       (decoded) => [
-        for (final membershipJson in _mapList(decoded))
+        for (final membershipJson in asCastMapList(decoded))
           BandMembership(
             band: Band.fromJson(
               Map<String, dynamic>.from(membershipJson['band'] as Map),
@@ -75,7 +76,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('media:forBand', {
       'bandId': bandId,
     });
-    return [for (final json in _mapList(result)) BandMedia.fromJson(json)];
+    return [for (final json in asCastMapList(result)) BandMedia.fromJson(json)];
   }
 
   @override
@@ -105,7 +106,7 @@ class ConvexRepository implements EarplugRepository {
       'caption': ?caption,
       'lengthSec': ?lengthSec,
     });
-    return _asMap(result)['mediaId'] as String;
+    return asCastMap(result)['mediaId'] as String;
   }
 
   @override
@@ -171,19 +172,19 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('interactions:history', {
       'now': DateTime.now().millisecondsSinceEpoch,
     });
-    return [for (final json in _mapList(result)) FanHistoryItem.fromJson(json)];
+    return [for (final json in asCastMapList(result)) FanHistoryItem.fromJson(json)];
   }
 
   @override
   Future<BandHistory> bandHistory(String bandId) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('gigs:pastForBand', {'bandId': bandId}),
     );
     if (json.isEmpty) return BandHistory.empty;
     return BandHistory(
-      gigs: _mapList(json['gigs']).map(Gig.fromJson).toList(),
+      gigs: asCastMapList(json['gigs']).map(Gig.fromJson).toList(),
       venues: {
-        for (final venueJson in _mapList(json['venues']))
+        for (final venueJson in asCastMapList(json['venues']))
           venueJson['_id'] as String: Venue.fromJson(venueJson),
       },
     );
@@ -191,7 +192,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<BandRecap> bandRecap(String bandId) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('analytics:bandRecap', {'bandId': bandId}),
     );
     if (json.isEmpty) return BandRecap.empty;
@@ -201,14 +202,14 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<List<Venue>> venues() async {
     final result = await _convexService.query('venues:list');
-    return [for (final json in _mapList(result)) Venue.fromJson(json)];
+    return [for (final json in asCastMapList(result)) Venue.fromJson(json)];
   }
 
   @override
   Stream<List<Venue>> watchVenues() => _convexService.subscribe(
     'venues:list',
     const {},
-    (result) => [for (final json in _mapList(result)) Venue.fromJson(json)],
+    (result) => [for (final json in asCastMapList(result)) Venue.fromJson(json)],
   );
 
   @override
@@ -220,7 +221,7 @@ class ConvexRepository implements EarplugRepository {
     required double latitude,
     required double longitude,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('venues:create', {
         'bandId': bandId,
         'name': name,
@@ -247,7 +248,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<FeeRates> feeRates({String? organizationId}) async =>
       FeeRates.fromJson(
-        _asMap(
+        asCastMap(
           await _convexService.query('features:fees', {
             'organizationId': ?organizationId,
           }),
@@ -263,7 +264,7 @@ class ConvexRepository implements EarplugRepository {
       {'organizationId': organizationId},
     );
     return [
-      for (final json in _mapList(result)) PrivateLocation.fromJson(json),
+      for (final json in asCastMapList(result)) PrivateLocation.fromJson(json),
     ];
   }
 
@@ -278,7 +279,7 @@ class ConvexRepository implements EarplugRepository {
     required double lng,
     String? notes,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('privateLocations:create', {
         'organizationId': organizationId,
         'label': label,
@@ -329,7 +330,7 @@ class ConvexRepository implements EarplugRepository {
     required SafetyCategory category,
     required String text,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('safety:report', {
         'bookingId': bookingId,
         'category': category.wireValue,
@@ -344,7 +345,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('safety:mine', {
       'bookingId': bookingId,
     });
-    return [for (final json in _mapList(result)) SafetyReport.fromJson(json)];
+    return [for (final json in asCastMapList(result)) SafetyReport.fromJson(json)];
   }
 
   @override
@@ -352,7 +353,7 @@ class ConvexRepository implements EarplugRepository {
     String? cursor,
     int numItems = 25,
   }) async => SafetyReportsPage.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.query('safety:listOpen', {
         'paginationOpts': {'numItems': numItems, 'cursor': cursor},
       }),
@@ -374,7 +375,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('safety:forBookingAdmin', {
       'bookingId': bookingId,
     });
-    return [for (final json in _mapList(result)) SafetyReport.fromJson(json)];
+    return [for (final json in asCastMapList(result)) SafetyReport.fromJson(json)];
   }
 
   @override
@@ -385,7 +386,7 @@ class ConvexRepository implements EarplugRepository {
     required String text,
     int? requestedRefundMinor,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('disputes:open', {
         'bookingId': bookingId,
         'side': side.wireValue,
@@ -402,7 +403,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('disputes:forBooking', {
       'bookingId': bookingId,
     });
-    return [for (final json in _mapList(result)) Dispute.fromJson(json)];
+    return [for (final json in asCastMapList(result)) Dispute.fromJson(json)];
   }
 
   @override
@@ -410,7 +411,7 @@ class ConvexRepository implements EarplugRepository {
     String? cursor,
     int numItems = 25,
   }) async => DisputesPage.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.query('disputes:listOpen', {
         'paginationOpts': {'numItems': numItems, 'cursor': cursor},
       }),
@@ -445,7 +446,7 @@ class ConvexRepository implements EarplugRepository {
     String? cursor,
     int numItems = 25,
   }) async => AdminBookingsPage.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.query('admin:bookings', {
         'filter': filter.wireValue,
         'paginationOpts': {'numItems': numItems, 'cursor': cursor},
@@ -458,7 +459,7 @@ class ConvexRepository implements EarplugRepository {
     required String opportunityId,
     String? message,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('venueConsents:request', {
         'opportunityId': opportunityId,
         'message': ?message,
@@ -497,7 +498,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<VenueConsent?> venueConsentForOpportunity(String opportunityId) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('venueConsents:forOpportunity', {
         'opportunityId': opportunityId,
       }),
@@ -515,13 +516,13 @@ class ConvexRepository implements EarplugRepository {
       {'organizationId': organizationId, 'status': ?status?.wireValue},
     );
     return [
-      for (final json in _mapList(result)) VenueConsentRow.fromJson(json),
+      for (final json in asCastMapList(result)) VenueConsentRow.fromJson(json),
     ];
   }
 
   @override
   Future<OrganizationApplication?> myOrganizationApplication() async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('organizationApplications:mine'),
     );
     return json.isEmpty ? null : OrganizationApplication.fromJson(json);
@@ -545,7 +546,7 @@ class ConvexRepository implements EarplugRepository {
     String? phone,
     ApplicationVenueDraft? venue,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('organizationApplications:saveDraft', {
         'applicationId': ?applicationId,
         'expectedRevision': ?expectedRevision,
@@ -623,7 +624,7 @@ class ConvexRepository implements EarplugRepository {
   Future<OrganizationApplication?> organizationApplication(
     String applicationId,
   ) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('organizationApplications:get', {
         'applicationId': applicationId,
       }),
@@ -646,7 +647,7 @@ class ConvexRepository implements EarplugRepository {
         'paginationOpts': {'numItems': numItems, 'cursor': cursor},
       },
     );
-    return AdminApplicationPage.fromJson(_asMap(result));
+    return AdminApplicationPage.fromJson(asCastMap(result));
   }
 
   @override
@@ -662,7 +663,7 @@ class ConvexRepository implements EarplugRepository {
     required ApplicationDecision decision,
     String? note,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('organizationApplications:decide', {
         'applicationId': applicationId,
         'decision': decision.wireValue,
@@ -682,14 +683,14 @@ class ConvexRepository implements EarplugRepository {
         'organizations:mine',
         const {},
         (decoded) => [
-          for (final membershipJson in _mapList(decoded))
+          for (final membershipJson in asCastMapList(decoded))
             OrganizationMembership.fromJson(membershipJson),
         ],
       );
 
   @override
   Future<Organization?> organizationBySlug(String slug) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('organizations:bySlug', {'slug': slug}),
     );
     return json.isEmpty ? null : Organization.fromJson(json);
@@ -697,7 +698,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<Organization?> organization(String organizationId) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('organizations:get', {
         'organizationId': organizationId,
       }),
@@ -709,7 +710,7 @@ class ConvexRepository implements EarplugRepository {
   Future<OrganizationDashboard> organizationDashboard(
     String organizationId,
   ) async => OrganizationDashboard.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.query('organizations:dashboard', {
         'organizationId': organizationId,
       }),
@@ -796,7 +797,7 @@ class ConvexRepository implements EarplugRepository {
       'organizationId': organizationId,
     });
     return [
-      for (final json in _mapList(result)) OrganizationMember.fromJson(json),
+      for (final json in asCastMapList(result)) OrganizationMember.fromJson(json),
     ];
   }
 
@@ -826,7 +827,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<OrganizationInvite?> organizationInvite(String organizationId) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('organizationMembers:manageInvite', {
         'organizationId': organizationId,
       }),
@@ -839,7 +840,7 @@ class ConvexRepository implements EarplugRepository {
     required String organizationId,
     required OrganizationRole role,
   }) async => OrganizationInvite.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('organizationMembers:createInvite', {
         'organizationId': organizationId,
         'role': role.wireValue,
@@ -851,7 +852,7 @@ class ConvexRepository implements EarplugRepository {
   Future<OrganizationInvite> rotateOrganizationInvite(
     String organizationId,
   ) async => OrganizationInvite.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('organizationMembers:rotateInvite', {
         'organizationId': organizationId,
       }),
@@ -869,7 +870,7 @@ class ConvexRepository implements EarplugRepository {
   Future<OrganizationInviteResolution?> resolveOrganizationInvite(
     String token,
   ) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('organizationMembers:resolveInvite', {
         'token': token,
       }),
@@ -881,7 +882,7 @@ class ConvexRepository implements EarplugRepository {
   Future<OrganizationInviteAcceptance> acceptOrganizationInvite(
     String token,
   ) async => OrganizationInviteAcceptance.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('organizationMembers:acceptInvite', {
         'token': token,
       }),
@@ -890,7 +891,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<Venue?> resolveVenue(String ref) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('venues:resolvePublic', {'ref': ref}),
     );
     return json.isEmpty ? null : Venue.fromJson(json);
@@ -898,7 +899,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<VenuePrivateDetails?> venuePrivateDetails(String venueId) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('venues:privateDetail', {'venueId': venueId}),
     );
     return json.isEmpty ? null : VenuePrivateDetails.fromJson(json);
@@ -976,13 +977,13 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<bool> isPlatformAdmin() async {
-    final result = _asMap(await _convexService.query('admin:me'));
+    final result = asCastMap(await _convexService.query('admin:me'));
     return result['isPlatformAdmin'] == true;
   }
 
   @override
   Future<AdminOverview> adminOverview() async => AdminOverview.fromJson(
-    _asMap(await _convexService.query('admin:overview')),
+    asCastMap(await _convexService.query('admin:overview')),
   );
 
   @override
@@ -1001,14 +1002,14 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<Band?> band(String bandId) async {
     final result = await _convexService.query('bands:get', {'bandId': bandId});
-    final json = _asMap(result);
+    final json = asCastMap(result);
     return json.isEmpty ? null : Band.fromJson(json);
   }
 
   @override
   Future<Band?> bandBySlug(String slug) async {
     final result = await _convexService.query('bands:bySlug', {'slug': slug});
-    final json = _asMap(result);
+    final json = asCastMap(result);
     return json.isEmpty ? null : Band.fromJson(json);
   }
 
@@ -1017,13 +1018,13 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('bands:profileDetails', {
       'bandId': bandId,
     });
-    return BandProfileDetails.fromJson(_asMap(result));
+    return BandProfileDetails.fromJson(asCastMap(result));
   }
 
   @override
   Future<List<Band>> searchBands(String q) async {
     final result = await _convexService.query('bands:search', {'q': q});
-    return [for (final json in _mapList(result)) Band.fromJson(json)];
+    return [for (final json in asCastMapList(result)) Band.fromJson(json)];
   }
 
   @override
@@ -1056,7 +1057,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<RsvpTicket> ticketForGig(String gigId) async => RsvpTicket.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('interactions:ticketForGig', {
         'gigId': gigId,
       }),
@@ -1179,9 +1180,9 @@ class ConvexRepository implements EarplugRepository {
       'linkYt': ?linkYt,
       'credits': ?credits,
     });
-    final payload = _asMap(result);
+    final payload = asCastMap(result);
     return (
-      band: Band.fromJson(_asMap(payload['band'])),
+      band: Band.fromJson(asCastMap(payload['band'])),
       slug: payload['slug'] as String,
     );
   }
@@ -1206,7 +1207,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.mutation('bands:archive', {
       'bandId': bandId,
     });
-    return BandArchiveResult.fromJson(_asMap(result));
+    return BandArchiveResult.fromJson(asCastMap(result));
   }
 
   @override
@@ -1214,7 +1215,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('bands:archiveStatus', {
       'bandId': bandId,
     });
-    return BandArchiveStatus.fromJson(_asMap(result));
+    return BandArchiveStatus.fromJson(asCastMap(result));
   }
 
   @override
@@ -1222,7 +1223,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('bands:setupStatus', {
       'bandId': bandId,
     });
-    return BandSetupStatus.fromJson(_asMap(result));
+    return BandSetupStatus.fromJson(asCastMap(result));
   }
 
   @override
@@ -1234,7 +1235,7 @@ class ConvexRepository implements EarplugRepository {
       'bandId': bandId,
       'now': (now ?? DateTime.now()).millisecondsSinceEpoch,
     });
-    return BandDiscoveryReadiness.fromJson(_asMap(result));
+    return BandDiscoveryReadiness.fromJson(asCastMap(result));
   }
 
   @override
@@ -1247,7 +1248,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('bandInvites:manage', {
       'bandId': bandId,
     });
-    final json = _asMap(result);
+    final json = asCastMap(result);
     return json.isEmpty ? null : BandInvite.fromJson(json);
   }
 
@@ -1256,7 +1257,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.mutation('bandInvites:create', {
       'bandId': bandId,
     });
-    return BandInvite.fromJson(_asMap(result));
+    return BandInvite.fromJson(asCastMap(result));
   }
 
   @override
@@ -1264,7 +1265,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.mutation('bandInvites:rotate', {
       'bandId': bandId,
     });
-    return BandInvite.fromJson(_asMap(result));
+    return BandInvite.fromJson(asCastMap(result));
   }
 
   @override
@@ -1277,7 +1278,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('bandInvites:resolve', {
       'token': token,
     });
-    final json = _asMap(result);
+    final json = asCastMap(result);
     return json.isEmpty ? null : BandInviteResolution.fromJson(json);
   }
 
@@ -1286,7 +1287,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.mutation('bandInvites:accept', {
       'token': token,
     });
-    return BandInviteAcceptance.fromJson(_asMap(result));
+    return BandInviteAcceptance.fromJson(asCastMap(result));
   }
 
   @override
@@ -1296,7 +1297,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('gigs:resolvePerformerInvite', {
       'token': token,
     });
-    final json = _asMap(result);
+    final json = asCastMap(result);
     return json.isEmpty ? null : PerformerInviteResolution.fromJson(json);
   }
 
@@ -1309,7 +1310,7 @@ class ConvexRepository implements EarplugRepository {
       'token': token,
       'bandId': bandId,
     });
-    return _asMap(result)['projectId'] as String;
+    return asCastMap(result)['projectId'] as String;
   }
 
   @override
@@ -1340,7 +1341,7 @@ class ConvexRepository implements EarplugRepository {
     String? externalUrl,
     List<SlotInput>? slots,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('talentOpportunities:create', {
         'organizationId': organizationId,
         'title': title,
@@ -1437,7 +1438,7 @@ class ConvexRepository implements EarplugRepository {
     required String opportunityId,
     required int expectedRevision,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('talentOpportunities:open', {
         'opportunityId': opportunityId,
         'expectedRevision': expectedRevision,
@@ -1488,7 +1489,7 @@ class ConvexRepository implements EarplugRepository {
   Future<({String opportunityId, String slug})> duplicateOpportunity(
     String opportunityId,
   ) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('talentOpportunities:duplicate', {
         'opportunityId': opportunityId,
       }),
@@ -1504,7 +1505,7 @@ class ConvexRepository implements EarplugRepository {
     required String opportunityId,
     required String bandId,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('talentOpportunities:inviteBand', {
         'opportunityId': opportunityId,
         'bandId': bandId,
@@ -1530,12 +1531,12 @@ class ConvexRepository implements EarplugRepository {
       'talentOpportunitiesRead:manageForOrganization',
       {'organizationId': organizationId},
     );
-    return [for (final json in _mapList(result)) Opportunity.fromJson(json)];
+    return [for (final json in asCastMapList(result)) Opportunity.fromJson(json)];
   }
 
   @override
   Future<Opportunity?> opportunity(String opportunityId) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('talentOpportunitiesRead:get', {
         'opportunityId': opportunityId,
       }),
@@ -1549,7 +1550,7 @@ class ConvexRepository implements EarplugRepository {
       'artistApplications:forOpportunity',
       {'opportunityId': opportunityId},
     );
-    return [for (final json in _mapList(result)) ApplicantRow.fromJson(json)];
+    return [for (final json in asCastMapList(result)) ApplicantRow.fromJson(json)];
   }
 
   @override
@@ -1580,7 +1581,7 @@ class ConvexRepository implements EarplugRepository {
         'filters': ?filters?.toJson(),
       },
     );
-    return OpportunityPage.fromJson(_asMap(result));
+    return OpportunityPage.fromJson(asCastMap(result));
   }
 
   @override
@@ -1589,12 +1590,12 @@ class ConvexRepository implements EarplugRepository {
       'talentOpportunitiesRead:invitedFor',
       {'bandId': bandId},
     );
-    return [for (final json in _mapList(result)) BrowseItem.fromJson(json)];
+    return [for (final json in asCastMapList(result)) BrowseItem.fromJson(json)];
   }
 
   @override
   Future<BrowseItem?> resolveOpportunity(String ref, {String? bandId}) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('talentOpportunitiesRead:resolvePublic', {
         'ref': ref,
         'bandId': ?bandId,
@@ -1622,7 +1623,7 @@ class ConvexRepository implements EarplugRepository {
       'availabilityNote': ?availabilityNote,
       'lineupNote': ?lineupNote,
     });
-    return _asMap(result)['applicationId'] as String;
+    return asCastMap(result)['applicationId'] as String;
   }
 
   @override
@@ -1638,7 +1639,7 @@ class ConvexRepository implements EarplugRepository {
       'bandId': bandId,
     });
     return [
-      for (final json in _mapList(result)) BandApplication.fromJson(json),
+      for (final json in asCastMapList(result)) BandApplication.fromJson(json),
     ];
   }
 
@@ -1647,7 +1648,7 @@ class ConvexRepository implements EarplugRepository {
     required String opportunityId,
     required String bandId,
   }) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('artistApplications:mine', {
         'opportunityId': opportunityId,
         'bandId': bandId,
@@ -1661,12 +1662,12 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('gigs:manageForBand', {
       'bandId': bandId,
     });
-    return [for (final json in _mapList(result)) GigProject.fromJson(json)];
+    return [for (final json in asCastMapList(result)) GigProject.fromJson(json)];
   }
 
   @override
   Future<GigProject> createGigDraft(String bandId) async => GigProject.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('gigs:createDraft', {'bandId': bandId}),
     ),
   );
@@ -1674,7 +1675,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<GigProject> getGigProject(String projectId) async =>
       GigProject.fromJson(
-        _asMap(
+        asCastMap(
           await _convexService.query('gigs:getProject', {
             'projectId': projectId,
           }),
@@ -1701,7 +1702,7 @@ class ConvexRepository implements EarplugRepository {
     int? ticketPriceMinor,
     int? ticketCapacity,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('gigs:saveDraft', {
         'projectId': projectId,
         'revision': revision,
@@ -1733,7 +1734,7 @@ class ConvexRepository implements EarplugRepository {
     String? name,
     String? bandId,
   }) async => GigProject.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('gigs:addPerformer', {
         'projectId': projectId,
         'kind': kind.name,
@@ -1750,7 +1751,7 @@ class ConvexRepository implements EarplugRepository {
     String? name,
     GigPerformerRole? role,
   }) async => GigProject.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('gigs:updatePerformer', {
         'performerId': performerId,
         'name': ?name,
@@ -1762,7 +1763,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<GigProject> removeGigPerformer(String performerId) async =>
       GigProject.fromJson(
-        _asMap(
+        asCastMap(
           await _convexService.mutation('gigs:removePerformer', {
             'performerId': performerId,
           }),
@@ -1774,7 +1775,7 @@ class ConvexRepository implements EarplugRepository {
     String projectId,
     List<String> performerIds,
   ) async => GigProject.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('gigs:reorderPerformers', {
         'projectId': projectId,
         'performerIds': performerIds,
@@ -1784,7 +1785,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<String> publishGigDraft(String projectId) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('gigs:publishDraft', {
         'projectId': projectId,
       }),
@@ -1795,7 +1796,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<GigProject> duplicateGig(String projectId) async =>
       GigProject.fromJson(
-        _asMap(
+        asCastMap(
           await _convexService.mutation('gigs:duplicate', {
             'projectId': projectId,
           }),
@@ -1816,7 +1817,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<DoorRoster> doorRoster(String projectId) async => DoorRoster.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.query('gigs:doorRoster', {'projectId': projectId}),
     ),
   );
@@ -1827,7 +1828,7 @@ class ConvexRepository implements EarplugRepository {
     required int quantity,
     String? referralBandSlug,
   }) async => TicketReservation.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('tickets:reserve', {
         'gigId': gigId,
         'quantity': quantity,
@@ -1844,7 +1845,7 @@ class ConvexRepository implements EarplugRepository {
   Future<({String url, String sessionId})> startTicketCheckout(
     String orderId,
   ) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.action('ticketCheckout:startCheckout', {
         'orderId': orderId,
       }),
@@ -1862,7 +1863,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<List<TicketSummary>> myTickets() async {
     final result = await _convexService.query('tickets:myTickets');
-    return [for (final json in _mapList(result)) TicketSummary.fromJson(json)];
+    return [for (final json in asCastMapList(result)) TicketSummary.fromJson(json)];
   }
 
   @override
@@ -1870,7 +1871,7 @@ class ConvexRepository implements EarplugRepository {
     final decoded = await _convexService.query('tickets:get', {
       'ticketId': ticketId,
     });
-    return decoded == null ? null : TicketSummary.fromJson(_asMap(decoded));
+    return decoded == null ? null : TicketSummary.fromJson(asCastMap(decoded));
   }
 
   @override
@@ -1878,13 +1879,13 @@ class ConvexRepository implements EarplugRepository {
     final decoded = await _convexService.query('tickets:orderStatus', {
       'sessionId': sessionId,
     });
-    return decoded == null ? null : TicketOrderState.fromJson(_asMap(decoded));
+    return decoded == null ? null : TicketOrderState.fromJson(asCastMap(decoded));
   }
 
   @override
   Future<TicketSales> ticketSalesForGig(String gigId) async =>
       TicketSales.fromJson(
-        _asMap(
+        asCastMap(
           await _convexService.query('tickets:salesForGig', {'gigId': gigId}),
         ),
       );
@@ -1894,7 +1895,7 @@ class ConvexRepository implements EarplugRepository {
     required String gigId,
     required String payload,
   }) async => TicketDoorResult.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('ticketsDoor:checkIn', {
         'gigId': gigId,
         'payload': payload,
@@ -1905,7 +1906,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<DoorCounts> organizerDoorRoster(String gigId) async =>
       DoorCounts.fromJson(
-        _asMap(
+        asCastMap(
           await _convexService.query('ticketsDoor:doorRoster', {
             'gigId': gigId,
           }),
@@ -1917,7 +1918,7 @@ class ConvexRepository implements EarplugRepository {
     required String projectId,
     required String payload,
   }) async => DoorCheckInResult.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.mutation('gigs:checkInTicket', {
         'projectId': projectId,
         'payload': payload,
@@ -1957,7 +1958,7 @@ class ConvexRepository implements EarplugRepository {
     if (decoded is! Map) {
       throw Exception('Unexpected sendOffer response: $decoded');
     }
-    final result = _asMap(decoded);
+    final result = asCastMap(decoded);
     return (
       bookingId: result['bookingId'] as String,
       offerId: result['offerId'] as String,
@@ -1970,7 +1971,7 @@ class ConvexRepository implements EarplugRepository {
     required String bookingId,
     required int expectedRevision,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('bookings:withdrawOffer', {
         'bookingId': bookingId,
         'expectedRevision': expectedRevision,
@@ -1986,7 +1987,7 @@ class ConvexRepository implements EarplugRepository {
     required int expectedRevision,
     String? message,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('bookings:respond', {
         'bookingId': bookingId,
         'action': accept ? 'accept' : 'decline',
@@ -2008,7 +2009,7 @@ class ConvexRepository implements EarplugRepository {
     BookingSide? side,
     bool? safety,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('bookings:cancel', {
         'bookingId': bookingId,
         'reason': reason,
@@ -2026,7 +2027,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<StripeAccountStatus> bandPayoutStatus(String bandId) async =>
       StripeAccountStatus.fromJson(
-        _asMap(
+        asCastMap(
           await _convexService.query('payoutAccounts:bandPayoutStatus', {
             'bandId': bandId,
           }),
@@ -2038,7 +2039,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('finance:overview', {
       'organizationId': organizationId,
     });
-    return FinanceOverview.fromJson(_asMap(result));
+    return FinanceOverview.fromJson(asCastMap(result));
   }
 
   @override
@@ -2051,7 +2052,7 @@ class ConvexRepository implements EarplugRepository {
       'organizationId': organizationId,
       'paginationOpts': {'numItems': numItems, 'cursor': cursor},
     });
-    return TransactionsPage.fromJson(_asMap(result));
+    return TransactionsPage.fromJson(asCastMap(result));
   }
 
   @override
@@ -2060,7 +2061,7 @@ class ConvexRepository implements EarplugRepository {
       'financeActions:refreshBalance',
       {'organizationId': organizationId},
     );
-    return decoded == null ? null : FinanceSnapshot.fromJson(_asMap(decoded));
+    return decoded == null ? null : FinanceSnapshot.fromJson(asCastMap(decoded));
   }
 
   @override
@@ -2075,7 +2076,7 @@ class ConvexRepository implements EarplugRepository {
           'fromMs': from.millisecondsSinceEpoch,
           'toMs': to.millisecondsSinceEpoch,
         });
-    return StatementExport.fromJson(_asMap(result));
+    return StatementExport.fromJson(asCastMap(result));
   }
 
   @override
@@ -2083,7 +2084,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('analytics:artistInsights', {
       'applicationId': applicationId,
     });
-    return ArtistInsights.fromJson(_asMap(result));
+    return ArtistInsights.fromJson(asCastMap(result));
   }
 
   @override
@@ -2091,7 +2092,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('analytics:myBandInsights', {
       'bandId': bandId,
     });
-    return ArtistInsights.fromJson(_asMap(result));
+    return ArtistInsights.fromJson(asCastMap(result));
   }
 
   @override
@@ -2115,7 +2116,7 @@ class ConvexRepository implements EarplugRepository {
   Future<StripeAccountStatus> organizationStripeStatus(
     String organizationId,
   ) async => StripeAccountStatus.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.query('payoutAccounts:organizationStripeStatus', {
         'organizationId': organizationId,
       }),
@@ -2124,7 +2125,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<String> startBandOnboarding(String bandId) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.action('stripeActions:startBandOnboarding', {
         'bandId': bandId,
       }),
@@ -2134,7 +2135,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<String> enableBandTicketSales(String bandId) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.action('stripeActions:enableBandTicketSales', {
         'bandId': bandId,
       }),
@@ -2144,7 +2145,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<String> startOrganizationOnboarding(String organizationId) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.action('stripeActions:startOrganizationOnboarding', {
         'organizationId': organizationId,
       }),
@@ -2155,7 +2156,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<StripeAccountStatus> refreshBandAccountStatus(String bandId) async =>
       StripeAccountStatus.fromJson(
-        _asMap(
+        asCastMap(
           await _convexService.action(
             'stripeActions:refreshBandAccountStatus',
             {'bandId': bandId},
@@ -2167,7 +2168,7 @@ class ConvexRepository implements EarplugRepository {
   Future<StripeAccountStatus> refreshOrganizationAccountStatus(
     String organizationId,
   ) async => StripeAccountStatus.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.action(
         'stripeActions:refreshOrganizationAccountStatus',
         {'organizationId': organizationId},
@@ -2177,7 +2178,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<String> bandExpressDashboardLink(String bandId) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.action('stripeActions:bandExpressDashboardLink', {
         'bandId': bandId,
       }),
@@ -2187,7 +2188,7 @@ class ConvexRepository implements EarplugRepository {
 
   @override
   Future<String> organizationExpressDashboardLink(String organizationId) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.action(
         'stripeActions:organizationExpressDashboardLink',
         {'organizationId': organizationId},
@@ -2200,7 +2201,7 @@ class ConvexRepository implements EarplugRepository {
   Future<({String url, String sessionId})> startInstallmentCheckout(
     String paymentRecordId,
   ) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.action('payments:startInstallmentCheckout', {
         'paymentRecordId': paymentRecordId,
       }),
@@ -2216,7 +2217,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('payments:paymentsForBooking', {
       'bookingId': bookingId,
     });
-    return [for (final json in _mapList(result)) PaymentRecord.fromJson(json)];
+    return [for (final json in asCastMapList(result)) PaymentRecord.fromJson(json)];
   }
 
   @override
@@ -2224,7 +2225,7 @@ class ConvexRepository implements EarplugRepository {
     final decoded = await _convexService.query('payments:checkoutStatus', {
       'sessionId': sessionId,
     });
-    return decoded == null ? null : CheckoutStatus.fromJson(_asMap(decoded));
+    return decoded == null ? null : CheckoutStatus.fromJson(asCastMap(decoded));
   }
 
   @override
@@ -2232,7 +2233,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('payouts:payoutsForBooking', {
       'bookingId': bookingId,
     });
-    return [for (final json in _mapList(result)) Payout.fromJson(json)];
+    return [for (final json in asCastMapList(result)) Payout.fromJson(json)];
   }
 
   @override
@@ -2240,7 +2241,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('payouts:payoutsForBand', {
       'bandId': bandId,
     });
-    return [for (final json in _mapList(result)) Payout.fromJson(json)];
+    return [for (final json in asCastMapList(result)) Payout.fromJson(json)];
   }
 
   @override
@@ -2254,7 +2255,7 @@ class ConvexRepository implements EarplugRepository {
       'fromMs': from.millisecondsSinceEpoch,
       'toMs': to.millisecondsSinceEpoch,
     });
-    return PayoutStatement.fromJson(_asMap(result));
+    return PayoutStatement.fromJson(asCastMap(result));
   }
 
   @override
@@ -2263,7 +2264,7 @@ class ConvexRepository implements EarplugRepository {
     BookingSide? side,
     required DateTime now,
   }) async => RefundPreview.fromJson(
-    _asMap(
+    asCastMap(
       await _convexService.query('refunds:previewCancellation', {
         'bookingId': bookingId,
         'as': ?side?.wireValue,
@@ -2277,12 +2278,12 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('refunds:refundsForBooking', {
       'bookingId': bookingId,
     });
-    return [for (final json in _mapList(result)) RefundRecord.fromJson(json)];
+    return [for (final json in asCastMapList(result)) RefundRecord.fromJson(json)];
   }
 
   @override
   Future<Booking?> booking(String bookingId, {BookingSide? viewAs}) async {
-    final json = _asMap(
+    final json = asCastMap(
       await _convexService.query('bookingsRead:get', {
         'bookingId': bookingId,
         'viewAs': ?viewAs?.wireValue,
@@ -2300,7 +2301,7 @@ class ConvexRepository implements EarplugRepository {
       'organizationId': organizationId,
       'statuses': ?statuses?.map((s) => s.wireValue).toList(),
     });
-    return [for (final json in _mapList(result)) Booking.fromJson(json)];
+    return [for (final json in asCastMapList(result)) Booking.fromJson(json)];
   }
 
   @override
@@ -2308,7 +2309,7 @@ class ConvexRepository implements EarplugRepository {
     final result = await _convexService.query('bookingsRead:forBand', {
       'bandId': bandId,
     });
-    return [for (final json in _mapList(result)) Booking.fromJson(json)];
+    return [for (final json in asCastMapList(result)) Booking.fromJson(json)];
   }
 
   @override
@@ -2318,7 +2319,7 @@ class ConvexRepository implements EarplugRepository {
     required List<String> categories,
     required String text,
   }) async {
-    final result = _asMap(
+    final result = asCastMap(
       await _convexService.mutation('reviews:submit', {
         'bookingId': bookingId,
         'rating': rating,
@@ -2335,7 +2336,7 @@ class ConvexRepository implements EarplugRepository {
   @override
   Future<BookingReviews> reviewsForBooking(String bookingId) async =>
       BookingReviews.fromJson(
-        _asMap(
+        asCastMap(
           await _convexService.query('reviews:forBooking', {
             'bookingId': bookingId,
           }),
@@ -2348,7 +2349,7 @@ class ConvexRepository implements EarplugRepository {
       'bandId': bandId,
       'limit': ?limit,
     });
-    return [for (final json in _mapList(result)) PublicReview.fromJson(json)];
+    return [for (final json in asCastMapList(result)) PublicReview.fromJson(json)];
   }
 
   @override
@@ -2360,16 +2361,16 @@ class ConvexRepository implements EarplugRepository {
       'organizationId': organizationId,
       'limit': ?limit,
     });
-    return [for (final json in _mapList(result)) PublicReview.fromJson(json)];
+    return [for (final json in asCastMapList(result)) PublicReview.fromJson(json)];
   }
 }
 
 BandPage parseBandPage(dynamic decoded) {
-  final json = _asMap(decoded);
+  final json = asCastMap(decoded);
   final cursor = json['continueCursor'];
   return BandPage(
     items: [
-      for (final bandJson in _mapList(json['page'])) Band.fromJson(bandJson),
+      for (final bandJson in asCastMapList(json['page'])) Band.fromJson(bandJson),
     ],
     continueCursor: cursor is String ? cursor : null,
     isDone: json['isDone'] == true,
@@ -2377,13 +2378,13 @@ BandPage parseBandPage(dynamic decoded) {
 }
 
 VenueDetail? parseVenueDetail(dynamic decoded) {
-  final json = _asMap(decoded);
+  final json = asCastMap(decoded);
   if (json.isEmpty) return null;
   return VenueDetail(
-    venue: Venue.fromJson(_asMap(json['venue'])),
-    gigs: [for (final gigJson in _mapList(json['gigs'])) Gig.fromJson(gigJson)],
+    venue: Venue.fromJson(asCastMap(json['venue'])),
+    gigs: [for (final gigJson in asCastMapList(json['gigs'])) Gig.fromJson(gigJson)],
     bands: {
-      for (final bandJson in _mapList(json['bands']))
+      for (final bandJson in asCastMapList(json['bands']))
         bandJson['_id'] as String: Band.fromJson(bandJson),
     },
     truncated: json['truncated'] == true,
@@ -2392,18 +2393,18 @@ VenueDetail? parseVenueDetail(dynamic decoded) {
 
 FeedSnapshot parseFeedSnapshot(dynamic decoded) {
   final now = DateTime.now();
-  final json = _asMap(decoded);
+  final json = asCastMap(decoded);
   final gigs = [
-    for (final gigJson in _mapList(json['gigs']))
+    for (final gigJson in asCastMapList(json['gigs']))
       Gig.fromJson(gigJson, now: now),
   ];
   final nextStartsAt = json['nextStartsAt'];
   final venues = <String, Venue>{
-    for (final venueJson in _mapList(json['venues']))
+    for (final venueJson in asCastMapList(json['venues']))
       venueJson['_id'] as String: Venue.fromJson(venueJson),
   };
   final bands = <String, Band>{
-    for (final bandJson in _mapList(json['bands']))
+    for (final bandJson in asCastMapList(json['bands']))
       bandJson['_id'] as String: Band.fromJson(bandJson),
   };
   return FeedSnapshot(
@@ -2417,36 +2418,24 @@ FeedSnapshot parseFeedSnapshot(dynamic decoded) {
 }
 
 Map<String, int> parseGoingCounts(dynamic decoded) => Map.unmodifiable({
-  for (final json in _mapList(decoded))
+  for (final json in asCastMapList(decoded))
     json['gigId'] as String: (json['goingCount'] as num).toInt(),
 });
 
 Interactions parseInteractions(dynamic decoded) {
-  final json = _asMap(decoded);
+  final json = asCastMap(decoded);
   if (json.isEmpty) return Interactions.empty;
   return Interactions(
     rsvpGigIds: Set<String>.from(json['rsvpGigIds'] as List? ?? const []),
     followBandIds: Set<String>.from(json['followBandIds'] as List? ?? const []),
     savedGigIds: Set<String>.from(json['savedGigIds'] as List? ?? const []),
-    gigs: [for (final gigJson in _mapList(json['gigs'])) Gig.fromJson(gigJson)],
+    gigs: [for (final gigJson in asCastMapList(json['gigs'])) Gig.fromJson(gigJson)],
     attendedCount: (json['attendedCount'] as num?)?.toInt() ?? 0,
   );
 }
 
-Map<String, dynamic> _asMap(dynamic value) {
-  if (value == null) return const {};
-  return Map<String, dynamic>.from(value as Map);
-}
-
-List<Map<String, dynamic>> _mapList(dynamic value) {
-  if (value == null) return const [];
-  return [
-    for (final item in value as List) Map<String, dynamic>.from(item as Map),
-  ];
-}
-
 int _revisionFrom(dynamic value) {
   if (value is num) return value.toInt();
-  final revision = _asMap(value)['revision'];
+  final revision = asCastMap(value)['revision'];
   return revision is num ? revision.toInt() : 0;
 }
