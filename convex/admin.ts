@@ -139,6 +139,7 @@ export const opsHealth = internalQuery({
   returns: v.object({
     deployment: v.string(),
     since: v.number(),
+    truncated: v.boolean(),
     flags: v.object({
       payments: v.boolean(),
       tickets: v.boolean(),
@@ -168,6 +169,12 @@ export const opsHealth = internalQuery({
     ),
   }),
   handler: async (ctx, args) => {
+    if (
+      !Number.isFinite(args.now) ||
+      (args.days !== undefined && !Number.isFinite(args.days))
+    ) {
+      throw new Error("days and now must be finite numbers");
+    }
     const days = Math.min(30, Math.max(1, args.days ?? 7));
     const since = args.now - days * 24 * 60 * 60 * 1000;
     const rows = await ctx.db
@@ -221,6 +228,7 @@ export const opsHealth = internalQuery({
     return {
       deployment: deploymentName() ?? "unknown",
       since,
+      truncated: rows.length === 5000,
       flags: {
         payments: flag("PAYMENTS_ENABLED", false),
         tickets: flag("TICKETS_ENABLED", false),

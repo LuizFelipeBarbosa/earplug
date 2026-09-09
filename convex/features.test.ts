@@ -128,7 +128,7 @@ describe("features: public fees", () => {
     });
   });
 
-  test("returns organization overrides ahead of env rates without authentication", async () => {
+  async function setupOrganizationWithFeeOverrides() {
     const t = convexTest(schema);
     vi.stubEnv("BOOKING_COMMISSION_BPS", "1250");
     vi.stubEnv("TICKETING_FEE_BPS", "350");
@@ -141,7 +141,7 @@ describe("features: public fees", () => {
         genres: [],
         attendedCount: 0,
       });
-      return await ctx.db.insert("organizations", {
+      const id = await ctx.db.insert("organizations", {
         name: "Fee Test Organization",
         slug: "fee-test-organization",
         orgType: "promoter",
@@ -153,12 +153,101 @@ describe("features: public fees", () => {
         createdAt: 1,
         updatedAt: 1,
       });
+      const memberUserId = await ctx.db.insert("users", {
+        clerkId: "fee-test-member",
+        name: "Fee Test Member",
+        email: "member-fees@example.com",
+        genres: [],
+        attendedCount: 0,
+      });
+      await ctx.db.insert("organizationMembers", {
+        organizationId: id,
+        userId: memberUserId,
+        role: "door",
+        createdAt: 1,
+      });
+      await ctx.db.insert("users", {
+        clerkId: "fee-test-non-member",
+        name: "Fee Test Non-Member",
+        email: "non-member-fees@example.com",
+        genres: [],
+        attendedCount: 0,
+      });
+      return id;
     });
 
-    expect(await t.query(api.features.fees, { organizationId })).toEqual({
+    return {
+      t,
+      organizationId,
+      asMember: t.withIdentity({ subject: "fee-test-member" }),
+      asNonMember: t.withIdentity({ subject: "fee-test-non-member" }),
+    };
+  }
+
+  test("returns organization overrides ahead of env rates for a member", async () => {
+    const { asMember, organizationId } = await setupOrganizationWithFeeOverrides();
+
+    expect(await asMember.query(api.features.fees, { organizationId })).toEqual({
       bookingCommissionBps: 800,
       ticketingFeeBps: 200,
       ticketingFeeFixedMinor: 25,
+      configured: true,
+    });
+  });
+
+  test("returns env rates for an authenticated non-member", async () => {
+    const { asNonMember, organizationId } =
+      await setupOrganizationWithFeeOverrides();
+
+    expect(
+      await asNonMember.query(api.features.fees, { organizationId }),
+    ).toEqual({
+      bookingCommissionBps: 1250,
+      ticketingFeeBps: 350,
+      ticketingFeeFixedMinor: 50,
+      configured: true,
+    });
+  });
+
+  test("returns env rates for an anonymous caller despite organization overrides", async () => {
+    const { t, organizationId } = await setupOrganizationWithFeeOverrides();
+
+    expect(await t.query(api.features.fees, { organizationId })).toEqual({
+      bookingCommissionBps: 1250,
+      ticketingFeeBps: 350,
+      ticketingFeeFixedMinor: 50,
+      configured: true,
+    });
+  });
+
+  test.each(["anonymous", "non-member"])(
+    "returns configured false for %s callers when only organization overrides are set",
+    async (caller) => {
+      const { t, asNonMember, organizationId } =
+        await setupOrganizationWithFeeOverrides();
+      vi.stubEnv("BOOKING_COMMISSION_BPS", undefined);
+      vi.stubEnv("TICKETING_FEE_BPS", undefined);
+      vi.stubEnv("TICKETING_FEE_FIXED_MINOR", undefined);
+      const client = caller === "anonymous" ? t : asNonMember;
+
+      expect(await client.query(api.features.fees, { organizationId })).toEqual({
+        bookingCommissionBps: 0,
+        ticketingFeeBps: 0,
+        ticketingFeeFixedMinor: 0,
+        configured: false,
+      });
+    },
+  );
+
+  test("returns env rates for a member when the organization has been deleted", async () => {
+    const { t, asMember, organizationId } =
+      await setupOrganizationWithFeeOverrides();
+    await t.run((ctx) => ctx.db.delete(organizationId));
+
+    expect(await asMember.query(api.features.fees, { organizationId })).toEqual({
+      bookingCommissionBps: 1250,
+      ticketingFeeBps: 350,
+      ticketingFeeFixedMinor: 50,
       configured: true,
     });
   });

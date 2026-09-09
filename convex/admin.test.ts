@@ -213,11 +213,64 @@ describe("admin:opsHealth", () => {
     },
   );
 
+  test("reports truncation when recent events reach or exceed the 5000-row cap", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await Promise.all(
+        Array.from({ length: 4999 }, (_, index) =>
+          ctx.db.insert("stripeEvents", {
+            eventId: `evt_capped_${index}`,
+            type: "account.updated",
+            status: "applied",
+            livemode: false,
+            receivedAt: now,
+          }),
+        ),
+      );
+    });
+
+    const underCap = await t.query(internal.admin.opsHealth, { now });
+    expect(underCap.truncated).toBe(false);
+    expect(underCap.stripeEvents[0].count).toBe(4999);
+
+    for (const count of [5000, 5001]) {
+      await t.run((ctx) =>
+        ctx.db.insert("stripeEvents", {
+          eventId: `evt_capped_${count - 1}`,
+          type: "account.updated",
+          status: "applied",
+          livemode: false,
+          receivedAt: now,
+        }),
+      );
+      const health = await t.query(internal.admin.opsHealth, { now });
+      expect(health.truncated).toBe(true);
+      expect(health.stripeEvents[0].count).toBe(5000);
+    }
+  });
+
+  test("rejects a non-finite now", async () => {
+    const t = convexTest(schema, modules);
+
+    await expect(
+      t.query(internal.admin.opsHealth, { now: NaN }),
+    ).rejects.toThrow("finite numbers");
+  });
+
+  test("rejects non-finite days", async () => {
+    const t = convexTest(schema, modules);
+
+    await expect(
+      t.query(internal.admin.opsHealth, { days: Infinity, now }),
+    ).rejects.toThrow("finite numbers");
+  });
+
   test("returns default flags and no Resend configuration when unset", async () => {
     const t = convexTest(schema, modules);
     expect(await t.query(internal.admin.opsHealth, { now })).toEqual({
       deployment: "unknown",
       since: now - 7 * day,
+      truncated: false,
       flags: {
         payments: false,
         tickets: false,

@@ -1,8 +1,9 @@
 import { v } from "convex/values";
-import type { Doc } from "./_generated/dataModel";
-import { env, query } from "./_generated/server";
+import { query } from "./_generated/server";
+import { organizationMembershipFor } from "./lib/authz";
 import { flag } from "./lib/env";
 import { resolveCommissionBps } from "./lib/fees";
+import { currentUser } from "./lib/helpers";
 import { resolveTicketingFee } from "./lib/ticketFees";
 
 export const flags = query({
@@ -36,16 +37,21 @@ export const fees = query({
     configured: v.boolean(),
   }),
   handler: async (ctx, args) => {
-    const organization = args.organizationId
-      ? await ctx.db.get(args.organizationId)
-      : null;
+    const user = args.organizationId ? await currentUser(ctx) : null;
+    const membership =
+      args.organizationId && user
+        ? await organizationMembershipFor(ctx, args.organizationId, user._id)
+        : null;
+    const organization =
+      args.organizationId && membership
+        ? await ctx.db.get(args.organizationId)
+        : null;
     let configured = true;
     let bookingCommissionBps = 0;
     try {
-      bookingCommissionBps = resolveCommissionBps(
-        organization ??
-          ({ bookingCommissionBps: undefined } as Doc<"organizations">),
-      );
+      bookingCommissionBps = resolveCommissionBps({
+        bookingCommissionBps: organization?.bookingCommissionBps,
+      });
     } catch {
       configured = false;
     }
