@@ -73,7 +73,13 @@ async function createPublishableProject(
     flyStorageId?: Id<"_storage"> | null;
     overlay?: boolean;
   } = {},
-) {
+): Promise<{
+  _id: Id<"gigProjects">;
+  performers: {
+    _id: Id<"gigProjectPerformers">;
+    bandId: Id<"bands"> | null;
+  }[];
+}> {
   const draft = await setupResult.asAdmin.mutation(api.gigs.createDraft, {
     bandId: setupResult.bandId,
   });

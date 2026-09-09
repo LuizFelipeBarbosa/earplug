@@ -136,6 +136,7 @@ export const requiredClientFunctions = Object.freeze({
   "venueConsents.js:forVenueOrganization": "Query",
   "payouts.js:statementForBand": "Query",
   "features.js:fees": "Query",
+  "stripeActions.js:enableBandTicketSales": "Action",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -224,6 +225,10 @@ export const requiredClientFields = Object.freeze([
   ["organizations.js:dashboard", "return", "pendingVenueConsents", true],
   ["features.js:fees", "return", "bookingCommissionBps", false],
   ["organizationApplications.js:submit", "args", "organizerAgreementAccepted", true],
+  ["gigs.js:resolvePublic", "return", "ticketSeller", true],
+  ["gigs.js:saveDraft", "args", "ticketPriceMinor", true],
+  ["gigs.js:saveDraft", "args", "ticketCapacity", true],
+  ["gigs.js:getProject", "return", "ticketPriceMinor", true],
 ]);
 
 export function deploymentNameFromUrl(value) {

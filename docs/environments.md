@@ -78,6 +78,10 @@ verified on 2026-09-08:
   `features:flags.promoters` surface (promoter organizers not yet enabled
   in production).
 - `BAND_GIG_WRITES` — dev: `true`; prod: unset (defaults to `true`).
+  Band ticket sales have no separate feature flag: they require both
+  `BAND_GIG_WRITES` and `TICKETS_ENABLED` to be true, plus per-band
+  `bandPayoutAccounts.chargesEnabled`. Setting `BAND_GIG_WRITES=false`
+  stops new band ticket sales but never blocks refunds.
 
 All feature flags above are `true` in development. In production,
 `DISPUTES_ENABLED` and `PROMOTERS_ENABLED` remain unset and default to

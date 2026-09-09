@@ -9,6 +9,7 @@ import {
   query,
 } from "./_generated/server";
 import { DocCache, docCache } from "./lib/docCache";
+import { flag } from "./lib/env";
 import {
   formattedTime,
   replaceGigBandIndex,
@@ -43,12 +44,30 @@ import {
   gigProjectStatusValidator,
 } from "./schema";
 import { performerLineupReady, venuePosterReady } from "./lib/discovery";
+import { cancelTicketSalesForGig } from "./lib/ticketCancellation";
+import { applyTicketInventoryCapacity } from "./lib/ticketInventory";
+import { resolveTicketSeller } from "./lib/ticketSeller";
+import { validateTicketPriceAndCapacity } from "./talentOpportunities";
 
 const PUBLIC_WEB_ORIGIN = "https://earplug.app";
 
 const MAX_PERFORMERS = 20;
 const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 const TICKET_PREFIX = "earplug:ticket:v1:";
+const DELETE_BLOCKING_ORDER_STATUSES = [
+  "paid",
+  "refunded",
+  "reserved",
+  "checkout_open",
+] as const;
+const ALL_ORDER_STATUSES = [
+  "reserved",
+  "checkout_open",
+  "paid",
+  "expired",
+  "cancelled",
+  "refunded",
+] as const;
 
 const performerPayloadValidator = v.object({
   _id: v.id("gigProjectPerformers"),
@@ -77,7 +96,9 @@ const projectPayloadValidator = v.object({
   flyerUrl: v.union(v.string(), v.null()),
   overlay: v.boolean(),
   desc: v.string(),
-  ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+  ticketing: v.union(v.literal("rsvp"), v.literal("external"), v.literal("paid")),
+  ticketPriceMinor: v.union(v.number(), v.null()),
+  ticketCapacity: v.union(v.number(), v.null()),
   ageRequirement: ageRequirementValidator,
   externalUrl: v.union(v.string(), v.null()),
   cap: v.string(),
@@ -91,6 +112,23 @@ function lifecycle(gig: Doc<"gigs">) {
 
 function assertActiveProject(project: Doc<"gigProjects">) {
   if (project.status === "deleted") throw new Error("Gig has been deleted");
+}
+
+async function gigHasTicketOrderInStatus(
+  ctx: QueryCtx | MutationCtx,
+  gigId: Id<"gigs">,
+  statuses: readonly Doc<"ticketOrders">["status"][],
+): Promise<boolean> {
+  for (const status of statuses) {
+    const existing = await ctx.db
+      .query("ticketOrders")
+      .withIndex("by_gigId_and_status", (q) =>
+        q.eq("gigId", gigId).eq("status", status),
+      )
+      .first();
+    if (existing) return true;
+  }
+  return false;
 }
 
 async function projectPerformers(
@@ -130,6 +168,8 @@ async function toProjectPayload(
     overlay: project.overlay,
     desc: project.desc,
     ticketing: project.ticketing,
+    ticketPriceMinor: project.ticketPriceMinor ?? null,
+    ticketCapacity: project.ticketCapacity ?? null,
     ageRequirement: project.ageRequirement,
     externalUrl: project.externalUrl ?? null,
     cap: project.cap,
@@ -217,6 +257,8 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
     flyKey: project.flyKey,
     flyStorageId: project.flyStorageId,
     ticketing: project.ticketing,
+    ticketPriceMinor: project.ticketPriceMinor,
+    ticketCapacity: project.ticketCapacity,
     externalUrl: project.externalUrl,
   });
 
@@ -246,6 +288,14 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
     desc: project.desc.trim(),
     ticketing: project.ticketing,
     ageRequirement: project.ageRequirement,
+    ...(project.ticketing === "paid"
+      ? {
+          ticketPriceMinor: project.ticketPriceMinor,
+          ticketCurrency: "usd",
+          ticketCapacity: project.ticketCapacity,
+          price: Math.round((project.ticketPriceMinor ?? 0) / 100),
+        }
+      : {}),
     ...(project.ticketing === "external" && project.externalUrl
       ? { externalUrl: project.externalUrl }
       : { externalUrl: undefined }),
@@ -254,6 +304,7 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
       : { flyStorageId: undefined }),
     cap: project.cap,
     createdByBand: project.bandId,
+    ownerKind: "band" as const,
     lifecycle: "published" as const,
     discoveryListingReady,
   };
@@ -279,6 +330,18 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
       project.startsAt,
     );
   }
+  if (project.ticketing === "paid") {
+    const gig = await ctx.db.get(publicGigId);
+    if (!gig) throw new Error("Gig not found after publish");
+    const seller = await resolveTicketSeller(ctx, gig);
+    if (!seller) throw new Error("This band is not ready to sell tickets yet");
+    await applyTicketInventoryCapacity(
+      ctx,
+      publicGigId,
+      seller,
+      project.ticketCapacity,
+    );
+  }
   await ctx.db.patch(project._id, {
     publicGigId,
     publicSlug,
@@ -299,7 +362,9 @@ export async function createProjectForGig(
     .withIndex("by_public_gig", (q) => q.eq("publicGigId", gig._id))
     .first();
   if (existing) return existing._id;
-  if (gig.ticketing === "paid") {
+  const isBandOwned =
+    gig.createdByBand !== undefined && gig.createdByOrganization === undefined;
+  if (gig.ticketing === "paid" && !isBandOwned) {
     throw new Error("Paid gigs are organization-owned and have no band project");
   }
   const now = Date.now();
@@ -320,6 +385,8 @@ export async function createProjectForGig(
     overlay: true,
     desc: gig.desc,
     ticketing: gig.ticketing,
+    ticketPriceMinor: gig.ticketPriceMinor,
+    ticketCapacity: gig.ticketCapacity,
     ageRequirement: gig.ageRequirement ?? "allAges",
     externalUrl: gig.externalUrl,
     cap: gig.cap,
@@ -632,7 +699,9 @@ export const saveDraft = mutation({
     flyStorageId: v.union(v.id("_storage"), v.null()),
     overlay: v.boolean(),
     desc: v.string(),
-    ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+    ticketing: v.union(v.literal("rsvp"), v.literal("external"), v.literal("paid")),
+    ticketPriceMinor: v.optional(v.union(v.number(), v.null())),
+    ticketCapacity: v.optional(v.union(v.number(), v.null())),
     ageRequirement: ageRequirementValidator,
     externalUrl: v.union(v.string(), v.null()),
     cap: v.string(),
@@ -645,6 +714,30 @@ export const saveDraft = mutation({
       throw new Error("Draft changed elsewhere");
     if (!Number.isFinite(args.price) || args.price < 0)
       throw new Error("Invalid price");
+    if (args.ticketing === "paid") {
+      if (
+        args.ticketPriceMinor === undefined ||
+        args.ticketPriceMinor === null ||
+        args.ticketCapacity === undefined ||
+        args.ticketCapacity === null
+      ) {
+        throw new Error("Ticket price and capacity are required");
+      }
+      validateTicketPriceAndCapacity(args.ticketPriceMinor, args.ticketCapacity);
+      if (!flag("TICKETS_ENABLED", false)) {
+        throw new Error("Ticket sales are not open yet");
+      }
+      const payoutAccount = await ctx.db
+        .query("bandPayoutAccounts")
+        .withIndex("by_bandId", (q) => q.eq("bandId", project.bandId))
+        .unique();
+      if (
+        payoutAccount?.chargesEnabled !== true ||
+        payoutAccount?.cardPaymentsStatus !== "active"
+      ) {
+        throw new Error("Enable ticket sales in PAYOUTS first");
+      }
+    }
     const revision = project.revision + 1;
     await ctx.db.patch(project._id, {
       revision,
@@ -658,6 +751,8 @@ export const saveDraft = mutation({
       overlay: args.overlay,
       desc: args.desc,
       ticketing: args.ticketing,
+      ticketPriceMinor: args.ticketPriceMinor ?? undefined,
+      ticketCapacity: args.ticketCapacity ?? undefined,
       ageRequirement: args.ageRequirement,
       externalUrl: args.externalUrl?.trim() || undefined,
       cap: args.cap,
@@ -937,6 +1032,8 @@ export const duplicate = mutation({
       overlay: source.overlay,
       desc: source.desc,
       ticketing: source.ticketing,
+      ticketPriceMinor: source.ticketPriceMinor,
+      ticketCapacity: source.ticketCapacity,
       ageRequirement: source.ageRequirement,
       externalUrl: source.externalUrl,
       cap: source.cap,
@@ -964,6 +1061,7 @@ export const unpublish = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
+    // Leave reserved/checkout_open holds to expire naturally through the sweepers.
     if (project.publicGigId)
       await ctx.db.patch(project.publicGigId, {
         lifecycle: "unpublished",
@@ -989,6 +1087,9 @@ export const cancel = mutation({
       status: "cancelled",
       updatedAt: Date.now(),
     });
+    if (project.ticketing === "paid") {
+      await cancelTicketSalesForGig(ctx, project.publicGigId);
+    }
     return null;
   },
 });
@@ -998,6 +1099,16 @@ export const deleteGig = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const project = await requireProjectAdmin(ctx, args.projectId);
+    if (
+      project.publicGigId &&
+      (await gigHasTicketOrderInStatus(
+        ctx,
+        project.publicGigId,
+        DELETE_BLOCKING_ORDER_STATUSES,
+      ))
+    ) {
+      throw new Error("Cancel the show first");
+    }
     if (project.publicGigId)
       await ctx.db.patch(project.publicGigId, {
         lifecycle: "deleted",
@@ -1146,9 +1257,12 @@ export const purgeDeletedGig = internalMutation({
   handler: async (ctx, args) => {
     const project = await ctx.db.get(args.projectId);
     if (!project || project.status !== "deleted") return null;
+    const gigId = project.publicGigId;
+    if (gigId && (await gigHasTicketOrderInStatus(ctx, gigId, ALL_ORDER_STATUSES))) {
+      return null;
+    }
     const performers = await projectPerformers(ctx, project._id);
     for (const performer of performers) await ctx.db.delete(performer._id);
-    const gigId = project.publicGigId;
     if (gigId) {
       const joins = await ctx.db
         .query("gigBands")

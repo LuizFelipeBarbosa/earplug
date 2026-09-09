@@ -10,7 +10,12 @@ import {
 } from "./_generated/server";
 import { requireOrganizationRole } from "./lib/authz";
 import { flag } from "./lib/env";
-import { currentUser, feedCutoff, requireUser } from "./lib/helpers";
+import {
+  currentUser,
+  feedCutoff,
+  requireBandRole,
+  requireUser,
+} from "./lib/helpers";
 import { orderTotals, resolveTicketingFee } from "./lib/ticketFees";
 import {
   availableCount,
@@ -18,6 +23,12 @@ import {
   releaseInventory,
   reserveInventory,
 } from "./lib/ticketInventory";
+import {
+  assertSellerFlags,
+  assertSellerOpen,
+  resolveTicketSeller,
+  sellerRefFields,
+} from "./lib/ticketSeller";
 import {
   assertTicketOrderTransition,
   ticketOrderStatusValidator,
@@ -74,28 +85,18 @@ export const reserve = mutation({
     if (!gig) throw new Error("Event not found");
     if (
       gig.ticketing !== "paid" ||
-      (gig.lifecycle ?? "published") !== "published" ||
-      !gig.createdByOrganization
+      (gig.lifecycle ?? "published") !== "published"
     ) {
       throw new Error("This event is not selling tickets");
     }
+    const seller = await resolveTicketSeller(ctx, gig);
+    if (!seller) throw new Error("This event is not selling tickets");
+    assertSellerFlags(seller);
     const now = Date.now();
     if (gig.startsAt <= now) {
       throw new Error("This event has already started");
     }
-    const organization = await ctx.db.get(gig.createdByOrganization);
-    if (!organization || organization.status === "suspended") {
-      throw new Error("This organizer is not ready to sell tickets yet");
-    }
-    const details = await ctx.db
-      .query("organizationPrivateDetails")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", organization._id),
-      )
-      .unique();
-    if (!details || details.stripeChargesEnabled !== true) {
-      throw new Error("This organizer is not ready to sell tickets yet");
-    }
+    assertSellerOpen(seller);
     if (
       !Number.isInteger(args.quantity) ||
       args.quantity < 1 ||
@@ -118,7 +119,7 @@ export const reserve = mutation({
       }
     }
 
-    const fee = resolveTicketingFee(organization);
+    const fee = resolveTicketingFee(seller.feeSource);
     if (
       gig.ticketPriceMinor === undefined ||
       gig.ticketCurrency === undefined
@@ -146,7 +147,7 @@ export const reserve = mutation({
     const reservedUntil = now + 30 * 60_000;
     const orderId = await ctx.db.insert("ticketOrders", {
       gigId: gig._id,
-      organizationId: gig.createdByOrganization,
+      ...sellerRefFields(seller),
       buyerUserId: user._id,
       quantity: args.quantity,
       unitPriceMinor: gig.ticketPriceMinor,
@@ -367,12 +368,18 @@ export const salesForGig = query({
   }),
   handler: async (ctx, args) => {
     const gig = await ctx.db.get(args.gigId);
-    if (!gig || !gig.createdByOrganization) throw new Error("Event not found");
-    await requireOrganizationRole(ctx, gig.createdByOrganization, [
-      "owner",
-      "manager",
-      "finance",
-    ]);
+    if (!gig) throw new Error("Event not found");
+    const seller = await resolveTicketSeller(ctx, gig);
+    if (!seller) throw new Error("Event not found");
+    if (seller.kind === "organization") {
+      await requireOrganizationRole(ctx, seller.organizationId!, [
+        "owner",
+        "manager",
+        "finance",
+      ]);
+    } else {
+      await requireBandRole(ctx, seller.bandId!, { role: "admin" });
+    }
     const inventory = await ctx.db
       .query("gigTicketInventory")
       .withIndex("by_gigId", (q) => q.eq("gigId", gig._id))

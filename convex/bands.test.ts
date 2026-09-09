@@ -1,6 +1,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
+import type { Doc, Id } from "./_generated/dataModel";
 import { publishGigAsAdmin } from "./gigFixtures.test-helpers";
 import { bandColorFor, isReservedPublicSlug } from "./lib/helpers";
 import schema from "./schema";
@@ -442,10 +443,21 @@ describe("bands:archive", () => {
         ageRequirement: "allAges",
         cap: "No cap",
       });
-      const project = (
-        await asAdmin.query(api.gigs.manageForBand, { bandId: archived.bandId })
-      ).find((candidate) => candidate.publicGigId === future.gigId)!;
-      const performerProject = await asAdmin.mutation(api.gigs.addPerformer, {
+      const projects: {
+        _id: Id<"gigProjects">;
+        publicGigId: Id<"gigs"> | null;
+      }[] = await asAdmin.query(api.gigs.manageForBand, {
+        bandId: archived.bandId,
+      });
+      const project = projects.find(
+        (candidate) => candidate.publicGigId === future.gigId,
+      )!;
+      const performerProject: {
+        performers: {
+          kind: Doc<"gigProjectPerformers">["kind"];
+          inviteUrl: string | null;
+        }[];
+      } = await asAdmin.mutation(api.gigs.addPerformer, {
         projectId: project._id,
         kind: "invited",
         role: "support",

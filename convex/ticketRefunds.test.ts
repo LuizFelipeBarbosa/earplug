@@ -53,7 +53,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function setupRefunds(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
+async function setupRefunds(
+  orderOverrides: Partial<Doc<"ticketOrders">> = {},
+  sellerKind: "organization" | "band" = "organization",
+) {
   const t = convexTest(schema, modules);
   const ids = await t.run(async (ctx) => {
     const buyerUserId = await ctx.db.insert("users", {
@@ -83,6 +86,34 @@ async function setupRefunds(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
       verificationDocStorageIds: [],
       updatedAt: NOW,
     });
+    const bandId =
+      sellerKind === "band"
+        ? await ctx.db.insert("bands", {
+            name: "Static Bloom",
+            slug: "static-bloom",
+            genres: [],
+            area: "Oakland",
+            colorHex: "#7B8FFF",
+            initials: "SB",
+            followerCount: 0,
+            pastShows: [],
+          })
+        : undefined;
+    const payoutAccountId = bandId
+      ? await ctx.db.insert("bandPayoutAccounts", {
+          bandId,
+          stripeAccountId: "acct_ticket_band",
+          chargesEnabled: true,
+          cardPaymentsStatus: "active",
+          payoutsEnabled: true,
+          detailsSubmitted: true,
+          requirementsDue: [],
+          updatedAt: NOW,
+        })
+      : undefined;
+    const sellerFields = bandId
+      ? { sellerKind: "band" as const, bandId }
+      : { organizationId };
     const venueId = await ctx.db.insert("venues", {
       name: "Neighborhood Hall",
       area: "Oakland",
@@ -105,12 +136,14 @@ async function setupRefunds(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
       ticketing: "paid",
       cap: "100",
       goingCount: 0,
-      ownerKind: "organization",
-      createdByOrganization: organizationId,
+      ownerKind: sellerKind,
+      ...(bandId
+        ? { createdByBand: bandId }
+        : { createdByOrganization: organizationId }),
     });
     const orderId = await ctx.db.insert("ticketOrders", {
       gigId,
-      organizationId,
+      ...sellerFields,
       buyerUserId,
       quantity: 2,
       unitPriceMinor: 500,
@@ -133,14 +166,22 @@ async function setupRefunds(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
       await ctx.db.insert("tickets", {
         orderId,
         gigId,
-        organizationId,
+        ...sellerFields,
         holderUserId: buyerUserId,
         token,
         status: "valid",
         createdAt: NOW,
       });
     }
-    return { organizationId, detailsId, gigId, orderId };
+    return {
+      organizationId,
+      detailsId,
+      bandId,
+      payoutAccountId,
+      sellerFields,
+      gigId,
+      orderId,
+    };
   });
   return {
     t,
@@ -155,7 +196,7 @@ async function setupRefunds(orderOverrides: Partial<Doc<"ticketOrders">> = {}) {
         ctx.db.insert("ticketRefunds", {
           orderId: ids.orderId,
           gigId: ids.gigId,
-          organizationId: ids.organizationId,
+          ...ids.sellerFields,
           amountMinor: 1100,
           currency: "usd",
           reason: "admin",
@@ -259,6 +300,16 @@ describe("requestOrderRefund", () => {
 });
 
 describe("loadRefundContext", () => {
+  test("rejects a band without a connected account instead of using organization details", async () => {
+    const f = await setupRefunds({}, "band");
+    const refundId = await f.addRefund();
+    await f.t.run((ctx) => ctx.db.delete(f.payoutAccountId!));
+    await expect(
+      f.t.query(internal.ticketRefunds.loadRefundContext, { refundId }),
+    ).rejects.toThrow("Seller has no Stripe account");
+    expect(stripeMock).not.toHaveBeenCalled();
+  });
+
   test("returns full documents and the organization's connected account", async () => {
     const f = await setupRefunds();
     const refundId = await f.addRefund();
@@ -300,7 +351,7 @@ describe("loadRefundContext", () => {
     ).rejects.toThrow("Ticket order has no Stripe payment intent");
   });
 
-  test.each(["refund", "order", "details", "account"] as const)(
+  test.each(["refund", "order", "seller", "details", "account"] as const)(
     "rejects missing %s context",
     async (missing) => {
       const f = await setupRefunds();
@@ -308,6 +359,7 @@ describe("loadRefundContext", () => {
       await f.t.run(async (ctx) => {
         if (missing === "refund") await ctx.db.delete(refundId);
         if (missing === "order") await ctx.db.delete(f.orderId);
+        if (missing === "seller") await ctx.db.delete(f.organizationId);
         if (missing === "details") await ctx.db.delete(f.detailsId);
         if (missing === "account")
           await ctx.db.patch(f.detailsId, { stripeAccountId: undefined });
@@ -319,13 +371,80 @@ describe("loadRefundContext", () => {
           ? "Refund not found"
           : missing === "order"
             ? "Ticket order not found"
-            : "Organization has no Stripe account",
+            : missing === "seller"
+              ? "Ticket order has no seller"
+              : "Seller has no Stripe account",
       );
     },
   );
 });
 
 describe("ticket refund execution", () => {
+  test("refunds a band charge and records its seller while band gig writes are disabled", async () => {
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+    const f = await setupRefunds({}, "band");
+    const refundId = (await f.request())!;
+    expect(
+      await f.t.query(internal.ticketRefunds.loadRefundContext, { refundId }),
+    ).toMatchObject({
+      stripeAccountId: "acct_ticket_band",
+      paymentIntentId: "pi_ticket",
+    });
+    const pending = await f.state();
+    expect(pending.order).toMatchObject({ sellerKind: "band", bandId: f.bandId });
+    expect(pending.order).not.toHaveProperty("organizationId");
+    expect(pending.refunds).toMatchObject([
+      { _id: refundId, sellerKind: "band", bandId: f.bandId, status: "pending" },
+    ]);
+    expect(pending.refunds[0]).not.toHaveProperty("organizationId");
+
+    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(stripeMock).toHaveBeenCalledExactlyOnceWith(
+      "POST",
+      "/v1/refunds",
+      {
+        payment_intent: "pi_ticket",
+        amount: 1100,
+        refund_application_fee: true,
+        metadata: { ticketOrderId: f.orderId, refundId, reason: "admin" },
+      },
+      {
+        stripeAccount: "acct_ticket_band",
+        idempotencyKey: stripeIdempotencyKey("ticket-refund", refundId),
+      },
+    );
+    const state = await f.state();
+    expect(state.order).toMatchObject({ status: "refunded", refundedMinor: 1100 });
+    expect(state.tickets.map((ticket) => ticket.status)).toEqual([
+      "refunded",
+      "refunded",
+    ]);
+    expect(state.refunds).toMatchObject([
+      {
+        _id: refundId,
+        sellerKind: "band",
+        bandId: f.bandId,
+        status: "succeeded",
+        stripeRefundId: "re_ticket_1",
+      },
+    ]);
+    expect(state.refunds[0]).not.toHaveProperty("organizationId");
+    expect(state.ledger).toMatchObject([
+      { kind: "ticket_refund", amountMinor: -1100 },
+      { kind: "ticket_fee", amountMinor: -100 },
+    ]);
+    for (const entry of state.ledger) {
+      expect(entry).toMatchObject({
+        bandId: f.bandId,
+        ticketOrderId: f.orderId,
+        fundsState: "refunded",
+        currency: "usd",
+        stripeRef: "refund:re_ticket_1",
+      });
+      expect(entry).not.toHaveProperty("organizationId");
+    }
+  });
+
   test("refunds the direct charge and application fee, settles tickets, and deduplicates success", async () => {
     const f = await setupRefunds();
     const refundId = (await f.request())!;

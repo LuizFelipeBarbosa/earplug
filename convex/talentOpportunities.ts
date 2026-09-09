@@ -82,7 +82,7 @@ export function requirePrivateBookingsEnabled(): void {
   }
 }
 
-function validateTicketPriceAndCapacity(
+export function validateTicketPriceAndCapacity(
   ticketPriceMinor: number | undefined,
   ticketCapacity: number | undefined,
 ): { ticketPriceMinor: number; ticketCapacity: number } {

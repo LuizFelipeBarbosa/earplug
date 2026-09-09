@@ -20,6 +20,7 @@ import {
   stripeRequest,
 } from "./lib/stripeClient";
 import { expireOrder } from "./lib/ticketMint";
+import { assertSellerOpen, resolveOrderSeller } from "./lib/ticketSeller";
 import { assertTicketOrderTransition } from "./lib/ticketStatus";
 import schema from "./schema";
 
@@ -38,6 +39,7 @@ const checkoutContextValidator = v.object({
   order: ticketOrderValidator,
   gigTitle: v.string(),
   stripeAccountId: v.string(),
+  sellerKind: v.union(v.literal("organization"), v.literal("band")),
   buyerEmail: v.string(),
 });
 
@@ -65,23 +67,18 @@ export const loadCheckoutContext = internalQuery({
     if (order.reservedUntil < (await feedCutoff(ctx))) {
       throw new Error("Your ticket hold has expired");
     }
-    const [gig, details] = await Promise.all([
+    const [gig, seller] = await Promise.all([
       ctx.db.get(order.gigId),
-      ctx.db
-        .query("organizationPrivateDetails")
-        .withIndex("by_organizationId", (q) =>
-          q.eq("organizationId", order.organizationId),
-        )
-        .unique(),
+      resolveOrderSeller(ctx, order),
     ]);
     if (!gig) throw new Error("Event not found");
-    if (!details?.stripeAccountId || details.stripeChargesEnabled !== true) {
-      throw new Error("This organizer is not ready to sell tickets yet");
-    }
+    if (!seller) throw new Error("This event is not selling tickets");
+    assertSellerOpen(seller);
     return {
       order,
       gigTitle: gig.title,
-      stripeAccountId: details.stripeAccountId,
+      stripeAccountId: seller.stripeAccountId!,
+      sellerKind: seller.kind,
       buyerEmail: user.email,
     };
   },
@@ -190,20 +187,20 @@ export const loadOrderForCancel = internalQuery({
 });
 
 export const loadStripeAccountForCancel = internalQuery({
-  args: { organizationId: v.id("organizations") },
+  args: { orderId: v.id("ticketOrders") },
   returns: v.string(),
   handler: async (ctx, args) => {
-    const details = await ctx.db
-      .query("organizationPrivateDetails")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", args.organizationId),
-      )
-      .unique();
+    const order = await requireOrder(ctx, args.orderId);
+    const seller = await resolveOrderSeller(ctx, order);
     // Cancellation must still work after charges are disabled or a hold lapses.
-    if (!details?.stripeAccountId) {
-      throw new Error("This organizer is not ready to sell tickets yet");
+    if (!seller?.stripeAccountId) {
+      throw new Error(
+        seller?.kind === "band"
+          ? "This band is not ready to sell tickets yet"
+          : "This organizer is not ready to sell tickets yet",
+      );
     }
-    return details.stripeAccountId;
+    return seller.stripeAccountId;
   },
 });
 
@@ -268,6 +265,9 @@ export const startCheckout = action({
       internal.ticketCheckout.loadCheckoutContext,
       args,
     );
+    if (context.sellerKind === "band" && !flag("BAND_GIG_WRITES", true)) {
+      throw new Error("Bands are not selling tickets right now");
+    }
     const { order } = context;
     if (order.attempt >= 3) {
       throw new Error(
@@ -362,7 +362,7 @@ export const cancelOrder = action({
       if (order.stripeCheckoutSessionId) {
         const stripeAccountId: string = await ctx.runQuery(
           internal.ticketCheckout.loadStripeAccountForCancel,
-          { organizationId: order.organizationId },
+          { orderId: order._id },
         );
         await expireCheckoutSession(
           order.stripeCheckoutSessionId,

@@ -34,11 +34,15 @@ const modules = import.meta.glob("./**/*.ts");
 const NOW = Date.parse("2026-09-05T12:00:00Z");
 const CHECKOUT_TTL_MS = 30 * 60_000;
 const ACCOUNT_ID = "acct_ticket_organizer";
+const BAND_ACCOUNT_ID = "acct_ticket_band";
 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
   vi.stubEnv("TICKETS_ENABLED", "true");
+  vi.stubEnv("BAND_GIG_WRITES", "true");
+  vi.stubEnv("TICKETING_FEE_BPS", "500");
+  vi.stubEnv("TICKETING_FEE_FIXED_MINOR", "30");
   vi.stubEnv("PAYMENTS_ENABLED", "true");
   vi.stubEnv("APP_BASE_URL", "https://earplug.test");
   let nextSession = 0;
@@ -176,6 +180,209 @@ async function setupCheckout() {
     buyer.action(api.ticketCheckout.cancelOrder, { orderId: ids.orderId });
   return { t, buyer, stranger, ...ids, state, start, cancel };
 }
+
+async function setupBandCheckout() {
+  const f = await setupCheckout();
+  const ids = await f.t.run(async (ctx) => {
+    const bandId = await ctx.db.insert("bands", {
+      name: "Static Bloom",
+      slug: "static-bloom",
+      genres: ["Indie"],
+      area: "Oakland",
+      colorHex: "#7B8FFF",
+      initials: "SB",
+      followerCount: 0,
+      pastShows: [],
+    });
+    const payoutAccountId = await ctx.db.insert("bandPayoutAccounts", {
+      bandId,
+      stripeAccountId: BAND_ACCOUNT_ID,
+      chargesEnabled: true,
+      cardPaymentsStatus: "active",
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+      requirementsDue: [],
+      updatedAt: NOW,
+    });
+    const { _id, _creationTime, ...gigFields } = (await ctx.db.get(f.gigId))!;
+    const bandGigId = await ctx.db.insert("gigs", {
+      ...gigFields,
+      title: "Static Bloom at the Hall",
+      createdByOrganization: undefined,
+      createdByBand: bandId,
+      ownerKind: "band",
+    });
+    return { bandId, bandGigId, payoutAccountId };
+  });
+  const { orderId: bandOrderId } = await f.buyer.mutation(api.tickets.reserve, {
+    gigId: ids.bandGigId,
+    quantity: 2,
+  });
+  return { ...f, ...ids, bandOrderId };
+}
+
+describe("band checkout", () => {
+  test("uses the band's account for context and direct charges with the default band flag", async () => {
+    vi.stubEnv("BAND_GIG_WRITES", undefined);
+    const f = await setupBandCheckout();
+    expect(
+      await f.buyer.query(internal.ticketCheckout.loadCheckoutContext, {
+        orderId: f.bandOrderId,
+      }),
+    ).toMatchObject({
+      sellerKind: "band",
+      stripeAccountId: BAND_ACCOUNT_ID,
+      order: { sellerKind: "band", bandId: f.bandId },
+    });
+    await expect(
+      f.buyer.action(api.ticketCheckout.startCheckout, {
+        orderId: f.bandOrderId,
+      }),
+    ).resolves.toEqual({
+      sessionId: "cs_ticket_1",
+      url: "https://checkout.stripe.com/c/pay/cs_ticket_1",
+    });
+    expect(stripeRequest).toHaveBeenCalledExactlyOnceWith(
+      "POST",
+      "/v1/checkout/sessions",
+      expect.objectContaining({
+        client_reference_id: f.bandOrderId,
+        payment_intent_data: {
+          application_fee_amount: 260,
+          metadata: { ticketOrderId: f.bandOrderId },
+        },
+        line_items: [
+          {
+            quantity: 2,
+            price_data: {
+              currency: "usd",
+              unit_amount: 2130,
+              product_data: { name: "Static Bloom at the Hall · Ticket" },
+            },
+          },
+        ],
+      }),
+      {
+        stripeAccount: BAND_ACCOUNT_ID,
+        idempotencyKey: `ticket-checkout:${f.bandOrderId}:1`,
+      },
+    );
+  });
+
+  test("BAND_GIG_WRITES blocks band reservations and checkout while organization sales continue", async () => {
+    const f = await setupBandCheckout();
+    const before = await f.t.run((ctx) => ctx.db.get(f.bandOrderId));
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+    await expect(
+      f.stranger.mutation(api.tickets.reserve, {
+        gigId: f.bandGigId,
+        quantity: 1,
+      }),
+    ).rejects.toThrow("Bands are not selling tickets right now");
+    await expect(
+      f.buyer.action(api.ticketCheckout.startCheckout, {
+        orderId: f.bandOrderId,
+      }),
+    ).rejects.toThrow("Bands are not selling tickets right now");
+    expect(stripeRequest).not.toHaveBeenCalled();
+    expect(await f.t.run((ctx) => ctx.db.get(f.bandOrderId))).toEqual(before);
+
+    const organizationOrder = await f.stranger.mutation(api.tickets.reserve, {
+      gigId: f.gigId,
+      quantity: 1,
+    });
+    expect(
+      await f.t.run((ctx) => ctx.db.get(organizationOrder.orderId)),
+    ).toMatchObject({
+      sellerKind: "organization",
+      organizationId: f.organizationId,
+    });
+    await expect(
+      f.stranger.action(api.ticketCheckout.startCheckout, {
+        orderId: organizationOrder.orderId,
+      }),
+    ).resolves.toMatchObject({ sessionId: "cs_ticket_1" });
+    expect(stripeRequest).toHaveBeenCalledExactlyOnceWith(
+      "POST",
+      "/v1/checkout/sessions",
+      expect.any(Object),
+      {
+        stripeAccount: ACCOUNT_ID,
+        idempotencyKey: `ticket-checkout:${organizationOrder.orderId}:1`,
+      },
+    );
+  });
+
+  test("the global tickets flag takes precedence over the band flag in checkout", async () => {
+    const f = await setupBandCheckout();
+    vi.stubEnv("TICKETS_ENABLED", "false");
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+    for (const orderId of [f.orderId, f.bandOrderId]) {
+      await expect(
+        f.buyer.action(api.ticketCheckout.startCheckout, { orderId }),
+      ).rejects.toThrow("Ticket sales are not open yet");
+    }
+    expect(stripeRequest).not.toHaveBeenCalled();
+  });
+
+  test("cancels through the band's account after charges and band writes are disabled", async () => {
+    const f = await setupBandCheckout();
+    await f.buyer.action(api.ticketCheckout.startCheckout, {
+      orderId: f.bandOrderId,
+    });
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.payoutAccountId, { chargesEnabled: false }),
+    );
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+    vi.mocked(stripeRequest).mockClear();
+    await expect(
+      f.buyer.action(api.ticketCheckout.cancelOrder, {
+        orderId: f.bandOrderId,
+      }),
+    ).resolves.toBeNull();
+    expect(stripeRequest).toHaveBeenCalledExactlyOnceWith(
+      "POST",
+      "/v1/checkout/sessions/cs_ticket_1/expire",
+      undefined,
+      { stripeAccount: BAND_ACCOUNT_ID },
+    );
+    const { order, inventory } = await f.t.run(async (ctx) => ({
+      order: await ctx.db.get(f.bandOrderId),
+      inventory: await ctx.db
+        .query("gigTicketInventory")
+        .withIndex("by_gigId", (q) => q.eq("gigId", f.bandGigId))
+        .unique(),
+    }));
+    expect(order?.status).toBe("cancelled");
+    expect(inventory?.reserved).toBe(0);
+  });
+
+  test.each([
+    ["band", "This band is not ready to sell tickets yet"],
+    ["organization", "This organizer is not ready to sell tickets yet"],
+    ["missing seller", "This organizer is not ready to sell tickets yet"],
+  ] as const)(
+    "cancellation reports a missing account for %s",
+    async (kind, message) => {
+      const f = await setupBandCheckout();
+      const orderId = kind === "organization" ? f.orderId : f.bandOrderId;
+      await f.buyer.action(api.ticketCheckout.startCheckout, { orderId });
+      await f.t.run(async (ctx) => {
+        if (kind === "missing seller") await ctx.db.delete(f.bandId);
+        else if (kind === "band") await ctx.db.delete(f.payoutAccountId);
+        else await ctx.db.delete(f.detailsId);
+      });
+      vi.mocked(stripeRequest).mockClear();
+      await expect(
+        f.buyer.action(api.ticketCheckout.cancelOrder, { orderId }),
+      ).rejects.toThrow(message);
+      expect(stripeRequest).not.toHaveBeenCalled();
+      expect(await f.t.run((ctx) => ctx.db.get(orderId))).toMatchObject({
+        status: "checkout_open",
+      });
+    },
+  );
+});
 
 describe("startCheckout", () => {
   test("creates a direct charge with the fee, ticket price, and first attempt key", async () => {

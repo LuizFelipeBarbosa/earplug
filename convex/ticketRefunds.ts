@@ -15,6 +15,7 @@ import {
 import { flag } from "./lib/env";
 import { appendLedgerEntry } from "./lib/ledger";
 import { stripeIdempotencyKey, stripeRequest } from "./lib/stripeClient";
+import { resolveOrderSeller, sellerRefFields } from "./lib/ticketSeller";
 import {
   assertTicketOrderTransition,
   assertTicketRefundTransition,
@@ -68,11 +69,13 @@ export async function requestOrderRefund(
     .first();
   if (pending) return pending._id;
 
+  const seller = await resolveOrderSeller(ctx, order);
+  if (!seller) throw new Error("Ticket order has no seller");
   const now = Date.now();
   const refundId = await ctx.db.insert("ticketRefunds", {
     orderId: order._id,
     gigId: order.gigId,
-    organizationId: order.organizationId,
+    ...sellerRefFields(seller),
     amountMinor,
     currency: order.currency,
     reason,
@@ -114,6 +117,8 @@ export async function requestLatePaymentRefund(
     .first();
   if (existing) return existing._id;
 
+  const seller = await resolveOrderSeller(ctx, order);
+  if (!seller) throw new Error("Ticket order has no seller");
   const now = Date.now();
   if (order.stripePaymentIntentId === undefined) {
     await ctx.db.patch(order._id, {
@@ -124,7 +129,7 @@ export async function requestLatePaymentRefund(
   const refundId = await ctx.db.insert("ticketRefunds", {
     orderId: order._id,
     gigId: order.gigId,
-    organizationId: order.organizationId,
+    ...sellerRefFields(seller),
     amountMinor: options.amountMinor,
     currency: order.currency,
     reason: "late_payment",
@@ -154,19 +159,15 @@ export const loadRefundContext = internalQuery({
     if (!paymentIntentId) {
       throw new Error("Ticket order has no Stripe payment intent");
     }
-    const details = await ctx.db
-      .query("organizationPrivateDetails")
-      .withIndex("by_organizationId", (q) =>
-        q.eq("organizationId", order.organizationId),
-      )
-      .unique();
-    if (!details?.stripeAccountId) {
-      throw new Error("Organization has no Stripe account");
+    const seller = await resolveOrderSeller(ctx, order);
+    if (!seller) throw new Error("Ticket order has no seller");
+    if (!seller.stripeAccountId) {
+      throw new Error("Seller has no Stripe account");
     }
     return {
       refund,
       order,
-      stripeAccountId: details.stripeAccountId,
+      stripeAccountId: seller.stripeAccountId,
       paymentIntentId,
     };
   },
@@ -280,9 +281,12 @@ export async function applyRefundSucceeded(
     }
   }
 
-  const ledgerContext = {
+  const seller = await resolveOrderSeller(ctx, order);
+  if (!seller) throw new Error("Ticket order has no seller");
+  // The ledger schema stores seller IDs without sellerKind.
+  const { sellerKind: _sellerKind, ...ledgerContext } = {
     occurredAt: now,
-    organizationId: order.organizationId,
+    ...sellerRefFields(seller),
     ticketOrderId: order._id,
     currency: refund.currency,
     fundsState: "refunded" as const,
@@ -441,11 +445,13 @@ export async function reconcileDashboardRefund(
     .unique();
   if (existing) return;
 
+  const seller = await resolveOrderSeller(ctx, order);
+  if (!seller) throw new Error("Ticket order has no seller");
   const now = Date.now();
   const refundId = await ctx.db.insert("ticketRefunds", {
     orderId: order._id,
     gigId: order.gigId,
-    organizationId: order.organizationId,
+    ...sellerRefFields(seller),
     amountMinor: delta,
     currency: order.currency,
     reason: "dashboard",

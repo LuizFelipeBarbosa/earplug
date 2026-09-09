@@ -17,6 +17,7 @@ const modules = import.meta.glob("./**/*.ts");
 const NOW = Date.parse("2026-09-05T12:00:00Z");
 const DAY_MS = 24 * 60 * 60_000;
 const FEE = { bps: 500, fixedMinor: 30 };
+const BAND_FEE = { bps: 250, fixedMinor: 45 };
 const UNIT_PRICE_MINOR = 2000;
 const ACTORS = ["buyer", "otherBuyer", "owner", "door"] as const;
 type Actor = (typeof ACTORS)[number];
@@ -25,6 +26,9 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
   vi.stubEnv("TICKETS_ENABLED", "true");
+  vi.stubEnv("BAND_GIG_WRITES", "true");
+  vi.stubEnv("TICKETING_FEE_BPS", String(BAND_FEE.bps));
+  vi.stubEnv("TICKETING_FEE_FIXED_MINOR", String(BAND_FEE.fixedMinor));
 });
 
 afterEach(() => {
@@ -62,6 +66,7 @@ async function setupTickets() {
       organizationId,
       businessEmail: "owner@tickets.test",
       contactName: "Owner",
+      stripeAccountId: "acct_ticket_organizer",
       stripeChargesEnabled: true,
       stripePayoutsEnabled: true,
       stripeDetailsSubmitted: true,
@@ -172,6 +177,41 @@ async function setupTickets() {
     }));
   }
   return { t, as, ...fixture, reservationState };
+}
+
+async function setupBandTickets() {
+  const f = await setupTickets();
+  const ids = await f.t.run(async (ctx) => {
+    const payoutAccountId = await ctx.db.insert("bandPayoutAccounts", {
+      bandId: f.creatorBandId,
+      stripeAccountId: "acct_ticket_band",
+      chargesEnabled: true,
+      cardPaymentsStatus: "active",
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+      requirementsDue: [],
+      updatedAt: NOW,
+    });
+    const bandGigId = await ctx.db.insert("gigs", {
+      ...f.gigFields,
+      slug: "band-at-the-hall",
+      createdByOrganization: undefined,
+      createdByBand: f.creatorBandId,
+      ownerKind: "band",
+    });
+    await ctx.db.insert("bandMembers", {
+      bandId: f.creatorBandId,
+      userId: f.users.owner,
+      role: "admin",
+    });
+    await ctx.db.insert("bandMembers", {
+      bandId: f.creatorBandId,
+      userId: f.users.door,
+      role: "member",
+    });
+    return { bandGigId, payoutAccountId };
+  });
+  return { ...f, ...ids };
 }
 
 describe("ticket reservations", () => {
@@ -315,7 +355,15 @@ describe("ticket reservations", () => {
     "createdByOrganization",
   ] as const)("refuses a paid gig missing %s", async (field) => {
     const { t, as, gigId } = await setupTickets();
-    await t.run((ctx) => ctx.db.patch(gigId, { [field]: undefined }));
+    await t.run((ctx) =>
+      ctx.db.patch(gigId, {
+        [field]: undefined,
+        // Removing the organizer must also remove the alternate band seller.
+        ...(field === "createdByOrganization"
+          ? { createdByBand: undefined }
+          : {}),
+      }),
+    );
     await expect(
       as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
     ).rejects.toThrow("This event is not selling tickets");
@@ -542,6 +590,143 @@ describe("ticket reservations", () => {
     ).toHaveLength(1);
     expect((await t.run((ctx) => ctx.db.get(inventoryId)))?.reserved).toBe(3);
   });
+});
+
+describe("band ticket sales", () => {
+  test("reserves against the band seller using environment fees and preserves referrals", async () => {
+    const f = await setupBandTickets();
+    const result = await f.as("buyer").mutation(api.tickets.reserve, {
+      gigId: f.bandGigId,
+      quantity: 3,
+      referralBandSlug: "creator-band",
+    });
+    expect(result).toMatchObject({
+      quantity: 3,
+      unitPriceMinor: UNIT_PRICE_MINOR,
+      ...orderTotals({
+        unitPriceMinor: UNIT_PRICE_MINOR,
+        quantity: 3,
+        fee: BAND_FEE,
+      }),
+    });
+    const { order, inventory } = await f.t.run(async (ctx) => ({
+      order: await ctx.db.get(result.orderId),
+      inventory: await ctx.db
+        .query("gigTicketInventory")
+        .withIndex("by_gigId", (q) => q.eq("gigId", f.bandGigId))
+        .unique(),
+    }));
+    expect(order).toMatchObject({
+      sellerKind: "band",
+      bandId: f.creatorBandId,
+      referralBandId: f.creatorBandId,
+      status: "reserved",
+    });
+    expect(order).not.toHaveProperty("organizationId");
+    expect(inventory).toMatchObject({
+      sellerKind: "band",
+      bandId: f.creatorBandId,
+      capacity: 10,
+      reserved: 3,
+      sold: 0,
+    });
+    expect(inventory).not.toHaveProperty("organizationId");
+  });
+
+  test.each([
+    "charges disabled",
+    "cards inactive",
+    "account missing",
+    "archived",
+  ])(
+    "refuses a band seller with %s",
+    async (condition) => {
+      const f = await setupBandTickets();
+      await f.t.run(async (ctx) => {
+        if (condition === "account missing") {
+          await ctx.db.delete(f.payoutAccountId);
+        } else if (condition === "archived") {
+          await ctx.db.patch(f.creatorBandId, { archivedAt: NOW });
+        } else {
+          await ctx.db.patch(
+            f.payoutAccountId,
+            condition === "charges disabled"
+              ? { chargesEnabled: false }
+              : { cardPaymentsStatus: "inactive" },
+          );
+        }
+      });
+      await expect(
+        f.as("buyer").mutation(api.tickets.reserve, {
+          gigId: f.bandGigId,
+          quantity: 1,
+        }),
+      ).rejects.toThrow("This band is not ready to sell tickets yet");
+      expect(
+        await f.t.run((ctx) => ctx.db.query("ticketOrders").take(10)),
+      ).toEqual([]);
+    },
+  );
+
+  test("the global tickets flag takes precedence for both sellers before gig lookup", async () => {
+    const f = await setupBandTickets();
+    vi.stubEnv("TICKETS_ENABLED", "false");
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+    for (const gigId of [f.gigId, f.bandGigId]) {
+      await expect(
+        f.as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
+      ).rejects.toThrow("Ticket sales are not open yet");
+      await f.t.run((ctx) => ctx.db.delete(gigId));
+      await expect(
+        f.as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
+      ).rejects.toThrow("Ticket sales are not open yet");
+    }
+  });
+
+  test("salesForGig allows band admins to read band order totals", async () => {
+    const f = await setupBandTickets();
+    await f.as("buyer").mutation(api.tickets.reserve, {
+      gigId: f.bandGigId,
+      quantity: 2,
+    });
+    await f.t.run(async (ctx) => {
+      for (const status of ["paid", "refunded"] as const) {
+        await ctx.db.insert("ticketOrders", {
+          ...f.orderFields,
+          gigId: f.bandGigId,
+          organizationId: undefined,
+          sellerKind: "band",
+          bandId: f.creatorBandId,
+          status,
+          refundedMinor: status === "refunded" ? f.orderFields.totalMinor : 0,
+        });
+      }
+    });
+    expect(
+      await f.as("owner").query(api.tickets.salesForGig, { gigId: f.bandGigId }),
+    ).toEqual({
+      capacity: 10,
+      sold: 0,
+      reserved: 2,
+      available: 8,
+      ordersPaid: 1,
+      grossMinor: 4000,
+      feeMinor: 260,
+      netMinor: 2000,
+      currency: "usd",
+      truncated: false,
+    });
+  });
+
+  test.each(["door", "buyer"] as const)(
+    "salesForGig refuses the non-admin %s",
+    async (actor) => {
+      const f = await setupBandTickets();
+      await expect(
+        f.as(actor).query(api.tickets.salesForGig, { gigId: f.bandGigId }),
+      ).rejects.toThrow("Not an admin of this band");
+    },
+  );
 });
 
 describe("ticket reads", () => {

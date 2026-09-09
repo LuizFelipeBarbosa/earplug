@@ -259,7 +259,9 @@ type GigPublishValidationFields = {
   price: number;
   flyKey: string;
   flyStorageId?: Id<"_storage">;
-  ticketing: "rsvp" | "external";
+  ticketing: "rsvp" | "external" | "paid";
+  ticketPriceMinor?: number;
+  ticketCapacity?: number;
   externalUrl?: string;
 };
 
@@ -277,6 +279,12 @@ export async function assertGigPublishable(
   }
   if (args.ticketing === "external" && !isValidHttpsUrl(args.externalUrl)) {
     throw new Error("External ticketing requires a valid HTTPS URL");
+  }
+  if (
+    args.ticketing === "paid" &&
+    (args.ticketPriceMinor === undefined || args.ticketCapacity === undefined)
+  ) {
+    throw new Error("Ticket price and capacity are required");
   }
   if (args.flyKey === "custom") {
     if (args.flyStorageId === undefined) {
@@ -430,6 +438,12 @@ export const gigPayloadValidator = v.object({
   genres: v.array(v.string()),
   desc: v.string(),
   ticketing: v.union(v.literal("rsvp"), v.literal("external"), v.literal("paid")),
+  ticketSeller: v.optional(
+    v.object({
+      kind: v.union(v.literal("organization"), v.literal("band")),
+      name: v.string(),
+    }),
+  ),
   ticketPriceMinor: v.optional(v.number()),
   ticketCurrency: v.optional(v.string()),
   ageRequirement: ageRequirementValidator,
@@ -671,6 +685,18 @@ export async function toGigPayload(
       }
     }
   }
+  let ticketSeller: { kind: "organization" | "band"; name: string } | undefined;
+  if (gig.ticketing === "paid") {
+    if (gig.createdByOrganization) {
+      const organization = await cache.get(gig.createdByOrganization);
+      if (organization) {
+        ticketSeller = { kind: "organization", name: organization.name };
+      }
+    } else if (gig.createdByBand) {
+      const band = await cache.get(gig.createdByBand);
+      if (band) ticketSeller = { kind: "band", name: band.name };
+    }
+  }
   return {
     _id: gig._id,
     slug: gig.slug ?? gig._id,
@@ -687,6 +713,7 @@ export async function toGigPayload(
     genres: gig.genres,
     desc: gig.desc,
     ticketing: gig.ticketing,
+    ticketSeller,
     ticketPriceMinor: gig.ticketPriceMinor,
     ticketCurrency: gig.ticketCurrency,
     ageRequirement: gig.ageRequirement ?? "allAges",

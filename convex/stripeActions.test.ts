@@ -23,6 +23,11 @@ const startBandOnboarding = makeFunctionReference<
   { bandId: Id<"bands"> },
   { url: string }
 >("stripeActions:startBandOnboarding");
+const enableBandTicketSales = makeFunctionReference<
+  "action",
+  { bandId: Id<"bands"> },
+  { url: string }
+>("stripeActions:enableBandTicketSales");
 const startOrganizationOnboarding = makeFunctionReference<
   "action",
   { organizationId: Id<"organizations"> },
@@ -167,7 +172,10 @@ describe("startBandOnboarding", () => {
       {
         type: "express",
         country: "US",
-        capabilities: { transfers: { requested: true } },
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
         business_type: "individual",
         business_profile: {
           name: "Private Signals",
@@ -229,6 +237,132 @@ describe("startBandOnboarding", () => {
     await expect(
       asUser.action(startBandOnboarding, { bandId }),
     ).rejects.toThrow(/^Stripe: Invalid return URL$/);
+  });
+});
+
+describe("enableBandTicketSales", () => {
+  test("creates and attaches an Express account with both capabilities before issuing an onboarding link", async () => {
+    const { t, asUser, bandId } = await setupBand();
+    stripeMock
+      .mockResolvedValueOnce({ id: "acct_band" })
+      .mockResolvedValueOnce({ url: "https://connect.stripe.test/tickets" });
+
+    expect(await asUser.action(enableBandTicketSales, { bandId })).toEqual({
+      url: "https://connect.stripe.test/tickets",
+    });
+    expect(stripeMock.mock.calls).toEqual([
+      [
+        "POST",
+        "/v1/accounts",
+        {
+          type: "express",
+          country: "US",
+          capabilities: {
+            card_payments: { requested: true },
+            transfers: { requested: true },
+          },
+          business_type: "individual",
+          business_profile: {
+            name: "Private Signals",
+            product_description: "Live music performances booked through EarPlug",
+          },
+          metadata: { bandId, earplug: "band" },
+          settings: { payouts: { schedule: { interval: "daily" } } },
+        },
+        { idempotencyKey: stripeIdempotencyKey("band-account", bandId) },
+      ],
+      [
+        "POST",
+        "/v1/account_links",
+        {
+          account: "acct_band",
+          type: "account_onboarding",
+          refresh_url: `${baseUrl}/band/stripe/refresh?band=${bandId}`,
+          return_url: `${baseUrl}/band/stripe/return?band=${bandId}`,
+        },
+      ],
+    ]);
+    const account = await t.run((ctx) =>
+      ctx.db
+        .query("bandPayoutAccounts")
+        .withIndex("by_bandId", (q) => q.eq("bandId", bandId))
+        .unique(),
+    );
+    expect(account?.stripeAccountId).toBe("acct_band");
+  });
+
+  test("requests card payments on an existing account and saves its snapshot before issuing a link", async () => {
+    const setup = await setupBand();
+    const { t, asUser, bandId } = setup;
+    const accountId = await seedBandAccount(setup);
+    stripeMock
+      .mockResolvedValueOnce({
+        id: "acct_band",
+        capabilities: { card_payments: "pending" },
+        charges_enabled: false,
+        payouts_enabled: true,
+        details_submitted: true,
+        requirements: { currently_due: ["individual.verification.document"] },
+      })
+      .mockImplementationOnce(async () => {
+        expect(await t.run((ctx) => ctx.db.get(accountId))).toMatchObject({
+          cardPaymentsStatus: "pending",
+        });
+        return { url: "https://connect.stripe.test/tickets" };
+      });
+
+    expect(await asUser.action(enableBandTicketSales, { bandId })).toEqual({
+      url: "https://connect.stripe.test/tickets",
+    });
+    expect(stripeMock.mock.calls).toEqual([
+      [
+        "POST",
+        "/v1/accounts/acct_band",
+        { capabilities: { card_payments: { requested: true } } },
+        { idempotencyKey: stripeIdempotencyKey("band-card-payments", bandId) },
+      ],
+      [
+        "POST",
+        "/v1/account_links",
+        {
+          account: "acct_band",
+          type: "account_onboarding",
+          refresh_url: `${baseUrl}/band/stripe/refresh?band=${bandId}`,
+          return_url: `${baseUrl}/band/stripe/return?band=${bandId}`,
+        },
+      ],
+    ]);
+    const account = await t.run((ctx) => ctx.db.get(accountId));
+    expect(account).toMatchObject({
+      stripeAccountId: "acct_band",
+      cardPaymentsStatus: "pending",
+      chargesEnabled: false,
+      payoutsEnabled: true,
+      detailsSubmitted: true,
+      requirementsDue: ["individual.verification.document"],
+    });
+    expect(account?.updatedAt).toBeGreaterThan(1);
+  });
+
+  test("keeps the capability snapshot when the onboarding link fails", async () => {
+    const setup = await setupBand();
+    const accountId = await seedBandAccount(setup);
+    stripeMock
+      .mockResolvedValueOnce({
+        id: "acct_band",
+        capabilities: { card_payments: "pending" },
+      })
+      .mockRejectedValueOnce(
+        new StripeApiError("Invalid return URL", { status: 400 }),
+      );
+
+    await expect(
+      setup.asUser.action(enableBandTicketSales, { bandId: setup.bandId }),
+    ).rejects.toThrow(/^Stripe: Invalid return URL$/);
+    expect(stripeMock).toHaveBeenCalledTimes(2);
+    expect(await setup.t.run((ctx) => ctx.db.get(accountId))).toMatchObject({
+      cardPaymentsStatus: "pending",
+    });
   });
 });
 
@@ -334,6 +468,7 @@ describe("action authorization", () => {
       const { asUser, bandId } = await setupBand(role);
       for (const action of [
         startBandOnboarding,
+        enableBandTicketSales,
         refreshBandAccountStatus,
         bandExpressDashboardLink,
       ]) {
@@ -546,6 +681,7 @@ describe("Express dashboard links", () => {
 describe("Stripe API errors", () => {
   test.each([
     { name: "startBandOnboarding", action: startBandOnboarding },
+    { name: "enableBandTicketSales", action: enableBandTicketSales },
     { name: "refreshBandAccountStatus", action: refreshBandAccountStatus },
     { name: "bandExpressDashboardLink", action: bandExpressDashboardLink },
   ])("prefixes Stripe errors from $name", async ({ action }) => {
