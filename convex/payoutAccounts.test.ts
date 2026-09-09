@@ -25,6 +25,7 @@ const bandOnboardingContext = makeFunctionReference<
   { bandId: Id<"bands"> },
   {
     stripeAccountId: string | null;
+    cardPaymentsStatus: string | null;
     bandName: string;
     contactEmail: string | null;
   }
@@ -132,7 +133,10 @@ const statusCases = [
 describe("bandPayoutStatus", () => {
   test("returns the complete none shape without a stored row", async () => {
     const { asUser, bandId } = await setupBand();
-    expect(await asUser.query(bandPayoutStatus, { bandId })).toEqual(noAccount);
+    expect(await asUser.query(bandPayoutStatus, { bandId })).toEqual({
+      ...noAccount,
+      cardPaymentsStatus: null,
+    });
   });
 
   test.each(statusCases)(
@@ -144,6 +148,7 @@ describe("bandPayoutStatus", () => {
           bandId,
           stripeAccountId: "acct_private_band",
           chargesEnabled: true,
+          cardPaymentsStatus: "pending",
           payoutsEnabled,
           detailsSubmitted,
           requirementsDue: ["individual.verification.document"],
@@ -154,6 +159,7 @@ describe("bandPayoutStatus", () => {
         state,
         stripeAccountId: true,
         chargesEnabled: true,
+        cardPaymentsStatus: "pending",
         payoutsEnabled,
         detailsSubmitted,
         requirementsDue: ["individual.verification.document"],
@@ -263,6 +269,7 @@ describe("onboarding contexts and account attachment", () => {
     const { t, asUser, userId, bandId } = await setupBand("admin");
     expect(await asUser.query(bandOnboardingContext, { bandId })).toEqual({
       stripeAccountId: null,
+      cardPaymentsStatus: null,
       bandName: "Private Signals",
       contactEmail: "band@example.com",
     });
@@ -275,6 +282,7 @@ describe("onboarding contexts and account attachment", () => {
     await t.run((ctx) => ctx.db.patch("users", userId, { email: "" }));
     expect(await asUser.query(bandOnboardingContext, { bandId })).toEqual({
       stripeAccountId: "acct_band",
+      cardPaymentsStatus: null,
       bandName: "Private Signals",
       contactEmail: null,
     });

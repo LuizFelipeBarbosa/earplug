@@ -182,6 +182,7 @@ export const requiredClientFields = Object.freeze([
   ["payments.js:startInstallmentCheckout", "return", "url", false],
   ["refunds.js:previewCancellation", "return", "refundMinor", false],
   ["payoutAccounts.js:bandPayoutStatus", "return", "state", false],
+  ["payoutAccounts.js:bandPayoutStatus", "return", "cardPaymentsStatus", true],
   ["tickets.js:reserve", "return", "orderId", false],
   ["tickets.js:reserve", "return", "totalMinor", false],
   ["tickets.js:reserve", "return", "reservedUntil", false],

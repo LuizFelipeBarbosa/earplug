@@ -254,20 +254,54 @@ describe("resolveTicketSeller", () => {
 });
 
 describe("resolveOrderSeller", () => {
-  test("prefers the order's band, then organization, then its gig", async () => {
+  test.each(["band", "organization"] as const)(
+    "honors sellerKind %s when both seller IDs are set",
+    async (sellerKind) => {
+      const f = await setupSeller("band");
+      expect(
+        await f.t.run((ctx) =>
+          resolveOrderSeller(ctx, {
+            gigId: f.gigId,
+            sellerKind,
+            organizationId: f.organizationId,
+            bandId: f.bandId,
+          }),
+        ),
+      ).toMatchObject(
+        sellerKind === "band"
+          ? { kind: "band", bandId: f.bandId }
+          : { kind: "organization", organizationId: f.organizationId },
+      );
+    },
+  );
+
+  test("rejects ambiguous legacy orders with both seller IDs", async () => {
+    const f = await setupSeller("band");
+    expect(
+      await f.t.run((ctx) =>
+        resolveOrderSeller(ctx, {
+          gigId: f.gigId,
+          organizationId: f.organizationId,
+          bandId: f.bandId,
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  test("resolves a legacy order's sole seller ID, then falls back to its gig", async () => {
     const f = await setupSeller("band");
     await f.t.run(async (ctx) => {
-      const order = {
+      const bandOrder = { gigId: f.gigId, bandId: f.bandId };
+      const organizationOrder = {
         gigId: f.gigId,
         organizationId: f.organizationId,
-        bandId: f.bandId,
       };
-      expect(await resolveOrderSeller(ctx, order)).toMatchObject({
+      expect(await resolveOrderSeller(ctx, bandOrder)).toMatchObject({
         kind: "band",
         bandId: f.bandId,
       });
       expect(
-        await resolveOrderSeller(ctx, { ...order, bandId: undefined }),
+        await resolveOrderSeller(ctx, organizationOrder),
       ).toMatchObject({ kind: "organization", organizationId: f.organizationId });
       expect(await resolveOrderSeller(ctx, { gigId: f.gigId })).toMatchObject({
         kind: "band",
@@ -280,13 +314,38 @@ describe("resolveOrderSeller", () => {
       });
 
       await ctx.db.delete(f.gigId);
-      expect(await resolveOrderSeller(ctx, order)).toMatchObject({ kind: "band" });
-      expect(
-        await resolveOrderSeller(ctx, { ...order, bandId: undefined }),
-      ).toMatchObject({ kind: "organization" });
+      expect(await resolveOrderSeller(ctx, bandOrder)).toMatchObject({
+        kind: "band",
+      });
+      expect(await resolveOrderSeller(ctx, organizationOrder)).toMatchObject({
+        kind: "organization",
+      });
       expect(await resolveOrderSeller(ctx, { gigId: f.gigId })).toBeNull();
     });
   });
+
+  test.each(["band", "organization"] as const)(
+    "does not fall back when sellerKind %s has no matching seller ID",
+    async (sellerKind) => {
+      const f = await setupSeller(
+        sellerKind === "band" ? "organization" : "band",
+      );
+      await f.t.run(async (ctx) => {
+        expect(
+          await resolveOrderSeller(ctx, {
+            gigId: f.gigId,
+            sellerKind,
+            organizationId:
+              sellerKind === "band" ? f.organizationId : undefined,
+            bandId: sellerKind === "organization" ? f.bandId : undefined,
+          }),
+        ).toBeNull();
+        expect(
+          await resolveOrderSeller(ctx, { gigId: f.gigId, sellerKind }),
+        ).toBeNull();
+      });
+    },
+  );
 
   test("does not fall back when the order's explicit seller is missing", async () => {
     const f = await setupSeller();
@@ -295,14 +354,26 @@ describe("resolveOrderSeller", () => {
       expect(
         await resolveOrderSeller(ctx, {
           gigId: f.gigId,
+          sellerKind: "band",
           bandId: f.bandId,
           organizationId: f.organizationId,
         }),
+      ).toBeNull();
+      expect(
+        await resolveOrderSeller(ctx, { gigId: f.gigId, bandId: f.bandId }),
       ).toBeNull();
     });
     const bandGig = await setupSeller("band");
     await bandGig.t.run(async (ctx) => {
       await ctx.db.delete(bandGig.organizationId);
+      expect(
+        await resolveOrderSeller(ctx, {
+          gigId: bandGig.gigId,
+          sellerKind: "organization",
+          organizationId: bandGig.organizationId,
+          bandId: bandGig.bandId,
+        }),
+      ).toBeNull();
       expect(
         await resolveOrderSeller(ctx, {
           gigId: bandGig.gigId,

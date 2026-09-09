@@ -16,6 +16,7 @@ const bandOnboardingContext = makeFunctionReference<
   { bandId: Id<"bands"> },
   {
     stripeAccountId: string | null;
+    cardPaymentsStatus: string | null;
     bandName: string;
     contactEmail: string | null;
   }
@@ -154,8 +155,8 @@ export const enableBandTicketSales = action({
         args.bandId,
         context.bandName,
       );
-    } else {
-      const account = await callStripe(() =>
+    } else if (context.cardPaymentsStatus !== "active") {
+      await callStripe(() =>
         stripeRequest(
           "POST",
           `/v1/accounts/${stripeAccountId}`,
@@ -164,9 +165,13 @@ export const enableBandTicketSales = action({
             idempotencyKey: stripeIdempotencyKey(
               "band-card-payments",
               args.bandId,
+              Date.now(),
             ),
           },
         ),
+      );
+      const account = await callStripe(() =>
+        stripeRequest("GET", `/v1/accounts/${stripeAccountId}`),
       );
       await ctx.runMutation(applyAccountSnapshot, { account });
     }

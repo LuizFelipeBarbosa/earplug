@@ -79,10 +79,20 @@ export async function resolveOrderSeller(
   ctx: QueryCtx | MutationCtx,
   order: {
     gigId: Id<"gigs">;
+    sellerKind?: TicketSellerKind;
     organizationId?: Id<"organizations">;
     bandId?: Id<"bands">;
   },
 ): Promise<TicketSeller | null> {
+  if (order.sellerKind === "band") {
+    return order.bandId ? await resolveBandSeller(ctx, order.bandId) : null;
+  }
+  if (order.sellerKind === "organization") {
+    return order.organizationId
+      ? await resolveOrganizationSeller(ctx, order.organizationId)
+      : null;
+  }
+  if (order.bandId && order.organizationId) return null;
   if (order.bandId) {
     return await resolveBandSeller(ctx, order.bandId);
   }

@@ -641,6 +641,19 @@ describe("startCheckout", () => {
     },
   );
 
+  test("rejects a suspended organizer before contacting Stripe", async () => {
+    const f = await setupCheckout();
+    await f.t.run((ctx) =>
+      ctx.db.patch(f.organizationId, { status: "suspended" }),
+    );
+    await expect(
+      f.buyer.query(internal.ticketCheckout.loadCheckoutContext, {
+        orderId: f.orderId,
+      }),
+    ).rejects.toThrow(/^This organizer is not ready to sell tickets yet$/);
+    expect(stripeRequest).not.toHaveBeenCalled();
+  });
+
   test.each(["paid", "expired", "cancelled", "refunded"] as const)(
     "rejects a %s order before contacting Stripe",
     async (status) => {

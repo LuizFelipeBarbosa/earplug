@@ -157,6 +157,37 @@ async function setupOrders(statuses: Doc<"ticketOrders">["status"][]) {
 }
 
 describe("cancelTicketSalesForGig", () => {
+  test("continues refunding paid orders when one has no payment intent", async () => {
+    const f = await setupOrders(["paid", "paid"]);
+    const [brokenOrderId, validOrderId] = f.orderIds;
+    await f.t.run((ctx) =>
+      ctx.db.patch(brokenOrderId, { stripePaymentIntentId: undefined }),
+    );
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(f.cancel()).resolves.toEqual({
+      refundsRequested: 1,
+      holdsReleased: 0,
+    });
+
+    const { refunds, refundEmails } = await f.state();
+    expect(refunds).toHaveLength(1);
+    expect(refunds[0]).toMatchObject({
+      orderId: validOrderId,
+      stripePaymentIntentId: "pi_ticket_1",
+      reason: "event_cancelled",
+      status: "pending",
+    });
+    expect(refundEmails).toHaveLength(1);
+    expect(refundEmails[0].args[0].to).toBe("buyer1@tickets.test");
+    expect(errorLog).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining(brokenOrderId),
+      expect.objectContaining({
+        message: "Ticket order has no Stripe payment intent",
+      }),
+    );
+  });
+
   test("requests a pending refund and emails the buyer for a paid order", async () => {
     const f = await setupOrders(["paid"]);
     expect(await f.cancel()).toEqual({ refundsRequested: 1, holdsReleased: 0 });

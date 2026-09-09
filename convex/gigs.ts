@@ -45,9 +45,13 @@ import {
 } from "./schema";
 import { performerLineupReady, venuePosterReady } from "./lib/discovery";
 import { cancelTicketSalesForGig } from "./lib/ticketCancellation";
+import { validateTicketPriceAndCapacity } from "./lib/ticketFees";
 import { applyTicketInventoryCapacity } from "./lib/ticketInventory";
-import { resolveTicketSeller } from "./lib/ticketSeller";
-import { validateTicketPriceAndCapacity } from "./talentOpportunities";
+import {
+  assertSellerFlags,
+  assertSellerOpen,
+  resolveTicketSeller,
+} from "./lib/ticketSeller";
 
 const PUBLIC_WEB_ORIGIN = "https://earplug.app";
 
@@ -270,6 +274,17 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
   const doorsTime = `${formattedTime(project.doorsAt)} / ${formattedTime(project.startsAt)}`;
   let publicGigId = project.publicGigId;
   const existingGig = publicGigId ? await ctx.db.get(publicGigId) : null;
+  if (
+    existingGig?.ticketing === "paid" &&
+    project.ticketing !== "paid" &&
+    (await gigHasTicketOrderInStatus(
+      ctx,
+      existingGig._id,
+      DELETE_BLOCKING_ORDER_STATUSES,
+    ))
+  ) {
+    throw new Error("Cancel the show before changing ticketing");
+  }
   if (publicGigId && !existingGig) publicGigId = undefined;
   const publicSlug =
     project.publicSlug ?? existingGig?.slug ?? (await uniqueGigSlug(ctx, project.title));
@@ -335,6 +350,8 @@ async function publishProject(ctx: MutationCtx, project: Doc<"gigProjects">) {
     if (!gig) throw new Error("Gig not found after publish");
     const seller = await resolveTicketSeller(ctx, gig);
     if (!seller) throw new Error("This band is not ready to sell tickets yet");
+    assertSellerFlags(seller);
+    assertSellerOpen(seller);
     await applyTicketInventoryCapacity(
       ctx,
       publicGigId,
@@ -724,19 +741,36 @@ export const saveDraft = mutation({
         throw new Error("Ticket price and capacity are required");
       }
       validateTicketPriceAndCapacity(args.ticketPriceMinor, args.ticketCapacity);
-      if (!flag("TICKETS_ENABLED", false)) {
-        throw new Error("Ticket sales are not open yet");
+      const enteringPaid =
+        project.ticketing !== "paid" || project.status !== "published";
+      if (enteringPaid) {
+        if (!flag("TICKETS_ENABLED", false)) {
+          throw new Error("Ticket sales are not open yet");
+        }
+        const payoutAccount = await ctx.db
+          .query("bandPayoutAccounts")
+          .withIndex("by_bandId", (q) => q.eq("bandId", project.bandId))
+          .unique();
+        if (
+          payoutAccount?.chargesEnabled !== true ||
+          payoutAccount?.cardPaymentsStatus !== "active"
+        ) {
+          throw new Error("Enable ticket sales in PAYOUTS first");
+        }
       }
-      const payoutAccount = await ctx.db
-        .query("bandPayoutAccounts")
-        .withIndex("by_bandId", (q) => q.eq("bandId", project.bandId))
-        .unique();
-      if (
-        payoutAccount?.chargesEnabled !== true ||
-        payoutAccount?.cardPaymentsStatus !== "active"
-      ) {
-        throw new Error("Enable ticket sales in PAYOUTS first");
-      }
+    }
+    if (
+      project.status === "published" &&
+      project.publicGigId &&
+      project.ticketing === "paid" &&
+      args.ticketing !== "paid" &&
+      (await gigHasTicketOrderInStatus(
+        ctx,
+        project.publicGigId,
+        DELETE_BLOCKING_ORDER_STATUSES,
+      ))
+    ) {
+      throw new Error("Cancel the show before changing ticketing");
     }
     const revision = project.revision + 1;
     await ctx.db.patch(project._id, {
@@ -1087,9 +1121,7 @@ export const cancel = mutation({
       status: "cancelled",
       updatedAt: Date.now(),
     });
-    if (project.ticketing === "paid") {
-      await cancelTicketSalesForGig(ctx, project.publicGigId);
-    }
+    await cancelTicketSalesForGig(ctx, project.publicGigId);
     return null;
   },
 });

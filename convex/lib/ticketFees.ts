@@ -2,6 +2,28 @@ import { bpsSetting, minorSetting } from "./env";
 
 export type TicketingFee = { bps: number; fixedMinor: number };
 
+export function validateTicketPriceAndCapacity(
+  ticketPriceMinor: number | undefined,
+  ticketCapacity: number | undefined,
+): { ticketPriceMinor: number; ticketCapacity: number } {
+  if (
+    ticketPriceMinor === undefined ||
+    !Number.isInteger(ticketPriceMinor) ||
+    ticketPriceMinor < 100
+  ) {
+    throw new Error("Ticket price must be at least $1.00");
+  }
+  if (
+    ticketCapacity === undefined ||
+    !Number.isInteger(ticketCapacity) ||
+    ticketCapacity < 1 ||
+    ticketCapacity > 5000
+  ) {
+    throw new Error("Ticket capacity must be between 1 and 5,000");
+  }
+  return { ticketPriceMinor, ticketCapacity };
+}
+
 export function resolveTicketingFee(organization: {
   ticketingFeeBps?: number;
   ticketingFeeFixedMinor?: number;

@@ -227,6 +227,117 @@ describe("paid band gig drafts and publishing", () => {
     });
   });
 
+  test("refuses paid publishing when card payments became pending after saving", async () => {
+    const { t, asAdmin, bandId, draft, saveArgs } = await setupPaidDraft();
+    await asAdmin.mutation(api.gigs.saveDraft, saveArgs);
+    await t.run(async (ctx) => {
+      const payoutAccount = await ctx.db
+        .query("bandPayoutAccounts")
+        .withIndex("by_bandId", (q) => q.eq("bandId", bandId))
+        .unique();
+      await ctx.db.patch(payoutAccount!._id, {
+        chargesEnabled: true,
+        cardPaymentsStatus: "pending",
+      });
+    });
+
+    await expect(
+      asAdmin.mutation(api.gigs.publishDraft, { projectId: draft._id }),
+    ).rejects.toThrow("This band is not ready to sell tickets yet");
+    await t.run(async (ctx) => {
+      expect((await ctx.db.get(draft._id))?.status).toBe("draft");
+      expect((await ctx.db.get(draft._id))?.publicGigId).toBeUndefined();
+      expect(await ctx.db.query("gigTicketInventory").first()).toBeNull();
+    });
+  });
+
+  test.each(["false", undefined])(
+    "refuses paid publishing when TICKETS_ENABLED became %s after saving",
+    async (flagValue) => {
+      const { asAdmin, draft, saveArgs } = await setupPaidDraft();
+      await asAdmin.mutation(api.gigs.saveDraft, saveArgs);
+      vi.stubEnv("TICKETS_ENABLED", flagValue);
+
+      await expect(
+        asAdmin.mutation(api.gigs.publishDraft, { projectId: draft._id }),
+      ).rejects.toThrow("Ticket sales are not open yet");
+    },
+  );
+
+  test.each(["payout capability lapsed", "ticket sales disabled"])(
+    "allows saving a published paid title when %s while still validating price and capacity",
+    async (condition) => {
+      const { t, asAdmin, bandId, draft, saveArgs } = await setupPaidDraft();
+      const saved = await asAdmin.mutation(api.gigs.saveDraft, saveArgs);
+      await asAdmin.mutation(api.gigs.publishDraft, { projectId: draft._id });
+      if (condition === "payout capability lapsed") {
+        await t.run(async (ctx) => {
+          const payoutAccount = await ctx.db
+            .query("bandPayoutAccounts")
+            .withIndex("by_bandId", (q) => q.eq("bandId", bandId))
+            .unique();
+          await ctx.db.patch(payoutAccount!._id, {
+            cardPaymentsStatus: "inactive",
+          });
+        });
+      } else {
+        vi.stubEnv("TICKETS_ENABLED", "false");
+      }
+
+      const editArgs = {
+        ...saveArgs,
+        revision: saved.revision,
+        title: "Updated Paid Band Show",
+      };
+      await expect(
+        asAdmin.mutation(api.gigs.saveDraft, {
+          ...editArgs,
+          ticketPriceMinor: 99,
+        }),
+      ).rejects.toThrow("Ticket price must be at least $1.00");
+      await expect(
+        asAdmin.mutation(api.gigs.saveDraft, {
+          ...editArgs,
+          ticketCapacity: 0,
+        }),
+      ).rejects.toThrow("Ticket capacity must be between 1 and 5,000");
+      await expect(
+        asAdmin.mutation(api.gigs.saveDraft, editArgs),
+      ).resolves.toEqual({ revision: saved.revision + 1 });
+      expect(
+        await asAdmin.query(api.gigs.getProject, { projectId: draft._id }),
+      ).toMatchObject({
+        title: editArgs.title,
+        ticketing: "paid",
+        status: "published",
+      });
+    },
+  );
+
+  test("refuses edits to a never-published paid draft after its payout account is removed", async () => {
+    const { t, asAdmin, bandId, draft, saveArgs } = await setupPaidDraft();
+    const saved = await asAdmin.mutation(api.gigs.saveDraft, saveArgs);
+    await t.run(async (ctx) => {
+      const payoutAccount = await ctx.db
+        .query("bandPayoutAccounts")
+        .withIndex("by_bandId", (q) => q.eq("bandId", bandId))
+        .unique();
+      await ctx.db.delete(payoutAccount!._id);
+      expect(await ctx.db.get(draft._id)).toMatchObject({
+        ticketing: "paid",
+        status: "draft",
+      });
+    });
+
+    await expect(
+      asAdmin.mutation(api.gigs.saveDraft, {
+        ...saveArgs,
+        revision: saved.revision,
+        title: "Still a draft",
+      }),
+    ).rejects.toThrow("Enable ticket sales in PAYOUTS first");
+  });
+
   test.each(["ticketPriceMinor", "ticketCapacity"] as const)(
     "refuses to publish a paid draft missing %s",
     async (field) => {
@@ -338,7 +449,7 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
     }
     const draft = await asAdmin.mutation(api.gigs.createDraft, { bandId });
     const doorsAt = Date.now() + 2 * 86_400_000;
-    await asAdmin.mutation(api.gigs.saveDraft, {
+    const saveArgs = {
       projectId: draft._id,
       revision: draft.revision,
       title: "Band Ticket Lifecycle",
@@ -346,7 +457,7 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
       startsAt: doorsAt + 60 * 60_000,
       venueId,
       price: 0,
-      flyKey: "xerox",
+      flyKey: "xerox" as const,
       flyStorageId: null,
       overlay: true,
       desc: "A show managed by the band.",
@@ -354,14 +465,20 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
       ...(ticketing === "paid"
         ? { ticketPriceMinor: 1250, ticketCapacity: 100 }
         : {}),
-      ageRequirement: "allAges",
+      ageRequirement: "allAges" as const,
       externalUrl: ticketing === "external" ? "https://example.com/tickets" : null,
       cap: "No cap",
-    });
+    };
+    const saved = await asAdmin.mutation(api.gigs.saveDraft, saveArgs);
     const published = await asAdmin.mutation(api.gigs.publishDraft, {
       projectId: draft._id,
     });
-    return { ...fixture, ...published, projectId: draft._id };
+    return {
+      ...fixture,
+      ...published,
+      projectId: draft._id,
+      saveArgs: { ...saveArgs, revision: saved.revision },
+    };
   }
 
   async function insertTicketOrder(
@@ -433,6 +550,92 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
         bandId,
         amountMinor: 2700,
         currency: "usd",
+        reason: "event_cancelled",
+        status: "pending",
+        stripePaymentIntentId: "pi_band_lifecycle",
+      });
+    });
+  });
+
+  test.each(["paid", "refunded", "reserved", "checkout_open"] as const)(
+    "refuses saving an RSVP draft for a published paid gig with a %s order",
+    async (status) => {
+      const fixture = await setupPublishedGig();
+      const { t, asAdmin, gigId, projectId, saveArgs } = fixture;
+      await insertTicketOrder(fixture, status);
+
+      await expect(
+        asAdmin.mutation(api.gigs.saveDraft, {
+          ...saveArgs,
+          ticketing: "rsvp",
+        }),
+      ).rejects.toThrow("Cancel the show before changing ticketing");
+      await t.run(async (ctx) => {
+        expect(await ctx.db.get(projectId)).toMatchObject({
+          ticketing: "paid",
+          revision: saveArgs.revision,
+        });
+        expect((await ctx.db.get(gigId))?.ticketing).toBe("paid");
+      });
+    },
+  );
+
+  test.each(["paid", "refunded", "reserved", "checkout_open"] as const)(
+    "refuses publishing an RSVP draft when the live paid gig acquired a %s order",
+    async (status) => {
+      const fixture = await setupPublishedGig();
+      const { t, asAdmin, gigId, projectId, saveArgs } = fixture;
+      await asAdmin.mutation(api.gigs.saveDraft, {
+        ...saveArgs,
+        ticketing: "rsvp",
+      });
+      // Sales still use the paid public gig until the draft is published.
+      await insertTicketOrder(fixture, status);
+
+      await expect(
+        asAdmin.mutation(api.gigs.publishDraft, { projectId }),
+      ).rejects.toThrow("Cancel the show before changing ticketing");
+      await t.run(async (ctx) => {
+        expect((await ctx.db.get(projectId))?.ticketing).toBe("rsvp");
+        expect((await ctx.db.get(gigId))?.ticketing).toBe("paid");
+      });
+    },
+  );
+
+  test("cancelling refunds paid live orders after the draft switched to RSVP", async () => {
+    const fixture = await setupPublishedGig();
+    const { t, asAdmin, bandId, gigId, projectId, saveArgs } = fixture;
+    await insertTicketOrder(fixture, "expired");
+    await asAdmin.mutation(api.gigs.saveDraft, {
+      ...saveArgs,
+      ticketing: "rsvp",
+    });
+    // A buyer pays for the still-paid public gig after the draft was saved.
+    const orderId = await insertTicketOrder(fixture, "paid");
+    await t.run(async (ctx) => {
+      expect((await ctx.db.get(projectId))?.ticketing).toBe("rsvp");
+      expect((await ctx.db.get(gigId))?.ticketing).toBe("paid");
+    });
+
+    await asAdmin.mutation(api.gigs.cancel, { projectId });
+
+    await t.run(async (ctx) => {
+      expect((await ctx.db.get(gigId))?.lifecycle).toBe("cancelled");
+      expect(await ctx.db.get(projectId)).toMatchObject({
+        ticketing: "rsvp",
+        status: "cancelled",
+      });
+      const refunds = await ctx.db
+        .query("ticketRefunds")
+        .withIndex("by_orderId", (q) => q.eq("orderId", orderId))
+        .take(10);
+      expect(refunds).toHaveLength(1);
+      expect(refunds[0]).toMatchObject({
+        orderId,
+        gigId,
+        sellerKind: "band",
+        bandId,
+        amountMinor: 2700,
         reason: "event_cancelled",
         status: "pending",
         stripePaymentIntentId: "pi_band_lifecycle",

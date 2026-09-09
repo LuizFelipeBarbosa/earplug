@@ -1075,17 +1075,67 @@ describe("ticket disputes", () => {
     ]);
   });
 
-  test("ignores a mismatched account without changing ticket state", async () => {
-    const f = await setupTickets({ status: "paid" });
-    const before = await f.state();
-    expect(
-      await f.deliver({
-        ...ticketDisputeEvent("charge.dispute.created", f.orderId),
-        account: "acct_other",
-      }),
-    ).toEqual({ outcome: "applied" });
-    expect(await f.state()).toEqual(before);
-  });
+  test.each(["organization", "band"] as const)(
+    "ignores %s disputes with mismatched or missing event accounts without ledger entries",
+    async (sellerKind) => {
+      const f = await setupTickets({ status: "paid" }, sellerKind);
+      const before = await f.state();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      for (const type of [
+        "charge.dispute.created",
+        "charge.dispute.closed",
+      ] as const) {
+        for (const account of ["acct_other", undefined]) {
+          const event = {
+            ...ticketDisputeEvent(type, f.orderId, { status: "lost" }),
+            id: `evt_${type}_${account}`,
+            account,
+          };
+          warn.mockClear();
+          expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+          expect(warn).toHaveBeenCalledExactlyOnceWith(
+            `${event.type} ignored: Stripe account mismatch for ticket order ${f.orderId}`,
+          );
+          const state = await f.state();
+          expect(state).toEqual(before);
+          expect(state.ledger).toEqual([]);
+        }
+      }
+      expect(stripeMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["organization", "band"] as const)(
+    "ignores %s disputes with no stored Stripe account, even without an event account",
+    async (sellerKind) => {
+      const f = await setupTickets({ status: "paid" }, sellerKind);
+      await f.t.run((ctx) =>
+        sellerKind === "band"
+          ? ctx.db.delete(f.payoutAccountId!)
+          : ctx.db.patch(f.detailsId, { stripeAccountId: undefined }),
+      );
+      const before = await f.state();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      for (const type of [
+        "charge.dispute.created",
+        "charge.dispute.closed",
+      ] as const) {
+        const event = {
+          ...ticketDisputeEvent(type, f.orderId, { status: "lost" }),
+          account: undefined,
+        };
+        warn.mockClear();
+        expect(await f.deliver(event)).toEqual({ outcome: "applied" });
+        expect(warn).toHaveBeenCalledExactlyOnceWith(
+          `${event.type} ignored: Stripe account mismatch for ticket order ${f.orderId}`,
+        );
+        const state = await f.state();
+        expect(state).toEqual(before);
+        expect(state.ledger).toEqual([]);
+      }
+      expect(stripeMock).not.toHaveBeenCalled();
+    },
+  );
 });
 
 test("booking Checkout still applies through the existing payment-record handler", async () => {

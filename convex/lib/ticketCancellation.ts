@@ -41,7 +41,16 @@ export async function runTicketCancellationBatch(
 
   let refundsRequested = 0;
   for (const order of paidOrders) {
-    const refundId = await requestOrderRefund(ctx, order, "event_cancelled");
+    let refundId: Id<"ticketRefunds"> | null;
+    try {
+      refundId = await requestOrderRefund(ctx, order, "event_cancelled");
+    } catch (error) {
+      console.error(
+        `Failed to request cancellation refund for ticket order ${order._id}`,
+        error,
+      );
+      continue;
+    }
     if (refundId !== null) {
       await sendTicketEmail(ctx, order, "ticketRefunded");
       refundsRequested++;
