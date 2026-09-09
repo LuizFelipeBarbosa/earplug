@@ -664,7 +664,12 @@ void main() {
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: _StripeStatusRepository(auth: auth, state: state),
+        repository: _StripeStatusRepository(
+          auth: auth,
+          state: state,
+          cardPaymentsStatus:
+              state == StripeAccountState.enabled ? 'active' : null,
+        ),
         home: const Scaffold(body: BandDashScreen()),
         beforePump: (app) => app.switchToBand('b1'),
       );
