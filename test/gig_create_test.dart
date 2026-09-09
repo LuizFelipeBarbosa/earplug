@@ -204,6 +204,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('poster shows paid ticket pricing and a missing price prompt', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    app.setGfTix(Ticketing.paid);
+    await _scrollTo(tester, find.text('YOUR GIG NAME'));
+    expect(find.text('TICKETS · SET A PRICE'), findsOne);
+
+    app.setGfTicketPriceMinor(1000);
+    await tester.pump();
+    expect(find.text(r'TICKETS · $10.00'), findsOne);
+    expect(find.text('TICKETS · SET A PRICE'), findsNothing);
+  });
+
   testWidgets(
     'uploaded art swaps the press for a drop slot and an overlay toggle',
     (tester) async {
@@ -444,6 +458,57 @@ void main() {
     await tester.tap(paidOption);
     await tester.pump();
     expect(app.gfTix, Ticketing.rsvp);
+  });
+
+  testWidgets('enabled paid tickets explain direct Stripe payments', (
+    tester,
+  ) async {
+    final app = (await _pumpGigCreate(tester)).app;
+    await app.repository.enableBandTicketSales(app.bandId);
+    await app.refreshBandPayoutStatus();
+    await tester.pumpAndSettle();
+    expect(app.canSellTickets, isTrue);
+
+    final accessSlot = find.byKey(const ValueKey('gig-slot-access'));
+    await _scrollTo(tester, accessSlot);
+    await tester.tap(accessSlot);
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.',
+      ),
+      findsOne,
+    );
+    expect(
+      find.text('In-app checkout, EarPlug handles the charge'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('paid draft autosave waits for valid pricing then saves', (
+    tester,
+  ) async {
+    final repository = _GatedSaveRepository(auth: FakeAuthService());
+    repository.saveGate.complete();
+    final app = (await _pumpGigCreate(tester, repository: repository)).app;
+    app.setGfTix(Ticketing.paid);
+    expect(app.gfTix, Ticketing.paid);
+    expect(app.gfTicketPriceMinor, isNull);
+    expect(app.gfTicketCapacity, isNull);
+
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(repository.saveCalls, 0);
+    expect(app.gfSaveState, 'UNSAVED');
+
+    app.setGfTicketPriceMinor(1000);
+    app.setGfTicketCapacity(80);
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(repository.saveCalls, 1);
+    expect(app.gfSaveState, 'SAVED');
+    expect(app.gfProject?.ticketPriceMinor, 1000);
+    expect(app.gfProject?.ticketCapacity, 80);
   });
 
   testWidgets(

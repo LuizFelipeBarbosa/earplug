@@ -598,7 +598,7 @@ class _TicketsBodyState extends State<_TicketsBody> {
               const SizedBox(height: 2),
               Text(
                 app.canSellTickets
-                    ? 'In-app checkout, EarPlug handles the charge'
+                    ? 'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.'
                     : app.features.bandTicketing
                     ? 'Enable ticket sales in PAYOUTS'
                     : 'Ticket sales are off',

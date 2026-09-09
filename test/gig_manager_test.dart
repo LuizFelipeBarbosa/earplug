@@ -123,6 +123,50 @@ void main() {
     );
   });
 
+  testWidgets('paid gig cancellation explains refunds when tickets are sold', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _ManagerRepository(
+        auth: auth,
+        salesResponse: Future.value(_ManagerRepository.paidSales),
+      ),
+      home: const Scaffold(body: GigManagerScreen()),
+    );
+
+    await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
+    await tester.pumpAndSettle();
+    final actions = find.byKey(const Key('gig-actions-published-paid'));
+    await tester.scrollUntilVisible(
+      actions,
+      180,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(actions);
+    await tester.pumpAndSettle();
+    await tester.tap(actions);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Cancel gig…'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cancel gig?'), findsOne);
+    expect(
+      find.text(
+        'Sold tickets are refunded in full and buyers are emailed. The gig leaves discovery but its public page stays available as cancelled.',
+      ),
+      findsOne,
+    );
+    expect(
+      find.text(
+        'The gig leaves discovery but its public page stays available as cancelled.',
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets(
     'card-face actions preserve edit, preview, and Door launch data',
     (tester) async {

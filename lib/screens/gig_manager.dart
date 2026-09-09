@@ -1184,10 +1184,16 @@ Future<void> _runProjectAction(
         await app.unpublishGigProject(project.id);
       }
     case _ProjectAction.cancel:
+      final body =
+          project.ticketing == Ticketing.paid &&
+              project.publicGigId != null &&
+              (app.salesFor(project.publicGigId!)?.sold ?? 0) > 0
+          ? 'Sold tickets are refunded in full and buyers are emailed. The gig leaves discovery but its public page stays available as cancelled.'
+          : 'The gig leaves discovery but its public page stays available as cancelled.';
       if (await _confirm(
         context,
         'Cancel gig?',
-        'The gig leaves discovery but its public page stays available as cancelled.',
+        body,
       )) {
         await app.cancelGigProject(project.id);
       }

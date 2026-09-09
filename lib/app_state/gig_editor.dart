@@ -412,6 +412,11 @@ mixin _GigEditorState on _AppStateCore {
       _gigSaveAgain = false;
       final project = await _ensureGigDraft();
       if (project == null || !_isCurrentGigEditor(editorGeneration)) return;
+      if (gfTix == Ticketing.paid && !validTicketPricing) {
+        gfSaveState = 'UNSAVED';
+        if (!_disposed) notifyListeners();
+        return;
+      }
       gfSaveState = 'SAVING…';
       notifyListeners();
       final editGeneration = _gigEditGeneration;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:earplug/app_state.dart';
@@ -419,6 +420,31 @@ void main() {
 
     expect(launched, ['https://demo.stripe/ticketing/b1']);
     expect(find.byKey(const Key('band-payouts-error')), findsNothing);
+  });
+
+  testWidgets('payout history waits for the first load before showing empty', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final response = Completer<List<Payout>>();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _PayoutRepository(
+        auth: auth,
+        payoutsResponse: response.future,
+      ),
+      home: const Scaffold(body: BandPayoutsScreen()),
+      beforePump: (app) => app.switchToBand('b1'),
+      pumpFor: Duration.zero,
+    );
+
+    expect(find.byKey(const Key('band-payouts-history')), findsOneWidget);
+    expect(find.text('No payouts yet.'), findsNothing);
+
+    response.complete(const []);
+    await tester.pumpAndSettle();
+    expect(find.text('No payouts yet.'), findsOneWidget);
   });
 
   testWidgets(
@@ -888,31 +914,35 @@ const _ticketSalesCaption =
     'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.';
 
 class _PayoutRepository extends DemoRepository {
-  _PayoutRepository({required super.auth});
+  _PayoutRepository({required super.auth, this.payoutsResponse});
 
+  final Future<List<Payout>>? payoutsResponse;
   ({String bandId, DateTime from, DateTime to})? statementRange;
 
   @override
-  Future<List<Payout>> payoutsForBand(String bandId) async => [
-    Payout(
-      id: 'p1',
-      kind: PayoutKind.completion,
-      amountMinor: 12000,
-      currency: 'usd',
-      status: PayoutStatus.paid,
-      scheduledFor: DateTime(2026, 8, 1),
-      paidAt: DateTime(2026, 8, 2),
-    ),
-    Payout(
-      id: 'p2',
-      kind: PayoutKind.forfeit,
-      amountMinor: 4000,
-      currency: 'usd',
-      status: PayoutStatus.held,
-      scheduledFor: DateTime(2026, 8, 3),
-      holdReason: 'Waiting for bank details',
-    ),
-  ];
+  Future<List<Payout>> payoutsForBand(String bandId) async {
+    if (payoutsResponse != null) return payoutsResponse!;
+    return [
+      Payout(
+        id: 'p1',
+        kind: PayoutKind.completion,
+        amountMinor: 12000,
+        currency: 'usd',
+        status: PayoutStatus.paid,
+        scheduledFor: DateTime(2026, 8, 1),
+        paidAt: DateTime(2026, 8, 2),
+      ),
+      Payout(
+        id: 'p2',
+        kind: PayoutKind.forfeit,
+        amountMinor: 4000,
+        currency: 'usd',
+        status: PayoutStatus.held,
+        scheduledFor: DateTime(2026, 8, 3),
+        holdReason: 'Waiting for bank details',
+      ),
+    ];
+  }
 
   @override
   Future<PayoutStatement> bandPayoutStatement(

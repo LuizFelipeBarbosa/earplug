@@ -297,7 +297,9 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
           key: const Key('band-payouts-history'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (app.bandPayouts.isEmpty)
+            if (!app.bandPayoutsLoaded)
+              const SizedBox.shrink()
+            else if (app.bandPayouts.isEmpty)
               const EmptyNote(message: 'No payouts yet.')
             else
               for (final payout in app.bandPayouts) _PayoutRow(payout: payout),

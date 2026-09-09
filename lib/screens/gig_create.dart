@@ -479,6 +479,8 @@ class _PosterOverlay extends StatelessWidget {
         doorsLabel: app.gfDoorsLabel,
         venue: app.gfVenueId == null ? null : app.venue(app.gfVenueId!),
         price: app.gfPrice,
+        tix: app.gfTix,
+        ticketPriceMinor: app.gfTicketPriceMinor,
       ),
     );
     final venue = details.venue;
@@ -525,10 +527,14 @@ class _PosterOverlay extends StatelessWidget {
               ),
               const SizedBox(height: 7),
               _PosterLine(
-                label: details.price == 'FREE'
+                label: details.tix == Ticketing.paid
+                    ? 'TICKETS · ${details.ticketPriceMinor == null ? 'SET A PRICE' : Money(details.ticketPriceMinor!).label}'
+                    : details.price == 'FREE'
                     ? 'FREE'
                     : '${details.price} AT THE DOOR',
-                unset: false,
+                unset:
+                    details.tix == Ticketing.paid &&
+                    details.ticketPriceMinor == null,
                 ink: ink,
               ),
             ],
@@ -547,6 +553,8 @@ typedef _PosterDetails = ({
   String doorsLabel,
   Venue? venue,
   String price,
+  Ticketing tix,
+  int? ticketPriceMinor,
 });
 
 /// One detail printed on the flyer — dashed and dimmed until it is filled in.
