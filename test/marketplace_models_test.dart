@@ -420,6 +420,24 @@ void main() {
   });
 
   group('private booking and safety models', () {
+    test(
+      'FeatureFlags band ticketing requires tickets and band gig writes',
+      () {
+        for (final (tickets, bandGigWrites, expected) in [
+          (true, true, true),
+          (true, false, false),
+          (false, true, false),
+          (false, false, false),
+        ]) {
+          final flags = FeatureFlags.fromJson({
+            'tickets': tickets,
+            'bandGigWrites': bandGigWrites,
+          });
+          expect(flags.bandTicketing, expected);
+        }
+      },
+    );
+
     test('FeatureFlags defaults missing and malformed flags to false', () {
       final enabled = FeatureFlags.fromJson(
         _jsonRoundTrip({
@@ -872,6 +890,71 @@ void main() {
       'venueName': 'The Vault',
       'lifecycle': 'published',
     };
+
+    test('GigProject parses paid ticketing and nullable ticket fields', () {
+      const projectJson = {
+        '_id': 'project-1',
+        'bandId': 'band-1',
+        'status': 'draft',
+        'revision': 1,
+        'price': 0,
+        'flyKey': 'paper',
+        'overlay': true,
+        'desc': 'An evening of local bands.',
+        'ticketing': 'paid',
+        'cap': '40',
+        'updatedAt': 1800000000000,
+        'performers': <Map<String, dynamic>>[],
+      };
+      final project = GigProject.fromJson(
+        _jsonRoundTrip({
+          ...projectJson,
+          'ticketPriceMinor': 2500.0,
+          'ticketCapacity': 40.0,
+        }),
+      );
+      expect(project.ticketing, Ticketing.paid);
+      expect(project.ticketPriceMinor, 2500);
+      expect(project.ticketCapacity, 40);
+
+      final missing = GigProject.fromJson(_jsonRoundTrip(projectJson));
+      expect(missing.ticketing, Ticketing.paid);
+      expect(missing.ticketPriceMinor, isNull);
+      expect(missing.ticketCapacity, isNull);
+
+      final explicitNull = GigProject.fromJson({
+        ...projectJson,
+        'ticketPriceMinor': null,
+        'ticketCapacity': null,
+      });
+      expect(explicitNull.ticketPriceMinor, isNull);
+      expect(explicitNull.ticketCapacity, isNull);
+    });
+
+    test('Gig parses band and organization ticket sellers', () {
+      for (final (kind, name) in [
+        (TicketSellerKind.band, 'Test Band'),
+        (TicketSellerKind.organization, 'Test Org'),
+      ]) {
+        final gig = Gig.fromJson(
+          _jsonRoundTrip({
+            ...gigJson,
+            'ticketSeller': {'kind': kind.name, 'name': name},
+          }),
+        );
+        expect(gig.ticketSeller, isNotNull);
+        expect(gig.ticketSeller!.kind, kind);
+        expect(gig.ticketSeller!.name, name);
+      }
+    });
+
+    test('Gig accepts missing and null ticket sellers', () {
+      expect(Gig.fromJson(gigJson).ticketSeller, isNull);
+      expect(
+        Gig.fromJson({...gigJson, 'ticketSeller': null}).ticketSeller,
+        isNull,
+      );
+    });
 
     test('Gig uses minor-unit pricing and defaults the currency to USD', () {
       final gig = Gig.fromJson(gigJson);
@@ -3001,6 +3084,42 @@ void main() {
   });
 
   group('Phase 3b payment models', () {
+    test('StripeAccountStatus parses nullable card payment status', () {
+      final status = StripeAccountStatus.fromJson({
+        'cardPaymentsStatus': 'active',
+      });
+      expect(status.cardPaymentsStatus, 'active');
+      expect(StripeAccountStatus.fromJson({}).cardPaymentsStatus, isNull);
+      expect(
+        StripeAccountStatus.fromJson({
+          'cardPaymentsStatus': null,
+        }).cardPaymentsStatus,
+        isNull,
+      );
+      const none = StripeAccountStatus.none();
+      expect(none.cardPaymentsStatus, isNull);
+      expect(none.canSellTickets, isFalse);
+    });
+
+    test('Stripe ticket sales require charges and active card payments', () {
+      for (final (chargesEnabled, cardPaymentsStatus, expected) in [
+        (true, 'active', true),
+        (false, 'active', false),
+        (true, null, false),
+        (false, null, false),
+        (true, 'pending', false),
+        (false, 'pending', false),
+      ]) {
+        final status = StripeAccountStatus.fromJson({
+          'chargesEnabled': chargesEnabled,
+          'cardPaymentsStatus': cardPaymentsStatus,
+        });
+        expect(status.chargesEnabled, chargesEnabled);
+        expect(status.cardPaymentsStatus, cardPaymentsStatus);
+        expect(status.canSellTickets, expected);
+      }
+    });
+
     test(
       'StripeAccountStatus parses every field, including the account flag',
       () {

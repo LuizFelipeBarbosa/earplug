@@ -1708,6 +1708,8 @@ class ConvexRepository implements EarplugRepository {
     required AgeRequirement ageRequirement,
     required String? externalUrl,
     required String cap,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
   }) async {
     final result = _asMap(
       await _convexService.mutation('gigs:saveDraft', {
@@ -1723,6 +1725,8 @@ class ConvexRepository implements EarplugRepository {
         'overlay': overlay,
         'desc': desc,
         'ticketing': ticketing.name,
+        'ticketPriceMinor': ticketPriceMinor,
+        'ticketCapacity': ticketCapacity,
         'ageRequirement': ageRequirement.wireValue,
         'externalUrl': externalUrl,
         'cap': cap,
@@ -2132,6 +2136,16 @@ class ConvexRepository implements EarplugRepository {
   Future<String> startBandOnboarding(String bandId) async {
     final result = _asMap(
       await _convexService.action('stripeActions:startBandOnboarding', {
+        'bandId': bandId,
+      }),
+    );
+    return result['url'] as String;
+  }
+
+  @override
+  Future<String> enableBandTicketSales(String bandId) async {
+    final result = _asMap(
+      await _convexService.action('stripeActions:enableBandTicketSales', {
         'bandId': bandId,
       }),
     );

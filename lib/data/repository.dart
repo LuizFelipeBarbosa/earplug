@@ -1060,6 +1060,10 @@ abstract class EarplugRepository {
     throw UnimplementedError('startBandOnboarding');
   }
 
+  Future<String> enableBandTicketSales(String bandId) {
+    throw UnimplementedError('enableBandTicketSales');
+  }
+
   Future<String> startOrganizationOnboarding(String organizationId) {
     // TODO(marketplace-phase3b): demo lane implements this.
     throw UnimplementedError('startOrganizationOnboarding');
@@ -1193,6 +1197,8 @@ abstract class EarplugRepository {
     required AgeRequirement ageRequirement,
     required String? externalUrl,
     required String cap,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
   });
   Future<GigProject> addGigPerformer({
     required String projectId,

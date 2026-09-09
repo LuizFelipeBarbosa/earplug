@@ -86,6 +86,12 @@ mixin _PaymentState on _AppStateCore {
     await hostedUrlLauncher(url);
   }
 
+  Future<void> enableBandTicketSales(String bandId) async {
+    final url = await repository.enableBandTicketSales(bandId);
+    if (_disposed) return;
+    await hostedUrlLauncher(url);
+  }
+
   Future<void> startOrganizationOnboarding() async {
     final url = await repository.startOrganizationOnboarding(organizationId);
     if (_disposed) return;
