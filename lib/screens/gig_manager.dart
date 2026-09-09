@@ -731,7 +731,7 @@ class _ProjectSection extends StatelessWidget {
         else
           for (var index = 0; index < projects.length; index++) ...[
             _ProjectCard(
-              key: ValueKey('gig-project-${projects[index].id}'),
+              key: ValueKey('gig-project-card-${projects[index].id}'),
               project: projects[index],
               readOnly: readOnly,
             ),
@@ -945,6 +945,7 @@ class _ProjectCardState extends State<_ProjectCard> {
     ];
 
     return EpCard(
+      key: ValueKey('gig-project-${project.id}'),
       padding: EdgeInsets.zero,
       onTap: canWrite ? () => app.editGigProject(project.id) : null,
       child: Column(
