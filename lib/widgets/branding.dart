@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum EpLogoVariant { full, compact }
+enum _EpLogoVariant { full, compact }
 
 /// The EarPlug lockup for entry surfaces and the ear mark for compact headers.
 class EpLogo extends StatelessWidget {
@@ -9,23 +9,23 @@ class EpLogo extends StatelessWidget {
     this.width = 240,
     this.height,
     this.semanticLabel = 'EarPlug',
-  }) : variant = EpLogoVariant.full;
+  }) : _variant = _EpLogoVariant.full;
 
   const EpLogo.compact({
     super.key,
     this.width,
     this.height = 48,
     this.semanticLabel = 'EarPlug',
-  }) : variant = EpLogoVariant.compact;
+  }) : _variant = _EpLogoVariant.compact;
 
-  final EpLogoVariant variant;
+  final _EpLogoVariant _variant;
   final double? width;
   final double? height;
   final String semanticLabel;
 
-  String get _assetName => switch (variant) {
-    EpLogoVariant.full => 'assets/images/listen_local_bw.png',
-    EpLogoVariant.compact => 'assets/images/earplug_mark.png',
+  String get _assetName => switch (_variant) {
+    _EpLogoVariant.full => 'assets/images/listen_local_bw.png',
+    _EpLogoVariant.compact => 'assets/images/earplug_mark.png',
   };
 
   @override

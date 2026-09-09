@@ -22,27 +22,6 @@ mixin _OrganizerState on _AppStateCore {
   List<OrganizationMembership> myOrganizations = const [];
   OrganizationApplication? myOrganizationApplication;
 
-  FeatureFlags features = const FeatureFlags(
-    privateBookings: false,
-    tickets: false,
-    payments: false,
-    bandGigWrites: true,
-  );
-
-  bool get privateBookingsEnabled => features.privateBookings;
-  bool get disputesEnabled => features.disputes;
-
-  Future<void> loadFeatureFlags() async {
-    try {
-      final loaded = await repository.featureFlags();
-      if (_disposed) return;
-      features = loaded;
-      notifyListeners();
-    } catch (error) {
-      logError('featureFlags', error);
-    }
-  }
-
   bool isHostOrganization(String id) =>
       myOrganizations
           .where((membership) => membership.organization.id == id)
@@ -52,8 +31,6 @@ mixin _OrganizerState on _AppStateCore {
       OrganizationType.privateHost;
 
   bool get currentIsHost => isHostOrganization(organizationId);
-
-  bool get promotersEnabled => features.promoters;
 
   bool isVenueOperatorOrganization(String id) =>
       myOrganizations

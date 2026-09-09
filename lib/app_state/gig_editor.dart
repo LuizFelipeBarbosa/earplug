@@ -5,7 +5,6 @@ part of '../app_state.dart';
 mixin _GigEditorState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   String get bandId;
-  FeatureFlags get features;
   StripeAccountStatus? get bandPayoutStatus;
   set _stack(List<ScreenEntry> value);
   Band? get myBand;
@@ -251,8 +250,7 @@ mixin _GigEditorState on _AppStateCore {
       validTicketPricing &&
       (gfTix != Ticketing.external || validExternalTicketUrl);
 
-  bool get canSellTickets =>
-      features.bandTicketing && (bandPayoutStatus?.canSellTickets ?? false);
+  bool get canSellTickets => bandPayoutStatus?.canSellTickets ?? false;
 
   bool get validTicketPricing =>
       gfTix != Ticketing.paid ||

@@ -241,8 +241,8 @@ class AnalyticsStackedBar extends StatelessWidget {
             spacing: 12,
             runSpacing: 5,
             children: [
-              ChartLegend(color: Ep.brand, label: 'NEW $newFans'),
-              ChartLegend(
+              _ChartLegend(color: Ep.brand, label: 'NEW $newFans'),
+              _ChartLegend(
                 color: context.epColors.accent,
                 label: 'RETURNING $returningFans',
               ),
@@ -254,8 +254,8 @@ class AnalyticsStackedBar extends StatelessWidget {
   }
 }
 
-class ChartLegend extends StatelessWidget {
-  const ChartLegend({super.key, required this.color, required this.label});
+class _ChartLegend extends StatelessWidget {
+  const _ChartLegend({required this.color, required this.label});
 
   final Color color;
   final String label;

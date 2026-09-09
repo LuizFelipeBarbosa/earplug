@@ -287,8 +287,6 @@ class AppState extends ChangeNotifier
       authStep = 2;
       _authReady = _ensureUser();
       unawaited(_authReady);
-    } else {
-      unawaited(loadFeatureFlags());
     }
     _authSubscription = auth.signedInChanges.listen(_handleAuthChange);
     _subscribeToFeed();
