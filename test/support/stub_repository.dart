@@ -4,76 +4,226 @@ import 'dart:async';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
-import 'package:earplug/services/auth_service.dart';
 import 'package:flutter/foundation.dart' show protected;
 
-import 'fakes.dart' show HttpUploadDemoRepository;
-
-/// A configurable [DemoRepository] with the same default authentication as
-/// [HttpUploadDemoRepository]. Unconfigured methods use the real demo behavior.
+/// A configurable [DemoRepository] using the test harness's shared authentication.
+/// Unconfigured methods use the real demo behavior.
 ///
-/// Method keys are plain strings, not a generated enum. A typo such as
-/// `stub.fail('myBnds')` silently does nothing: the `myBands` override never sees
-/// it, so the test that configured the typo can fail confusingly. This is an
-/// accepted tradeoff; copy names from [EarplugRepository].
+/// Method keys are plain strings checked against [futureMethods] and
+/// [streamMethods]. Typos such as `stub.fail('myBnds')` throw [ArgumentError].
+/// Copy names from [EarplugRepository]; configuration also rejects method keys
+/// whose Future or Stream kind is unsupported by that configuration method.
 ///
 /// ```dart
-/// final stub = StubRepository()..fail('me');
+/// final stub = StubRepository(auth: auth)..fail('me');
 /// ```
 ///
 /// ```dart
-/// final stub = StubRepository()..returns('venues', <Venue>[]);
+/// final stub = StubRepository(auth: auth)..returns('venues', <Venue>[]);
 /// ```
 ///
 /// ```dart
-/// final stub = StubRepository()
+/// final stub = StubRepository(auth: auth)
 ///   ..wraps<List<Venue>>('venues', (real) => real.take(1).toList());
 /// ```
 ///
-/// Streams support only [fail], [failOnce], [returns], and call counts. Stream
+/// Streams support only [fail], [failOnce], [returnsStream], and call counts. Stream
 /// calls are counted immediately; failures are emitted as stream errors and
-/// [returns] must supply a Stream of the method's declared type. [gate] and
-/// [wraps] apply only to Future-returning methods.
+/// [returnsStream] must build a fresh Stream of the method's declared type for
+/// each invocation. [returns], [gate], and [wraps] apply only to Future methods.
 class StubRepository extends DemoRepository {
-  StubRepository({AuthService? auth}) : super(auth: auth ?? FakeAuthService());
+  StubRepository({required super.auth});
+
+  /// Intercepted Future method keys accepted by configuration.
+  static const Set<String> futureMethods = {
+    'acceptBandInvite',
+    'acceptOrganizationInvite',
+    'addBandMedia',
+    'adminBookings',
+    'archiveBand',
+    'artistInsights',
+    'band',
+    'bandArchiveStatus',
+    'bandBookings',
+    'bandDiscoveryReadiness',
+    'bandHistory',
+    'bandInvite',
+    'bandPayoutStatement',
+    'bandPayoutStatus',
+    'bandProfileDetails',
+    'bandRecap',
+    'bandSetupStatus',
+    'booking',
+    'browseOpportunities',
+    'cancelBooking',
+    'cancelTicketReservation',
+    'checkInTicket',
+    'checkoutStatus',
+    'claimPerformerInvite',
+    'clearAvatar',
+    'clearBandAvatar',
+    'createBand',
+    'createBandInvite',
+    'createGigDraft',
+    'deleteCurrentUser',
+    'disputesForBooking',
+    'doorRoster',
+    'ensureRsvp',
+    'ensureSave',
+    'ensureUser',
+    'exportStatement',
+    'feeRates',
+    'financeOverview',
+    'financeTransactions',
+    'generateAvatarUploadUrl',
+    'generateMediaUploadUrl',
+    'getGigProject',
+    'history',
+    'invitedOpportunities',
+    'listBands',
+    'manageGigs',
+    'manageOpportunities',
+    'me',
+    'mediaFor',
+    'moveMediaWithinKind',
+    'myApplications',
+    'myBandInsights',
+    'myOrganizationApplication',
+    'myTickets',
+    'openDispute',
+    'openDisputes',
+    'opportunity',
+    'organizationBookings',
+    'organizationDashboard',
+    'organizationStripeStatus',
+    'organizerDoorRoster',
+    'paymentsForBooking',
+    'payoutsForBand',
+    'payoutsForBooking',
+    'previewCancellation',
+    'privateLocationsFor',
+    'publishGigDraft',
+    'refreshAuth',
+    'refreshBandAccountStatus',
+    'refreshFinanceBalance',
+    'refreshOrganizationAccountStatus',
+    'refundsForBooking',
+    'removeOrganizationMember',
+    'reserveTickets',
+    'resolveDispute',
+    'resolveOpportunity',
+    'resolvePerformerInvite',
+    'respondToOffer',
+    'revokeBandInvite',
+    'rotateBandInvite',
+    'saveGigDraft',
+    'saveOrganizationApplicationDraft',
+    'searchBands',
+    'sendOffer',
+    'setBandAvatar',
+    'setBandBanner',
+    'setProfileTutorialCompleted',
+    'setVenueAddressDisclosure',
+    'startBandOnboarding',
+    'startDisputeReview',
+    'startInstallmentCheckout',
+    'startOrganizationOnboarding',
+    'startTicketCheckout',
+    'ticket',
+    'ticketOrderStatus',
+    'ticketSalesForGig',
+    'toggleFollow',
+    'toggleRsvp',
+    'toggleSave',
+    'updateBandProfile',
+    'updateFanOnboarding',
+    'updateFanProfile',
+    'updateOpportunity',
+    'updateOpportunityTicketing',
+    'updateVenueProfile',
+    'venueConsentsForOrganization',
+    'venueDetail',
+    'venues',
+  };
+
+  /// Intercepted Stream method keys accepted by configuration.
+  static const Set<String> streamMethods = {
+    'feed',
+    'goingCounts',
+    'myBands',
+    'myInteractions',
+    'myOrganizations',
+    'publicGig',
+    'upcomingGigsForBand',
+    'watchVenues',
+  };
 
   final _calls = <String, int>{};
   final _failures = <String, ({Object error, bool once})>{};
   final _returns = <String, Object?>{};
+  final _streamReturns = <String, Stream<Object?> Function()>{};
   final _wraps = <String, FutureOr<Object?> Function(Object?)>{};
   final _gates = <String, Completer<void>>{};
 
   /// Every call to [method] throws [error], defaulting to
   /// `StateError('<method> failed')`. Replaces any previous failure setting.
   void fail(String method, [Object? error]) {
+    _validateMethod(method);
     _failures[method] = (error: error ?? StateError('$method failed'), once: false);
   }
 
   /// The first call to [method] throws [error]; later calls fall through to
   /// returns, wraps, or real behavior. Replaces any previous failure setting.
   void failOnce(String method, [Object? error]) {
+    _validateMethod(method);
     _failures[method] = (error: error ?? StateError('$method failed'), once: true);
   }
 
   /// Resolves calls to [method] with [value], bypassing the real implementation
-  /// and any wrapper. Future-returning methods also accept a Future as [value].
-  void returns(String method, Object? value) => _returns[method] = value;
+  /// and any wrapper. Also accepts a Future as [value]. For Stream methods,
+  /// use [returnsStream] instead.
+  void returns(String method, Object? value) {
+    _validateMethod(method);
+    if (streamMethods.contains(method)) {
+      throw ArgumentError.value(method, 'method', 'Stream methods use returnsStream, not returns');
+    }
+    _returns[method] = value;
+  }
+
+  /// Builds a fresh Stream for each call to [method], bypassing real behavior.
+  /// [T] must match the element type of the method's Stream.
+  void returnsStream<T>(String method, Stream<T> Function() build) {
+    if (!streamMethods.contains(method)) {
+      throw ArgumentError.value(method, 'method', 'StubRepository does not intercept this method');
+    }
+    _streamReturns[method] = build;
+  }
 
   /// Runs the real implementation of [method], then transforms its result
   /// through [f]. [T] must match the result type of the method's Future.
   void wraps<T>(String method, FutureOr<T> Function(T real) f) {
+    _validateMethod(method, futureOnly: true);
     _wraps[method] = (real) => f(real as T);
   }
 
   /// Returns a new gate which calls to [method] must await before resolving.
   /// Complete it to release waiting calls; replaces the gate for future calls.
-  Completer<void> gate(String method) => _gates[method] = Completer<void>();
+  Completer<void> gate(String method) {
+    _validateMethod(method, futureOnly: true);
+    return _gates[method] = Completer<void>();
+  }
 
   /// How many times [method] has been called so far, including gated calls.
   int callsTo(String method) => _calls[method] ?? 0;
 
   /// An unmodifiable snapshot of all call counts by method name.
   Map<String, int> get calls => Map.unmodifiable(_calls);
+
+  void _validateMethod(String method, {bool futureOnly = false}) {
+    if (futureMethods.contains(method)) return;
+    if (!futureOnly && streamMethods.contains(method)) return;
+    throw ArgumentError.value(method, 'method', 'StubRepository does not intercept this method');
+  }
 
   /// Dispatches Future calls in order: count, gate, failure, canned value,
   /// real implementation, then wrapper. Canned values bypass real and wrapper.
@@ -108,7 +258,8 @@ class StubRepository extends DemoRepository {
     } catch (error, stackTrace) {
       return Stream<T>.error(error, stackTrace);
     }
-    if (_returns.containsKey(method)) return _returns[method] as Stream<T>;
+    final build = _streamReturns[method];
+    if (build != null) return build() as Stream<T>;
     return real();
   }
 
@@ -211,6 +362,23 @@ class StubRepository extends DemoRepository {
     ),
   );
   @override
+  Future<({BookingStatus status, int revision})> cancelBooking({
+    required String bookingId,
+    required String reason,
+    required int expectedRevision,
+    BookingSide? side,
+    bool? safety,
+  }) => intercept(
+    'cancelBooking',
+    () => super.cancelBooking(
+      bookingId: bookingId,
+      reason: reason,
+      expectedRevision: expectedRevision,
+      side: side,
+      safety: safety,
+    ),
+  );
+  @override
   Future<void> cancelTicketReservation(String orderId) =>
       intercept('cancelTicketReservation', () => super.cancelTicketReservation(orderId));
   @override
@@ -230,8 +398,34 @@ class StubRepository extends DemoRepository {
   Future<void> clearBandAvatar(String bandId) =>
       intercept('clearBandAvatar', () => super.clearBandAvatar(bandId));
   @override
+  Future<({Band band, String slug})> createBand({
+    required String name,
+    required List<String> genres,
+    required String bio,
+    required String area,
+    String? linkIg,
+    String? linkBc,
+    String? linkYt,
+    String? credits,
+  }) => intercept(
+    'createBand',
+    () => super.createBand(
+      name: name,
+      genres: genres,
+      bio: bio,
+      area: area,
+      linkIg: linkIg,
+      linkBc: linkBc,
+      linkYt: linkYt,
+      credits: credits,
+    ),
+  );
+  @override
   Future<BandInvite> createBandInvite(String bandId) =>
       intercept('createBandInvite', () => super.createBandInvite(bandId));
+  @override
+  Future<GigProject> createGigDraft(String bandId) =>
+      intercept('createGigDraft', () => super.createGigDraft(bandId));
   @override
   Future<void> deleteCurrentUser() => intercept('deleteCurrentUser', super.deleteCurrentUser);
   @override
@@ -442,13 +636,123 @@ class StubRepository extends DemoRepository {
   Future<PerformerInviteResolution?> resolvePerformerInvite(String token) =>
       intercept('resolvePerformerInvite', () => super.resolvePerformerInvite(token));
   @override
+  Future<({BookingStatus status, int revision})> respondToOffer({
+    required String bookingId,
+    required bool accept,
+    required int expectedRevision,
+    String? message,
+  }) => intercept(
+    'respondToOffer',
+    () => super.respondToOffer(
+      bookingId: bookingId,
+      accept: accept,
+      expectedRevision: expectedRevision,
+      message: message,
+    ),
+  );
+  @override
   Future<void> revokeBandInvite(String bandId) =>
       intercept('revokeBandInvite', () => super.revokeBandInvite(bandId));
   @override
   Future<BandInvite> rotateBandInvite(String bandId) =>
       intercept('rotateBandInvite', () => super.rotateBandInvite(bandId));
   @override
+  Future<int> saveGigDraft({
+    required String projectId,
+    required int revision,
+    required String? title,
+    required DateTime? doorsAt,
+    required DateTime? startsAt,
+    required String? venueId,
+    required int price,
+    required String flyKey,
+    required String? flyStorageId,
+    required bool overlay,
+    required String desc,
+    required Ticketing ticketing,
+    required AgeRequirement ageRequirement,
+    required String? externalUrl,
+    required String cap,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+  }) => intercept(
+    'saveGigDraft',
+    () => super.saveGigDraft(
+      projectId: projectId,
+      revision: revision,
+      title: title,
+      doorsAt: doorsAt,
+      startsAt: startsAt,
+      venueId: venueId,
+      price: price,
+      flyKey: flyKey,
+      flyStorageId: flyStorageId,
+      overlay: overlay,
+      desc: desc,
+      ticketing: ticketing,
+      ageRequirement: ageRequirement,
+      externalUrl: externalUrl,
+      cap: cap,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
+    ),
+  );
+  @override
+  Future<({String applicationId, int revision})> saveOrganizationApplicationDraft({
+    ApplicationKind? kind,
+    String? hostDisplayName,
+    String? hostPhone,
+    String? hostArea,
+    bool? hostAgreementAccepted,
+    String? applicationId,
+    int? expectedRevision,
+    required String orgName,
+    required OrganizationType orgType,
+    String? website,
+    required String contactName,
+    required String businessEmail,
+    String? phone,
+    ApplicationVenueDraft? venue,
+  }) => intercept(
+    'saveOrganizationApplicationDraft',
+    () => super.saveOrganizationApplicationDraft(
+      kind: kind,
+      hostDisplayName: hostDisplayName,
+      hostPhone: hostPhone,
+      hostArea: hostArea,
+      hostAgreementAccepted: hostAgreementAccepted,
+      applicationId: applicationId,
+      expectedRevision: expectedRevision,
+      orgName: orgName,
+      orgType: orgType,
+      website: website,
+      contactName: contactName,
+      businessEmail: businessEmail,
+      phone: phone,
+      venue: venue,
+    ),
+  );
+  @override
   Future<List<Band>> searchBands(String q) => intercept('searchBands', () => super.searchBands(q));
+  @override
+  Future<({String bookingId, String offerId, int revision})> sendOffer({
+    required String applicationId,
+    required int grossMinor,
+    required CancellationTemplate cancellationTemplate,
+    String? termsNotes,
+    String? message,
+    List<OfferInstallmentInput>? installments,
+  }) => intercept(
+    'sendOffer',
+    () => super.sendOffer(
+      applicationId: applicationId,
+      grossMinor: grossMinor,
+      cancellationTemplate: cancellationTemplate,
+      termsNotes: termsNotes,
+      message: message,
+      installments: installments,
+    ),
+  );
   @override
   Future<void> setBandAvatar({required String bandId, required String mediaId}) =>
       intercept('setBandAvatar', () => super.setBandAvatar(bandId: bandId, mediaId: mediaId));
@@ -473,10 +777,16 @@ class StubRepository extends DemoRepository {
   Future<void> startDisputeReview(String disputeId) =>
       intercept('startDisputeReview', () => super.startDisputeReview(disputeId));
   @override
+  Future<({String url, String sessionId})> startInstallmentCheckout(String paymentRecordId) =>
+      intercept('startInstallmentCheckout', () => super.startInstallmentCheckout(paymentRecordId));
+  @override
   Future<String> startOrganizationOnboarding(String organizationId) => intercept(
     'startOrganizationOnboarding',
     () => super.startOrganizationOnboarding(organizationId),
   );
+  @override
+  Future<({String url, String sessionId})> startTicketCheckout(String orderId) =>
+      intercept('startTicketCheckout', () => super.startTicketCheckout(orderId));
   @override
   Future<TicketSummary?> ticket(String ticketId) =>
       intercept('ticket', () => super.ticket(ticketId));
@@ -532,6 +842,63 @@ class StubRepository extends DemoRepository {
       genres: genres,
       locationPersonalizationEnabled: locationPersonalizationEnabled,
       followedBandUpdatesEnabled: followedBandUpdatesEnabled,
+    ),
+  );
+  @override
+  Future<int> updateOpportunity({
+    required String opportunityId,
+    required int expectedRevision,
+    String? title,
+    String? desc,
+    String? venueId,
+    String? privateLocationId,
+    String? eventType,
+    int? expectedAttendance,
+    List<String>? genres,
+    DateTime? startsAt,
+    DateTime? doorsAt,
+    DateTime? endsAt,
+    AgeRequirement? ageRequirement,
+    String? equipment,
+    String? requirements,
+    String? flyKey,
+    String? flyStorageId,
+    DateTime? applicationsCloseAt,
+    OpportunityVisibility? visibility,
+    OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
+    String? externalUrl,
+    List<SlotInput>? slots,
+  }) => intercept(
+    'updateOpportunity',
+    () => super.updateOpportunity(
+      opportunityId: opportunityId,
+      expectedRevision: expectedRevision,
+      title: title,
+      desc: desc,
+      venueId: venueId,
+      privateLocationId: privateLocationId,
+      eventType: eventType,
+      expectedAttendance: expectedAttendance,
+      genres: genres,
+      startsAt: startsAt,
+      doorsAt: doorsAt,
+      endsAt: endsAt,
+      ageRequirement: ageRequirement,
+      equipment: equipment,
+      requirements: requirements,
+      flyKey: flyKey,
+      flyStorageId: flyStorageId,
+      applicationsCloseAt: applicationsCloseAt,
+      visibility: visibility,
+      ticketing: ticketing,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
+      ticketCurrency: ticketCurrency,
+      externalUrl: externalUrl,
+      slots: slots,
     ),
   );
   @override
