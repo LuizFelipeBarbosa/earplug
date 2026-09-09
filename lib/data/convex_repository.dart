@@ -245,11 +245,6 @@ class ConvexRepository implements EarplugRepository {
   }
 
   @override
-  Future<FeatureFlags> featureFlags() async => FeatureFlags.fromJson(
-    _asMap(await _convexService.query('features:flags', {})),
-  );
-
-  @override
   Future<FeeRates> feeRates({String? organizationId}) async =>
       FeeRates.fromJson(
         _asMap(
@@ -1660,11 +1655,6 @@ class ConvexRepository implements EarplugRepository {
     );
     return json.isEmpty ? null : ArtistApplication.fromJson(json);
   }
-
-  @override
-  Future<GigWritePolicy> gigWritePolicy() async => GigWritePolicy.fromJson(
-    _asMap(await _convexService.query('gigs:writePolicy')),
-  );
 
   @override
   Future<List<GigProject>> manageGigs(String bandId) async {

@@ -443,7 +443,6 @@ abstract class EarplugRepository {
   /// sequence mutations after an identity change.
   Future<void> refreshAuth();
 
-  Future<FeatureFlags> featureFlags();
   Future<FeeRates> feeRates({String? organizationId});
   Future<List<PrivateLocation>> privateLocationsFor(String organizationId);
   Future<String> createPrivateLocation({
@@ -997,11 +996,6 @@ abstract class EarplugRepository {
   }) {
     // TODO(marketplace-phase2): demo lane implements this.
     throw UnimplementedError('myApplicationFor');
-  }
-
-  Future<GigWritePolicy> gigWritePolicy() {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('gigWritePolicy');
   }
 
   Future<({String bookingId, String offerId, int revision})> sendOffer({

@@ -332,7 +332,6 @@ class DemoRepository implements EarplugRepository {
   String? _myOrganizationApplicationId;
 
   bool platformAdmin = false;
-  bool demoBandGigWrites = true;
   bool demoPaymentsEnabled = false;
   int demoCommissionBps = 1000;
 
@@ -840,15 +839,6 @@ class DemoRepository implements EarplugRepository {
       truncated: false,
     );
   }
-
-  @override
-  Future<FeatureFlags> featureFlags() async => const FeatureFlags(
-    privateBookings: true,
-    tickets: true,
-    payments: true,
-    bandGigWrites: true,
-    disputes: true,
-  );
 
   @override
   Future<FeeRates> feeRates({String? organizationId}) async => const FeeRates(
@@ -5062,10 +5052,6 @@ class DemoRepository implements EarplugRepository {
     String organizationId, {
     int? limit,
   }) async => _publicReviews(organizationId: organizationId, limit: limit);
-
-  @override
-  Future<GigWritePolicy> gigWritePolicy() async =>
-      GigWritePolicy(bandGigWrites: demoBandGigWrites);
 
   @override
   Future<List<GigProject>> manageGigs(String bandId) async => [

@@ -57,35 +57,6 @@ LatLng _marketplacePoint(
   json['lng'] is num ? (json['lng'] as num).toDouble() : fallback.longitude,
 );
 
-class FeatureFlags {
-  const FeatureFlags({
-    required this.privateBookings,
-    required this.tickets,
-    required this.payments,
-    required this.bandGigWrites,
-    this.disputes = false,
-    this.promoters = false,
-  });
-
-  final bool privateBookings;
-  final bool tickets;
-  final bool payments;
-  final bool bandGigWrites;
-  final bool disputes;
-  final bool promoters;
-
-  bool get bandTicketing => tickets && bandGigWrites;
-
-  factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
-    privateBookings: json['privateBookings'] == true,
-    tickets: json['tickets'] == true,
-    payments: json['payments'] == true,
-    bandGigWrites: json['bandGigWrites'] == true,
-    disputes: json['disputes'] == true,
-    promoters: json['promoters'] == true,
-  );
-}
-
 class FeeRates {
   const FeeRates({
     required this.bookingCommissionBps,
@@ -4285,15 +4256,6 @@ const List<String> reviewCategories = [
   'hospitality',
   'payment',
 ];
-
-class GigWritePolicy {
-  const GigWritePolicy({required this.bandGigWrites});
-
-  final bool bandGigWrites;
-
-  factory GigWritePolicy.fromJson(Map<String, dynamic> json) =>
-      GigWritePolicy(bandGigWrites: json['bandGigWrites'] == true);
-}
 
 enum Ticketing { rsvp, external, paid }
 
