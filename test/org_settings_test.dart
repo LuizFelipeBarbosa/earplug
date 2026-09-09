@@ -1,4 +1,3 @@
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/org_settings.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -8,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   for (final (description, requirementsDue, needsTaxInformation) in [
@@ -24,7 +24,7 @@ void main() {
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: _StripeStatusRepository(
+        repository: _stripeStatusRepository(
           auth: auth,
           state: detailsSubmitted
               ? StripeAccountState.enabled
@@ -97,7 +97,7 @@ void main() {
     'restricted organization with submitted details can manage tax details and retry errors',
     (tester) async {
       final auth = FakeAuthService();
-      final repository = _StripeStatusRepository(
+      final repository = _stripeStatusRepository(
         auth: auth,
         state: StripeAccountState.restricted,
         detailsSubmitted: true,
@@ -148,25 +148,22 @@ void main() {
   );
 }
 
-class _StripeStatusRepository extends DemoRepository {
-  _StripeStatusRepository({
-    required super.auth,
-    required StripeAccountState state,
-    required bool detailsSubmitted,
-    required List<String> requirementsDue,
-  }) : status = StripeAccountStatus(
-         state: state,
-         hasAccount: state != StripeAccountState.none,
-         chargesEnabled: state == StripeAccountState.enabled,
-         payoutsEnabled: state == StripeAccountState.enabled,
-         detailsSubmitted: detailsSubmitted,
-         requirementsDue: requirementsDue,
-       );
-
-  final StripeAccountStatus status;
-
-  @override
-  Future<StripeAccountStatus> organizationStripeStatus(
-    String organizationId,
-  ) async => status;
+StubRepository _stripeStatusRepository({
+  required FakeAuthService auth,
+  required StripeAccountState state,
+  required bool detailsSubmitted,
+  required List<String> requirementsDue,
+}) {
+  return StubRepository(auth: auth)
+    ..returns(
+      'organizationStripeStatus',
+      StripeAccountStatus(
+        state: state,
+        hasAccount: state != StripeAccountState.none,
+        chargesEnabled: state == StripeAccountState.enabled,
+        payoutsEnabled: state == StripeAccountState.enabled,
+        detailsSubmitted: detailsSubmitted,
+        requirementsDue: requirementsDue,
+      ),
+    );
 }

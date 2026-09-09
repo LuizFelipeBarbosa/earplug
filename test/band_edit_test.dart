@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('editor groups every profile field and uses plain terminology', (
@@ -180,7 +181,8 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
-    final repository = _FailingAvatarRepository(auth: auth);
+    final repository = StubRepository(auth: auth)
+      ..fail('setBandAvatar', StateError('avatar assignment failed'));
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -344,7 +346,9 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
-    final repository = _DelayedDetailsRepository(auth: auth);
+    final details = Completer<BandProfileDetails>();
+    final repository = StubRepository(auth: auth)
+      ..returns('bandProfileDetails', details.future);
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -356,7 +360,7 @@ void main() {
       find.byKey(const ValueKey('edit-band-name')),
       'Keep This Draft',
     );
-    repository.details.complete(
+    details.complete(
       const BandProfileDetails(
         credits: 'Existing private credits',
         linkIg: '@existing',
@@ -554,7 +558,11 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _CommittedTimeoutArchiveRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..wraps<BandArchiveResult>(
+          'archiveBand',
+          (_) => throw TimeoutException('response lost after commit'),
+        ),
       home: const Scaffold(body: BandEditScreen()),
     );
 
@@ -570,7 +578,12 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _UnverifiedArchiveRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..fail('archiveBand', StateError('archive did not commit'))
+        ..returns(
+          'bandArchiveStatus',
+          const BandArchiveStatus(bandId: 'b1', archivedAt: null),
+        ),
       home: const Scaffold(body: BandEditScreen()),
     );
 
@@ -611,36 +624,10 @@ class _ControlledProfileRepository extends DemoRepository {
   }
 }
 
-class _ArtworkAuditRepository extends DemoRepository {
+class _ArtworkAuditRepository extends StubRepository {
   _ArtworkAuditRepository({required super.auth});
 
-  int clearAvatarCalls = 0;
-
-  @override
-  Future<void> clearBandAvatar(String bandId) {
-    clearAvatarCalls++;
-    return super.clearBandAvatar(bandId);
-  }
-}
-
-class _FailingAvatarRepository extends DemoRepository {
-  _FailingAvatarRepository({required super.auth});
-
-  @override
-  Future<void> setBandAvatar({
-    required String bandId,
-    required String mediaId,
-  }) async => throw StateError('avatar assignment failed');
-}
-
-class _DelayedDetailsRepository extends DemoRepository {
-  _DelayedDetailsRepository({required super.auth});
-
-  final details = Completer<BandProfileDetails>();
-
-  @override
-  Future<BandProfileDetails> bandProfileDetails(String bandId) =>
-      details.future;
+  int get clearAvatarCalls => callsTo('clearBandAvatar');
 }
 
 class _InviteStateRepository extends DemoRepository {
@@ -652,57 +639,11 @@ class _InviteStateRepository extends DemoRepository {
   Future<BandInvite?> bandInvite(String bandId) async => invite;
 }
 
-class _InviteAuditRepository extends DemoRepository {
+class _InviteAuditRepository extends StubRepository {
   _InviteAuditRepository({required super.auth});
 
-  int profileUpdates = 0;
-  int inviteCreates = 0;
-  int inviteRotations = 0;
-  int inviteRevocations = 0;
-
-  @override
-  Future<void> updateBandProfile(BandProfileUpdate update) async {
-    profileUpdates++;
-    await super.updateBandProfile(update);
-  }
-
-  @override
-  Future<BandInvite> createBandInvite(String bandId) {
-    inviteCreates++;
-    return super.createBandInvite(bandId);
-  }
-
-  @override
-  Future<BandInvite> rotateBandInvite(String bandId) {
-    inviteRotations++;
-    return super.rotateBandInvite(bandId);
-  }
-
-  @override
-  Future<void> revokeBandInvite(String bandId) {
-    inviteRevocations++;
-    return super.revokeBandInvite(bandId);
-  }
-}
-
-class _CommittedTimeoutArchiveRepository extends DemoRepository {
-  _CommittedTimeoutArchiveRepository({required super.auth});
-
-  @override
-  Future<BandArchiveResult> archiveBand(String bandId) async {
-    await super.archiveBand(bandId);
-    throw TimeoutException('response lost after commit');
-  }
-}
-
-class _UnverifiedArchiveRepository extends DemoRepository {
-  _UnverifiedArchiveRepository({required super.auth});
-
-  @override
-  Future<BandArchiveResult> archiveBand(String bandId) async =>
-      throw StateError('archive did not commit');
-
-  @override
-  Future<BandArchiveStatus> bandArchiveStatus(String bandId) async =>
-      BandArchiveStatus(bandId: bandId, archivedAt: null);
+  int get profileUpdates => callsTo('updateBandProfile');
+  int get inviteCreates => callsTo('createBandInvite');
+  int get inviteRotations => callsTo('rotateBandInvite');
+  int get inviteRevocations => callsTo('revokeBandInvite');
 }

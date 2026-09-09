@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   test('resolved artwork roles do not resurrect cleared legacy artwork', () {
@@ -75,7 +76,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         profileBand: DemoData.bands['b1']!.copyWith(
           linkIg: '@foghorn.diet',
@@ -117,7 +118,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         profileBand: DemoData.bands['b1']!,
         details: BandProfileDetails.empty,
@@ -139,7 +140,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         profileBand: DemoData.bands['b1']!.copyWith(
           linkIg: '@foghorn.diet',
@@ -185,7 +186,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         profileBand: DemoData.bands['b1']!,
         details: BandProfileDetails.empty,
@@ -236,7 +237,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         profileBand: DemoData.bands['b1']!,
         details: BandProfileDetails.empty,
@@ -251,7 +252,7 @@ void main() {
     await pumpApp(
       tester,
       auth: incompleteAuth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: incompleteAuth,
         profileBand: DemoData.bands['b1']!.copyWith(profileComplete: false),
         details: BandProfileDetails.empty,
@@ -270,7 +271,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _HistoryRepository(auth: auth, stagedHistory: history),
+      repository: StubRepository(auth: auth)..returns('bandHistory', history),
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
@@ -459,7 +460,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         managedBandIds: const ['b1', 'b2'],
       ),
@@ -482,7 +483,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(auth: auth, role: 'member'),
+      repository: _profileRepository(auth: auth, role: 'member'),
       beforePump: (app) => app.go(Screen.bandPreview, 'b1'),
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
@@ -670,61 +671,38 @@ Future<void> _scrollToPastGigs(WidgetTester tester) async {
 
 /// Demo data with the viewer's memberships fixed, optionally with one band
 /// swapped into the feed and its profile details stubbed.
-class _ProfileRepository extends DemoRepository {
-  _ProfileRepository({
-    required super.auth,
-    this.profileBand,
-    this.details,
-    this.role = 'admin',
-    this.managedBandIds = const ['b1'],
-  });
-
-  final Band? profileBand;
-  final BandProfileDetails? details;
-  final String role;
-  final List<String> managedBandIds;
-
-  @override
-  Stream<FeedSnapshot> feed() {
-    final band = profileBand;
-    if (band == null) return super.feed();
-    return Stream.value(
-      FeedSnapshot(
-        gigs: DemoData.gigs,
-        venues: DemoData.venues,
-        bands: {...DemoData.bands, band.id: band},
+StubRepository _profileRepository({
+  required AuthService auth,
+  Band? profileBand,
+  BandProfileDetails? details,
+  String role = 'admin',
+  List<String> managedBandIds = const ['b1'],
+}) {
+  final stub = StubRepository(auth: auth);
+  if (profileBand != null) {
+    stub.returnsStream(
+      'feed',
+      () => Stream.value(
+        FeedSnapshot(
+          gigs: DemoData.gigs,
+          venues: DemoData.venues,
+          bands: {...DemoData.bands, profileBand.id: profileBand},
+        ),
       ),
     );
   }
-
-  @override
-  Stream<List<BandMembership>> myBands() => Stream.value([
-    for (final id in managedBandIds)
-      BandMembership(
-        band: id == profileBand?.id ? profileBand! : DemoData.bands[id]!,
-        role: role,
-      ),
-  ]);
-
-  @override
-  Future<BandProfileDetails> bandProfileDetails(String bandId) async =>
-      details ?? await super.bandProfileDetails(bandId);
-}
-
-class _HistoryRepository extends DemoRepository {
-  _HistoryRepository({
-    required super.auth,
-    this.stagedHistory = BandHistory.empty,
-  });
-
-  final BandHistory stagedHistory;
-  int calls = 0;
-
-  @override
-  Future<BandHistory> bandHistory(String bandId) async {
-    calls++;
-    return stagedHistory;
-  }
+  stub.returnsStream(
+    'myBands',
+    () => Stream.value([
+      for (final id in managedBandIds)
+        BandMembership(
+          band: id == profileBand?.id ? profileBand! : DemoData.bands[id]!,
+          role: role,
+        ),
+    ]),
+  );
+  if (details != null) stub.returns('bandProfileDetails', details);
+  return stub;
 }
 
 class _BareBandRepository extends DemoRepository {

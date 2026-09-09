@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/async.dart';
 import 'support/fixtures.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   group('age requirements', () {
@@ -111,7 +112,35 @@ void main() {
     'band pages preserve live duplicates and add directory-only rows',
     () async {
       final auth = FakeAuthService();
-      final repository = _MergePrecedenceRepository(auth: auth);
+      final staleDuplicate = Band(
+        id: DemoData.bands['b1']!.id,
+        name: DemoData.bands['b1']!.name,
+        genres: DemoData.bands['b1']!.genres,
+        area: DemoData.bands['b1']!.area,
+        color: DemoData.bands['b1']!.color,
+        initials: DemoData.bands['b1']!.initials,
+        followers: DemoData.bands['b1']!.followers,
+        bio: 'Stale directory bio.',
+        past: const [],
+      );
+      final directoryOnly = bandFixture(
+        id: 'directory-only',
+        name: 'Directory Only',
+        area: 'Mission, SF',
+        color: const Color(0xFF1435F0),
+        initials: 'DO',
+        bio: 'Only returned by pagination.',
+      );
+      final repository = StubRepository(auth: auth);
+      final pageGate = repository.gate('listBands');
+      repository.returns(
+        'listBands',
+        BandPage(
+          items: [staleDuplicate, directoryOnly],
+          continueCursor: 'done',
+          isDone: true,
+        ),
+      );
       final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
 
@@ -119,7 +148,7 @@ void main() {
       await flushAsyncWork();
       expect(app.band('b1')?.past, hasLength(4));
 
-      repository.pageGate.complete();
+      pageGate.complete();
       await flushAsyncWork();
 
       expect(app.exploreBandIds, ['b1', 'directory-only']);
@@ -293,7 +322,12 @@ void main() {
 
   test('save requests require auth and preserve a rejected intent', () async {
     final auth = FakeAuthService();
-    final repository = _GatedSaveRepository(auth: auth);
+    final repository = StubRepository(auth: auth);
+    final toggleGate = repository.gate('toggleSave');
+    final ensureGate = repository.gate('ensureSave');
+    // Only one gate is awaited by the app; handle the unused gate's error.
+    toggleGate.future.ignore();
+    ensureGate.future.ignore();
     final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
 
@@ -307,7 +341,8 @@ void main() {
     final commit = app.commitAuth();
     expect(app.saved, isNot(contains('g1')));
 
-    repository.saveGate.completeError(StateError('save failed'));
+    toggleGate.completeError(StateError('save failed'));
+    ensureGate.completeError(StateError('save failed'));
     await expectLater(commit, throwsStateError);
     await flushAsyncWork();
     expect(app.saved, isNot(contains('g1')));
@@ -317,7 +352,12 @@ void main() {
   test('authenticated save rolls back a rejected optimistic write', () async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _GatedSaveRepository(auth: auth);
+    final repository = StubRepository(auth: auth);
+    final toggleGate = repository.gate('toggleSave');
+    final ensureGate = repository.gate('ensureSave');
+    // Only one gate is awaited by the app; handle the unused gate's error.
+    toggleGate.future.ignore();
+    ensureGate.future.ignore();
     final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await flushAsyncWork();
@@ -325,7 +365,8 @@ void main() {
     app.requestSave('g1');
     expect(app.saved, contains('g1'));
 
-    repository.saveGate.completeError(StateError('save failed'));
+    toggleGate.completeError(StateError('save failed'));
+    ensureGate.completeError(StateError('save failed'));
     await flushAsyncWork();
     expect(app.saved, isNot(contains('g1')));
     expect(app.toast, isNotEmpty);
@@ -395,28 +436,30 @@ class _QueuedRefreshRepository extends DemoRepository {
   }
 }
 
-class _VenueRepository extends DemoRepository {
-  _VenueRepository({required super.auth});
-
-  var detailCalls = 0;
-
-  @override
-  Future<VenueDetail?> venueDetail(String venueId) async {
-    detailCalls++;
-    if (detailCalls == 1) throw StateError('detail failed');
-    return VenueDetail(
-      venue: DemoData.venues[venueId]!,
-      gigs: [DemoData.gigs.first],
-      bands: {
-        for (final id in DemoData.gigs.first.lineup) id: DemoData.bands[id]!,
-      },
-      truncated: false,
+class _VenueRepository extends StubRepository {
+  _VenueRepository({required super.auth}) {
+    failOnce('venueDetail', StateError('detail failed'));
+    returns(
+      'venueDetail',
+      VenueDetail(
+        venue: DemoData.venues['v1']!,
+        gigs: [DemoData.gigs.first],
+        bands: {
+          for (final id in DemoData.gigs.first.lineup) id: DemoData.bands[id]!,
+        },
+        truncated: false,
+      ),
     );
   }
+
+  int get detailCalls => callsTo('venueDetail');
 }
 
-class _DeferredVenueDirectoryRepository extends DemoRepository {
-  _DeferredVenueDirectoryRepository({required super.auth});
+class _DeferredVenueDirectoryRepository extends StubRepository {
+  _DeferredVenueDirectoryRepository({required super.auth}) {
+    returns('venues', [directoryVenue]);
+    releaseDirectory = gate('venues');
+  }
 
   final directoryVenue = Venue(
     id: 'directory-only',
@@ -425,15 +468,9 @@ class _DeferredVenueDirectoryRepository extends DemoRepository {
     addr: '1 Directory Way, San Francisco',
     point: DemoData.venues['v1']!.point,
   );
-  final releaseDirectory = Completer<void>();
-  var directoryCalls = 0;
+  late final Completer<void> releaseDirectory;
 
-  @override
-  Future<List<Venue>> venues() async {
-    directoryCalls++;
-    await releaseDirectory.future;
-    return [directoryVenue];
-  }
+  int get directoryCalls => callsTo('venues');
 }
 
 class _RefreshingVenueRepository extends DemoRepository {
@@ -472,74 +509,21 @@ class _RefreshingVenueRepository extends DemoRepository {
   Future<void> dispose() => _feedController.close();
 }
 
-class _SilentPublishRepository extends DemoRepository {
-  _SilentPublishRepository({required super.auth});
-
-  var detailCalls = 0;
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: DemoData.gigs,
-      venues: DemoData.venues,
-      bands: DemoData.bands,
-    ),
-  );
-
-  @override
-  Future<VenueDetail?> venueDetail(String venueId) {
-    detailCalls++;
-    return super.venueDetail(venueId);
-  }
-}
-
-class _MergePrecedenceRepository extends DemoRepository {
-  _MergePrecedenceRepository({required super.auth});
-
-  final pageGate = Completer<void>();
-
-  static final _staleDuplicate = Band(
-    id: DemoData.bands['b1']!.id,
-    name: DemoData.bands['b1']!.name,
-    genres: DemoData.bands['b1']!.genres,
-    area: DemoData.bands['b1']!.area,
-    color: DemoData.bands['b1']!.color,
-    initials: DemoData.bands['b1']!.initials,
-    followers: DemoData.bands['b1']!.followers,
-    bio: 'Stale directory bio.',
-    past: const [],
-  );
-
-  static final _directoryOnly = bandFixture(
-    id: 'directory-only',
-    name: 'Directory Only',
-    area: 'Mission, SF',
-    color: const Color(0xFF1435F0),
-    initials: 'DO',
-    bio: 'Only returned by pagination.',
-  );
-
-  @override
-  Future<BandPage> listBands({String? cursor, int numItems = 50}) async {
-    await pageGate.future;
-    return BandPage(
-      items: [_staleDuplicate, _directoryOnly],
-      continueCursor: 'done',
-      isDone: true,
+class _SilentPublishRepository extends StubRepository {
+  _SilentPublishRepository({required super.auth}) {
+    returnsStream(
+      'feed',
+      () => Stream.value(
+        FeedSnapshot(
+          gigs: DemoData.gigs,
+          venues: DemoData.venues,
+          bands: DemoData.bands,
+        ),
+      ),
     );
   }
-}
 
-class _GatedSaveRepository extends DemoRepository {
-  _GatedSaveRepository({required super.auth});
-
-  final saveGate = Completer<void>();
-
-  @override
-  Future<void> toggleSave(String gigId) => saveGate.future;
-
-  @override
-  Future<void> ensureSave(String gigId) => saveGate.future;
+  int get detailCalls => callsTo('venueDetail');
 }
 
 Map<String, dynamic> _venueJson() => {

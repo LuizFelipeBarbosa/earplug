@@ -10,6 +10,8 @@ import 'package:earplug/services/location_service.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/stub_repository.dart';
+
 void main() {
   group('discovery filters', () {
     test(
@@ -372,38 +374,24 @@ Future<AppState> _app({
   final app = AppState.demo(
     repository: nextFeedStartsAt == null && feedGigs == null
         ? DemoRepository(auth: auth)
-        : _BoundedFeedRepository(
-            auth: auth,
-            gigs: feedGigs ?? DemoData.gigs,
-            nextStartsAt: nextFeedStartsAt,
-          ),
+        : (StubRepository(auth: auth)
+            ..returnsStream(
+              'feed',
+              () => Stream.value(
+                FeedSnapshot(
+                  gigs: feedGigs ?? DemoData.gigs,
+                  venues: DemoData.venues,
+                  bands: DemoData.bands,
+                  nextStartsAt: nextFeedStartsAt,
+                ),
+              ),
+            )),
     auth: auth,
     locationService: locationService,
   );
   addTearDown(app.dispose);
   await pumpEventQueue();
   return app;
-}
-
-class _BoundedFeedRepository extends DemoRepository {
-  _BoundedFeedRepository({
-    required super.auth,
-    required this.gigs,
-    required this.nextStartsAt,
-  });
-
-  final List<Gig> gigs;
-  final DateTime? nextStartsAt;
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: gigs,
-      venues: DemoData.venues,
-      bands: DemoData.bands,
-      nextStartsAt: nextStartsAt,
-    ),
-  );
 }
 
 class _FakeLocationService implements LocationService {

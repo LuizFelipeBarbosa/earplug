@@ -1,5 +1,4 @@
 import 'package:earplug/app_state.dart';
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
@@ -12,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('compact is the default date-first card presentation', (
@@ -19,10 +19,28 @@ void main() {
   ) async {
     final gig = DemoData.gigs.firstWhere((item) => item.discoveryListingReady);
     final auth = FakeAuthService();
+    final boostedBand = DemoData.bands[gig.createdByBand]!.copyWith(
+      discoveryProfileReady: true,
+    );
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _BoostedGigRepository(auth: auth, boostedGig: gig),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(
+            FeedSnapshot(
+              gigs: DemoData.gigs,
+              venues: DemoData.venues,
+              bands: {...DemoData.bands, gig.createdByBand!: boostedBand},
+            ),
+          ),
+        )
+        ..returnsStream(
+          'myBands',
+          () =>
+              Stream.value([BandMembership(band: boostedBand, role: 'admin')]),
+        ),
       now: () => gig.startsAt.subtract(const Duration(days: 1)),
       home: Builder(
         builder: (context) => Scaffold(
@@ -86,7 +104,38 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _CancelledRsvpRepository(auth: auth);
+    final cancelledGig = DemoData.gigs
+        .firstWhere(
+          (gig) =>
+              gig.tix == Ticketing.rsvp && gig.startsAt.isAfter(DateTime.now()),
+        )
+        .copyWith(lifecycle: GigLifecycle.cancelled);
+    final repository = StubRepository(auth: auth)
+      ..returnsStream(
+        'feed',
+        () => Stream.value(
+          FeedSnapshot(
+            gigs: [
+              for (final gig in DemoData.gigs)
+                if (gig.id == cancelledGig.id) cancelledGig else gig,
+            ],
+            venues: DemoData.venues,
+            bands: DemoData.bands,
+          ),
+        ),
+      )
+      ..returnsStream(
+        'myInteractions',
+        () => Stream.value(
+          Interactions(
+            rsvpGigIds: {cancelledGig.id},
+            followBandIds: const {},
+            savedGigIds: const {},
+            gigs: [cancelledGig],
+            attendedCount: 0,
+          ),
+        ),
+      );
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -94,7 +143,7 @@ void main() {
       home: const Scaffold(body: MyGigsScreen()),
     );
 
-    final gig = repository.cancelledGig;
+    final gig = cancelledGig;
     await tester.pumpAndSettle();
     expect(harness.app.rsvps, contains(gig.id));
     expect(harness.app.upcomingRsvpGigs.map((g) => g.id), [gig.id]);
@@ -105,63 +154,4 @@ void main() {
     expect(find.text('QR PASS'), findsNothing);
     expect(find.text('CANCELLED'), findsWidgets);
   });
-}
-
-class _CancelledRsvpRepository extends DemoRepository {
-  _CancelledRsvpRepository({required super.auth})
-    : cancelledGig = DemoData.gigs
-          .firstWhere(
-            (gig) =>
-                gig.tix == Ticketing.rsvp &&
-                gig.startsAt.isAfter(DateTime.now()),
-          )
-          .copyWith(lifecycle: GigLifecycle.cancelled);
-
-  final Gig cancelledGig;
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: [
-        for (final gig in DemoData.gigs)
-          if (gig.id == cancelledGig.id) cancelledGig else gig,
-      ],
-      venues: DemoData.venues,
-      bands: DemoData.bands,
-    ),
-  );
-
-  @override
-  Stream<Interactions> myInteractions() => Stream.value(
-    Interactions(
-      rsvpGigIds: {cancelledGig.id},
-      followBandIds: const {},
-      savedGigIds: const {},
-      gigs: [cancelledGig],
-      attendedCount: 0,
-    ),
-  );
-}
-
-class _BoostedGigRepository extends DemoRepository {
-  _BoostedGigRepository({required super.auth, required this.boostedGig});
-
-  final Gig boostedGig;
-
-  Band get _boostedBand => DemoData.bands[boostedGig.createdByBand]!.copyWith(
-    discoveryProfileReady: true,
-  );
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: DemoData.gigs,
-      venues: DemoData.venues,
-      bands: {...DemoData.bands, boostedGig.createdByBand!: _boostedBand},
-    ),
-  );
-
-  @override
-  Stream<List<BandMembership>> myBands() =>
-      Stream.value([BandMembership(band: _boostedBand, role: 'admin')]);
 }

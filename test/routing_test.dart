@@ -27,6 +27,7 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/async.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   test('route parsing distinguishes gigs, bands, and reserved roots', () {
@@ -856,17 +857,11 @@ void main() {
   });
 }
 
-class _NavigationRepository extends DemoRepository {
+class _NavigationRepository extends StubRepository {
   _NavigationRepository({required super.auth});
 
-  var publicGigCalls = 0;
+  int get publicGigCalls => callsTo('publicGig');
   var listBandsCalls = 0;
-
-  @override
-  Stream<Gig?> publicGig(String gigId) {
-    publicGigCalls++;
-    return super.publicGig(gigId);
-  }
 
   @override
   Future<BandPage> listBands({String? cursor, int numItems = 50}) async {

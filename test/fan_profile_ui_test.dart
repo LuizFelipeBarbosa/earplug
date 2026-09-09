@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fakes.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('unsaved profile edits survive desktop and mobile resizing', (
@@ -657,7 +658,19 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _LongHistoryRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns('history', [
+          FanHistoryItem(
+            gigId: 'long-history',
+            title: _longHistoryTitle,
+            startsAt: DateTime(2026, 1, 2, 20),
+            venueName: _longHistoryVenue,
+            bandNames: const [],
+            flyKey: 'paper',
+            flyerUrl: null,
+            status: FanHistoryStatus.rsvped,
+          ),
+        ]),
       home: const Scaffold(body: MyGigsScreen()),
     );
     tester.view.physicalSize = const Size(320, 700);
@@ -888,7 +901,8 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _FailingProfileRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..fail('updateFanProfile', StateError('profile update failed')),
       home: const Scaffold(body: EditProfileScreen()),
     );
     tester.view.physicalSize = const Size(402, 1800);
@@ -993,7 +1007,17 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _GenreFanRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns(
+          'me',
+          UserProfile.fromJson({
+            'name': 'Genre Fan',
+            'email': 'genre@example.com',
+            'genres': <String>['punk', 'techno'],
+            'attendedCount': 0,
+            'createdAt': 1234,
+          }),
+        ),
       home: const Scaffold(body: MyGigsScreen()),
     );
 
@@ -1132,7 +1156,17 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _LegacyProfileRepository(auth: auth);
+    final repository = StubRepository(auth: auth)
+      ..returns(
+        'me',
+        UserProfile.fromJson({
+          'name': 'Legacy Fan',
+          'email': 'legacy@example.com',
+          'genres': <String>[],
+          'attendedCount': 0,
+          'createdAt': 1234,
+        }),
+      );
     final profileHarness = await pumpApp(
       tester,
       auth: auth,
@@ -1272,40 +1306,6 @@ const _longHistoryTitle =
     'A Very Long Event Name That Must Stay Inside The Compact History Card';
 const _longHistoryVenue =
     'The Extremely Long Independent Venue Name Near The End Of The Street';
-
-class _LongHistoryRepository extends DemoRepository {
-  _LongHistoryRepository({required super.auth});
-
-  @override
-  Future<List<FanHistoryItem>> history() async => [
-    FanHistoryItem(
-      gigId: 'long-history',
-      title: _longHistoryTitle,
-      startsAt: DateTime(2026, 1, 2, 20),
-      venueName: _longHistoryVenue,
-      bandNames: const [],
-      flyKey: 'paper',
-      flyerUrl: null,
-      status: FanHistoryStatus.rsvped,
-    ),
-  ];
-}
-
-class _FailingProfileRepository extends DemoRepository {
-  _FailingProfileRepository({required super.auth});
-
-  @override
-  Future<void> updateFanProfile({
-    required String name,
-    required String? bio,
-    required FanCity? homeLocation,
-    required List<String> genres,
-    required bool locationPersonalizationEnabled,
-    required bool followedBandUpdatesEnabled,
-  }) async {
-    throw StateError('profile update failed');
-  }
-}
 
 class _ProfileLocationService implements LocationService {
   const _ProfileLocationService();
@@ -1469,32 +1469,6 @@ class _RsvpSyncRepository extends DemoRepository {
   }
 
   Future<void> close() => _interactions.close();
-}
-
-class _LegacyProfileRepository extends DemoRepository {
-  _LegacyProfileRepository({required super.auth});
-
-  @override
-  Future<UserProfile?> me() async => UserProfile.fromJson({
-    'name': 'Legacy Fan',
-    'email': 'legacy@example.com',
-    'genres': <String>[],
-    'attendedCount': 0,
-    'createdAt': 1234,
-  });
-}
-
-class _GenreFanRepository extends DemoRepository {
-  _GenreFanRepository({required super.auth});
-
-  @override
-  Future<UserProfile?> me() async => UserProfile.fromJson({
-    'name': 'Genre Fan',
-    'email': 'genre@example.com',
-    'genres': <String>['punk', 'techno'],
-    'attendedCount': 0,
-    'createdAt': 1234,
-  });
 }
 
 class _FailingFollowRepository extends DemoRepository {

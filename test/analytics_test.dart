@@ -1,4 +1,3 @@
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/analytics.dart';
@@ -10,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 import 'support/recap_fixtures.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('headline stats render', (tester) async {
@@ -55,7 +55,8 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _BandInsightsRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns('myBandInsights', _nonSuppressedApplicantInsightsForBandPage),
       home: const Scaffold(body: AnalyticsScreen()),
     );
     await tester.pumpAndSettle();
@@ -145,7 +146,8 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _AverageMatchingRecapRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns('bandRecap', _averageMatchingRecap),
       home: const Scaffold(body: AnalyticsScreen()),
     );
 
@@ -263,7 +265,8 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _EmptyRecapRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns('bandRecap', BandRecap.empty),
       home: const Scaffold(body: AnalyticsScreen()),
     );
 
@@ -278,7 +281,8 @@ void main() {
       await pumpApp(
         tester,
         auth: auth,
-        repository: _TieZeroRecapRepository(auth: auth),
+        repository: StubRepository(auth: auth)
+          ..returns('bandRecap', _tieZeroRecap),
         home: const Scaffold(body: AnalyticsScreen()),
       );
 
@@ -311,7 +315,8 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _TieZeroRecapRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns('bandRecap', _tieZeroRecap),
       home: const Scaffold(body: AnalyticsScreen()),
     );
     tester.view.physicalSize = const Size(402, 5000);
@@ -506,7 +511,11 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _PartialSplitRecapRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns(
+          'bandRecap',
+          manyShowsRecapWithPartialSplit(12, splitCount: 4),
+        ),
       home: const Scaffold(body: AnalyticsScreen()),
     );
 
@@ -650,14 +659,6 @@ Future<void> _tapSectionButton(WidgetTester tester, String key) async {
   await tester.pumpAndSettle();
 }
 
-class _BandInsightsRepository extends DemoRepository {
-  _BandInsightsRepository({required super.auth});
-
-  @override
-  Future<ArtistInsights> myBandInsights(String bandId) async =>
-      _nonSuppressedApplicantInsightsForBandPage;
-}
-
 const _nonSuppressedApplicantInsightsForBandPage = ArtistInsights(
   band: InsightsBand(bandId: 'b1', name: 'Foghorn Diet'),
   window: InsightsWindow(events: 8, truncated: false),
@@ -707,163 +708,138 @@ const _nonSuppressedApplicantInsightsForBandPage = ArtistInsights(
   ),
 );
 
-class _EmptyRecapRepository extends DemoRepository {
-  _EmptyRecapRepository({required super.auth});
-
-  @override
-  Future<BandRecap> bandRecap(String bandId) async => BandRecap.empty;
-}
-
-class _TieZeroRecapRepository extends DemoRepository {
-  _TieZeroRecapRepository({required super.auth});
-
-  @override
-  Future<BandRecap> bandRecap(String bandId) async => const BandRecap(
-    window: RecapWindow(
-      showsAnalyzed: 2,
-      scanned: 3,
-      truncated: true,
-      firstStartsAt: 1000,
-      lastStartsAt: 2000,
-    ),
-    totals: RecapTotals(
-      shows: 2,
-      reportedRsvps: 2,
+const _tieZeroRecap = BandRecap(
+  window: RecapWindow(
+    showsAnalyzed: 2,
+    scanned: 3,
+    truncated: true,
+    firstStartsAt: 1000,
+    lastStartsAt: 2000,
+  ),
+  totals: RecapTotals(
+    shows: 2,
+    reportedRsvps: 2,
+    measuredRsvps: 0,
+    avgPerShow: 0,
+    bestShowRsvps: 0,
+    distinctFans: 0,
+    followerCount: 0,
+  ),
+  shows: [
+    RecapShow(
+      gigId: 'older',
+      title: 'Older Zero Show',
+      startsAt: 1000,
+      venueName: 'Old Room',
+      price: 0,
+      ticketing: Ticketing.rsvp,
+      goingCount: 0,
       measuredRsvps: 0,
-      avgPerShow: 0,
-      bestShowRsvps: 0,
-      distinctFans: 0,
-      followerCount: 0,
+      newFans: null,
+      returningFans: null,
     ),
-    shows: [
-      RecapShow(
-        gigId: 'older',
-        title: 'Older Zero Show',
-        startsAt: 1000,
-        venueName: 'Old Room',
-        price: 0,
-        ticketing: Ticketing.rsvp,
-        goingCount: 0,
-        measuredRsvps: 0,
-        newFans: null,
-        returningFans: null,
-      ),
-      RecapShow(
-        gigId: 'newer',
-        title: 'Newer Zero Show',
-        startsAt: 2000,
-        venueName: 'New Room',
-        price: 0,
-        ticketing: Ticketing.rsvp,
-        goingCount: 0,
-        measuredRsvps: 0,
-        newFans: null,
-        returningFans: null,
-      ),
-    ],
-    newReturningSuppressed: true,
-    leadTime: RecapLeadTime(
-      buckets: [],
-      medianDays: null,
-      unmeasurable: 0,
-      suppressed: true,
+    RecapShow(
+      gigId: 'newer',
+      title: 'Newer Zero Show',
+      startsAt: 2000,
+      venueName: 'New Room',
+      price: 0,
+      ticketing: Ticketing.rsvp,
+      goingCount: 0,
+      measuredRsvps: 0,
+      newFans: null,
+      returningFans: null,
     ),
-    venues: RecapVenues(rows: [], suppressed: true),
-    weekdays: RecapWeekdays(rows: [], suppressed: true),
-    repeatFans: RecapRepeatFans(tiers: [], suppressed: true),
-    pricing: RecapPricing(
-      freeShows: 0,
-      freeAvgRsvps: 0,
-      paidShows: 0,
-      paidAvgRsvps: 0,
-      suppressed: true,
-    ),
-  );
-}
+  ],
+  newReturningSuppressed: true,
+  leadTime: RecapLeadTime(
+    buckets: [],
+    medianDays: null,
+    unmeasurable: 0,
+    suppressed: true,
+  ),
+  venues: RecapVenues(rows: [], suppressed: true),
+  weekdays: RecapWeekdays(rows: [], suppressed: true),
+  repeatFans: RecapRepeatFans(tiers: [], suppressed: true),
+  pricing: RecapPricing(
+    freeShows: 0,
+    freeAvgRsvps: 0,
+    paidShows: 0,
+    paidAvgRsvps: 0,
+    suppressed: true,
+  ),
+);
 
-class _AverageMatchingRecapRepository extends DemoRepository {
-  _AverageMatchingRecapRepository({required super.auth});
-
-  @override
-  Future<BandRecap> bandRecap(String bandId) async => const BandRecap(
-    window: RecapWindow(
-      showsAnalyzed: 3,
-      scanned: 3,
-      truncated: false,
-      firstStartsAt: 1000,
-      lastStartsAt: 3000,
+const _averageMatchingRecap = BandRecap(
+  window: RecapWindow(
+    showsAnalyzed: 3,
+    scanned: 3,
+    truncated: false,
+    firstStartsAt: 1000,
+    lastStartsAt: 3000,
+  ),
+  totals: RecapTotals(
+    shows: 3,
+    reportedRsvps: 60,
+    measuredRsvps: 60,
+    avgPerShow: 20,
+    bestShowRsvps: 30,
+    distinctFans: 60,
+    followerCount: 60,
+  ),
+  shows: [
+    RecapShow(
+      gigId: 'below-average',
+      title: 'Below Average Show',
+      startsAt: 1000,
+      venueName: 'Small Room',
+      price: 0,
+      ticketing: Ticketing.rsvp,
+      goingCount: 10,
+      measuredRsvps: 10,
+      newFans: null,
+      returningFans: null,
     ),
-    totals: RecapTotals(
-      shows: 3,
-      reportedRsvps: 60,
-      measuredRsvps: 60,
-      avgPerShow: 20,
-      bestShowRsvps: 30,
-      distinctFans: 60,
-      followerCount: 60,
+    RecapShow(
+      gigId: 'at-average',
+      title: 'Average Show',
+      startsAt: 2000,
+      venueName: 'Middle Room',
+      price: 0,
+      ticketing: Ticketing.rsvp,
+      goingCount: 20,
+      measuredRsvps: 20,
+      newFans: null,
+      returningFans: null,
     ),
-    shows: [
-      RecapShow(
-        gigId: 'below-average',
-        title: 'Below Average Show',
-        startsAt: 1000,
-        venueName: 'Small Room',
-        price: 0,
-        ticketing: Ticketing.rsvp,
-        goingCount: 10,
-        measuredRsvps: 10,
-        newFans: null,
-        returningFans: null,
-      ),
-      RecapShow(
-        gigId: 'at-average',
-        title: 'Average Show',
-        startsAt: 2000,
-        venueName: 'Middle Room',
-        price: 0,
-        ticketing: Ticketing.rsvp,
-        goingCount: 20,
-        measuredRsvps: 20,
-        newFans: null,
-        returningFans: null,
-      ),
-      RecapShow(
-        gigId: 'above-average',
-        title: 'Above Average Show',
-        startsAt: 3000,
-        venueName: 'Large Room',
-        price: 0,
-        ticketing: Ticketing.rsvp,
-        goingCount: 30,
-        measuredRsvps: 30,
-        newFans: null,
-        returningFans: null,
-      ),
-    ],
-    newReturningSuppressed: true,
-    leadTime: RecapLeadTime(
-      buckets: [],
-      medianDays: null,
-      unmeasurable: 0,
-      suppressed: true,
+    RecapShow(
+      gigId: 'above-average',
+      title: 'Above Average Show',
+      startsAt: 3000,
+      venueName: 'Large Room',
+      price: 0,
+      ticketing: Ticketing.rsvp,
+      goingCount: 30,
+      measuredRsvps: 30,
+      newFans: null,
+      returningFans: null,
     ),
-    venues: RecapVenues(rows: [], suppressed: true),
-    weekdays: RecapWeekdays(rows: [], suppressed: true),
-    repeatFans: RecapRepeatFans(tiers: [], suppressed: true),
-    pricing: RecapPricing(
-      freeShows: 3,
-      freeAvgRsvps: 20,
-      paidShows: 0,
-      paidAvgRsvps: 0,
-      suppressed: true,
-    ),
-  );
-}
-
-class _PartialSplitRecapRepository extends DemoRepository {
-  _PartialSplitRecapRepository({required super.auth});
-
-  @override
-  Future<BandRecap> bandRecap(String bandId) async =>
-      manyShowsRecapWithPartialSplit(12, splitCount: 4);
-}
+  ],
+  newReturningSuppressed: true,
+  leadTime: RecapLeadTime(
+    buckets: [],
+    medianDays: null,
+    unmeasurable: 0,
+    suppressed: true,
+  ),
+  venues: RecapVenues(rows: [], suppressed: true),
+  weekdays: RecapWeekdays(rows: [], suppressed: true),
+  repeatFans: RecapRepeatFans(tiers: [], suppressed: true),
+  pricing: RecapPricing(
+    freeShows: 3,
+    freeAvgRsvps: 20,
+    paidShows: 0,
+    paidAvgRsvps: 0,
+    suppressed: true,
+  ),
+);

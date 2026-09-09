@@ -20,6 +20,7 @@ import 'package:provider/provider.dart';
 import 'support/design_rules.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('opportunities group drafts and open listings with counts', (
@@ -385,7 +386,13 @@ void main() {
     final harness = await _pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
-      repositoryBuilder: (auth) => _BookingStatusRepository(auth: auth),
+      repositoryBuilder: (auth) => StubRepository(auth: auth)
+        ..wraps<List<Opportunity>>('manageOpportunities', (opportunities) {
+          return opportunities.map((opportunity) {
+            if (opportunity.id != 'opp1') return opportunity;
+            return opportunity.copyWith(status: OpportunityStatus.booking);
+          }).toList();
+        }),
     );
     final card = find.byKey(const ValueKey('org-opp-opp1'));
     await tester.ensureVisible(card);
@@ -603,7 +610,15 @@ void main() {
     final harness = await _pumpOrganizerScreen(
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
-      repositoryBuilder: (auth) => _WrappedOfferErrorRepository(auth: auth),
+      repositoryBuilder: (auth) => StubRepository(auth: auth)
+        ..fail(
+          'sendOffer',
+          Exception(
+            '[Request ID: abc123] Server Error\n'
+            'Uncaught Error: Paid offers open once payments are enabled\n'
+            ' at handler (../../convex/bookings.ts:251:23)\n',
+          ),
+        ),
     );
 
     await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
@@ -1219,62 +1234,30 @@ const _suppressedApplicantInsights = ArtistInsights(
   estimatedDraw: null,
 );
 
-class _PublishedOpportunityRepository extends DemoRepository {
+class _PublishedOpportunityRepository extends StubRepository {
   _PublishedOpportunityRepository({
     required super.auth,
     this.published = true,
     this.ticketing = OpportunityTicketing.paid,
-  });
+  }) {
+    wraps<List<Opportunity>>('manageOpportunities', (opportunities) {
+      return opportunities.map((opportunity) {
+        if (opportunity.id != 'opp1') return opportunity;
+        return opportunity.copyWith(
+          ticketing: ticketing,
+          ticketPriceMinor: 2500,
+          ticketCapacity: 40,
+          ticketCurrency: 'usd',
+          status: OpportunityStatus.confirmed,
+        );
+      }).toList();
+    });
+  }
 
   final bool published;
   final OpportunityTicketing ticketing;
-  int salesReads = 0;
 
-  @override
-  Future<List<Opportunity>> manageOpportunities(String organizationId) async {
-    final opportunities = await super.manageOpportunities(organizationId);
-    return opportunities.map((opportunity) {
-      if (opportunity.id != 'opp1') return opportunity;
-      return Opportunity(
-        id: opportunity.id,
-        organizationId: opportunity.organizationId,
-        mode: opportunity.mode,
-        venueId: opportunity.venueId,
-        venue: opportunity.venue,
-        title: opportunity.title,
-        desc: opportunity.desc,
-        eventType: opportunity.eventType,
-        expectedAttendance: opportunity.expectedAttendance,
-        genres: opportunity.genres,
-        startsAt: opportunity.startsAt,
-        doorsAt: opportunity.doorsAt,
-        endsAt: opportunity.endsAt,
-        ageRequirement: opportunity.ageRequirement,
-        equipment: opportunity.equipment,
-        requirements: opportunity.requirements,
-        flyKey: opportunity.flyKey,
-        flyerUrl: opportunity.flyerUrl,
-        applicationsCloseAt: opportunity.applicationsCloseAt,
-        visibility: opportunity.visibility,
-        ticketing: ticketing,
-        ticketPriceMinor: 2500,
-        ticketCapacity: 40,
-        ticketCurrency: 'usd',
-        externalUrl: opportunity.externalUrl,
-        status: OpportunityStatus.confirmed,
-        slug: opportunity.slug,
-        revision: opportunity.revision,
-        applicationCount: opportunity.applicationCount,
-        slots: opportunity.slots,
-        invitedBandIds: opportunity.invitedBandIds,
-        createdAt: opportunity.createdAt,
-        updatedAt: opportunity.updatedAt,
-        area: opportunity.area,
-        venueType: opportunity.venueType,
-        currency: opportunity.currency,
-      );
-    }).toList();
-  }
+  int get salesReads => callsTo('ticketSalesForGig');
 
   @override
   Stream<FeedSnapshot> feed() => super.feed().map(
@@ -1291,79 +1274,6 @@ class _PublishedOpportunityRepository extends DemoRepository {
       nextStartsAt: snapshot.nextStartsAt,
     ),
   );
-
-  @override
-  Future<TicketSales> ticketSalesForGig(String gigId) {
-    salesReads++;
-    return super.ticketSalesForGig(gigId);
-  }
-}
-
-class _BookingStatusRepository extends DemoRepository {
-  _BookingStatusRepository({required super.auth});
-
-  @override
-  Future<List<Opportunity>> manageOpportunities(String organizationId) async {
-    final opportunities = await super.manageOpportunities(organizationId);
-    return opportunities.map((opportunity) {
-      if (opportunity.id != 'opp1') return opportunity;
-      return Opportunity(
-        id: opportunity.id,
-        organizationId: opportunity.organizationId,
-        mode: opportunity.mode,
-        venueId: opportunity.venueId,
-        venue: opportunity.venue,
-        title: opportunity.title,
-        desc: opportunity.desc,
-        eventType: opportunity.eventType,
-        expectedAttendance: opportunity.expectedAttendance,
-        genres: opportunity.genres,
-        startsAt: opportunity.startsAt,
-        doorsAt: opportunity.doorsAt,
-        endsAt: opportunity.endsAt,
-        ageRequirement: opportunity.ageRequirement,
-        equipment: opportunity.equipment,
-        requirements: opportunity.requirements,
-        flyKey: opportunity.flyKey,
-        flyerUrl: opportunity.flyerUrl,
-        applicationsCloseAt: opportunity.applicationsCloseAt,
-        visibility: opportunity.visibility,
-        ticketing: opportunity.ticketing,
-        externalUrl: opportunity.externalUrl,
-        status: OpportunityStatus.booking,
-        slug: opportunity.slug,
-        revision: opportunity.revision,
-        applicationCount: opportunity.applicationCount,
-        slots: opportunity.slots,
-        invitedBandIds: opportunity.invitedBandIds,
-        createdAt: opportunity.createdAt,
-        updatedAt: opportunity.updatedAt,
-        area: opportunity.area,
-        venueType: opportunity.venueType,
-        currency: opportunity.currency,
-      );
-    }).toList();
-  }
-}
-
-class _WrappedOfferErrorRepository extends DemoRepository {
-  _WrappedOfferErrorRepository({required super.auth});
-
-  @override
-  Future<({String bookingId, String offerId, int revision})> sendOffer({
-    required String applicationId,
-    required int grossMinor,
-    required CancellationTemplate cancellationTemplate,
-    List<OfferInstallmentInput>? installments,
-    String? termsNotes,
-    String? message,
-  }) async {
-    throw Exception(
-      '[Request ID: abc123] Server Error\n'
-      'Uncaught Error: Paid offers open once payments are enabled\n'
-      ' at handler (../../convex/bookings.ts:251:23)\n',
-    );
-  }
 }
 
 Future<void> _chooseOpportunityAction(

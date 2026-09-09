@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:earplug/data/demo_repository.dart';
@@ -14,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fakes.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('adding a photo after reopening settings keeps saved photos', (
@@ -141,7 +141,7 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _GatedVenueRepository(auth: auth);
+    final repository = StubRepository(auth: auth);
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -157,19 +157,19 @@ void main() {
     final disclosure = find.byKey(const Key('org-venue-disclosure'));
     final save = find.byKey(const Key('org-venue-save'));
     await _scrollTo(tester, disclosure);
-    repository.disclosureGate = Completer<void>();
+    final disclosureGate = repository.gate('setVenueAddressDisclosure');
     await tester.tap(find.text('Show exact address publicly'));
     await tester.pump();
     expect(tester.widget<StickyActionBar>(save).onPrimary, isNull);
 
-    repository.disclosureGate!.complete();
+    disclosureGate.complete();
     await tester.pumpAndSettle();
-    repository.profileGate = Completer<void>();
+    final profileGate = repository.gate('updateVenueProfile');
     await tester.tap(save);
     await tester.pump();
     expect(tester.widget<SwitchRow>(disclosure).onChanged, isNull);
 
-    repository.profileGate!.complete();
+    profileGate.complete();
     await tester.pumpAndSettle();
     expect((await repository.resolveVenue('v1'))?.name, 'Pending venue name');
     expect(tester.widget<SwitchRow>(disclosure).value, isTrue);
@@ -194,44 +194,3 @@ final _photo = PickedMedia(
   contentType: 'image/png',
   sizeBytes: 68,
 );
-
-class _GatedVenueRepository extends DemoRepository {
-  _GatedVenueRepository({required super.auth});
-
-  Completer<void>? disclosureGate;
-  Completer<void>? profileGate;
-
-  @override
-  Future<void> setVenueAddressDisclosure({
-    required String venueId,
-    required AddressDisclosure disclosure,
-  }) async {
-    await disclosureGate?.future;
-    await super.setVenueAddressDisclosure(
-      venueId: venueId,
-      disclosure: disclosure,
-    );
-  }
-
-  @override
-  Future<void> updateVenueProfile({
-    required String venueId,
-    String? name,
-    String? description,
-    VenueType? venueType,
-    int? capacityPublic,
-    String? neighborhood,
-    String? city,
-  }) async {
-    await profileGate?.future;
-    await super.updateVenueProfile(
-      venueId: venueId,
-      name: name,
-      description: description,
-      venueType: venueType,
-      capacityPublic: capacityPublic,
-      neighborhood: neighborhood,
-      city: city,
-    );
-  }
-}

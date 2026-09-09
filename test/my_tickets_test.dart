@@ -1,5 +1,4 @@
 import 'package:earplug/app_state.dart';
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -8,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   late FakeAuthService auth;
@@ -164,15 +164,12 @@ TicketSummary _ticket(String id, TicketStatus status, DateTime startsAt) =>
       ),
     );
 
-class _WalletRepository extends DemoRepository {
-  _WalletRepository({required super.auth});
+class _WalletRepository extends StubRepository {
+  _WalletRepository({required super.auth}) {
+    wraps<List<TicketSummary>>('myTickets', (real) => tickets ?? real);
+  }
 
   List<TicketSummary>? tickets;
-  int walletLoads = 0;
 
-  @override
-  Future<List<TicketSummary>> myTickets() async {
-    walletLoads++;
-    return tickets ?? await super.myTickets();
-  }
+  int get walletLoads => callsTo('myTickets');
 }

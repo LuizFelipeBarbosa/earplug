@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   test('demo acceptance creates one member membership and follower', () async {
@@ -146,7 +147,8 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _FailingAcceptRepository(auth: auth);
+    final repository = StubRepository(auth: auth)
+      ..fail('acceptBandInvite', StateError('offline'));
     final invite = await repository.createBandInvite('b1');
     await pumpApp(
       tester,
@@ -199,15 +201,6 @@ void main() {
   );
 }
 
-class _FailingAcceptRepository extends DemoRepository {
-  _FailingAcceptRepository({required super.auth});
-
-  @override
-  Future<BandInviteAcceptance> acceptBandInvite(String token) async {
-    throw StateError('offline');
-  }
-}
-
 class _DeferredJoinMembershipRepository extends DemoRepository {
   _DeferredJoinMembershipRepository({required super.auth});
 
@@ -225,21 +218,19 @@ class _DeferredJoinMembershipRepository extends DemoRepository {
   Future<void> close() => _updates.close();
 }
 
-class _InviteRepository extends DemoRepository {
-  _InviteRepository({required super.auth});
+class _InviteRepository extends StubRepository {
+  _InviteRepository({required super.auth}) {
+    returns(
+      'resolvePerformerInvite',
+      const PerformerInviteResolution(
+        performerName: 'Placeholder Artist',
+        gigTitle: 'The Shared Bill',
+      ),
+    );
+  }
 
   String? claimedToken;
   String? claimedBandId;
-
-  @override
-  Future<PerformerInviteResolution?> resolvePerformerInvite(
-    String token,
-  ) async {
-    return const PerformerInviteResolution(
-      performerName: 'Placeholder Artist',
-      gigTitle: 'The Shared Bill',
-    );
-  }
 
   @override
   Future<String> claimPerformerInvite({

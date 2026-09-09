@@ -1,7 +1,4 @@
-import 'dart:async';
-
 import 'package:earplug/app_state.dart';
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_create.dart';
@@ -14,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/accessibility.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('create uses the shared identity editor in profile order', (
@@ -257,6 +255,7 @@ void main() {
     tester,
   ) async {
     final repository = _GatedDemoRepository(auth: FakeAuthService());
+    final createGate = repository.createGate;
     final app = (await _pumpBandCreate(tester, repository: repository)).app;
     await _fillForm(tester);
 
@@ -265,7 +264,7 @@ void main() {
     expect(find.text('SAVING…'), findsOne);
     expect(repository.createCalls, 1);
 
-    repository.gate.complete();
+    createGate.complete();
     await tester.pumpAndSettle();
     expect(app.nbCreated, isTrue);
     expect(find.text("YOU'RE LIVE"), findsOne);
@@ -274,7 +273,24 @@ void main() {
   testWidgets(
     'created band is usable before membership subscription catches up',
     (tester) async {
-      final repository = _SilentCreateRepository(auth: FakeAuthService());
+      final repository = StubRepository(auth: FakeAuthService())
+        ..returns('createBand', (
+          band: const Band(
+            id: 'silent-band',
+            name: 'Static Bloom',
+            genres: ['punk'],
+            area: 'Mission, SF',
+            color: Color(0xFF8FE6C4),
+            initials: 'SB',
+            followers: 1,
+            bio: '',
+            linkIg: null,
+            linkBc: null,
+            linkYt: null,
+            credits: null,
+          ),
+          slug: 'static-bloom',
+        ));
       final app = (await _pumpBandCreate(tester, repository: repository)).app;
       await _fillAndCreate(tester);
 
@@ -352,66 +368,9 @@ Future<void> _fillAndCreate(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-class _GatedDemoRepository extends DemoRepository {
+class _GatedDemoRepository extends StubRepository {
   _GatedDemoRepository({required super.auth});
 
-  final gate = Completer<void>();
-  int createCalls = 0;
-
-  @override
-  Future<({Band band, String slug})> createBand({
-    required String name,
-    required List<String> genres,
-    required String bio,
-    required String area,
-    String? linkIg,
-    String? linkBc,
-    String? linkYt,
-    String? credits,
-  }) async {
-    createCalls++;
-    await gate.future;
-    return super.createBand(
-      name: name,
-      genres: genres,
-      bio: bio,
-      area: area,
-      linkIg: linkIg,
-      linkBc: linkBc,
-      linkYt: linkYt,
-      credits: credits,
-    );
-  }
-}
-
-class _SilentCreateRepository extends DemoRepository {
-  _SilentCreateRepository({required super.auth});
-
-  @override
-  Future<({Band band, String slug})> createBand({
-    required String name,
-    required List<String> genres,
-    required String bio,
-    required String area,
-    String? linkIg,
-    String? linkBc,
-    String? linkYt,
-    String? credits,
-  }) async => (
-    band: Band(
-      id: 'silent-band',
-      name: name,
-      genres: genres,
-      area: area,
-      color: const Color(0xFF8FE6C4),
-      initials: 'SB',
-      followers: 1,
-      bio: bio,
-      linkIg: linkIg,
-      linkBc: linkBc,
-      linkYt: linkYt,
-      credits: credits,
-    ),
-    slug: 'static-bloom',
-  );
+  late final createGate = gate('createBand');
+  int get createCalls => callsTo('createBand');
 }

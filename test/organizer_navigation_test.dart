@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('a new account can apply without creating a band', (
@@ -23,7 +24,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _NewOrganizerRepository(auth: auth),
+      repository: _newOrganizerRepository(auth: auth),
       home: const RootShell(),
     );
 
@@ -46,7 +47,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _NewOrganizerRepository(auth: auth),
+      repository: _newOrganizerRepository(auth: auth),
       home: const RootShell(),
     );
 
@@ -273,16 +274,16 @@ void main() {
   });
 }
 
-class _NewOrganizerRepository extends DemoRepository {
-  _NewOrganizerRepository({required super.auth});
-
-  @override
-  Stream<List<BandMembership>> myBands() => Stream.value(const []);
-
-  @override
-  Stream<List<OrganizationMembership>> myOrganizations() =>
-      Stream.value(const []);
-}
+StubRepository _newOrganizerRepository({required FakeAuthService auth}) =>
+    StubRepository(auth: auth)
+      ..returnsStream<List<BandMembership>>(
+        'myBands',
+        () => Stream.value(const []),
+      )
+      ..returnsStream<List<OrganizationMembership>>(
+        'myOrganizations',
+        () => Stream.value(const []),
+      );
 
 class _InviteRepository extends DemoRepository {
   _InviteRepository({required super.auth});

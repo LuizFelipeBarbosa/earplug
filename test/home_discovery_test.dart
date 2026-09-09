@@ -1,7 +1,6 @@
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:earplug/app_state.dart';
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
@@ -15,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 // Purging the seeded demo rows made a genuinely empty feed reachable for the
 // first time, so the two reasons a feed can be empty have to read differently.
@@ -109,7 +109,17 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _SingleGigRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(
+            FeedSnapshot(
+              gigs: [DemoData.gigs.first],
+              venues: DemoData.venues,
+              bands: DemoData.bands,
+            ),
+          ),
+        ),
       home: const Scaffold(body: HomeScreen()),
       beforePump: (app) => app.setMapMode(false),
     );
@@ -183,10 +193,25 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
+    final readyBand = DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
     await pumpApp(
       tester,
       auth: auth,
-      repository: _BoostRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(
+            FeedSnapshot(
+              gigs: DemoData.gigs,
+              venues: DemoData.venues,
+              bands: {...DemoData.bands, 'b1': readyBand},
+            ),
+          ),
+        )
+        ..returnsStream(
+          'myBands',
+          () => Stream.value([BandMembership(band: readyBand, role: 'admin')]),
+        ),
       home: const Scaffold(body: HomeScreen()),
     );
 
@@ -342,7 +367,18 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _MissingVenueRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(
+            FeedSnapshot(
+              gigs: [DemoData.gigs.first, _missingVenueGig],
+              venues: {'v3': DemoData.venues['v3']!},
+              bands: const {},
+            ),
+          ),
+        )
+        ..returns('venues', const <Venue>[]),
       home: const Scaffold(body: HomeScreen()),
     );
 
@@ -427,7 +463,11 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _EmptyFeedRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+        ),
       home: const Scaffold(body: HomeScreen()),
     );
 
@@ -477,83 +517,34 @@ class _SuccessfulLocationService implements LocationService {
   Future<bool> openLocationSettings() async => true;
 }
 
-class _MissingVenueRepository extends DemoRepository {
-  _MissingVenueRepository({required super.auth});
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: [DemoData.gigs.first, _missingVenueGig],
-      venues: {'v3': DemoData.venues['v3']!},
-      bands: const {},
-    ),
-  );
-
-  @override
-  Future<List<Venue>> venues() async => const [];
-}
-
-class _SingleGigRepository extends DemoRepository {
-  _SingleGigRepository({required super.auth});
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: [DemoData.gigs.first],
-      venues: DemoData.venues,
-      bands: DemoData.bands,
-    ),
-  );
-}
-
-class _BoostRepository extends DemoRepository {
-  _BoostRepository({required super.auth});
-
-  Band get _readyBand =>
-      DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: DemoData.gigs,
-      venues: DemoData.venues,
-      bands: {...DemoData.bands, 'b1': _readyBand},
-    ),
-  );
-
-  @override
-  Stream<List<BandMembership>> myBands() =>
-      Stream.value([BandMembership(band: _readyBand, role: 'admin')]);
-}
-
-class _BoundaryBoostRepository extends DemoRepository {
+class _BoundaryBoostRepository extends StubRepository {
   _BoundaryBoostRepository({
     required super.auth,
     required DateTime now,
     Duration opensAfter = const Duration(seconds: 2),
-  }) : opensAt = now.add(opensAfter);
+  }) : opensAt = now.add(opensAfter) {
+    final readyBand = DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
+    returnsStream(
+      'feed',
+      () => Stream.value(
+        FeedSnapshot(
+          gigs: [gig],
+          venues: {'v1': DemoData.venues['v1']!},
+          bands: {'b1': readyBand},
+        ),
+      ),
+    );
+    returnsStream(
+      'myBands',
+      () => Stream.value([BandMembership(band: readyBand, role: 'admin')]),
+    );
+  }
 
   final DateTime opensAt;
-
-  Band get _readyBand =>
-      DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
 
   late final Gig gig = DemoData.gigs[1].copyWith(
     startsAt: opensAt.add(discoveryBoostLead),
   );
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: [gig],
-      venues: {'v1': DemoData.venues['v1']!},
-      bands: {'b1': _readyBand},
-    ),
-  );
-
-  @override
-  Stream<List<BandMembership>> myBands() =>
-      Stream.value([BandMembership(band: _readyBand, role: 'admin')]);
 }
 
 final _missingVenueGig = Gig(
@@ -573,12 +564,3 @@ final _missingVenueGig = Gig(
   desc: 'The venue row was deleted.',
   tix: Ticketing.rsvp,
 );
-
-/// Stands in for the cleaned dev deployment: reachable, healthy, nothing booked.
-class _EmptyFeedRepository extends DemoRepository {
-  _EmptyFeedRepository({required super.auth});
-
-  @override
-  Stream<FeedSnapshot> feed() =>
-      Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {}));
-}

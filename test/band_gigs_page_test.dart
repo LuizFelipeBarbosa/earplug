@@ -17,17 +17,7 @@ import 'package:provider/provider.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
-
-class _BookingCardRepository extends DemoRepository {
-  _BookingCardRepository({required super.auth, required this.gigBooking});
-
-  final Booking gigBooking;
-
-  @override
-  Future<List<Booking>> bandBookings(String bandId) async => [
-    if (gigBooking.bandId == bandId) gigBooking,
-  ];
-}
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('OPEN identifies private requests and explains disclosure', (
@@ -440,10 +430,8 @@ void main() {
           organizerAcceptedTermsAt: DateTime.now(),
           viewerSide: BookingSide.artist,
         );
-        final repository = _BookingCardRepository(
-          auth: auth,
-          gigBooking: booking,
-        );
+        final repository = StubRepository(auth: auth)
+          ..returns('bandBookings', [booking]);
         await pumpApp(
           tester,
           home: const Scaffold(body: GigManagerScreen()),

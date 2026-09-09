@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:earplug/app_links.dart';
@@ -21,6 +20,7 @@ import 'package:provider/provider.dart';
 
 import 'support/fakes.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('organizer type picker is visible when promoters are enabled', (
@@ -580,7 +580,11 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _FailOnceRepository(auth: auth);
+    final repository = StubRepository(auth: auth)
+      ..failOnce(
+        'saveOrganizationApplicationDraft',
+        StateError('Contact name is required'),
+      );
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -780,7 +784,7 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _FailOnceRepository(auth: auth)..failNext = false;
+    final repository = StubRepository(auth: auth);
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -789,8 +793,11 @@ void main() {
     );
     addTearDown(() => _disposeApp(harness.app));
     await _completeVenue(tester);
-    repository.saveGate = Completer<void>();
-    repository.failNext = true;
+    final saveGate = repository.gate('saveOrganizationApplicationDraft');
+    repository.failOnce(
+      'saveOrganizationApplicationDraft',
+      StateError('Contact name is required'),
+    );
     await tester.tap(find.text('CONTINUE'));
     await tester.pump();
     expect(find.text('SAVING…'), findsOneWidget);
@@ -799,8 +806,7 @@ void main() {
       isNull,
     );
     expect(find.text('STEP 2 OF 2 · CONTACT'), findsNothing);
-    repository.saveGate!.complete();
-    repository.saveGate = null;
+    saveGate.complete();
     await tester.pumpAndSettle();
     expect(find.text('Contact name is required'), findsOneWidget);
     await _scrollUpToKey(tester, const ValueKey('org-apply-save-state'));
@@ -815,7 +821,7 @@ void main() {
     (tester) async {
       final auth = FakeAuthService();
       await auth.signInDemo();
-      final repository = _FailOnceRepository(auth: auth)..failNext = false;
+      final repository = StubRepository(auth: auth);
       final harness = await pumpApp(
         tester,
         auth: auth,
@@ -829,8 +835,10 @@ void main() {
       await _scrollUpToKey(tester, const ValueKey('org-apply-back'));
       await tester.tap(find.byKey(const ValueKey('org-apply-back')));
       await tester.pumpAndSettle();
-      repository.failureMessage = 'Website must be a valid HTTPS URL';
-      repository.failNext = true;
+      repository.failOnce(
+        'saveOrganizationApplicationDraft',
+        StateError('Website must be a valid HTTPS URL'),
+      );
       await tester.tap(find.text('CONTINUE'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('org-apply-continue')), findsOneWidget);
@@ -1049,55 +1057,6 @@ class _ApplicationHost extends StatelessWidget {
       Screen.orgApplicationStatus => const OrgApplicationStatusScreen(),
       _ => OrgApplyScreen(mediaPicker: mediaPicker, launch: launch),
     };
-  }
-}
-
-class _FailOnceRepository extends DemoRepository {
-  _FailOnceRepository({required super.auth});
-
-  bool failNext = true;
-  String failureMessage = 'Contact name is required';
-  Completer<void>? saveGate;
-
-  @override
-  Future<({String applicationId, int revision})>
-  saveOrganizationApplicationDraft({
-    ApplicationKind? kind,
-    String? hostDisplayName,
-    String? hostPhone,
-    String? hostArea,
-    bool? hostAgreementAccepted,
-    String? applicationId,
-    int? expectedRevision,
-    required String orgName,
-    required OrganizationType orgType,
-    String? website,
-    required String contactName,
-    required String businessEmail,
-    String? phone,
-    ApplicationVenueDraft? venue,
-  }) async {
-    if (saveGate case final gate?) await gate.future;
-    if (failNext) {
-      failNext = false;
-      throw StateError(failureMessage);
-    }
-    return super.saveOrganizationApplicationDraft(
-      kind: kind,
-      hostDisplayName: hostDisplayName,
-      hostPhone: hostPhone,
-      hostArea: hostArea,
-      hostAgreementAccepted: hostAgreementAccepted,
-      applicationId: applicationId,
-      expectedRevision: expectedRevision,
-      orgName: orgName,
-      orgType: orgType,
-      website: website,
-      contactName: contactName,
-      businessEmail: businessEmail,
-      phone: phone,
-      venue: venue,
-    );
   }
 }
 

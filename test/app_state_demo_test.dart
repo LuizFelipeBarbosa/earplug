@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'support/fixtures.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   group('AppState', () {
@@ -20,7 +21,8 @@ void main() {
     });
 
     test('venue directory merges into one sorted, resolvable list', () async {
-      final repository = _DirectoryMergeRepository(auth: FakeAuthService());
+      final repository = StubRepository(auth: FakeAuthService())
+        ..returns('venues', [...DemoData.venues.values, _extraVenue]);
       final app = await _demoApp(repository: repository);
       app.venues;
       await pumpEventQueue();
@@ -36,7 +38,18 @@ void main() {
     });
 
     test('realtime feed venue wins a directory id conflict', () async {
-      final repository = _ConflictingVenueRepository(auth: FakeAuthService());
+      const directoryVersion = Venue(
+        id: 'v1',
+        name: 'Stale Directory Name',
+        area: 'Mission, SF',
+        addr: '2455 Harrison St, San Francisco',
+        point: LatLng(37.7524, -122.4180),
+      );
+      final repository = StubRepository(auth: FakeAuthService())
+        ..returns('venues', [
+          for (final venue in DemoData.venues.values)
+            if (venue.id == 'v1') directoryVersion else venue,
+        ]);
       final app = await _demoApp(repository: repository);
       final feedVenue = DemoData.venues['v1']!;
 
@@ -50,7 +63,8 @@ void main() {
     });
 
     test('a failed venue directory leaves feed venues intact', () async {
-      final repository = _FailedVenueRepository(auth: FakeAuthService());
+      final repository = StubRepository(auth: FakeAuthService())
+        ..fail('venues', Exception('venues failed'));
       final app = await _demoApp(repository: repository);
 
       app.venues;
@@ -261,7 +275,8 @@ void main() {
     test('failed RSVP mutation reverts its optimistic update', () async {
       final auth = FakeAuthService();
       final app = AppState.demo(
-        repository: _FailingRsvpRepository(auth: auth),
+        repository: StubRepository(auth: auth)
+          ..fail('toggleRsvp', StateError('RSVP failed')),
         auth: auth,
       );
       addTearDown(app.dispose);
@@ -382,41 +397,6 @@ const _extraVenue = Venue(
   point: LatLng(37.8614, -122.2508),
 );
 
-class _DirectoryMergeRepository extends DemoRepository {
-  _DirectoryMergeRepository({required super.auth});
-
-  @override
-  Future<List<Venue>> venues() async => [
-    ...DemoData.venues.values,
-    _extraVenue,
-  ];
-}
-
-class _ConflictingVenueRepository extends DemoRepository {
-  _ConflictingVenueRepository({required super.auth});
-
-  static const _directoryVersion = Venue(
-    id: 'v1',
-    name: 'Stale Directory Name',
-    area: 'Mission, SF',
-    addr: '2455 Harrison St, San Francisco',
-    point: LatLng(37.7524, -122.4180),
-  );
-
-  @override
-  Future<List<Venue>> venues() async => [
-    for (final venue in DemoData.venues.values)
-      if (venue.id == 'v1') _directoryVersion else venue,
-  ];
-}
-
-class _FailedVenueRepository extends DemoRepository {
-  _FailedVenueRepository({required super.auth});
-
-  @override
-  Future<List<Venue>> venues() async => throw Exception('venues failed');
-}
-
 /// Counts atomic profile writes and can fail them on request.
 class _CountingProfileRepository extends DemoRepository {
   _CountingProfileRepository({required super.auth});
@@ -470,12 +450,4 @@ class _GatedCreateRepository extends DemoRepository {
       slug: 'static-bloom',
     );
   }
-}
-
-class _FailingRsvpRepository extends DemoRepository {
-  _FailingRsvpRepository({required super.auth});
-
-  @override
-  Future<void> toggleRsvp(String gigId, {bool? on}) =>
-      Future<void>.error(StateError('RSVP failed'));
 }

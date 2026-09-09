@@ -22,6 +22,7 @@ import 'support/async.dart';
 import 'support/fake_video_player_platform.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   group('performance regression guards', () {
@@ -107,10 +108,12 @@ void main() {
     testWidgets('Home list lazily builds a 60-gig feed', (tester) async {
       final auth = FakeAuthService();
       await auth.signInDemo();
+      final snapshot = _bigFeedSnapshot();
       await pumpApp(
         tester,
         auth: auth,
-        repository: _BigFeedRepository(auth: auth),
+        repository: StubRepository(auth: auth)
+          ..returnsStream('feed', () => Stream.value(snapshot)),
         home: const Scaffold(body: HomeScreen()),
         beforePump: (app) => app.setMapMode(false),
       );
@@ -157,10 +160,8 @@ void main() {
   });
 }
 
-class _BigFeedRepository extends DemoRepository {
-  _BigFeedRepository({required super.auth});
-
-  late final FeedSnapshot _snapshot = FeedSnapshot(
+FeedSnapshot _bigFeedSnapshot() {
+  return FeedSnapshot(
     gigs: List.generate(60, (index) {
       final source = DemoData.gigs.first;
       return Gig(
@@ -194,7 +195,4 @@ class _BigFeedRepository extends DemoRepository {
     venues: DemoData.venues,
     bands: DemoData.bands,
   );
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(_snapshot);
 }

@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/accessibility.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('dashboard derives remaining tasks from current band data', (
@@ -187,10 +188,19 @@ void main() {
         await pumpApp(
           tester,
           auth: auth,
-          repository: _PayoutStatusRepository(
-            auth: auth,
-            cardPaymentsStatus: cardPaymentsStatus,
-          ),
+          repository: StubRepository(auth: auth)
+            ..returns(
+              'bandPayoutStatus',
+              StripeAccountStatus(
+                state: StripeAccountState.enabled,
+                hasAccount: true,
+                chargesEnabled: true,
+                payoutsEnabled: true,
+                detailsSubmitted: true,
+                requirementsDue: const [],
+                cardPaymentsStatus: cardPaymentsStatus,
+              ),
+            ),
           home: const Scaffold(body: BandDashScreen()),
           beforePump: (app) => app.switchToBand('b1'),
         );
@@ -308,7 +318,19 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _SetupRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns(
+          'bandSetupStatus',
+          const BandSetupStatus(
+            profileComplete: true,
+            profileImageAdded: false,
+            musicAdded: true,
+            socialLinksAdded: false,
+            firstGigCreated: true,
+            membersInvited: false,
+            publicProfilePreviewed: true,
+          ),
+        ),
       home: const Scaffold(body: BandDashScreen()),
     );
 
@@ -396,7 +418,14 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _MultiBandRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'myBands',
+          () => Stream.value([
+            BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
+            BandMembership(band: DemoData.bands['b2']!, role: 'member'),
+          ]),
+        ),
       home: const Scaffold(body: BandDashScreen()),
     );
 
@@ -458,69 +487,25 @@ class _DoorRepository extends DemoRepository {
   }
 }
 
-class _PayoutStatusRepository extends DemoRepository {
-  _PayoutStatusRepository({required super.auth, this.cardPaymentsStatus});
-
-  final String? cardPaymentsStatus;
-
-  @override
-  Future<StripeAccountStatus> bandPayoutStatus(String bandId) async =>
-      StripeAccountStatus(
-        state: StripeAccountState.enabled,
-        hasAccount: true,
-        chargesEnabled: true,
-        payoutsEnabled: true,
-        detailsSubmitted: true,
-        requirementsDue: const [],
-        cardPaymentsStatus: cardPaymentsStatus,
-      );
-}
-
-class _MultiBandRepository extends DemoRepository {
-  _MultiBandRepository({required super.auth});
-
-  @override
-  Stream<List<BandMembership>> myBands() async* {
-    yield [
-      BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
-      BandMembership(band: DemoData.bands['b2']!, role: 'member'),
-    ];
-  }
-}
-
-class _SetupRepository extends DemoRepository {
-  _SetupRepository({required super.auth});
-
-  @override
-  Future<BandSetupStatus> bandSetupStatus(String bandId) async =>
-      const BandSetupStatus(
-        profileComplete: true,
-        profileImageAdded: false,
-        musicAdded: true,
-        socialLinksAdded: false,
-        firstGigCreated: true,
-        membersInvited: false,
-        publicProfilePreviewed: true,
-      );
-}
-
-class _BoundaryReadinessRepository extends DemoRepository {
+class _BoundaryReadinessRepository extends StubRepository {
   _BoundaryReadinessRepository({required super.auth, required DateTime now})
     : opensAt = now.add(const Duration(seconds: 2)),
-      closesAt = now.add(const Duration(seconds: 4));
+      closesAt = now.add(const Duration(seconds: 4)) {
+    returnsStream(
+      'feed',
+      () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+    );
+    returnsStream(
+      'myBands',
+      () => Stream.value([
+        BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
+      ]),
+    );
+  }
 
   final DateTime opensAt;
   final DateTime closesAt;
   int readinessCalls = 0;
-
-  @override
-  Stream<FeedSnapshot> feed() =>
-      Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {}));
-
-  @override
-  Stream<List<BandMembership>> myBands() => Stream.value([
-    BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
-  ]);
 
   @override
   Future<BandDiscoveryReadiness> bandDiscoveryReadiness(
@@ -553,15 +538,17 @@ class _BoundaryReadinessRepository extends DemoRepository {
   }
 }
 
-class _MemberRepository extends DemoRepository {
-  _MemberRepository({required super.auth});
+class _MemberRepository extends StubRepository {
+  _MemberRepository({required super.auth}) {
+    returnsStream(
+      'myBands',
+      () => Stream.value([
+        BandMembership(band: DemoData.bands['b1']!, role: 'member'),
+      ]),
+    );
+  }
 
   int setupStatusCalls = 0;
-
-  @override
-  Stream<List<BandMembership>> myBands() => Stream.value([
-    BandMembership(band: DemoData.bands['b1']!, role: 'member'),
-  ]);
 
   @override
   Future<BandSetupStatus> bandSetupStatus(String bandId) async {

@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/design_rules.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('host agreement link preserves the full checkbox label', (
@@ -813,24 +814,26 @@ void _disposeApp(AppState app) {
   }
 }
 
-class _HostTestRepository extends DemoRepository {
+class _HostTestRepository extends StubRepository {
   _HostTestRepository({
     required super.auth,
     this.hostRole = OrganizationRole.owner,
     this.excludedOrganizationTypes = const {},
-  });
+  }) {
+    returns(
+      'me',
+      UserProfile(
+        name: 'Jordan Lee',
+        email: 'fan@example.com',
+        genres: const [],
+        attendedCount: 0,
+        createdAt: DateTime(2026),
+      ),
+    );
+  }
 
   final OrganizationRole hostRole;
   final Set<OrganizationType> excludedOrganizationTypes;
-
-  @override
-  Future<UserProfile?> me() async => UserProfile(
-    name: 'Jordan Lee',
-    email: 'fan@example.com',
-    genres: const [],
-    attendedCount: 0,
-    createdAt: DateTime(2026),
-  );
 
   @override
   Stream<List<OrganizationMembership>> myOrganizations() =>

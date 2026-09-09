@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('owner sees a venue request and can approve it', (tester) async {
@@ -217,7 +218,11 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _RetryVenueConsentsRepository(auth: auth);
+    final repository = StubRepository(auth: auth)
+      ..failOnce(
+        'venueConsentsForOrganization',
+        StateError('Could not load venue requests'),
+      );
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -229,7 +234,6 @@ void main() {
 
     expect(find.text('Could not load venues.'), findsOneWidget);
     expect(find.byKey(const Key('venue-request-consent-1')), findsNothing);
-    repository.failConsents = false;
     await tester.tap(find.text('RETRY'));
     await tester.pumpAndSettle();
 
@@ -237,19 +241,4 @@ void main() {
     expect(find.byKey(const Key('venue-request-consent-1')), findsOneWidget);
     expect(find.byKey(const ValueKey('org-venue-v1')), findsOneWidget);
   });
-}
-
-class _RetryVenueConsentsRepository extends DemoRepository {
-  _RetryVenueConsentsRepository({required super.auth});
-
-  bool failConsents = true;
-
-  @override
-  Future<List<VenueConsentRow>> venueConsentsForOrganization(
-    String organizationId, {
-    VenueConsentStatus? status,
-  }) async {
-    if (failConsents) throw StateError('Could not load venue requests');
-    return super.venueConsentsForOrganization(organizationId, status: status);
-  }
 }

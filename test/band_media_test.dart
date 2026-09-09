@@ -1,6 +1,3 @@
-import 'dart:async';
-
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
@@ -15,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fakes.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('focuses on videos and gallery photos with no artwork controls', (
@@ -74,7 +72,7 @@ void main() {
     await _pumpBandMedia(
       tester,
       auth: auth,
-      repository: _EmptyMediaDemoRepository(auth: auth),
+      repository: StubRepository(auth: auth)..returns('mediaFor', const <BandMedia>[]),
     );
     tester.view.physicalSize = const Size(402, 1800);
     await tester.pumpAndSettle();
@@ -90,7 +88,8 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
-    final repository = _GatedSaveDemoRepository(auth: auth);
+    final repository = StubRepository(auth: auth);
+    final saveGate = repository.gate('addBandMedia');
     final harness = await _pumpBandMedia(
       tester,
       auth: auth,
@@ -105,7 +104,7 @@ void main() {
     expect(find.text('riptide_live.mp4'), findsOne);
     expect(find.text('SAVING'), findsOne);
 
-    repository.saveGate.complete();
+    saveGate.complete();
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
       find.text('RIPTIDE LIVE'),
@@ -159,7 +158,13 @@ void main() {
     final harness = await _pumpBandMedia(
       tester,
       auth: auth,
-      repository: _MemberDemoRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream<List<BandMembership>>(
+          'myBands',
+          () => Stream.value([
+            BandMembership(band: DemoData.bands['b1']!, role: 'member'),
+          ]),
+        ),
     );
     tester.view.physicalSize = const Size(402, 3600);
     await tester.pumpAndSettle();
@@ -281,47 +286,3 @@ Future<AppHarness> _pumpBandMedia(
   uploader: uploader,
   home: const BandMediaScreen(bandId: 'b1'),
 );
-
-class _EmptyMediaDemoRepository extends DemoRepository {
-  _EmptyMediaDemoRepository({required super.auth});
-
-  @override
-  Future<List<BandMedia>> mediaFor(String bandId) async => const [];
-}
-
-class _MemberDemoRepository extends DemoRepository {
-  _MemberDemoRepository({required super.auth});
-
-  @override
-  Stream<List<BandMembership>> myBands() async* {
-    yield [BandMembership(band: DemoData.bands['b1']!, role: 'member')];
-  }
-}
-
-class _GatedSaveDemoRepository extends DemoRepository {
-  _GatedSaveDemoRepository({required super.auth});
-
-  final saveGate = Completer<void>();
-
-  @override
-  Future<String> addBandMedia({
-    required String bandId,
-    required MediaKind kind,
-    required String storageId,
-    String? thumbnailStorageId,
-    required String title,
-    String? caption,
-    int? lengthSec,
-  }) async {
-    await saveGate.future;
-    return super.addBandMedia(
-      bandId: bandId,
-      kind: kind,
-      storageId: storageId,
-      thumbnailStorageId: thumbnailStorageId,
-      title: title,
-      caption: caption,
-      lengthSec: lengthSec,
-    );
-  }
-}

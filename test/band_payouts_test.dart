@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets(
@@ -245,7 +246,7 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
-    final repository = _StripeStatusRepository(
+    final repository = _stripeStatusRepository(
       auth: auth,
       state: StripeAccountState.enabled,
       cardPaymentsStatus: null,
@@ -289,7 +290,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _StripeStatusRepository(
+      repository: _stripeStatusRepository(
         auth: auth,
         state: StripeAccountState.enabled,
         cardPaymentsStatus: 'active',
@@ -341,7 +342,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _StripeStatusRepository(
+      repository: _stripeStatusRepository(
         auth: auth,
         state: StripeAccountState.enabled,
       ),
@@ -488,7 +489,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _StripeStatusRepository(
+      repository: _stripeStatusRepository(
         auth: auth,
         state: StripeAccountState.enabled,
       ),
@@ -517,7 +518,7 @@ void main() {
       await pumpApp(
         tester,
         auth: auth,
-        repository: _StripeStatusRepository(
+        repository: _stripeStatusRepository(
           auth: auth,
           state: detailsSubmitted
               ? StripeAccountState.enabled
@@ -582,7 +583,7 @@ void main() {
     'restricted band with submitted details can manage tax details and retry errors',
     (tester) async {
       final auth = FakeAuthService();
-      final repository = _StripeStatusRepository(
+      final repository = _stripeStatusRepository(
         auth: auth,
         state: StripeAccountState.restricted,
         detailsSubmitted: true,
@@ -642,7 +643,7 @@ void main() {
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: _StripeStatusRepository(
+        repository: _stripeStatusRepository(
           auth: auth,
           state: state,
           cardPaymentsStatus:
@@ -674,7 +675,22 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _NonOwnerRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'myBands',
+          () => Stream.value([
+            BandMembership(band: DemoData.bands['b1']!, role: 'member'),
+          ]),
+        )
+        ..returnsStream(
+          'myOrganizations',
+          () => Stream.value([
+            OrganizationMembership(
+              organization: DemoData.organizations['org1']!,
+              role: OrganizationRole.manager,
+            ),
+          ]),
+        ),
       home: const Scaffold(body: BandDashScreen()),
       beforePump: (app) => app.switchToBand('b1'),
     );
@@ -736,7 +752,22 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _NonOwnerRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'myBands',
+          () => Stream.value([
+            BandMembership(band: DemoData.bands['b1']!, role: 'member'),
+          ]),
+        )
+        ..returnsStream(
+          'myOrganizations',
+          () => Stream.value([
+            OrganizationMembership(
+              organization: DemoData.organizations['org1']!,
+              role: OrganizationRole.manager,
+            ),
+          ]),
+        ),
       home: const Scaffold(body: OrgSettingsScreen()),
       beforePump: (app) => app.switchToOrganization('org1'),
     );
@@ -793,7 +824,7 @@ void main() {
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: _StripeStatusRepository(
+        repository: _stripeStatusRepository(
           auth: auth,
           state: StripeAccountState.restricted,
         ),
@@ -826,7 +857,26 @@ void main() {
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: _ReadinessRepository(auth: auth, complete: complete),
+        repository: StubRepository(auth: auth)
+          ..wraps<OrganizationDashboard>(
+            'organizationDashboard',
+            (real) => OrganizationDashboard(
+              organization: real.organization,
+              role: real.role,
+              viaPlatformAdmin: real.viaPlatformAdmin,
+              verification: OrganizationVerification(
+                verified: real.verification.verified,
+                stripeDetailsSubmitted: complete,
+                stripeChargesEnabled: complete,
+                stripePayoutsEnabled: complete,
+                profileComplete: real.verification.profileComplete,
+                teamInvited: real.verification.teamInvited,
+              ),
+              venues: real.venues,
+              memberCount: real.memberCount,
+              privateDetails: real.privateDetails,
+            ),
+          ),
         home: const Scaffold(body: OrgDashScreen()),
         beforePump: (app) => app.switchToOrganization('org1'),
       );
@@ -858,36 +908,38 @@ void main() {
 const _ticketSalesCaption =
     'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.';
 
-class _PayoutRepository extends DemoRepository {
-  _PayoutRepository({required super.auth, this.payoutsResponse});
-
-  final Future<List<Payout>>? payoutsResponse;
-  ({String bandId, DateTime from, DateTime to})? statementRange;
-
-  @override
-  Future<List<Payout>> payoutsForBand(String bandId) async {
-    if (payoutsResponse != null) return payoutsResponse!;
-    return [
-      Payout(
-        id: 'p1',
-        kind: PayoutKind.completion,
-        amountMinor: 12000,
-        currency: 'usd',
-        status: PayoutStatus.paid,
-        scheduledFor: DateTime(2026, 8, 1),
-        paidAt: DateTime(2026, 8, 2),
-      ),
-      Payout(
-        id: 'p2',
-        kind: PayoutKind.forfeit,
-        amountMinor: 4000,
-        currency: 'usd',
-        status: PayoutStatus.held,
-        scheduledFor: DateTime(2026, 8, 3),
-        holdReason: 'Waiting for bank details',
-      ),
-    ];
+class _PayoutRepository extends StubRepository {
+  _PayoutRepository({
+    required super.auth,
+    Future<List<Payout>>? payoutsResponse,
+  }) {
+    returns(
+      'payoutsForBand',
+      payoutsResponse ??
+          Future.value(<Payout>[
+            Payout(
+              id: 'p1',
+              kind: PayoutKind.completion,
+              amountMinor: 12000,
+              currency: 'usd',
+              status: PayoutStatus.paid,
+              scheduledFor: DateTime(2026, 8, 1),
+              paidAt: DateTime(2026, 8, 2),
+            ),
+            Payout(
+              id: 'p2',
+              kind: PayoutKind.forfeit,
+              amountMinor: 4000,
+              currency: 'usd',
+              status: PayoutStatus.held,
+              scheduledFor: DateTime(2026, 8, 3),
+              holdReason: 'Waiting for bank details',
+            ),
+          ]),
+    );
   }
+
+  ({String bandId, DateTime from, DateTime to})? statementRange;
 
   @override
   Future<PayoutStatement> bandPayoutStatement(
@@ -946,84 +998,27 @@ class _TruncatedPayoutRepository extends _PayoutRepository {
   }
 }
 
-class _StripeStatusRepository extends DemoRepository {
-  _StripeStatusRepository({
-    required super.auth,
-    required StripeAccountState state,
-    String? cardPaymentsStatus,
-    bool? detailsSubmitted,
-    List<String>? requirementsDue,
-  }) : status = StripeAccountStatus(
-         state: state,
-         hasAccount: state != StripeAccountState.none,
-         chargesEnabled: state == StripeAccountState.enabled,
-         cardPaymentsStatus: cardPaymentsStatus,
-         payoutsEnabled: state == StripeAccountState.enabled,
-         detailsSubmitted:
-             detailsSubmitted ?? (state == StripeAccountState.enabled),
-         requirementsDue:
-             requirementsDue ??
-             (state == StripeAccountState.restricted
-                 ? const [
-                     'individual.verification.document',
-                     'external_account',
-                   ]
-                 : const []),
-       );
-
-  final StripeAccountStatus status;
-
-  @override
-  Future<StripeAccountStatus> bandPayoutStatus(String bandId) async => status;
-
-  @override
-  Future<StripeAccountStatus> organizationStripeStatus(
-    String organizationId,
-  ) async => status;
-}
-
-class _NonOwnerRepository extends DemoRepository {
-  _NonOwnerRepository({required super.auth});
-
-  @override
-  Stream<List<BandMembership>> myBands() => Stream.value([
-    BandMembership(band: DemoData.bands['b1']!, role: 'member'),
-  ]);
-
-  @override
-  Stream<List<OrganizationMembership>> myOrganizations() => Stream.value([
-    OrganizationMembership(
-      organization: DemoData.organizations['org1']!,
-      role: OrganizationRole.manager,
-    ),
-  ]);
-}
-
-class _ReadinessRepository extends DemoRepository {
-  _ReadinessRepository({required super.auth, required this.complete});
-
-  final bool complete;
-
-  @override
-  Future<OrganizationDashboard> organizationDashboard(
-    String organizationId,
-  ) async {
-    final dashboard = await super.organizationDashboard(organizationId);
-    return OrganizationDashboard(
-      organization: dashboard.organization,
-      role: dashboard.role,
-      viaPlatformAdmin: dashboard.viaPlatformAdmin,
-      verification: OrganizationVerification(
-        verified: dashboard.verification.verified,
-        stripeDetailsSubmitted: complete,
-        stripeChargesEnabled: complete,
-        stripePayoutsEnabled: complete,
-        profileComplete: dashboard.verification.profileComplete,
-        teamInvited: dashboard.verification.teamInvited,
-      ),
-      venues: dashboard.venues,
-      memberCount: dashboard.memberCount,
-      privateDetails: dashboard.privateDetails,
-    );
-  }
+StubRepository _stripeStatusRepository({
+  required AuthService auth,
+  required StripeAccountState state,
+  String? cardPaymentsStatus,
+  bool? detailsSubmitted,
+  List<String>? requirementsDue,
+}) {
+  final status = StripeAccountStatus(
+    state: state,
+    hasAccount: state != StripeAccountState.none,
+    chargesEnabled: state == StripeAccountState.enabled,
+    cardPaymentsStatus: cardPaymentsStatus,
+    payoutsEnabled: state == StripeAccountState.enabled,
+    detailsSubmitted: detailsSubmitted ?? (state == StripeAccountState.enabled),
+    requirementsDue:
+        requirementsDue ??
+        (state == StripeAccountState.restricted
+            ? const ['individual.verification.document', 'external_account']
+            : const []),
+  );
+  return StubRepository(auth: auth)
+    ..returns('bandPayoutStatus', status)
+    ..returns('organizationStripeStatus', status);
 }
