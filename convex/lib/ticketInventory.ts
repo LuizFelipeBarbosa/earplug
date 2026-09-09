@@ -1,5 +1,10 @@
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import {
+  resolveTicketSeller,
+  sellerRefFields,
+  type TicketSeller,
+} from "./ticketSeller";
 
 export async function ensureInventory(
   ctx: MutationCtx,
@@ -9,18 +14,27 @@ export async function ensureInventory(
     .query("gigTicketInventory")
     .withIndex("by_gigId", (q) => q.eq("gigId", gig._id))
     .unique();
+  const seller = await resolveTicketSeller(ctx, gig);
   if (
     gig.ticketing !== "paid" ||
     gig.ticketCapacity === undefined ||
-    !gig.createdByOrganization
+    seller === null
   ) {
     throw new Error("This event is not selling tickets");
   }
-  if (inventory) return inventory;
+  if (inventory) {
+    if (
+      inventory.organizationId !== seller.organizationId ||
+      inventory.bandId !== seller.bandId
+    ) {
+      throw new Error("This event is not selling tickets");
+    }
+    return inventory;
+  }
 
   const inventoryId = await ctx.db.insert("gigTicketInventory", {
     gigId: gig._id,
-    organizationId: gig.createdByOrganization,
+    ...sellerRefFields(seller),
     capacity: gig.ticketCapacity,
     sold: 0,
     reserved: 0,
@@ -29,6 +43,36 @@ export async function ensureInventory(
   const inserted = await ctx.db.get(inventoryId);
   if (!inserted) throw new Error("Ticket inventory not found");
   return inserted;
+}
+
+export async function applyTicketInventoryCapacity(
+  ctx: MutationCtx,
+  gigId: Id<"gigs">,
+  seller: TicketSeller,
+  capacity: number | undefined,
+): Promise<void> {
+  if (capacity === undefined) {
+    throw new Error("Paid opportunity is missing a ticket capacity");
+  }
+  const existing = await ctx.db
+    .query("gigTicketInventory")
+    .withIndex("by_gigId", (q) => q.eq("gigId", gigId))
+    .unique();
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      capacity: Math.max(capacity, existing.sold + existing.reserved),
+      updatedAt: Date.now(),
+    });
+  } else {
+    await ctx.db.insert("gigTicketInventory", {
+      gigId,
+      ...sellerRefFields(seller),
+      capacity,
+      sold: 0,
+      reserved: 0,
+      updatedAt: Date.now(),
+    });
+  }
 }
 
 export function availableCount(inventory: Doc<"gigTicketInventory">): number {

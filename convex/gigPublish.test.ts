@@ -687,6 +687,7 @@ describe("opportunity gig publishing", () => {
       expect(inventory).toMatchObject({
         gigId,
         organizationId: f.organizationId,
+        sellerKind: "organization",
         capacity: 100,
         sold: 0,
         reserved: 0,
@@ -738,6 +739,7 @@ describe("opportunity gig publishing", () => {
         _id: inventoryId,
         gigId,
         organizationId: f.organizationId,
+        sellerKind: "organization",
         capacity: 4,
         sold: 3,
         reserved: 1,
@@ -847,6 +849,8 @@ describe("published gig ticketing synchronization", () => {
         price: 21,
       });
       expect(await ctx.db.get(inventoryId)).toMatchObject({
+        organizationId: f.organizationId,
+        sellerKind: "organization",
         capacity: 4,
         sold: 3,
         reserved: 1,
@@ -939,6 +943,7 @@ describe("published gig ticketing synchronization", () => {
       ).toMatchObject({
         gigId,
         organizationId: f.organizationId,
+        sellerKind: "organization",
         capacity: 200,
         sold: 0,
         reserved: 0,

@@ -761,6 +761,9 @@ export default defineSchema({
     detailsSubmitted: v.boolean(),
     requirementsDue: v.array(v.string()),
     onboardingStartedAt: v.optional(v.number()),
+    // Stripe capability status ("active" | "pending" | "inactive" |
+    // "unrequested"); absent on legacy rows until the next webhook sync.
+    cardPaymentsStatus: v.optional(v.string()),
     updatedAt: v.number(),
   })
     .index("by_bandId", ["bandId"])
@@ -883,7 +886,9 @@ export default defineSchema({
 
   gigTicketInventory: defineTable({
     gigId: v.id("gigs"),
-    organizationId: v.id("organizations"),
+    organizationId: v.optional(v.id("organizations")),
+    bandId: v.optional(v.id("bands")),
+    sellerKind: v.optional(v.union(v.literal("organization"), v.literal("band"))),
     capacity: v.number(),
     sold: v.number(),
     reserved: v.number(),
@@ -892,7 +897,9 @@ export default defineSchema({
 
   ticketOrders: defineTable({
     gigId: v.id("gigs"),
-    organizationId: v.id("organizations"),
+    organizationId: v.optional(v.id("organizations")),
+    bandId: v.optional(v.id("bands")),
+    sellerKind: v.optional(v.union(v.literal("organization"), v.literal("band"))),
     buyerUserId: v.id("users"),
     quantity: v.number(),
     unitPriceMinor: v.number(),
@@ -917,6 +924,7 @@ export default defineSchema({
   })
     .index("by_gigId_and_status", ["gigId", "status"])
     .index("by_organizationId_and_status", ["organizationId", "status"])
+    .index("by_bandId_and_status", ["bandId", "status"])
     .index("by_buyerUserId_and_createdAt", ["buyerUserId", "createdAt"])
     .index("by_stripeCheckoutSessionId", ["stripeCheckoutSessionId"])
     .index("by_status_and_reservedUntil", ["status", "reservedUntil"])
@@ -925,7 +933,9 @@ export default defineSchema({
   tickets: defineTable({
     orderId: v.id("ticketOrders"),
     gigId: v.id("gigs"),
-    organizationId: v.id("organizations"),
+    organizationId: v.optional(v.id("organizations")),
+    bandId: v.optional(v.id("bands")),
+    sellerKind: v.optional(v.union(v.literal("organization"), v.literal("band"))),
     holderUserId: v.id("users"),
     token: v.string(),
     status: ticketStatusValidator,
@@ -941,7 +951,9 @@ export default defineSchema({
   ticketRefunds: defineTable({
     orderId: v.id("ticketOrders"),
     gigId: v.id("gigs"),
-    organizationId: v.id("organizations"),
+    organizationId: v.optional(v.id("organizations")),
+    bandId: v.optional(v.id("bands")),
+    sellerKind: v.optional(v.union(v.literal("organization"), v.literal("band"))),
     amountMinor: v.number(),
     currency: v.string(),
     reason: ticketRefundReasonValidator,
@@ -1172,7 +1184,9 @@ export default defineSchema({
     flyStorageId: v.optional(v.id("_storage")),
     overlay: v.boolean(),
     desc: v.string(),
-    ticketing: v.union(v.literal("rsvp"), v.literal("external")),
+    ticketing: v.union(v.literal("rsvp"), v.literal("external"), v.literal("paid")),
+    ticketPriceMinor: v.optional(v.number()),
+    ticketCapacity: v.optional(v.number()),
     ageRequirement: ageRequirementValidator,
     externalUrl: v.optional(v.string()),
     cap: v.string(),
