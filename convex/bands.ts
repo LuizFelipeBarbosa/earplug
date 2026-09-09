@@ -550,39 +550,6 @@ async function artworkPhotoForBand(
   return media;
 }
 
-/** Compatibility mutation for clients that still use one image for both
- * artwork roles. New clients call the role-specific mutations below. */
-export const setBandPhoto = mutation({
-  args: {
-    bandId: v.id("bands"),
-    mediaId: v.id("bandMedia"),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const media = await artworkPhotoForBand(ctx, args.bandId, args.mediaId);
-    await ctx.db.patch(args.bandId, {
-      imageStorageId: media.storageId,
-      avatarStorageId: media.storageId,
-      bannerStorageId: media.storageId,
-    });
-    return null;
-  },
-});
-
-export const clearBandPhoto = mutation({
-  args: { bandId: v.id("bands") },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    await requireBandRole(ctx, args.bandId, { role: "admin" });
-    await ctx.db.patch(args.bandId, {
-      imageStorageId: undefined,
-      avatarStorageId: null,
-      bannerStorageId: null,
-    });
-    return null;
-  },
-});
-
 export const setBandAvatar = mutation({
   args: {
     bandId: v.id("bands"),

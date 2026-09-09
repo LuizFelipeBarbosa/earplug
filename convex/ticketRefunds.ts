@@ -12,7 +12,6 @@ import {
   internalQuery,
   type MutationCtx,
 } from "./_generated/server";
-import { flag } from "./lib/env";
 import { appendLedgerEntry } from "./lib/ledger";
 import { stripeIdempotencyKey, stripeRequest } from "./lib/stripeClient";
 import { resolveOrderSeller, sellerRefFields } from "./lib/ticketSeller";
@@ -183,14 +182,6 @@ export const executeRefund = internalAction({
     );
     const { refund, order, stripeAccountId, paymentIntentId } = context;
     if (refund.status !== "pending") return null;
-    if (!flag("TICKETS_ENABLED", false)) {
-      await ctx.runMutation(internal.ticketRefunds.markRefundFailed, {
-        refundId: refund._id,
-        attempt: args.attempt,
-        error: "Ticket sales are disabled",
-      });
-      return null;
-    }
 
     let response: { id: string };
     try {
@@ -360,7 +351,6 @@ export const retryFailedTicketRefunds = internalMutation({
   args: {},
   returns: v.null(),
   handler: async (ctx): Promise<null> => {
-    if (!flag("TICKETS_ENABLED", false)) return null;
     const rows = await ctx.db
       .query("ticketRefunds")
       .withIndex("by_status_and_updatedAt", (q) => q.eq("status", "failed"))

@@ -22,7 +22,7 @@ import {
   type BookingStatus,
 } from "./lib/bookingStatus";
 import { settleBookingCancellation } from "./lib/cancellationSettlement";
-import { appBaseUrl, flag } from "./lib/env";
+import { appBaseUrl } from "./lib/env";
 import { feeSnapshot, resolveCommissionBps } from "./lib/fees";
 import { syncGigLineup, unpublishOpportunityGig } from "./lib/gigPublish";
 import { requireBandRole, requireUser } from "./lib/helpers";
@@ -300,12 +300,6 @@ export const sendOffer = mutation({
       opportunity.organizationId,
       ["owner", "manager"],
     );
-    if (
-      opportunity.mode === "privateBooking" &&
-      !flag("PRIVATE_BOOKINGS_ENABLED", false)
-    ) {
-      throw new Error("Private bookings are not available yet");
-    }
     if (application.status !== "shortlisted") {
       throw new Error("Shortlist the application before sending an offer");
     }
@@ -342,9 +336,6 @@ export const sendOffer = mutation({
     if (confirmed) throw new Error("This slot is already booked");
     if (!Number.isInteger(args.grossMinor) || args.grossMinor < 0) {
       throw new Error("Gross fee must be a non-negative integer");
-    }
-    if (args.grossMinor > 0 && !flag("PAYMENTS_ENABLED", false)) {
-      throw new Error("Paid offers open once payments are enabled");
     }
     if (args.installments?.length) {
       if (args.installments.length > 4) {

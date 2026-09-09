@@ -58,7 +58,7 @@ async function completeProfileMedia(
 ) {
   const video = await addMedia(setupResult, "video");
   const photo = await addMedia(setupResult, "photo");
-  await setupResult.asAdmin.mutation(api.bands.setBandPhoto, {
+  await setupResult.asAdmin.mutation(api.bands.setBandAvatar, {
     bandId: setupResult.bandId,
     mediaId: photo.mediaId,
   });
@@ -174,7 +174,7 @@ describe("discovery profile readiness", () => {
     const fixture = await setup();
     const video = await addMedia(fixture, "video");
     await expect(
-      fixture.asAdmin.mutation(api.bands.setBandPhoto, {
+      fixture.asAdmin.mutation(api.bands.setBandAvatar, {
         bandId: fixture.bandId,
         mediaId: video.mediaId,
       }),
@@ -191,7 +191,7 @@ describe("discovery profile readiness", () => {
     );
     const photo = await addMedia(fixture, "photo");
     await expect(
-      fixture.asAdmin.mutation(api.bands.setBandPhoto, {
+      fixture.asAdmin.mutation(api.bands.setBandAvatar, {
         bandId: otherBandId,
         mediaId: photo.mediaId,
       }),

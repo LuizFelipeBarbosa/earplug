@@ -37,7 +37,7 @@ import {
   type DisputeResolution,
   type DisputeSide,
 } from "./lib/disputeStatus";
-import { appBaseUrl, flag } from "./lib/env";
+import { appBaseUrl } from "./lib/env";
 import { requireUser } from "./lib/helpers";
 import {
   bookingStatusValidator,
@@ -238,9 +238,6 @@ export const open = mutation({
   },
   returns: v.object({ disputeId: v.id("disputes") }),
   handler: async (ctx, args) => {
-    if (!flag("DISPUTES_ENABLED", false)) {
-      throw new Error("Disputes are not available yet");
-    }
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
     const user = await requireUser(ctx);

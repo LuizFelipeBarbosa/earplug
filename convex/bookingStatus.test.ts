@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { expect, test } from "vitest";
 import {
   BOOKING_ACTIVE_STATUSES,
   BOOKING_LIVE_STATUSES,
@@ -11,51 +11,14 @@ import {
   isTerminalBookingStatus,
   type BookingStatus,
 } from "./lib/bookingStatus";
+import { expectStatusTransitions } from "./statusTransitions.test-helpers";
 
-function testStatusTransitions<T extends string>(
-  entity: string,
-  table: Record<T, readonly T[]>,
-  assertTransition: (from: T, to: T) => void,
-  expectedTransitions: Record<T, readonly T[]>,
-) {
-  describe(`${entity} transitions`, () => {
-    test("declares exactly the allowed edges", () => {
-      expect(table).toEqual(expectedTransitions);
-    });
-
-    const statuses = Object.keys(expectedTransitions) as T[];
-    for (const from of statuses) {
-      if (expectedTransitions[from].length === 0) {
-        test(`${from} is terminal`, () => {
-          expect(table[from]).toEqual([]);
-        });
-      }
-
-      for (const to of statuses) {
-        test(`${from} -> ${to}`, () => {
-          const allowed = expectedTransitions[from].includes(to);
-          expect(canTransition(table, from, to)).toBe(allowed);
-
-          if (allowed) {
-            expect(assertTransition(from, to)).toBeUndefined();
-          } else {
-            expect(() => assertTransition(from, to)).toThrowError(
-              expect.objectContaining({
-                message: `${entity} cannot go from ${from} to ${to}`,
-              }),
-            );
-          }
-        });
-      }
-    }
-  });
-}
-
-testStatusTransitions(
-  "Booking",
-  BOOKING_TRANSITIONS,
-  assertBookingTransition,
-  {
+expectStatusTransitions({
+  entity: "Booking",
+  table: BOOKING_TRANSITIONS,
+  canTransition,
+  assertTransition: assertBookingTransition,
+  expected: {
     offer_sent: ["artist_accepted", "declined", "expired", "withdrawn"],
     artist_accepted: ["confirmed", "awaiting_payment", "withdrawn"],
     awaiting_payment: [
@@ -83,7 +46,7 @@ testStatusTransitions(
     expired: [],
     withdrawn: [],
   },
-);
+});
 
 test("only statuses without outgoing transitions are terminal", () => {
   for (const status of Object.keys(BOOKING_TRANSITIONS) as BookingStatus[]) {

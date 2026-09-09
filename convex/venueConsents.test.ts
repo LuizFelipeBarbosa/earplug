@@ -261,17 +261,6 @@ describe("venueConsents.request", () => {
     expect(emails[0].scheduledTime).toBe(NOW);
   });
 
-  test("refuses a request when venue approval is disabled", async () => {
-    const f = await setupConsentFixture();
-    vi.stubEnv("PROMOTERS_ENABLED", "false");
-
-    await expect(
-      f.asRequestingOwner.mutation(api.venueConsents.request, {
-        opportunityId: f.opportunityId,
-      }),
-    ).rejects.toThrow("Venue approval is not available yet");
-  });
-
   test("refuses a request after the opportunity is opened", async () => {
     const f = await setupConsentFixture();
     const { consentId } = await f.asRequestingOwner.mutation(

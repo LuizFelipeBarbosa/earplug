@@ -5,15 +5,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api as generatedApi, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { readFeedCutoff } from "./clock";
-import { flag } from "./lib/env";
 import { ArtistApplicationStatus } from "./lib/opportunityStatus";
 import schema from "./schema";
 import type * as readModule from "./talentOpportunitiesRead";
-
-vi.mock("./lib/env", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./lib/env")>();
-  return { ...actual, flag: vi.fn(actual.flag) };
-});
 
 // Keep the new module typed locally until the integration lane runs codegen.
 const api = generatedApi as typeof generatedApi &
@@ -26,8 +20,6 @@ const paginationOpts = { numItems: 100, cursor: null };
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  vi.mocked(flag).mockReset();
-  vi.mocked(flag).mockImplementation((_name, defaultValue) => defaultValue);
 });
 
 afterEach(() => {
@@ -1103,62 +1095,24 @@ function expectNoAddressFields(value: unknown) {
 }
 
 describe("private request discovery", () => {
-  test("band admins can browse private requests without any address fields", async () => {
+  test("private browse rejects anonymous viewers and non-band-admins", async () => {
     const f = await setupPrivateRequest();
-    vi.mocked(flag).mockReturnValue(true);
-    await f.seedInvite(f.opportunityId, f.otherBandId);
-    const result = await f.asOtherArtist.query(
-      api.talentOpportunitiesRead.browse,
-      { paginationOpts, mode: "privateBooking", bandId: f.otherBandId },
-    );
-    expect(result.page).toHaveLength(1);
-    expect(result.page[0]).toMatchObject({
-      opportunity: {
-        _id: f.opportunityId,
-        venue: null,
-        privateEvent: true,
-        area: "Rockridge, Oakland",
-      },
-      invited: true,
-      myApplicationStatus: null,
-    });
-    expectNoAddressFields(result.page[0]);
-    expect(flag).toHaveBeenCalledWith("PRIVATE_BOOKINGS_ENABLED", false);
+    for (const caller of [
+      f.t,
+      f.asStranger,
+      f.asArtist,
+      f.asOwner,
+      f.t.withIdentity({ subject: "no_user_record" }),
+    ]) {
+      await expect(
+        caller.query(api.talentOpportunitiesRead.browse, {
+          paginationOpts,
+          mode: "privateBooking",
+          bandId: f.otherBandId,
+        }),
+      ).rejects.toThrow("Sign in as a band admin to see private requests");
+    }
   });
-
-  test("band admins get an empty completed page when private bookings are disabled", async () => {
-    const f = await setupPrivateRequest();
-    vi.mocked(flag).mockReturnValue(false);
-    await expect(
-      f.asOtherArtist.query(api.talentOpportunitiesRead.browse, {
-        paginationOpts,
-        mode: "privateBooking",
-      }),
-    ).resolves.toEqual({ page: [], isDone: true, continueCursor: "" });
-  });
-
-  test.each([false, true])(
-    "private browse rejects anonymous viewers and non-band-admins when the flag is %s",
-    async (enabled) => {
-      const f = await setupPrivateRequest();
-      vi.mocked(flag).mockReturnValue(enabled);
-      for (const caller of [
-        f.t,
-        f.asStranger,
-        f.asArtist,
-        f.asOwner,
-        f.t.withIdentity({ subject: "no_user_record" }),
-      ]) {
-        await expect(
-          caller.query(api.talentOpportunitiesRead.browse, {
-            paginationOpts,
-            mode: "privateBooking",
-            bandId: f.otherBandId,
-          }),
-        ).rejects.toThrow("Sign in as a band admin to see private requests");
-      }
-    },
-  );
 
   test("any admin membership grants private browse even when the first membership is a regular member", async () => {
     const f = await setupPrivateRequest();
@@ -1169,7 +1123,6 @@ describe("private request discovery", () => {
         role: "admin",
       }),
     );
-    vi.mocked(flag).mockReturnValue(true);
     const result = await f.asArtist.query(api.talentOpportunitiesRead.browse, {
       paginationOpts,
       mode: "privateBooking",
@@ -1178,23 +1131,6 @@ describe("private request discovery", () => {
       f.opportunityId,
     ]);
   });
-
-  test.each([undefined, "publicEvent"] as const)(
-    "public browse with mode %s stays anonymous and does not check the private flag",
-    async (mode) => {
-      const f = await setupOrganization();
-      const { opportunityId } = await f.createOpen();
-      vi.mocked(flag).mockClear();
-      const result = await f.t.query(api.talentOpportunitiesRead.browse, {
-        paginationOpts,
-        mode,
-      });
-      expect(result.page.map((item) => item.opportunity._id)).toEqual([
-        opportunityId,
-      ]);
-      expect(flag).not.toHaveBeenCalled();
-    },
-  );
 
   test("private resolution requires membership in the specifically invited band and its band ID", async () => {
     const f = await setupPrivateRequest();

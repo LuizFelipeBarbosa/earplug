@@ -60,7 +60,6 @@ const stripeMock = vi.mocked(stripeRequest);
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  vi.stubEnv("PAYMENTS_ENABLED", "true");
   vi.stubEnv("BOOKING_COMMISSION_BPS", "1000");
   vi.stubEnv("RESEND_SEND_ENABLED", "false");
   vi.stubEnv("APP_BASE_URL", "https://earplug.test");
@@ -785,37 +784,6 @@ describe("cancellation settlement", () => {
       });
     },
   );
-
-  test("records refund and payout obligations even when payments are disabled", async () => {
-    const f = await setupRefunds();
-    vi.stubEnv("PAYMENTS_ENABLED", "false");
-    vi.setSystemTime(STARTS_AT - 10 * DAY_MS);
-    await f.cancel();
-    expect(await f.refunds()).toHaveLength(2);
-    expect(await f.payouts()).toHaveLength(1);
-    const actual =
-      await vi.importActual<typeof import("./lib/stripeClient")>(
-        "./lib/stripeClient",
-      );
-    stripeMock.mockImplementation(actual.stripeRequest);
-    const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    const [refund] = await f.refunds();
-    await f.t.action(internal.refunds.executeRefund, {
-      refundId: refund._id,
-      attempt: 0,
-    });
-    expect((await f.refunds())[0].status).toBe("pending");
-    expect(log).toHaveBeenCalledWith(
-      expect.stringContaining(refund._id),
-      expect.objectContaining({ message: "Payments are not enabled" }),
-    );
-    expect(
-      (await f.scheduled()).filter(
-        (job) =>
-          job.name === "refunds:executeRefund" && job.args[0].attempt === 1,
-      ),
-    ).toHaveLength(1);
-  });
 });
 
 describe("refund execution", () => {
@@ -876,17 +844,9 @@ describe("refund execution", () => {
     expect(stripeMock).toHaveBeenCalledTimes(1);
   });
 
-  test("re-drives failed refunds only when payments are enabled", async () => {
+  test("re-drives failed refunds after six hours", async () => {
     const f = await setupRefunds();
     const refundId = await f.addRefund({ status: "failed" });
-    const rows = await f.refunds();
-    for (const value of [undefined, "false"]) {
-      vi.stubEnv("PAYMENTS_ENABLED", value);
-      await f.t.mutation(internal.refunds.retryFailedRefunds, {});
-      expect(await f.refunds()).toEqual(rows);
-      expect(await f.scheduled()).toEqual([]);
-    }
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     vi.setSystemTime(NOW + 6 * 60 * 60 * 1000);
     await f.t.mutation(internal.refunds.retryFailedRefunds, {});
     expect(await f.refunds()).toMatchObject([

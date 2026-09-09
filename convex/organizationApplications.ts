@@ -12,7 +12,6 @@ import {
   requirePlatformAdmin,
   requirePlatformAdminQuery,
 } from "./lib/authz";
-import { flag } from "./lib/env";
 import {
   OAK_CENTER,
   SF_CENTER,
@@ -311,7 +310,7 @@ function normalizeAndValidateDraft(args: {
   if (
     args.kind !== "host" &&
     args.orgType !== "venueOperator" &&
-    (!isPromoterOrStudentOrg || !flag("PROMOTERS_ENABLED", false))
+    !isPromoterOrStudentOrg
   ) {
     throw new Error(
       "Only bars and clubs that control their location can apply right now",
@@ -539,9 +538,6 @@ export const submit = mutation({
       throw new Error("Application changed elsewhere");
     }
     if (application.kind === "host") {
-      if (!flag("PRIVATE_BOOKINGS_ENABLED", false)) {
-        throw new Error("Hosting is not available yet");
-      }
       const hostDisplayName = application.hostDisplayName?.trim() ?? "";
       if (hostDisplayName.length < 2) throw new Error("Host name is required");
       if (hostDisplayName.length > 60) throw new Error("Host name is too long");
@@ -560,15 +556,6 @@ export const submit = mutation({
         );
       }
     } else {
-      if (
-        (application.orgType === "promoter" ||
-          application.orgType === "studentOrg") &&
-        !flag("PROMOTERS_ENABLED", false)
-      ) {
-        throw new Error(
-          "Only bars and clubs that control their location can apply right now",
-        );
-      }
       if (!application.orgName.trim()) {
         throw new Error("Organization name is required");
       }

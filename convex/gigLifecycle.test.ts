@@ -33,14 +33,6 @@ async function setupLifecycle() {
 }
 
 describe("paid band gig drafts and publishing", () => {
-  beforeEach(() => {
-    vi.stubEnv("TICKETS_ENABLED", "true");
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   async function setupPaidDraft(
     payout: { chargesEnabled: boolean; cardPaymentsStatus?: string } | null = {
       chargesEnabled: true,
@@ -110,18 +102,6 @@ describe("paid band gig drafts and publishing", () => {
       asAdmin.mutation(api.gigs.saveDraft, saveArgs),
     ).rejects.toThrow("Enable ticket sales in PAYOUTS first");
   });
-
-  test.each(["false", undefined])(
-    "refuses a paid draft when TICKETS_ENABLED is %s",
-    async (flagValue) => {
-      const { asAdmin, saveArgs } = await setupPaidDraft();
-      vi.stubEnv("TICKETS_ENABLED", flagValue);
-
-      await expect(
-        asAdmin.mutation(api.gigs.saveDraft, saveArgs),
-      ).rejects.toThrow("Ticket sales are not open yet");
-    },
-  );
 
   test.each([
     {
@@ -251,38 +231,21 @@ describe("paid band gig drafts and publishing", () => {
     });
   });
 
-  test.each(["false", undefined])(
-    "refuses paid publishing when TICKETS_ENABLED became %s after saving",
-    async (flagValue) => {
-      const { asAdmin, draft, saveArgs } = await setupPaidDraft();
-      await asAdmin.mutation(api.gigs.saveDraft, saveArgs);
-      vi.stubEnv("TICKETS_ENABLED", flagValue);
-
-      await expect(
-        asAdmin.mutation(api.gigs.publishDraft, { projectId: draft._id }),
-      ).rejects.toThrow("Ticket sales are not open yet");
-    },
-  );
-
-  test.each(["payout capability lapsed", "ticket sales disabled"])(
-    "allows saving a published paid title when %s while still validating price and capacity",
-    async (condition) => {
+  test(
+    "allows saving a published paid title when payout capability lapsed while still validating price and capacity",
+    async () => {
       const { t, asAdmin, bandId, draft, saveArgs } = await setupPaidDraft();
       const saved = await asAdmin.mutation(api.gigs.saveDraft, saveArgs);
       await asAdmin.mutation(api.gigs.publishDraft, { projectId: draft._id });
-      if (condition === "payout capability lapsed") {
-        await t.run(async (ctx) => {
-          const payoutAccount = await ctx.db
-            .query("bandPayoutAccounts")
-            .withIndex("by_bandId", (q) => q.eq("bandId", bandId))
-            .unique();
-          await ctx.db.patch(payoutAccount!._id, {
-            cardPaymentsStatus: "inactive",
-          });
+      await t.run(async (ctx) => {
+        const payoutAccount = await ctx.db
+          .query("bandPayoutAccounts")
+          .withIndex("by_bandId", (q) => q.eq("bandId", bandId))
+          .unique();
+        await ctx.db.patch(payoutAccount!._id, {
+          cardPaymentsStatus: "inactive",
         });
-      } else {
-        vi.stubEnv("TICKETS_ENABLED", "false");
-      }
+      });
 
       const editArgs = {
         ...saveArgs,
@@ -418,7 +381,6 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
   beforeEach(() => {
     // Observe refund requests without running the scheduled Stripe action.
     vi.useFakeTimers();
-    vi.stubEnv("TICKETS_ENABLED", "true");
     vi.stubEnv("APP_BASE_URL", "https://earplug.app");
   });
 
@@ -671,7 +633,6 @@ describe("band gig ticket cancellation, deletion, and public payload", () => {
     "cancels a %s gig without ticketing setup",
     async (ticketing) => {
       const { t, asAdmin, gigId, projectId } = await setupPublishedGig(ticketing);
-      vi.stubEnv("TICKETS_ENABLED", "false");
 
       await expect(
         asAdmin.mutation(api.gigs.cancel, { projectId }),

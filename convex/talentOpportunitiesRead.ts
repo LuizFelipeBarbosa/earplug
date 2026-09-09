@@ -9,7 +9,6 @@ import {
   ALL_ORGANIZATION_ROLES,
   requireOrganizationRoleQuery,
 } from "./lib/authz";
-import { flag } from "./lib/env";
 import { currentUser, feedCutoff } from "./lib/helpers";
 import {
   artistOpportunityPayloadValidator,
@@ -74,9 +73,6 @@ export const browse = query({
     if (mode === "privateBooking") {
       if (!user || !(await isAdminOfAnyBand(ctx, user._id))) {
         throw new Error("Sign in as a band admin to see private requests");
-      }
-      if (!flag("PRIVATE_BOOKINGS_ENABLED", false)) {
-        return { page: [], isDone: true, continueCursor: "" };
       }
     }
 

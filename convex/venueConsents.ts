@@ -13,7 +13,6 @@ import {
   requireOrganizationRole,
   requireOrganizationRoleQuery,
 } from "./lib/authz";
-import { flag } from "./lib/env";
 import { cancelOpportunity } from "./lib/opportunityCancel";
 import {
   assertVenueConsentTransition,
@@ -150,9 +149,6 @@ export const request = mutation({
       opportunity.organizationId,
       ["owner", "manager"],
     );
-    if (!flag("PROMOTERS_ENABLED", false)) {
-      throw new Error("Venue approval is not available yet");
-    }
     if (opportunity.status !== "draft") {
       throw new Error("Request venue approval while the event is still a draft");
     }

@@ -10,7 +10,6 @@ import {
   ALL_ORGANIZATION_ROLES,
   organizationMembershipFor,
   requireOrganizationRole,
-  requirePlatformAdmin,
 } from "./lib/authz";
 import { REVIEW_WINDOW_MS } from "./lib/bookingStatus";
 import { requireUser } from "./lib/helpers";
@@ -257,26 +256,6 @@ export const closeReviewWindow = internalMutation({
     await recomputeReviewSummary(ctx, {
       organizationId: booking.organizationId,
     });
-    return null;
-  },
-});
-
-export const hide = mutation({
-  args: { reviewId: v.id("reviews"), reason: v.string() },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    await requirePlatformAdmin(ctx);
-    const review = await ctx.db.get(args.reviewId);
-    if (!review) throw new Error("Review not found");
-    await ctx.db.patch(review._id, { hidden: true, hiddenReason: args.reason });
-    if (review.subjectBandId !== undefined) {
-      await recomputeReviewSummary(ctx, { bandId: review.subjectBandId });
-    }
-    if (review.subjectOrganizationId !== undefined) {
-      await recomputeReviewSummary(ctx, {
-        organizationId: review.subjectOrganizationId,
-      });
-    }
     return null;
   },
 });

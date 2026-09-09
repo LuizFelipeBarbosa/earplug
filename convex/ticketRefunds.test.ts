@@ -34,8 +34,6 @@ const stripeMock = vi.mocked(stripeRequest);
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  vi.stubEnv("TICKETS_ENABLED", "true");
-  vi.stubEnv("PAYMENTS_ENABLED", "true");
   stripeMock.mockReset();
   let nextRefund = 0;
   stripeMock.mockImplementation(async (method, path) => {
@@ -380,8 +378,7 @@ describe("loadRefundContext", () => {
 });
 
 describe("ticket refund execution", () => {
-  test("refunds a band charge and records its seller while band gig writes are disabled", async () => {
-    vi.stubEnv("BAND_GIG_WRITES", "false");
+  test("refunds a band charge and records its seller", async () => {
     const f = await setupRefunds({}, "band");
     const refundId = (await f.request())!;
     expect(
@@ -608,21 +605,6 @@ describe("ticket refund execution", () => {
     ]);
   });
 
-  test("disabled ticket sales never reach Stripe", async () => {
-    const f = await setupRefunds();
-    vi.stubEnv("TICKETS_ENABLED", "false");
-    await f.request();
-    await f.t.finishAllScheduledFunctions(vi.runAllTimers);
-    expect(stripeMock).not.toHaveBeenCalled();
-    const state = await f.state();
-    expect(state.refunds).toMatchObject([
-      { status: "failed", error: "Ticket sales are disabled" },
-    ]);
-    expect(state.ledger).toEqual([]);
-    expect(state.jobs).toHaveLength(3);
-    expect(state.jobs.every((job) => job.state.kind === "success")).toBe(true);
-  });
-
   test("ignores a refund that is not pending", async () => {
     const f = await setupRefunds();
     const refundId = await f.addRefund({ status: "failed" });
@@ -747,15 +729,6 @@ describe("retryFailedTicketRefunds", () => {
         scheduledTime: NOW + HOUR_MS,
       },
     ]);
-  });
-
-  test("does not requeue when ticket sales are disabled", async () => {
-    const f = await setupRefunds();
-    await f.addRefund({ status: "failed" });
-    const state = await f.state();
-    vi.stubEnv("TICKETS_ENABLED", "false");
-    await f.t.mutation(internal.ticketRefunds.retryFailedTicketRefunds, {});
-    expect(await f.state()).toEqual(state);
   });
 
   test("limits each retry batch to 50 refunds", async () => {

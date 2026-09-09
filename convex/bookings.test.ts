@@ -468,26 +468,8 @@ describe("booking offers", () => {
     ).rejects.toThrow("This slot already has a pending offer");
   });
 
-  test("refuses private offers while private bookings are disabled", async () => {
+  test("allows private offers", async () => {
     const f = await setupBookings();
-    await f.t.run((ctx) =>
-      ctx.db.patch(f.opportunityId, { mode: "privateBooking" }),
-    );
-    const applicationBefore = await f.readApplication();
-    const slotBefore = await f.readSlot();
-    const jobsBefore = await f.scheduled();
-    await expect(f.sendOffer()).rejects.toThrow(
-      "Private bookings are not available yet",
-    );
-    expect(await f.readApplication()).toEqual(applicationBefore);
-    expect(await f.readSlot()).toEqual(slotBefore);
-    expect(await f.scheduled()).toEqual(jobsBefore);
-    expect(await f.t.run((ctx) => ctx.db.query("bookings").take(1))).toEqual([]);
-  });
-
-  test("allows private offers when private bookings are enabled", async () => {
-    const f = await setupBookings();
-    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
     await f.t.run((ctx) =>
       ctx.db.patch(f.opportunityId, { mode: "privateBooking" }),
     );
@@ -506,16 +488,8 @@ describe("booking offers", () => {
     },
   );
 
-  test("refuses paid offers while payments are disabled", async () => {
-    const f = await setupBookings();
-    await expect(f.sendOffer({ grossMinor: 10000 })).rejects.toThrow(
-      "Paid offers open once payments are enabled",
-    );
-  });
-
   test("stores a custom installment schedule and resolves its deadlines from acceptance", async () => {
     const f = await setupBookings();
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     vi.stubEnv("BOOKING_COMMISSION_BPS", "1000");
     const { bookingId, offerId } = await f.sendOffer({
       grossMinor: 10000,
@@ -568,7 +542,6 @@ describe("booking offers", () => {
     "accepts an empty custom schedule for a %s minor-unit offer",
     async (grossMinor) => {
       const f = await setupBookings();
-      vi.stubEnv("PAYMENTS_ENABLED", "true");
       vi.stubEnv("BOOKING_COMMISSION_BPS", "1000");
       const { offerId } = await f.sendOffer({ grossMinor, installments: [] });
       const offer = await f.t.run((ctx) => ctx.db.get(offerId));
@@ -578,7 +551,6 @@ describe("booking offers", () => {
 
   test("rejects more than four installments", async () => {
     const f = await setupBookings();
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     await expect(
       f.sendOffer({
         grossMinor: 10000,
@@ -595,7 +567,6 @@ describe("booking offers", () => {
     "rejects installments that do not sum to a gross fee of %s",
     async (grossMinor) => {
       const f = await setupBookings();
-      vi.stubEnv("PAYMENTS_ENABLED", "true");
       await expect(
         f.sendOffer({
           grossMinor,
@@ -611,7 +582,6 @@ describe("booking offers", () => {
     "rejects invalid installment amount %s",
     async (amountMinor) => {
       const f = await setupBookings();
-      vi.stubEnv("PAYMENTS_ENABLED", "true");
       await expect(
         f.sendOffer({
           grossMinor: 10000,
@@ -627,7 +597,6 @@ describe("booking offers", () => {
     "rejects invalid installment due days %s",
     async (dueAfterAcceptanceDays) => {
       const f = await setupBookings();
-      vi.stubEnv("PAYMENTS_ENABLED", "true");
       await expect(
         f.sendOffer({
           grossMinor: 10000,
@@ -641,7 +610,6 @@ describe("booking offers", () => {
 
   test("rejects decreasing installment due days", async () => {
     const f = await setupBookings();
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     await expect(
       f.sendOffer({
         grossMinor: 10000,
@@ -655,7 +623,6 @@ describe("booking offers", () => {
 
   test("requires configured commission and snapshots the paid split on both rows", async () => {
     const f = await setupBookings();
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     await expect(f.sendOffer({ grossMinor: 12345 })).rejects.toThrow(
       "Booking commission is not configured",
     );
@@ -694,7 +661,6 @@ describe("booking offers", () => {
     "snapshots the opportunity currency on a %s minor-unit offer and booking",
     async (grossMinor) => {
       const f = await setupBookings();
-      vi.stubEnv("PAYMENTS_ENABLED", "true");
       vi.stubEnv("BOOKING_COMMISSION_BPS", "1000");
       await f.t.run((ctx) =>
         ctx.db.patch(f.opportunityId, { currency: "eur" }),

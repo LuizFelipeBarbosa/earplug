@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { expect, test } from "vitest";
 import {
   APPLICATION_ACTIVE_STATUSES,
   APPLICATION_TRANSITIONS,
@@ -10,51 +10,14 @@ import {
   assertSlotTransition,
   canTransition,
 } from "./lib/opportunityStatus";
+import { expectStatusTransitions } from "./statusTransitions.test-helpers";
 
-function testStatusTransitions<T extends string>(
-  entity: string,
-  table: Record<T, readonly T[]>,
-  assertTransition: (from: T, to: T) => void,
-  expectedTransitions: Record<T, readonly T[]>,
-) {
-  describe(`${entity} transitions`, () => {
-    test("declares exactly the allowed edges", () => {
-      expect(table).toEqual(expectedTransitions);
-    });
-
-    const statuses = Object.keys(expectedTransitions) as T[];
-    for (const from of statuses) {
-      if (expectedTransitions[from].length === 0) {
-        test(`${from} is terminal`, () => {
-          expect(table[from]).toEqual([]);
-        });
-      }
-
-      for (const to of statuses) {
-        test(`${from} -> ${to}`, () => {
-          const allowed = expectedTransitions[from].includes(to);
-          expect(canTransition(table, from, to)).toBe(allowed);
-
-          if (allowed) {
-            expect(assertTransition(from, to)).toBeUndefined();
-          } else {
-            expect(() => assertTransition(from, to)).toThrowError(
-              expect.objectContaining({
-                message: `${entity} cannot go from ${from} to ${to}`,
-              }),
-            );
-          }
-        });
-      }
-    }
-  });
-}
-
-testStatusTransitions(
-  "Opportunity",
-  OPPORTUNITY_TRANSITIONS,
-  assertOpportunityTransition,
-  {
+expectStatusTransitions({
+  entity: "Opportunity",
+  table: OPPORTUNITY_TRANSITIONS,
+  canTransition,
+  assertTransition: assertOpportunityTransition,
+  expected: {
     draft: ["open", "cancelled"],
     open: ["applications_closed", "cancelled", "confirmed"],
     applications_closed: ["open", "booking", "cancelled", "confirmed"],
@@ -63,13 +26,14 @@ testStatusTransitions(
     completed: [],
     cancelled: [],
   },
-);
+});
 
-testStatusTransitions(
-  "Application",
-  APPLICATION_TRANSITIONS,
-  assertApplicationTransition,
-  {
+expectStatusTransitions({
+  entity: "Application",
+  table: APPLICATION_TRANSITIONS,
+  canTransition,
+  assertTransition: assertApplicationTransition,
+  expected: {
     submitted: ["under_review", "shortlisted", "declined", "withdrawn", "expired"],
     under_review: ["shortlisted", "declined", "withdrawn", "expired"],
     shortlisted: ["offered", "declined", "withdrawn", "expired"],
@@ -79,12 +43,18 @@ testStatusTransitions(
     withdrawn: [],
     expired: [],
   },
-);
+});
 
-testStatusTransitions("Slot", SLOT_TRANSITIONS, assertSlotTransition, {
-  open: ["booked", "cancelled"],
-  booked: ["open", "cancelled"],
-  cancelled: [],
+expectStatusTransitions({
+  entity: "Slot",
+  table: SLOT_TRANSITIONS,
+  canTransition,
+  assertTransition: assertSlotTransition,
+  expected: {
+    open: ["booked", "cancelled"],
+    booked: ["open", "cancelled"],
+    cancelled: [],
+  },
 });
 
 test("application active statuses have the expected order", () => {

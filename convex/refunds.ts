@@ -11,7 +11,6 @@ import {
 } from "./_generated/server";
 import { isPlatformAdmin, organizationMembershipFor } from "./lib/authz";
 import { computeCancellationSettlement } from "./lib/cancellationSettlement";
-import { flag } from "./lib/env";
 import { requireUser } from "./lib/helpers";
 import { appendLedgerEntry } from "./lib/ledger";
 import {
@@ -30,7 +29,7 @@ import schema, {
 // so obligations are retained. Only executeRefund/reverseTransfer call Stripe;
 // POST throws while disabled. markRefundFailed retries refunds hourly, up to
 // three total attempts per cycle; retryFailedRefunds starts another cycle every
-// six hours when payments are enabled. Transfer reversals do not retry.
+// six hours. Transfer reversals do not retry.
 const cancellationSideValidator = v.union(
   v.literal("organizer"),
   v.literal("artist"),
@@ -603,7 +602,6 @@ export const retryFailedRefunds = internalMutation({
   args: {},
   returns: v.null(),
   handler: async (ctx): Promise<null> => {
-    if (!flag("PAYMENTS_ENABLED", false)) return null;
     const rows = await ctx.db
       .query("refunds")
       .filter((q) => q.eq(q.field("status"), "failed"))

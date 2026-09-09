@@ -810,79 +810,6 @@ describe("media mutations", () => {
     expect(remaining?.order).toBe(0);
   });
 
-  test("band photo mutations validate media and clearing preserves the blob", async () => {
-    const { t, asAdmin, bandId } = await setupBand();
-    const [photoStorageId, videoStorageId, otherStorageId] = await t.run(
-      async (ctx) => [
-        await ctx.storage.store(new Blob([new Uint8Array([1])])),
-        await ctx.storage.store(new Blob([new Uint8Array([2])])),
-        await ctx.storage.store(new Blob([new Uint8Array([3])])),
-      ],
-    );
-    const photo = await asAdmin.mutation(api.media.addMedia, {
-      bandId,
-      kind: "photo",
-      storageId: photoStorageId,
-      title: "Hero",
-    });
-    const video = await asAdmin.mutation(api.media.addMedia, {
-      bandId,
-      kind: "video",
-      storageId: videoStorageId,
-      title: "Clip",
-    });
-
-    const asOtherAdmin = t.withIdentity({
-      subject: "photo_other_admin",
-      email: "photo-other-admin@example.com",
-    });
-    await asOtherAdmin.mutation(api.users.ensureUser, {});
-    const { bandId: otherBandId } = await asOtherAdmin.mutation(
-      api.bands.createBand,
-      {
-        name: "Photo Other Band",
-        genres: ["rock"],
-        bio: "",
-        area: "Bay Area",
-        inviteHandles: [],
-      },
-    );
-    const otherPhoto = await asOtherAdmin.mutation(api.media.addMedia, {
-      bandId: otherBandId,
-      kind: "photo",
-      storageId: otherStorageId,
-      title: "Other hero",
-    });
-
-    await asAdmin.mutation(api.bands.setBandPhoto, {
-      bandId,
-      mediaId: photo.mediaId,
-    });
-    expect(
-      await t.run(async (ctx) => (await ctx.db.get(bandId))?.imageStorageId),
-    ).toBe(photoStorageId);
-    await expect(
-      asAdmin.mutation(api.bands.setBandPhoto, {
-        bandId,
-        mediaId: otherPhoto.mediaId,
-      }),
-    ).rejects.toThrow("different band");
-    await expect(
-      asAdmin.mutation(api.bands.setBandPhoto, {
-        bandId,
-        mediaId: video.mediaId,
-      }),
-    ).rejects.toThrow("Only photos");
-
-    await asAdmin.mutation(api.bands.clearBandPhoto, { bandId });
-    const cleared = await t.run(async (ctx) => ({
-      band: await ctx.db.get(bandId),
-      blob: await ctx.db.system.get("_storage", photoStorageId),
-    }));
-    expect(cleared.band?.imageStorageId).toBeUndefined();
-    expect(cleared.blob).not.toBeNull();
-  });
-
   test("deleteMedia clears the band photo when it deletes the hero row", async () => {
     const { t, asAdmin, bandId } = await setupBand();
     const storageId = await t.run(async (ctx) =>
@@ -894,7 +821,9 @@ describe("media mutations", () => {
       storageId,
       title: "Hero",
     });
-    await asAdmin.mutation(api.bands.setBandPhoto, { bandId, mediaId });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(bandId, { imageStorageId: storageId });
+    });
 
     await asAdmin.mutation(api.media.deleteMedia, { mediaId });
     const band = await t.run(async (ctx) => ctx.db.get(bandId));
@@ -988,7 +917,7 @@ describe("media reads and validation", () => {
         pinned: false,
       }),
     }));
-    await asAdmin.mutation(api.bands.setBandPhoto, {
+    await asAdmin.mutation(api.bands.setBandAvatar, {
       bandId,
       mediaId: ids.photo,
     });

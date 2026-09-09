@@ -32,7 +32,6 @@ type Actor = (typeof ACTORS)[number];
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  vi.stubEnv("DISPUTES_ENABLED", "true");
 });
 
 afterEach(() => {
@@ -262,74 +261,59 @@ async function setupDisputes(bookingFields: Partial<Doc<"bookings">> = {}) {
 }
 
 describe("disputes.open", () => {
-  test.each([undefined, "false", "0"])(
-    "refuses when the flag is %s",
-    async (flag) => {
-      const f = await setupDisputes();
-      vi.stubEnv("DISPUTES_ENABLED", flag);
-      const before = await f.state();
-      await expect(f.open()).rejects.toThrow("Disputes are not available yet");
-      expect(await f.state()).toEqual(before);
-    },
-  );
-
-  test.each(["true", "1"])(
-    "opens a refund request and holds the booking/payout with flag %s",
-    async (flag) => {
-      vi.stubEnv("DISPUTES_ENABLED", flag);
-      const f = await setupDisputes();
-      const { disputeId } = await f.open();
-      const state = await f.state();
-      expect(state.booking).toMatchObject({
-        status: "disputed",
-        disputedFromStatus: "completed",
-        payoutHold: true,
-        payoutHoldReasons: ["dispute"],
-        revision: 4,
+  test("opens a refund request and holds the booking/payout", async () => {
+    const f = await setupDisputes();
+    const { disputeId } = await f.open();
+    const state = await f.state();
+    expect(state.booking).toMatchObject({
+      status: "disputed",
+      disputedFromStatus: "completed",
+      payoutHold: true,
+      payoutHoldReasons: ["dispute"],
+      revision: 4,
+    });
+    expect(state.disputes).toMatchObject([
+      {
+        _id: disputeId,
+        bookingId: f.bookingId,
+        openedByUserId: f.users.owner,
+        side: "organizer",
+        category: "late_or_short_set",
+        text: "The performance was shorter than agreed.",
+        requestedRefundMinor: 2500,
+        status: "open",
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+    ]);
+    expect(state.payouts).toMatchObject([
+      {
+        _id: f.payoutId,
+        status: "held",
+        holdReason: "dispute",
+      },
+    ]);
+    expect(state.jobs.map((job) => job.args[0].to).sort()).toEqual([
+      "artist@disputes.test",
+      "secondArtist@disputes.test",
+    ]);
+    for (const job of state.jobs) {
+      expect(job).toMatchObject({
+        name: "emails:send",
+        args: [
+          {
+            kind: "disputeOpened",
+            subject: "A dispute was opened on Autumn reception",
+          },
+        ],
+        scheduledTime: NOW,
       });
-      expect(state.disputes).toMatchObject([
-        {
-          _id: disputeId,
-          bookingId: f.bookingId,
-          openedByUserId: f.users.owner,
-          side: "organizer",
-          category: "late_or_short_set",
-          text: "The performance was shorter than agreed.",
-          requestedRefundMinor: 2500,
-          status: "open",
-          createdAt: NOW,
-          updatedAt: NOW,
-        },
-      ]);
-      expect(state.payouts).toMatchObject([
-        {
-          _id: f.payoutId,
-          status: "held",
-          holdReason: "dispute",
-        },
-      ]);
-      expect(state.jobs.map((job) => job.args[0].to).sort()).toEqual([
-        "artist@disputes.test",
-        "secondArtist@disputes.test",
-      ]);
-      for (const job of state.jobs) {
-        expect(job).toMatchObject({
-          name: "emails:send",
-          args: [
-            {
-              kind: "disputeOpened",
-              subject: "A dispute was opened on Autumn reception",
-            },
-          ],
-          scheduledTime: NOW,
-        });
-        expect(job.args[0].text).toContain("Category: late or short set.");
-        expect(job.args[0].text).toContain("Requested refund: 25.00 USD");
-        expect(job.args[0].text).toContain("Private event");
-        expect(job.args[0].text).not.toContain("200 Private Street");
-      }
-    },
-  );
+      expect(job.args[0].text).toContain("Category: late or short set.");
+      expect(job.args[0].text).toContain("Requested refund: 25.00 USD");
+      expect(job.args[0].text).toContain("Private event");
+      expect(job.args[0].text).not.toContain("200 Private Street");
+    }
+  });
 
   test("an artist opens without an amount and emails the organizer contact", async () => {
     const f = await setupDisputes();
