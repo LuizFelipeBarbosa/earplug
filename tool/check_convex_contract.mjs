@@ -228,7 +228,7 @@ export const requiredClientFields = Object.freeze([
   ["gigs.js:resolvePublic", "return", "ticketSeller", true],
   ["gigs.js:saveDraft", "args", "ticketPriceMinor", true],
   ["gigs.js:saveDraft", "args", "ticketCapacity", true],
-  ["gigs.js:getProject", "return", "ticketPriceMinor", true],
+  ["gigs.js:getProject", "return", "ticketPriceMinor", false],
 ]);
 
 export function deploymentNameFromUrl(value) {
