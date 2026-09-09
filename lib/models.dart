@@ -84,6 +84,27 @@ class FeatureFlags {
   );
 }
 
+class FeeRates {
+  const FeeRates({
+    required this.bookingCommissionBps,
+    required this.ticketingFeeBps,
+    required this.ticketingFeeFixedMinor,
+    required this.configured,
+  });
+
+  final int bookingCommissionBps;
+  final int ticketingFeeBps;
+  final int ticketingFeeFixedMinor;
+  final bool configured;
+
+  factory FeeRates.fromJson(Map<String, dynamic> json) => FeeRates(
+    bookingCommissionBps: _marketplaceInt(json['bookingCommissionBps']),
+    ticketingFeeBps: _marketplaceInt(json['ticketingFeeBps']),
+    ticketingFeeFixedMinor: _marketplaceInt(json['ticketingFeeFixedMinor']),
+    configured: json['configured'] == true,
+  );
+}
+
 class PrivateLocation {
   const PrivateLocation({
     required this.id,
@@ -827,6 +848,7 @@ class OrganizationApplication {
     this.hostPhone,
     this.hostArea,
     this.hostAgreementAcceptedAt,
+    this.organizerAgreementAcceptedAt,
     required this.status,
     required this.orgName,
     required this.orgType,
@@ -851,6 +873,7 @@ class OrganizationApplication {
   final String? hostPhone;
   final String? hostArea;
   final DateTime? hostAgreementAcceptedAt;
+  final DateTime? organizerAgreementAcceptedAt;
   final OrganizationApplicationStatus status;
   final String orgName;
   final OrganizationType orgType;
@@ -880,6 +903,9 @@ class OrganizationApplication {
       hostArea: _marketplaceOptionalString(json['hostArea']),
       hostAgreementAcceptedAt: _marketplaceOptionalDate(
         json['hostAgreementAcceptedAt'],
+      ),
+      organizerAgreementAcceptedAt: _marketplaceOptionalDate(
+        json['organizerAgreementAcceptedAt'],
       ),
       status: OrganizationApplicationStatus.fromWire(json['status']),
       orgName: _marketplaceString(json['orgName']),
@@ -2040,15 +2066,18 @@ enum CancellationTemplate {
   flexible(
     'flexible',
     'Flexible',
-    'Full refund up to 48 hours before the show.',
+    'Full refund up until 48 hours before the show.',
   ),
   standard(
     'standard',
     'Standard',
-    'Full refund more than 14 days out, 50% refund 7-14 days out, '
-        'no refund within 7 days.',
+    'Full refund up until 14 days before the show, 50% refund from 14 to 7 days before, no refund inside 7 days.',
   ),
-  strict('strict', 'Strict', 'No refund within 14 days of the show.');
+  strict(
+    'strict',
+    'Strict',
+    'Full refund up until 14 days before the show, no refund inside 14 days.',
+  );
 
   const CancellationTemplate(this.wireValue, this.label, this.description);
 

@@ -444,6 +444,7 @@ abstract class EarplugRepository {
   Future<void> refreshAuth();
 
   Future<FeatureFlags> featureFlags();
+  Future<FeeRates> feeRates({String? organizationId});
   Future<List<PrivateLocation>> privateLocationsFor(String organizationId);
   Future<String> createPrivateLocation({
     required String organizationId,
@@ -582,6 +583,7 @@ abstract class EarplugRepository {
   Future<int> submitOrganizationApplication({
     required String applicationId,
     required int expectedRevision,
+    bool organizerAgreementAccepted = false,
   });
   Future<void> withdrawOrganizationApplication(String applicationId);
   Future<String> generateApplicationDocumentUploadUrl();

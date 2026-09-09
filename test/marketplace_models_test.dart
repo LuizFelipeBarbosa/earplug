@@ -360,6 +360,65 @@ void main() {
     });
   });
 
+  group('FeeRates', () {
+    test('parses a fully populated JSON round-trip', () {
+      final rates = FeeRates.fromJson(
+        _jsonRoundTrip({
+          'bookingCommissionBps': 1000.0,
+          'ticketingFeeBps': 500,
+          'ticketingFeeFixedMinor': 100.0,
+          'configured': true,
+        }),
+      );
+
+      expect(rates.bookingCommissionBps, 1000);
+      expect(rates.ticketingFeeBps, 500);
+      expect(rates.ticketingFeeFixedMinor, 100);
+      expect(rates.configured, isTrue);
+    });
+
+    test('defaults missing and malformed fields to zero or false', () {
+      for (final json in <Map<String, dynamic>>[
+        {},
+        {
+          'bookingCommissionBps': '1000',
+          'ticketingFeeBps': false,
+          'ticketingFeeFixedMinor': <Object?>[],
+          'configured': 'true',
+        },
+        {
+          'bookingCommissionBps': null,
+          'ticketingFeeBps': <String, dynamic>{},
+          'ticketingFeeFixedMinor': true,
+          'configured': 1,
+        },
+        {
+          'bookingCommissionBps': double.nan,
+          'ticketingFeeBps': double.infinity,
+          'ticketingFeeFixedMinor': double.negativeInfinity,
+          'configured': null,
+        },
+      ]) {
+        final rates = FeeRates.fromJson(json);
+        expect(rates.bookingCommissionBps, 0);
+        expect(rates.ticketingFeeBps, 0);
+        expect(rates.ticketingFeeFixedMinor, 0);
+        expect(rates.configured, isFalse);
+      }
+    });
+
+    test('DemoRepository returns fixed rates for any organization', () async {
+      final repository = DemoRepository(auth: FakeAuthService());
+      for (final organizationId in <String?>[null, 'org1', 'unknown']) {
+        final rates = await repository.feeRates(organizationId: organizationId);
+        expect(rates.bookingCommissionBps, 1000);
+        expect(rates.ticketingFeeBps, 500);
+        expect(rates.ticketingFeeFixedMinor, 100);
+        expect(rates.configured, isTrue);
+      }
+    });
+  });
+
   group('private booking and safety models', () {
     test('FeatureFlags defaults missing and malformed flags to false', () {
       final enabled = FeatureFlags.fromJson(
@@ -1241,6 +1300,7 @@ void main() {
     });
 
     expect(application.website, isNull);
+    expect(application.organizerAgreementAcceptedAt, isNull);
     expect(application.phone, isNull);
     expect(application.venue, isNull);
     expect(application.documents, isEmpty);
@@ -1256,6 +1316,25 @@ void main() {
     expect(empty.orgType, OrganizationType.other);
     expect(empty.documents, isEmpty);
     expect(empty.revision, 0);
+  });
+
+  test('OrganizationApplication parses organizer agreement acceptance', () {
+    final application = OrganizationApplication.fromJson(
+      _jsonRoundTrip({'organizerAgreementAcceptedAt': 1800000000000.0}),
+    );
+    expect(
+      application.organizerAgreementAcceptedAt,
+      DateTime.fromMillisecondsSinceEpoch(1800000000000),
+    );
+
+    for (final value in <Object?>[null, '1800000000000', false, [], {}]) {
+      expect(
+        OrganizationApplication.fromJson({
+          'organizerAgreementAcceptedAt': value,
+        }).organizerAgreementAcceptedAt,
+        isNull,
+      );
+    }
   });
 
   test('AdminOverview parses nested counts', () {
@@ -1349,6 +1428,45 @@ void main() {
       expect(
         memberships.map((membership) => membership.organization.id),
         contains(approval.organizationId),
+      );
+    },
+  );
+
+  test(
+    'DemoRepository stamps and preserves organizer agreement acceptance',
+    () async {
+      final repository = DemoRepository(auth: FakeAuthService());
+      final saved = await repository.saveOrganizationApplicationDraft(
+        orgName: 'Signal Collective',
+        orgType: OrganizationType.promoter,
+        contactName: 'Earplug Fan',
+        businessEmail: 'fan@example.com',
+      );
+      expect(
+        (await repository.myOrganizationApplication())!
+            .organizerAgreementAcceptedAt,
+        isNull,
+      );
+
+      final submittedRevision = await repository.submitOrganizationApplication(
+        applicationId: saved.applicationId,
+        expectedRevision: saved.revision,
+        organizerAgreementAccepted: true,
+      );
+      final submitted = (await repository.myOrganizationApplication())!;
+      expect(submitted.status, OrganizationApplicationStatus.submitted);
+      expect(submitted.revision, submittedRevision);
+      expect(submitted.organizerAgreementAcceptedAt, isNotNull);
+      expect(submitted.organizerAgreementAcceptedAt, submitted.updatedAt);
+
+      await repository.submitOrganizationApplication(
+        applicationId: saved.applicationId,
+        expectedRevision: submittedRevision,
+      );
+      expect(
+        (await repository.myOrganizationApplication())!
+            .organizerAgreementAcceptedAt,
+        submitted.organizerAgreementAcceptedAt,
       );
     },
   );
@@ -3339,9 +3457,9 @@ void main() {
         'Strict',
       ]);
       expect(CancellationTemplate.values.map((value) => value.description), [
-        'Full refund up to 48 hours before the show.',
-        'Full refund more than 14 days out, 50% refund 7-14 days out, no refund within 7 days.',
-        'No refund within 14 days of the show.',
+        'Full refund up until 48 hours before the show.',
+        'Full refund up until 14 days before the show, 50% refund from 14 to 7 days before, no refund inside 7 days.',
+        'Full refund up until 14 days before the show, no refund inside 14 days.',
       ]);
     });
 
