@@ -31,6 +31,8 @@ export type MarketplaceOptions = {
   now?: number;
   organization?: Fields<"organizations">;
   venue?: Fields<"venues">;
+  /** Seeds a private booking location instead of a venue when supplied. */
+  privateLocation?: Fields<"privateLocations">;
   band?: Fields<"bands">;
   opportunity?: Fields<"talentOpportunities">;
   slot?: Fields<"opportunitySlots">;
@@ -47,7 +49,8 @@ export type MarketplaceIds = {
   users: Record<Actor, Id<"users">>;
   organizationId: Id<"organizations">;
   detailsId: Id<"organizationPrivateDetails">;
-  venueId: Id<"venues">;
+  venueId?: Id<"venues">;
+  privateLocationId?: Id<"privateLocations">;
   bandId: Id<"bands">;
   opportunityId: Id<"talentOpportunities">;
   slotId: Id<"opportunitySlots">;
@@ -56,17 +59,23 @@ export type MarketplaceIds = {
   paymentRecordIds: Id<"paymentRecords">[];
 };
 
+type LocationIds<Options extends MarketplaceOptions> =
+  Options extends { privateLocation: Fields<"privateLocations"> }
+    ? { privateLocationId: Id<"privateLocations">; venueId?: never }
+    : { venueId: Id<"venues"> };
+
 /** Seeds a confirmed, fully paid booking by default. Overrides are shallow:
  * callers keep related amounts/statuses consistent for the scenario they need.
- * Dates derive from now and opportunity.startsAt, never a shared fixed date. */
-export function seedMarketplace(
+ * Dates derive from now and opportunity.startsAt, never a shared fixed date.
+ * Additional actors and suite-specific rows can be added with t.run afterward. */
+export function seedMarketplace<Options extends MarketplaceOptions>(
   t: TestConvexForDataModel<DataModel>,
-  opts: MarketplaceOptions & { booking: null },
-): Promise<MarketplaceIds & { bookingId?: never }>;
-export function seedMarketplace(
+  opts: Options & { booking: null },
+): Promise<MarketplaceIds & LocationIds<Options> & { bookingId?: never }>;
+export function seedMarketplace<Options extends MarketplaceOptions>(
   t: TestConvexForDataModel<DataModel>,
-  opts: MarketplaceOptions & { booking?: Fields<"bookings"> },
-): Promise<MarketplaceIds & { bookingId: Id<"bookings"> }>;
+  opts: Options & { booking?: Fields<"bookings"> },
+): Promise<MarketplaceIds & LocationIds<Options> & { bookingId: Id<"bookings"> }>;
 export function seedMarketplace(
   t: TestConvexForDataModel<DataModel>,
   opts: MarketplaceOptions,
@@ -121,19 +130,35 @@ export async function seedMarketplace(
       updatedAt: now,
       ...opts.organizationPrivateDetails,
     });
-    const venueId = await ctx.db.insert("venues", {
-      name: "Neighborhood Hall",
-      area: "Oakland",
-      addr: "100 Main Street",
-      distSF: "8 mi",
-      distOak: "1 mi",
-      lat: 37.8,
-      lng: -122.27,
-      managedByOrganizationId: organizationId,
-      status: "verified",
-      venueType: "hall",
-      ...opts.venue,
-    });
+    const privateLocationId = opts.privateLocation
+      ? await ctx.db.insert("privateLocations", {
+          organizationId,
+          label: "Private event",
+          addr: "200 Private Street",
+          city: "Oakland",
+          area: "Oakland",
+          lat: 37.8,
+          lng: -122.27,
+          createdAt: now,
+          updatedAt: now,
+          ...opts.privateLocation,
+        })
+      : undefined;
+    const venueId = privateLocationId
+      ? undefined
+      : await ctx.db.insert("venues", {
+          name: "Neighborhood Hall",
+          area: "Oakland",
+          addr: "100 Main Street",
+          distSF: "8 mi",
+          distOak: "1 mi",
+          lat: 37.8,
+          lng: -122.27,
+          managedByOrganizationId: organizationId,
+          status: "verified",
+          venueType: "hall",
+          ...opts.venue,
+        });
     const bandId = await ctx.db.insert("bands", {
       name: "Static Bloom",
       slug: "static-bloom",
@@ -165,10 +190,10 @@ export async function seedMarketplace(
     }
     const opportunityId = await ctx.db.insert("talentOpportunities", {
       organizationId,
-      venueId,
-      mode: "publicEvent",
+      ...(privateLocationId
+        ? { privateLocationId, mode: "privateBooking" as const }
+        : { venueId, mode: "publicEvent" as const, venueType: "hall" as const }),
       area: "Oakland",
-      venueType: "hall",
       title: "Friday at the Hall",
       desc: "An evening of local music.",
       genres: ["Indie"],
@@ -214,6 +239,7 @@ export async function seedMarketplace(
       organizationId,
       detailsId,
       venueId,
+      privateLocationId,
       bandId,
       opportunityId,
       slotId,

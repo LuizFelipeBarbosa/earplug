@@ -1,16 +1,9 @@
 import { v } from "convex/values";
 import { Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
-import {
-  MutationCtx,
-  internalMutation,
-  mutation,
-  query,
-} from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { requireBandRole, requireUser } from "./lib/helpers";
-import { randomHexToken } from "./lib/tokens";
-
-const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+import { insertInvite, refreshInvite } from "./lib/invites";
 
 const invitePayloadValidator = v.object({
   bandId: v.id("bands"),
@@ -34,70 +27,6 @@ function invitePayload(invite: Doc<"bandInvites">) {
     expiresAt: invite.expiresAt,
     revoked: invite.revoked,
     expired: invite.expired === true,
-  };
-}
-
-async function uniqueToken(ctx: MutationCtx): Promise<string> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const token = randomHexToken(32);
-    const collision = await ctx.db
-      .query("bandInvites")
-      .withIndex("by_token", (q) => q.eq("token", token))
-      .first();
-    if (collision === null) return token;
-  }
-  throw new Error("Could not issue invitation token");
-}
-
-async function insertInvite(
-  ctx: MutationCtx,
-  bandId: Doc<"bands">["_id"],
-  createdBy: Doc<"users">["_id"],
-) {
-  const token = await uniqueToken(ctx);
-  const expiresAt = Date.now() + INVITE_LIFETIME_MS;
-  const inviteId = await ctx.db.insert("bandInvites", {
-    bandId,
-    token,
-    createdBy,
-    expiresAt,
-    revoked: false,
-    expired: false,
-  });
-  await ctx.scheduler.runAt(expiresAt, internal.bandInvites.expire, {
-    bandId,
-    token,
-  });
-  const invite = await ctx.db.get(inviteId);
-  if (!invite) throw new Error("Created invitation not found");
-  return invitePayload(invite);
-}
-
-async function refreshInvite(
-  ctx: MutationCtx,
-  invite: Doc<"bandInvites">,
-  createdBy: Doc<"users">["_id"],
-) {
-  const replacement = {
-    bandId: invite.bandId,
-    token: await uniqueToken(ctx),
-    createdBy,
-    expiresAt: Date.now() + INVITE_LIFETIME_MS,
-    revoked: false,
-    expired: false,
-  };
-  await ctx.db.replace(invite._id, replacement);
-  await ctx.scheduler.runAt(
-    replacement.expiresAt,
-    internal.bandInvites.expire,
-    { bandId: replacement.bandId, token: replacement.token },
-  );
-  return {
-    bandId: replacement.bandId,
-    token: replacement.token,
-    expiresAt: replacement.expiresAt,
-    revoked: replacement.revoked,
-    expired: replacement.expired,
   };
 }
 
@@ -150,14 +79,33 @@ export const create = mutation({
       .withIndex("by_band", (q) => q.eq("bandId", args.bandId))
       .order("desc")
       .first();
-    if (existing === null) {
-      return await insertInvite(ctx, args.bandId, user._id);
-    }
-    return !existing.revoked &&
+    if (
+      existing !== null &&
+      !existing.revoked &&
       existing.expired !== true &&
       existing.expiresAt > Date.now()
-      ? invitePayload(existing)
-      : await refreshInvite(ctx, existing, user._id);
+    ) {
+      return invitePayload(existing);
+    }
+    const bandId = existing?.bandId ?? args.bandId;
+    const fields = { bandId, createdBy: user._id };
+    const scheduleExpire = async (expiresAt: number, token: string) => {
+      await ctx.scheduler.runAt(expiresAt, internal.bandInvites.expire, {
+        bandId,
+        token,
+      });
+    };
+    const invite =
+      existing === null
+        ? await insertInvite(ctx, "bandInvites", fields, scheduleExpire)
+        : await refreshInvite(
+            ctx,
+            "bandInvites",
+            existing._id,
+            fields,
+            scheduleExpire,
+          );
+    return invitePayload(invite);
   },
 });
 
@@ -171,10 +119,25 @@ export const rotate = mutation({
       .withIndex("by_band", (q) => q.eq("bandId", args.bandId))
       .order("desc")
       .first();
-    if (existing === null) {
-      return await insertInvite(ctx, args.bandId, user._id);
-    }
-    return await refreshInvite(ctx, existing, user._id);
+    const bandId = existing?.bandId ?? args.bandId;
+    const fields = { bandId, createdBy: user._id };
+    const scheduleExpire = async (expiresAt: number, token: string) => {
+      await ctx.scheduler.runAt(expiresAt, internal.bandInvites.expire, {
+        bandId,
+        token,
+      });
+    };
+    const invite =
+      existing === null
+        ? await insertInvite(ctx, "bandInvites", fields, scheduleExpire)
+        : await refreshInvite(
+            ctx,
+            "bandInvites",
+            existing._id,
+            fields,
+            scheduleExpire,
+          );
+    return invitePayload(invite);
   },
 });
 

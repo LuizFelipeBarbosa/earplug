@@ -13,6 +13,7 @@ import {
   toOpportunityPayload,
 } from "./lib/opportunityPayload";
 import { APPLICATION_ACTIVE_STATUSES } from "./lib/opportunityStatus";
+import { setupOrganization as setupOrganizationFixture } from "./orgFixtures.test-helpers";
 import schema from "./schema";
 
 const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
@@ -33,70 +34,36 @@ async function setupOrganization(
   orgType: "venueOperator" | "privateHost" = "venueOperator",
 ) {
   const t = convexTest(schema, modules);
-  const asOwner = t.withIdentity({ subject: "opportunity_owner" });
-  const asManager = t.withIdentity({ subject: "opportunity_manager" });
-  const asFinance = t.withIdentity({ subject: "opportunity_finance" });
-  const asDoor = t.withIdentity({ subject: "opportunity_door" });
-  const asStranger = t.withIdentity({ subject: "opportunity_stranger" });
-  const asOtherOwner = t.withIdentity({ subject: "opportunity_other" });
-  const ids = await t.run(async (ctx) => {
-    const userIds: Id<"users">[] = [];
-    for (const actor of [
+  const fixture = await setupOrganizationFixture(t, {
+    prefix: "opportunity",
+    orgType,
+    roles: [
       "owner",
       "manager",
       "finance",
       "door",
-      "stranger",
-      "other",
-    ]) {
-      userIds.push(
-        await ctx.db.insert("users", {
-          clerkId: `opportunity_${actor}`,
-          name: actor,
-          email: `${actor}@opportunity.test`,
-          genres: [],
-          attendedCount: 0,
-        }),
-      );
-    }
-    const [ownerId, managerId, financeId, doorId, , otherOwnerId] = userIds;
-    const organizationId = await ctx.db.insert("organizations", {
+      { label: "stranger", role: null },
+    ],
+    organization: {
       name: "Opportunity Collective",
       slug: "opportunity-collective",
-      orgType,
-      status: "verified",
-      ownerUserId: ownerId,
-      createdAt: 1,
-      updatedAt: 1,
-    });
-    const otherOrganizationId = await ctx.db.insert("organizations", {
-      name: "Other Collective",
-      slug: "other-collective",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: otherOwnerId,
-      createdAt: 1,
-      updatedAt: 1,
-    });
-    for (const [role, userId] of [
-      ["owner", ownerId],
-      ["manager", managerId],
-      ["finance", financeId],
-      ["door", doorId],
-    ] as const) {
-      await ctx.db.insert("organizationMembers", {
-        organizationId,
-        userId,
-        role,
-        createdAt: 1,
-      });
-    }
-    await ctx.db.insert("organizationMembers", {
-      organizationId: otherOrganizationId,
-      userId: otherOwnerId,
-      role: "owner",
-      createdAt: 1,
-    });
+    },
+  });
+  const otherFixture = await setupOrganizationFixture(t, {
+    prefix: "opportunity",
+    roles: [{ label: "other", role: "owner" }],
+    organization: { name: "Other Collective", slug: "other-collective" },
+  });
+  const asOwner = fixture.as("owner");
+  const asManager = fixture.as("manager");
+  const asFinance = fixture.as("finance");
+  const asDoor = fixture.as("door");
+  const asStranger = fixture.as("stranger");
+  const asOtherOwner = otherFixture.as("other");
+  const ids = await t.run(async (ctx) => {
+    const { organizationId, users } = fixture;
+    const { owner: ownerId, manager: managerId } = users;
+    const otherOrganizationId = otherFixture.organizationId;
     const venueFields = {
       name: "Neighborhood Hall",
       area: "Oakland",

@@ -6,6 +6,7 @@ import { api as generatedApi, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { readFeedCutoff } from "./clock";
 import { ArtistApplicationStatus } from "./lib/opportunityStatus";
+import { setupOrganization as setupOrganizationFixture } from "./orgFixtures.test-helpers";
 import schema from "./schema";
 import type * as readModule from "./talentOpportunitiesRead";
 
@@ -29,58 +30,36 @@ afterEach(() => {
 
 async function setupOrganization() {
   const t = convexTest(schema, modules);
-  const asOwner = t.withIdentity({ subject: "read_owner" });
-  const asManager = t.withIdentity({ subject: "read_manager" });
-  const asFinance = t.withIdentity({ subject: "read_finance" });
-  const asDoor = t.withIdentity({ subject: "read_door" });
-  const asArtist = t.withIdentity({ subject: "read_artist" });
-  const asOtherArtist = t.withIdentity({ subject: "read_other_artist" });
-  const asStranger = t.withIdentity({ subject: "read_stranger" });
-  const ids = await t.run(async (ctx) => {
-    const userIds: Id<"users">[] = [];
-    for (const actor of [
-      "owner",
-      "manager",
-      "finance",
-      "door",
-      "artist",
-      "other_artist",
-      "stranger",
-    ]) {
-      userIds.push(
-        await ctx.db.insert("users", {
-          clerkId: `read_${actor}`,
-          name: actor,
-          email: `${actor}@opportunity.test`,
-          genres: [],
-          attendedCount: 0,
-        }),
-      );
-    }
-    const [ownerId, managerId, financeId, doorId, artistId, otherArtistId] =
-      userIds;
-    const organizationId = await ctx.db.insert("organizations", {
+  const fixture = await setupOrganizationFixture(t, {
+    prefix: "read",
+    now: NOW,
+    roles: [
+      ...(["owner", "manager", "finance", "door"] as const).map((role) => ({
+        label: role,
+        role,
+        email: `${role}@opportunity.test`,
+      })),
+      ...["artist", "other_artist", "stranger"].map((label) => ({
+        label,
+        role: null,
+        email: `${label}@opportunity.test`,
+      })),
+    ],
+    organization: {
       name: "Opportunity Collective",
       slug: "opportunity-collective",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: ownerId,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    for (const [role, userId] of [
-      ["owner", ownerId],
-      ["manager", managerId],
-      ["finance", financeId],
-      ["door", doorId],
-    ] as const) {
-      await ctx.db.insert("organizationMembers", {
-        organizationId,
-        userId,
-        role,
-        createdAt: NOW,
-      });
-    }
+    },
+  });
+  const asOwner = fixture.as("owner");
+  const asManager = fixture.as("manager");
+  const asFinance = fixture.as("finance");
+  const asDoor = fixture.as("door");
+  const asArtist = fixture.as("artist");
+  const asOtherArtist = fixture.as("other_artist");
+  const asStranger = fixture.as("stranger");
+  const ids = await t.run(async (ctx) => {
+    const { organizationId, users } = fixture;
+    const { owner: ownerId, artist: artistId, other_artist: otherArtistId } = users;
     const venueFields = {
       name: "Neighborhood Hall",
       area: "Oakland",
@@ -1130,6 +1109,32 @@ describe("private request discovery", () => {
     expect(result.page.map((item) => item.opportunity._id)).toEqual([
       f.opportunityId,
     ]);
+  });
+
+  test("private browse returns masked location details for an uninvited band admin", async () => {
+    const {
+      asOtherArtist: asArtist,
+      otherBandId: bandId,
+      opportunityId,
+    } = await setupPrivateRequest();
+    const result = await asArtist.query(api.talentOpportunitiesRead.browse, {
+      paginationOpts,
+      mode: "privateBooking",
+      bandId,
+    });
+    expect(result.page).toMatchObject([
+      {
+        invited: false,
+        myApplicationStatus: null,
+        opportunity: {
+          _id: opportunityId,
+          privateEvent: true,
+          venue: null,
+          area: "Rockridge, Oakland",
+        },
+      },
+    ]);
+    expectNoAddressFields(result);
   });
 
   test("private resolution requires membership in the specifically invited band and its band ID", async () => {
