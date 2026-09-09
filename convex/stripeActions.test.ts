@@ -11,6 +11,7 @@ import {
   stripeRequest,
 } from "./lib/stripeClient";
 import type { stripeAccountStatusValidator } from "./payoutAccounts";
+import { setupOrganization as setupOrganizationFixture } from "./orgFixtures.test-helpers";
 import schema from "./schema";
 
 vi.mock("./lib/stripeClient", async (importOriginal) => {
@@ -96,44 +97,27 @@ async function setupBand(role: "admin" | "member" | null = "admin") {
 
 async function setupOrganization(role: OrganizationRole | null = "owner") {
   const t = convexTest(schema);
-  const asUser = t.withIdentity({
-    subject: "stripe_org_user",
-    email: "owner@example.com",
-    name: "Organization Owner",
-  });
-  const { userId } = await asUser.mutation(api.users.ensureUser, {});
-  const { organizationId, detailsId } = await t.run(async (ctx) => {
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Neighborhood Venues",
-      slug: "neighborhood-venues",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: userId,
-      createdAt: 1,
-      updatedAt: 1,
-    });
-    if (role !== null) {
-      await ctx.db.insert("organizationMembers", {
-        organizationId,
-        userId,
+  const fixture = await setupOrganizationFixture(t, {
+    prefix: "stripe_org",
+    viaEnsureUser: true,
+    withPrivateDetails: true,
+    roles: [
+      {
+        label: "user",
         role,
-        createdAt: 1,
-      });
-    }
-    const detailsId = await ctx.db.insert("organizationPrivateDetails", {
-      organizationId,
-      legalName: "Neighborhood Venues LLC",
-      businessEmail: "office@example.com",
-      contactName: "Organization Owner",
-      stripeChargesEnabled: false,
-      stripePayoutsEnabled: false,
-      stripeDetailsSubmitted: false,
-      verificationDocStorageIds: [],
-      updatedAt: 1,
-    });
-    return { organizationId, detailsId };
+        name: "Organization Owner",
+        email: "owner@example.com",
+      },
+    ],
+    privateDetails: { businessEmail: "office@example.com" },
   });
-  return { t, asUser, userId, organizationId, detailsId };
+  return {
+    t: fixture.t,
+    asUser: fixture.as("user"),
+    userId: fixture.users.user,
+    organizationId: fixture.organizationId,
+    detailsId: fixture.detailsId!,
+  };
 }
 
 async function seedBandAccount(

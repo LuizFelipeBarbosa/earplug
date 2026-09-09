@@ -21,6 +21,12 @@ import {
 import { feeSnapshot } from "./lib/fees";
 import { APPLICATION_ACTIVE_STATUSES } from "./lib/opportunityStatus";
 import { DEFAULT_PAYMENT_DUE_MS } from "./lib/paymentStatus";
+import {
+  asActor,
+  DAY_MS,
+  seedMarketplace,
+  type Actor as MarketplaceActor,
+} from "./marketplaceFixtures.test-helpers";
 import schema from "./schema";
 
 // Keep references typed while this lane intentionally leaves codegen untouched.
@@ -33,18 +39,8 @@ const internal = generatedInternal as typeof generatedInternal &
   >;
 const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-04T12:00:00Z");
-const DAY_MS = 24 * 60 * 60 * 1000;
 const STARTS_AT = NOW + 14 * DAY_MS;
-const ACTORS = [
-  "owner",
-  "manager",
-  "finance",
-  "admin",
-  "otherAdmin",
-  "member",
-  "stranger",
-] as const;
-type Actor = (typeof ACTORS)[number];
+type Actor = MarketplaceActor | "otherAdmin";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -59,142 +55,73 @@ afterEach(() => {
 
 async function setupBookings() {
   const t = convexTest(schema, modules);
-  const as = (actor: Actor) => t.withIdentity({ subject: `booking_${actor}` });
+  const marketplaceActor = asActor(t, "booking");
+  const as = (actor: Actor) =>
+    actor === "otherAdmin"
+      ? t.withIdentity({ subject: "booking_otherAdmin" })
+      : marketplaceActor(actor);
+  const marketplace = await seedMarketplace(t, {
+    prefix: "booking",
+    now: NOW,
+    booking: null,
+    bandPayoutAccount: false,
+    opportunity: {
+      startsAt: STARTS_AT,
+      applicationsCloseAt: NOW + 7 * DAY_MS,
+      applicationCount: 2,
+      status: "open",
+    },
+    slot: { guaranteeMinor: 0, status: "open" },
+    application: { status: "shortlisted" },
+  });
   const ids = await t.run(async (ctx) => {
-    const users = {} as Record<Actor, Id<"users">>;
-    for (const actor of ACTORS) {
-      users[actor] = await ctx.db.insert("users", {
-        clerkId: `booking_${actor}`,
-        name: actor,
-        email: `${actor}@booking.test`,
-        genres: [],
-        attendedCount: 0,
-      });
-    }
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Booking Collective",
-      slug: "booking-collective",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: users.owner,
-      createdAt: NOW,
-      updatedAt: NOW,
+    // These tests start without contact details to exercise the owner fallback.
+    await ctx.db.delete(marketplace.detailsId);
+    const otherAdmin = await ctx.db.insert("users", {
+      clerkId: "booking_otherAdmin",
+      name: "otherAdmin",
+      email: "otherAdmin@booking.test",
+      genres: [],
+      attendedCount: 0,
     });
-    for (const role of ["owner", "manager", "finance"] as const) {
-      await ctx.db.insert("organizationMembers", {
-        organizationId,
-        userId: users[role],
-        role,
-        createdAt: NOW,
-      });
-    }
-    const venueId = await ctx.db.insert("venues", {
-      name: "Neighborhood Hall",
-      area: "Oakland",
-      addr: "100 Main Street",
-      distSF: "8 mi",
-      distOak: "1 mi",
-      lat: 37.8,
-      lng: -122.27,
-      managedByOrganizationId: organizationId,
-      status: "verified",
-      venueType: "hall",
-    });
-    const bandFields = {
-      name: "Static Bloom",
-      slug: "static-bloom",
+    const otherBandId = await ctx.db.insert("bands", {
+      name: "Other Band",
+      slug: "other-band",
       genres: ["Indie"],
       area: "Oakland",
       colorHex: "#7B8FFF",
       initials: "SB",
       followerCount: 0,
       pastShows: [],
-    };
-    const bandId = await ctx.db.insert("bands", bandFields);
-    const otherBandId = await ctx.db.insert("bands", {
-      ...bandFields,
-      name: "Other Band",
-      slug: "other-band",
     });
-    for (const [memberBandId, userId, role] of [
-      [bandId, users.admin, "admin"],
-      [bandId, users.member, "member"],
-      [otherBandId, users.otherAdmin, "admin"],
-    ] as const) {
-      await ctx.db.insert("bandMembers", {
-        bandId: memberBandId,
-        userId,
-        role,
-      });
-    }
-    const opportunityId = await ctx.db.insert("talentOpportunities", {
-      organizationId,
-      venueId,
-      mode: "publicEvent",
-      area: "Oakland",
-      venueType: "hall",
-      title: "Friday at the Hall",
-      desc: "An evening of local music.",
-      genres: ["Indie"],
-      startsAt: STARTS_AT,
-      ageRequirement: "allAges",
-      flyKey: "xerox",
-      applicationsCloseAt: NOW + 7 * DAY_MS,
-      visibility: "public",
-      ticketing: "rsvp",
-      currency: "usd",
-      status: "open",
-      slug: "friday-at-the-hall",
-      createdBy: users.owner,
-      revision: 1,
-      applicationCount: 2,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const slotId = await ctx.db.insert("opportunitySlots", {
-      opportunityId,
-      order: 0,
-      role: "headliner",
-      guaranteeMinor: 0,
-      required: true,
-      status: "open",
+    await ctx.db.insert("bandMembers", {
+      bandId: otherBandId,
+      userId: otherAdmin,
+      role: "admin",
     });
     const supportSlotId = await ctx.db.insert("opportunitySlots", {
-      opportunityId,
+      opportunityId: marketplace.opportunityId,
       order: 1,
       role: "support",
       guaranteeMinor: 0,
       required: false,
       status: "open",
     });
-    const applicationFields = {
-      opportunityId,
-      slotId,
-      status: "shortlisted" as const,
+    const otherApplicationId = await ctx.db.insert("artistApplications", {
+      opportunityId: marketplace.opportunityId,
+      slotId: marketplace.slotId,
+      bandId: otherBandId,
+      submittedBy: otherAdmin,
+      status: "shortlisted",
       message: "We are available",
       createdAt: NOW,
       updatedAt: NOW,
-    };
-    const applicationId = await ctx.db.insert("artistApplications", {
-      ...applicationFields,
-      bandId,
-      submittedBy: users.admin,
-    });
-    const otherApplicationId = await ctx.db.insert("artistApplications", {
-      ...applicationFields,
-      bandId: otherBandId,
-      submittedBy: users.otherAdmin,
     });
     return {
-      users,
-      organizationId,
-      venueId,
-      bandId,
+      ...marketplace,
+      users: { ...marketplace.users, otherAdmin },
       otherBandId,
-      opportunityId,
-      slotId,
       supportSlotId,
-      applicationId,
       otherApplicationId,
     };
   });

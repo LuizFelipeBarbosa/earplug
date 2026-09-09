@@ -13,6 +13,7 @@ import {
 import {
   bandPayloadValidator,
   currentUser,
+  normalizeNote,
   requireBandRole,
   toBandPayload,
 } from "./lib/helpers";
@@ -81,14 +82,6 @@ export async function canBandSeeOpportunity(
 ): Promise<boolean> {
   if (opportunity.visibility === "public") return true;
   return await bandIsInvited(ctx, opportunity._id, bandId);
-}
-
-function normalizeNote(value: string | undefined, label: string) {
-  const note = value?.trim();
-  if (note !== undefined && note.length > 500) {
-    throw new Error(`${label} must be at most 500 characters`);
-  }
-  return note || undefined;
 }
 
 export const apply = mutation({

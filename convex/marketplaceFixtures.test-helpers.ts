@@ -29,6 +29,9 @@ export type MarketplaceOptions = {
   prefix: string;
   /** Uses the caller's clock when omitted; suites should pass their own NOW. */
   now?: number;
+  organization?: Fields<"organizations">;
+  venue?: Fields<"venues">;
+  band?: Fields<"bands">;
   opportunity?: Fields<"talentOpportunities">;
   slot?: Fields<"opportunitySlots">;
   application?: Fields<"artistApplications">;
@@ -97,6 +100,7 @@ export async function seedMarketplace(
       ownerUserId: users.owner,
       createdAt: now,
       updatedAt: now,
+      ...opts.organization,
     });
     for (const role of ["owner", "manager", "finance", "door"] as const) {
       await ctx.db.insert("organizationMembers", {
@@ -128,6 +132,7 @@ export async function seedMarketplace(
       managedByOrganizationId: organizationId,
       status: "verified",
       venueType: "hall",
+      ...opts.venue,
     });
     const bandId = await ctx.db.insert("bands", {
       name: "Static Bloom",
@@ -138,6 +143,7 @@ export async function seedMarketplace(
       initials: "SB",
       followerCount: 0,
       pastShows: [],
+      ...opts.band,
     });
     for (const role of ["admin", "member"] as const) {
       await ctx.db.insert("bandMembers", {

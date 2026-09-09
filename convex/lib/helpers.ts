@@ -17,6 +17,23 @@ import {
 } from "../schema";
 import { approximateLocation, formatMiles, OAK_CENTER, SF_CENTER } from "./geo";
 
+export function optionalText(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed === "" ? undefined : trimmed;
+}
+
+export function normalizeNote(
+  value: string | undefined,
+  label: string,
+  limit = 500,
+) {
+  const note = value?.trim();
+  if (note !== undefined && note.length > limit) {
+    throw new Error(`${label} must be at most ${limit} characters`);
+  }
+  return note || undefined;
+}
+
 // ─── Deterministic band identity ────────────────────────────────────────────
 // Every band's colour, initials and slug are derived from its name rather than
 // stored by hand, so any write path that creates or renames a band lands on the

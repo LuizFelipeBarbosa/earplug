@@ -14,6 +14,7 @@ import {
   requireOrganizationRoleQuery,
 } from "./lib/authz";
 import { requireUser } from "./lib/helpers";
+import { randomHexToken } from "./lib/tokens";
 import { organizationPayloadValidator } from "./organizations";
 import { organizationRoleValidator } from "./schema";
 
@@ -66,14 +67,7 @@ async function newestInvite(
 
 async function uniqueToken(ctx: MutationCtx): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const bytes = new Uint8Array(32);
-    // Convex's seeded mutation PRNG makes retries replay while calls get fresh entropy.
-    for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-    const token = Array.from(bytes, (byte) =>
-      byte.toString(16).padStart(2, "0"),
-    ).join("");
+    const token = randomHexToken(32);
     const collision = await ctx.db
       .query("organizationMemberInvites")
       .withIndex("by_token", (q) => q.eq("token", token))

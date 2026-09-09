@@ -1,7 +1,6 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { organizationMembershipFor } from "./lib/authz";
-import { flag } from "./lib/env";
 import { resolveCommissionBps } from "./lib/fees";
 import { currentUser } from "./lib/helpers";
 import { resolveTicketingFee } from "./lib/ticketFees";
@@ -18,12 +17,12 @@ export const flags = query({
   }),
   handler: async () => {
     return {
-      privateBookings: flag("PRIVATE_BOOKINGS_ENABLED", false),
-      tickets: flag("TICKETS_ENABLED", false),
-      payments: flag("PAYMENTS_ENABLED", false),
-      bandGigWrites: flag("BAND_GIG_WRITES", true),
-      disputes: flag("DISPUTES_ENABLED", false),
-      promoters: flag("PROMOTERS_ENABLED", false),
+      privateBookings: true,
+      tickets: true,
+      payments: true,
+      bandGigWrites: true,
+      disputes: true,
+      promoters: true,
     };
   },
 });

@@ -23,6 +23,7 @@ import {
   currentUser,
   isReservedPublicSlug,
   isValidHttpsUrl,
+  optionalText,
   requireUser,
   slugify,
 } from "./lib/helpers";
@@ -220,11 +221,6 @@ export async function toApplicationPayload(
     createdAt: application.createdAt,
     updatedAt: application.updatedAt,
   };
-}
-
-function optionalText(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
 }
 
 function normalizeAndValidateDraft(args: {

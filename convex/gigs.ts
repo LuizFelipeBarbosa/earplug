@@ -46,6 +46,7 @@ import {
   assertSellerOpen,
   resolveTicketSeller,
 } from "./lib/ticketSeller";
+import { randomHexToken } from "./lib/tokens";
 
 const PUBLIC_WEB_ORIGIN = "https://earplug.app";
 
@@ -1305,18 +1306,9 @@ export const purgeDeletedGig = internalMutation({
   },
 });
 
-function randomToken() {
-  const bytes = new Uint8Array(32);
-  for (let index = 0; index < bytes.length; index++)
-    bytes[index] = Math.floor(Math.random() * 256);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
-}
-
 async function uniqueInviteToken(ctx: MutationCtx) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const token = randomToken();
+    const token = randomHexToken(32);
     const collision = await ctx.db
       .query("gigProjectPerformers")
       .withIndex("by_invite_token", (q) => q.eq("inviteToken", token))

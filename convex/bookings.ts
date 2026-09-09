@@ -25,7 +25,7 @@ import { settleBookingCancellation } from "./lib/cancellationSettlement";
 import { appBaseUrl } from "./lib/env";
 import { feeSnapshot, resolveCommissionBps } from "./lib/fees";
 import { syncGigLineup, unpublishOpportunityGig } from "./lib/gigPublish";
-import { requireBandRole, requireUser } from "./lib/helpers";
+import { normalizeNote, requireBandRole, requireUser } from "./lib/helpers";
 import {
   assertApplicationTransition,
   assertOpportunityTransition,
@@ -63,18 +63,6 @@ export async function loadCurrentOffer(ctx: MutationCtx, booking: Doc<"bookings"
           .unique();
   if (!offer) throw new Error("Booking offer not found");
   return offer;
-}
-
-function normalizeNote(
-  value: string | undefined,
-  label: string,
-  limit: number,
-) {
-  const note = value?.trim();
-  if (note !== undefined && note.length > limit) {
-    throw new Error(`${label} must be at most ${limit} characters`);
-  }
-  return note || undefined;
 }
 
 export async function shortlistApplication(

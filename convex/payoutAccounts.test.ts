@@ -6,6 +6,7 @@ import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import type { OrganizationRole } from "./lib/authz";
 import type { stripeAccountStatusValidator } from "./payoutAccounts";
+import { setupOrganization as setupOrganizationFixture } from "./orgFixtures.test-helpers";
 import schema from "./schema";
 
 type StripeAccountStatus = Infer<typeof stripeAccountStatusValidator>;
@@ -94,33 +95,24 @@ async function setupBand(role: "admin" | "member" | null = "member") {
 
 async function setupOrganization(role: OrganizationRole | null = "owner") {
   const t = convexTest(schema);
-  const asUser = t.withIdentity({
-    subject: "payout_org_user",
-    email: "owner@example.com",
-    name: "Organization User",
-  });
-  const { userId } = await asUser.mutation(api.users.ensureUser, {});
-  const organizationId = await t.run(async (ctx) => {
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Neighborhood Venues",
-      slug: "neighborhood-venues",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: userId,
-      createdAt: 1,
-      updatedAt: 1,
-    });
-    if (role !== null) {
-      await ctx.db.insert("organizationMembers", {
-        organizationId,
-        userId,
+  const fixture = await setupOrganizationFixture(t, {
+    prefix: "payout_org",
+    viaEnsureUser: true,
+    roles: [
+      {
+        label: "user",
         role,
-        createdAt: 1,
-      });
-    }
-    return organizationId;
+        name: "Organization User",
+        email: "owner@example.com",
+      },
+    ],
   });
-  return { t, asUser, userId, organizationId };
+  return {
+    t: fixture.t,
+    asUser: fixture.as("user"),
+    userId: fixture.users.user,
+    organizationId: fixture.organizationId,
+  };
 }
 
 const statusCases = [

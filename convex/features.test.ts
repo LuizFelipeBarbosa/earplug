@@ -22,85 +22,17 @@ afterEach(() => {
 });
 
 describe("features: public flags", () => {
-  test("returns defaults without authentication when flags are unset", async () => {
+  test("returns the fixed flag constants", async () => {
     const t = convexTest(schema);
-
-    expect(await t.query(api.features.flags, {})).toEqual({
-      privateBookings: false,
-      tickets: false,
-      payments: false,
-      bandGigWrites: true,
-      disputes: false,
-      promoters: false,
-    });
-  });
-
-  test("reads explicit true and false flags without authentication", async () => {
-    const t = convexTest(schema);
-    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
-    vi.stubEnv("TICKETS_ENABLED", "true");
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
-    vi.stubEnv("BAND_GIG_WRITES", "false");
-    vi.stubEnv("DISPUTES_ENABLED", "true");
-    vi.stubEnv("PROMOTERS_ENABLED", "true");
 
     expect(await t.query(api.features.flags, {})).toEqual({
       privateBookings: true,
       tickets: true,
       payments: true,
-      bandGigWrites: false,
+      bandGigWrites: true,
       disputes: true,
       promoters: true,
     });
-  });
-
-  test("reads numeric string flags without authentication", async () => {
-    const t = convexTest(schema);
-    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "0");
-    vi.stubEnv("TICKETS_ENABLED", "1");
-    vi.stubEnv("PAYMENTS_ENABLED", "0");
-    vi.stubEnv("BAND_GIG_WRITES", "1");
-    vi.stubEnv("DISPUTES_ENABLED", "0");
-    vi.stubEnv("PROMOTERS_ENABLED", "0");
-
-    expect(await t.query(api.features.flags, {})).toEqual({
-      privateBookings: false,
-      tickets: true,
-      payments: false,
-      bandGigWrites: true,
-      disputes: false,
-      promoters: false,
-    });
-  });
-
-  test.each([
-    { value: undefined, enabled: false },
-    { value: "", enabled: false },
-    { value: "invalid", enabled: false },
-    { value: "true", enabled: true },
-    { value: "1", enabled: true },
-    { value: "false", enabled: false },
-    { value: "0", enabled: false },
-  ])("reads DISPUTES_ENABLED=$value as $enabled", async ({ value, enabled }) => {
-    const t = convexTest(schema);
-    vi.stubEnv("DISPUTES_ENABLED", value);
-
-    expect((await t.query(api.features.flags, {})).disputes).toBe(enabled);
-  });
-
-  test.each([
-    { value: undefined, enabled: false },
-    { value: "", enabled: false },
-    { value: "invalid", enabled: false },
-    { value: "true", enabled: true },
-    { value: "1", enabled: true },
-    { value: "false", enabled: false },
-    { value: "0", enabled: false },
-  ])("reads PROMOTERS_ENABLED=$value as $enabled", async ({ value, enabled }) => {
-    const t = convexTest(schema);
-    vi.stubEnv("PROMOTERS_ENABLED", value);
-
-    expect((await t.query(api.features.flags, {})).promoters).toBe(enabled);
   });
 });
 

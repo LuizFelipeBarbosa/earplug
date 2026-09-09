@@ -10,7 +10,7 @@ import {
   api as generatedApi,
   internal as generatedInternal,
 } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import { COMPLETION_DELAY_MS, REVIEW_WINDOW_MS } from "./lib/bookingStatus";
 import {
   HELD_PAYOUT_MAX_DAYS,
@@ -22,6 +22,12 @@ import {
   stripeIdempotencyKey,
   stripeRequest,
 } from "./lib/stripeClient";
+import {
+  asActor,
+  DAY_MS,
+  readers,
+  seedMarketplace,
+} from "./marketplaceFixtures.test-helpers";
 import type * as payouts from "./payouts";
 import { reversibleMinor } from "./payouts";
 import schema from "./schema";
@@ -43,15 +49,6 @@ const internal = generatedInternal as typeof generatedInternal &
   >;
 const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T12:00:00Z");
-const DAY_MS = 24 * 60 * 60 * 1000;
-const ACTORS = [
-  "owner",
-  "admin",
-  "member",
-  "platformAdmin",
-  "stranger",
-] as const;
-type Actor = (typeof ACTORS)[number];
 const stripeMock = vi.mocked(stripeRequest);
 
 beforeEach(() => {
@@ -77,112 +74,15 @@ afterEach(() => {
 
 async function setupPayouts(amounts = [15000]) {
   const t = convexTest(schema, modules);
-  const as = (actor: Actor) => t.withIdentity({ subject: `payout_${actor}` });
-  const ids = await t.run(async (ctx) => {
-    const users = {} as Record<Actor, Id<"users">>;
-    for (const actor of ACTORS) {
-      users[actor] = await ctx.db.insert("users", {
-        clerkId: `payout_${actor}`,
-        name: actor,
-        email: `${actor}@payout.test`,
-        genres: [],
-        attendedCount: 0,
-      });
-    }
-    await ctx.db.insert("platformAdmins", {
-      userId: users.platformAdmin,
-      grantedAt: NOW,
-    });
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Payout Collective",
-      slug: "payout-collective",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: users.owner,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    await ctx.db.insert("organizationMembers", {
-      organizationId,
-      userId: users.owner,
-      role: "owner",
-      createdAt: NOW,
-    });
-    const bandId = await ctx.db.insert("bands", {
-      name: "Static Bloom",
-      slug: "static-bloom",
-      genres: ["Indie"],
-      area: "Oakland",
-      colorHex: "#7B8FFF",
-      initials: "SB",
-      followerCount: 0,
-      pastShows: [],
-    });
-    for (const role of ["admin", "member"] as const) {
-      await ctx.db.insert("bandMembers", { bandId, userId: users[role], role });
-    }
-    const venueId = await ctx.db.insert("venues", {
-      name: "Neighborhood Hall",
-      area: "Oakland",
-      addr: "100 Main Street",
-      distSF: "8 mi",
-      distOak: "1 mi",
-      lat: 37.8,
-      lng: -122.27,
-      managedByOrganizationId: organizationId,
-      status: "verified",
-      venueType: "hall",
-    });
-    const startsAt = NOW - COMPLETION_DELAY_MS - 1000;
-    const opportunityId = await ctx.db.insert("talentOpportunities", {
-      organizationId,
-      venueId,
-      mode: "publicEvent",
-      area: "Oakland",
-      venueType: "hall",
-      title: "Friday at the Hall",
-      desc: "An evening of local music.",
-      genres: ["Indie"],
-      startsAt,
-      ageRequirement: "allAges",
-      flyKey: "xerox",
-      applicationsCloseAt: startsAt - DAY_MS,
-      visibility: "public",
-      ticketing: "rsvp",
-      currency: "usd",
-      status: "confirmed",
-      slug: "friday-at-the-hall",
-      createdBy: users.owner,
-      revision: 1,
-      applicationCount: 0,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const slotId = await ctx.db.insert("opportunitySlots", {
-      opportunityId,
-      order: 0,
-      role: "headliner",
-      guaranteeMinor: 15000,
-      required: true,
-      status: "booked",
-      bandId,
-    });
-    const applicationId = await ctx.db.insert("artistApplications", {
-      opportunityId,
-      slotId,
-      bandId,
-      submittedBy: users.admin,
-      status: "booked",
-      message: "We are available",
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const bookingId = await ctx.db.insert("bookings", {
-      opportunityId,
-      slotId,
-      organizationId,
-      bandId,
-      applicationId,
+  const as = asActor(t, "payout");
+  const startsAt = NOW - COMPLETION_DELAY_MS - 1000;
+  const ids = await seedMarketplace(t, {
+    prefix: "payout",
+    now: NOW,
+    bandPayoutAccount: false,
+    opportunity: { startsAt, applicationsCloseAt: startsAt - DAY_MS },
+    slot: { guaranteeMinor: 15000 },
+    booking: {
       status: "confirmed",
       revision: 3,
       startsAt,
@@ -196,40 +96,26 @@ async function setupPayouts(amounts = [15000]) {
       artistAcceptedTermsAt: startsAt - DAY_MS,
       confirmedAt: startsAt - DAY_MS,
       payoutHold: false,
-      createdBy: users.owner,
+      paidMinor: undefined,
+      refundedMinor: undefined,
       createdAt: startsAt - DAY_MS,
       updatedAt: NOW,
-    });
-    await ctx.db.patch(slotId, { bookingId });
-    const paymentRecordIds: Id<"paymentRecords">[] = [];
-    for (const [index, amountMinor] of amounts.entries()) {
-      paymentRecordIds.push(
-        await ctx.db.insert("paymentRecords", {
-          bookingId,
-          installmentIndex: index,
-          label: `Installment ${index + 1}`,
-          amountMinor,
-          currency: "usd",
-          dueAt: startsAt - DAY_MS,
-          status: "paid",
-          stripeChargeId: `ch_test_${index + 1}`,
-          stripePaymentIntentId: `pi_test_${index + 1}`,
-          attempt: 0,
-          paidAt: startsAt - DAY_MS,
-          refundedMinor: 0,
-          createdAt: startsAt - DAY_MS,
-          updatedAt: NOW,
-        }),
-      );
-    }
-    return {
-      users,
-      organizationId,
-      bandId,
-      opportunityId,
-      bookingId,
-      paymentRecordIds,
-    };
+    },
+    paymentRecords: amounts.map((amountMinor, index) => ({
+      installmentIndex: index,
+      label: `Installment ${index + 1}`,
+      amountMinor,
+      currency: "usd",
+      dueAt: startsAt - DAY_MS,
+      status: "paid",
+      stripeChargeId: `ch_test_${index + 1}`,
+      stripePaymentIntentId: `pi_test_${index + 1}`,
+      attempt: 0,
+      paidAt: startsAt - DAY_MS,
+      refundedMinor: 0,
+      createdAt: startsAt - DAY_MS,
+      updatedAt: NOW,
+    })),
   });
   return {
     t,
@@ -249,23 +135,7 @@ async function setupPayouts(amounts = [15000]) {
           updatedAt: NOW,
         }),
       ),
-    readBooking: () => t.run((ctx) => ctx.db.get(ids.bookingId)),
-    payouts: () =>
-      t.run((ctx) =>
-        ctx.db
-          .query("payouts")
-          .withIndex("by_bookingId", (q) => q.eq("bookingId", ids.bookingId))
-          .take(50),
-      ),
-    ledger: () =>
-      t.run((ctx) =>
-        ctx.db
-          .query("ledgerEntries")
-          .withIndex("by_bookingId", (q) => q.eq("bookingId", ids.bookingId))
-          .take(50),
-      ),
-    scheduled: () =>
-      t.run((ctx) => ctx.db.system.query("_scheduled_functions").take(100)),
+    ...readers(t, ids),
   };
 }
 

@@ -20,6 +20,7 @@ import {
   hasValidProfileImage,
   initialsFor,
   isBandProfileComplete,
+  optionalText,
   requireBandRole,
   requireUser,
   toBandPayload,
@@ -106,11 +107,6 @@ function requiredProfileValues(
     throw new Error("Genres cannot be blank");
   }
   return { name, genres, area };
-}
-
-function optionalText(value: string | undefined): string | undefined {
-  const trimmed = value?.trim();
-  return trimmed === "" ? undefined : trimmed;
 }
 
 export const get = query({

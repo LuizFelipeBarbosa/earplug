@@ -9,20 +9,13 @@ import {
   requireUser,
   toGigPayload,
 } from "./lib/helpers";
+import { randomHexToken } from "./lib/tokens";
 
 const TICKET_PREFIX = "earplug:ticket:v1:";
 
-function randomToken() {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
-}
-
 async function uniqueTicketToken(ctx: MutationCtx) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const token = randomToken();
+    const token = randomHexToken(32);
     const existing = await ctx.db
       .query("gigRsvps")
       .withIndex("by_ticketToken", (q) => q.eq("ticketToken", token))

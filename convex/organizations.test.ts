@@ -1,67 +1,46 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import { api } from "./_generated/api";
+import { setupOrganization as setupOrganizationFixture } from "./orgFixtures.test-helpers";
 import schema from "./schema";
 
 async function setupOrganization() {
   const t = convexTest(schema);
-  const asOwner = t.withIdentity({
-    subject: "dashboard_owner",
-    email: "owner@dashboard.test",
-    name: "Dashboard Owner",
-  });
-  const asDoor = t.withIdentity({
-    subject: "dashboard_door",
-    email: "door@dashboard.test",
-    name: "Door Person",
-  });
-  const asStranger = t.withIdentity({
-    subject: "dashboard_stranger",
-    email: "stranger@dashboard.test",
-    name: "Dashboard Stranger",
-  });
-  const { userId: ownerId } = await asOwner.mutation(api.users.ensureUser, {});
-  const { userId: doorId } = await asDoor.mutation(api.users.ensureUser, {});
-  await asStranger.mutation(api.users.ensureUser, {});
-  const organizationId = await t.run(async (ctx) => {
-    const id = await ctx.db.insert("organizations", {
+  const fixture = await setupOrganizationFixture(t, {
+    prefix: "dashboard",
+    viaEnsureUser: true,
+    withPrivateDetails: true,
+    roles: [
+      { label: "owner", role: "owner", name: "Dashboard Owner" },
+      {
+        label: "door",
+        role: "door",
+        name: "Door Person",
+        addedBy: "owner",
+        createdAt: 2,
+      },
+      { label: "stranger", role: null, name: "Dashboard Stranger" },
+    ],
+    organization: {
       name: "Stable Slug Venues",
       slug: "stable-slug-venues",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: ownerId,
       description: "Neighborhood venues run by neighbors.",
-      createdAt: 1,
-      updatedAt: 1,
-    });
-    await ctx.db.insert("organizationPrivateDetails", {
-      organizationId: id,
+    },
+    privateDetails: {
       legalName: "Stable Slug Venues LLC",
       businessEmail: "office@stable-slug.test",
-      contactName: "Dashboard Owner",
       phone: "415-555-0150",
       stripeChargesEnabled: true,
-      stripePayoutsEnabled: false,
       stripeDetailsSubmitted: true,
-      verificationDocStorageIds: [],
-      updatedAt: 1,
-    });
-    await ctx.db.insert("organizationMembers", {
-      organizationId: id,
-      userId: ownerId,
-      role: "owner",
-      createdAt: 1,
-    });
-    await ctx.db.insert("organizationMembers", {
-      organizationId: id,
-      userId: doorId,
-      role: "door",
-      addedBy: ownerId,
-      createdAt: 2,
-    });
-    return id;
+    },
   });
-  return { t, asOwner, asDoor, asStranger, organizationId };
+  return {
+    t: fixture.t,
+    asOwner: fixture.as("owner"),
+    asDoor: fixture.as("door"),
+    asStranger: fixture.as("stranger"),
+    organizationId: fixture.organizationId,
+  };
 }
 
 describe("organizations", () => {

@@ -87,7 +87,7 @@ export function bucketize<T>(
  * counts below the floor suppress the partition. Do not require every
  * bucket to reach the floor: that would reject safe zero buckets. An
  * entirely empty partition still has no data to publish. */
-function partitionMeetsFloor(counts: number[], floor: number): boolean {
+export function partitionMeetsFloor(counts: number[], floor: number): boolean {
   return (
     counts.some((count) => count > 0) &&
     counts.every((count) => count === 0 || count >= floor)

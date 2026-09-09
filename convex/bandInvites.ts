@@ -8,6 +8,7 @@ import {
   query,
 } from "./_generated/server";
 import { requireBandRole, requireUser } from "./lib/helpers";
+import { randomHexToken } from "./lib/tokens";
 
 const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -38,15 +39,7 @@ function invitePayload(invite: Doc<"bandInvites">) {
 
 async function uniqueToken(ctx: MutationCtx): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const bytes = new Uint8Array(32);
-    // Convex supplies a seeded strong PRNG inside mutations so retries replay
-    // the same result while distinct calls receive fresh entropy.
-    for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-    const token = Array.from(bytes, (byte) =>
-      byte.toString(16).padStart(2, "0"),
-    ).join("");
+    const token = randomHexToken(32);
     const collision = await ctx.db
       .query("bandInvites")
       .withIndex("by_token", (q) => q.eq("token", token))

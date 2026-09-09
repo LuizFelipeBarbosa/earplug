@@ -11,6 +11,14 @@ import {
   BOOKING_TRANSITIONS,
   type BookingStatus,
 } from "./lib/bookingStatus";
+import {
+  ACTORS,
+  asActor,
+  DAY_MS,
+  readers,
+  seedMarketplace,
+  type Actor,
+} from "./marketplaceFixtures.test-helpers";
 import schema from "./schema";
 
 // Keep references typed while intentionally leaving codegen untouched.
@@ -18,24 +26,11 @@ const api = generatedApi as typeof generatedApi &
   ApiFromModules<{ bookingsRead: typeof bookingsRead }>;
 const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-04T12:00:00Z");
-const DAY_MS = 24 * 60 * 60 * 1000;
 const STARTS_AT = NOW + 14 * DAY_MS;
 const DOORS_AT = STARTS_AT - 60 * 60 * 1000;
 const EXACT_ADDRESS = "42 Secret Alley, Oakland";
 const BUSINESS_EMAIL = "booking-office@example.test";
 const APPLICANT_EMAIL = "bandadmin@example.test";
-const ACTORS = [
-  "owner",
-  "manager",
-  "finance",
-  "door",
-  "bandAdmin",
-  "bandMember",
-  "otherBandAdmin",
-  "outsider",
-  "platformAdmin",
-] as const;
-type Actor = (typeof ACTORS)[number];
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -49,69 +44,93 @@ afterEach(() => {
 
 async function setupBookings(overrides: { status?: BookingStatus } = {}) {
   const t = convexTest(schema, modules);
-  const as = (actor: Actor) =>
-    t.withIdentity({ subject: `booking_read_${actor}` });
-  const ids = await t.run(async (ctx) => {
-    const users = {} as Record<Actor, Id<"users">>;
-    for (const actor of ACTORS) {
-      users[actor] = await ctx.db.insert("users", {
-        clerkId: `booking_read_${actor}`,
-        name: actor,
-        email:
-          actor === "bandAdmin" ? APPLICANT_EMAIL : `${actor}@example.test`,
-        genres: [],
-        attendedCount: 0,
-      });
-    }
-    const organizationId = await ctx.db.insert("organizations", {
+  const marketplaceActor = asActor(t, "booking_read");
+  const as = (actor: Actor | "otherBandAdmin") =>
+    actor === "otherBandAdmin"
+      ? t.withIdentity({ subject: "booking_read_otherBandAdmin" })
+      : marketplaceActor(actor);
+  const fee = {
+    grossMinor: 5000,
+    commissionBps: 1000,
+    commissionMinor: 500,
+    artistNetMinor: 4500,
+    currency: "usd",
+  };
+  const booking = {
+    status: overrides.status ?? "confirmed",
+    revision: 2,
+    startsAt: STARTS_AT,
+    ...fee,
+    cancellationTemplate: "standard" as const,
+    organizerAcceptedTermsAt: NOW,
+    // Leave acceptance and payment totals absent for the read-side defaults.
+    artistAcceptedTermsAt: undefined,
+    confirmedAt: undefined,
+    paidMinor: undefined,
+    refundedMinor: undefined,
+    payoutHold: false,
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+  const marketplace = await seedMarketplace(t, {
+    prefix: "booking_read",
+    now: NOW,
+    organization: {
       name: "Opportunity Collective",
       slug: "opportunity-collective",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: users.owner,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    for (const role of ["owner", "manager", "finance", "door"] as const) {
-      await ctx.db.insert("organizationMembers", {
-        organizationId,
-        userId: users[role],
-        role,
-        createdAt: NOW,
-      });
-    }
-    await ctx.db.insert("platformAdmins", {
-      userId: users.platformAdmin,
-      grantedAt: NOW,
-    });
-    const organizationPrivateId = await ctx.db.insert(
-      "organizationPrivateDetails",
-      {
-        organizationId,
-        businessEmail: BUSINESS_EMAIL,
-        contactName: "Booking Office",
-        stripeChargesEnabled: false,
-        stripePayoutsEnabled: false,
-        stripeDetailsSubmitted: false,
-        verificationDocStorageIds: [],
-        updatedAt: NOW,
-      },
-    );
-    const venueId = await ctx.db.insert("venues", {
-      name: "Neighborhood Hall",
+    },
+    organizationPrivateDetails: {
+      businessEmail: BUSINESS_EMAIL,
+      contactName: "Booking Office",
+    },
+    venue: {
       slug: "neighborhood-hall",
-      area: "Oakland",
       addr: "Uptown, Oakland",
-      distSF: "8 mi",
-      distOak: "1 mi",
-      lat: 37.8,
-      lng: -122.27,
-      managedByOrganizationId: organizationId,
-      status: "verified",
       addressDisclosure: "onTicket",
       approxLabel: "Uptown, Oakland",
-      venueType: "hall",
+    },
+    band: { bio: "Loud guitars and harmonies.", followerCount: 12 },
+    bandPayoutAccount: false,
+    opportunity: {
+      area: "Uptown, Oakland",
+      startsAt: STARTS_AT,
+      doorsAt: DOORS_AT,
+      applicationsCloseAt: NOW + 7 * DAY_MS,
+    },
+    slot: { setLengthMin: 45, guaranteeMinor: 5000 },
+    booking,
+  });
+  const ids = await t.run(async (ctx) => {
+    const {
+      organizationId,
+      venueId,
+      bandId,
+      opportunityId,
+      slotId,
+      applicationId,
+      bookingId,
+    } = marketplace;
+    // Preserve the existing profiles while using the shared identity names.
+    const profileNames: Partial<Record<Actor, string>> = {
+      admin: "bandAdmin",
+      member: "bandMember",
+      stranger: "outsider",
+    };
+    for (const actor of ACTORS) {
+      const name = profileNames[actor] ?? actor;
+      await ctx.db.patch(marketplace.users[actor], {
+        name,
+        email: actor === "admin" ? APPLICANT_EMAIL : `${name}@example.test`,
+      });
+    }
+    const otherBandAdmin = await ctx.db.insert("users", {
+      clerkId: "booking_read_otherBandAdmin",
+      name: "otherBandAdmin",
+      email: "otherBandAdmin@example.test",
+      genres: [],
+      attendedCount: 0,
     });
+    const users = { ...marketplace.users, otherBandAdmin };
     const venuePrivateId = await ctx.db.insert("venuePrivateDetails", {
       venueId,
       addr: EXACT_ADDRESS,
@@ -122,9 +141,9 @@ async function setupBookings(overrides: { status?: BookingStatus } = {}) {
       capacity: 200,
       updatedAt: NOW,
     });
-    const bandFields = {
-      name: "Static Bloom",
-      slug: "static-bloom",
+    const otherBandId = await ctx.db.insert("bands", {
+      name: "Other Band",
+      slug: "other-band",
       genres: ["Indie"],
       bio: "Loud guitars and harmonies.",
       area: "Oakland",
@@ -132,94 +151,21 @@ async function setupBookings(overrides: { status?: BookingStatus } = {}) {
       initials: "SB",
       followerCount: 12,
       pastShows: [],
-    };
-    const bandId = await ctx.db.insert("bands", bandFields);
-    const otherBandId = await ctx.db.insert("bands", {
-      ...bandFields,
-      name: "Other Band",
-      slug: "other-band",
     });
-    for (const [memberBandId, userId, role] of [
-      [bandId, users.bandAdmin, "admin"],
-      [bandId, users.bandMember, "member"],
-      [otherBandId, users.otherBandAdmin, "admin"],
-    ] as const) {
-      await ctx.db.insert("bandMembers", {
-        bandId: memberBandId,
-        userId,
-        role,
-      });
-    }
-    const opportunityId = await ctx.db.insert("talentOpportunities", {
-      organizationId,
-      mode: "publicEvent",
-      venueId,
-      area: "Uptown, Oakland",
-      venueType: "hall",
-      title: "Friday at the Hall",
-      desc: "An evening of local music.",
-      genres: ["Indie"],
-      startsAt: STARTS_AT,
-      doorsAt: DOORS_AT,
-      ageRequirement: "allAges",
-      flyKey: "xerox",
-      applicationsCloseAt: NOW + 7 * DAY_MS,
-      visibility: "public",
-      ticketing: "rsvp",
-      currency: "usd",
-      status: "confirmed",
-      slug: "friday-at-the-hall",
-      createdBy: users.owner,
-      revision: 1,
-      applicationCount: 0,
-      createdAt: NOW,
-      updatedAt: NOW,
+    await ctx.db.insert("bandMembers", {
+      bandId: otherBandId,
+      userId: otherBandAdmin,
+      role: "admin",
     });
-    const slotId = await ctx.db.insert("opportunitySlots", {
-      opportunityId,
-      order: 0,
-      role: "headliner",
-      setLengthMin: 45,
-      guaranteeMinor: 5000,
-      required: true,
-      status: "booked",
-      bandId,
-    });
-    const applicationId = await ctx.db.insert("artistApplications", {
-      opportunityId,
-      slotId,
-      bandId,
-      submittedBy: users.bandAdmin,
-      message: "We are available",
-      status: "booked",
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const fee = {
-      grossMinor: 5000,
-      commissionBps: 1000,
-      commissionMinor: 500,
-      artistNetMinor: 4500,
-      currency: "usd",
-    };
     const bookingFields = {
+      ...booking,
       opportunityId,
       slotId,
       organizationId,
       bandId,
       applicationId,
-      status: overrides.status ?? "confirmed",
-      revision: 2,
-      startsAt: STARTS_AT,
-      ...fee,
-      cancellationTemplate: "standard" as const,
-      organizerAcceptedTermsAt: NOW,
-      payoutHold: false,
       createdBy: users.owner,
-      createdAt: NOW,
-      updatedAt: NOW,
     };
-    const bookingId = await ctx.db.insert("bookings", bookingFields);
     const offerId = await ctx.db.insert("bookingOffers", {
       bookingId,
       revision: bookingFields.revision,
@@ -232,7 +178,6 @@ async function setupBookings(overrides: { status?: BookingStatus } = {}) {
       expiresAt: NOW + 3 * DAY_MS,
     });
     await ctx.db.patch(bookingId, { currentOfferId: offerId });
-    await ctx.db.patch(slotId, { bookingId });
     const gigId = await ctx.db.insert("gigs", {
       title: "Friday at the Hall",
       slug: "friday-public-show",
@@ -257,23 +202,17 @@ async function setupBookings(overrides: { status?: BookingStatus } = {}) {
     });
     await ctx.db.patch(opportunityId, { publicGigId: gigId });
     return {
+      ...marketplace,
       users,
-      organizationId,
-      organizationPrivateId,
-      venueId,
+      organizationPrivateId: marketplace.detailsId,
       venuePrivateId,
-      bandId,
       otherBandId,
-      opportunityId,
-      slotId,
-      applicationId,
-      bookingId,
       offerId,
       gigId,
       bookingFields,
     };
   });
-  return { t, as, ...ids };
+  return { t, as, ...ids, ...readers(t, ids) };
 }
 
 describe("bookings read: get", () => {
@@ -377,7 +316,7 @@ describe("bookings read: get", () => {
       const f = await setupBookings({ status });
       expect(
         await f
-          .as("bandAdmin")
+          .as("admin")
           .query(api.bookingsRead.get, { bookingId: f.bookingId }),
       ).toMatchObject({
         venue: { exactAddress: null },
@@ -393,7 +332,7 @@ describe("bookings read: get", () => {
       const f = await setupBookings({ status });
       expect(
         await f
-          .as("bandAdmin")
+          .as("admin")
           .query(api.bookingsRead.get, { bookingId: f.bookingId }),
       ).toMatchObject({
         venue: { exactAddress: EXACT_ADDRESS },
@@ -430,7 +369,7 @@ describe("bookings read: get", () => {
   );
 
   test.each([
-    ["bandAdmin", "organizer", "artist", null, null],
+    ["admin", "organizer", "artist", null, null],
     ["owner", "artist", "organizer", EXACT_ADDRESS, APPLICANT_EMAIL],
     ["door", "artist", "organizer", EXACT_ADDRESS, null],
     ["platformAdmin", "artist", "organizer", EXACT_ADDRESS, APPLICANT_EMAIL],
@@ -456,7 +395,7 @@ describe("bookings read: get", () => {
     async (viewAs) => {
       const f = await setupBookings();
       expect(
-        await f.as("outsider").query(api.bookingsRead.get, {
+        await f.as("stranger").query(api.bookingsRead.get, {
           bookingId: f.bookingId,
           viewAs,
         }),
@@ -464,7 +403,7 @@ describe("bookings read: get", () => {
     },
   );
 
-  test.each(["outsider", "otherBandAdmin", "bandMember"] as const)(
+  test.each(["stranger", "otherBandAdmin", "member"] as const)(
     "%s cannot read another party's booking",
     async (actor) => {
       const f = await setupBookings();
@@ -485,9 +424,9 @@ describe("bookings read: get", () => {
         .withIdentity({ subject: "unknown" })
         .query(api.bookingsRead.get, args),
     ).toBeNull();
-    await f.t.run((ctx) => ctx.db.patch(f.users.bandAdmin, { deletedAt: NOW }));
+    await f.t.run((ctx) => ctx.db.patch(f.users.admin, { deletedAt: NOW }));
     expect(
-      await f.as("bandAdmin").query(api.bookingsRead.get, args),
+      await f.as("admin").query(api.bookingsRead.get, args),
     ).toBeNull();
     await f.t.run((ctx) => ctx.db.delete(f.bookingId));
     expect(await f.as("owner").query(api.bookingsRead.get, args)).toBeNull();
@@ -503,7 +442,7 @@ describe("bookings read: get", () => {
     );
     expect(
       await f
-        .as("bandAdmin")
+        .as("admin")
         .query(api.bookingsRead.get, { bookingId: f.bookingId }),
     ).toMatchObject({
       venue: { exactAddress: null },
@@ -521,7 +460,7 @@ describe("bookings read: get", () => {
     );
     expect(
       await f
-        .as("bandAdmin")
+        .as("admin")
         .query(api.bookingsRead.get, { bookingId: f.bookingId }),
     ).toMatchObject({
       venue: { exactAddress: EXACT_ADDRESS },
@@ -540,7 +479,7 @@ describe("bookings read: get", () => {
     });
     expect(
       await f
-        .as("bandAdmin")
+        .as("admin")
         .query(api.bookingsRead.get, { bookingId: f.bookingId }),
     ).toMatchObject({
       venue: { exactAddress: EXACT_ADDRESS },
@@ -573,13 +512,13 @@ describe("bookings read: get", () => {
     const f = await setupBookings();
     await f.t.run((ctx) =>
       ctx.db.insert("platformAdmins", {
-        userId: f.users.bandAdmin,
+        userId: f.users.admin,
         grantedAt: NOW,
       }),
     );
     expect(
       await f
-        .as("bandAdmin")
+        .as("admin")
         .query(api.bookingsRead.get, { bookingId: f.bookingId }),
     ).toMatchObject({
       viewerSide: "artist",
@@ -593,12 +532,12 @@ describe("bookings read: get", () => {
       const f = await setupBookings({ status: "offer_sent" });
       await f.t.run((ctx) =>
         ctx.db.insert("platformAdmins", {
-          userId: f.users.bandAdmin,
+          userId: f.users.admin,
           grantedAt: NOW,
         }),
       );
       expect(
-        await f.as("bandAdmin").query(api.bookingsRead.get, {
+        await f.as("admin").query(api.bookingsRead.get, {
           bookingId: f.bookingId,
           viewAs,
         }),
@@ -686,7 +625,7 @@ describe("bookings read: get", () => {
       const f = await setupBookings();
       await f.t.run((ctx) =>
         ctx.db.delete(
-          missing === "application" ? f.applicationId : f.users.bandAdmin,
+          missing === "application" ? f.applicationId : f.users.admin,
         ),
       );
       expect(
@@ -702,7 +641,7 @@ describe("bookings read: get", () => {
     await f.t.run((ctx) => ctx.db.delete(f.organizationPrivateId));
     expect(
       await f
-        .as("bandAdmin")
+        .as("admin")
         .query(api.bookingsRead.get, { bookingId: f.bookingId }),
     ).toMatchObject({ counterpartyEmail: null });
   });
@@ -750,7 +689,7 @@ describe("bookings read: platform admin viewer flag", () => {
     });
   });
 
-  test.each(["owner", "manager", "finance", "door", "bandAdmin"] as const)(
+  test.each(["owner", "manager", "finance", "door", "admin"] as const)(
     "does not mark %s viewing as a booking party",
     async (actor) => {
       const f = await setupBookings();
@@ -758,7 +697,7 @@ describe("bookings read: platform admin viewer flag", () => {
         bookingId: f.bookingId,
       });
       expect(payload).toMatchObject({
-        viewerSide: actor === "bandAdmin" ? "artist" : "organizer",
+        viewerSide: actor === "admin" ? "artist" : "organizer",
       });
       expect(payload?.viewerIsPlatformAdmin).not.toBe(true);
     },
@@ -782,11 +721,11 @@ describe("bookings read: platform admin viewer flag", () => {
       const f = await setupBookings();
       await f.t.run((ctx) =>
         ctx.db.insert("platformAdmins", {
-          userId: f.users.bandAdmin,
+          userId: f.users.admin,
           grantedAt: NOW,
         }),
       );
-      const payload = await f.as("bandAdmin").query(api.bookingsRead.get, {
+      const payload = await f.as("admin").query(api.bookingsRead.get, {
         bookingId: f.bookingId,
         viewAs,
       });
@@ -805,7 +744,7 @@ describe("bookings read: platform admin viewer flag", () => {
       api.bookingsRead.forOrganization,
       { organizationId: f.organizationId },
     );
-    const bandRows = await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+    const bandRows = await f.as("admin").query(api.bookingsRead.forBand, {
       bandId: f.bandId,
     });
     for (const rows of [organizationRows, bandRows]) {
@@ -893,7 +832,7 @@ describe("bookings read: lists", () => {
       ctx.db.patch(f.organizationId, { status: "suspended" }),
     );
     expect(
-      await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+      await f.as("admin").query(api.bookingsRead.forBand, {
         bandId: f.bandId,
       }),
     ).toMatchObject([
@@ -921,7 +860,7 @@ describe("bookings read: lists", () => {
     });
   });
 
-  test.each(["bandMember", "otherBandAdmin", "outsider"] as const)(
+  test.each(["member", "otherBandAdmin", "stranger"] as const)(
     "forBand rejects %s who is not an admin of the requested band",
     async (actor) => {
       const f = await setupBookings();
@@ -934,7 +873,7 @@ describe("bookings read: lists", () => {
   test("forBand lists the band's bookings for its admin", async () => {
     const f = await setupBookings();
     const result = await f
-      .as("bandAdmin")
+      .as("admin")
       .query(api.bookingsRead.forBand, { bandId: f.bandId });
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -971,7 +910,7 @@ describe("bookings read: lists", () => {
         slug: "other-organizer",
         orgType: "promoter",
         status: "verified",
-        ownerUserId: f.users.outsider,
+        ownerUserId: f.users.stranger,
         createdAt: NOW,
         updatedAt: NOW,
       });
@@ -990,7 +929,7 @@ describe("bookings read: lists", () => {
         statuses,
       });
     const bandBookings = await f
-      .as("bandAdmin")
+      .as("admin")
       .query(api.bookingsRead.forBand, { bandId: f.bandId, statuses });
     expect(organizationBookings.map((row) => row._id)).toEqual(
       [...ids].reverse(),
@@ -1005,7 +944,7 @@ describe("bookings read: lists", () => {
         organizationId: f.organizationId,
       });
     const defaultBandBookings = await f
-      .as("bandAdmin")
+      .as("admin")
       .query(api.bookingsRead.forBand, { bandId: f.bandId });
     expect(defaultOrganizationBookings.map((row) => row._id)).toEqual(activeIds);
     expect(defaultBandBookings.map((row) => row._id)).toEqual(activeIds);
@@ -1043,7 +982,7 @@ describe("bookings read: lists", () => {
         ...args,
       });
     const bandBookings = await f
-      .as("bandAdmin")
+      .as("admin")
       .query(api.bookingsRead.forBand, { bandId: f.bandId, ...args });
     expect(organizationBookings.map((row) => row._id)).toEqual(
       [...ids].reverse(),
@@ -1080,7 +1019,7 @@ describe("bookings read: lists", () => {
               organizationId: f.organizationId,
               limit,
             })
-          : f.as("bandAdmin").query(api.bookingsRead.forBand, {
+          : f.as("admin").query(api.bookingsRead.forBand, {
               bandId: f.bandId,
               limit,
             });
@@ -1118,7 +1057,7 @@ describe("bookings read: lists", () => {
           ? await f.as("owner").query(api.bookingsRead.forOrganization, {
               organizationId: f.organizationId,
             })
-          : await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+          : await f.as("admin").query(api.bookingsRead.forBand, {
               bandId: f.bandId,
             });
       expect(result.map((row) => row._id)).toEqual([f.bookingId, olderId]);
@@ -1139,7 +1078,7 @@ describe("bookings read: lists", () => {
           ? f.as("owner").query(api.bookingsRead.forOrganization, {
               organizationId: f.organizationId,
             })
-          : f.as("bandAdmin").query(api.bookingsRead.forBand, {
+          : f.as("admin").query(api.bookingsRead.forBand, {
               bandId: f.bandId,
             });
       await expect(result).rejects.toThrow();
@@ -1150,7 +1089,7 @@ describe("bookings read: lists", () => {
     const f = await setupBookings();
     await expect(
       f
-        .as("outsider")
+        .as("stranger")
         .query(api.bookingsRead.forOrganization, {
           organizationId: f.organizationId,
         }),
@@ -1212,7 +1151,7 @@ describe("private booking location disclosure", () => {
   test("get hides the exact location before confirmation and reveals it once the same booking is confirmed", async () => {
     const f = await setupPrivateBooking();
     const read = () =>
-      f.as("bandAdmin").query(api.bookingsRead.get, {
+      f.as("admin").query(api.bookingsRead.get, {
         bookingId: f.bookingId,
         viewAs: "artist",
       });
@@ -1242,7 +1181,7 @@ describe("private booking location disclosure", () => {
     "get applies the live-status location rule to artists and always discloses to organizers for %s",
     async (status) => {
       const f = await setupPrivateBooking(status);
-      const artist = await f.as("bandAdmin").query(api.bookingsRead.get, {
+      const artist = await f.as("admin").query(api.bookingsRead.get, {
         bookingId: f.bookingId,
       });
       expect(artist).toMatchObject({
@@ -1281,7 +1220,7 @@ describe("private booking location disclosure", () => {
         });
       }
     });
-    const artistRows = await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+    const artistRows = await f.as("admin").query(api.bookingsRead.forBand, {
       bandId: f.bandId,
       statuses,
     });
@@ -1327,7 +1266,7 @@ describe("private booking location disclosure", () => {
       await f.t.run((ctx) =>
         ctx.db.patch(f.bookingId, { cancellationKind: "safety" }),
       );
-      for (const actor of ["owner", "bandAdmin"] as const) {
+      for (const actor of ["owner", "admin"] as const) {
         const payload = await f.as(actor).query(api.bookingsRead.get, {
           bookingId: f.bookingId,
         });
@@ -1336,7 +1275,7 @@ describe("private booking location disclosure", () => {
           actor === "owner" ? PRIVATE_LOCATION : APPROXIMATE_PRIVATE_LOCATION,
         );
       }
-      const artistRows = await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+      const artistRows = await f.as("admin").query(api.bookingsRead.forBand, {
         bandId: f.bandId,
         statuses: [status],
       });
@@ -1384,7 +1323,7 @@ describe("private booking location disclosure", () => {
         });
       });
       await expect(
-        f.as("bandAdmin").query(api.bookingsRead.get, {
+        f.as("admin").query(api.bookingsRead.get, {
           bookingId: brokenBookingId,
         }),
       ).rejects.toThrow(
@@ -1392,7 +1331,7 @@ describe("private booking location disclosure", () => {
           ? `Booking ${brokenBookingId} has a private opportunity without a location`
           : `Booking ${brokenBookingId} references a missing private location`,
       );
-      const artistRows = await f.as("bandAdmin").query(api.bookingsRead.forBand, {
+      const artistRows = await f.as("admin").query(api.bookingsRead.forBand, {
         bandId: f.bandId,
       });
       const organizerRows = await f.as("owner").query(
