@@ -11,7 +11,6 @@ import {
   ALL_ORGANIZATION_ROLES,
   organizationMembershipFor,
   requireOrganizationRole,
-  requireOrganizationRoleQuery,
 } from "./lib/authz";
 import { requireUser } from "./lib/helpers";
 import { randomHexToken } from "./lib/tokens";
@@ -169,7 +168,7 @@ export const list = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const access = await requireOrganizationRoleQuery(
+    const access = await requireOrganizationRole(
       ctx,
       args.organizationId,
       ALL_ORGANIZATION_ROLES,
@@ -267,7 +266,7 @@ export const manageInvite = query({
   args: { organizationId: v.id("organizations") },
   returns: v.union(organizationInvitePayloadValidator, v.null()),
   handler: async (ctx, args) => {
-    await requireOrganizationRoleQuery(ctx, args.organizationId, ["owner"]);
+    await requireOrganizationRole(ctx, args.organizationId, ["owner"]);
     const invite = await ctx.db
       .query("organizationMemberInvites")
       .withIndex("by_organizationId", (q) =>

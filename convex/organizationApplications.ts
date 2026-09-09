@@ -10,7 +10,6 @@ import { applicationEmail } from "./emails";
 import {
   isPlatformAdmin,
   requirePlatformAdmin,
-  requirePlatformAdminQuery,
 } from "./lib/authz";
 import {
   OAK_CENTER,
@@ -739,7 +738,7 @@ export const listForReview = query({
   },
   returns: paginationResultValidator(reviewListItemValidator),
   handler: async (ctx, args) => {
-    await requirePlatformAdminQuery(ctx);
+    await requirePlatformAdmin(ctx);
     const result =
       args.kind !== undefined
         ? await ctx.db

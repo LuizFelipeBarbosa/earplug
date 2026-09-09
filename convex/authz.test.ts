@@ -4,9 +4,7 @@ import { api } from "./_generated/api";
 import {
   isPlatformAdmin,
   requireOrganizationRole,
-  requireOrganizationRoleQuery,
   requirePlatformAdmin,
-  requirePlatformAdminQuery,
 } from "./lib/authz";
 import schema from "./schema";
 
@@ -78,13 +76,13 @@ describe("platform authorization", () => {
       active.run((ctx) => requirePlatformAdmin(ctx)),
     ).resolves.toMatchObject({ _id: users.activeUser._id });
     await expect(
-      active.run((ctx) => requirePlatformAdminQuery(ctx)),
+      active.run((ctx) => requirePlatformAdmin(ctx)),
     ).resolves.toMatchObject({ _id: users.activeUser._id });
     await expect(
       regular.run((ctx) => requirePlatformAdmin(ctx)),
     ).rejects.toThrow("Not an EarPlug admin");
     await expect(
-      regular.run((ctx) => requirePlatformAdminQuery(ctx)),
+      regular.run((ctx) => requirePlatformAdmin(ctx)),
     ).rejects.toThrow("Not an EarPlug admin");
   });
 });
@@ -204,7 +202,7 @@ describe("organization authorization", () => {
     expect(access.membership).toBeNull();
     await expect(
       asAdmin.run((ctx) =>
-        requireOrganizationRoleQuery(ctx, organizationId, ["owner"]),
+        requireOrganizationRole(ctx, organizationId, ["owner"]),
       ),
     ).resolves.toMatchObject({ viaPlatformAdmin: true, membership: null });
   });
@@ -268,12 +266,12 @@ describe("organization authorization", () => {
     ).resolves.toMatchObject({ viaPlatformAdmin: true });
     await expect(
       asMember.run((ctx) =>
-        requireOrganizationRoleQuery(ctx, organizationId, ["owner"]),
+        requireOrganizationRole(ctx, organizationId, ["owner"]),
       ),
     ).rejects.toThrow("Organization suspended");
     await expect(
       asAdmin.run((ctx) =>
-        requireOrganizationRoleQuery(ctx, organizationId, ["owner"]),
+        requireOrganizationRole(ctx, organizationId, ["owner"]),
       ),
     ).resolves.toMatchObject({ viaPlatformAdmin: true });
   });
@@ -338,11 +336,11 @@ describe("organization authorization", () => {
     });
 
     await expect(
-      asDeleted.run((ctx) => requirePlatformAdminQuery(ctx)),
+      asDeleted.run((ctx) => requirePlatformAdmin(ctx)),
     ).rejects.toThrow("Account deleted");
     await expect(
       asDeleted.run((ctx) =>
-        requireOrganizationRoleQuery(ctx, organizationId, ["owner"]),
+        requireOrganizationRole(ctx, organizationId, ["owner"]),
       ),
     ).rejects.toThrow("Account deleted");
   });
@@ -376,7 +374,7 @@ describe("organization authorization", () => {
 
     await expect(
       asUser.run((ctx) =>
-        requireOrganizationRoleQuery(ctx, missingOrganizationId, ["owner"]),
+        requireOrganizationRole(ctx, missingOrganizationId, ["owner"]),
       ),
     ).rejects.toThrow("Organization not found");
   });

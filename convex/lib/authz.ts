@@ -33,7 +33,6 @@ export async function requirePlatformAdmin(
   return user;
 }
 
-export const requirePlatformAdminQuery = requirePlatformAdmin;
 
 export async function organizationMembershipFor(
   ctx: QueryCtx | MutationCtx,
@@ -92,4 +91,3 @@ export async function requireOrganizationRole(
   return await organizationAccessFor(ctx, organizationId, roles, user);
 }
 
-export const requireOrganizationRoleQuery = requireOrganizationRole;

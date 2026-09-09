@@ -11,7 +11,6 @@ import { consentEmail } from "./emails";
 import {
   ALL_ORGANIZATION_ROLES,
   requireOrganizationRole,
-  requireOrganizationRoleQuery,
 } from "./lib/authz";
 import { cancelOpportunity } from "./lib/opportunityCancel";
 import {
@@ -371,7 +370,7 @@ export const forOpportunity = query({
   handler: async (ctx, args) => {
     const opportunity = await ctx.db.get(args.opportunityId);
     if (!opportunity) throw new Error("Opportunity not found");
-    await requireOrganizationRoleQuery(
+    await requireOrganizationRole(
       ctx,
       opportunity.organizationId,
       ALL_ORGANIZATION_ROLES,
@@ -401,7 +400,7 @@ export const forVenueOrganization = query({
   },
   returns: v.array(venueConsentRowValidator),
   handler: async (ctx, args) => {
-    await requireOrganizationRoleQuery(ctx, args.organizationId, [
+    await requireOrganizationRole(ctx, args.organizationId, [
       "owner",
       "manager",
     ]);

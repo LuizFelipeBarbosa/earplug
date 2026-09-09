@@ -2,7 +2,7 @@ import { type Infer, v } from "convex/values";
 import { internalMutation, internalQuery, query } from "./_generated/server";
 import {
   ALL_ORGANIZATION_ROLES,
-  requireOrganizationRoleQuery,
+  requireOrganizationRole,
 } from "./lib/authz";
 import { requireBandRole } from "./lib/helpers";
 import { syncStripeAccount } from "./lib/stripeAccountSync";
@@ -75,7 +75,7 @@ export const organizationStripeStatus = query({
   args: { organizationId: v.id("organizations") },
   returns: stripeAccountStatusValidator,
   handler: async (ctx, args) => {
-    await requireOrganizationRoleQuery(
+    await requireOrganizationRole(
       ctx,
       args.organizationId,
       ALL_ORGANIZATION_ROLES,
@@ -134,7 +134,7 @@ export const organizationOnboardingContext = internalQuery({
     legalName: v.union(v.string(), v.null()),
   }),
   handler: async (ctx, args) => {
-    const { organization } = await requireOrganizationRoleQuery(
+    const { organization } = await requireOrganizationRole(
       ctx,
       args.organizationId,
       ["owner"],

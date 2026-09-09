@@ -17,7 +17,6 @@ import {
   isPlatformAdmin,
   organizationMembershipFor,
   requirePlatformAdmin,
-  requirePlatformAdminQuery,
 } from "./lib/authz";
 import { assertBookingTransition } from "./lib/bookingStatus";
 import {
@@ -339,7 +338,7 @@ export const listOpen = query({
     }),
   ),
   handler: async (ctx, args) => {
-    await requirePlatformAdminQuery(ctx);
+    await requirePlatformAdmin(ctx);
     const result = await ctx.db
       .query("disputes")
       .withIndex("by_status_and_createdAt", (q) => q.eq("status", "open"))

@@ -13,7 +13,6 @@ import {
 import {
   isPlatformAdmin,
   requirePlatformAdmin,
-  requirePlatformAdminQuery,
 } from "./lib/authz";
 import { openInAppDispute } from "./lib/disputeHold";
 import { currentUser } from "./lib/helpers";
@@ -49,7 +48,7 @@ export const overview = query({
     capped: v.boolean(),
   }),
   handler: async (ctx) => {
-    await requirePlatformAdminQuery(ctx);
+    await requirePlatformAdmin(ctx);
     const [
       submitted,
       underReview,
@@ -158,7 +157,7 @@ export const bookings = query({
   },
   returns: paginationResultValidator(bookingRowValidator),
   handler: async (ctx, args) => {
-    await requirePlatformAdminQuery(ctx);
+    await requirePlatformAdmin(ctx);
     const filter = args.filter;
     const source = ctx.db.query("bookings");
     const result =

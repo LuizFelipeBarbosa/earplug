@@ -4,7 +4,6 @@ import { MutationCtx, QueryCtx, mutation, query } from "./_generated/server";
 import {
   ALL_ORGANIZATION_ROLES,
   requireOrganizationRole,
-  requireOrganizationRoleQuery,
 } from "./lib/authz";
 import {
   assertUploadAcceptable,
@@ -146,7 +145,7 @@ export const dashboard = query({
   args: { organizationId: v.id("organizations") },
   returns: dashboardValidator,
   handler: async (ctx, args) => {
-    const access = await requireOrganizationRoleQuery(
+    const access = await requireOrganizationRole(
       ctx,
       args.organizationId,
       ALL_ORGANIZATION_ROLES,

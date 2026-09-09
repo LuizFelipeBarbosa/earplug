@@ -11,7 +11,6 @@ import { bookingEmail } from "./emails";
 import {
   organizationMembershipFor,
   requirePlatformAdmin,
-  requirePlatformAdminQuery,
 } from "./lib/authz";
 import { appBaseUrl } from "./lib/env";
 import { requireUser } from "./lib/helpers";
@@ -167,7 +166,7 @@ export const listOpen = query({
     }),
   ),
   handler: async (ctx, args) => {
-    await requirePlatformAdminQuery(ctx);
+    await requirePlatformAdmin(ctx);
     const result = await ctx.db
       .query("safetyReports")
       .withIndex("by_status_and_createdAt", (q) => q.eq("status", "open"))
@@ -215,7 +214,7 @@ export const forBookingAdmin = query({
   args: { bookingId: v.id("bookings") },
   returns: v.array(safetyReportValidator),
   handler: async (ctx, args) => {
-    await requirePlatformAdminQuery(ctx);
+    await requirePlatformAdmin(ctx);
     const reports = await ctx.db
       .query("safetyReports")
       .withIndex("by_bookingId", (q) => q.eq("bookingId", args.bookingId))
