@@ -455,6 +455,7 @@ export default defineSchema({
     hostPhone: v.optional(v.string()),
     hostArea: v.optional(v.string()),
     hostAgreementAcceptedAt: v.optional(v.number()),
+    organizerAgreementAcceptedAt: v.optional(v.number()),
     orgName: v.string(),
     orgType: organizationTypeValidator,
     website: v.optional(v.string()),
@@ -1098,7 +1099,7 @@ export default defineSchema({
       v.literal("failed"),
     ),
     error: v.optional(v.string()),
-  }).index("by_eventId", ["eventId"]),
+  }).index("by_eventId", ["eventId"]).index("by_receivedAt", ["receivedAt"]),
 
   gigs: defineTable({
     title: v.string(),

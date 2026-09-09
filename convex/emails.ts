@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { env, internalAction, type MutationCtx } from "./_generated/server";
-import { appBaseUrl, flag } from "./lib/env";
+import { appBaseUrl, deploymentName, flag } from "./lib/env";
 
 export const emailKindValidator = v.union(
   v.literal("applicationReceived"),
@@ -260,6 +260,28 @@ export async function sendTicketEmail(
   });
 }
 
+async function deliver(
+  apiKey: string,
+  message: { to: string; subject: string; text: string },
+): Promise<void> {
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: "EarPlug <no-reply@earplug.app>",
+      to: [message.to],
+      subject: message.subject,
+      text: message.text,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Resend send failed: ${response.status}`);
+  }
+}
+
 export const send = internalAction({
   args: {
     kind: emailKindValidator,
@@ -275,22 +297,31 @@ export const send = internalAction({
       console.log(`email skipped (${args.kind}): ${args.subject}`);
       return null;
     }
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${key}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "EarPlug <no-reply@earplug.app>",
-        to: [args.to],
-        subject: args.subject,
-        text: args.text,
-      }),
+    await deliver(key, {
+      to: args.to,
+      subject: args.subject,
+      text: args.text,
     });
-    if (!response.ok) {
-      throw new Error(`Resend send failed: ${response.status}`);
-    }
     return null;
+  },
+});
+
+export const sendTest = internalAction({
+  args: { to: v.string() },
+  returns: v.object({ sent: v.boolean(), reason: v.optional(v.string()) }),
+  handler: async (_ctx, args) => {
+    const key = env.RESEND_API_KEY;
+    if (!key) {
+      return { sent: false, reason: "RESEND_API_KEY unset" };
+    }
+    if (!flag("RESEND_SEND_ENABLED", false)) {
+      return { sent: false, reason: "RESEND_SEND_ENABLED off" };
+    }
+    await deliver(key, {
+      to: args.to,
+      subject: `EarPlug test email (${deploymentName() ?? "unknown"})`,
+      text: `This test email confirms that EarPlug email delivery is working for ${appBaseUrl()}.`,
+    });
+    return { sent: true };
   },
 });

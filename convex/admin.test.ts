@@ -1,9 +1,264 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { isPlatformAdmin } from "./lib/authz";
 import schema from "./schema";
+
+describe("admin:opsHealth", () => {
+  const modules = import.meta.glob("./**/*.ts");
+  const now = Date.UTC(2026, 8, 8);
+  const day = 24 * 60 * 60 * 1000;
+
+  beforeEach(() => {
+    for (const name of [
+      "PAYMENTS_ENABLED",
+      "TICKETS_ENABLED",
+      "PRIVATE_BOOKINGS_ENABLED",
+      "DISPUTES_ENABLED",
+      "PROMOTERS_ENABLED",
+      "BAND_GIG_WRITES",
+      "RESEND_SEND_ENABLED",
+      "RESEND_API_KEY",
+      "CONVEX_CLOUD_URL",
+    ]) {
+      vi.stubEnv(name, undefined);
+    }
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("groups recent events by type, status, and mode in sorted order", async () => {
+    const t = convexTest(schema, modules);
+    const since = now - 2 * day;
+    await t.run(async (ctx) => {
+      const rows = [
+        {
+          eventId: "evt_failed_live",
+          type: "payment_intent.succeeded",
+          status: "failed",
+          livemode: true,
+          receivedAt: now - 10,
+          error: "Payment record missing",
+        },
+        {
+          eventId: "evt_applied_test_new",
+          type: "payment_intent.succeeded",
+          status: "applied",
+          livemode: false,
+          receivedAt: now - 20,
+        },
+        {
+          eventId: "evt_ignored",
+          type: "account.updated",
+          status: "ignored",
+          livemode: true,
+          receivedAt: now - 5,
+        },
+        {
+          eventId: "evt_applied_live",
+          type: "payment_intent.succeeded",
+          status: "applied",
+          livemode: true,
+          receivedAt: now - 30,
+        },
+        {
+          eventId: "evt_applied_test_boundary",
+          type: "payment_intent.succeeded",
+          status: "applied",
+          livemode: false,
+          receivedAt: since,
+        },
+        {
+          eventId: "evt_failed_test",
+          type: "payment_intent.succeeded",
+          status: "failed",
+          livemode: false,
+          receivedAt: now - 40,
+        },
+        {
+          eventId: "evt_applied_old",
+          type: "payment_intent.succeeded",
+          status: "applied",
+          livemode: false,
+          receivedAt: since - 1,
+        },
+        {
+          eventId: "evt_failed_old",
+          type: "account.updated",
+          status: "failed",
+          livemode: true,
+          receivedAt: since - day,
+          error: "Old failure",
+        },
+      ] as const;
+      for (const row of rows) {
+        await ctx.db.insert("stripeEvents", row);
+      }
+    });
+
+    const health = await t.query(internal.admin.opsHealth, { days: 2, now });
+    expect(health.since).toBe(since);
+    expect(health.stripeEvents).toEqual([
+      {
+        type: "account.updated",
+        status: "ignored",
+        livemode: true,
+        count: 1,
+        lastReceivedAt: now - 5,
+      },
+      {
+        type: "payment_intent.succeeded",
+        status: "applied",
+        livemode: false,
+        count: 2,
+        lastReceivedAt: now - 20,
+      },
+      {
+        type: "payment_intent.succeeded",
+        status: "applied",
+        livemode: true,
+        count: 1,
+        lastReceivedAt: now - 30,
+      },
+      {
+        type: "payment_intent.succeeded",
+        status: "failed",
+        livemode: false,
+        count: 1,
+        lastReceivedAt: now - 40,
+      },
+      {
+        type: "payment_intent.succeeded",
+        status: "failed",
+        livemode: true,
+        count: 1,
+        lastReceivedAt: now - 10,
+      },
+    ]);
+    expect(health.failed).toEqual([
+      {
+        eventId: "evt_failed_live",
+        type: "payment_intent.succeeded",
+        receivedAt: now - 10,
+        error: "Payment record missing",
+      },
+      {
+        eventId: "evt_failed_test",
+        type: "payment_intent.succeeded",
+        receivedAt: now - 40,
+      },
+    ]);
+  });
+
+  test("returns only the 20 newest failures while counting all recent failures", async () => {
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      for (let index = 0; index < 21; index++) {
+        await ctx.db.insert("stripeEvents", {
+          eventId: `evt_failed_${index}`,
+          type: "account.updated",
+          livemode: false,
+          status: "failed",
+          receivedAt: now - 100 + index,
+          error: `Failure ${index}`,
+        });
+      }
+      await ctx.db.insert("stripeEvents", {
+        eventId: "evt_applied_newest",
+        type: "account.updated",
+        livemode: false,
+        status: "applied",
+        receivedAt: now,
+      });
+    });
+
+    const health = await t.query(internal.admin.opsHealth, { days: 1, now });
+    expect(health.failed).toEqual(
+      Array.from({ length: 20 }, (_, offset) => {
+        const index = 20 - offset;
+        return {
+          eventId: `evt_failed_${index}`,
+          type: "account.updated",
+          receivedAt: now - 100 + index,
+          error: `Failure ${index}`,
+        };
+      }),
+    );
+    expect(health.stripeEvents).toContainEqual({
+      type: "account.updated",
+      status: "failed",
+      livemode: false,
+      count: 21,
+      lastReceivedAt: now - 80,
+    });
+  });
+
+  test.each([
+    { days: undefined, expectedDays: 7 },
+    { days: -3, expectedDays: 1 },
+    { days: 2.5, expectedDays: 2.5 },
+    { days: 31, expectedDays: 30 },
+  ])(
+    "uses $expectedDays days when days is $days",
+    async ({ days, expectedDays }) => {
+      const t = convexTest(schema, modules);
+      const health = await t.query(internal.admin.opsHealth, {
+        ...(days === undefined ? {} : { days }),
+        now,
+      });
+      expect(health.since).toBe(now - expectedDays * day);
+    },
+  );
+
+  test("returns default flags and no Resend configuration when unset", async () => {
+    const t = convexTest(schema, modules);
+    expect(await t.query(internal.admin.opsHealth, { now })).toEqual({
+      deployment: "unknown",
+      since: now - 7 * day,
+      flags: {
+        payments: false,
+        tickets: false,
+        privateBookings: false,
+        disputes: false,
+        promoters: false,
+        bandGigWrites: true,
+        resendSend: false,
+      },
+      resendConfigured: false,
+      stripeEvents: [],
+      failed: [],
+    });
+  });
+
+  test("reports configured flags, deployment, and only the presence of the Resend key", async () => {
+    vi.stubEnv("PAYMENTS_ENABLED", "true");
+    vi.stubEnv("TICKETS_ENABLED", "1");
+    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
+    vi.stubEnv("DISPUTES_ENABLED", "1");
+    vi.stubEnv("PROMOTERS_ENABLED", "true");
+    vi.stubEnv("BAND_GIG_WRITES", "false");
+    vi.stubEnv("RESEND_SEND_ENABLED", "true");
+    vi.stubEnv("RESEND_API_KEY", "re_test_key");
+    vi.stubEnv("CONVEX_CLOUD_URL", "https://brilliant-cardinal-773.convex.cloud");
+    const t = convexTest(schema, modules);
+    const health = await t.query(internal.admin.opsHealth, { now });
+    expect(health.flags).toEqual({
+      payments: true,
+      tickets: true,
+      privateBookings: true,
+      disputes: true,
+      promoters: true,
+      bandGigWrites: false,
+      resendSend: true,
+    });
+    expect(health.deployment).toBe("brilliant-cardinal-773");
+    expect(health.resendConfigured).toBe(true);
+    expect(JSON.stringify(health)).not.toContain("re_test_key");
+  });
+});
 
 describe("admin:me", () => {
   test("reports signed-out, regular, and active-admin callers", async () => {

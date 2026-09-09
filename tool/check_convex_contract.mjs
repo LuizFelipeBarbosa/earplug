@@ -135,6 +135,7 @@ export const requiredClientFunctions = Object.freeze({
   "venueConsents.js:forOpportunity": "Query",
   "venueConsents.js:forVenueOrganization": "Query",
   "payouts.js:statementForBand": "Query",
+  "features.js:fees": "Query",
 });
 
 export const requiredClientFields = Object.freeze([
@@ -221,6 +222,8 @@ export const requiredClientFields = Object.freeze([
   ["financeActions.js:exportStatement", "return", "rows", false],
   ["talentOpportunitiesRead.js:manageForOrganization", "arrayReturn", "venueConsentStatus", true],
   ["organizations.js:dashboard", "return", "pendingVenueConsents", true],
+  ["features.js:fees", "return", "bookingCommissionBps", false],
+  ["organizationApplications.js:submit", "args", "organizerAgreementAccepted", true],
 ]);
 
 export function deploymentNameFromUrl(value) {

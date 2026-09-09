@@ -9,6 +9,7 @@ import {
   ticketEmail,
   type BookingEmailKind,
 } from "./emails";
+import { appBaseUrl, deploymentName } from "./lib/env";
 import schema from "./schema";
 
 const modules = import.meta.glob("./**/*.ts");
@@ -356,6 +357,104 @@ describe("sendTicketEmail", () => {
       );
     },
   );
+});
+
+describe("sendTest", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  test.each([undefined, "true"])(
+    "skips without an API key when the sending flag is %s",
+    async (enabled) => {
+      vi.stubEnv("RESEND_API_KEY", undefined);
+      vi.stubEnv("RESEND_SEND_ENABLED", enabled);
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const t = convexTest(schema, modules);
+      expect(
+        await t.action(internal.emails.sendTest, { to: "ops@example.test" }),
+      ).toEqual({ sent: false, reason: "RESEND_API_KEY unset" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([undefined, "false"])(
+    "skips with an API key when the sending flag is %s",
+    async (enabled) => {
+      vi.stubEnv("RESEND_API_KEY", "re_test_key");
+      vi.stubEnv("RESEND_SEND_ENABLED", enabled);
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const t = convexTest(schema, modules);
+      expect(
+        await t.action(internal.emails.sendTest, { to: "ops@example.test" }),
+      ).toEqual({ sent: false, reason: "RESEND_SEND_ENABLED off" });
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each([
+    {
+      cloudUrl: "https://brilliant-cardinal-773.convex.cloud",
+      baseUrl: "https://dev.earplug.example.test",
+      deployment: "brilliant-cardinal-773",
+    },
+    { cloudUrl: undefined, baseUrl: undefined, deployment: "unknown" },
+  ])(
+    "sends a test email for $deployment",
+    async ({ cloudUrl, baseUrl, deployment }) => {
+      vi.stubEnv("RESEND_API_KEY", "re_test_key");
+      vi.stubEnv("RESEND_SEND_ENABLED", "true");
+      vi.stubEnv("CONVEX_CLOUD_URL", cloudUrl);
+      vi.stubEnv("APP_BASE_URL", baseUrl);
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({ ok: true } as Response);
+      vi.stubGlobal("fetch", fetchMock);
+      const t = convexTest(schema, modules);
+      const result = await t.action(internal.emails.sendTest, {
+        to: "ops@example.test",
+      });
+      expect(result).toEqual({ sent: true });
+      expect(fetchMock).toHaveBeenCalledOnce();
+      const [url, request] = fetchMock.mock.calls[0];
+      expect(url).toBe("https://api.resend.com/emails");
+      expect(request).toMatchObject({
+        method: "POST",
+        headers: {
+          Authorization: "Bearer re_test_key",
+          "Content-Type": "application/json",
+        },
+      });
+      const body = JSON.parse(request!.body as string);
+      expect(body).toEqual({
+        from: "EarPlug <no-reply@earplug.app>",
+        to: ["ops@example.test"],
+        subject: `EarPlug test email (${deployment})`,
+        text: expect.stringContaining(appBaseUrl()),
+      });
+      expect(body.subject).toContain(deploymentName() ?? "unknown");
+      expect(body.text).not.toContain("\n");
+      expect(JSON.stringify(result)).not.toContain("re_test_key");
+      expect(request!.body).not.toContain("re_test_key");
+    },
+  );
+
+  test("propagates a failed Resend response", async () => {
+    vi.stubEnv("RESEND_API_KEY", "re_test_key");
+    vi.stubEnv("RESEND_SEND_ENABLED", "true");
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({
+      ok: false,
+      status: 503,
+    } as Response);
+    vi.stubGlobal("fetch", fetchMock);
+    const t = convexTest(schema, modules);
+    await expect(
+      t.action(internal.emails.sendTest, { to: "ops@example.test" }),
+    ).rejects.toThrow("Resend send failed: 503");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
 });
 
 describe("send", () => {

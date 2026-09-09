@@ -291,6 +291,7 @@ test("reports missing, mistyped, and wrong-deployment functions", () => {
     "missing venueConsents.js:forOpportunity",
     "missing venueConsents.js:forVenueOrganization",
     "missing payouts.js:statementForBand",
+    "missing features.js:fees",
   ]);
 });
 

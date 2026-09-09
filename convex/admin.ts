@@ -3,13 +3,20 @@ import {
   paginationResultValidator,
 } from "convex/server";
 import { type Infer, v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import {
+  env,
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server";
 import {
   isPlatformAdmin,
   requirePlatformAdmin,
   requirePlatformAdminQuery,
 } from "./lib/authz";
 import { openInAppDispute } from "./lib/disputeHold";
+import { deploymentName, flag } from "./lib/env";
 import { currentUser } from "./lib/helpers";
 import { bookingStatusValidator } from "./schema";
 
@@ -123,6 +130,109 @@ export const overview = query({
         },
       },
       capped: rows.some((group) => group.length === 101),
+    };
+  },
+});
+
+export const opsHealth = internalQuery({
+  args: { days: v.optional(v.number()), now: v.number() },
+  returns: v.object({
+    deployment: v.string(),
+    since: v.number(),
+    flags: v.object({
+      payments: v.boolean(),
+      tickets: v.boolean(),
+      privateBookings: v.boolean(),
+      disputes: v.boolean(),
+      promoters: v.boolean(),
+      bandGigWrites: v.boolean(),
+      resendSend: v.boolean(),
+    }),
+    resendConfigured: v.boolean(),
+    stripeEvents: v.array(
+      v.object({
+        type: v.string(),
+        status: v.string(),
+        livemode: v.boolean(),
+        count: v.number(),
+        lastReceivedAt: v.number(),
+      }),
+    ),
+    failed: v.array(
+      v.object({
+        eventId: v.string(),
+        type: v.string(),
+        receivedAt: v.number(),
+        error: v.optional(v.string()),
+      }),
+    ),
+  }),
+  handler: async (ctx, args) => {
+    const days = Math.min(30, Math.max(1, args.days ?? 7));
+    const since = args.now - days * 24 * 60 * 60 * 1000;
+    const rows = await ctx.db
+      .query("stripeEvents")
+      .withIndex("by_receivedAt", (q) => q.gte("receivedAt", since))
+      .order("desc")
+      .take(5000);
+
+    const groups = new Map<
+      string,
+      {
+        type: string;
+        status: string;
+        livemode: boolean;
+        count: number;
+        lastReceivedAt: number;
+      }
+    >();
+    for (const row of rows) {
+      const key = JSON.stringify([row.type, row.status, row.livemode]);
+      const group = groups.get(key);
+      if (group) {
+        group.count++;
+      } else {
+        groups.set(key, {
+          type: row.type,
+          status: row.status,
+          livemode: row.livemode,
+          count: 1,
+          // Rows are newest first, so the first row has the latest timestamp.
+          lastReceivedAt: row.receivedAt,
+        });
+      }
+    }
+    const stripeEvents = Array.from(groups.values()).sort(
+      (a, b) =>
+        a.type.localeCompare(b.type) ||
+        a.status.localeCompare(b.status) ||
+        Number(a.livemode) - Number(b.livemode),
+    );
+    const failed = rows
+      .filter((row) => row.status === "failed")
+      .slice(0, 20)
+      .map((row) => ({
+        eventId: row.eventId,
+        type: row.type,
+        receivedAt: row.receivedAt,
+        error: row.error,
+      }));
+
+    return {
+      deployment: deploymentName() ?? "unknown",
+      since,
+      flags: {
+        payments: flag("PAYMENTS_ENABLED", false),
+        tickets: flag("TICKETS_ENABLED", false),
+        privateBookings: flag("PRIVATE_BOOKINGS_ENABLED", false),
+        disputes: flag("DISPUTES_ENABLED", false),
+        promoters: flag("PROMOTERS_ENABLED", false),
+        bandGigWrites: flag("BAND_GIG_WRITES", true),
+        resendSend: flag("RESEND_SEND_ENABLED", false),
+      },
+      resendConfigured: Boolean(env.RESEND_API_KEY),
+      stripeEvents,
+      failed,
     };
   },
 });
