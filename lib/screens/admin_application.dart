@@ -343,6 +343,19 @@ class _ContactSection extends StatelessWidget {
           _DetailValue(label: 'Email', value: application.businessEmail),
           if (application.phone case final phone?)
             _DetailValue(label: 'Phone', value: phone),
+          if (application.kind == ApplicationKind.organization)
+            if (application.organizerAgreementAcceptedAt case final acceptedAt?)
+              _DetailValue(
+                key: const Key('admin-application-organizer-agreement'),
+                label: 'Organizer agreement accepted',
+                value: dateLabel(acceptedAt),
+              )
+            else
+              const _DetailValue(
+                key: Key('admin-application-organizer-agreement'),
+                label: 'Organizer agreement',
+                value: 'Not accepted',
+              ),
         ],
       ),
     );
@@ -575,7 +588,7 @@ class _DetailSection extends StatelessWidget {
 }
 
 class _DetailValue extends StatelessWidget {
-  const _DetailValue({required this.label, required this.value});
+  const _DetailValue({super.key, required this.label, required this.value});
 
   final String label;
   final String value;

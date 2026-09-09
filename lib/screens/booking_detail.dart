@@ -1,12 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import '../app_links.dart';
 import '../app_state.dart';
 import '../models.dart';
 import '../money.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/dispute_sheet.dart';
@@ -17,9 +20,10 @@ import '../widgets/sheets.dart';
 import '../widgets/status_timeline.dart';
 
 class BookingDetailScreen extends StatefulWidget {
-  const BookingDetailScreen({super.key, required this.bookingId});
+  const BookingDetailScreen({super.key, required this.bookingId, this.launch});
 
   final String bookingId;
+  final ExternalUrlLauncher? launch;
 
   @override
   State<BookingDetailScreen> createState() => _BookingDetailScreenState();
@@ -28,6 +32,7 @@ class BookingDetailScreen extends StatefulWidget {
 enum _OfferAction { accept, decline, withdraw }
 
 class _BookingDetailScreenState extends State<BookingDetailScreen> {
+  final _agreementRecognizer = TapGestureRecognizer();
   late Future<Booking?> _future;
   late Future<BookingReviews?> _reviews;
   bool _submitting = false;
@@ -36,7 +41,18 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _agreementRecognizer.onTap = () => openExternalForUser(
+      context,
+      legalArtistAgreementUrl,
+      launch: widget.launch,
+    );
     _load();
+  }
+
+  @override
+  void dispose() {
+    _agreementRecognizer.dispose();
+    super.dispose();
   }
 
   @override
@@ -120,7 +136,24 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                   _OfferAction.withdraw =>
                     'The artist will no longer be able to accept this offer.',
                 }),
-                if (action == _OfferAction.accept)
+                if (action == _OfferAction.accept) ...[
+                  const SizedBox(height: 12),
+                  Text.rich(
+                    TextSpan(
+                      text: 'This booking is governed by the ',
+                      children: [
+                        TextSpan(
+                          text: 'Artist Agreement',
+                          style: TextStyle(
+                            color: context.epColors.accent,
+                            decoration: TextDecoration.underline,
+                          ),
+                          recognizer: _agreementRecognizer,
+                        ),
+                        const TextSpan(text: '.'),
+                      ],
+                    ),
+                  ),
                   CheckboxListTile(
                     key: const Key('booking-accept-terms'),
                     contentPadding: EdgeInsets.zero,
@@ -129,6 +162,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                     onChanged: (value) =>
                         setDialogState(() => acceptedTerms = value == true),
                   ),
+                ],
               ],
             ),
             actions: [

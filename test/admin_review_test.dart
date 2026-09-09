@@ -51,8 +51,12 @@ Future<String> _submitHostApplication(DemoRepository repository) async {
   return saved.applicationId;
 }
 
-Future<String> _submitPromoterApplication(DemoRepository repository) async {
+Future<String> _submitPromoterApplication(
+  DemoRepository repository, {
+  bool organizerAgreementAccepted = false,
+}) async {
   final saved = await repository.saveOrganizationApplicationDraft(
+    kind: ApplicationKind.organization,
     orgName: 'Night Heron Collective',
     orgType: OrganizationType.promoter,
     contactName: 'Rae Booker',
@@ -61,6 +65,7 @@ Future<String> _submitPromoterApplication(DemoRepository repository) async {
   await repository.submitOrganizationApplication(
     applicationId: saved.applicationId,
     expectedRevision: saved.revision,
+    organizerAgreementAccepted: organizerAgreementAccepted,
   );
   return saved.applicationId;
 }
@@ -136,6 +141,62 @@ void main() {
     expect(find.text('VENUE'), findsNothing);
     expect(find.text('No venue provided.'), findsNothing);
   });
+
+  for (final accepted in [false, true]) {
+    testWidgets(
+      'admin sees organizer agreement ${accepted ? 'acceptance' : 'not accepted'} without a venue',
+      (tester) async {
+        final auth = FakeAuthService();
+        await auth.signInDemo();
+        final repository = DemoRepository(auth: auth)..platformAdmin = true;
+        final applicationId = await _submitPromoterApplication(
+          repository,
+          organizerAgreementAccepted: accepted,
+        );
+        final application = (await repository.organizationApplication(
+          applicationId,
+        ))!;
+        expect(application.kind, ApplicationKind.organization);
+        expect(application.venue, isNull);
+        await pumpApp(
+          tester,
+          auth: auth,
+          repository: repository,
+          home: AdminApplicationScreen(applicationId: applicationId),
+        );
+
+        final agreement = find.byKey(
+          const Key('admin-application-organizer-agreement'),
+        );
+        await tester.scrollUntilVisible(
+          agreement,
+          200,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(agreement, findsOneWidget);
+        expect(
+          find.descendant(
+            of: agreement,
+            matching: find.text(
+              accepted ? 'ORGANIZER AGREEMENT ACCEPTED' : 'ORGANIZER AGREEMENT',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: agreement,
+            matching: find.text(
+              accepted
+                  ? dateLabel(application.organizerAgreementAcceptedAt!)
+                  : 'Not accepted',
+            ),
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+  }
 
   testWidgets('admin application reveals exact venue details', (tester) async {
     await _pumpAdmin(
@@ -346,6 +407,10 @@ void main() {
     expect(find.text('415-555-0100'), findsOneWidget);
     expect(find.text('Mission'), findsOneWidget);
     expect(find.text('AGREEMENT ACCEPTED'), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin-application-organizer-agreement')),
+      findsNothing,
+    );
     expect(
       find.text(dateLabel(submitted.hostAgreementAcceptedAt!)),
       findsOneWidget,

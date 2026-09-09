@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:earplug/app_links.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/main.dart';
@@ -9,6 +10,7 @@ import 'package:earplug/screens/org_application_status.dart';
 import 'package:earplug/screens/org_apply.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/media_picker.dart';
+import 'package:earplug/services/user_actions.dart';
 import 'package:earplug/theme.dart';
 import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/form_bits.dart';
@@ -381,18 +383,25 @@ void main() {
     },
   );
 
-  testWidgets('full organizer application autosaves and submits', (
+  testWidgets('organizer application links its agreement and saves acceptance', (
     tester,
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = DemoRepository(auth: auth);
     final picker = FakeMediaPicker();
+    final opened = <Uri>[];
     final harness = await pumpApp(
       tester,
       auth: auth,
       repository: repository,
-      home: _ApplicationHost(mediaPicker: picker),
+      home: _ApplicationHost(
+        mediaPicker: picker,
+        launch: (uri) async {
+          opened.add(uri);
+          return true;
+        },
+      ),
       beforePump: (app) => app.go(Screen.orgApply),
     );
     addTearDown(() => _disposeApp(harness.app));
@@ -448,7 +457,31 @@ void main() {
     await tester.pumpAndSettle();
 
     await _scrollDownToKey(tester, const ValueKey('org-apply-agree'));
-    await tester.tap(find.byKey(const ValueKey('org-apply-agree')));
+    final agreement = find.byKey(const ValueKey('org-apply-agree'));
+    expect(
+      find.text(
+        'I confirm this information is accurate and accept the Organizer Agreement.',
+        findRichText: true,
+      ),
+      findsOneWidget,
+    );
+    await tester.tapOnText(
+      find.textRange.ofSubstring(
+        'Organizer Agreement',
+        descendentOf: agreement,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(opened, [Uri.parse(legalOrganizerAgreementUrl)]);
+    expect(tester.widget<CheckboxListTile>(agreement).value, isFalse);
+    expect(
+      (await repository.myOrganizationApplication())
+          ?.organizerAgreementAcceptedAt,
+      isNull,
+    );
+    await tester.tap(
+      find.descendant(of: agreement, matching: find.byType(Checkbox)),
+    );
     await tester.pumpAndSettle();
 
     final actionBar = tester.widget<StickyActionBar>(
@@ -463,6 +496,13 @@ void main() {
     expect(
       (await repository.myOrganizationApplication())?.status,
       OrganizationApplicationStatus.submitted,
+    );
+    final acceptedAt = (await repository.myOrganizationApplication())
+        ?.organizerAgreementAcceptedAt;
+    expect(acceptedAt, isNotNull);
+    expect(
+      harness.app.myOrganizationApplication?.organizerAgreementAcceptedAt,
+      acceptedAt,
     );
     expect(find.text('Submitted'), findsOneWidget);
     expect(
@@ -1074,9 +1114,10 @@ void _disposeApp(AppState app) {
 }
 
 class _ApplicationHost extends StatelessWidget {
-  const _ApplicationHost({required this.mediaPicker});
+  const _ApplicationHost({required this.mediaPicker, this.launch});
 
   final MediaPicker mediaPicker;
+  final ExternalUrlLauncher? launch;
 
   @override
   Widget build(BuildContext context) {
@@ -1086,7 +1127,7 @@ class _ApplicationHost extends StatelessWidget {
     return switch (screen) {
       Screen.home => const Material(child: SizedBox()),
       Screen.orgApplicationStatus => const OrgApplicationStatusScreen(),
-      _ => OrgApplyScreen(mediaPicker: mediaPicker),
+      _ => OrgApplyScreen(mediaPicker: mediaPicker, launch: launch),
     };
   }
 }

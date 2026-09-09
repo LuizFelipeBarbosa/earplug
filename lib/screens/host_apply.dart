@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 
+import '../app_links.dart';
 import '../app_state.dart';
 import '../data/repository.dart';
 import '../models.dart';
 import '../services/media_picker.dart';
+import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
@@ -50,9 +53,10 @@ String _extractErrorMessage(Object error) {
 }
 
 class HostApplyScreen extends StatefulWidget {
-  const HostApplyScreen({super.key, this.mediaPicker});
+  const HostApplyScreen({super.key, this.mediaPicker, this.launch});
 
   final MediaPicker? mediaPicker;
+  final ExternalUrlLauncher? launch;
 
   @override
   State<HostApplyScreen> createState() => _HostApplyScreenState();
@@ -62,6 +66,7 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
   static const _autosaveDelay = Duration(milliseconds: 600);
 
   final _scroll = ScrollController();
+  final _agreementRecognizer = TapGestureRecognizer();
   final _displayName = TextEditingController();
   final _phone = TextEditingController();
   final _area = TextEditingController();
@@ -114,6 +119,11 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
   void initState() {
     super.initState();
     _mediaPicker = widget.mediaPicker ?? MediaPicker();
+    _agreementRecognizer.onTap = () => openExternalForUser(
+      context,
+      legalHostAgreementUrl,
+      launch: widget.launch,
+    );
     for (final node in [
       _displayNameFocus,
       _phoneFocus,
@@ -142,6 +152,7 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
   @override
   void dispose() {
     _autosaveTimer?.cancel();
+    _agreementRecognizer.dispose();
     _scroll.dispose();
     _displayName.dispose();
     _phone.dispose();
@@ -553,8 +564,21 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
                   onChanged: enabled
                       ? (value) => _changed(() => _agreed = value ?? false)
                       : null,
-                  title: const Text(
-                    'I agree to the Host Agreement and booking protection terms',
+                  title: Text.rich(
+                    TextSpan(
+                      text: 'I agree to the ',
+                      children: [
+                        TextSpan(
+                          text: 'Host Agreement',
+                          style: TextStyle(
+                            color: context.epColors.accent,
+                            decoration: TextDecoration.underline,
+                          ),
+                          recognizer: _agreementRecognizer,
+                        ),
+                        const TextSpan(text: ' and booking protection terms'),
+                      ],
+                    ),
                   ),
                 ),
                 InlineFormFeedback(

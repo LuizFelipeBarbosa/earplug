@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/main.dart';
@@ -407,6 +409,71 @@ void main() {
       await _disposeApp(tester, harness.app);
     },
   );
+
+  testWidgets(
+    'paid ticketing discloses the configured percentage and fixed fee',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = DemoRepository(auth: auth);
+      final harness = await _pumpEditor(tester, auth, repository, 'opp2');
+      await _tap(tester, 'opp-edit-ticketing-paid');
+      expect(
+        tester
+            .widget<EpChip>(find.byKey(const Key('opp-edit-ticketing-paid')))
+            .active,
+        isTrue,
+      );
+      final caption = find.text(
+        r'Fans pay the EarPlug fee (5% + $1.00) on top · '
+        'you receive the ticket price minus Stripe processing',
+      );
+      await _reveal(tester, caption);
+
+      expect(caption, findsOneWidget);
+      await _disposeApp(tester, harness.app);
+    },
+  );
+
+  for (final fails in [false, true]) {
+    testWidgets(
+      'paid ticketing keeps its caption while fees load and ${fails ? 'fail' : 'are unconfigured'}',
+      (tester) async {
+        final auth = FakeAuthService();
+        final repository = _FeeRatesRepository(auth: auth);
+        final harness = await _pumpEditor(tester, auth, repository, 'opp2');
+        await _tap(tester, 'opp-edit-ticketing-paid');
+        final caption = find.text(
+          'Fans pay the EarPlug fee on top · '
+          'you receive the ticket price minus Stripe processing',
+        );
+        await _reveal(tester, caption);
+
+        expect(caption, findsOneWidget);
+        expect(repository.feeOrganizationId, harness.app.organizationId);
+        expect(_field(tester, 'opp-edit-ticket-price').enabled, isTrue);
+
+        if (fails) {
+          repository.feeResult.completeError(StateError('Fees unavailable'));
+        } else {
+          repository.feeResult.complete(
+            const FeeRates(
+              bookingCommissionBps: 1000,
+              ticketingFeeBps: 500,
+              ticketingFeeFixedMinor: 100,
+              configured: false,
+            ),
+          );
+        }
+        await tester.pumpAndSettle();
+
+        expect(caption, findsOneWidget);
+        expect(_field(tester, 'opp-edit-ticket-price').enabled, isTrue);
+        expect(find.text('Fees unavailable'), findsNothing);
+        expect(tester.takeException(), isNull);
+        await _disposeApp(tester, harness.app);
+      },
+    );
+  }
 
   testWidgets('paid tickets save dollar prices and validate before opening', (
     tester,
@@ -869,15 +936,17 @@ void main() {
       final harness = await _pumpEditor(tester, auth, repository, 'opp1');
 
       expect(_field(tester, 'opp-edit-title').enabled, isFalse);
-      await _reveal(tester, find.byKey(const Key('opp-edit-ticket-price')));
-      expect(_field(tester, 'opp-edit-ticket-price').enabled, isTrue);
-      expect(_field(tester, 'opp-edit-ticket-capacity').enabled, isTrue);
+      await _reveal(tester, find.byKey(const Key('opp-edit-ticketing-paid')));
       expect(
         tester
             .widget<EpChip>(find.byKey(const Key('opp-edit-ticketing-paid')))
             .onTap,
         isNull,
       );
+      await _reveal(tester, find.byKey(const Key('opp-edit-ticket-price')));
+      expect(_field(tester, 'opp-edit-ticket-price').enabled, isTrue);
+      expect(_field(tester, 'opp-edit-ticket-capacity').enabled, isTrue);
+      await _reveal(tester, find.byKey(const Key('opp-edit-update-ticketing')));
       expect(
         find.byKey(const Key('opp-edit-update-ticketing')),
         findsOneWidget,
@@ -1268,6 +1337,19 @@ Future<void> _removeInvite(WidgetTester tester, String bandId) async {
     find.descendant(of: chip, matching: find.byIcon(Icons.close)),
   );
   await tester.pumpAndSettle();
+}
+
+class _FeeRatesRepository extends DemoRepository {
+  _FeeRatesRepository({required super.auth});
+
+  final feeResult = Completer<FeeRates>();
+  String? feeOrganizationId;
+
+  @override
+  Future<FeeRates> feeRates({String? organizationId}) {
+    feeOrganizationId = organizationId;
+    return feeResult.future;
+  }
 }
 
 class _ConfirmedPaidOpportunityRepository extends DemoRepository {

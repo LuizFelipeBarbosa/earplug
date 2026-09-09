@@ -234,7 +234,7 @@ class AnalyticsScreen extends StatelessWidget {
     final shows = recapSortedShows(recap);
     return _analyticsSection(
       key: const Key('analytics-turnout'),
-      title: 'TURNOUT BY SHOW',
+      title: 'CHECK-INS BY SHOW',
       trailing: shows.length > kRecapPreviewCount
           ? SectionActionButton(
               key: const Key('analytics-turnout-see-all'),
