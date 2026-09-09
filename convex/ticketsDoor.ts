@@ -99,7 +99,9 @@ export const checkIn = mutation({
     if (parsed.version === "v2") {
       const ticket = await ctx.db
         .query("tickets")
-        .withIndex("by_token", (q) => q.eq("token", parsed.token))
+        .withIndex("by_token", (q) =>
+          q.eq("token", TICKET_TOKEN_PREFIX + parsed.token),
+        )
         .unique();
       if (!ticket) return { kind: "unknown" };
       if (ticket.gigId !== args.gigId) return { kind: "wrongEvent" };
