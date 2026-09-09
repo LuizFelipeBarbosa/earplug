@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
+import 'package:earplug/models.dart';
 import 'package:earplug/money.dart';
 import 'package:earplug/screens/gig_detail.dart';
 import 'package:earplug/services/auth_service.dart';
@@ -19,6 +20,7 @@ void main() {
     await _openPurchaseSheet(tester);
     final quantity = find.byKey(const Key('ticket-qty'));
 
+    expect(find.textContaining('Sold by '), findsNothing);
     expect(tester.widget<Text>(quantity).data, '1');
     await tester.tap(find.byKey(const Key('ticket-qty-minus')));
     await tester.pump();
@@ -34,6 +36,36 @@ void main() {
     expect(find.byType(TextField), findsNothing);
     expect(find.byType(TextFormField), findsNothing);
   });
+
+  for (final sellerKind in TicketSellerKind.values) {
+    testWidgets('${sellerKind.name} seller is shown only before a hold', (
+      tester,
+    ) async {
+      final auth = FakeAuthService();
+      await _openPurchaseSheet(
+        tester,
+        auth: auth,
+        repository: _TicketSellerRepository(
+          auth: auth,
+          seller: TicketSellerRef(kind: sellerKind, name: 'Foghorn Diet'),
+        ),
+        beforePump: (app) => app.openGig('g8'),
+      );
+
+      final caption = find.text('Sold by Foghorn Diet');
+      expect(caption, findsOne);
+      expect(
+        tester.getBottomLeft(caption).dy,
+        lessThan(tester.getTopLeft(find.byKey(const Key('ticket-qty'))).dy),
+      );
+
+      await tester.tap(find.byKey(const Key('ticket-hold')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('YOUR HOLD'), findsOne);
+      expect(caption, findsNothing);
+    });
+  }
 
   testWidgets('holding tickets shows the repository subtotal, fee and total', (
     tester,
@@ -233,4 +265,14 @@ Future<AppHarness> _openPurchaseSheet(
   await tester.tap(find.byKey(const Key('gig-buy-tickets')));
   await tester.pumpAndSettle();
   return harness;
+}
+
+class _TicketSellerRepository extends DemoRepository {
+  _TicketSellerRepository({required super.auth, required this.seller});
+
+  final TicketSellerRef seller;
+
+  @override
+  Stream<Gig?> publicGig(String ref) =>
+      super.publicGig(ref).map((gig) => gig?.copyWith(ticketSeller: seller));
 }

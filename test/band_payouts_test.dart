@@ -240,6 +240,187 @@ void main() {
     expect(launched, ['https://demo.stripe/dashboard/b1']);
   });
 
+  testWidgets('bands without card payments can enable ticket sales', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final repository = _StripeStatusRepository(
+      auth: auth,
+      state: StripeAccountState.enabled,
+      cardPaymentsStatus: null,
+    );
+    await repository.startBandOnboarding('b1');
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: BandPayoutsScreen()),
+      beforePump: (app) async {
+        await app.loadFeatureFlags();
+        app.features = _bandTicketingEnabled;
+        app.switchToBand('b1');
+      },
+    );
+    final launched = <String>[];
+    harness.app.hostedUrlLauncher = (url) async => launched.add(url);
+    final button = find.byKey(const Key('band-payouts-enable-tickets'));
+
+    expect(harness.app.bandPayoutStatus?.hasAccount, isTrue);
+    expect(harness.app.bandPayoutStatus?.chargesEnabled, isTrue);
+    expect(harness.app.bandPayoutStatus?.cardPaymentsStatus, isNull);
+    expect(harness.app.bandPayoutStatus?.canSellTickets, isFalse);
+    expect(button, findsOneWidget);
+    expect(find.text('ENABLE TICKET SALES'), findsOneWidget);
+    expect(find.text('TICKET SALES ENABLED'), findsNothing);
+    expect(find.text(_ticketSalesCaption), findsOneWidget);
+    expectNoFieldInCard(tester);
+
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(launched, ['https://demo.stripe/ticketing/b1']);
+    expect(find.byKey(const Key('band-payouts-error')), findsNothing);
+  });
+
+  testWidgets('bands with active card payments show ticket sales enabled', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _StripeStatusRepository(
+        auth: auth,
+        state: StripeAccountState.enabled,
+        cardPaymentsStatus: 'active',
+      ),
+      home: const Scaffold(body: BandPayoutsScreen()),
+      beforePump: (app) async {
+        await app.loadFeatureFlags();
+        app.features = _bandTicketingEnabled;
+        app.switchToBand('b1');
+      },
+    );
+
+    expect(harness.app.bandPayoutStatus?.canSellTickets, isTrue);
+    expect(find.text('TICKET SALES'), findsOneWidget);
+    expect(find.text('TICKET SALES ENABLED'), findsOneWidget);
+    final pill = tester.widget<StatusPill>(
+      find.ancestor(
+        of: find.text('TICKET SALES ENABLED'),
+        matching: find.byType(StatusPill),
+      ),
+    );
+    expect(pill.tone, EpStatusPillTone.success);
+    expect(find.byKey(const Key('band-payouts-enable-tickets')), findsNothing);
+    expect(find.text(_ticketSalesCaption), findsOneWidget);
+    expectNoFieldInCard(tester);
+  });
+
+  for (final cardPaymentsStatus in [null, 'active']) {
+    testWidgets(
+      'ticket sales are hidden when the feature is off with card payments $cardPaymentsStatus',
+      (tester) async {
+        final auth = FakeAuthService();
+        final harness = await pumpApp(
+          tester,
+          auth: auth,
+          repository: _StripeStatusRepository(
+            auth: auth,
+            state: StripeAccountState.enabled,
+            cardPaymentsStatus: cardPaymentsStatus,
+          ),
+          home: const Scaffold(body: BandPayoutsScreen()),
+          beforePump: (app) async {
+            await app.loadFeatureFlags();
+            app.features = const FeatureFlags(
+              privateBookings: false,
+              tickets: false,
+              payments: false,
+              bandGigWrites: true,
+            );
+            app.switchToBand('b1');
+          },
+        );
+
+        expect(harness.app.bandPayoutStatus?.hasAccount, isTrue);
+        expect(harness.app.features.bandTicketing, isFalse);
+        expect(find.text('TICKET SALES'), findsNothing);
+        expect(
+          find.byKey(const Key('band-payouts-enable-tickets')),
+          findsNothing,
+        );
+        expect(find.text('TICKET SALES ENABLED'), findsNothing);
+        expect(find.text(_ticketSalesCaption), findsNothing);
+      },
+    );
+  }
+
+  testWidgets('ticket sales stay hidden until a band has a Stripe account', (
+    tester,
+  ) async {
+    final harness = await pumpApp(
+      tester,
+      home: const Scaffold(body: BandPayoutsScreen()),
+      beforePump: (app) async {
+        await app.loadFeatureFlags();
+        app.features = _bandTicketingEnabled;
+        app.switchToBand('b1');
+      },
+    );
+
+    expect(harness.app.features.bandTicketing, isTrue);
+    expect(harness.app.bandPayoutStatus?.hasAccount, isFalse);
+    expect(find.text('SET UP PAYOUTS'), findsOneWidget);
+    expect(find.text('TICKET SALES'), findsNothing);
+    expect(find.byKey(const Key('band-payouts-enable-tickets')), findsNothing);
+    expect(find.text('TICKET SALES ENABLED'), findsNothing);
+    expect(find.text(_ticketSalesCaption), findsNothing);
+  });
+
+  testWidgets('ticket sales errors appear inline and clear on retry', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: _StripeStatusRepository(
+        auth: auth,
+        state: StripeAccountState.enabled,
+      ),
+      home: const Scaffold(body: BandPayoutsScreen()),
+      beforePump: (app) async {
+        await app.loadFeatureFlags();
+        app.features = _bandTicketingEnabled;
+        app.switchToBand('b1');
+      },
+    );
+    final button = find.byKey(const Key('band-payouts-enable-tickets'));
+    harness.app.hostedUrlLauncher = (_) async {
+      throw StateError('Could not open ticket sales setup');
+    };
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('band-payouts-error')), findsOneWidget);
+    expect(
+      find.textContaining('Could not open ticket sales setup'),
+      findsOneWidget,
+    );
+
+    final launched = <String>[];
+    harness.app.hostedUrlLauncher = (url) async => launched.add(url);
+    await tester.ensureVisible(button);
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(launched, ['https://demo.stripe/ticketing/b1']);
+    expect(find.byKey(const Key('band-payouts-error')), findsNothing);
+  });
+
   testWidgets(
     'payout history shows scheduled dates, kinds, amounts and holds',
     (tester) async {
@@ -691,6 +872,16 @@ void main() {
   }
 }
 
+const _bandTicketingEnabled = FeatureFlags(
+  privateBookings: false,
+  tickets: true,
+  payments: false,
+  bandGigWrites: true,
+);
+
+const _ticketSalesCaption =
+    'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.';
+
 class _PayoutRepository extends DemoRepository {
   _PayoutRepository({required super.auth});
 
@@ -779,19 +970,24 @@ class _StripeStatusRepository extends DemoRepository {
   _StripeStatusRepository({
     required super.auth,
     required StripeAccountState state,
+    String? cardPaymentsStatus,
     bool? detailsSubmitted,
     List<String>? requirementsDue,
   }) : status = StripeAccountStatus(
          state: state,
          hasAccount: state != StripeAccountState.none,
          chargesEnabled: state == StripeAccountState.enabled,
+         cardPaymentsStatus: cardPaymentsStatus,
          payoutsEnabled: state == StripeAccountState.enabled,
          detailsSubmitted:
              detailsSubmitted ?? (state == StripeAccountState.enabled),
          requirementsDue:
              requirementsDue ??
              (state == StripeAccountState.restricted
-                 ? const ['individual.verification.document', 'external_account']
+                 ? const [
+                     'individual.verification.document',
+                     'external_account',
+                   ]
                  : const []),
        );
 

@@ -115,6 +115,13 @@ class _TicketPurchaseSheetState extends State<_TicketPurchaseSheet> {
         children: [
           const SizedBox(height: 12),
           if (reservation == null) ...[
+            if (widget.gig.ticketSeller != null) ...[
+              Text(
+                'Sold by ${widget.gig.ticketSeller!.name}',
+                style: textTheme.epCaption,
+              ),
+              const SizedBox(height: 12),
+            ],
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
