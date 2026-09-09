@@ -64,6 +64,7 @@ class FeatureFlags {
     required this.payments,
     required this.bandGigWrites,
     this.disputes = false,
+    this.promoters = false,
   });
 
   final bool privateBookings;
@@ -71,6 +72,7 @@ class FeatureFlags {
   final bool payments;
   final bool bandGigWrites;
   final bool disputes;
+  final bool promoters;
 
   factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
     privateBookings: json['privateBookings'] == true,
@@ -78,6 +80,7 @@ class FeatureFlags {
     payments: json['payments'] == true,
     bandGigWrites: json['bandGigWrites'] == true,
     disputes: json['disputes'] == true,
+    promoters: json['promoters'] == true,
   );
 }
 
@@ -541,6 +544,7 @@ class OrganizationDashboard {
     required this.verification,
     required this.venues,
     required this.memberCount,
+    this.pendingVenueConsents = 0,
     required this.privateDetails,
   });
 
@@ -550,6 +554,7 @@ class OrganizationDashboard {
   final OrganizationVerification verification;
   final List<Venue> venues;
   final int memberCount;
+  final int pendingVenueConsents;
   final OrganizationPrivateDetails? privateDetails;
 
   factory OrganizationDashboard.fromJson(Map<String, dynamic> json) =>
@@ -569,6 +574,7 @@ class OrganizationDashboard {
             Venue.fromJson(venue),
         ],
         memberCount: _marketplaceInt(json['memberCount']),
+        pendingVenueConsents: _marketplaceInt(json['pendingVenueConsents']),
         privateDetails: json['privateDetails'] is Map
             ? OrganizationPrivateDetails.fromJson(
                 _marketplaceMap(json['privateDetails']),
@@ -1490,6 +1496,121 @@ enum ArtistApplicationReviewAction {
       };
 }
 
+enum VenueConsentStatus {
+  pending('pending'),
+  granted('granted'),
+  declined('declined'),
+  withdrawn('withdrawn'),
+  revoked('revoked'),
+  unknown('unknown');
+
+  const VenueConsentStatus(this.wireValue);
+
+  final String wireValue;
+
+  static VenueConsentStatus fromWire(Object? value) => switch (value) {
+    'pending' => VenueConsentStatus.pending,
+    'granted' => VenueConsentStatus.granted,
+    'declined' => VenueConsentStatus.declined,
+    'withdrawn' => VenueConsentStatus.withdrawn,
+    'revoked' => VenueConsentStatus.revoked,
+    _ => VenueConsentStatus.unknown,
+  };
+}
+
+class VenueConsent {
+  const VenueConsent({
+    required this.id,
+    required this.opportunityId,
+    required this.venueId,
+    required this.venueOrganizationId,
+    required this.requestingOrganizationId,
+    required this.status,
+    this.message,
+    this.note,
+    required this.createdAt,
+    this.decidedAt,
+  });
+
+  final String id;
+  final String opportunityId;
+  final String venueId;
+  final String venueOrganizationId;
+  final String requestingOrganizationId;
+  final VenueConsentStatus status;
+  final String? message;
+  final String? note;
+  final DateTime createdAt;
+  final DateTime? decidedAt;
+
+  factory VenueConsent.fromJson(Map<String, dynamic> json) => VenueConsent(
+    id: _marketplaceString(json['consentId']),
+    opportunityId: _marketplaceString(json['opportunityId']),
+    venueId: _marketplaceString(json['venueId']),
+    venueOrganizationId: _marketplaceString(json['venueOrganizationId']),
+    requestingOrganizationId: _marketplaceString(
+      json['requestingOrganizationId'],
+    ),
+    status: VenueConsentStatus.fromWire(json['status']),
+    message: _marketplaceOptionalString(json['message']),
+    note: _marketplaceOptionalString(json['note']),
+    createdAt: _marketplaceDate(json['createdAt']),
+    decidedAt: _marketplaceOptionalDate(json['decidedAt']),
+  );
+}
+
+class VenueConsentRow extends VenueConsent {
+  const VenueConsentRow({
+    required super.id,
+    required super.opportunityId,
+    required super.venueId,
+    required super.venueOrganizationId,
+    required super.requestingOrganizationId,
+    required super.status,
+    super.message,
+    super.note,
+    required super.createdAt,
+    super.decidedAt,
+    required this.opportunityTitle,
+    required this.opportunityStatus,
+    required this.startsAt,
+    this.endsAt,
+    required this.venueName,
+    required this.requestingOrganizationName,
+  });
+
+  final String opportunityTitle;
+  final OpportunityStatus opportunityStatus;
+  final DateTime startsAt;
+  final DateTime? endsAt;
+  final String venueName;
+  final String requestingOrganizationName;
+
+  factory VenueConsentRow.fromJson(Map<String, dynamic> json) {
+    final consent = VenueConsent.fromJson(json);
+    return VenueConsentRow(
+      id: consent.id,
+      opportunityId: consent.opportunityId,
+      venueId: consent.venueId,
+      venueOrganizationId: consent.venueOrganizationId,
+      requestingOrganizationId: consent.requestingOrganizationId,
+      status: consent.status,
+      message: consent.message,
+      note: consent.note,
+      createdAt: consent.createdAt,
+      decidedAt: consent.decidedAt,
+      opportunityTitle: _marketplaceString(json['opportunityTitle']),
+      opportunityStatus: OpportunityStatus.fromWire(json['opportunityStatus']),
+      startsAt: _marketplaceDate(json['startsAt']),
+      endsAt: _marketplaceOptionalDate(json['endsAt']),
+      venueName: _marketplaceString(json['venueName']),
+      requestingOrganizationName: _marketplaceString(
+        json['requestingOrganizationName'],
+      ),
+    );
+  }
+}
+
 class OpportunitySlot {
   const OpportunitySlot({
     required this.id,
@@ -1563,6 +1684,7 @@ class Opportunity {
     required this.updatedAt,
     required this.area,
     this.venueType,
+    this.venueConsentStatus,
     required this.currency,
   });
 
@@ -1603,6 +1725,7 @@ class Opportunity {
   final DateTime updatedAt;
   final String area;
   final VenueType? venueType;
+  final VenueConsentStatus? venueConsentStatus;
   final String currency;
 
   factory Opportunity.fromJson(Map<String, dynamic> json) => Opportunity(
@@ -1649,6 +1772,9 @@ class Opportunity {
     area: _marketplaceString(json['area']),
     venueType: json['venueType'] is String
         ? VenueType.fromWire(json['venueType'])
+        : null,
+    venueConsentStatus: json['venueConsentStatus'] is String
+        ? VenueConsentStatus.fromWire(json['venueConsentStatus'])
         : null,
     currency: _marketplaceString(json['currency']),
   );
@@ -3465,8 +3591,10 @@ enum LedgerKind {
 enum FundsState {
   pending('pending'),
   available('available'),
-  paidOut('paidOut'),
-  reversed('reversed'),
+  reserved('reserved'),
+  paid('paid'),
+  refunded('refunded'),
+  disputed('disputed'),
   unknown('unknown');
 
   const FundsState(this.wireValue);
@@ -3476,8 +3604,14 @@ enum FundsState {
   static FundsState fromWire(Object? value) => switch (value) {
     'pending' => FundsState.pending,
     'available' => FundsState.available,
-    'paidOut' => FundsState.paidOut,
-    'reversed' => FundsState.reversed,
+    'reserved' => FundsState.reserved,
+    'paid' => FundsState.paid,
+    'refunded' => FundsState.refunded,
+    'disputed' => FundsState.disputed,
+    // Legacy aliases: earlier client builds used these wire values; keep
+    // accepting them here only (no corresponding enum members).
+    'paidOut' => FundsState.paid,
+    'reversed' => FundsState.refunded,
     _ => FundsState.unknown,
   };
 }
@@ -3546,22 +3680,165 @@ class TransactionsPage {
       );
 }
 
+class StatementTransaction {
+  const StatementTransaction({
+    required this.id,
+    required this.kind,
+    required this.amountMinor,
+    required this.currency,
+    required this.fundsState,
+    required this.occurredAt,
+    required this.label,
+    this.bookingId,
+    this.ticketOrderId,
+    this.stripeRef,
+  });
+
+  final String id;
+  final LedgerKind kind;
+  final int amountMinor;
+  final String currency;
+  final FundsState fundsState;
+  final DateTime occurredAt;
+  final String label;
+  final String? bookingId;
+  final String? ticketOrderId;
+  final String? stripeRef;
+
+  factory StatementTransaction.fromJson(Map<String, dynamic> json) =>
+      StatementTransaction(
+        id: _marketplaceString(json['id']),
+        kind: LedgerKind.fromWire(json['kind']),
+        amountMinor: _marketplaceInt(json['amountMinor']),
+        currency: _marketplaceString(json['currency']),
+        fundsState: FundsState.fromWire(json['fundsState']),
+        occurredAt: _marketplaceDate(json['occurredAt']),
+        label: _marketplaceString(json['label']),
+        bookingId: _marketplaceOptionalString(json['bookingId']),
+        ticketOrderId: _marketplaceOptionalString(json['ticketOrderId']),
+        stripeRef: _marketplaceOptionalString(json['stripeRef']),
+      );
+
+  Money get amount => Money(amountMinor, currency);
+}
+
+class StatementTotal {
+  const StatementTotal({
+    required this.kind,
+    required this.amountMinor,
+    required this.count,
+  });
+
+  final LedgerKind kind;
+  final int amountMinor;
+  final int count;
+
+  factory StatementTotal.fromJson(Map<String, dynamic> json) => StatementTotal(
+    kind: LedgerKind.fromWire(json['kind']),
+    amountMinor: _marketplaceInt(json['amountMinor']),
+    count: _marketplaceInt(json['count']),
+  );
+}
+
 class StatementExport {
   const StatementExport({
     required this.csv,
     required this.rows,
     required this.truncated,
+    this.transactions = const [],
+    this.totalsByKind = const [],
   });
 
   final String csv;
   final int rows;
   final bool truncated;
+  final List<StatementTransaction> transactions;
+  final List<StatementTotal> totalsByKind;
 
   factory StatementExport.fromJson(Map<String, dynamic> json) =>
       StatementExport(
         csv: _marketplaceString(json['csv']),
         rows: _marketplaceInt(json['rows']),
         truncated: json['truncated'] == true,
+        transactions: [
+          for (final item in _marketplaceMapList(json['transactions']))
+            StatementTransaction.fromJson(item),
+        ],
+        totalsByKind: [
+          for (final item in _marketplaceMapList(json['totalsByKind']))
+            StatementTotal.fromJson(item),
+        ],
+      );
+}
+
+class PayoutStatement {
+  const PayoutStatement({
+    required this.payouts,
+    required this.totalNetMinor,
+    required this.truncated,
+  });
+
+  final List<PayoutStatementRow> payouts;
+  final int totalNetMinor;
+  final bool truncated;
+
+  factory PayoutStatement.fromJson(Map<String, dynamic> json) =>
+      PayoutStatement(
+        payouts: [
+          for (final item in _marketplaceMapList(json['payouts']))
+            PayoutStatementRow.fromJson(item),
+        ],
+        totalNetMinor: _marketplaceInt(json['totalNetMinor']),
+        truncated: json['truncated'] == true,
+      );
+}
+
+class PayoutStatementRow {
+  const PayoutStatementRow({
+    required this.payoutId,
+    required this.bookingId,
+    required this.bookingTitle,
+    required this.organizationName,
+    required this.kind,
+    required this.status,
+    required this.paidAt,
+    required this.netMinor,
+    required this.reversedMinor,
+    required this.currency,
+    this.grossMinor,
+    this.commissionMinor,
+    this.stripeTransferId,
+  });
+
+  final String payoutId;
+  final String bookingId;
+  final String bookingTitle;
+  final String organizationName;
+  final PayoutKind kind;
+  final PayoutStatus status;
+  final DateTime paidAt;
+  final int netMinor;
+  final int reversedMinor;
+  final String currency;
+  final int? grossMinor;
+  final int? commissionMinor;
+  final String? stripeTransferId;
+
+  factory PayoutStatementRow.fromJson(Map<String, dynamic> json) =>
+      PayoutStatementRow(
+        payoutId: _marketplaceString(json['payoutId']),
+        bookingId: _marketplaceString(json['bookingId']),
+        bookingTitle: _marketplaceString(json['bookingTitle']),
+        organizationName: _marketplaceString(json['organizationName']),
+        kind: PayoutKind.fromWire(json['kind']),
+        status: PayoutStatus.fromWire(json['status']),
+        paidAt: _marketplaceDate(json['paidAt']),
+        netMinor: _marketplaceInt(json['netMinor']),
+        reversedMinor: _marketplaceInt(json['reversedMinor']),
+        currency: _marketplaceString(json['currency']),
+        grossMinor: _marketplaceOptionalInt(json['grossMinor']),
+        commissionMinor: _marketplaceOptionalInt(json['commissionMinor']),
+        stripeTransferId: _marketplaceOptionalString(json['stripeTransferId']),
       );
 }
 

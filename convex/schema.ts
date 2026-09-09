@@ -6,6 +6,7 @@ import {
   ticketRefundReasonValidator,
   ticketRefundStatusValidator,
 } from "./lib/ticketStatus";
+import { venueConsentStatusValidator } from "./lib/venueConsentStatus";
 
 // The non-Instagram links carried over from the legacy `socialLinks` bag
 // (instagram was promoted to `linkIg` as an @handle). Preserved because v1 has
@@ -554,6 +555,27 @@ export default defineSchema({
     .index("by_privateLocationId", ["privateLocationId"])
     .index("by_publicGigId", ["publicGigId"])
     .index("by_slug", ["slug"]),
+
+  venueConsents: defineTable({
+    opportunityId: v.id("talentOpportunities"),
+    venueId: v.id("venues"),
+    venueOrganizationId: v.id("organizations"),
+    requestingOrganizationId: v.id("organizations"),
+    status: venueConsentStatusValidator,
+    message: v.optional(v.string()),
+    note: v.optional(v.string()),
+    decidedByUserId: v.optional(v.id("users")),
+    decidedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_opportunityId", ["opportunityId"])
+    .index("by_venueOrganizationId_and_status_and_createdAt", [
+      "venueOrganizationId",
+      "status",
+      "createdAt",
+    ])
+    .index("by_venueId_and_status", ["venueId", "status"]),
 
   // `bookingId` is set once the slot is booked and links to its owning booking.
   opportunitySlots: defineTable({

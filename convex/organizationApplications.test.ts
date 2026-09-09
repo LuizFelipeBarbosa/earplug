@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import schema from "./schema";
@@ -71,6 +71,15 @@ async function setupActors() {
 }
 
 describe("organization applications", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    vi.stubEnv("PROMOTERS_ENABLED", undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test("saveDraft creates and updates with optimistic concurrency", async () => {
     const { asApplicant } = await setupActors();
     const created = await asApplicant.mutation(
@@ -231,17 +240,144 @@ describe("organization applications", () => {
     ).toMatchObject({ status: "submitted", revision: 5 });
   });
 
-  test("saveDraft enforces the phase-one venue operator restriction", async () => {
-    const { asApplicant } = await setupActors();
-    await expect(
-      asApplicant.mutation(api.organizationApplications.saveDraft, {
-        ...draftFields,
-        orgType: "promoter",
-      }),
-    ).rejects.toThrow(
-      "Only bars and clubs that control their location can apply right now",
-    );
-  });
+  test.each([
+    { orgType: "promoter", value: undefined },
+    { orgType: "promoter", value: "false" },
+    { orgType: "studentOrg", value: undefined },
+    { orgType: "studentOrg", value: "false" },
+  ] as const)(
+    "saveDraft enforces the phase-one venue operator restriction ($orgType, PROMOTERS_ENABLED=$value)",
+    async ({ orgType, value }) => {
+      vi.stubEnv("PROMOTERS_ENABLED", value);
+      const { asApplicant } = await setupActors();
+      await expect(
+        asApplicant.mutation(api.organizationApplications.saveDraft, {
+          ...draftFields,
+          orgType,
+        }),
+      ).rejects.toThrow(
+        "Only bars and clubs that control their location can apply right now",
+      );
+    },
+  );
+
+  test.each(["promoter", "studentOrg"] as const)(
+    "saveDraft accepts %s with PROMOTERS_ENABLED and drops its venue",
+    async (orgType) => {
+      vi.stubEnv("PROMOTERS_ENABLED", "true");
+      const { t, asApplicant } = await setupActors();
+      const { applicationId } = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        { ...draftFields, orgType, venue: venueFields },
+      );
+
+      const application = await t.run((ctx) => ctx.db.get(applicationId));
+      expect(application).toMatchObject({
+        kind: "organization",
+        orgType,
+        status: "draft",
+        revision: 1,
+      });
+      expect(application?.venue).toBeUndefined();
+    },
+  );
+
+  test.each([undefined, "false", "true"])(
+    "saveDraft refuses other organizations when PROMOTERS_ENABLED is %s",
+    async (value) => {
+      vi.stubEnv("PROMOTERS_ENABLED", value);
+      const { asApplicant } = await setupActors();
+      await expect(
+        asApplicant.mutation(api.organizationApplications.saveDraft, {
+          ...draftFields,
+          orgType: "other",
+        }),
+      ).rejects.toThrow(
+        "Only bars and clubs that control their location can apply right now",
+      );
+    },
+  );
+
+  test.each(["promoter", "studentOrg"] as const)(
+    "submit requires a verification document for %s without a venue",
+    async (orgType) => {
+      vi.stubEnv("PROMOTERS_ENABLED", "true");
+      const { t, asApplicant } = await setupActors();
+      const { applicationId, revision } = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        { ...draftFields, orgType },
+      );
+      await expect(
+        asApplicant.mutation(api.organizationApplications.submit, {
+          applicationId,
+          expectedRevision: revision,
+        }),
+      ).rejects.toThrow(
+        "Attach at least one verification document before submitting",
+      );
+
+      const storageId = await t.run((ctx) =>
+        ctx.storage.store(
+          new Blob(["verification"], { type: "application/pdf" }),
+        ),
+      );
+      const attached = await asApplicant.mutation(
+        api.organizationApplications.attachDocument,
+        { applicationId, storageId },
+      );
+      await expect(
+        asApplicant.mutation(api.organizationApplications.submit, {
+          applicationId,
+          expectedRevision: attached.revision,
+        }),
+      ).resolves.toEqual({ revision: attached.revision + 1 });
+      expect(
+        await asApplicant.query(api.organizationApplications.get, {
+          applicationId,
+        }),
+      ).toMatchObject({
+        status: "submitted",
+        orgType,
+        venue: null,
+        revision: attached.revision + 1,
+      });
+    },
+  );
+
+  test.each(["promoter", "studentOrg"] as const)(
+    "submit refuses a saved %s draft after PROMOTERS_ENABLED is turned off",
+    async (orgType) => {
+      vi.stubEnv("PROMOTERS_ENABLED", "true");
+      const { t, asApplicant } = await setupActors();
+      const { applicationId } = await asApplicant.mutation(
+        api.organizationApplications.saveDraft,
+        { ...draftFields, orgType },
+      );
+      const storageId = await t.run((ctx) =>
+        ctx.storage.store(
+          new Blob(["verification"], { type: "application/pdf" }),
+        ),
+      );
+      const attached = await asApplicant.mutation(
+        api.organizationApplications.attachDocument,
+        { applicationId, storageId },
+      );
+
+      vi.stubEnv("PROMOTERS_ENABLED", "false");
+      await expect(
+        asApplicant.mutation(api.organizationApplications.submit, {
+          applicationId,
+          expectedRevision: attached.revision,
+        }),
+      ).rejects.toThrow(
+        "Only bars and clubs that control their location can apply right now",
+      );
+      expect(await t.run((ctx) => ctx.db.get(applicationId))).toMatchObject({
+        status: "draft",
+        revision: attached.revision,
+      });
+    },
+  );
 
   test("submit requires venue details and a verification document", async () => {
     const { t, asApplicant } = await setupActors();
@@ -462,6 +598,84 @@ describe("organization applications", () => {
         decision: "rejected",
       }),
     ).rejects.toThrow("Invalid decision for this application");
+  });
+
+  test("approval creates a promoter organization and owner without a venue", async () => {
+    vi.stubEnv("PROMOTERS_ENABLED", "true");
+    const { t, asApplicant, asAdmin, applicantUserId } = await setupActors();
+    const { applicationId } = await asApplicant.mutation(
+      api.organizationApplications.saveDraft,
+      { ...draftFields, orgType: "promoter", venue: venueFields },
+    );
+    const storageId = await t.run((ctx) =>
+      ctx.storage.store(
+        new Blob(["verification"], { type: "application/pdf" }),
+      ),
+    );
+    const attached = await asApplicant.mutation(
+      api.organizationApplications.attachDocument,
+      { applicationId, storageId },
+    );
+    await asApplicant.mutation(api.organizationApplications.submit, {
+      applicationId,
+      expectedRevision: attached.revision,
+    });
+    const decision = await asAdmin.mutation(
+      api.organizationApplications.decide,
+      { applicationId, decision: "approved" },
+    );
+    expect(decision).toMatchObject({ status: "approved", venueId: null });
+    const organizationId = decision.organizationId;
+    if (organizationId === null) {
+      throw new Error("Approved promoter missing organization");
+    }
+
+    const state = await t.run(async (ctx) => ({
+      organization: await ctx.db.get(organizationId),
+      privateDetails: await ctx.db
+        .query("organizationPrivateDetails")
+        .withIndex("by_organizationId", (q) =>
+          q.eq("organizationId", organizationId),
+        )
+        .unique(),
+      membership: await ctx.db
+        .query("organizationMembers")
+        .withIndex("by_organizationId_and_userId", (q) =>
+          q.eq("organizationId", organizationId).eq("userId", applicantUserId),
+        )
+        .unique(),
+      venues: await ctx.db.query("venues").take(1),
+      venuePrivateDetails: await ctx.db.query("venuePrivateDetails").take(1),
+    }));
+    expect(state.organization).toMatchObject({
+      name: draftFields.orgName,
+      orgType: "promoter",
+      status: "verified",
+      ownerUserId: applicantUserId,
+      applicationId,
+    });
+    expect(state.privateDetails).toMatchObject({
+      businessEmail: draftFields.businessEmail,
+      contactName: draftFields.contactName,
+      verificationDocStorageIds: [storageId],
+    });
+    expect(state.membership).toMatchObject({
+      organizationId,
+      userId: applicantUserId,
+      role: "owner",
+    });
+    expect(state.venues).toEqual([]);
+    expect(state.venuePrivateDetails).toEqual([]);
+    expect(
+      await asApplicant.query(api.organizationApplications.get, {
+        applicationId,
+      }),
+    ).toMatchObject({
+      status: "approved",
+      resultingOrganizationId: organizationId,
+      resultingVenueId: null,
+      venue: null,
+    });
   });
 
   test("approval adopts a normalized-address legacy venue", async () => {

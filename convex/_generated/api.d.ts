@@ -45,6 +45,7 @@ import type * as lib_gigWritePolicy from "../lib/gigWritePolicy.js";
 import type * as lib_helpers from "../lib/helpers.js";
 import type * as lib_insights from "../lib/insights.js";
 import type * as lib_ledger from "../lib/ledger.js";
+import type * as lib_opportunityCancel from "../lib/opportunityCancel.js";
 import type * as lib_opportunityPayload from "../lib/opportunityPayload.js";
 import type * as lib_opportunityStatus from "../lib/opportunityStatus.js";
 import type * as lib_opportunityVisibility from "../lib/opportunityVisibility.js";
@@ -60,6 +61,7 @@ import type * as lib_ticketFees from "../lib/ticketFees.js";
 import type * as lib_ticketInventory from "../lib/ticketInventory.js";
 import type * as lib_ticketMint from "../lib/ticketMint.js";
 import type * as lib_ticketStatus from "../lib/ticketStatus.js";
+import type * as lib_venueConsentStatus from "../lib/venueConsentStatus.js";
 import type * as lib_venuePrivate from "../lib/venuePrivate.js";
 import type * as lib_venueSlug from "../lib/venueSlug.js";
 import type * as maintenance from "../maintenance.js";
@@ -90,6 +92,7 @@ import type * as ticketRefunds from "../ticketRefunds.js";
 import type * as tickets from "../tickets.js";
 import type * as ticketsDoor from "../ticketsDoor.js";
 import type * as users from "../users.js";
+import type * as venueConsents from "../venueConsents.js";
 import type * as venues from "../venues.js";
 
 import type {
@@ -136,6 +139,7 @@ declare const fullApi: ApiFromModules<{
   "lib/helpers": typeof lib_helpers;
   "lib/insights": typeof lib_insights;
   "lib/ledger": typeof lib_ledger;
+  "lib/opportunityCancel": typeof lib_opportunityCancel;
   "lib/opportunityPayload": typeof lib_opportunityPayload;
   "lib/opportunityStatus": typeof lib_opportunityStatus;
   "lib/opportunityVisibility": typeof lib_opportunityVisibility;
@@ -151,6 +155,7 @@ declare const fullApi: ApiFromModules<{
   "lib/ticketInventory": typeof lib_ticketInventory;
   "lib/ticketMint": typeof lib_ticketMint;
   "lib/ticketStatus": typeof lib_ticketStatus;
+  "lib/venueConsentStatus": typeof lib_venueConsentStatus;
   "lib/venuePrivate": typeof lib_venuePrivate;
   "lib/venueSlug": typeof lib_venueSlug;
   maintenance: typeof maintenance;
@@ -181,6 +186,7 @@ declare const fullApi: ApiFromModules<{
   tickets: typeof tickets;
   ticketsDoor: typeof ticketsDoor;
   users: typeof users;
+  venueConsents: typeof venueConsents;
   venues: typeof venues;
 }>;
 

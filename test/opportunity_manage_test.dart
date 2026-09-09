@@ -83,6 +83,30 @@ void main() {
     harness.app.dispose();
   });
 
+  testWidgets('promoter opportunities show their venue approval status', (
+    tester,
+  ) async {
+    final harness = await _pumpOrganizerScreen(
+      tester,
+      const OrgOpportunitiesScreen(),
+    );
+    harness.app.switchToOrganization('org3');
+    await tester.pumpAndSettle();
+
+    final card = find.byKey(const Key('org-opp-opp-promoter'));
+    expect(card, findsOneWidget);
+    final consent = find.descendant(
+      of: card,
+      matching: find.byKey(const Key('org-opp-venue-consent-opp-promoter')),
+    );
+    expect(tester.widget<StatusPill>(consent).tone, EpStatusPillTone.warning);
+    expect(
+      find.descendant(of: consent, matching: find.text('PENDING APPROVAL')),
+      findsOneWidget,
+    );
+    harness.app.dispose();
+  });
+
   testWidgets('host requests use host copy and a private event caption', (
     tester,
   ) async {

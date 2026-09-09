@@ -12,6 +12,7 @@ const api = generatedApi as typeof generatedApi &
 describe("features: public flags", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    vi.stubEnv("PROMOTERS_ENABLED", undefined);
   });
 
   afterEach(() => {
@@ -27,6 +28,7 @@ describe("features: public flags", () => {
       payments: false,
       bandGigWrites: true,
       disputes: false,
+      promoters: false,
     });
   });
 
@@ -37,6 +39,7 @@ describe("features: public flags", () => {
     vi.stubEnv("PAYMENTS_ENABLED", "true");
     vi.stubEnv("BAND_GIG_WRITES", "false");
     vi.stubEnv("DISPUTES_ENABLED", "true");
+    vi.stubEnv("PROMOTERS_ENABLED", "true");
 
     expect(await t.query(api.features.flags, {})).toEqual({
       privateBookings: true,
@@ -44,6 +47,7 @@ describe("features: public flags", () => {
       payments: true,
       bandGigWrites: false,
       disputes: true,
+      promoters: true,
     });
   });
 
@@ -54,6 +58,7 @@ describe("features: public flags", () => {
     vi.stubEnv("PAYMENTS_ENABLED", "0");
     vi.stubEnv("BAND_GIG_WRITES", "1");
     vi.stubEnv("DISPUTES_ENABLED", "0");
+    vi.stubEnv("PROMOTERS_ENABLED", "0");
 
     expect(await t.query(api.features.flags, {})).toEqual({
       privateBookings: false,
@@ -61,6 +66,7 @@ describe("features: public flags", () => {
       payments: false,
       bandGigWrites: true,
       disputes: false,
+      promoters: false,
     });
   });
 
@@ -77,5 +83,20 @@ describe("features: public flags", () => {
     vi.stubEnv("DISPUTES_ENABLED", value);
 
     expect((await t.query(api.features.flags, {})).disputes).toBe(enabled);
+  });
+
+  test.each([
+    { value: undefined, enabled: false },
+    { value: "", enabled: false },
+    { value: "invalid", enabled: false },
+    { value: "true", enabled: true },
+    { value: "1", enabled: true },
+    { value: "false", enabled: false },
+    { value: "0", enabled: false },
+  ])("reads PROMOTERS_ENABLED=$value as $enabled", async ({ value, enabled }) => {
+    const t = convexTest(schema);
+    vi.stubEnv("PROMOTERS_ENABLED", value);
+
+    expect((await t.query(api.features.flags, {})).promoters).toBe(enabled);
   });
 });

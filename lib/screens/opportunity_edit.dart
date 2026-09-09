@@ -30,6 +30,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   final _externalUrl = TextEditingController();
   final _ticketPrice = TextEditingController();
   final _ticketCapacity = TextEditingController();
+  final _venueSearch = TextEditingController();
   final _bands = <String, Band>{};
   final _pendingInvites = <String>{};
   final _invitedIds = <String>[];
@@ -43,6 +44,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   OpportunityStatus _status = OpportunityStatus.draft;
   List<Venue> _venues = const [];
   String? _venueId;
+  VenueConsent? _venueConsent;
   List<PrivateLocation> _privateLocations = const [];
   String? _privateLocationId;
   bool _isPrivate = false;
@@ -143,6 +145,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     final key = '$organizationId:${widget.opportunityId}';
     if (_loadedKey == key) return;
     _loadedKey = key;
+    _saved = null;
     _load();
   }
 
@@ -150,7 +153,8 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     final app = context.read<AppState>();
     final key = _loadedKey;
     final organizationId = app.organizationId;
-    final id = widget.opportunityId;
+    // Newly created drafts keep the "new" route until the editor is closed.
+    final id = _savedId ?? widget.opportunityId;
     setState(() {
       _loading = true;
       _loadError = null;
@@ -171,6 +175,10 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       final isPrivate = opportunity == null
           ? app.currentIsHost
           : opportunity.mode == OpportunityMode.privateBooking;
+      final venueConsent =
+          opportunity != null && !isPrivate && !app.currentIsVenueOperator
+          ? await app.repository.venueConsentForOpportunity(opportunity.id)
+          : null;
       final privateLocations = isPrivate
           ? await app.repository.privateLocationsFor(organizationId)
           : const <PrivateLocation>[];
@@ -188,6 +196,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
           ..clear()
           ..addAll(bands);
         _populate(opportunity);
+        _venueConsent = venueConsent;
         _loading = false;
       });
     } catch (error) {
@@ -197,6 +206,10 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
         _loading = false;
       });
     }
+  }
+
+  Future<void> _reloadOpportunity() async {
+    await _load();
   }
 
   void _populate(Opportunity? opportunity) {
@@ -223,6 +236,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
           );
     _ticketCapacity.text = opportunity?.ticketCapacity?.toString() ?? '';
     _venueId = opportunity?.venueId;
+    _venueSearch.clear();
     _privateLocationId = opportunity?.privateLocationId;
     _date = opportunity?.startsAt.toLocal();
     _start = opportunity == null
@@ -276,6 +290,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
       _externalUrl,
       _ticketPrice,
       _ticketCapacity,
+      _venueSearch,
     ]) {
       controller.dispose();
     }
@@ -482,6 +497,37 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     });
   }
 
+  Future<void> _requestVenueApproval() async {
+    final opportunityId = _savedId;
+    if (opportunityId == null || _venueId == null) return;
+    await _mutate((app) async {
+      var requested = false;
+      await showEpSheet(
+        context,
+        (_) => _VenueApprovalRequestSheet(
+          onSubmit: (message) async {
+            final succeeded = await app.requestVenueApproval(
+              opportunityId,
+              message: message,
+            );
+            if (succeeded) requested = true;
+            return succeeded;
+          },
+        ),
+      );
+      if (requested && mounted) await _reloadOpportunity();
+    });
+  }
+
+  Future<void> _withdrawVenueApproval() async {
+    final consent = _venueConsent;
+    if (consent == null || _status != OpportunityStatus.draft) return;
+    await _mutate((app) async {
+      final succeeded = await app.withdrawVenueApproval(consent.id);
+      if (succeeded && mounted) await _reloadOpportunity();
+    });
+  }
+
   Future<void> _updateTicketing() async {
     if (_busy || !_ticketingEditable) return;
     final needs = [
@@ -663,6 +709,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
+    final isVenueOperator = app.currentIsVenueOperator;
     final canManage = app.canManageOrganization(app.organizationId);
     final enabled = canManage && _editable && !_busy;
     final ticketFieldsEnabled =
@@ -670,6 +717,32 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     final draft = _status == OpportunityStatus.draft;
     final slotsEnabled = enabled && draft;
     final needs = _openNeeds;
+    final venueApprovalLocked =
+        !_isPrivate &&
+        !isVenueOperator &&
+        (_venueConsent?.status == VenueConsentStatus.pending ||
+            _venueConsent?.status == VenueConsentStatus.granted);
+    final venueEnabled = slotsEnabled && !venueApprovalLocked;
+    final whenEnabled = enabled && !venueApprovalLocked;
+    final waitingForVenueApproval =
+        !isVenueOperator &&
+        !_isPrivate &&
+        draft &&
+        _venueId != null &&
+        _venueConsent?.status != VenueConsentStatus.granted;
+    final venueApproval = _venueApprovalStatus(_venueConsent?.status);
+    final venueQuery = _venueSearch.text.trim().toLowerCase();
+    final matchingVenues = !_isPrivate && !isVenueOperator
+        ? app.venues
+              .where((venue) {
+                return venue.verified &&
+                    venue.managedByOrganizationId != null &&
+                    (venueQuery.isEmpty ||
+                        venue.name.toLowerCase().contains(venueQuery) ||
+                        venue.area.toLowerCase().contains(venueQuery));
+              })
+              .take(20)
+        : const <Venue>[];
 
     return Scaffold(
       backgroundColor: context.epColors.background,
@@ -760,7 +833,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       'Artists see the area only. The exact address is shared after the deposit.',
                       style: Theme.of(context).textTheme.epCaption,
                     ),
-                  ] else ...[
+                  ] else if (isVenueOperator) ...[
                     const SectionBar.form(label: 'VENUE'),
                     Wrap(
                       spacing: 7,
@@ -777,6 +850,83 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                           ),
                       ],
                     ),
+                  ] else ...[
+                    const SectionBar.form(label: 'VENUE'),
+                    EpLabeledField(
+                      fieldKey: const Key('opp-edit-venue-search'),
+                      label: 'FIND A VENUE',
+                      hint: 'Search by venue name or area',
+                      controller: _venueSearch,
+                      enabled: venueEnabled,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 7,
+                      children: [
+                        for (final venue in matchingVenues)
+                          EpChip(
+                            key: ValueKey('opp-edit-venue-${venue.id}'),
+                            label: venue.name,
+                            active: _venueId == venue.id,
+                            onTap: venueEnabled
+                                ? () => _changed(() => _venueId = venue.id)
+                                : null,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Only venues that have joined EarPlug can approve events.',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                    if (_venueId != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${app.venue(_venueId!).name} · ${app.venue(_venueId!).area}',
+                        style: Theme.of(context).textTheme.epCaption,
+                      ),
+                    ],
+                  ],
+                  if (!_isPrivate && !isVenueOperator && _savedId != null) ...[
+                    const SectionBar.form(label: 'VENUE APPROVAL'),
+                    EpCard(
+                      key: const Key('opp-edit-venue-approval'),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: StatusPill(
+                              label: venueApproval.label,
+                              tone: venueApproval.tone,
+                            ),
+                          ),
+                          if (!venueApprovalLocked) ...[
+                            const SizedBox(height: 12),
+                            EpButton(
+                              'REQUEST VENUE APPROVAL',
+                              key: const Key('opp-edit-request-approval'),
+                              onTap: canManage && !_busy && _venueId != null
+                                  ? _requestVenueApproval
+                                  : null,
+                            ),
+                          ] else if (draft) ...[
+                            const SizedBox(height: 12),
+                            EpButton(
+                              'WITHDRAW REQUEST',
+                              key: const Key('opp-edit-withdraw-approval'),
+                              kind: EpButtonKind.outline,
+                              onTap:
+                                  canManage && !_busy && _venueConsent != null
+                                  ? _withdrawVenueApproval
+                                  : null,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ],
                   const SectionBar.form(label: 'WHEN'),
                   Wrap(
@@ -785,26 +935,26 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     children: [
                       OutlinedButton(
                         key: const ValueKey('opp-edit-date'),
-                        onPressed: enabled ? _pickDate : null,
+                        onPressed: whenEnabled ? _pickDate : null,
                         child: Text('DATE · ${_dateLabel(context, _date)}'),
                       ),
                       OutlinedButton(
                         key: const ValueKey('opp-edit-doors'),
-                        onPressed: enabled
+                        onPressed: whenEnabled
                             ? () => _pickTime(doors: true)
                             : null,
                         child: Text('DOORS · ${_doors.format(context)}'),
                       ),
                       OutlinedButton(
                         key: const ValueKey('opp-edit-start'),
-                        onPressed: enabled
+                        onPressed: whenEnabled
                             ? () => _pickTime(doors: false)
                             : null,
                         child: Text('START · ${_start.format(context)}'),
                       ),
                       OutlinedButton(
                         key: const ValueKey('opp-edit-deadline'),
-                        onPressed: enabled
+                        onPressed: whenEnabled
                             ? () => _pickDate(deadline: true)
                             : null,
                         child: Text(
@@ -813,6 +963,13 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                       ),
                     ],
                   ),
+                  if (venueApprovalLocked) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'Withdraw the venue request before changing the venue or date.',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                  ],
                   SectionBar.form(label: 'SLOTS', count: _slots.length),
                   if (!draft)
                     Text(
@@ -1074,13 +1231,18 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                   OpportunityStatus.open => 'opp-edit-close',
                   _ => 'opp-edit-reopen',
                 }),
-                primaryLabel: switch (_status) {
-                  OpportunityStatus.draft => 'OPEN FOR APPLICATIONS',
-                  OpportunityStatus.open => 'CLOSE APPLICATIONS',
-                  _ => 'REOPEN',
-                },
+                primaryLabel: waitingForVenueApproval
+                    ? 'WAITING FOR VENUE APPROVAL'
+                    : switch (_status) {
+                        OpportunityStatus.draft => 'OPEN FOR APPLICATIONS',
+                        OpportunityStatus.open => 'CLOSE APPLICATIONS',
+                        _ => 'REOPEN',
+                      },
                 onPrimary:
-                    enabled && _savedId != null && (!draft || needs.isEmpty)
+                    !waitingForVenueApproval &&
+                        enabled &&
+                        _savedId != null &&
+                        (!draft || needs.isEmpty)
                     ? _transition
                     : null,
                 secondaryKey: const ValueKey('opp-edit-save'),
@@ -1163,6 +1325,97 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                 icon: const Icon(Icons.close),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+({String label, EpStatusPillTone tone}) _venueApprovalStatus(
+  VenueConsentStatus? status,
+) => switch (status) {
+  VenueConsentStatus.pending => (
+    label: 'Pending approval',
+    tone: EpStatusPillTone.warning,
+  ),
+  VenueConsentStatus.granted => (
+    label: 'Approved',
+    tone: EpStatusPillTone.success,
+  ),
+  VenueConsentStatus.declined => (
+    label: 'Declined',
+    tone: EpStatusPillTone.warning,
+  ),
+  VenueConsentStatus.withdrawn => (
+    label: 'Withdrawn',
+    tone: EpStatusPillTone.neutral,
+  ),
+  VenueConsentStatus.revoked => (
+    label: 'Revoked',
+    tone: EpStatusPillTone.warning,
+  ),
+  null || VenueConsentStatus.unknown => (
+    label: 'Not requested',
+    tone: EpStatusPillTone.neutral,
+  ),
+};
+
+class _VenueApprovalRequestSheet extends StatefulWidget {
+  const _VenueApprovalRequestSheet({required this.onSubmit});
+
+  final Future<bool> Function(String? message) onSubmit;
+
+  @override
+  State<_VenueApprovalRequestSheet> createState() =>
+      _VenueApprovalRequestSheetState();
+}
+
+class _VenueApprovalRequestSheetState
+    extends State<_VenueApprovalRequestSheet> {
+  final _message = TextEditingController();
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _message.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    setState(() => _submitting = true);
+    final trimmed = _message.text.trim();
+    final succeeded = await widget.onSubmit(trimmed.isEmpty ? null : trimmed);
+    if (!mounted) return;
+    if (succeeded) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return EpFormSheet(
+      title: 'REQUEST VENUE APPROVAL',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          EpLabeledField(
+            fieldKey: const Key('opp-edit-approval-message'),
+            label: 'MESSAGE',
+            hint: 'Add a note for the venue (optional)',
+            controller: _message,
+            enabled: !_submitting,
+            minLines: 3,
+            maxLines: 5,
+          ),
+          const SizedBox(height: 14),
+          EpButton(
+            'SEND REQUEST',
+            key: const Key('opp-edit-send-approval'),
+            onTap: _submitting ? null : _submit,
           ),
         ],
       ),

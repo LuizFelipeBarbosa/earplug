@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
@@ -19,12 +20,14 @@ void main() {
   late FakeAuthService auth;
   late _FinanceRepository repository;
   late List<({String filename, String text})> downloads;
+  late List<({String filename, Uint8List bytes, String mimeType})> pdfDownloads;
 
   setUp(() async {
     auth = FakeAuthService();
     await auth.signInDemo();
     repository = _FinanceRepository(auth: auth);
     downloads = [];
+    pdfDownloads = [];
   });
 
   Future<AppHarness> pumpScreen(WidgetTester tester, Widget screen) async {
@@ -36,6 +39,13 @@ void main() {
         app.switchToOrganization('org1');
         app.textFileDownloader = (filename, text) async {
           downloads.add((filename: filename, text: text));
+        };
+        app.bytesFileDownloader = (filename, bytes, mimeType) async {
+          pdfDownloads.add((
+            filename: filename,
+            bytes: bytes,
+            mimeType: mimeType,
+          ));
         };
       },
       home: Scaffold(body: screen),
@@ -162,6 +172,10 @@ void main() {
       );
       await tester.tap(find.text(preset));
       await tester.pumpAndSettle();
+      expect(downloads, isEmpty);
+      expect(pdfDownloads, isEmpty);
+      await tester.tap(find.byKey(const Key('org-finance-export-csv')));
+      await tester.pumpAndSettle();
 
       final range = repository.statementRange!;
       switch (preset) {
@@ -200,6 +214,37 @@ void main() {
     });
   }
 
+  testWidgets('statement PDF downloads bytes and shows its transaction count', (
+    tester,
+  ) async {
+    await _buyTickets(repository);
+    await pumpScreen(tester, const OrgFinanceScreen());
+    final export = find.byKey(const Key('org-finance-export'));
+    await tester.scrollUntilVisible(export, 250);
+    await tester.ensureVisible(export);
+    await tester.pumpAndSettle();
+    await tester.tap(export);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.pumpAndSettle();
+    expect(downloads, isEmpty);
+    expect(pdfDownloads, isEmpty);
+    await tester.tap(find.byKey(const Key('org-finance-export-pdf')));
+    await tester.pumpAndSettle();
+
+    expect(pdfDownloads, hasLength(1));
+    expect(pdfDownloads.single.filename, startsWith('earplug-statement-'));
+    expect(pdfDownloads.single.filename, endsWith('.pdf'));
+    expect(pdfDownloads.single.mimeType, 'application/pdf');
+    expect(
+      find.text(
+        'Statement downloaded (${repository.statement!.transactions.length} transactions)',
+      ),
+      findsOneWidget,
+    );
+    expect(downloads, isEmpty);
+  });
+
   testWidgets('export failures show a readable snackbar', (tester) async {
     final harness = await pumpScreen(tester, const OrgFinanceScreen());
     harness.app.textFileDownloader = (_, _) async =>
@@ -213,6 +258,8 @@ void main() {
     await tester.tap(find.byKey(const Key('org-finance-export')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('org-finance-export-csv')));
     await tester.pumpAndSettle();
     expect(find.text('Download failed'), findsOneWidget);
     expect(find.textContaining('Statement downloaded'), findsNothing);

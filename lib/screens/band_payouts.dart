@@ -8,6 +8,7 @@ import '../models.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
 import '../widgets/form_bits.dart';
+import '../widgets/sheets.dart';
 
 class BandPayoutsScreen extends StatefulWidget {
   const BandPayoutsScreen({super.key});
@@ -46,6 +47,56 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
       setState(() => _error = error.toString());
     }
   }
+
+  void _showExportSheet() {
+    final now = DateTime.now();
+    final presets = [
+      ('YEAR TO DATE', DateTime(now.year), now),
+      (
+        'LAST YEAR',
+        DateTime(now.year - 1),
+        DateTime(now.year).subtract(const Duration(milliseconds: 1)),
+      ),
+      ('LAST 30 DAYS', now.subtract(const Duration(days: 30)), now),
+    ];
+    unawaited(
+      showEpActionSheet(
+        context,
+        header: 'Export statement',
+        items: [
+          for (final (label, from, to) in presets)
+            EpActionSheetItem(
+              label: label,
+              icon: Icons.date_range_outlined,
+              onPressed: () => _exportStatement(from, to),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportStatement(DateTime from, DateTime to) =>
+      _runStripeAction(() async {
+        final app = context.read<AppState>();
+        final bandId = app.bandId;
+        final statement = await app.exportBandPayoutStatementPdf(
+          bandId,
+          from,
+          to,
+        );
+        if (!mounted || app.bandId != bandId) return;
+        final message =
+            'Statement downloaded (${statement.payouts.length} payouts)';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              statement.truncated
+                  ? '$message. Some payouts were left out.'
+                  : message,
+            ),
+          ),
+        );
+      });
 
   Widget _buildTaxDetails(AppState app) {
     final status = app.bandPayoutStatus;
@@ -189,6 +240,19 @@ class _BandPayoutsScreenState extends State<BandPayoutsScreen> {
           errorKey: const Key('band-payouts-error'),
         ),
         const SizedBox(height: 12),
+        EpButton(
+          'EXPORT STATEMENT',
+          key: const Key('band-payouts-export'),
+          kind: app.bandPayouts.isEmpty
+              ? EpButtonKind.disabled
+              : EpButtonKind.outline,
+          onTap: _showExportSheet,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Statements are for your records. Stripe issues your tax forms.',
+          style: Theme.of(context).textTheme.epCaption,
+        ),
         const SectionBar(label: 'PAYOUT HISTORY'),
         const SizedBox(height: 8),
         Column(

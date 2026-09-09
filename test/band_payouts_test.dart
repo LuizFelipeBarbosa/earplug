@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
@@ -9,6 +11,7 @@ import 'package:earplug/screens/org_dash.dart';
 import 'package:earplug/screens/org_settings.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
+import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -16,6 +19,165 @@ import 'support/design_rules.dart';
 import 'support/harness.dart';
 
 void main() {
+  testWidgets(
+    'statement export is disabled without payouts and shows caption',
+    (tester) async {
+      final harness = await pumpApp(
+        tester,
+        home: const Scaffold(body: BandPayoutsScreen()),
+        beforePump: (app) => app.switchToBand('b1'),
+      );
+      final export = find.byKey(const Key('band-payouts-export'));
+      await tester.scrollUntilVisible(export, 200);
+      expect(harness.app.bandPayouts, isEmpty);
+      expect(tester.widget<EpButton>(export).kind, EpButtonKind.disabled);
+      expect(
+        find.text(
+          'Statements are for your records. Stripe issues your tax forms.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(export);
+      await tester.pumpAndSettle();
+      expect(find.byType(EpActionSheet), findsNothing);
+    },
+  );
+
+  for (final preset in ['YEAR TO DATE', 'LAST YEAR', 'LAST 30 DAYS']) {
+    testWidgets('$preset downloads the band payout statement PDF', (
+      tester,
+    ) async {
+      final auth = FakeAuthService();
+      final repository = _PayoutRepository(auth: auth);
+      final downloads =
+          <({String filename, Uint8List bytes, String mimeType})>[];
+      await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const Scaffold(body: BandPayoutsScreen()),
+        beforePump: (app) {
+          app.switchToBand('b1');
+          app.bytesFileDownloader = (filename, bytes, mimeType) async {
+            downloads.add((
+              filename: filename,
+              bytes: bytes,
+              mimeType: mimeType,
+            ));
+          };
+        },
+      );
+      final export = find.byKey(const Key('band-payouts-export'));
+      await tester.scrollUntilVisible(export, 200);
+      await tester.ensureVisible(export);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<EpButton>(export).kind,
+        isNot(EpButtonKind.disabled),
+      );
+      final before = DateTime.now();
+      await tester.tap(export);
+      await tester.pumpAndSettle();
+      final after = DateTime.now();
+      expect(
+        tester
+            .widget<EpActionSheet>(find.byType(EpActionSheet))
+            .items
+            .map((item) => item.label),
+        ['YEAR TO DATE', 'LAST YEAR', 'LAST 30 DAYS'],
+      );
+      await tester.tap(find.text(preset));
+      await tester.pumpAndSettle();
+
+      final range = repository.statementRange!;
+      expect(range.bandId, 'b1');
+      switch (preset) {
+        case 'YEAR TO DATE':
+          expect(range.from, DateTime(range.to.year));
+        case 'LAST YEAR':
+          expect(range.from, DateTime(before.year - 1));
+          expect(
+            range.to,
+            DateTime(before.year).subtract(const Duration(milliseconds: 1)),
+          );
+        case 'LAST 30 DAYS':
+          expect(range.to.difference(range.from), const Duration(days: 30));
+      }
+      if (preset != 'LAST YEAR') {
+        expect(range.to.isBefore(before), isFalse);
+        expect(range.to.isAfter(after), isFalse);
+      }
+      expect(downloads, hasLength(1));
+      expect(downloads.single.filename, startsWith('earplug-payouts-b1-'));
+      expect(downloads.single.filename, endsWith('.pdf'));
+      expect(downloads.single.mimeType, 'application/pdf');
+      expect(find.text('Statement downloaded (2 payouts)'), findsOneWidget);
+    });
+  }
+
+  testWidgets('truncated statements explain that some payouts were left out', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    final downloads = <({String filename, Uint8List bytes, String mimeType})>[];
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _TruncatedPayoutRepository(auth: auth),
+      home: const Scaffold(body: BandPayoutsScreen()),
+      beforePump: (app) {
+        app.switchToBand('b1');
+        app.bytesFileDownloader = (filename, bytes, mimeType) async {
+          downloads.add((filename: filename, bytes: bytes, mimeType: mimeType));
+        };
+      },
+    );
+    final export = find.byKey(const Key('band-payouts-export'));
+    await tester.scrollUntilVisible(export, 200);
+    await tester.ensureVisible(export);
+    await tester.pumpAndSettle();
+    await tester.tap(export);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.pumpAndSettle();
+
+    expect(downloads, hasLength(1));
+    expect(
+      find.text(
+        'Statement downloaded (2 payouts). Some payouts were left out.',
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('statement download errors appear inline', (tester) async {
+    final auth = FakeAuthService();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: _PayoutRepository(auth: auth),
+      home: const Scaffold(body: BandPayoutsScreen()),
+      beforePump: (app) {
+        app.switchToBand('b1');
+        app.bytesFileDownloader = (_, _, _) async {
+          throw StateError('Download failed');
+        };
+      },
+    );
+    final export = find.byKey(const Key('band-payouts-export'));
+    await tester.scrollUntilVisible(export, 200);
+    await tester.ensureVisible(export);
+    await tester.pumpAndSettle();
+    await tester.tap(export);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('band-payouts-error')), findsOneWidget);
+    expect(find.textContaining('Download failed'), findsOneWidget);
+    expect(find.textContaining('Statement downloaded'), findsNothing);
+  });
+
   testWidgets('band setup launches Stripe and immediately shows onboarding', (
     tester,
   ) async {
@@ -532,6 +694,8 @@ void main() {
 class _PayoutRepository extends DemoRepository {
   _PayoutRepository({required super.auth});
 
+  ({String bandId, DateTime from, DateTime to})? statementRange;
+
   @override
   Future<List<Payout>> payoutsForBand(String bandId) async => [
     Payout(
@@ -553,6 +717,62 @@ class _PayoutRepository extends DemoRepository {
       holdReason: 'Waiting for bank details',
     ),
   ];
+
+  @override
+  Future<PayoutStatement> bandPayoutStatement(
+    String bandId, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    statementRange = (bandId: bandId, from: from, to: to);
+    // These history fixtures are not registered with the demo booking ledger.
+    // Return both rows deterministically so export tests do not depend on today.
+    final payouts = await payoutsForBand(bandId);
+    return PayoutStatement(
+      payouts: [
+        for (final payout in payouts)
+          PayoutStatementRow(
+            payoutId: payout.id,
+            bookingId: 'bk1',
+            bookingTitle: 'Demo booking',
+            organizationName: 'Demo organizer',
+            kind: payout.kind,
+            status: payout.status,
+            paidAt: payout.paidAt ?? payout.scheduledFor,
+            netMinor: payout.amountMinor,
+            reversedMinor: 0,
+            currency: payout.currency,
+          ),
+      ],
+      totalNetMinor: payouts.fold(
+        0,
+        (total, payout) => total + payout.amountMinor,
+      ),
+      truncated: false,
+    );
+  }
+}
+
+class _TruncatedPayoutRepository extends _PayoutRepository {
+  _TruncatedPayoutRepository({required super.auth});
+
+  @override
+  Future<PayoutStatement> bandPayoutStatement(
+    String bandId, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    final statement = await super.bandPayoutStatement(
+      bandId,
+      from: from,
+      to: to,
+    );
+    return PayoutStatement(
+      payouts: statement.payouts,
+      totalNetMinor: statement.totalNetMinor,
+      truncated: true,
+    );
+  }
 }
 
 class _StripeStatusRepository extends DemoRepository {

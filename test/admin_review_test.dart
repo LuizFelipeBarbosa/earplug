@@ -15,10 +15,12 @@ import 'support/harness.dart';
 
 Future<({AppHarness harness, DemoRepository repository})> _pumpAdmin(
   WidgetTester tester,
-  Widget home,
-) async {
+  Widget home, {
+  Future<void> Function(DemoRepository repository)? beforePump,
+}) async {
   final auth = FakeAuthService();
   final repository = DemoRepository(auth: auth)..platformAdmin = true;
+  await beforePump?.call(repository);
   final harness = await pumpApp(
     tester,
     auth: auth,
@@ -49,6 +51,20 @@ Future<String> _submitHostApplication(DemoRepository repository) async {
   return saved.applicationId;
 }
 
+Future<String> _submitPromoterApplication(DemoRepository repository) async {
+  final saved = await repository.saveOrganizationApplicationDraft(
+    orgName: 'Night Heron Collective',
+    orgType: OrganizationType.promoter,
+    contactName: 'Rae Booker',
+    businessEmail: 'rae@nightheron.example',
+  );
+  await repository.submitOrganizationApplication(
+    applicationId: saved.applicationId,
+    expectedRevision: saved.revision,
+  );
+  return saved.applicationId;
+}
+
 void main() {
   testWidgets('admin queue lists submitted organizer applications', (
     tester,
@@ -61,6 +77,64 @@ void main() {
     );
     expect(find.text('The Knockout'), findsOneWidget);
     expectNoFieldInCard(tester);
+  });
+
+  testWidgets('admin queue shows a promoter type pill for submitted drafts', (
+    tester,
+  ) async {
+    late String applicationId;
+    await _pumpAdmin(
+      tester,
+      const AdminQueueScreen(),
+      beforePump: (repository) async {
+        applicationId = await _submitPromoterApplication(repository);
+      },
+    );
+
+    final typePill = find.byKey(Key('admin-row-$applicationId-type'));
+    await tester.scrollUntilVisible(
+      typePill,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(Key('admin-queue-row-$applicationId')),
+        matching: typePill,
+      ),
+      findsOneWidget,
+    );
+    expect(tester.widget<StatusPill>(typePill).label, 'PROMOTER');
+    expect(tester.widget<StatusPill>(typePill).tone, EpStatusPillTone.neutral);
+    expect(find.text('PROMOTER').hitTestable(), findsOneWidget);
+  });
+
+  testWidgets('admin promoter detail shows its type and omits venue section', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth)..platformAdmin = true;
+    final applicationId = await _submitPromoterApplication(repository);
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: AdminApplicationScreen(applicationId: applicationId),
+    );
+
+    final typePill = tester.widget<StatusPill>(
+      find.byKey(const Key('admin-application-type')),
+    );
+    expect(typePill.label, 'PROMOTER');
+    expect(typePill.tone, EpStatusPillTone.neutral);
+    await tester.scrollUntilVisible(
+      find.text('DOCUMENTS'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('VENUE'), findsNothing);
+    expect(find.text('No venue provided.'), findsNothing);
   });
 
   testWidgets('admin application reveals exact venue details', (tester) async {
@@ -218,6 +292,7 @@ void main() {
     expect(hostRow, findsOneWidget);
     expect(organizerRow, findsOneWidget);
     expect(find.byKey(Key('admin-row-$applicationId-host')), findsOneWidget);
+    expect(find.byKey(Key('admin-row-$applicationId-type')), findsNothing);
     expect(
       find.descendant(of: hostRow, matching: find.text('Jordan (host)')),
       findsOneWidget,

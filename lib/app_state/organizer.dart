@@ -53,6 +53,19 @@ mixin _OrganizerState on _AppStateCore {
 
   bool get currentIsHost => isHostOrganization(organizationId);
 
+  bool get promotersEnabled => features.promoters;
+
+  bool isVenueOperatorOrganization(String id) =>
+      myOrganizations
+          .where((membership) => membership.organization.id == id)
+          .firstOrNull
+          ?.organization
+          .orgType ==
+      OrganizationType.venueOperator;
+
+  bool get currentIsVenueOperator =>
+      isVenueOperatorOrganization(organizationId);
+
   OrganizationRole? organizerRoleFor(String organizationId) => myOrganizations
       .where((membership) => membership.organization.id == organizationId)
       .firstOrNull
@@ -82,6 +95,68 @@ mixin _OrganizerState on _AppStateCore {
   void switchToOrganization(String id) {
     organizationId = id;
     resetTo(Screen.orgDash);
+  }
+
+  Future<bool> requestVenueApproval(
+    String opportunityId, {
+    String? message,
+  }) async {
+    try {
+      await repository.requestVenueConsent(
+        opportunityId: opportunityId,
+        message: message,
+      );
+      say('Venue approval requested');
+      return true;
+    } catch (error) {
+      logError('requestVenueConsent', error);
+      say(_venueApprovalErrorMessage(error));
+      return false;
+    }
+  }
+
+  Future<bool> withdrawVenueApproval(String consentId) async {
+    try {
+      await repository.withdrawVenueConsent(consentId);
+      say('Venue approval request withdrawn');
+      return true;
+    } catch (error) {
+      logError('withdrawVenueConsent', error);
+      say(_venueApprovalErrorMessage(error));
+      return false;
+    }
+  }
+
+  Future<bool> decideVenueApproval(
+    String consentId, {
+    required bool granted,
+    String? note,
+  }) async {
+    try {
+      await repository.decideVenueConsent(
+        consentId: consentId,
+        granted: granted,
+        note: note,
+      );
+      say(granted ? 'Venue approval granted' : 'Venue approval declined');
+      return true;
+    } catch (error) {
+      logError('decideVenueConsent', error);
+      say(_venueApprovalErrorMessage(error));
+      return false;
+    }
+  }
+
+  Future<bool> revokeVenueApproval(String consentId, {String? note}) async {
+    try {
+      await repository.revokeVenueConsent(consentId, note: note);
+      say('Venue approval revoked');
+      return true;
+    } catch (error) {
+      logError('revokeVenueConsent', error);
+      say(_venueApprovalErrorMessage(error));
+      return false;
+    }
   }
 
   @override
@@ -163,4 +238,26 @@ mixin _OrganizerState on _AppStateCore {
       logError('resolveVenue', error);
     }
   }
+}
+
+/// Extracts a user-facing reason from a venue-approval repository error,
+/// mirroring `serverErrorMessage` in widgets/form_bits.dart without taking
+/// a dependency on that widget file. Demo/Convex errors surface as
+/// `Bad state: <message>` (StateError) or `Uncaught Error: <message>`
+/// (Convex server errors); fall back to the generic message otherwise.
+String _venueApprovalErrorMessage(Object error) {
+  final text = error.toString();
+  const uncaughtMarker = 'Uncaught Error:';
+  final uncaughtIndex = text.lastIndexOf(uncaughtMarker);
+  if (uncaughtIndex >= 0) {
+    for (final line
+        in text.substring(uncaughtIndex + uncaughtMarker.length).split('\n')) {
+      final message = line.trim();
+      if (message.isNotEmpty) return message;
+    }
+  }
+  for (final prefix in const ['Bad state: ', 'Exception: ', 'ConvexError: ']) {
+    if (text.startsWith(prefix)) return text.substring(prefix.length).trim();
+  }
+  return genericErrorMessage;
 }

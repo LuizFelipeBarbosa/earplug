@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { internal } from "./_generated/api";
 import {
   bookingEmail,
+  consentEmail,
   sendTicketEmail,
   ticketEmail,
   type BookingEmailKind,
@@ -127,6 +128,65 @@ describe("bookingEmail", () => {
     expect(text).not.toContain("undefined");
     expect(`${subject} ${text}`).not.toMatch(/insurance|escrow/i);
     expect(text.endsWith(`\n\n${input.link}`)).toBe(true);
+  });
+});
+
+describe("consentEmail", () => {
+  const consentInput = {
+    venueName: input.venueName,
+    opportunityTitle: input.opportunityTitle,
+    startsAt: input.startsAt,
+    requestingOrganizationName: input.orgName,
+  };
+  const decisions = [
+    ["granted", "approved"],
+    ["declined", "declined"],
+    ["revoked", "revoked"],
+  ] as const;
+
+  test("formats a venue request with the organization, event, and UTC date", () => {
+    const { subject, text } = consentEmail("venueConsentRequested", {
+      ...consentInput,
+      status: "pending",
+    });
+
+    expect(subject).toContain(consentInput.requestingOrganizationName);
+    expect(subject).toContain(consentInput.opportunityTitle);
+    expect(subject).toContain("Sat, Oct 17");
+    expect(text).toContain(consentInput.requestingOrganizationName);
+    expect(text).toContain(consentInput.opportunityTitle);
+    expect(text).toContain(consentInput.venueName);
+    expect(text).toContain("Sat, Oct 17");
+    expect(text).not.toContain("undefined");
+  });
+
+  test.each(decisions)("formats a %s decision with a note", (status, outcome) => {
+    const note = "Please contact the venue team about the next steps.";
+    const { subject, text } = consentEmail("venueConsentDecided", {
+      ...consentInput,
+      status,
+      note,
+    });
+
+    expect(subject).toContain(outcome);
+    expect(subject).toContain(consentInput.opportunityTitle);
+    expect(text).toContain(consentInput.requestingOrganizationName);
+    expect(text).toContain(consentInput.venueName);
+    expect(text).toContain("Sat, Oct 17");
+    expect(text).toContain(`Note: ${note}`);
+    expect(text).not.toContain("undefined");
+  });
+
+  test.each(decisions)("formats a %s decision without a note", (status, outcome) => {
+    const { subject, text } = consentEmail("venueConsentDecided", {
+      ...consentInput,
+      status,
+    });
+
+    expect(subject).toContain(outcome);
+    expect(text).toContain("Sat, Oct 17");
+    expect(text).not.toContain("undefined");
+    expect(text).not.toContain("Note:");
   });
 });
 

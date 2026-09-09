@@ -260,7 +260,7 @@ class _AdminApplicationScreenState extends State<AdminApplicationScreen> {
         _ContactSection(application: application),
         if (application.kind == ApplicationKind.host)
           _HostDetailsSection(application: application)
-        else
+        else if (application.venue != null)
           _VenueSection(venue: application.venue),
         _DocumentsSection(documents: application.documents),
         _ReviewSection(
@@ -286,9 +286,31 @@ class _OrganizationSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _DetailValue(label: 'Name', value: application.orgName),
-          _DetailValue(
-            label: 'Type',
-            value: organizationTypeLabel(application.orgType),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 9),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 96,
+                  child: Text(
+                    'TYPE',
+                    style: Theme.of(context).textTheme.epCaption.copyWith(
+                      color: context.epColors.contentSecondary,
+                    ),
+                  ),
+                ),
+                Flexible(
+                  child: StatusPill(
+                    key: const Key('admin-application-type'),
+                    label: organizationTypeLabel(
+                      application.orgType,
+                    ).toUpperCase(),
+                    tone: EpStatusPillTone.neutral,
+                  ),
+                ),
+              ],
+            ),
           ),
           if (website != null && website.isNotEmpty)
             Align(

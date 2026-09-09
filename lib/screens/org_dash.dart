@@ -120,13 +120,19 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
           const SizedBox(height: 18),
           Row(
             children: [
-              if (!app.currentIsHost) ...[
+              if (app.currentIsVenueOperator) ...[
                 EpStatCard(
+                  key: const Key('org-dash-venue-requests'),
                   label: 'VENUES',
                   value: '${dashboard.venues.length}',
-                  caption: 'managed profiles',
+                  caption: dashboard.pendingVenueConsents > 0
+                      ? '${dashboard.pendingVenueConsents} venue '
+                            '${dashboard.pendingVenueConsents == 1 ? 'request' : 'requests'}'
+                      : 'managed profiles',
                 ),
                 const SizedBox(width: 8),
+              ],
+              if (!app.currentIsHost) ...[
                 EpStatCard(
                   label: 'MEMBERS',
                   value: '${dashboard.memberCount}',
@@ -155,6 +161,7 @@ class _OrgDashScreenState extends State<OrgDashScreen> {
           const SizedBox(height: 10),
           _CommandGrid(
             isHost: app.currentIsHost,
+            isVenueOperator: app.currentIsVenueOperator,
             canManage: app.canManageOrganization(app.organizationId),
             canSeeFinance: app.canSeeFinance(app.organizationId),
             financeCaption: app.financeOverview == null
@@ -418,6 +425,7 @@ class _LoadError extends StatelessWidget {
 class _CommandGrid extends StatelessWidget {
   const _CommandGrid({
     required this.isHost,
+    required this.isVenueOperator,
     required this.canManage,
     required this.canSeeFinance,
     required this.financeCaption,
@@ -430,6 +438,7 @@ class _CommandGrid extends StatelessWidget {
   });
 
   final bool isHost;
+  final bool isVenueOperator;
   final bool canManage;
   final bool canSeeFinance;
   final String financeCaption;
@@ -458,12 +467,13 @@ class _CommandGrid extends StatelessWidget {
         icon: Icons.campaign_outlined,
         onTap: canManage ? onOpportunity : null,
       ),
-      _Command(
-        key: Key(isHost ? 'org-dash-locations' : 'org-dash-command-venues'),
-        label: isHost ? 'LOCATIONS' : 'VENUES',
-        icon: Icons.location_on_outlined,
-        onTap: isHost ? onLocations : onVenues,
-      ),
+      if (isHost || isVenueOperator)
+        _Command(
+          key: Key(isHost ? 'org-dash-locations' : 'org-dash-command-venues'),
+          label: isHost ? 'LOCATIONS' : 'VENUES',
+          icon: Icons.location_on_outlined,
+          onTap: isHost ? onLocations : onVenues,
+        ),
       if (canManage && !isHost)
         _Command(
           key: const Key('org-dash-command-team'),

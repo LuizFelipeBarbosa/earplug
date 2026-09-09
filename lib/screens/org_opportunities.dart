@@ -319,6 +319,7 @@ class _OpportunityCard extends StatelessWidget {
         )
         .join(' · ');
     final textTheme = Theme.of(context).textTheme;
+    final venueApproval = _venueApprovalStatus(opportunity.venueConsentStatus);
     final ticketSales = sales;
     final venueLabel =
         opportunity.privateEvent ||
@@ -381,9 +382,21 @@ class _OpportunityCard extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 8),
-                StatusPill(
-                  label: opportunityStatusLabel(opportunity.status),
-                  tone: opportunityStatusTone(opportunity.status),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: [
+                    StatusPill(
+                      label: opportunityStatusLabel(opportunity.status),
+                      tone: opportunityStatusTone(opportunity.status),
+                    ),
+                    if (venueApproval != null)
+                      StatusPill(
+                        key: Key('org-opp-venue-consent-${opportunity.id}'),
+                        label: venueApproval.label,
+                        tone: venueApproval.tone,
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -398,6 +411,32 @@ class _OpportunityCard extends StatelessWidget {
     );
   }
 }
+
+({String label, EpStatusPillTone tone})? _venueApprovalStatus(
+  VenueConsentStatus? status,
+) => switch (status) {
+  VenueConsentStatus.pending => (
+    label: 'Pending approval',
+    tone: EpStatusPillTone.warning,
+  ),
+  VenueConsentStatus.granted => (
+    label: 'Approved',
+    tone: EpStatusPillTone.success,
+  ),
+  VenueConsentStatus.declined => (
+    label: 'Declined',
+    tone: EpStatusPillTone.warning,
+  ),
+  VenueConsentStatus.withdrawn => (
+    label: 'Withdrawn',
+    tone: EpStatusPillTone.neutral,
+  ),
+  VenueConsentStatus.revoked => (
+    label: 'Revoked',
+    tone: EpStatusPillTone.warning,
+  ),
+  null || VenueConsentStatus.unknown => null,
+};
 
 enum _OpportunityAction { duplicate, close, reopen, cancel, delete }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
@@ -12,6 +13,7 @@ void main() {
   late _ControlledFinanceRepository repository;
   late AppState app;
   late List<({String filename, String text})> downloads;
+  late List<({String filename, Uint8List bytes, String mimeType})> pdfDownloads;
 
   setUp(() async {
     final auth = FakeAuthService();
@@ -27,6 +29,10 @@ void main() {
     downloads = [];
     app.textFileDownloader = (filename, text) async {
       downloads.add((filename: filename, text: text));
+    };
+    pdfDownloads = [];
+    app.bytesFileDownloader = (filename, bytes, mimeType) async {
+      pdfDownloads.add((filename: filename, bytes: bytes, mimeType: mimeType));
     };
     await flushAsyncWork();
   });
@@ -215,6 +221,47 @@ void main() {
     },
   );
 
+  test('PDF statement export downloads bytes with a .pdf filename', () async {
+    app.switchToOrganization('org1');
+    final from = DateTime.utc(2026, 2, 3, 4, 5, 6);
+    final to = DateTime.utc(2026, 9, 7, 18, 19, 20);
+
+    final statement = await app.exportStatementPdf(from, to);
+
+    expect(repository.statementRequests, [
+      (organizationId: 'org1', from: from, to: to),
+    ]);
+    expect(statement, same(repository.statement));
+    expect(pdfDownloads, hasLength(1));
+    final download = pdfDownloads.single;
+    expect(download.filename, 'earplug-statement-2026-02-03-2026-09-07.pdf');
+    expect(download.mimeType, 'application/pdf');
+    expect(download.bytes.take(5), [0x25, 0x50, 0x44, 0x46, 0x2d]);
+    expect(downloads, isEmpty);
+  });
+
+  test(
+    'band payout PDF statement downloads bytes with a .pdf filename',
+    () async {
+      app.switchToBand('b1');
+      final from = DateTime.utc(2026, 2, 3, 4, 5, 6);
+      final to = DateTime.utc(2026, 9, 7, 18, 19, 20);
+
+      final statement = await app.exportBandPayoutStatementPdf('b1', from, to);
+
+      expect(repository.payoutStatementRequests, [
+        (bandId: 'b1', from: from, to: to),
+      ]);
+      expect(statement, same(repository.payoutStatement));
+      expect(pdfDownloads, hasLength(1));
+      final download = pdfDownloads.single;
+      expect(download.filename, 'earplug-payouts-b1-2026-02-03-2026-09-07.pdf');
+      expect(download.mimeType, 'application/pdf');
+      expect(download.bytes.take(5), [0x25, 0x50, 0x44, 0x46, 0x2d]);
+      expect(downloads, isEmpty);
+    },
+  );
+
   test(
     'applicant insights cache each application until explicitly refreshed',
     () async {
@@ -367,6 +414,8 @@ class _ControlledFinanceRepository extends DemoRepository {
       <({String organizationId, int numItems, String? cursor})>[];
   final statementRequests =
       <({String organizationId, DateTime from, DateTime to})>[];
+  final payoutStatementRequests =
+      <({String bandId, DateTime from, DateTime to})>[];
   final applicantRequests = <String>[];
   final bandRequests = <String>[];
   FinanceOverview? lastOverview;
@@ -427,6 +476,27 @@ class _ControlledFinanceRepository extends DemoRepository {
     rows: 1,
     truncated: false,
   );
+  final payoutStatement = PayoutStatement(
+    payouts: [
+      PayoutStatementRow(
+        payoutId: 'payout-1',
+        bookingId: 'bk3',
+        bookingTitle: 'Summer Closer',
+        organizationName: 'The Foghorn Club',
+        kind: PayoutKind.completion,
+        status: PayoutStatus.paid,
+        paidAt: DateTime.utc(2026, 9, 6),
+        grossMinor: 10000,
+        commissionMinor: 1000,
+        netMinor: 9000,
+        reversedMinor: 0,
+        currency: 'usd',
+        stripeTransferId: 'tr-payout-1',
+      ),
+    ],
+    totalNetMinor: 9000,
+    truncated: false,
+  );
 
   @override
   Future<void> refreshAuth() => pendingAuth?.future ?? super.refreshAuth();
@@ -478,6 +548,16 @@ class _ControlledFinanceRepository extends DemoRepository {
   }) async {
     statementRequests.add((organizationId: organizationId, from: from, to: to));
     return statement;
+  }
+
+  @override
+  Future<PayoutStatement> bandPayoutStatement(
+    String bandId, {
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    payoutStatementRequests.add((bandId: bandId, from: from, to: to));
+    return payoutStatement;
   }
 
   @override

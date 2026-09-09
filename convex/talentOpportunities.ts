@@ -2,30 +2,26 @@ import { Infer, v } from "convex/values";
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { MutationCtx, internalMutation, mutation } from "./_generated/server";
-import { loadCurrentOffer, sendBookingEmail } from "./bookings";
 import { requireOrganizationRole } from "./lib/authz";
 import { flag } from "./lib/env";
-import { releaseSlot } from "./lib/bookingConfirm";
-import {
-  BOOKING_ACTIVE_STATUSES,
-  assertBookingTransition,
-} from "./lib/bookingStatus";
-import { syncGigTicketing, unpublishOpportunityGig } from "./lib/gigPublish";
+import { BOOKING_ACTIVE_STATUSES } from "./lib/bookingStatus";
+import { syncGigTicketing } from "./lib/gigPublish";
 import {
   assertUploadAcceptable,
   isReservedPublicSlug,
   isValidHttpsUrl,
   slugify,
 } from "./lib/helpers";
+import {
+  cancelOpportunity,
+  expireActiveApplications,
+} from "./lib/opportunityCancel";
 import { MAX_OPPORTUNITY_SLOTS } from "./lib/opportunityPayload";
 import {
-  APPLICATION_ACTIVE_STATUSES,
-  assertApplicationTransition,
   assertOpportunityTransition,
-  assertSlotTransition,
   type ArtistApplicationStatus,
 } from "./lib/opportunityStatus";
-import { cancelTicketSalesForGig } from "./lib/ticketCancellation";
+import { assertVenueUsable, currentConsentFor } from "./lib/venueConsentStatus";
 import { requireOwnedPrivateLocation } from "./privateLocations";
 import {
   ageRequirementValidator,
@@ -253,20 +249,17 @@ async function insertSlots(
   }
 }
 
-async function requireVerifiedVenue(
+async function requireUsableVenue(
   ctx: MutationCtx,
-  venueId: Id<"venues">,
   organizationId: Id<"organizations">,
-) {
+  venueId: Id<"venues">,
+): Promise<{ venue: Doc<"venues">; consentRequired: boolean }> {
   const venue = await ctx.db.get(venueId);
   if (!venue) throw new Error("Venue not found");
-  if (
-    venue.managedByOrganizationId !== organizationId ||
-    venue.status !== "verified"
-  ) {
-    throw new Error("Choose one of your verified venues");
-  }
-  return venue;
+  const { consentRequired } = assertVenueUsable(venue, organizationId, {
+    promotersEnabled: flag("PROMOTERS_ENABLED", false),
+  });
+  return { venue, consentRequired };
 }
 
 async function requireOpportunityManager(
@@ -358,10 +351,10 @@ export const create = mutation({
       if (args.venueId === undefined) {
         throw new Error("Choose one of your verified venues");
       }
-      const venue = await requireVerifiedVenue(
+      const { venue } = await requireUsableVenue(
         ctx,
-        args.venueId,
         args.organizationId,
+        args.venueId,
       );
       locationFields = {
         venueId: venue._id,
@@ -460,12 +453,25 @@ export const update = mutation({
         "Venue can only be changed while the opportunity is still a draft",
       );
     }
+    const startsAtChanged =
+      args.startsAt !== undefined && args.startsAt !== opportunity.startsAt;
+    const doorsAtChanged =
+      args.doorsAt !== undefined && args.doorsAt !== (opportunity.doorsAt ?? null);
+    const endsAtChanged =
+      args.endsAt !== undefined && args.endsAt !== (opportunity.endsAt ?? null);
+    if (venueChanged || startsAtChanged || doorsAtChanged || endsAtChanged) {
+      if (await currentConsentFor(ctx, opportunity._id)) {
+        throw new Error(
+          opportunity.status === "draft"
+            ? "Withdraw the venue request before changing the venue or date"
+            : "The venue approved this date. Contact the venue to change it.",
+        );
+      }
+    }
     const venue = venueChanged
-      ? await requireVerifiedVenue(
-          ctx,
-          args.venueId!,
-          opportunity.organizationId,
-        )
+      ? (
+          await requireUsableVenue(ctx, opportunity.organizationId, args.venueId!)
+        ).venue
       : null;
     const locationChanged =
       args.privateLocationId !== undefined &&
@@ -480,11 +486,6 @@ export const update = mutation({
     if (location && location.archivedAt !== undefined) {
       throw new Error("Choose an active location");
     }
-    const startsAtChanged =
-      args.startsAt !== undefined && args.startsAt !== opportunity.startsAt;
-    const doorsAtChanged =
-      args.doorsAt !== undefined &&
-      args.doorsAt !== (opportunity.doorsAt ?? null);
     if (startsAtChanged || doorsAtChanged) {
       const bookings = ctx.db
         .query("bookings")
@@ -707,6 +708,19 @@ export const open = mutation({
     )) {
       throw new Error("Set an applications deadline before the event starts");
     }
+    if (opportunity.venueId !== undefined) {
+      const venue = await ctx.db.get(opportunity.venueId);
+      if (!venue) throw new Error("Venue not found");
+      if (venue.managedByOrganizationId !== opportunity.organizationId) {
+        if (!flag("PROMOTERS_ENABLED", false)) {
+          throw new Error("Choose one of your verified venues");
+        }
+        const consent = await currentConsentFor(ctx, opportunity._id);
+        if (consent?.status !== "granted") {
+          throw new Error("The venue has not approved this event yet");
+        }
+      }
+    }
     const revision = opportunity.revision + 1;
     await ctx.db.patch(opportunity._id, {
       status: "open",
@@ -815,94 +829,16 @@ export const cancel = mutation({
       ctx,
       args.opportunityId,
     );
-    assertOpportunityTransition(opportunity.status, "cancelled");
-    const bookings = await ctx.db
-      .query("bookings")
-      .withIndex("by_opportunityId", (q) =>
-        q.eq("opportunityId", opportunity._id),
-      )
-      .take(500);
-    for (const booking of bookings) {
-      if (
-        booking.status !== "offer_sent" &&
-        booking.status !== "artist_accepted" &&
-        booking.status !== "awaiting_payment" &&
-        booking.status !== "confirmed"
-      ) {
-        continue;
-      }
-      const status =
-        booking.status === "confirmed" ? "cancelled_by_organizer" : "withdrawn";
-      assertBookingTransition(booking.status, status);
-      await ctx.db.patch(booking._id, {
-        status,
-        cancelledBy: "organizer",
-        cancelledByUserId: user._id,
-        cancelledAt: now,
-        cancelReason: "Opportunity cancelled",
-        revision: booking.revision + 1,
-        updatedAt: now,
-      });
-      if (status === "withdrawn") {
-        const offer = await loadCurrentOffer(ctx, booking);
-        await ctx.db.patch(offer._id, {
-          response: "withdrawn",
-          respondedAt: now,
-          respondedBy: user._id,
-        });
-        const application = await ctx.db.get(booking.applicationId);
-        if (application?.status === "offered") {
-          assertApplicationTransition(application.status, "shortlisted");
-          await ctx.db.patch(application._id, {
-            status: "shortlisted",
-            updatedAt: now,
-          });
-        }
-      } else {
-        await releaseSlot(ctx, booking.slotId);
-        const application = await ctx.db.get(booking.applicationId);
-        if (application?.status === "booked") {
-          assertApplicationTransition(application.status, "declined");
-          await ctx.db.patch(application._id, {
-            status: "declined",
-            updatedAt: now,
-          });
-        }
-      }
-      const cancelledBooking = await ctx.db.get(booking._id);
-      if (!cancelledBooking) throw new Error("Booking not found");
-      await sendBookingEmail(ctx, cancelledBooking, "bookingCancelled");
+    const reason = args.reason?.trim();
+    if (reason !== undefined && (reason.length === 0 || reason.length > 500)) {
+      throw new Error("Cancellation reason must be 1 to 500 characters");
     }
-    if (opportunity.publicGigId !== undefined) {
-      await unpublishOpportunityGig(ctx, opportunity._id, "opportunity_cancelled");
-      const gig = await ctx.db.get(opportunity.publicGigId);
-      if (gig?.ticketing === "paid") {
-        await cancelTicketSalesForGig(ctx, opportunity.publicGigId);
-      }
-    } else {
-      await ctx.db.patch(opportunity._id, {
-        status: "cancelled",
-        revision: opportunity.revision + 1,
-        updatedAt: now,
-      });
-    }
-    await expireActiveApplications(ctx, opportunity._id, {
-      statuses: APPLICATION_ACTIVE_STATUSES,
-      to: "declined",
-      decidedBy: user._id,
+    await cancelOpportunity(ctx, {
+      opportunity,
+      actorUserId: user._id,
+      reason: reason ?? "Opportunity cancelled",
+      now,
     });
-    const slots = await ctx.db
-      .query("opportunitySlots")
-      .withIndex("by_opportunityId_and_order", (q) =>
-        q.eq("opportunityId", opportunity._id),
-      )
-      .take(MAX_OPPORTUNITY_SLOTS + 1);
-    for (const slot of slots) {
-      if (slot.status === "open") {
-        assertSlotTransition(slot.status, "cancelled");
-        await ctx.db.patch(slot._id, { status: "cancelled" });
-      }
-    }
     return null;
   },
 });
@@ -911,12 +847,17 @@ export const deleteDraft = mutation({
   args: { opportunityId: v.id("talentOpportunities") },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const now = Date.now();
     const { opportunity } = await requireOpportunityManager(
       ctx,
       args.opportunityId,
     );
     if (opportunity.status !== "draft")
       throw new Error("Only a draft can be deleted");
+    const consent = await currentConsentFor(ctx, opportunity._id);
+    if (consent) {
+      await ctx.db.patch(consent._id, { status: "withdrawn", updatedAt: now });
+    }
     const slots = await ctx.db
       .query("opportunitySlots")
       .withIndex("by_opportunityId_and_order", (q) =>
@@ -948,6 +889,9 @@ export const duplicate = mutation({
       ctx,
       args.opportunityId,
     );
+    if (source.mode === "publicEvent" && source.venueId !== undefined) {
+      await requireUsableVenue(ctx, source.organizationId, source.venueId);
+    }
     let privateLocationId = source.privateLocationId;
     if (source.mode === "privateBooking") {
       requirePrivateBookingsEnabled();
@@ -1109,42 +1053,3 @@ export const expireApplications = internalMutation({
     return null;
   },
 });
-
-async function expireActiveApplications(
-  ctx: MutationCtx,
-  opportunityId: Id<"talentOpportunities">,
-  options: {
-    statuses: readonly ArtistApplicationStatus[];
-    to: "expired" | "declined";
-    decidedBy?: Id<"users">;
-  },
-): Promise<void> {
-  const now = Date.now();
-  let patchedCount = 0;
-  for (const status of options.statuses) {
-    for (;;) {
-      const page = await ctx.db
-        .query("artistApplications")
-        .withIndex("by_opportunityId_and_status", (q) =>
-          q.eq("opportunityId", opportunityId).eq("status", status),
-        )
-        .take(200);
-      for (const application of page) {
-        await ctx.db.patch(application._id, {
-          status: options.to,
-          decidedAt: now,
-          updatedAt: now,
-          ...(options.decidedBy ? { decidedBy: options.decidedBy } : {}),
-        });
-        patchedCount++;
-      }
-      if (page.length < 200) break;
-    }
-  }
-  const opportunity = await ctx.db.get(opportunityId);
-  if (!opportunity) return;
-  await ctx.db.patch(opportunityId, {
-    applicationCount: Math.max(0, opportunity.applicationCount - patchedCount),
-    updatedAt: now,
-  });
-}

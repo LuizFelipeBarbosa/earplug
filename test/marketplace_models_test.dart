@@ -258,6 +258,108 @@ void main() {
     });
   });
 
+  group('venue consent models', () {
+    test('VenueConsentStatus round-trips and tolerates unknown values', () {
+      for (final status in VenueConsentStatus.values) {
+        expect(VenueConsentStatus.fromWire(status.wireValue), status);
+      }
+      for (final value in <Object?>[null, 'future', 1, false, [], {}]) {
+        expect(VenueConsentStatus.fromWire(value), VenueConsentStatus.unknown);
+      }
+    });
+
+    test('VenueConsent and VenueConsentRow round-trip every field', () {
+      const json = {
+        'consentId': 'consent-1',
+        'opportunityId': 'opportunity-1',
+        'venueId': 'venue-1',
+        'venueOrganizationId': 'venue-org',
+        'requestingOrganizationId': 'promoter-org',
+        'status': 'granted',
+        'message': 'Please host our showcase.',
+        'note': 'The room is yours.',
+        'createdAt': 1800000000000,
+        'decidedAt': 1800000001000,
+        'opportunityTitle': 'Night Shift',
+        'opportunityStatus': 'draft',
+        'startsAt': 1800100000000,
+        'endsAt': 1800110000000,
+        'venueName': 'The Foghorn Club',
+        'requestingOrganizationName': 'Night Shift Collective',
+      };
+      for (final consent in [
+        VenueConsent.fromJson(_jsonRoundTrip(json)),
+        VenueConsentRow.fromJson(_jsonRoundTrip(json)),
+      ]) {
+        expect(consent.id, 'consent-1');
+        expect(consent.opportunityId, 'opportunity-1');
+        expect(consent.venueId, 'venue-1');
+        expect(consent.venueOrganizationId, 'venue-org');
+        expect(consent.requestingOrganizationId, 'promoter-org');
+        expect(consent.status, VenueConsentStatus.granted);
+        expect(consent.message, 'Please host our showcase.');
+        expect(consent.note, 'The room is yours.');
+        expect(consent.createdAt.millisecondsSinceEpoch, 1800000000000);
+        expect(consent.decidedAt!.millisecondsSinceEpoch, 1800000001000);
+      }
+      final row = VenueConsentRow.fromJson(_jsonRoundTrip(json));
+      expect(row.opportunityTitle, 'Night Shift');
+      expect(row.opportunityStatus, OpportunityStatus.draft);
+      expect(row.startsAt.millisecondsSinceEpoch, 1800100000000);
+      expect(row.endsAt!.millisecondsSinceEpoch, 1800110000000);
+      expect(row.venueName, 'The Foghorn Club');
+      expect(row.requestingOrganizationName, 'Night Shift Collective');
+    });
+
+    test('consents tolerate absent, null, malformed and future fields', () {
+      for (final json in <Map<String, dynamic>>[
+        {},
+        {'status': 'future', 'message': null, 'note': null, 'decidedAt': null},
+        {
+          'consentId': 7,
+          'opportunityId': false,
+          'venueId': <Object?>[],
+          'venueOrganizationId': <String, dynamic>{},
+          'requestingOrganizationId': null,
+          'status': false,
+          'message': 7,
+          'note': <Object?>[],
+          'createdAt': 'bad',
+          'decidedAt': 'bad',
+          'opportunityTitle': false,
+          'opportunityStatus': 'future',
+          'startsAt': 'bad',
+          'endsAt': false,
+          'venueName': 1,
+          'requestingOrganizationName': <Object?>[],
+        },
+      ]) {
+        for (final consent in [
+          VenueConsent.fromJson(_jsonRoundTrip(json)),
+          VenueConsentRow.fromJson(_jsonRoundTrip(json)),
+        ]) {
+          expect(consent.id, '');
+          expect(consent.opportunityId, '');
+          expect(consent.venueId, '');
+          expect(consent.venueOrganizationId, '');
+          expect(consent.requestingOrganizationId, '');
+          expect(consent.status, VenueConsentStatus.unknown);
+          expect(consent.message, isNull);
+          expect(consent.note, isNull);
+          expect(consent.createdAt.millisecondsSinceEpoch, 0);
+          expect(consent.decidedAt, isNull);
+        }
+        final row = VenueConsentRow.fromJson(_jsonRoundTrip(json));
+        expect(row.opportunityTitle, '');
+        expect(row.opportunityStatus, OpportunityStatus.draft);
+        expect(row.startsAt.millisecondsSinceEpoch, 0);
+        expect(row.endsAt, isNull);
+        expect(row.venueName, '');
+        expect(row.requestingOrganizationName, '');
+      }
+    });
+  });
+
   group('private booking and safety models', () {
     test('FeatureFlags defaults missing and malformed flags to false', () {
       final enabled = FeatureFlags.fromJson(
@@ -267,6 +369,7 @@ void main() {
           'payments': true,
           'bandGigWrites': true,
           'disputes': true,
+          'promoters': true,
         }),
       );
       expect(enabled.privateBookings, isTrue);
@@ -274,6 +377,16 @@ void main() {
       expect(enabled.payments, isTrue);
       expect(enabled.bandGigWrites, isTrue);
       expect(enabled.disputes, isTrue);
+      expect(enabled.promoters, isTrue);
+      expect(
+        const FeatureFlags(
+          privateBookings: true,
+          tickets: true,
+          payments: true,
+          bandGigWrites: true,
+        ).promoters,
+        isFalse,
+      );
       expect(
         const FeatureFlags(
           privateBookings: true,
@@ -291,6 +404,7 @@ void main() {
           'payments': null,
           'bandGigWrites': <Object?>[],
           'disputes': 'true',
+          'promoters': 'true',
         },
       ]) {
         final flags = FeatureFlags.fromJson(json);
@@ -299,6 +413,7 @@ void main() {
         expect(flags.payments, isFalse);
         expect(flags.bandGigWrites, isFalse);
         expect(flags.disputes, isFalse);
+        expect(flags.promoters, isFalse);
       }
     });
 
@@ -1237,6 +1352,370 @@ void main() {
       );
     },
   );
+
+  group('DemoRepository venue consents', () {
+    test('organizer reads surface venue consent status', () async {
+      final repository = DemoRepository(auth: FakeAuthService());
+      final opportunity = (await repository.opportunity('opp-promoter'))!;
+      expect(opportunity.venueConsentStatus, VenueConsentStatus.pending);
+
+      final managed = await repository.manageOpportunities('org3');
+      expect(
+        managed
+            .singleWhere((opportunity) => opportunity.id == 'opp-promoter')
+            .venueConsentStatus,
+        VenueConsentStatus.pending,
+      );
+      expect(
+        (await repository.opportunity('opp1'))!.venueConsentStatus,
+        isNull,
+      );
+    });
+
+    test(
+      'dashboard counts pending consents for the venue organization',
+      () async {
+        final repository = DemoRepository(auth: FakeAuthService());
+        final venueDashboard = await repository.organizationDashboard('org1');
+        expect(venueDashboard.pendingVenueConsents, 1);
+
+        final requesterDashboard = await repository.organizationDashboard(
+          'org3',
+        );
+        expect(requesterDashboard.pendingVenueConsents, 0);
+      },
+    );
+
+    test(
+      'venue approval unlocks opening and owned venues need no consent',
+      () async {
+        final auth = FakeAuthService();
+        await auth.signInDemo();
+        final repository = DemoRepository(auth: auth);
+        final promoter = (await repository.myOrganizations().first).singleWhere(
+          (membership) => membership.organization.id == 'org3',
+        );
+        expect(promoter.role, OrganizationRole.owner);
+        expect(promoter.organization.orgType, OrganizationType.promoter);
+        final consent = (await repository.venueConsentForOpportunity(
+          'opp-promoter',
+        ))!;
+        expect(consent.id, 'consent-1');
+        expect(consent.status, VenueConsentStatus.pending);
+        await expectLater(
+          repository.requestVenueConsent(opportunityId: 'opp-promoter'),
+          throwsStateError,
+        );
+        await expectLater(
+          repository.openOpportunity(
+            opportunityId: 'opp-promoter',
+            expectedRevision: 1,
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              'The venue has not approved this event yet',
+            ),
+          ),
+        );
+        await repository.decideVenueConsent(
+          consentId: consent.id,
+          granted: true,
+          note: '  Welcome aboard!  ',
+        );
+        final granted = (await repository.venueConsentForOpportunity(
+          'opp-promoter',
+        ))!;
+        expect(granted.status, VenueConsentStatus.granted);
+        expect(granted.note, 'Welcome aboard!');
+        expect(granted.createdAt, consent.createdAt);
+        expect(granted.decidedAt, isNotNull);
+        await expectLater(
+          repository.withdrawVenueConsent(consent.id),
+          throwsStateError,
+        );
+        await expectLater(
+          repository.decideVenueConsent(consentId: consent.id, granted: false),
+          throwsStateError,
+        );
+        await repository.openOpportunity(
+          opportunityId: 'opp-promoter',
+          expectedRevision: 1,
+        );
+        expect(
+          (await repository.opportunity('opp-promoter'))!.status,
+          OpportunityStatus.open,
+        );
+        await expectLater(
+          repository.requestVenueConsent(opportunityId: 'opp2'),
+          throwsStateError,
+        );
+        await repository.openOpportunity(
+          opportunityId: 'opp2',
+          expectedRevision: 1,
+        );
+        expect(
+          (await repository.opportunity('opp2'))!.status,
+          OpportunityStatus.open,
+        );
+        expect(await repository.venueConsentForOpportunity('opp2'), isNull);
+        expect(
+          (await DemoRepository(
+            auth: FakeAuthService(),
+          ).venueConsentForOpportunity('opp-promoter'))!.status,
+          VenueConsentStatus.pending,
+        );
+      },
+    );
+
+    test(
+      'revoking approval cancels an open event and declines applications',
+      () async {
+        final repository = DemoRepository(auth: FakeAuthService());
+        await expectLater(
+          repository.revokeVenueConsent('consent-1'),
+          throwsStateError,
+        );
+        await repository.decideVenueConsent(
+          consentId: 'consent-1',
+          granted: true,
+          note: 'Approved',
+        );
+        await repository.openOpportunity(
+          opportunityId: 'opp-promoter',
+          expectedRevision: 1,
+        );
+        await repository.applyToOpportunity(
+          opportunityId: 'opp-promoter',
+          slotId: 'opp-promoter-headliner',
+          bandId: 'b1',
+          message: 'Ready to play.',
+        );
+        final before = (await repository.opportunity('opp-promoter'))!;
+        await expectLater(
+          repository.revokeVenueConsent('consent-1', note: 'x' * 1001),
+          throwsStateError,
+        );
+        await repository.revokeVenueConsent('consent-1', note: '  ');
+        final revoked = (await repository.venueConsentForOpportunity(
+          'opp-promoter',
+        ))!;
+        expect(revoked.status, VenueConsentStatus.revoked);
+        expect(revoked.note, isNull);
+        expect(revoked.decidedAt, isNotNull);
+        final cancelled = (await repository.opportunity('opp-promoter'))!;
+        expect(cancelled.status, OpportunityStatus.cancelled);
+        expect(cancelled.applicationCount, 0);
+        expect(cancelled.revision, before.revision + 1);
+        expect(cancelled.updatedAt.isBefore(before.updatedAt), isFalse);
+        final application = (await repository.applicantsFor(
+          'opp-promoter',
+        )).single.application;
+        expect(application.status, ArtistApplicationStatus.declined);
+        expect(application.decidedAt, isNotNull);
+        expect(await repository.venueConsentsForOrganization('org1'), isEmpty);
+        expect(
+          (await repository.venueConsentsForOrganization(
+            'org1',
+            status: VenueConsentStatus.revoked,
+          )).single.id,
+          revoked.id,
+        );
+        await expectLater(
+          repository.revokeVenueConsent('consent-1'),
+          throwsStateError,
+        );
+      },
+    );
+
+    test(
+      'draft requests can be withdrawn and retried after a decline',
+      () async {
+        final repository = DemoRepository(auth: FakeAuthService());
+        final created = await repository.createOpportunity(
+          organizationId: 'org3',
+          title: 'Another Night Shift',
+          venueId: 'v1',
+          startsAt: DateTime.now().add(const Duration(days: 50)),
+        );
+        await expectLater(
+          repository.requestVenueConsent(
+            opportunityId: created.opportunityId,
+            message: 'x' * 1001,
+          ),
+          throwsStateError,
+        );
+        final id = await repository.requestVenueConsent(
+          opportunityId: created.opportunityId,
+          message: '  A second showcase.  ',
+        );
+        final pending = (await repository.venueConsentForOpportunity(
+          created.opportunityId,
+        ))!;
+        expect(pending.id, id);
+        expect(pending.status, VenueConsentStatus.pending);
+        expect(pending.message, 'A second showcase.');
+        expect(pending.note, isNull);
+        expect(pending.decidedAt, isNull);
+        final inbox = await repository.venueConsentsForOrganization('org1');
+        expect(inbox.map((row) => row.id), [id, 'consent-1']);
+        expect(inbox.first.venueName, 'The Foghorn Club');
+        expect(
+          inbox.first.requestingOrganizationName,
+          'Night Shift Collective',
+        );
+        expect(inbox.first.opportunityTitle, 'Another Night Shift');
+        expect(inbox.first.opportunityStatus, OpportunityStatus.draft);
+        expect(await repository.venueConsentsForOrganization('org3'), isEmpty);
+        await repository.withdrawVenueConsent(id);
+        final withdrawn = (await repository.venueConsentsForOrganization(
+          'org1',
+          status: VenueConsentStatus.withdrawn,
+        )).single;
+        expect(withdrawn.status, VenueConsentStatus.withdrawn);
+        expect(withdrawn.message, pending.message);
+        expect(withdrawn.createdAt, pending.createdAt);
+        expect(withdrawn.decidedAt, isNull);
+        expect(
+          await repository.venueConsentForOpportunity(created.opportunityId),
+          isNull,
+        );
+        await expectLater(
+          repository.withdrawVenueConsent(id),
+          throwsStateError,
+        );
+        final retryId = await repository.requestVenueConsent(
+          opportunityId: created.opportunityId,
+          message: '  ',
+        );
+        expect(retryId, isNot(id));
+        await expectLater(
+          repository.decideVenueConsent(
+            consentId: retryId,
+            granted: false,
+            note: 'x' * 1001,
+          ),
+          throwsStateError,
+        );
+        await repository.decideVenueConsent(
+          consentId: retryId,
+          granted: false,
+          note: '  Unavailable  ',
+        );
+        final declined = (await repository.venueConsentForOpportunity(
+          created.opportunityId,
+        ))!;
+        expect(declined.id, retryId);
+        expect(declined.status, VenueConsentStatus.declined);
+        expect(declined.message, isNull);
+        expect(declined.note, 'Unavailable');
+        final lastId = await repository.requestVenueConsent(
+          opportunityId: created.opportunityId,
+        );
+        expect(
+          (await repository.venueConsentForOpportunity(
+            created.opportunityId,
+          ))!.id,
+          lastId,
+        );
+        await repository.withdrawVenueConsent(lastId);
+        expect(
+          (await repository.venueConsentForOpportunity(
+            created.opportunityId,
+          ))!.id,
+          retryId,
+        );
+      },
+    );
+
+    test(
+      'confirmed and disputed bookings prevent revoking venue approval',
+      () async {
+        final repository = DemoRepository(auth: FakeAuthService())
+          ..demoPaymentsEnabled = true;
+        final created = await repository.createOpportunity(
+          organizationId: 'org3',
+          title: 'Started showcase',
+          venueId: 'v1',
+          startsAt: DateTime.now().subtract(const Duration(hours: 1)),
+        );
+        final consentId = await repository.requestVenueConsent(
+          opportunityId: created.opportunityId,
+        );
+        await repository.decideVenueConsent(
+          consentId: consentId,
+          granted: true,
+        );
+        await repository.openOpportunity(
+          opportunityId: created.opportunityId,
+          expectedRevision: 1,
+        );
+        final opportunity = (await repository.opportunity(
+          created.opportunityId,
+        ))!;
+        final applicationId = await repository.applyToOpportunity(
+          opportunityId: opportunity.id,
+          slotId: opportunity.slots.single.id,
+          bandId: 'b1',
+          message: 'Ready to play.',
+        );
+        await repository.reviewApplication(
+          applicationId: applicationId,
+          action: ArtistApplicationReviewAction.shortlisted,
+        );
+        final offer = await repository.sendOffer(
+          applicationId: applicationId,
+          grossMinor: 10000,
+          cancellationTemplate: CancellationTemplate.standard,
+        );
+        await repository.respondToOffer(
+          bookingId: offer.bookingId,
+          accept: true,
+          expectedRevision: offer.revision,
+        );
+        final payment = (await repository.paymentsForBooking(
+          offer.bookingId,
+        )).single;
+        final checkout = await repository.startInstallmentCheckout(payment.id);
+        await repository.simulateCheckoutCompleted(checkout.sessionId);
+        for (final status in [
+          BookingStatus.confirmed,
+          BookingStatus.disputed,
+        ]) {
+          if (status == BookingStatus.disputed) {
+            await repository.openDispute(
+              bookingId: offer.bookingId,
+              side: DisputeSide.artist,
+              category: DisputeCategory.payment,
+              text: 'Please investigate the payment.',
+            );
+          }
+          expect((await repository.booking(offer.bookingId))!.status, status);
+          await expectLater(
+            repository.revokeVenueConsent(consentId),
+            throwsA(
+              isA<StateError>().having(
+                (error) => error.message,
+                'message',
+                'This event already has a confirmed booking. Contact EarPlug support.',
+              ),
+            ),
+          );
+          expect(
+            (await repository.venueConsentForOpportunity(
+              opportunity.id,
+            ))!.status,
+            VenueConsentStatus.granted,
+          );
+          expect(
+            (await repository.opportunity(opportunity.id))!.status,
+            OpportunityStatus.confirmed,
+          );
+        }
+      },
+    );
+  });
 
   group('DemoRepository opportunities', () {
     late DemoRepository repository;
@@ -3837,6 +4316,41 @@ void main() {
       }
     });
 
+    test('finance and statement transactions preserve every funds state', () {
+      const states = {
+        'pending': FundsState.pending,
+        'available': FundsState.available,
+        'reserved': FundsState.reserved,
+        'paid': FundsState.paid,
+        'refunded': FundsState.refunded,
+        'disputed': FundsState.disputed,
+        'unknown': FundsState.unknown,
+      };
+      expect(FundsState.values.map((state) => state.wireValue), states.keys);
+      for (final entry in states.entries) {
+        final json = {...transactionJson, 'fundsState': entry.key};
+        expect(FundsState.fromWire(entry.key), entry.value);
+        expect(entry.value.wireValue, entry.key);
+        expect(FinanceTransaction.fromJson(json).fundsState, entry.value);
+        expect(StatementTransaction.fromJson(json).fundsState, entry.value);
+      }
+    });
+
+    test('legacy funds states parse to canonical members and wire values', () {
+      const aliases = {
+        'paidOut': FundsState.paid,
+        'reversed': FundsState.refunded,
+      };
+      for (final entry in aliases.entries) {
+        final json = {...transactionJson, 'fundsState': entry.key};
+        expect(FundsState.fromWire(entry.key), entry.value);
+        expect(FinanceTransaction.fromJson(json).fundsState, entry.value);
+        expect(StatementTransaction.fromJson(json).fundsState, entry.value);
+      }
+      expect(FundsState.fromWire('paidOut').wireValue, 'paid');
+      expect(FundsState.fromWire('reversed').wireValue, 'refunded');
+    });
+
     test('FinanceTransaction parses money, references, and wire enums', () {
       final transaction = FinanceTransaction.fromJson(transactionJson);
       expect(transaction.id, 'ledger-1');
@@ -3887,7 +4401,217 @@ void main() {
       expect(statement.csv, 'date,type\n2026-09-06,charge');
       expect(statement.rows, 1);
       expect(statement.truncated, isTrue);
+      expect(statement.transactions, isEmpty);
+      expect(statement.totalsByKind, isEmpty);
     });
+
+    test('StatementExport round-trips transactions and totals by kind', () {
+      final statement = StatementExport.fromJson(
+        _jsonRoundTrip({
+          'csv': 'date,type\n2027-01-15,ticketSale',
+          'rows': 1,
+          'truncated': false,
+          'transactions': [transactionJson],
+          'totalsByKind': [
+            {'kind': 'ticketSale', 'amountMinor': 4500, 'count': 1},
+          ],
+        }),
+      );
+      final transaction = statement.transactions.single;
+      expect(transaction.id, 'ledger-1');
+      expect(transaction.kind, LedgerKind.ticketSale);
+      expect(transaction.amountMinor, 4500);
+      expect(transaction.currency, 'eur');
+      expect(transaction.fundsState, FundsState.available);
+      expect(transaction.occurredAt.millisecondsSinceEpoch, 1800000000000);
+      expect(transaction.label, 'Show');
+      expect(transaction.bookingId, 'booking-1');
+      expect(transaction.ticketOrderId, 'order-1');
+      expect(transaction.stripeRef, 'pi_1');
+      final total = statement.totalsByKind.single;
+      expect(total.kind, LedgerKind.ticketSale);
+      expect(total.amountMinor, 4500);
+      expect(total.count, 1);
+    });
+
+    test(
+      'PayoutStatement and its rows round-trip nullable payment details',
+      () {
+        const rowJson = {
+          'payoutId': 'payout-1',
+          'bookingId': 'booking-1',
+          'bookingTitle': 'Night Shift',
+          'organizationName': 'Night Shift Collective',
+          'kind': 'completion',
+          'status': 'reversed',
+          'paidAt': 1800000000000,
+          'netMinor': 8750,
+          'reversedMinor': 1250,
+          'currency': 'usd',
+          'grossMinor': 10000,
+          'commissionMinor': 1250,
+          'stripeTransferId': 'tr_1',
+        };
+        for (final nullable in [false, true]) {
+          final json = {
+            ...rowJson,
+            if (nullable) ...{
+              'grossMinor': null,
+              'commissionMinor': null,
+              'stripeTransferId': null,
+            },
+          };
+          final statement = PayoutStatement.fromJson(
+            _jsonRoundTrip({
+              'payouts': [json],
+              'totalNetMinor': 7500,
+              'truncated': true,
+            }),
+          );
+          expect(statement.totalNetMinor, 7500);
+          expect(statement.truncated, isTrue);
+          for (final row in [
+            statement.payouts.single,
+            PayoutStatementRow.fromJson(_jsonRoundTrip(json)),
+          ]) {
+            expect(row.payoutId, 'payout-1');
+            expect(row.bookingId, 'booking-1');
+            expect(row.bookingTitle, 'Night Shift');
+            expect(row.organizationName, 'Night Shift Collective');
+            expect(row.kind, PayoutKind.completion);
+            expect(row.status, PayoutStatus.reversed);
+            expect(row.paidAt.millisecondsSinceEpoch, 1800000000000);
+            expect(row.netMinor, 8750);
+            expect(row.reversedMinor, 1250);
+            expect(row.currency, 'usd');
+            expect(row.grossMinor, nullable ? isNull : 10000);
+            expect(row.commissionMinor, nullable ? isNull : 1250);
+            expect(row.stripeTransferId, nullable ? isNull : 'tr_1');
+          }
+        }
+        final empty = PayoutStatement.fromJson(_jsonRoundTrip({}));
+        expect(empty.payouts, isEmpty);
+        expect(empty.totalNetMinor, 0);
+        expect(empty.truncated, isFalse);
+      },
+    );
+
+    test(
+      'demo statements include paid charges and cancellation payouts in range',
+      () async {
+        final repository = DemoRepository(auth: FakeAuthService())
+          ..demoPaymentsEnabled = true
+          ..demoCommissionBps = 1250;
+        final now = DateTime.now();
+        final empty = await repository.bandPayoutStatement(
+          'b1',
+          from: now,
+          to: now,
+        );
+        expect(empty.payouts, isEmpty);
+        expect(empty.totalNetMinor, 0);
+        expect(empty.truncated, isFalse);
+        final created = await repository.createOpportunity(
+          organizationId: 'org1',
+          title: 'Statement showcase',
+          venueId: 'v1',
+          startsAt: now.add(const Duration(days: 3)),
+          applicationsCloseAt: now.add(const Duration(days: 1)),
+        );
+        await repository.openOpportunity(
+          opportunityId: created.opportunityId,
+          expectedRevision: 1,
+        );
+        final opportunity = (await repository.opportunity(
+          created.opportunityId,
+        ))!;
+        final applicationId = await repository.applyToOpportunity(
+          opportunityId: opportunity.id,
+          slotId: opportunity.slots.single.id,
+          bandId: 'b1',
+          message: 'Ready to play.',
+        );
+        await repository.reviewApplication(
+          applicationId: applicationId,
+          action: ArtistApplicationReviewAction.shortlisted,
+        );
+        final offer = await repository.sendOffer(
+          applicationId: applicationId,
+          grossMinor: 10000,
+          cancellationTemplate: CancellationTemplate.strict,
+        );
+        await repository.respondToOffer(
+          bookingId: offer.bookingId,
+          accept: true,
+          expectedRevision: offer.revision,
+        );
+        final payment = (await repository.paymentsForBooking(
+          offer.bookingId,
+        )).single;
+        final checkout = await repository.startInstallmentCheckout(payment.id);
+        await repository.simulateCheckoutCompleted(checkout.sessionId);
+        final charge = (await repository.financeTransactions(
+          'org1',
+          numItems: 20,
+        )).items.single;
+        final exported = await repository.exportStatement(
+          'org1',
+          from: charge.occurredAt,
+          to: charge.occurredAt,
+        );
+        expect(exported.rows, 1);
+        expect(exported.transactions.single.id, charge.id);
+        expect(exported.transactions.single.bookingId, offer.bookingId);
+        expect(exported.transactions.single.amountMinor, 10000);
+        expect(exported.totalsByKind.single.kind, LedgerKind.charge);
+        expect(exported.totalsByKind.single.amountMinor, 10000);
+        expect(exported.totalsByKind.single.count, 1);
+        expect(exported.csv.split('\n'), hasLength(2));
+        final booking = (await repository.booking(offer.bookingId))!;
+        await repository.cancelBooking(
+          bookingId: booking.id,
+          reason: 'Venue unavailable',
+          expectedRevision: booking.revision,
+          side: BookingSide.organizer,
+        );
+        final payout = (await repository.payoutsForBooking(booking.id)).single;
+        final statement = await repository.bandPayoutStatement(
+          'b1',
+          from: payout.paidAt!,
+          to: payout.paidAt!,
+        );
+        final row = statement.payouts.single;
+        expect(row.payoutId, payout.id);
+        expect(row.bookingId, booking.id);
+        expect(row.bookingTitle, 'Statement showcase');
+        expect(row.organizationName, 'The Foghorn Club');
+        expect(row.kind, PayoutKind.forfeit);
+        expect(row.status, PayoutStatus.paid);
+        expect(row.paidAt, payout.paidAt);
+        expect(row.netMinor, 8750);
+        expect(row.reversedMinor, 0);
+        expect(row.currency, 'usd');
+        expect(row.grossMinor, isNull);
+        expect(row.commissionMinor, isNull);
+        expect(row.stripeTransferId, isNull);
+        expect(statement.totalNetMinor, 8750);
+        expect(statement.truncated, isFalse);
+        final before = await repository.bandPayoutStatement(
+          'b1',
+          from: now.subtract(const Duration(days: 1)),
+          to: payout.paidAt!.subtract(const Duration(microseconds: 1)),
+        );
+        final after = await repository.bandPayoutStatement(
+          'b1',
+          from: payout.paidAt!.add(const Duration(microseconds: 1)),
+          to: now.add(const Duration(days: 1)),
+        );
+        expect(before.payouts, isEmpty);
+        expect(before.totalNetMinor, 0);
+        expect(after.payouts, isEmpty);
+        expect(after.totalNetMinor, 0);
+      },
+    );
 
     test('finance models tolerate missing and malformed payload fields', () {
       final epoch = DateTime.fromMillisecondsSinceEpoch(0);

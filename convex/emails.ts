@@ -9,6 +9,8 @@ export const emailKindValidator = v.union(
   v.literal("applicationApproved"),
   v.literal("applicationNeedsInfo"),
   v.literal("applicationRejected"),
+  v.literal("venueConsentRequested"),
+  v.literal("venueConsentDecided"),
   v.literal("memberInvited"),
   v.literal("offerSent"),
   v.literal("offerAccepted"),
@@ -163,6 +165,34 @@ export function bookingEmail(
   if (input.grossLabel !== undefined) text += `\n\nFee: ${input.grossLabel}`;
   if (input.reason !== undefined) text += `\n\nReason: ${input.reason}`;
   return { subject, text: `${text}\n\n${input.link}` };
+}
+
+export function consentEmail(
+  kind: "venueConsentRequested" | "venueConsentDecided",
+  input: {
+    venueName: string;
+    opportunityTitle: string;
+    startsAt: number;
+    requestingOrganizationName: string;
+    status: "pending" | "granted" | "declined" | "revoked";
+    note?: string;
+  },
+): { subject: string; text: string } {
+  const performance = `${input.opportunityTitle} at ${input.venueName} on ${bookingDateLabel(input.startsAt)}`;
+  if (kind === "venueConsentRequested") {
+    return {
+      subject: `${input.requestingOrganizationName} is requesting venue approval for ${performance}`,
+      text: `${input.requestingOrganizationName} is requesting venue approval for ${performance}.`,
+    };
+  }
+  if (input.status === "pending") {
+    throw new Error("Cannot send a venue decision email for a pending request");
+  }
+  const outcome = input.status === "granted" ? "approved" : input.status;
+  const subject = `Venue approval ${outcome}: ${input.opportunityTitle}`;
+  let text = `${input.venueName} has ${outcome} ${input.requestingOrganizationName}'s venue approval request for ${performance}.`;
+  if (input.note) text += `\n\nNote: ${input.note}`;
+  return { subject, text };
 }
 
 export function ticketEmail(

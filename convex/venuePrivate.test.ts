@@ -158,6 +158,81 @@ async function setupFixture(
 }
 
 describe("readVenuePrivateFor", () => {
+  test.each([
+    { reader: "requesting organization", requesterManagesVenue: false },
+    { reader: "requesting and former managing organization", requesterManagesVenue: true },
+  ])(
+    "denies a $reader member access through stale granted consent after a management transfer",
+    async ({ requesterManagesVenue }) => {
+      const { t, adminId, memberId, organizationId, venueId, opportunityId } =
+        await setupFixture();
+      const { consentId, newVenueOrganizationId } = await t.run(async (ctx) => {
+        const venueOrganizationId = requesterManagesVenue
+          ? organizationId
+          : await ctx.db.insert("organizations", {
+              name: "Lantern Operators",
+              slug: "lantern-operators",
+              orgType: "venueOperator",
+              status: "verified",
+              ownerUserId: adminId,
+              createdAt,
+              updatedAt: createdAt,
+            });
+        const newVenueOrganizationId = await ctx.db.insert("organizations", {
+          name: "New Lantern Operators",
+          slug: "new-lantern-operators",
+          orgType: "venueOperator",
+          status: "verified",
+          ownerUserId: adminId,
+          createdAt,
+          updatedAt: createdAt,
+        });
+        await ctx.db.patch(venueId, {
+          managedByOrganizationId: venueOrganizationId,
+        });
+        await ctx.db.insert("organizationMembers", {
+          organizationId,
+          userId: memberId,
+          role: "door",
+          createdAt,
+        });
+        const consentId = await ctx.db.insert("venueConsents", {
+          opportunityId,
+          venueId,
+          venueOrganizationId,
+          requestingOrganizationId: organizationId,
+          status: "granted",
+          createdAt,
+          updatedAt: createdAt,
+        });
+        return { consentId, newVenueOrganizationId };
+      });
+
+      await t.run(async (ctx) => {
+        const venue = (await ctx.db.get(venueId))!;
+        const member = (await ctx.db.get(memberId))!;
+        expect(venue.addressDisclosure).toBe("onTicket");
+        expect(await readVenuePrivateFor(ctx, venue, member)).toMatchObject({
+          details: { addr: exactAddress, loadInNotes: "Use the side entrance." },
+          operational: true,
+        });
+      });
+
+      await t.run((ctx) =>
+        ctx.db.patch(venueId, {
+          managedByOrganizationId: newVenueOrganizationId,
+        }),
+      );
+
+      await t.run(async (ctx) => {
+        const venue = (await ctx.db.get(venueId))!;
+        const member = (await ctx.db.get(memberId))!;
+        expect(await ctx.db.get(consentId)).toMatchObject({ status: "granted" });
+        expect(await readVenuePrivateFor(ctx, venue, member)).toBeNull();
+      });
+    },
+  );
+
   test.each(["confirmed", "completed", "paid"] as const)(
     "reveals the exact address to a band admin with a %s booking",
     async (status) => {
@@ -247,6 +322,175 @@ describe("readVenuePrivateFor", () => {
 
       expect(result?.details.addr).toBe(exactAddress);
       expect(result?.operational).toBe(false);
+    });
+  });
+
+  test.each(["onTicket", "public"] as const)(
+    "reveals the exact address and operational details to a requesting organization member with granted consent at a venue with %s disclosure",
+    async (addressDisclosure) => {
+      const { t, memberId, organizationId, venueId, opportunityId } =
+        await setupFixture();
+      await t.run(async (ctx) => {
+        const venueOrganizationId = await ctx.db.insert("organizations", {
+          name: "Lantern Operators",
+          slug: "lantern-operators",
+          orgType: "venueOperator",
+          status: "verified",
+          ownerUserId: memberId,
+          createdAt,
+          updatedAt: createdAt,
+        });
+        await ctx.db.patch(venueId, {
+          addressDisclosure,
+          managedByOrganizationId: venueOrganizationId,
+        });
+        await ctx.db.insert("organizationMembers", {
+          organizationId,
+          userId: memberId,
+          role: "door",
+          createdAt,
+        });
+        await ctx.db.insert("venueConsents", {
+          opportunityId,
+          venueId,
+          venueOrganizationId,
+          requestingOrganizationId: organizationId,
+          status: "granted",
+          createdAt,
+          updatedAt: createdAt,
+        });
+        const venue = (await ctx.db.get(venueId))!;
+        const member = (await ctx.db.get(memberId))!;
+        const result = await readVenuePrivateFor(ctx, venue, member);
+
+        expect(result).not.toBeNull();
+        expect(result!.details.addr).toBe(exactAddress);
+        expect(result!.operational).toBe(true);
+        const payload = toVenuePrivatePayload(result!.details, result!.operational);
+        expect(payload).toMatchObject({
+          addr: exactAddress,
+          loadInNotes: "Use the side entrance.",
+          capacity: 200,
+        });
+      });
+    },
+  );
+
+  test("denies a requesting organization member whose venue consent is pending", async () => {
+    const { t, memberId, organizationId, venueId, opportunityId } =
+      await setupFixture();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("organizationMembers", {
+        organizationId,
+        userId: memberId,
+        role: "door",
+        createdAt,
+      });
+      await ctx.db.insert("venueConsents", {
+        opportunityId,
+        venueId,
+        venueOrganizationId: organizationId,
+        requestingOrganizationId: organizationId,
+        status: "pending",
+        createdAt,
+        updatedAt: createdAt,
+      });
+      const venue = (await ctx.db.get(venueId))!;
+      const member = (await ctx.db.get(memberId))!;
+
+      expect(await readVenuePrivateFor(ctx, venue, member)).toBeNull();
+    });
+  });
+
+  test.each(["cancelled", "completed"] as const)(
+    "denies a requesting organization member with granted consent for a %s opportunity",
+    async (status) => {
+      const { t, memberId, organizationId, venueId, opportunityId } =
+        await setupFixture();
+      await t.run(async (ctx) => {
+        await ctx.db.patch(opportunityId, { status });
+        await ctx.db.insert("organizationMembers", {
+          organizationId,
+          userId: memberId,
+          role: "door",
+          createdAt,
+        });
+        await ctx.db.insert("venueConsents", {
+          opportunityId,
+          venueId,
+          venueOrganizationId: organizationId,
+          requestingOrganizationId: organizationId,
+          status: "granted",
+          createdAt,
+          updatedAt: createdAt,
+        });
+        const venue = (await ctx.db.get(venueId))!;
+        const member = (await ctx.db.get(memberId))!;
+
+        expect(await readVenuePrivateFor(ctx, venue, member)).toBeNull();
+      });
+    },
+  );
+
+  test("denies a suspended requesting organization's member despite granted consent", async () => {
+    const { t, memberId, organizationId, venueId, opportunityId } =
+      await setupFixture();
+    await t.run(async (ctx) => {
+      await ctx.db.patch(organizationId, { status: "suspended" });
+      await ctx.db.insert("organizationMembers", {
+        organizationId,
+        userId: memberId,
+        role: "door",
+        createdAt,
+      });
+      await ctx.db.insert("venueConsents", {
+        opportunityId,
+        venueId,
+        venueOrganizationId: organizationId,
+        requestingOrganizationId: organizationId,
+        status: "granted",
+        createdAt,
+        updatedAt: createdAt,
+      });
+      const venue = (await ctx.db.get(venueId))!;
+      const member = (await ctx.db.get(memberId))!;
+
+      expect(await readVenuePrivateFor(ctx, venue, member)).toBeNull();
+    });
+  });
+
+  test("denies an unrelated organization's member when another organization has granted consent", async () => {
+    const { t, memberId, organizationId, venueId, opportunityId } =
+      await setupFixture();
+    await t.run(async (ctx) => {
+      const unrelatedOrganizationId = await ctx.db.insert("organizations", {
+        name: "Unrelated Shows",
+        slug: "unrelated-shows",
+        orgType: "promoter",
+        status: "verified",
+        ownerUserId: memberId,
+        createdAt,
+        updatedAt: createdAt,
+      });
+      await ctx.db.insert("organizationMembers", {
+        organizationId: unrelatedOrganizationId,
+        userId: memberId,
+        role: "door",
+        createdAt,
+      });
+      await ctx.db.insert("venueConsents", {
+        opportunityId,
+        venueId,
+        venueOrganizationId: organizationId,
+        requestingOrganizationId: organizationId,
+        status: "granted",
+        createdAt,
+        updatedAt: createdAt,
+      });
+      const venue = (await ctx.db.get(venueId))!;
+      const member = (await ctx.db.get(memberId))!;
+
+      expect(await readVenuePrivateFor(ctx, venue, member)).toBeNull();
     });
   });
 
