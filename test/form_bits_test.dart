@@ -36,9 +36,9 @@ void main() {
       ),
     );
 
-    expect(find.text('BAND NAME · REQUIRED'), findsOneWidget);
-    expect(find.text('WEBSITE'), findsOneWidget);
-    expect(find.text('WEBSITE · REQUIRED'), findsNothing);
+    expect(find.text('Band name · required'), findsOneWidget);
+    expect(find.text('Website'), findsNWidgets(2));
+    expect(find.text('Website · required'), findsNothing);
     expect(find.text('This appears on your profile.'), findsOneWidget);
 
     final field = find.byKey(const ValueKey('required-field'));
@@ -86,7 +86,7 @@ void main() {
       ),
     );
     expect(
-      find.bySemanticsLabel(RegExp('^CONTACT NAME · REQUIRED')),
+      find.bySemanticsLabel(RegExp('^Contact name · required')),
       findsOneWidget,
     );
     await tester.enterText(find.byKey(const Key('contact-name')), 'Rae Booker');
@@ -112,7 +112,7 @@ void main() {
         tester.getBottomLeft(find.byKey(const Key('contact-name'))).dy,
       ),
     );
-    expect(find.text('CONTACT NAME · REQUIRED'), findsOneWidget);
+    expect(find.text('Contact name · required'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
     semantics.dispose();
@@ -153,7 +153,6 @@ void main() {
     expect(find.byKey(const ValueKey('success')), findsNothing);
     expect(find.text('Saved.'), findsNothing);
   });
-
 }
 
 Future<void> _pump(WidgetTester tester, Widget child) {

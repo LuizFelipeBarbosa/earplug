@@ -1259,7 +1259,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: EpLayout.isDesktop(context) ? 0 : 67,
+              bottom: 0,
               child: StickyActionBar(
                 key: ValueKey(switch (_status) {
                   OpportunityStatus.draft => 'opp-edit-open',

@@ -635,7 +635,7 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
               Positioned(
                 left: 0,
                 right: 0,
-                bottom: EpLayout.isDesktop(context) ? 0 : 67,
+                bottom: 0,
                 child: stickyBar,
               ),
           ],

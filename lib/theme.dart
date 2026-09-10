@@ -51,6 +51,7 @@ abstract final class Ep {
 abstract final class EpLayout {
   static const desktopBreakpoint = 960.0;
   static const workspaceWidth = 1120.0;
+  static const formWidth = 640.0;
   static const cardRadius = 16.0;
   static const controlRadius = 12.0;
   static const fieldGap = 20.0;
@@ -253,6 +254,12 @@ extension EpBuildContext on BuildContext {
 extension EpTextTheme on TextTheme {
   TextStyle get epDisplay => displayLarge!;
   TextStyle get epPageHeading => headlineLarge!;
+  TextStyle get epFormHeading => headlineLarge!.copyWith(
+    fontFamily: 'Archivo',
+    fontSize: 24,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 0,
+  );
   TextStyle get epPosterTitle => headlineMedium!;
   TextStyle get epSectionHeading => titleLarge!;
   TextStyle get epSection => titleMedium!;

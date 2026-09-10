@@ -121,7 +121,13 @@ class EpFormSheet extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(title.toUpperCase(), style: epDisplay(size: 15)),
+                  child: Text(
+                    sentenceCase(title),
+                    style: Theme.of(context).textTheme.epBody.copyWith(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
                 trailing ??
                     IconButton(
@@ -133,9 +139,11 @@ class EpFormSheet extends StatelessWidget {
             ),
           ),
           if (padBody)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
-              child: child,
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                child: child,
+              ),
             )
           else
             Flexible(child: child),
@@ -165,23 +173,17 @@ class EpOptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EpCard(
-      variant: selected ? EpCardVariant.selected : EpCardVariant.standard,
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            titleCaps ? title.toUpperCase() : title,
-            style: epText(size: 12.5, weight: FontWeight.w800),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: epText(size: 11, color: context.epColors.contentSecondary),
-          ),
-        ],
+    return Semantics(
+      checked: selected,
+      inMutuallyExclusiveGroup: true,
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        onTap: onTap,
+        leading: Icon(
+          selected ? Icons.radio_button_checked : Icons.radio_button_off,
+        ),
+        title: Text(sentenceCase(title)),
+        subtitle: subtitle.isEmpty ? null : Text(subtitle),
       ),
     );
   }

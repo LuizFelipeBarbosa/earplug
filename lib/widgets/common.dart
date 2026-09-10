@@ -14,8 +14,22 @@ double headerTopPad(BuildContext context) => EpLayout.isDesktop(context)
     ? 28
     : math.max(MediaQuery.paddingOf(context).top, 14) + 10;
 
-/// Bottom inset used by scrollables so content clears the floating tab bar.
-const double tabBarClearance = 96;
+/// The shell owns navigation space; scrollables only need an end gutter.
+const double tabBarClearance = 24;
+
+/// Normalize legacy all-caps UI copy without changing names or mixed-case text.
+String sentenceCase(String value) {
+  if (value.isEmpty || value != value.toUpperCase()) return value;
+  const acronyms = {'RSVP', 'ID', 'URL', 'QR', 'CSV', 'PDF', 'VIP', 'USD'};
+  final words = value.toLowerCase().split(' ');
+  for (var i = 0; i < words.length; i++) {
+    if (acronyms.contains(words[i].toUpperCase())) {
+      words[i] = words[i].toUpperCase();
+    }
+  }
+  final result = words.join(' ');
+  return result[0].toUpperCase() + result.substring(1);
+}
 
 double actionBarClearance(BuildContext context) =>
     EpLayout.stackActions(context) ? 200 : 112;
@@ -208,18 +222,20 @@ class SectionBar extends StatelessWidget {
     this.count,
     this.trailing,
     this.padding = const EdgeInsets.only(top: 20, bottom: 10),
-  });
+  }) : form = false;
 
   const SectionBar.form({
     super.key,
     required this.label,
     this.count,
     this.trailing,
-  }) : padding = const EdgeInsets.only(
+  }) : form = true,
+       padding = const EdgeInsets.only(
          top: EpLayout.formSectionGap,
          bottom: 12,
        );
 
+  final bool form;
   final String label;
   final int? count;
   final Widget? trailing;
@@ -230,6 +246,26 @@ class SectionBar extends StatelessWidget {
     final text = count == null
         ? label.toUpperCase()
         : '${label.toUpperCase()} · $count';
+    if (form) {
+      return Padding(
+        padding: padding,
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                count == null
+                    ? sentenceCase(label)
+                    : '${sentenceCase(label)} · $count',
+                style: Theme.of(
+                  context,
+                ).textTheme.epBody.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            ?trailing,
+          ],
+        ),
+      );
+    }
     return Padding(
       padding: padding,
       child: Row(
@@ -358,6 +394,7 @@ class DateBlock extends StatelessWidget {
 
 /// Rounded filter/selection chip (the spec's chipStyle).
 class EpChip extends StatelessWidget {
+  final bool multiple;
   final String label;
   final bool active;
   final VoidCallback? onTap;
@@ -373,6 +410,7 @@ class EpChip extends StatelessWidget {
     required this.active,
     required this.onTap,
     this.ghost = false,
+    this.multiple = true,
     this.neutralSelected = false,
     this.readOnly = false,
     this.onRemoved,
@@ -415,7 +453,7 @@ class EpChip extends StatelessWidget {
                     horizontal: 12,
                     vertical: 6,
                   ),
-                  child: Text(label.toUpperCase(), style: textStyle),
+                  child: Text(sentenceCase(label), style: textStyle),
                 ),
               ),
             ),
@@ -428,7 +466,7 @@ class EpChip extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
         child: InputChip(
           labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-          label: Text(label.toUpperCase(), style: textStyle),
+          label: Text(sentenceCase(label), style: textStyle),
           selected: active,
           onPressed: onTap,
           onDeleted: onRemoved,
@@ -466,7 +504,7 @@ class EpChip extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
       child: FilterChip(
         labelPadding: const EdgeInsets.symmetric(horizontal: 4),
-        label: Text(label.toUpperCase(), style: textStyle),
+        label: Text(sentenceCase(label), style: textStyle),
         selected: active,
         // Keep RawChip enabled so it does not fade the selected label.
         onSelected: locked || readOnly
@@ -495,7 +533,15 @@ class EpChip extends StatelessWidget {
     if (locked || readOnly) {
       return IgnorePointer(child: ExcludeFocus(child: chip));
     }
-    return chip;
+    return Semantics(
+      label: semanticLabel ?? sentenceCase(label),
+      checked: active,
+      inMutuallyExclusiveGroup: !multiple,
+      enabled: enabled,
+      excludeSemantics: true,
+      onTap: onTap,
+      child: chip,
+    );
   }
 }
 
@@ -1180,12 +1226,12 @@ class EpButton extends StatelessWidget {
                 : context.epColors.contentPrimary,
           ),
         ),
-        child: Text(label, textAlign: TextAlign.center),
+        child: Text(sentenceCase(label), textAlign: TextAlign.center),
       ),
       _ => FilledButton(
         onPressed: callback,
         style: style,
-        child: Text(label, textAlign: TextAlign.center),
+        child: Text(sentenceCase(label), textAlign: TextAlign.center),
       ),
     };
     return SizedBox(width: double.infinity, child: button);

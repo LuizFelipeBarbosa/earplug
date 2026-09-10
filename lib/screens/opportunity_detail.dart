@@ -373,7 +373,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: EpLayout.isDesktop(context) ? 0 : 67,
+              bottom: 0,
               child: StickyActionBar(
                 key: applied ? null : const Key('opp-detail-apply'),
                 primaryLabel: applied

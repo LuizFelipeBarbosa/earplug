@@ -3,6 +3,371 @@ import 'package:flutter/services.dart';
 
 import '../theme.dart';
 import 'common.dart';
+import 'ep_sheet.dart';
+
+/// A form footer participates in layout, including when the keyboard is open.
+/// Screens supply their existing scrollable and retain ownership of the draft.
+class EpFormLayout extends StatelessWidget {
+  const EpFormLayout({super.key, required this.body, required this.footer});
+
+  final Widget body;
+  final Widget footer;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.topCenter,
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: EpLayout.formWidth + 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: body),
+          footer,
+        ],
+      ),
+    ),
+  );
+}
+
+/// Validation starts on Continue/Save and follows corrections thereafter.
+class EpForm extends StatefulWidget {
+  const EpForm({super.key, required this.child});
+  final Widget child;
+
+  @override
+  State<EpForm> createState() => EpFormState();
+}
+
+class EpFormState extends State<EpForm> {
+  bool validate() {
+    _EpLabeledFieldState? firstInvalid;
+    void validateFields(Element element) {
+      if (element is StatefulElement && element.state is _EpLabeledFieldState) {
+        final field = element.state as _EpLabeledFieldState;
+        if (!field.validate()) firstInvalid ??= field;
+      }
+      element.visitChildren(validateFields);
+    }
+
+    (context as Element).visitChildren(validateFields);
+    final invalid = firstInvalid;
+    if (invalid == null) return true;
+    EpDisclosure.reveal(invalid.context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !invalid.mounted) return;
+      Scrollable.ensureVisible(
+        invalid.context,
+        alignment: .2,
+        duration: const Duration(milliseconds: 220),
+      );
+      (invalid.widget.focusNode ?? invalid._focus).requestFocus();
+    });
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+/// Collapsed content remains mounted: controllers, uploads and dirty flags
+/// belong to the editor and never reset as a side effect of disclosure.
+class EpDisclosure extends StatefulWidget {
+  const EpDisclosure({
+    super.key,
+    required this.title,
+    required this.summary,
+    required this.child,
+    this.initiallyExpanded = false,
+  });
+
+  final String title;
+  final String summary;
+  final Widget child;
+  final bool initiallyExpanded;
+
+  static void reveal(BuildContext context) {
+    context.visitAncestorElements((element) {
+      if (element is StatefulElement && element.state is _EpDisclosureState) {
+        (element.state as _EpDisclosureState).open();
+      }
+      return true;
+    });
+  }
+
+  @override
+  State<EpDisclosure> createState() => _EpDisclosureState();
+}
+
+class _EpDisclosureState extends State<EpDisclosure>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+  late bool _expanded = widget.initiallyExpanded;
+  void open() {
+    if (!_expanded) setState(() => _expanded = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          button: true,
+          expanded: _expanded,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              sentenceCase(widget.title),
+              style: Theme.of(context).textTheme.epBody.copyWith(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            subtitle: _expanded || widget.summary.isEmpty
+                ? null
+                : Text(widget.summary),
+            trailing: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+            onTap: () => setState(() => _expanded = !_expanded),
+          ),
+        ),
+        Offstage(
+          offstage: !_expanded,
+          child: TickerMode(
+            enabled: _expanded,
+            child: ExcludeFocus(
+              excluding: !_expanded,
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  top: 8,
+                  bottom: EpLayout.formSectionGap,
+                ),
+                child: widget.child,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// The menu names every step; only completed steps can be revisited directly.
+/// Continue remains the only way to advance, so it cannot publish or submit.
+class EpFormSteps extends StatelessWidget {
+  const EpFormSteps({
+    super.key,
+    required this.labels,
+    required this.current,
+    required this.onBackToStep,
+  });
+  final List<String> labels;
+  final int current;
+  final ValueChanged<int>? onBackToStep;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 20),
+    child: DropdownButtonFormField<int>(
+      key: ValueKey(current),
+      initialValue: current,
+      isExpanded: true,
+      decoration: epInputDecoration(
+        context,
+        '',
+      ).copyWith(labelText: 'Step ${current + 1} of ${labels.length}'),
+      items: [
+        for (var i = 0; i < labels.length; i++)
+          DropdownMenuItem(
+            value: i,
+            enabled: i <= current,
+            child: Text(labels[i], overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: onBackToStep == null
+          ? null
+          : (value) {
+              if (value != null && value < current) onBackToStep!(value);
+            },
+    ),
+  );
+}
+
+class EpFormStep extends StatelessWidget {
+  const EpFormStep({super.key, required this.active, required this.child});
+  final bool active;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Offstage(
+    offstage: !active,
+    child: TickerMode(
+      enabled: active,
+      child: ExcludeFocus(excluding: !active, child: child),
+    ),
+  );
+}
+
+/// One compact field opens a searchable picker. Multi-select changes are
+/// applied only with Done; cancelling leaves the editor's draft untouched.
+class EpSelectionField<T> extends StatelessWidget {
+  const EpSelectionField({
+    super.key,
+    required this.label,
+    required this.options,
+    required this.selected,
+    required this.onChanged,
+    this.multiple = false,
+    this.maxSelected,
+    this.emptyLabel = 'Choose',
+  });
+  final String label;
+  final List<({T value, String label})> options;
+  final Set<T> selected;
+  final ValueChanged<Set<T>>? onChanged;
+  final bool multiple;
+  final int? maxSelected;
+  final String emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = options
+        .where((o) => selected.contains(o.value))
+        .map((o) => o.label);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FieldLabel(label),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: onChanged == null ? null : () => _open(context),
+          style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(labels.isEmpty ? emptyLabel : labels.join(', ')),
+              ),
+              const Icon(Icons.expand_more),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _open(BuildContext context) async {
+    final draft = Set<T>.of(selected);
+    var query = '';
+    await showEpSheet(
+      context,
+      (context) => StatefulBuilder(
+        builder: (context, update) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Material(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+            clipBehavior: Clip.antiAlias,
+            child: SafeArea(
+              top: false,
+              child: SizedBox(
+                height:
+                    (MediaQuery.sizeOf(context).height -
+                        MediaQuery.viewInsetsOf(context).bottom) *
+                    .8,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ListTile(
+                      title: Text(sentenceCase(label)),
+                      trailing: IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        autofocus: false,
+                        decoration: epInputDecoration(context, 'Search')
+                            .copyWith(
+                              labelText:
+                                  'Search ${sentenceCase(label).toLowerCase()}',
+                            ),
+                        onChanged: (value) =>
+                            update(() => query = value.toLowerCase()),
+                      ),
+                    ),
+                    if (multiple)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          '${draft.length} selected${maxSelected == null ? '' : ' · choose up to $maxSelected'}',
+                        ),
+                      ),
+                    Expanded(
+                      child: ListView(
+                        children: [
+                          for (final option in options.where(
+                            (o) => o.label.toLowerCase().contains(query),
+                          ))
+                            if (multiple)
+                              CheckboxListTile(
+                                title: Text(option.label),
+                                value: draft.contains(option.value),
+                                onChanged:
+                                    !draft.contains(option.value) &&
+                                        maxSelected != null &&
+                                        draft.length >= maxSelected!
+                                    ? null
+                                    : (checked) => update(() {
+                                        checked == true
+                                            ? draft.add(option.value)
+                                            : draft.remove(option.value);
+                                      }),
+                              )
+                            else
+                              Semantics(
+                                checked: draft.contains(option.value),
+                                inMutuallyExclusiveGroup: true,
+                                child: ListTile(
+                                  title: Text(option.label),
+                                  leading: Icon(
+                                    draft.contains(option.value)
+                                        ? Icons.radio_button_checked
+                                        : Icons.radio_button_off,
+                                  ),
+                                  onTap: () {
+                                    onChanged!({option.value});
+                                    Navigator.pop(context);
+                                  },
+                                ),
+                              ),
+                        ],
+                      ),
+                    ),
+                    if (multiple)
+                      StickyActionBar(
+                        primaryLabel: 'Done',
+                        onPrimary: () {
+                          onChanged!(draft);
+                          Navigator.pop(context);
+                        },
+                        secondaryLabel: 'Clear',
+                        onSecondary: () => update(draft.clear),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// Scrolls [controller] to its end after the next frame, so feedback that
 /// just appeared below a form comes into view. No-op once [state] is gone.
@@ -37,7 +402,7 @@ class ReadyPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
-        ready ? 'READY' : 'DRAFT',
+        ready ? 'Ready' : 'Draft',
         style: Theme.of(context).textTheme.epCaption.copyWith(
           fontSize: 9.5,
           fontWeight: FontWeight.w900,
@@ -121,7 +486,7 @@ class DoneButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return EpButton(
-      'DONE',
+      'Done',
       fontSize: 12.5,
       padding: const EdgeInsets.symmetric(vertical: 14),
       onTap: () => Navigator.pop(context),
@@ -129,7 +494,7 @@ class DoneButton extends StatelessWidget {
   }
 }
 
-class EpLabeledField extends StatelessWidget {
+class EpLabeledField extends StatefulWidget {
   const EpLabeledField({
     super.key,
     required this.label,
@@ -184,14 +549,77 @@ class EpLabeledField extends StatelessWidget {
   final bool? autocorrect;
 
   @override
+  State<EpLabeledField> createState() => _EpLabeledFieldState();
+}
+
+class _EpLabeledFieldState extends State<EpLabeledField> {
+  final _focus = FocusNode();
+  bool _attempted = false;
+  String? _validationError;
+
+  String? _validateValue() {
+    if (!widget.enabled || !widget.required) return null;
+    if (widget.controller.text.trim().isEmpty) {
+      return 'Enter ${sentenceCase(widget.label).toLowerCase()}.';
+    }
+    if (widget.keyboardType == TextInputType.emailAddress &&
+        !widget.controller.text.contains('@')) {
+      return 'Enter a valid email address.';
+    }
+    return null;
+  }
+
+  bool validate() {
+    setState(() {
+      _attempted = true;
+      _validationError = _validateValue();
+    });
+    return _validationError == null && widget.errorText == null;
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final EpLabeledField(
+      :label,
+      :hint,
+      :controller,
+      :fieldKey,
+      :required,
+      :enabled,
+      :minLines,
+      :maxLines,
+      :maxLength,
+      :keyboardType,
+      :textCapitalization,
+      :onChanged,
+      :onEditingComplete,
+      :focusNode,
+      :caption,
+      :autofillHints,
+      :errorText,
+      :suffixIcon,
+      :textInputAction,
+      :onSubmitted,
+      :inputFormatters,
+      :prefixText,
+      :prefixIcon,
+      :autocorrect,
+    ) = widget;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ExcludeSemantics(child: FieldLabel(label, required: required)),
         const SizedBox(height: 8),
         Semantics(
-          label: required ? '$label · REQUIRED' : label,
+          label: required
+              ? '${sentenceCase(label)} · required'
+              : sentenceCase(label),
           child: TextField(
             key: fieldKey,
             controller: controller,
@@ -201,9 +629,13 @@ class EpLabeledField extends StatelessWidget {
             maxLength: maxLength,
             keyboardType: keyboardType,
             textCapitalization: textCapitalization,
-            onChanged: onChanged,
+            onChanged: (value) {
+              onChanged?.call(value);
+              if (_attempted)
+                setState(() => _validationError = _validateValue());
+            },
             onEditingComplete: onEditingComplete,
-            focusNode: focusNode,
+            focusNode: focusNode ?? _focus,
             autofillHints: autofillHints,
             style: Theme.of(context).textTheme.epInput,
             textInputAction:
@@ -218,7 +650,7 @@ class EpLabeledField extends StatelessWidget {
                 (keyboardType != TextInputType.emailAddress &&
                     keyboardType != TextInputType.url),
             decoration: epInputDecoration(context, hint).copyWith(
-              errorText: errorText,
+              errorText: errorText ?? _validationError,
               suffixIcon: suffixIcon,
               prefixText: prefixText,
               prefixIcon: prefixIcon,
@@ -227,7 +659,7 @@ class EpLabeledField extends StatelessWidget {
         ),
         if (caption != null) ...[
           const SizedBox(height: 6),
-          Text(caption!, style: Theme.of(context).textTheme.epCaption),
+          Text(caption, style: Theme.of(context).textTheme.epCaption),
         ],
       ],
     );
@@ -275,7 +707,7 @@ class FieldLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Text(
-      required ? '$text · REQUIRED' : text,
+      required ? '${sentenceCase(text)} · required' : sentenceCase(text),
       style: Theme.of(context).textTheme.epLabel.copyWith(
         fontWeight: FontWeight.w600,
         letterSpacing: .4,
@@ -657,7 +1089,7 @@ class StickyActionBar extends StatelessWidget {
               final primary = FilledButton(
                 onPressed: onPrimary,
                 child: Text(
-                  primaryLabel.toUpperCase(),
+                  sentenceCase(primaryLabel),
                   textAlign: TextAlign.center,
                 ),
               );
@@ -667,7 +1099,7 @@ class StickyActionBar extends StatelessWidget {
                       key: secondaryKey,
                       onPressed: onSecondary,
                       child: Text(
-                        secondaryLabel!.toUpperCase(),
+                        sentenceCase(secondaryLabel!),
                         textAlign: TextAlign.center,
                       ),
                     );
@@ -729,7 +1161,7 @@ class DangerZone extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
               textStyle: Theme.of(context).textTheme.epChipLabel,
             ),
-            child: Text(label.toUpperCase()),
+            child: Text(sentenceCase(label)),
           ),
         ),
         Padding(

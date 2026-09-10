@@ -205,7 +205,7 @@ class _ReviewComposeScreenState extends State<ReviewComposeScreen> {
             Positioned(
               left: 0,
               right: 0,
-              bottom: EpLayout.isDesktop(context) ? 0 : 67,
+              bottom: 0,
               child: StickyActionBar(
                 key: const ValueKey('review-submit'),
                 primaryLabel: 'SUBMIT REVIEW',

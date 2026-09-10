@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'common.dart';
+import 'form_bits.dart';
 
 /// Card outline states shared by the editing slots of a form.
 enum SlotState { done, needed }
@@ -57,27 +58,6 @@ class SlotShell extends StatelessWidget {
   }
 }
 
-/// The small tracked-out label at the top of a slot.
-class _SlotTag extends StatelessWidget {
-  final String text;
-  final Color color;
-
-  const _SlotTag(this.text, this.color);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: epText(
-        size: 11,
-        weight: FontWeight.w900,
-        letterSpacing: 1.2,
-        color: color,
-      ),
-    );
-  }
-}
-
 /// One editing slot: tag, headline value and a caption, coloured by [state].
 class SlotCard extends StatelessWidget {
   final String tag;
@@ -97,49 +77,29 @@ class SlotCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SlotShell(
-      state: state,
-      onTap: onTap,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FieldLabel(tag, required: state == SlotState.needed),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: onTap,
+          style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft),
+          child: Row(
             children: [
               Expanded(
-                child: _SlotTag(
-                  tag,
-                  state == SlotState.needed
-                      ? context.epColors.warning
-                      : context.epColors.contentSecondary,
-                ),
+                child: Text(value == 'REQUIRED' ? sub : sentenceCase(value)),
               ),
-              if (state == SlotState.done)
-                Icon(Icons.check, size: 17, color: context.epColors.success),
+              const Icon(Icons.expand_more),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: epText(
-              size: 13,
-              weight: FontWeight.w800,
-              color: state == SlotState.needed
-                  ? context.epColors.warning
-                  : context.epColors.contentPrimary,
-            ),
+        ),
+        if (sub.isNotEmpty && value != 'REQUIRED')
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(sub, style: Theme.of(context).textTheme.epCaption),
           ),
-          if (sub.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              sub,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: epText(size: 11, color: context.epColors.contentDisabled),
-            ),
-          ],
-        ],
-      ),
+      ],
     );
   }
 }

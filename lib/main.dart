@@ -648,24 +648,33 @@ class RootShell extends StatelessWidget {
       ),
       DataStatus.ready => Stack(
         children: [
-          Positioned.fill(child: _screenFor(entry)),
-          if (!desktop &&
-              (fanTabScreens.contains(screen) || showOpportunityAsFanTab))
-            const Positioned(left: 0, right: 0, bottom: 0, child: FanTabBar()),
-          if (!desktop &&
-              bandTabScreens.contains(screen) &&
-              !showOpportunityAsFanTab &&
-              (!isDualIdentityScreen || !showAsOrganizerTab))
-            const Positioned(left: 0, right: 0, bottom: 0, child: BandTabBar()),
-          if (!desktop &&
-              organizerTabScreens.contains(screen) &&
-              (!isDualIdentityScreen || showAsOrganizerTab))
-            const Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: OrganizerTabBar(),
+          Positioned.fill(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth:
+                      const {
+                        Screen.auth,
+                        Screen.bandCreate,
+                        Screen.bandEdit,
+                        Screen.editProfile,
+                        Screen.gigCreate,
+                        Screen.orgApply,
+                        Screen.hostApply,
+                        Screen.orgVenueEdit,
+                        Screen.orgSettings,
+                        Screen.opportunityEdit,
+                        Screen.reviewCompose,
+                        Screen.privateLocationEdit,
+                      }.contains(screen)
+                      ? EpLayout.formWidth + 32
+                      : double.infinity,
+                ),
+                child: _screenFor(entry),
+              ),
             ),
+          ),
           const _ToastLayer(),
         ],
       ),
@@ -683,7 +692,24 @@ class RootShell extends StatelessWidget {
         !organizerNavigation;
     final page = ClipRRect(
       borderRadius: BorderRadius.circular(desktop ? 20 : 0),
-      child: Scaffold(body: body),
+      child: Scaffold(
+        body: body,
+        bottomNavigationBar:
+            desktop ||
+                dataStatus != DataStatus.ready ||
+                MediaQuery.viewInsetsOf(context).bottom > 0
+            ? null
+            : (fanTabScreens.contains(screen) || showOpportunityAsFanTab)
+            ? const FanTabBar()
+            : bandTabScreens.contains(screen) &&
+                  !showOpportunityAsFanTab &&
+                  (!isDualIdentityScreen || !showAsOrganizerTab)
+            ? const BandTabBar()
+            : organizerTabScreens.contains(screen) &&
+                  (!isDualIdentityScreen || showAsOrganizerTab)
+            ? const OrganizerTabBar()
+            : null,
+      ),
     );
 
     return PopScope(

@@ -561,7 +561,7 @@ class _BandEditScreenState extends State<BandEditScreen> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: EpLayout.isDesktop(context) ? 0 : 66,
+          bottom: 0,
           child: StickyActionBar(
             key: const ValueKey('save-band-profile'),
             secondaryLabel: 'PREVIEW',
