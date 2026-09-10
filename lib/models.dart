@@ -980,7 +980,7 @@ class AdminApplicationPage {
   factory AdminApplicationPage.fromJson(Map<String, dynamic> json) =>
       AdminApplicationPage(
         items: [
-          for (final row in asFilteredMapList(json['page'] ?? json['items']))
+          for (final row in asFilteredMapList(json['page']))
             AdminApplicationRow.fromJson(row),
         ],
         continueCursor: asOptionalString(json['continueCursor']),
@@ -2094,7 +2094,7 @@ class OpportunityPage {
   factory OpportunityPage.fromJson(Map<String, dynamic> json) =>
       OpportunityPage(
         items: [
-          for (final row in asFilteredMapList(json['page'] ?? json['items']))
+          for (final row in asFilteredMapList(json['page']))
             BrowseItem.fromJson(row),
         ],
         continueCursor: asOptionalString(json['continueCursor']),
@@ -2863,7 +2863,7 @@ class DisputesPage {
 
   factory DisputesPage.fromJson(Map<String, dynamic> json) => DisputesPage(
     items: [
-      for (final row in asFilteredMapList(json['page'] ?? json['items']))
+      for (final row in asFilteredMapList(json['page']))
         DisputeRow.fromJson(row),
     ],
     continueCursor: asOptionalString(json['continueCursor']),
@@ -2945,7 +2945,7 @@ class AdminBookingsPage {
   factory AdminBookingsPage.fromJson(Map<String, dynamic> json) =>
       AdminBookingsPage(
         items: [
-          for (final row in asFilteredMapList(json['page'] ?? json['items']))
+          for (final row in asFilteredMapList(json['page']))
             AdminBookingRow.fromJson(row),
         ],
         continueCursor: asOptionalString(json['continueCursor']),
@@ -3066,7 +3066,7 @@ class SafetyReportsPage {
   factory SafetyReportsPage.fromJson(Map<String, dynamic> json) =>
       SafetyReportsPage(
         items: [
-          for (final row in asFilteredMapList(json['page'] ?? json['items']))
+          for (final row in asFilteredMapList(json['page']))
             SafetyReportRow.fromJson(row),
         ],
         continueCursor: asOptionalString(json['continueCursor']),
@@ -3865,10 +3865,6 @@ enum FundsState {
     'paid' => FundsState.paid,
     'refunded' => FundsState.refunded,
     'disputed' => FundsState.disputed,
-    // Legacy aliases: earlier client builds used these wire values; keep
-    // accepting them here only (no corresponding enum members).
-    'paidOut' => FundsState.paid,
-    'reversed' => FundsState.refunded,
     _ => FundsState.unknown,
   };
 }

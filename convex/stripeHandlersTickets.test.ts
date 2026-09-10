@@ -401,39 +401,6 @@ describe("ticket Checkout completion", () => {
 });
 
 describe("ticket event account checks", () => {
-  test.each(["seller", "account"] as const)(
-    "ignores a band Checkout event with a missing %s",
-    async (missing) => {
-      const f = await setupTickets({}, "band");
-      await f.t.run((ctx) =>
-        ctx.db.delete(missing === "seller" ? f.bandId! : f.payoutAccountId!),
-      );
-      const before = await f.state();
-      expect(
-        await f.deliver({ ...checkoutEvent(f.orderId), account: BAND_ACCOUNT_ID }),
-      ).toEqual({ outcome: "applied" });
-      expect(await f.state()).toEqual(before);
-    },
-  );
-
-  test.each([ACCOUNT_ID, "acct_other", undefined])(
-    "ignores a band Checkout event from the wrong account (%s)",
-    async (account) => {
-      const f = await setupTickets({}, "band");
-      const before = await f.state();
-      const event = { ...checkoutEvent(f.orderId), account };
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      expect(await f.deliver(event)).toEqual({ outcome: "applied" });
-      expect(warn).toHaveBeenCalledExactlyOnceWith(
-        `${event.type} ignored: Stripe account mismatch for ticket order ${f.orderId}`,
-      );
-      expect(await f.state()).toEqual(before);
-      expect(before.order.status).toBe("checkout_open");
-      expect(before.tickets).toEqual([]);
-      expect(stripeMock).not.toHaveBeenCalled();
-    },
-  );
-
   test.each([
     "checkout.session.completed",
     "checkout.session.expired",

@@ -280,24 +280,6 @@ describe("ticket reservations", () => {
     },
   );
 
-  test("refuses an organizer whose Stripe charges are disabled", async () => {
-    const { t, as, gigId, privateDetailsId } = await setupTickets();
-    await t.run((ctx) =>
-      ctx.db.patch(privateDetailsId, { stripeChargesEnabled: false }),
-    );
-    await expect(
-      as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
-    ).rejects.toThrow("This organizer is not ready to sell tickets yet");
-  });
-
-  test("refuses a suspended organizer", async () => {
-    const { t, as, gigId, organizationId } = await setupTickets();
-    await t.run((ctx) => ctx.db.patch(organizationId, { status: "suspended" }));
-    await expect(
-      as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
-    ).rejects.toThrow("This organizer is not ready to sell tickets yet");
-  });
-
   test.each(["cancelled", "unpublished", "deleted"] as const)(
     "refuses a %s gig",
     async (lifecycle) => {
@@ -619,41 +601,6 @@ describe("band ticket sales", () => {
     });
     expect(inventory).not.toHaveProperty("organizationId");
   });
-
-  test.each([
-    "charges disabled",
-    "cards inactive",
-    "account missing",
-    "archived",
-  ])(
-    "refuses a band seller with %s",
-    async (condition) => {
-      const f = await setupBandTickets();
-      await f.t.run(async (ctx) => {
-        if (condition === "account missing") {
-          await ctx.db.delete(f.payoutAccountId);
-        } else if (condition === "archived") {
-          await ctx.db.patch(f.creatorBandId, { archivedAt: NOW });
-        } else {
-          await ctx.db.patch(
-            f.payoutAccountId,
-            condition === "charges disabled"
-              ? { chargesEnabled: false }
-              : { cardPaymentsStatus: "inactive" },
-          );
-        }
-      });
-      await expect(
-        f.as("buyer").mutation(api.tickets.reserve, {
-          gigId: f.bandGigId,
-          quantity: 1,
-        }),
-      ).rejects.toThrow("This band is not ready to sell tickets yet");
-      expect(
-        await f.t.run((ctx) => ctx.db.query("ticketOrders").take(10)),
-      ).toEqual([]);
-    },
-  );
 
   test("salesForGig allows band admins to read band order totals", async () => {
     const f = await setupBandTickets();

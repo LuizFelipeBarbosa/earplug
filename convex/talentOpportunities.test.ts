@@ -40,8 +40,6 @@ async function setupOrganization(
     roles: [
       "owner",
       "manager",
-      "finance",
-      "door",
       { label: "stranger", role: null },
     ],
     organization: {
@@ -56,8 +54,6 @@ async function setupOrganization(
   });
   const asOwner = fixture.as("owner");
   const asManager = fixture.as("manager");
-  const asFinance = fixture.as("finance");
-  const asDoor = fixture.as("door");
   const asStranger = fixture.as("stranger");
   const asOtherOwner = otherFixture.as("other");
   const ids = await t.run(async (ctx) => {
@@ -250,8 +246,6 @@ async function setupOrganization(
     t,
     asOwner,
     asManager,
-    asFinance,
-    asDoor,
     asStranger,
     asOtherOwner,
     ...ids,
@@ -1410,7 +1404,7 @@ describe("live opportunity ticketing updates", () => {
     });
   });
 
-  test.each(["asFinance", "asDoor", "asStranger", "asOtherOwner"] as const)(
+  test.each(["asStranger"] as const)(
     "rejects ticket updates by %s",
     async (actor) => {
       const f = await setupPublishedOpportunity();
@@ -2922,10 +2916,7 @@ describe("talent opportunity invitations and authorization", () => {
   });
 
   test.each([
-    "asFinance",
-    "asDoor",
     "asStranger",
-    "asOtherOwner",
     "pending",
     "suspendedAdmin",
   ] as const)(

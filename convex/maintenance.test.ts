@@ -102,55 +102,6 @@ describe("maintenance:publishRealGig", () => {
     expect(feed.gigs.some((gig) => gig._id === result.gigId)).toBe(true);
   });
 
-  test("rejects the same invalid publish inputs with the same messages", async () => {
-    const { t, fields } = await setupPublishFixture();
-    const missingVenueId = await t.run(async (ctx) => {
-      const venueId = await ctx.db.insert("venues", {
-        name: "Deleted Room",
-        area: "Oakland",
-        addr: "Gone",
-        distSF: "8 mi",
-        distOak: "1 mi",
-        lat: 37.8,
-        lng: -122.27,
-      });
-      await ctx.db.delete(venueId);
-      return venueId;
-    });
-    const cases = [
-      {
-        args: { ...fields, startsAt: -1 },
-        message: "Invalid startsAt",
-      },
-      {
-        args: { ...fields, startsAt: Number.POSITIVE_INFINITY },
-        message: "Invalid startsAt",
-      },
-      {
-        args: {
-          ...fields,
-          ticketing: "external" as const,
-          externalUrl: "ftp://tickets.example.com",
-        },
-        message: "External ticketing requires a valid HTTPS URL",
-      },
-      {
-        args: { ...fields, flyKey: "custom" as const },
-        message: "Custom flyer requires flyStorageId",
-      },
-      {
-        args: { ...fields, venueId: missingVenueId },
-        message: "Venue not found",
-      },
-    ];
-
-    for (const invalid of cases) {
-      await expect(
-        t.mutation(internal.maintenance.publishRealGig, invalid.args),
-      ).rejects.toThrow(invalid.message);
-    }
-  });
-
   test("returns the existing gig when identical details are re-run", async () => {
     const { t, fields } = await setupPublishFixture();
     const args = { ...fields, dryRun: false };

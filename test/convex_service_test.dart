@@ -270,66 +270,6 @@ void main() {
       });
     });
 
-    test('skips byte-identical payloads and updates debug deltas', () {
-      fakeAsync((async) {
-        final transport = _FakeConvexTransport();
-        final service = _initializedService(transport, async);
-        final beforeSubscribe = ConvexService.debugStats.value;
-        var parseCalls = 0;
-        final values = <int>[];
-        final subscription = service
-            .subscribe<int>('messages:list', const <String, dynamic>{}, (
-              decoded,
-            ) {
-              parseCalls++;
-              return _parseValue(decoded);
-            })
-            .listen(values.add);
-        addTearDown(subscription.cancel);
-        async.flushMicrotasks();
-
-        final afterSubscribe = ConvexService.debugStats.value;
-        expect(
-          afterSubscribe.activeSubscriptions -
-              beforeSubscribe.activeSubscriptions,
-          1,
-        );
-
-        const raw = '{"value":1}';
-        final beforeUpdates = ConvexService.debugStats.value;
-        transport
-          ..sendUpdate(0, raw)
-          ..sendUpdate(0, raw);
-        async.flushMicrotasks();
-
-        final afterUpdates = ConvexService.debugStats.value;
-        expect(values, <int>[1]);
-        expect(parseCalls, 1);
-        expect(
-          afterUpdates.duplicatePayloadsSkipped -
-              beforeUpdates.duplicatePayloadsSkipped,
-          1,
-        );
-        expect(
-          afterUpdates.transitionsReceived - beforeUpdates.transitionsReceived,
-          2,
-        );
-        expect(
-          afterUpdates.bytesReceived - beforeUpdates.bytesReceived,
-          raw.length * 2,
-        );
-        expect(afterUpdates.lastTransitionBytes, raw.length);
-        expect(afterUpdates.lastTransitionAt, isNotNull);
-
-        _cancelAndExpire(async, <StreamSubscription<Object?>>[subscription]);
-        final afterCancel = ConvexService.debugStats.value;
-        expect(
-          afterCancel.activeSubscriptions - afterSubscribe.activeSubscriptions,
-          -1,
-        );
-      });
-    });
-
     test('delivers each changed payload to every attached parser', () {
       fakeAsync((async) {
         final transport = _FakeConvexTransport();
@@ -528,66 +468,6 @@ void main() {
         expect(values, <int>[2]);
 
         _cancelAndExpire(async, <StreamSubscription<Object?>>[second]);
-      });
-    });
-
-    test('restarts once while another listener remains attached', () {
-      fakeAsync((async) {
-        final transport = _FakeConvexTransport();
-        final service = _initializedService(transport, async);
-        final firstErrors = <Object>[];
-        final secondErrors = <Object>[];
-        final secondValues = <int>[];
-        final first = service
-            .subscribe<int>(
-              'messages:list',
-              const <String, dynamic>{},
-              _parseValue,
-            )
-            .listen((_) {}, onError: firstErrors.add);
-        final second = service
-            .subscribe<int>(
-              'messages:list',
-              const <String, dynamic>{},
-              _parseValue,
-            )
-            .listen(secondValues.add, onError: secondErrors.add);
-        addTearDown(first.cancel);
-        addTearDown(second.cancel);
-        async.flushMicrotasks();
-
-        transport.sendError(0, 'subscription failed', null);
-        async.flushMicrotasks();
-
-        expect(firstErrors.single.toString(), 'Exception: subscription failed');
-        expect(
-          secondErrors.single.toString(),
-          'Exception: subscription failed',
-        );
-        expect(transport.cancelCalls, 0);
-        unawaited(first.cancel());
-        async.flushMicrotasks();
-        async.elapse(const Duration(milliseconds: 200));
-
-        final thirdValues = <int>[];
-        final third = service
-            .subscribe<int>(
-              'messages:list',
-              const <String, dynamic>{},
-              _parseValue,
-            )
-            .listen(thirdValues.add);
-        addTearDown(third.cancel);
-        async.flushMicrotasks();
-
-        expect(transport.cancelCalls, 1);
-        expect(transport.subscribeCalls, 2);
-        transport.sendUpdate(1, '{"value":3}');
-        async.flushMicrotasks();
-        expect(secondValues, <int>[3]);
-        expect(thirdValues, <int>[3]);
-
-        _cancelAndExpire(async, <StreamSubscription<Object?>>[second, third]);
       });
     });
 

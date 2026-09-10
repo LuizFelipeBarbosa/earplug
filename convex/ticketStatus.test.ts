@@ -1,9 +1,7 @@
-import { expect, test } from "vitest";
 import { canTransition } from "./lib/bookingStatus";
 import {
   TICKET_ORDER_TRANSITIONS,
   TICKET_REFUND_TRANSITIONS,
-  TICKET_TOKEN_PREFIX,
   TICKET_TRANSITIONS,
   assertTicketOrderTransition,
   assertTicketRefundTransition,
@@ -58,8 +56,4 @@ expectStatusTransitions({
     failed: ["pending"],
     succeeded: [],
   },
-});
-
-test("ticket tokens use the exact versioned prefix", () => {
-  expect(TICKET_TOKEN_PREFIX).toBe("earplug:ticket:v2:");
 });

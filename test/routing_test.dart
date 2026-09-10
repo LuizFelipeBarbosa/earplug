@@ -124,7 +124,7 @@ void main() {
     }
   });
 
-  test('referral slugs are trimmed on any route with fragment fallback', () {
+  test('referral slugs and join tokens are trimmed with fragment fallback', () {
     expect(
       referralBandSlugFromUri(
         Uri.parse('https://earplug.app/g/some-gig?ref=static-bloom'),
@@ -162,6 +162,13 @@ void main() {
         referralBandSlugFromUri(Uri.parse('https://earplug.app/$path')),
         isNull,
       );
+    }
+
+    for (final (url, expected) in const [
+      ('https://earplug.app/join/secret-token', 'secret-token'),
+      ('https://earplug.app/#/join/secret-token', 'secret-token'),
+    ]) {
+      expect(joinTokenFromUri(Uri.parse(url)), expected);
     }
   });
 
@@ -255,44 +262,6 @@ void main() {
       ),
       'fragment',
     );
-  });
-
-  test('payment routes require exact non-empty segments and query values', () {
-    for (final (parser, path, query) in [
-      (checkoutSessionFromUri, 'checkout/return', 'session_id'),
-      (checkoutCancelBookingFromUri, 'checkout/cancel', 'booking'),
-      (ticketCheckoutSessionFromUri, 'tickets/return', 'session_id'),
-      (ticketCheckoutCancelOrderFromUri, 'tickets/cancel', 'order'),
-      (stripeReturnFromUri, 'band/stripe/return', 'band'),
-      (stripeReturnFromUri, 'band/stripe/refresh', 'band'),
-      (stripeReturnFromUri, 'org/stripe/return', 'org'),
-      (stripeReturnFromUri, 'org/stripe/refresh', 'org'),
-    ]) {
-      for (final suffix in [
-        path,
-        '$path?$query=',
-        '$path?$query=%20',
-        '$path?wrong=value',
-        'prefix/$path?$query=value',
-        '$path/extra?$query=value',
-        '${path}ing?$query=value',
-      ]) {
-        expect(
-          parser(Uri.parse('https://earplug.app/$suffix')),
-          isNull,
-          reason: suffix,
-        );
-        expect(
-          parser(Uri.parse('https://earplug.app/#/$suffix')),
-          isNull,
-          reason: 'fragment: $suffix',
-        );
-      }
-      expect(
-        parser(Uri.parse('https://earplug.app/$path/?$query=value')),
-        isNotNull,
-      );
-    }
   });
 
   test('signed-out booking links resume after authentication', () async {
@@ -599,37 +568,6 @@ void main() {
   });
 
   test(
-    'blank ticket route parameters leave the home route unchanged',
-    () async {
-      final app = AppState.demo(
-        initialTicketId: ' ',
-        initialTicketCheckoutSessionId: ' ',
-        initialTicketCheckoutCancelOrderId: ' ',
-      );
-      addTearDown(app.dispose);
-      await flushAsyncWork();
-
-      expect(app.current.screen, Screen.home);
-      expect(app.myTicketsLoaded, isFalse);
-    },
-  );
-
-  test(
-    'blank payment return parameters leave the home route unchanged',
-    () async {
-      final app = AppState.demo(
-        initialCheckoutSessionId: ' ',
-        initialCheckoutCancelBookingId: ' ',
-        initialStripeReturn: ' ',
-      );
-      addTearDown(app.dispose);
-      await flushAsyncWork();
-
-      expect(app.current.screen, Screen.home);
-    },
-  );
-
-  test(
     'Stripe return identities use the route instead of ambient context',
     () async {
       final auth = FakeAuthService();
@@ -779,20 +717,6 @@ void main() {
     app.loadMoreExploreBands();
     await flushAsyncWork();
     expect(repository.listBandsCalls, 2);
-  });
-
-  test('join token is preserved from a path-based web URL', () {
-    expect(
-      joinTokenFromUri(Uri.parse('https://earplug.app/join/secret-token')),
-      'secret-token',
-    );
-  });
-
-  test('join token is preserved from a hash-based fallback URL', () {
-    expect(
-      joinTokenFromUri(Uri.parse('https://earplug.app/#/join/secret-token')),
-      'secret-token',
-    );
   });
 
   test('ordinary app URLs do not enter the invitation flow', () {

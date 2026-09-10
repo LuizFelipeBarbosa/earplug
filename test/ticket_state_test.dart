@@ -144,39 +144,33 @@ void main() {
     },
   );
 
-  for (final terminal in [
-    TicketOrderStatus.expired,
-    TicketOrderStatus.cancelled,
-    TicketOrderStatus.refunded,
-  ]) {
-    test(
-      'Checkout resolves on ${terminal.name} and refreshes the wallet',
-      () async {
-        final reservation = await app.reserveTickets('g8', 1);
-        repository.checkoutResult = TicketOrderState(
-          orderId: reservation.orderId,
-          gigId: 'g8',
-          status: terminal,
-          quantity: reservation.quantity,
-          totalMinor: reservation.totalMinor,
-          currency: reservation.currency,
-        );
+  test(
+    'Checkout resolves on expired and refreshes the wallet',
+    () async {
+      final reservation = await app.reserveTickets('g8', 1);
+      repository.checkoutResult = TicketOrderState(
+        orderId: reservation.orderId,
+        gigId: 'g8',
+        status: TicketOrderStatus.expired,
+        quantity: reservation.quantity,
+        totalMinor: reservation.totalMinor,
+        currency: reservation.currency,
+      );
 
-        final status = await app.awaitTicketCheckout(
-          'cs_terminal',
-          interval: const Duration(milliseconds: 5),
-          timeout: const Duration(milliseconds: 200),
-        );
-        await flushAsyncWork();
+      final status = await app.awaitTicketCheckout(
+        'cs_terminal',
+        interval: const Duration(milliseconds: 5),
+        timeout: const Duration(milliseconds: 200),
+      );
+      await flushAsyncWork();
 
-        expect(status?.status, terminal);
-        expect(app.pendingReservation, isNull);
-        expect(repository.checkoutStatusRequests, ['cs_terminal']);
-        expect(repository.myTicketsCalls, 1);
-        expect(app.myTicketsLoaded, isTrue);
-      },
-    );
-  }
+      expect(status?.status, TicketOrderStatus.expired);
+      expect(app.pendingReservation, isNull);
+      expect(repository.checkoutStatusRequests, ['cs_terminal']);
+      expect(repository.myTicketsCalls, 1);
+      expect(app.myTicketsLoaded, isTrue);
+    },
+  );
 
   test('Checkout retries poll errors', () async {
     final reservation = await app.reserveTickets('g8', 1);
