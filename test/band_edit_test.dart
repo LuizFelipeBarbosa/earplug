@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('editor groups every profile field and uses plain terminology', (
@@ -24,12 +25,14 @@ void main() {
     tester.view.physicalSize = const Size(402, 5000);
     await tester.pumpAndSettle();
 
-    expect(find.text('EDIT BAND'), findsOne);
+    expect(findUiText('EDIT BAND'), findsOne);
+    expect(find.byType(BandIdentityHeader), findsNothing);
+    await openAllFormSections(tester);
     expect(find.byType(BandIdentityHeader), findsOne);
     expect(find.byKey(const ValueKey('band-profile-image-control')), findsOne);
     expect(find.byKey(const ValueKey('band-header-image-control')), findsOne);
-    expect(find.text('BAND NAME · REQUIRED'), findsOne);
-    expect(find.bySemanticsLabel('BAND NAME · REQUIRED'), findsOne);
+    expect(findUiText('BAND NAME · REQUIRED'), findsOne);
+    expect(findUiSemantics('BAND NAME · REQUIRED'), findsOne);
     expect(
       tester
           .widget<TextField>(find.byKey(const ValueKey('edit-band-name')))
@@ -37,23 +40,27 @@ void main() {
           ?.fontSize,
       16,
     );
-    expect(find.text('GENRES · REQUIRED'), findsOne);
-    expect(find.text('HOME BASE · REQUIRED'), findsOne);
-    expect(find.bySemanticsLabel('HOME BASE · REQUIRED'), findsOne);
-    expect(find.text('ABOUT'), findsOne);
-    expect(find.bySemanticsLabel('ABOUT'), findsOne);
-    expect(find.text('PREVIEW'), findsOne);
+    expect(findUiText('GENRES · REQUIRED'), findsOne);
+    expect(findUiText('HOME BASE · REQUIRED'), findsOne);
+    expect(findUiSemantics('HOME BASE · REQUIRED'), findsOne);
+    expect(findUiText('ABOUT'), findsOne);
+    expect(findUiSemantics('ABOUT'), findsOne);
+    expect(findUiText('PREVIEW'), findsOne);
     expect(find.byType(StickyActionBar), findsOne);
-    expect(find.text('LINKS'), findsOne);
-    expect(find.text('CREDITS'), findsWidgets);
-    expect(find.bySemanticsLabel(RegExp('^CREDITS')), findsOne);
-    expect(find.text('MANAGE VIDEOS AND PHOTOS'), findsOne);
-    expect(find.textContaining('BAND MEMBERS'), findsOne);
-    expect(find.text('ACCEPTED MEMBERS'), findsOne);
+    expect(findUiText('Links and credits'), findsOne);
+    expect(findUiText('CREDITS'), findsWidgets);
+    expect(
+      find.bySemanticsLabel(RegExp('^Credits', caseSensitive: false)),
+      findsOne,
+    );
+    expect(findUiText('MANAGE VIDEOS AND PHOTOS'), findsOne);
+    await openAllFormSections(tester);
+    expect(findUiText('Members'), findsOne);
+    expect(findUiText('ACCEPTED MEMBERS'), findsOne);
     expect(find.text('Invitation link'), findsNothing);
     expect(find.text('Sleeve notes'), findsNothing);
     expect(find.text('Home taping'), findsNothing);
-    expect(find.text('PREVIEW AS FAN'), findsNothing);
+    expect(findUiText('PREVIEW AS FAN'), findsNothing);
 
     for (final key in const [
       ValueKey('edit-instagram'),
@@ -75,22 +82,25 @@ void main() {
     tester.view.physicalSize = const Size(402, 1800);
     await tester.pumpAndSettle();
 
-    final addChip = tester.widget<EpChip>(
+    final addChip = tester.widget<TextButton>(
       find.byKey(const ValueKey('show-custom-genre')),
     );
-    expect(addChip.ghost, isTrue);
+    expect(addChip.onPressed, isNotNull);
     expect(find.byKey(const ValueKey('edit-custom-genre')), findsNothing);
+
+    await revealFormKey(tester, const ValueKey('show-custom-genre'));
 
     await tester.tap(find.byKey(const ValueKey('show-custom-genre')));
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const ValueKey('edit-custom-genre'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-custom-genre')),
       'doom jazz',
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'ADD'));
+    await tester.tap(findUiControl(FilledButton, 'ADD'));
     await tester.pumpAndSettle();
 
-    expect(find.text('DOOM JAZZ'), findsOne);
+    expect(find.textContaining('doom jazz'), findsOne);
     expect(find.byKey(const ValueKey('edit-custom-genre')), findsNothing);
     await _scrollToKey(tester, const ValueKey('edit-short-bio'));
     expect(
@@ -108,26 +118,29 @@ void main() {
         tester,
         home: const Scaffold(body: BandEditScreen()),
       );
+      await revealFormKey(tester, const ValueKey('edit-band-name'));
       await tester.enterText(
         find.byKey(const ValueKey('edit-band-name')),
         'Unsaved New Name',
       );
 
       harness.picker.nextPhoto = photoFixture(filename: 'new_banner.png');
+      await revealFormKey(tester, const ValueKey('band-header-image-control'));
       await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
       await tester.pumpAndSettle();
-      expect(find.text('REPLACE'), findsOne);
-      expect(find.text('USE INITIALS INSTEAD'), findsNothing);
-      await tester.tap(find.text('REPLACE'));
+      expect(findUiText('REPLACE'), findsOne);
+      expect(findUiText('USE INITIALS INSTEAD'), findsNothing);
+      await tester.tap(findUiText('REPLACE'));
       await tester.pumpAndSettle();
       harness.picker.nextPhoto = photoFixture(filename: 'new_avatar.png');
+      await revealFormKey(tester, const ValueKey('band-profile-image-control'));
       await tester.tap(
         find.byKey(const ValueKey('band-profile-image-control')),
       );
       await tester.pumpAndSettle();
-      expect(find.text('REPLACE'), findsOne);
-      expect(find.text('USE INITIALS INSTEAD'), findsNothing);
-      await tester.tap(find.text('REPLACE'));
+      expect(findUiText('REPLACE'), findsOne);
+      expect(findUiText('USE INITIALS INSTEAD'), findsNothing);
+      await tester.tap(findUiText('REPLACE'));
       await tester.pumpAndSettle();
 
       final photos = harness.media.photosFor('b1');
@@ -158,23 +171,24 @@ void main() {
 
     harness.picker.nextPhoto = photoFixture(filename: 'new_avatar.png');
     final avatar = find.byKey(const ValueKey('band-profile-image-control'));
+    await revealFormKey(tester, const ValueKey('band-profile-image-control'));
     await tester.tap(avatar);
     await tester.pumpAndSettle();
-    expect(find.text('REPLACE'), findsOne);
-    expect(find.text('USE INITIALS INSTEAD'), findsNothing);
+    expect(findUiText('REPLACE'), findsOne);
+    expect(findUiText('USE INITIALS INSTEAD'), findsNothing);
 
-    await tester.tap(find.text('REPLACE'));
+    await tester.tap(findUiText('REPLACE'));
     await tester.pumpAndSettle();
     await tester.tap(avatar);
     await tester.pumpAndSettle();
-    expect(find.text('REPLACE'), findsOne);
-    expect(find.text('USE INITIALS INSTEAD'), findsOne);
+    expect(findUiText('REPLACE'), findsOne);
+    expect(findUiText('USE INITIALS INSTEAD'), findsOne);
 
-    await tester.tap(find.text('USE INITIALS INSTEAD'));
+    await tester.tap(findUiText('USE INITIALS INSTEAD'));
     await tester.pumpAndSettle();
     expect(repository.clearAvatarCalls, 1);
     expect(harness.app.myBand!.profileImageUrl, isNull);
-    expect(find.text('FD'), findsOne);
+    expect(findUiText('FD'), findsOne);
   });
 
   testWidgets('failed avatar replacement restores the saved artwork', (
@@ -192,18 +206,21 @@ void main() {
 
     harness.picker.nextPhoto = photoFixture(filename: 'failed_avatar.png');
     final avatar = find.byKey(const ValueKey('band-profile-image-control'));
+    await revealFormKey(tester, const ValueKey('band-profile-image-control'));
     await tester.tap(avatar);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('REPLACE'));
+    await tester.tap(findUiText('REPLACE'));
     await tester.pumpAndSettle();
 
     final avatarFrame = find.byKey(const ValueKey('band-profile-avatar-frame'));
+
+    await revealFormKey(tester, const ValueKey('band-profile-avatar-frame'));
     expect(
       find.descendant(of: avatarFrame, matching: find.byType(Image)),
       findsNothing,
     );
     expect(
-      find.descendant(of: avatarFrame, matching: find.text('FD')),
+      find.descendant(of: avatarFrame, matching: findUiText('FD')),
       findsOne,
     );
     expect(find.textContaining('profile image could not be saved'), findsOne);
@@ -264,6 +281,8 @@ void main() {
     );
     final originalColor = harness.app.myBand!.color;
 
+    await revealFormKey(tester, const ValueKey('edit-band-name'));
+
     await tester.enterText(
       find.byKey(const ValueKey('edit-band-name')),
       'New Rhythm',
@@ -271,24 +290,29 @@ void main() {
     expect(harness.app.myBand!.name, 'Foghorn Diet');
 
     await _scrollToKey(tester, const ValueKey('edit-short-bio'));
+    await revealFormKey(tester, const ValueKey('edit-short-bio'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-short-bio')),
       'A concise new bio.',
     );
     await _scrollToKey(tester, const ValueKey('edit-instagram'));
+    await revealFormKey(tester, const ValueKey('edit-instagram'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-instagram')),
       '@newrhythm',
     );
+    await revealFormKey(tester, const ValueKey('edit-bandcamp'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-bandcamp')),
       'newrhythm.bandcamp.com',
     );
+    await revealFormKey(tester, const ValueKey('edit-youtube'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-youtube')),
       'youtube.com/@newrhythm',
     );
     await _scrollToKey(tester, const ValueKey('edit-credits'));
+    await revealFormKey(tester, const ValueKey('edit-credits'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-credits')),
       'Recorded by Mara K.',
@@ -296,7 +320,7 @@ void main() {
     expect(harness.app.myBand!.bio, isNot('A concise new bio.'));
 
     await _scrollTo(tester, 'SAVE CHANGES');
-    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.tap(findUiText('SAVE CHANGES'));
     await tester.pumpAndSettle();
 
     final updated = harness.app.myBand!;
@@ -324,16 +348,17 @@ void main() {
     );
 
     await _scrollTo(tester, 'SAVE CHANGES');
-    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.tap(findUiText('SAVE CHANGES'));
     await tester.pumpAndSettle();
     await tester.drag(find.byType(Scrollable).first, const Offset(0, 2400));
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const ValueKey('edit-band-name'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-band-name')),
       'Profile Only Change',
     );
     await _scrollTo(tester, 'SAVE CHANGES');
-    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.tap(findUiText('SAVE CHANGES'));
     await tester.pumpAndSettle();
 
     expect(repository.profileUpdates, 2);
@@ -355,6 +380,8 @@ void main() {
       repository: repository,
       home: const Scaffold(body: BandEditScreen()),
     );
+
+    await revealFormKey(tester, const ValueKey('edit-band-name'));
 
     await tester.enterText(
       find.byKey(const ValueKey('edit-band-name')),
@@ -381,7 +408,7 @@ void main() {
     expect(credits.controller!.text, 'Existing private credits');
 
     await _scrollTo(tester, 'SAVE CHANGES');
-    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.tap(findUiText('SAVE CHANGES'));
     await tester.pumpAndSettle();
     expect(harness.app.myBand!.name, 'Keep This Draft');
     expect(harness.app.myBand!.credits, 'Existing private credits');
@@ -394,28 +421,27 @@ void main() {
         tester,
         home: const Scaffold(body: BandEditScreen()),
       );
+      await revealFormKey(tester, const ValueKey('edit-band-name'));
       await tester.enterText(
         find.byKey(const ValueKey('edit-band-name')),
         '   ',
       );
       await _scrollTo(tester, 'SAVE CHANGES');
-      await tester.tap(find.text('SAVE CHANGES'));
+      await tester.tap(findUiText('SAVE CHANGES'));
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('Band name, sound, and home base are required.'),
-        findsOne,
-      );
+      expect(find.text('Enter band name.'), findsOne);
       expect(harness.app.myBand!.name, 'Foghorn Diet');
 
       await tester.drag(find.byType(Scrollable).first, const Offset(0, 2400));
       await tester.pumpAndSettle();
+      await revealFormKey(tester, const ValueKey('edit-band-name'));
       await tester.enterText(
         find.byKey(const ValueKey('edit-band-name')),
         'Recovered Name',
       );
       await _scrollTo(tester, 'SAVE CHANGES');
-      await tester.tap(find.text('SAVE CHANGES'));
+      await tester.tap(findUiText('SAVE CHANGES'));
       await tester.pumpAndSettle();
       expect(harness.app.myBand!.name, 'Recovered Name');
       expect(find.text('Changes saved.'), findsOne);
@@ -435,16 +461,16 @@ void main() {
     );
 
     await _scrollTo(tester, 'SAVE CHANGES');
-    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.tap(findUiText('SAVE CHANGES'));
     await tester.pump();
-    expect(find.text('SAVING…'), findsOne);
+    expect(findUiText('SAVING…'), findsOne);
 
     repository.firstSave.completeError(StateError('offline'));
     await tester.pumpAndSettle();
     expect(find.textContaining('could not be saved'), findsOne);
-    expect(find.text('SAVE CHANGES'), findsOne);
+    expect(findUiText('SAVE CHANGES'), findsOne);
 
-    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.tap(findUiText('SAVE CHANGES'));
     await tester.pumpAndSettle();
     expect(repository.updateCalls, 2);
     expect(find.text('Changes saved.'), findsOne);
@@ -460,23 +486,25 @@ void main() {
     harness.app.openBandEditor(section: 'members');
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('BAND MEMBERS'), findsOne);
-    expect(find.text('BAND ADMIN'), findsOne);
-    await tester.tap(find.text('CREATE INVITATION LINK'));
+    await openAllFormSections(tester);
+    expect(findUiText('Members'), findsOne);
+    expect(findUiText('BAND ADMIN'), findsOne);
+    await _scrollTo(tester, 'CREATE INVITATION LINK');
+    await tester.tap(findUiText('CREATE INVITATION LINK'));
     await tester.pumpAndSettle();
     final first = harness.app.inviteFor(harness.app.bandId)!;
     expect(find.text(first.url), findsOne);
-    expect(find.text('COPY INVITATION LINK'), findsOne);
+    expect(findUiText('COPY INVITATION LINK'), findsOne);
 
-    await tester.tap(find.text('ROTATE LINK'));
+    await tester.tap(findUiText('ROTATE LINK'));
     await tester.pumpAndSettle();
     final rotated = harness.app.inviteFor(harness.app.bandId)!;
     expect(rotated.token, isNot(first.token));
 
-    await tester.tap(find.text('REVOKE LINK'));
+    await tester.tap(findUiText('REVOKE LINK'));
     await tester.pumpAndSettle();
     expect(find.text('The previous invitation was revoked.'), findsOne);
-    expect(find.text('CREATE NEW INVITATION LINK'), findsOne);
+    expect(findUiText('CREATE NEW INVITATION LINK'), findsOne);
   });
 
   testWidgets('member panel trusts server invitation expiry state', (
@@ -503,7 +531,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(repository.invite.url), findsOne);
-    expect(find.text('COPY INVITATION LINK'), findsOne);
+    expect(findUiText('COPY INVITATION LINK'), findsOne);
 
     repository.invite = BandInvite(
       bandId: 'b1',
@@ -516,7 +544,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('The previous invitation expired.'), findsOne);
-    expect(find.text('CREATE NEW INVITATION LINK'), findsOne);
+    expect(findUiText('CREATE NEW INVITATION LINK'), findsOne);
   });
 
   testWidgets(
@@ -527,23 +555,23 @@ void main() {
         home: const Scaffold(body: BandEditScreen()),
       );
       await _scrollTo(tester, 'ARCHIVE BAND');
-      await tester.tap(find.text('ARCHIVE BAND'));
+      await tester.tap(findUiText('ARCHIVE BAND'));
       await tester.pumpAndSettle();
 
       final confirm = find.byKey(const Key('archive-band-confirmation'));
+
+      await revealFormKey(tester, const Key('archive-band-confirmation'));
       await tester.enterText(confirm, 'Wrong name');
       await tester.pump();
       expect(
         tester
-            .widget<FilledButton>(
-              find.widgetWithText(FilledButton, 'ARCHIVE BAND'),
-            )
+            .widget<FilledButton>(findUiControl(FilledButton, 'ARCHIVE BAND'))
             .onPressed,
         isNull,
       );
       await tester.enterText(confirm, 'Foghorn Diet');
       await tester.pump();
-      await tester.tap(find.widgetWithText(FilledButton, 'ARCHIVE BAND'));
+      await tester.tap(findUiControl(FilledButton, 'ARCHIVE BAND'));
       await tester.pumpAndSettle();
 
       expect(harness.app.current.screen, Screen.myGigs);
@@ -594,10 +622,11 @@ void main() {
 }
 
 Future<void> _scrollTo(WidgetTester tester, String text) async {
-  await _scrollToFinder(tester, find.text(text));
+  await _scrollToFinder(tester, findUiText(text));
 }
 
 Future<void> _scrollToKey(WidgetTester tester, Key key) async {
+  await revealFormKey(tester, key);
   await _scrollToFinder(tester, find.byKey(key));
 }
 

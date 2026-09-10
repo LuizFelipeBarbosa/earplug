@@ -88,17 +88,22 @@ class SlotCard extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text(value == 'REQUIRED' ? sub : sentenceCase(value)),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(value == 'REQUIRED' ? sub : sentenceCase(value)),
+                      if (sub.isNotEmpty && value != 'REQUIRED')
+                        Text(sub, style: Theme.of(context).textTheme.epCaption),
+                    ],
+                  ),
+                ),
               ),
               const Icon(Icons.expand_more),
             ],
           ),
         ),
-        if (sub.isNotEmpty && value != 'REQUIRED')
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(sub, style: Theme.of(context).textTheme.epCaption),
-          ),
       ],
     );
   }

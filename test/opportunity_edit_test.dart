@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 import 'support/design_rules.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('draft save action stays above the organizer tab bar', (
@@ -40,13 +41,12 @@ void main() {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);
     final harness = await _pumpEditor(tester, auth, repository, 'new');
-    expect(find.byKey(const Key('opp-edit-venue-search')), findsNothing);
-    expect(find.byKey(const Key('opp-edit-venue-v1')), findsOneWidget);
+    expect(find.byKey(const Key('opp-edit-venue')), findsOneWidget);
     final originalIds = (await repository.manageOpportunities(
       'org1',
     )).map((opportunity) => opportunity.id).toSet();
     expect(find.byType(StatusPill), findsNothing);
-    expect(_action(tester, 'open').onPrimary, isNull);
+    expect(find.byKey(const Key('opp-edit-open')), findsNothing);
     expect(
       find.descendant(
         of: find.byType(EpCard),
@@ -59,12 +59,13 @@ void main() {
     await _tap(tester, 'opp-edit-venue-v1');
     final date = _futureDate(30);
     await _pickDate(tester, 'opp-edit-date', date);
-    await _pickDate(tester, 'opp-edit-deadline', _futureDate(20));
     await _tap(tester, 'opp-edit-slot-add');
     await _tap(tester, 'opp-edit-slot-0-role-support');
     await _enterText(tester, 'opp-edit-slot-0-guarantee', '150');
     await _enterText(tester, 'opp-edit-slot-0-length', '45');
     await _tap(tester, 'opp-edit-slot-0-required');
+    await _pickDate(tester, 'opp-edit-deadline', _futureDate(20));
+    await _goToStep(tester, 4);
     await tester.pump(const Duration(seconds: 2));
     expect(
       (await repository.manageOpportunities(
@@ -100,10 +101,8 @@ void main() {
     final opened = (await repository.opportunity(saved.id))!;
     expect(opened.status, OpportunityStatus.open);
     expect(opened.title, 'Basement Saturday Live');
-    await _reveal(
-      tester,
-      find.byKey(const ValueKey('opp-edit-slot-0-guarantee')),
-    );
+    await _goToField(tester, 'opp-edit-slot-0-guarantee');
+    await _reveal(tester, find.byKey(const Key('opp-edit-slot-0-guarantee')));
     expect(_field(tester, 'opp-edit-slot-0-guarantee').enabled, isFalse);
     expect(_field(tester, 'opp-edit-slot-0-length').enabled, isFalse);
     expect(
@@ -163,15 +162,12 @@ void main() {
     );
 
     expect(harness.app.currentIsVenueOperator, isFalse);
-    expect(find.byKey(const Key('opp-edit-venue-search')), findsOneWidget);
-    expect(
-      tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).active,
-      isFalse,
-    );
-    expect(_action(tester, 'open').primaryLabel, 'OPEN FOR APPLICATIONS');
-    expect(_action(tester, 'open').onPrimary, isNull);
-    expect(find.text('OPEN FOR APPLICATIONS'), findsOneWidget);
-    expect(find.text('WAITING FOR VENUE APPROVAL'), findsNothing);
+    expect(find.byKey(const Key('opp-edit-venue')), findsOneWidget);
+    expect(_venuePicker(tester).selected.contains('v1'), isFalse);
+    await tester.tap(findUiText('Continue'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter title.'), findsOneWidget);
+    expect(find.byKey(const Key('opp-edit-open')), findsNothing);
 
     await _disposeApp(tester, harness.app);
   });
@@ -188,29 +184,23 @@ void main() {
       'new',
       organizationId: 'org3',
     );
-    expect(find.byKey(const Key('opp-edit-venue-search')), findsOneWidget);
-    expect(find.byKey(const Key('opp-edit-venue-v1')), findsOneWidget);
-    expect(find.byKey(const Key('opp-edit-venue-v2')), findsNothing);
-    expect(find.byKey(const Key('opp-edit-venue-v3')), findsNothing);
-    expect(find.byKey(const Key('opp-edit-venue-approval')), findsNothing);
-
-    await _enterText(tester, 'opp-edit-venue-search', '  FOGHORN  ');
-    expect(find.byKey(const Key('opp-edit-venue-v1')), findsOneWidget);
-    await _enterText(tester, 'opp-edit-venue-search', 'Nightcrawler');
-    expect(find.byKey(const Key('opp-edit-venue-v1')), findsNothing);
-    expect(find.byKey(const Key('opp-edit-venue-v2')), findsNothing);
-    await _enterText(tester, 'opp-edit-venue-search', '  MISSION  ');
-    await _tap(tester, 'opp-edit-venue-v1');
+    await _openVenuePicker(tester);
     expect(
-      tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).active,
-      isTrue,
-    );
-    await _enterText(tester, 'opp-edit-venue-search', 'No matching venue');
-    expect(find.byKey(const Key('opp-edit-venue-v1')), findsNothing);
-    expect(
-      find.text('The Foghorn Club · Mission, San Francisco'),
+      findUiText('The Foghorn Club · Mission, San Francisco'),
       findsOneWidget,
     );
+    expect(find.textContaining('Nightcrawler'), findsNothing);
+    await tester.enterText(find.byType(TextField).last, '  FOGHORN  ');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('The Foghorn Club'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).last, 'Nightcrawler');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('The Foghorn Club'), findsNothing);
+    await tester.enterText(find.byType(TextField).last, '  MISSION  ');
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('The Foghorn Club'));
+    await tester.pumpAndSettle();
+    expect(_venuePicker(tester).selected, {'v1'});
     expectNoFieldInCard(tester);
     await _disposeApp(tester, harness.app);
   });
@@ -227,15 +217,12 @@ void main() {
       'opp-promoter',
       organizationId: 'org3',
     );
-    expect(_field(tester, 'opp-edit-venue-search').enabled, isFalse);
-    expect(
-      tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).onTap,
-      isNull,
-    );
+    expect(_venuePicker(tester).onChanged != null, isFalse);
+    expect(_venuePicker(tester).onChanged, isNull);
     final card = find.byKey(const Key('opp-edit-venue-approval'));
     await _reveal(tester, card);
     expect(
-      find.descendant(of: card, matching: find.text('PENDING APPROVAL')),
+      find.descendant(of: card, matching: findUiText('PENDING APPROVAL')),
       findsOneWidget,
     );
     expect(
@@ -247,6 +234,7 @@ void main() {
     expect(find.byKey(const Key('opp-edit-request-approval')), findsNothing);
     expect(_action(tester, 'open').primaryLabel, 'WAITING FOR VENUE APPROVAL');
     expect(_action(tester, 'open').onPrimary, isNull);
+    await _goToField(tester, 'opp-edit-date');
     await _reveal(tester, find.byKey(const Key('opp-edit-date')));
     for (final key in ['date', 'doors', 'start', 'deadline']) {
       expect(
@@ -261,7 +249,7 @@ void main() {
     expect(await repository.venueConsentForOpportunity('opp-promoter'), isNull);
     await _reveal(tester, card);
     expect(
-      find.descendant(of: card, matching: find.text('NOT REQUESTED')),
+      find.descendant(of: card, matching: findUiText('NOT REQUESTED')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('opp-edit-withdraw-approval')), findsNothing);
@@ -271,6 +259,7 @@ void main() {
           .onTap,
       isNotNull,
     );
+    await _goToField(tester, 'opp-edit-date');
     await _reveal(tester, find.byKey(const Key('opp-edit-date')));
     for (final key in ['date', 'doors', 'start', 'deadline']) {
       expect(
@@ -280,12 +269,10 @@ void main() {
         isNotNull,
       );
     }
-    await _reveal(tester, find.byKey(const Key('opp-edit-venue-search')));
-    expect(_field(tester, 'opp-edit-venue-search').enabled, isTrue);
-    expect(
-      tester.widget<EpChip>(find.byKey(const Key('opp-edit-venue-v1'))).onTap,
-      isNotNull,
-    );
+    await _goToField(tester, 'opp-edit-venue');
+    await _reveal(tester, find.byKey(const Key('opp-edit-venue')));
+    expect(_venuePicker(tester).onChanged != null, isTrue);
+    expect(_venuePicker(tester).onChanged, isNotNull);
     expect(_action(tester, 'open').onPrimary, isNull);
     await _disposeApp(tester, harness.app);
   });
@@ -309,6 +296,8 @@ void main() {
     final saved = (await repository.manageOpportunities(
       'org3',
     )).singleWhere((opportunity) => opportunity.title == 'Promoter showcase');
+    await _tap(tester, 'opp-edit-slot-add');
+    await _goToStep(tester, 4);
     await _tap(tester, 'opp-edit-request-approval');
     final message = find.byKey(const Key('opp-edit-approval-message'));
     final submit = find.byKey(const Key('opp-edit-send-approval'));
@@ -321,14 +310,17 @@ void main() {
     expect(consent?.message, 'Please reserve the stage.');
     expect(consent?.status, VenueConsentStatus.pending);
     expect(message, findsNothing);
+    await _goToField(tester, 'opp-edit-venue-approval');
     await _reveal(tester, find.byKey(const Key('opp-edit-venue-approval')));
-    expect(find.text('PENDING APPROVAL'), findsOneWidget);
+    expect(findUiText('PENDING APPROVAL'), findsOneWidget);
     expect(find.byKey(const Key('opp-edit-withdraw-approval')), findsOneWidget);
+    await _goToField(tester, 'opp-edit-title');
     await _reveal(tester, find.byKey(const Key('opp-edit-title')));
     expect(
       _field(tester, 'opp-edit-title').controller!.text,
       'Promoter showcase',
     );
+    await _goToStep(tester, 4);
     expect(_action(tester, 'open').onPrimary, isNull);
     await _disposeApp(tester, harness.app);
   });
@@ -383,8 +375,9 @@ void main() {
         'opp-promoter',
         organizationId: 'org3',
       );
+      await _goToField(tester, 'opp-edit-venue-approval');
       await _reveal(tester, find.byKey(const Key('opp-edit-venue-approval')));
-      expect(find.text('APPROVED'), findsOneWidget);
+      expect(findUiText('APPROVED'), findsOneWidget);
       expect(find.byKey(const Key('opp-edit-request-approval')), findsNothing);
       expect(
         find.byKey(const Key('opp-edit-withdraw-approval')),
@@ -392,6 +385,7 @@ void main() {
       );
       expect(_action(tester, 'open').primaryLabel, 'OPEN FOR APPLICATIONS');
       expect(_action(tester, 'open').onPrimary, isNotNull);
+      await _goToField(tester, 'opp-edit-date');
       await _reveal(tester, find.byKey(const Key('opp-edit-date')));
       expect(
         tester
@@ -405,6 +399,7 @@ void main() {
         OpportunityStatus.open,
       );
       expect(_action(tester, 'close').onPrimary, isNotNull);
+      await _goToField(tester, 'opp-edit-venue-approval');
       await _reveal(tester, find.byKey(const Key('opp-edit-venue-approval')));
       expect(find.byKey(const Key('opp-edit-withdraw-approval')), findsNothing);
       await _disposeApp(tester, harness.app);
@@ -481,15 +476,12 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);
-    final harness = await _pumpEditor(tester, auth, repository, 'new');
+    final harness = await _pumpEditor(tester, auth, repository, 'opp2');
     await _enterText(tester, 'opp-edit-title', 'Paid Saturday');
     await _tap(tester, 'opp-edit-venue-v1');
     await _pickDate(tester, 'opp-edit-date', _futureDate(30));
-    await _tap(tester, 'opp-edit-slot-add');
-    await _reveal(
-      tester,
-      find.byKey(const ValueKey('opp-edit-ticketing-paid')),
-    );
+    await _goToField(tester, 'opp-edit-ticketing-paid');
+    await _reveal(tester, find.byKey(const Key('opp-edit-ticketing-paid')));
 
     for (final ticketing in ['none', 'rsvp', 'external', 'paid']) {
       expect(
@@ -614,10 +606,8 @@ void main() {
       );
       if (price == 2550) await repository.cancelOpportunity(fixture.id);
       final harness = await _pumpEditor(tester, auth, repository, fixture.id);
-      await _reveal(
-        tester,
-        find.byKey(const ValueKey('opp-edit-ticket-price')),
-      );
+      await _goToField(tester, 'opp-edit-ticket-price');
+      await _reveal(tester, find.byKey(const Key('opp-edit-ticket-price')));
       expect(
         _field(tester, 'opp-edit-ticket-price').controller!.text,
         price == 2500 ? '25' : '25.50',
@@ -665,10 +655,8 @@ void main() {
         );
       });
     final harness = await _pumpEditor(tester, auth, repository, 'opp2');
-    await _reveal(
-      tester,
-      find.byKey(const ValueKey('opp-edit-ticketing-paid')),
-    );
+    await _goToField(tester, 'opp-edit-ticketing-paid');
+    await _reveal(tester, find.byKey(const Key('opp-edit-ticketing-paid')));
     expect(
       tester
           .widget<EpChip>(find.byKey(const ValueKey('opp-edit-ticketing-paid')))
@@ -702,12 +690,10 @@ void main() {
     final fixture = (await repository.opportunity('opp1'))!;
     final harness = await _pumpEditor(tester, auth, repository, 'opp1');
     expect(_field(tester, 'opp-edit-title').controller!.text, fixture.title);
-    final venue = tester.widget<EpChip>(
-      find.byKey(const ValueKey('opp-edit-venue-v1')),
-    );
-    expect(venue.active, isTrue);
-    expect(venue.onTap, isNull);
-    await _reveal(tester, find.byKey(const ValueKey('opp-edit-desc')));
+    expect(_venuePicker(tester).selected, {'v1'});
+    expect(_venuePicker(tester).onChanged, isNull);
+    await _goToField(tester, 'opp-edit-desc');
+    await _reveal(tester, find.byKey(const Key('opp-edit-desc')));
     expect(_field(tester, 'opp-edit-desc').controller!.text, fixture.desc);
     await _enterText(
       tester,
@@ -741,9 +727,10 @@ void main() {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);
     final harness = await _pumpEditor(tester, auth, repository, 'opp2');
-    await _reveal(tester, find.byKey(const ValueKey('opp-edit-delete')));
+    await _goToField(tester, 'opp-edit-delete');
+    await _reveal(tester, find.byKey(const Key('opp-edit-delete')));
     // DangerZone's caption makes its center fall outside the actual button.
-    await tester.tap(find.widgetWithText(TextButton, 'DELETE DRAFT'));
+    await tester.tap(findUiControl(TextButton, 'DELETE DRAFT'));
     await tester.pumpAndSettle();
     expect(await repository.opportunity('opp2'), isNull);
     expect(harness.app.current.screen, Screen.orgDash);
@@ -797,7 +784,8 @@ void main() {
       await _tapAction(tester, 'save');
       expect(find.byKey(const ValueKey('opp-edit-feedback')), findsOneWidget);
       expect(find.textContaining('changed elsewhere'), findsOneWidget);
-      await _reveal(tester, find.byKey(const ValueKey('opp-edit-title')));
+      await _goToField(tester, 'opp-edit-title');
+      await _reveal(tester, find.byKey(const Key('opp-edit-title')));
       expect(
         _field(tester, 'opp-edit-title').controller!.text,
         'First saved title',
@@ -817,6 +805,9 @@ void main() {
     final harness = await _pumpEditor(tester, auth, repository, 'new');
     final originalCount = (await repository.manageOpportunities('org1')).length;
     await _enterText(tester, 'opp-edit-title', 'Never saved');
+    await _tap(tester, 'opp-edit-venue-v1');
+    await _pickDate(tester, 'opp-edit-date', _futureDate(30));
+    await _tap(tester, 'opp-edit-slot-add');
     await _invite(tester, (await repository.band('b1'))!);
     await tester.pump(const Duration(seconds: 2));
     expect(
@@ -825,6 +816,16 @@ void main() {
     );
     await _reveal(tester, find.byType(CircleIconButton));
     await tester.tap(find.byType(CircleIconButton));
+    await tester.pumpAndSettle();
+    expect(find.text('Discard unsaved changes?'), findsOneWidget);
+    await tester.tap(find.text('Keep editing'));
+    await tester.pumpAndSettle();
+    await _enterText(tester, 'opp-edit-title', 'Never saved');
+    expect(_field(tester, 'opp-edit-title').controller!.text, 'Never saved');
+    await tester.ensureVisible(find.byType(CircleIconButton));
+    await tester.tap(find.byType(CircleIconButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Discard changes'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.orgDash);
     expect(
@@ -850,6 +851,7 @@ void main() {
     await _enterText(tester, 'opp-edit-title', 'Minimal draft');
     await _tap(tester, 'opp-edit-venue-v1');
     await _pickDate(tester, 'opp-edit-date', _futureDate(30));
+    await _tap(tester, 'opp-edit-slot-add');
     // Saving is allowed even when the deadline would prevent opening.
     await _pickDate(tester, 'opp-edit-deadline', _futureDate(31));
     await _invite(tester, (await repository.band('b1'))!);
@@ -861,9 +863,12 @@ void main() {
     )).singleWhere((opportunity) => opportunity.title == 'Minimal draft');
     expect(saved.status, OpportunityStatus.draft);
     expect(saved.invitedBandIds, ['b1']);
-    expect(_action(tester, 'open').onPrimary, isNull);
+    expect(find.byKey(const Key('opp-edit-open')), findsNothing);
+    expect(find.byKey(const Key('opp-edit-open')), findsNothing);
+    await tester.tap(findUiText('Continue'));
+    await tester.pumpAndSettle();
     expect(
-      find.text('Needs: at least one slot, deadline before start'),
+      find.text('Choose an application deadline before the event starts.'),
       findsOneWidget,
     );
     await _disposeApp(tester, harness.app);
@@ -908,18 +913,19 @@ void main() {
     final auth = FakeAuthService();
     final repository = DemoRepository(auth: auth);
     final harness = await _pumpEditor(tester, auth, repository, 'opp1');
-    await _reveal(tester, find.byKey(const ValueKey('opp-edit-cancel')));
-    await tester.tap(find.widgetWithText(TextButton, 'CANCEL OPPORTUNITY'));
+    await _goToField(tester, 'opp-edit-cancel');
+    await _reveal(tester, find.byKey(const Key('opp-edit-cancel')));
+    await tester.tap(findUiControl(TextButton, 'CANCEL OPPORTUNITY'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, 'KEEP'));
+    await tester.tap(findUiControl(TextButton, 'KEEP'));
     await tester.pumpAndSettle();
     expect(
       (await repository.opportunity('opp1'))!.status,
       OpportunityStatus.open,
     );
-    await tester.tap(find.widgetWithText(TextButton, 'CANCEL OPPORTUNITY'));
+    await tester.tap(findUiControl(TextButton, 'CANCEL OPPORTUNITY'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'CONFIRM'));
+    await tester.tap(findUiControl(FilledButton, 'Cancel opportunity'));
     await tester.pumpAndSettle();
     expect(
       (await repository.opportunity('opp1'))!.status,
@@ -956,6 +962,7 @@ void main() {
       final harness = await _pumpEditor(tester, auth, repository, 'opp1');
 
       expect(_field(tester, 'opp-edit-title').enabled, isFalse);
+      await _goToField(tester, 'opp-edit-ticketing-paid');
       await _reveal(tester, find.byKey(const Key('opp-edit-ticketing-paid')));
       expect(
         tester
@@ -963,9 +970,11 @@ void main() {
             .onTap,
         isNull,
       );
+      await _goToField(tester, 'opp-edit-ticket-price');
       await _reveal(tester, find.byKey(const Key('opp-edit-ticket-price')));
       expect(_field(tester, 'opp-edit-ticket-price').enabled, isTrue);
       expect(_field(tester, 'opp-edit-ticket-capacity').enabled, isTrue);
+      await _goToField(tester, 'opp-edit-update-ticketing');
       await _reveal(tester, find.byKey(const Key('opp-edit-update-ticketing')));
       expect(
         find.byKey(const Key('opp-edit-update-ticketing')),
@@ -1026,6 +1035,8 @@ void main() {
         });
       final harness = await _pumpEditor(tester, auth, repository, 'opp1');
 
+      await _goToField(tester, 'opp-edit-ticketing-paid');
+
       await _reveal(tester, find.byKey(const Key('opp-edit-ticketing-paid')));
       expect(find.byKey(const Key('opp-edit-update-ticketing')), findsNothing);
       await _disposeApp(tester, harness.app);
@@ -1046,26 +1057,30 @@ void main() {
         beforePump: (app) => app.switchToOrganization('org2'),
       );
 
-      expect(find.text('NEW REQUEST'), findsOneWidget);
-      expect(find.text('LOCATION'), findsOneWidget);
-      expect(
-        find.byKey(const Key('opp-location-private-location-org2')),
-        findsOneWidget,
-      );
-      expect(find.text('VENUE'), findsNothing);
+      expect(findUiText('Create private request'), findsOneWidget);
+      expect(findUiText('LOCATION'), findsOneWidget);
+      expect(find.byKey(const Key('opp-edit-location')), findsOneWidget);
+      expect(findUiText('VENUE'), findsNothing);
       expect(
         find.text(
           'Artists see the area only. The exact address is shared after the deposit.',
         ),
         findsOneWidget,
       );
+      await _enterText(tester, 'opp-edit-title', 'Private party');
+      await _tap(tester, 'opp-location-private-location-org2');
+      await _pickDate(tester, 'opp-edit-date', _futureDate(30));
+      await _tap(tester, 'opp-edit-slot-add');
+      await _enterText(tester, 'opp-edit-slot-0-guarantee', '150');
+      await _goToField(tester, 'opp-edit-attendance');
       await _reveal(tester, find.byKey(const Key('opp-edit-attendance')));
-      expect(find.text('EXPECTED GUESTS'), findsOneWidget);
+      expect(findUiText('EXPECTED GUESTS'), findsOneWidget);
       expectNoFieldInCard(tester);
       // Inspect the section immediately after attendance so lazy scrolling
       // cannot make an offscreen ticketing section look absent.
-      await _reveal(tester, find.text('VISIBILITY'));
-      expect(find.text('TICKETING'), findsNothing);
+      await _goToStep(tester, 3);
+      await _reveal(tester, findUiText('VISIBILITY'));
+      expect(findUiText('TICKETING'), findsNothing);
       for (final ticketing in ['none', 'rsvp', 'external', 'paid']) {
         expect(find.byKey(Key('opp-edit-ticketing-$ticketing')), findsNothing);
       }
@@ -1103,6 +1118,9 @@ void main() {
         ),
         findsWidgets,
       );
+      await _enterText(tester, 'opp-edit-title', 'Private party');
+      await _tap(tester, 'opp-location-private-location-org2');
+      await _pickDate(tester, 'opp-edit-date', _futureDate(30));
       await _tap(tester, 'opp-edit-slot-add');
       await _tapAction(tester, 'save');
       expect(
@@ -1116,7 +1134,7 @@ void main() {
       await _enterText(tester, 'opp-edit-slot-1-guarantee', '50');
       await _tapAction(tester, 'save');
       expect(find.textContaining('a fee for every slot'), findsNothing);
-      expect(find.text('Needs: title, location, date, deadline'), findsWidgets);
+      expect(find.text('Needs: deadline'), findsWidgets);
       expect(
         await repository.manageOpportunities('org2'),
         hasLength(beforeCount),
@@ -1146,7 +1164,7 @@ void main() {
       await _pickDate(tester, 'opp-edit-date', date);
       await _tap(tester, 'opp-edit-start');
       expect(find.byType(TimePickerDialog), findsOneWidget);
-      await tester.tap(find.widgetWithText(TextButton, 'OK'));
+      await tester.tap(findUiControl(TextButton, 'OK'));
       await tester.pumpAndSettle();
       await _tap(tester, 'opp-edit-slot-add');
       await _enterText(tester, 'opp-edit-slot-0-guarantee', '150');
@@ -1192,8 +1210,9 @@ void main() {
             .map((opportunity) => opportunity.id),
         contains(saved.id),
       );
+      await _goToField(tester, 'opp-edit-title');
       await _reveal(tester, find.byKey(const Key('opp-edit-title')));
-      expect(find.text('NEW REQUEST'), findsNothing);
+      expect(findUiText('Create private request'), findsNothing);
       expect(find.text('Courtyard birthday'), findsWidgets);
       await _disposeApp(tester, harness.app);
     },
@@ -1212,11 +1231,11 @@ void main() {
         home: const OpportunityEditScreen(opportunityId: 'opp-private'),
         beforePump: (app) => app.switchToOrganization('org2'),
       );
-      final location = tester.widget<EpChip>(
-        find.byKey(const Key('opp-location-private-location-org2')),
+      final location = tester.widget<EpSelectionField<String>>(
+        find.byKey(const Key('opp-edit-location')),
       );
-      expect(location.active, isTrue);
-      expect(location.onTap, isNull);
+      expect(location.selected, {'private-location-org2'});
+      expect(location.onChanged, isNull);
       await _enterText(tester, 'opp-edit-title', 'Updated courtyard request');
       await _tapAction(tester, 'save');
 
@@ -1258,6 +1277,7 @@ Future<AppHarness> _pumpEditor(
   await enterOrganizer(tester, harness, organizationId);
   harness.app.openOpportunityEditor(id);
   await tester.pumpAndSettle();
+  if (id != 'new') await openAllFormSections(tester);
   return harness;
 }
 
@@ -1286,26 +1306,88 @@ StickyActionBar _action(WidgetTester tester, String action) =>
     tester.widget<StickyActionBar>(find.byKey(ValueKey('opp-edit-$action')));
 
 Future<void> _reveal(WidgetTester tester, Finder finder) async {
-  final list = find
-      .descendant(
-        of: find.byType(OpportunityEditScreen),
-        matching: find.byType(ListView),
-      )
-      .first;
-  tester.widget<ListView>(list).controller!.jumpTo(0);
-  await tester.pump();
-  await tester.scrollUntilVisible(
-    finder,
-    300,
-    scrollable: find
-        .descendant(of: list, matching: find.byType(Scrollable))
-        .first,
-    maxScrolls: 50,
+  final steps = tester
+      .widgetList<EpFormStep>(find.byType(EpFormStep, skipOffstage: false))
+      .toList();
+  final hidden = find.descendant(
+    of: find.byType(EpFormStep, skipOffstage: false),
+    matching: finder,
+    skipOffstage: false,
+  );
+  if (hidden.evaluate().length == 1) {
+    EpFormStep? owner;
+    tester.element(hidden).visitAncestorElements((element) {
+      if (element.widget is EpFormStep) {
+        owner = element.widget as EpFormStep;
+        return false;
+      }
+      return true;
+    });
+    if (owner != null) await _goToStep(tester, steps.indexOf(owner!));
+  }
+  await openAllFormSections(tester);
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _goToStep(WidgetTester tester, int target) async {
+  final menu = find.byType(EpFormSteps);
+  if (menu.evaluate().isEmpty) return;
+  var step = tester.widget<EpFormSteps>(menu);
+  if (target < step.current) {
+    await tester.ensureVisible(menu);
+    await tester.tap(find.byType(DropdownButtonFormField<int>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(step.labels[target]).last);
+    await tester.pumpAndSettle();
+  } else {
+    while (step.current < target) {
+      final previous = step.current;
+      await tester.tap(findUiControl(FilledButton, 'Continue'));
+      await tester.pumpAndSettle();
+      step = tester.widget<EpFormSteps>(menu);
+      expect(
+        step.current,
+        previous + 1,
+        reason: 'Required decisions must be completed before advancing',
+      );
+    }
+  }
+}
+
+EpSelectionField<String> _venuePicker(WidgetTester tester) => tester
+    .widget<EpSelectionField<String>>(find.byKey(const Key('opp-edit-venue')));
+Future<void> _openVenuePicker(WidgetTester tester) async {
+  final picker = find.byKey(const Key('opp-edit-venue'));
+  await _reveal(tester, picker);
+  await tester.tap(
+    find.descendant(of: picker, matching: find.byType(OutlinedButton)),
   );
   await tester.pumpAndSettle();
 }
 
 Future<void> _tap(WidgetTester tester, String key) async {
+  if (key == 'opp-edit-venue-v1' ||
+      key == 'opp-location-private-location-org2') {
+    final picker = find.byKey(
+      Key(
+        key.startsWith('opp-location') ? 'opp-edit-location' : 'opp-edit-venue',
+      ),
+    );
+    await _reveal(tester, picker);
+    final options = tester.widget<EpSelectionField<String>>(picker).options;
+    final value = key == 'opp-edit-venue-v1' ? 'v1' : 'private-location-org2';
+    await tester.tap(
+      find.descendant(of: picker, matching: find.byType(OutlinedButton)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.text(options.singleWhere((o) => o.value == value).label).last,
+    );
+    await tester.pumpAndSettle();
+    return;
+  }
+  await _goToField(tester, key);
   final finder = find.byKey(ValueKey(key));
   await _reveal(tester, finder);
   await tester.tap(finder);
@@ -1313,11 +1395,14 @@ Future<void> _tap(WidgetTester tester, String key) async {
 }
 
 Future<void> _tapAction(WidgetTester tester, String action) async {
+  if (action == 'open') await _goToStep(tester, 4);
+  await tester.ensureVisible(find.byKey(ValueKey('opp-edit-$action')));
   await tester.tap(find.byKey(ValueKey('opp-edit-$action')));
   await tester.pumpAndSettle();
 }
 
 Future<void> _enterText(WidgetTester tester, String key, String value) async {
+  await _goToField(tester, key);
   final finder = find.byKey(ValueKey(key));
   await _reveal(tester, finder);
   await tester.enterText(finder, value);
@@ -1339,7 +1424,7 @@ Future<void> _pickDate(WidgetTester tester, String key, DateTime date) async {
     find.descendant(of: dialog, matching: find.byType(TextField)),
     localizations.formatCompactDate(date),
   );
-  await tester.tap(find.widgetWithText(TextButton, 'OK'));
+  await tester.tap(findUiControl(TextButton, 'OK'));
   await tester.pumpAndSettle();
 }
 
@@ -1491,4 +1576,25 @@ class _ConflictOnceRepository extends DemoRepository {
       slots: slots,
     );
   }
+}
+
+Future<void> _goToField(WidgetTester tester, String key) async {
+  final target = key.contains('slot-') || key == 'opp-edit-slot-add'
+      ? 1
+      : key.contains('desc') ||
+            key.contains('equipment') ||
+            key.contains('requirements') ||
+            key.contains('attendance') ||
+            key.contains('age-')
+      ? 2
+      : key.contains('deadline') ||
+            key.contains('ticket') ||
+            key.contains('external') ||
+            key.contains('visibility') ||
+            key.contains('invite')
+      ? 3
+      : key.contains('approval')
+      ? 4
+      : 0;
+  await _goToStep(tester, target);
 }

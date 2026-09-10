@@ -15,10 +15,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets(
-    'flat host form autosaves, validates every requirement and submits',
+    'guided host form autosaves, validates each step and submits from review',
     (tester) async {
       final auth = FakeAuthService();
       await auth.signInDemo();
@@ -33,11 +34,14 @@ void main() {
       );
       addTearDown(() => _disposeApp(harness.app));
 
-      expect(find.text('BECOME A HOST'), findsOneWidget);
-      expect(_submitBar(tester).onPrimary, isNull);
+      expect(findUiText('BECOME A HOST'), findsOneWidget);
+      expect(find.byKey(const ValueKey('host-apply-submit')), findsNothing);
+      await tester.tap(findUiControl(FilledButton, 'Continue'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter display name.'), findsOneWidget);
       for (final field in _hostFields.entries) {
         await _enterText(tester, field.key, field.value);
-        expect(_submitBar(tester).onPrimary, isNull);
+        expect(find.byKey(const ValueKey('host-apply-submit')), findsNothing);
       }
       await tester.pump(const Duration(milliseconds: 700));
       await tester.pump();
@@ -85,9 +89,12 @@ void main() {
       // Each field still gates submission when the document and agreement exist.
       for (final field in _hostFields.entries) {
         await _enterText(tester, field.key, '', upward: true);
-        expect(_submitBar(tester).onPrimary, isNull);
+        await tester.tap(findUiControl(FilledButton, 'Continue'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('host-apply-submit')), findsNothing);
         await tester.enterText(find.byKey(ValueKey(field.key)), field.value);
-        await tester.pump();
+        await tester.tap(findUiControl(FilledButton, 'Continue'));
+        await tester.pumpAndSettle();
         expect(_submitBar(tester).onPrimary, isNotNull);
       }
 
@@ -104,7 +111,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(_submitBar(tester).onPrimary, isNotNull);
 
-      await tester.tap(find.text('SUBMIT APPLICATION'));
+      await tester.tap(findUiText('SUBMIT APPLICATION'));
       await tester.pumpAndSettle();
       expect(
         harness.app.myOrganizationApplication?.status,
@@ -120,12 +127,12 @@ void main() {
         beforePump: (app) => app.resetTo(Screen.orgApplicationStatus),
       );
       addTearDown(() => _disposeApp(statusHarness.app));
-      expect(find.text('HOST APPLICATION'), findsOneWidget);
+      expect(findUiText('HOST APPLICATION'), findsOneWidget);
       expect(find.byKey(const Key('host-status-details')), findsOneWidget);
       expect(find.text('Jordan Lee'), findsOneWidget);
       expect(find.text('Mission District, San Francisco'), findsOneWidget);
       expect(find.text('415-555-0101'), findsOneWidget);
-      expect(find.text('ORGANIZER APPLICATION'), findsNothing);
+      expect(findUiText('ORGANIZER APPLICATION'), findsNothing);
     },
   );
 
@@ -180,11 +187,14 @@ void main() {
       );
       await _reveal(tester, 'host-apply-email');
       expect(_fieldText(tester, 'host-apply-email'), email);
-      await _reveal(tester, 'host-apply-agree');
+
       expect(
         tester
             .widget<CheckboxListTile>(
-              find.byKey(const ValueKey('host-apply-agree')),
+              find.byKey(
+                const ValueKey('host-apply-agree'),
+                skipOffstage: false,
+              ),
             )
             .value,
         isTrue,
@@ -192,6 +202,7 @@ void main() {
       expect(
         find.byKey(
           ValueKey('host-apply-doc-remove-${draft.documents.single.storageId}'),
+          skipOffstage: false,
         ),
         findsOneWidget,
       );
@@ -329,15 +340,13 @@ void main() {
         find.text('You already have an organizer application in progress.'),
         findsOneWidget,
       );
-      await tester.tap(find.text('OPEN APPLICATION'));
+      await tester.tap(findUiText('OPEN APPLICATION'));
       await tester.pumpAndSettle();
       expect(harness.app.current.screen, Screen.orgApplicationStatus);
     });
   }
 
-  testWidgets('switcher host entry opens the host application', (
-    tester,
-  ) async {
+  testWidgets('switcher host entry opens the host application', (tester) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = _HostTestRepository(
@@ -351,7 +360,7 @@ void main() {
       repository: repository,
     );
     addTearDown(() => _disposeApp(harness.app));
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(findUiText('SWITCH'));
     await tester.pumpAndSettle();
 
     final hostEntry = find.byKey(const Key('switcher-become-host'));
@@ -359,7 +368,7 @@ void main() {
     expect(find.byKey(const Key('switcher-org-org1')), findsOneWidget);
     expect(find.byKey(const Key('switcher-org-org2')), findsNothing);
     expect(find.byKey(const Key('switcher-become-organizer')), findsNothing);
-    expect(find.text('BECOME A HOST'), findsOneWidget);
+    expect(findUiText('BECOME A HOST'), findsOneWidget);
     await tester.ensureVisible(hostEntry);
     await tester.tap(hostEntry);
     await tester.pumpAndSettle();
@@ -380,7 +389,7 @@ void main() {
       );
       addTearDown(() => _disposeApp(harness.app));
       expect(harness.app.myOrganizationApplication, isNull);
-      await tester.tap(find.text('SWITCH'));
+      await tester.tap(findUiText('SWITCH'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('switcher-org-org1')), findsOneWidget);
@@ -418,13 +427,13 @@ void main() {
       ),
       isTrue,
     );
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(findUiText('SWITCH'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('switcher-org-org2')), findsOneWidget);
     final hostEntry = find.byKey(const Key('switcher-become-host'));
     expect(hostEntry, findsOneWidget);
-    expect(find.text('CONTINUE HOST APPLICATION'), findsOneWidget);
+    expect(findUiText('CONTINUE HOST APPLICATION'), findsOneWidget);
     await tester.ensureVisible(hostEntry);
     await tester.tap(hostEntry);
     await tester.pumpAndSettle();
@@ -451,7 +460,7 @@ void main() {
       repository: repository,
     );
     addTearDown(() => _disposeApp(harness.app));
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(findUiText('SWITCH'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('switcher-org-org1')), findsNothing);
@@ -460,7 +469,7 @@ void main() {
     expect(find.byKey(const Key('switcher-become-host')), findsNothing);
     final organizerEntry = find.byKey(const Key('switcher-become-organizer'));
     expect(organizerEntry, findsOneWidget);
-    expect(find.text('BECOME AN ORGANIZER'), findsOneWidget);
+    expect(findUiText('BECOME AN ORGANIZER'), findsOneWidget);
     await tester.ensureVisible(organizerEntry);
     await tester.tap(organizerEntry);
     await tester.pumpAndSettle();
@@ -505,7 +514,7 @@ void main() {
           ),
           hasHostMembership,
         );
-        await tester.tap(find.text('SWITCH'));
+        await tester.tap(findUiText('SWITCH'));
         await tester.pumpAndSettle();
 
         expect(
@@ -515,7 +524,7 @@ void main() {
           hasHostMembership ? findsOneWidget : findsNothing,
         );
         expect(find.byKey(const Key('switcher-become-host')), findsNothing);
-        expect(find.text('HOST APPLICATION · APPROVED'), findsNothing);
+        expect(findUiText('HOST APPLICATION · APPROVED'), findsNothing);
         expect(
           find.byKey(const Key('switcher-become-organizer')),
           findsNothing,
@@ -546,10 +555,10 @@ void main() {
       );
       addTearDown(() => _disposeApp(harness.app));
       expect(harness.app.myOrganizations, isEmpty);
-      await tester.tap(find.text('SWITCH'));
+      await tester.tap(findUiText('SWITCH'));
       await tester.pumpAndSettle();
-      expect(find.text('CONTINUE HOST APPLICATION'), findsOneWidget);
-      expect(find.text('BECOME AN ORGANIZER'), findsOneWidget);
+      expect(findUiText('CONTINUE HOST APPLICATION'), findsOneWidget);
+      expect(findUiText('BECOME AN ORGANIZER'), findsOneWidget);
       final organizerEntry = find.byKey(const Key('switcher-become-organizer'));
       await tester.ensureVisible(organizerEntry);
       await tester.tap(organizerEntry);
@@ -563,10 +572,10 @@ void main() {
       await harness.app.refreshOrganizationApplication();
       harness.app.toFanView();
       await tester.pumpAndSettle();
-      await tester.tap(find.text('SWITCH'));
+      await tester.tap(findUiText('SWITCH'));
       await tester.pumpAndSettle();
-      expect(find.text('HOST APPLICATION · SUBMITTED'), findsOneWidget);
-      expect(find.text('BECOME AN ORGANIZER'), findsOneWidget);
+      expect(findUiText('HOST APPLICATION · SUBMITTED'), findsOneWidget);
+      expect(findUiText('BECOME AN ORGANIZER'), findsOneWidget);
       final hostEntry = find.byKey(const Key('switcher-become-host'));
       await tester.ensureVisible(hostEntry);
       await tester.tap(hostEntry);
@@ -599,10 +608,10 @@ void main() {
         expect(find.byKey(const Key('organizer-tab-settings')), findsOneWidget);
         expect(find.byKey(const Key('organizer-tab-team')), findsNothing);
         expect(find.byType(EpNavigationItem), findsNWidgets(3));
-        expect(find.text('DASH'), findsOneWidget);
-        expect(find.text('REQUESTS'), findsOneWidget);
-        expect(find.text('SETTINGS'), findsOneWidget);
-        await tester.tap(find.text('REQUESTS'));
+        expect(findUiText('DASH'), findsOneWidget);
+        expect(findUiText('REQUESTS'), findsOneWidget);
+        expect(findUiText('SETTINGS'), findsOneWidget);
+        await tester.tap(findUiText('REQUESTS'));
         await tester.pumpAndSettle();
         expect(harness.app.current.screen, Screen.orgOpportunities);
         expect(
@@ -616,8 +625,8 @@ void main() {
 
         await enterOrganizer(tester, harness, 'org1');
         expect(find.byKey(const Key('organizer-tab-team')), findsOneWidget);
-        expect(find.text('GIGS'), findsOneWidget);
-        expect(find.text('REQUESTS'), findsNothing);
+        expect(findUiText('GIGS'), findsOneWidget);
+        expect(findUiText('REQUESTS'), findsNothing);
       },
     );
   }
@@ -652,12 +661,12 @@ void main() {
         repository: repository,
       );
       addTearDown(() => _disposeApp(harness.app));
-      expect(find.text('HOST APPLICATION'), findsOneWidget);
+      expect(findUiText('HOST APPLICATION'), findsOneWidget);
       expect(find.byKey(const Key('host-status-details')), findsOneWidget);
 
       if (decision == ApplicationDecision.approved) {
         expect(find.text('Your host account is ready.'), findsOneWidget);
-        expect(find.text('OPEN HOST DASHBOARD'), findsOneWidget);
+        expect(findUiText('OPEN HOST DASHBOARD'), findsOneWidget);
         await tester.tap(find.byKey(const Key('org-status-switch')));
         await tester.pumpAndSettle();
         expect(
@@ -752,6 +761,17 @@ Future<void> _reveal(
   String key, {
   bool upward = false,
 }) async {
+  final details = _hostFields.containsKey(key);
+  if (details &&
+      find.byKey(const ValueKey('host-apply-submit')).evaluate().isNotEmpty) {
+    await tester.tap(findUiControl(OutlinedButton, 'Back'));
+    await tester.pumpAndSettle();
+  } else if (!details &&
+      (key.contains('-doc-') || key.endsWith('-agree')) &&
+      find.byKey(const ValueKey('host-apply-continue')).evaluate().isNotEmpty) {
+    await tester.tap(findUiControl(FilledButton, 'Continue'));
+    await tester.pumpAndSettle();
+  }
   final target = find.byKey(ValueKey(key));
   for (var attempt = 0; attempt < 12 && target.evaluate().isEmpty; attempt++) {
     await tester.drag(

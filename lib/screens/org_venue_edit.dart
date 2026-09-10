@@ -19,6 +19,7 @@ class OrgVenueEditScreen extends StatefulWidget {
 }
 
 class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
+  final _form = GlobalKey<EpFormState>();
   final _scrollController = ScrollController();
   final _name = TextEditingController();
   final _description = TextEditingController();
@@ -177,6 +178,7 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
   }
 
   Future<void> _save() async {
+    if (_form.currentState?.validate() != true) return;
     final app = context.read<AppState>();
     if (_saving ||
         _savingDisclosure ||
@@ -276,183 +278,197 @@ class _OrgVenueEditScreenState extends State<OrgVenueEditScreen> {
     final isOwner =
         app.organizerRoleFor(app.organizationId) == OrganizationRole.owner;
 
-    final listView = ListView(
-      controller: _scrollController,
-      padding: EdgeInsets.fromLTRB(
-        16,
-        headerTopPad(context),
-        16,
-        tabBarClearance +
-            actionBarClearance(context) +
-            MediaQuery.paddingOf(context).bottom,
-      ),
-      children: [
-        if (_loading)
-          const Padding(
-            padding: EdgeInsets.only(top: 80),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (_loadError != null)
-          _LoadError(message: _loadError!, onRetry: _load)
-        else if (venue != null) ...[
-          Row(
-            children: [
-              CircleIconButton(onTap: app.back),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  venue.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.epPageHeading,
-                ),
+    final listView = EpForm(
+      key: _form,
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.only(top: 80),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_loadError != null)
+              _LoadError(message: _loadError!, onRetry: _load)
+            else if (venue != null) ...[
+              Row(
+                children: [
+                  CircleIconButton(onTap: app.back),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      venue.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.epFormHeading,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          Text(
-            '${venue.approx.label}${venue.verified ? ' · VERIFIED' : ''}',
-            style: Theme.of(context).textTheme.epCaption,
-          ),
-          FormSection(
-            title: 'Public',
-            description:
-                'These details appear anywhere EarPlug shows this venue.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                EpLabeledField(
-                  label: 'NAME',
-                  hint: 'Venue name',
-                  fieldKey: const Key('org-venue-public-name'),
-                  controller: _name,
-                  required: true,
-                  enabled: canManage,
-                  onChanged: _draftChanged,
-                ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  label: 'ABOUT',
-                  hint: 'Tell artists and fans about the venue',
-                  fieldKey: const Key('org-venue-public-description'),
-                  controller: _description,
-                  enabled: canManage,
-                  minLines: 3,
-                  maxLines: 5,
-                  onChanged: _draftChanged,
-                ),
-                const SizedBox(height: 12),
-                const FieldLabel('VENUE TYPE'),
-                const SizedBox(height: 5),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
+              Text(
+                '${venue.approx.label}${venue.verified ? ' · VERIFIED' : ''}',
+                style: Theme.of(context).textTheme.epCaption,
+              ),
+              EpDisclosure(
+                title: 'Identity',
+                initiallyExpanded: true,
+                summary: _name.text,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (final type in VenueType.values)
-                      EpChip(
-                        key: ValueKey('org-venue-type-${type.wireValue}'),
-                        label: _venueTypeLabel(type),
-                        active: _venueType == type,
-                        onTap: canManage
-                            ? () {
-                                setState(() => _venueType = type);
-                                _draftChanged();
-                              }
-                            : null,
-                      ),
+                    EpLabeledField(
+                      label: 'Name',
+                      hint: 'Venue name',
+                      fieldKey: const Key('org-venue-public-name'),
+                      controller: _name,
+                      required: true,
+                      enabled: canManage,
+                      onChanged: _draftChanged,
+                    ),
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpLabeledField(
+                      label: 'About',
+                      hint: 'Tell artists and fans about the venue',
+                      fieldKey: const Key('org-venue-public-description'),
+                      controller: _description,
+                      enabled: canManage,
+                      minLines: 3,
+                      maxLines: 5,
+                      onChanged: _draftChanged,
+                    ),
+                    const SizedBox(height: 12),
+                    const FieldLabel('VENUE TYPE'),
+                    const SizedBox(height: 5),
+                    Wrap(
+                      spacing: 7,
+                      runSpacing: 7,
+                      children: [
+                        for (final type in VenueType.values)
+                          EpChip(
+                            multiple: false,
+                            key: ValueKey('org-venue-type-${type.wireValue}'),
+                            label: _venueTypeLabel(type),
+                            active: _venueType == type,
+                            onTap: canManage
+                                ? () {
+                                    setState(() => _venueType = type);
+                                    _draftChanged();
+                                  }
+                                : null,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: EpLayout.fieldGap),
                   ],
                 ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  label: 'CAPACITY',
-                  hint: 'Optional',
-                  fieldKey: const Key('org-venue-public-capacity'),
-                  controller: _publicCapacity,
-                  enabled: canManage,
-                  keyboardType: TextInputType.number,
-                  onChanged: _draftChanged,
-                ),
-              ],
-            ),
-          ),
-          FormSection(
-            title: 'Location',
-            description:
-                'Fans see only the neighborhood until they hold a ticket.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                VenueLocationEditor(
-                  key: ValueKey('org-venue-location-$_locationEditorRevision'),
-                  keyPrefix: 'org-venue-private',
-                  initial: _location,
-                  onChanged: (draft) {
-                    setState(() => _location = draft);
-                    _draftChanged();
-                  },
-                  showNameField: false,
-                  enabled: canManage,
-                  initialCenter: _location.pin ?? venue.approx.centroid,
-                  initialZoom: _location.pin == null ? 11.5 : 15,
-                ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  label: 'LOAD-IN NOTES',
-                  hint: 'Entrances, stairs, parking, or access notes',
-                  fieldKey: const Key('org-venue-private-load-in'),
-                  controller: _loadInNotes,
-                  enabled: canManage,
-                  minLines: 2,
-                  maxLines: 4,
-                  onChanged: _draftChanged,
-                ),
-              ],
-            ),
-          ),
-          if (isOwner)
-            FormSection(
-              title: 'Address disclosure',
-              description: 'Control when the exact address becomes visible.',
-              child: SwitchRow(
-                key: const Key('org-venue-disclosure'),
-                label: 'Show exact address publicly',
-                value: _disclosure == AddressDisclosure.public,
-                onChanged: isOwner && !_saving && !_savingDisclosure
-                    ? _setDisclosure
-                    : null,
-                caption:
-                    'Otherwise the exact address is shared privately with booked artists and ticket holders, not shown publicly.',
               ),
-            ),
-          if (_error != null || _success != null) ...[
-            const SizedBox(height: 16),
-            InlineFormFeedback(
-              error: _error,
-              success: _success,
-              errorKey: const Key('org-venue-save-error'),
-              successKey: const Key('org-venue-save-success'),
-            ),
+              EpDisclosure(
+                title: 'Address and access',
+                summary: _location.address.isEmpty
+                    ? 'Add an address and map pin'
+                    : _location.address,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    VenueLocationEditor(
+                      key: ValueKey(
+                        'org-venue-location-$_locationEditorRevision',
+                      ),
+                      keyPrefix: 'org-venue-private',
+                      initial: _location,
+                      onChanged: (draft) {
+                        setState(() => _location = draft);
+                        _draftChanged();
+                      },
+                      showNameField: false,
+                      compactMap: true,
+                      helperText: isOwner
+                          ? null
+                          : _disclosure == AddressDisclosure.public
+                          ? 'The exact address is public.'
+                          : 'The exact address is shared privately with booked artists and ticket holders.',
+                      enabled: canManage,
+                      initialCenter: _location.pin ?? venue.approx.centroid,
+                      initialZoom: _location.pin == null ? 11.5 : 15,
+                    ),
+                    if (isOwner)
+                      FormSection(
+                        title: 'Address disclosure',
+                        description:
+                            'Control when the exact address becomes visible.',
+                        child: SwitchRow(
+                          key: const Key('org-venue-disclosure'),
+                          label: 'Show exact address publicly',
+                          value: _disclosure == AddressDisclosure.public,
+                          onChanged: isOwner && !_saving && !_savingDisclosure
+                              ? _setDisclosure
+                              : null,
+                          caption:
+                              'Otherwise the exact address is shared privately with booked artists and ticket holders, not shown publicly.',
+                        ),
+                      ),
+                    const SizedBox(height: EpLayout.fieldGap),
+                  ],
+                ),
+              ),
+
+              EpDisclosure(
+                title: 'Operational details',
+                summary: 'Capacity and load-in notes',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    EpLabeledField(
+                      label: 'Capacity',
+                      hint: 'Optional',
+                      fieldKey: const Key('org-venue-public-capacity'),
+                      controller: _publicCapacity,
+                      enabled: canManage,
+                      keyboardType: TextInputType.number,
+                      onChanged: _draftChanged,
+                    ),
+                    const SizedBox(height: 20),
+                    EpLabeledField(
+                      label: 'LOAD-IN NOTES',
+                      hint: 'Entrances, stairs, parking, or access notes',
+                      fieldKey: const Key('org-venue-private-load-in'),
+                      controller: _loadInNotes,
+                      enabled: canManage,
+                      minLines: 2,
+                      maxLines: 4,
+                      onChanged: _draftChanged,
+                    ),
+                  ],
+                ),
+              ),
+              if (_error != null || _success != null) ...[
+                const SizedBox(height: 16),
+                InlineFormFeedback(
+                  error: _error,
+                  success: _success,
+                  errorKey: const Key('org-venue-save-error'),
+                  successKey: const Key('org-venue-save-success'),
+                ),
+              ],
+            ],
           ],
-        ],
-      ],
+        ),
+      ),
     );
 
     if (!canManage || venue == null || _loading || _loadError != null) {
       return listView;
     }
-    return Stack(
-      children: [
-        Positioned.fill(child: listView),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: StickyActionBar(
-            key: const Key('org-venue-save'),
-            primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
-            onPrimary: _saving || _savingDisclosure ? null : _save,
-          ),
-        ),
-      ],
+    return EpFormLayout(
+      body: listView,
+      footer: StickyActionBar(
+        key: const Key('org-venue-save'),
+        primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
+        onPrimary: _saving || _savingDisclosure ? null : _save,
+      ),
     );
   }
 }

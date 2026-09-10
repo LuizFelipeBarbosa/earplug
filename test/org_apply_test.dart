@@ -21,6 +21,7 @@ import 'package:provider/provider.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('organizer type picker is visible when promoters are enabled', (
@@ -29,7 +30,7 @@ void main() {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = DemoRepository(auth: auth);
-    final harness = await pumpApp(
+    await pumpApp(
       tester,
       auth: auth,
       repository: repository,
@@ -39,7 +40,6 @@ void main() {
       },
       home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
     );
-    addTearDown(() => _disposeApp(harness.app));
 
     for (final type in [
       OrganizationType.venueOperator,
@@ -53,7 +53,7 @@ void main() {
         type == OrganizationType.venueOperator,
       );
     }
-    expect(find.text('ORGANIZATION TYPE'), findsOneWidget);
+    expect(findUiText('ORGANIZATION TYPE'), findsOneWidget);
     expect(
       find.text('Promoters and student organizations are coming next.'),
       findsNothing,
@@ -84,7 +84,7 @@ void main() {
         venueType: VenueType.club,
       ),
     );
-    final harness = await pumpApp(
+    await pumpApp(
       tester,
       auth: auth,
       repository: repository,
@@ -94,7 +94,6 @@ void main() {
       },
       home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
     );
-    addTearDown(() => _disposeApp(harness.app));
 
     await tester.tap(find.byKey(const Key('org-apply-type-promoter')));
     await tester.pumpAndSettle();
@@ -141,13 +140,12 @@ void main() {
       },
       home: _ApplicationHost(mediaPicker: picker),
     );
-    addTearDown(() => _disposeApp(harness.app));
 
     await tester.tap(find.byKey(const Key('org-apply-type-promoter')));
     await tester.pumpAndSettle();
     expect(
       tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
-      isNull,
+      isNotNull,
     );
     await _enterText(
       tester,
@@ -183,6 +181,7 @@ void main() {
       tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
       isNotNull,
     );
+    await _continueToReview(tester);
     await tester.tap(find.byKey(const ValueKey('org-apply-submit')));
     await tester.pumpAndSettle();
 
@@ -211,7 +210,7 @@ void main() {
       contactName: '',
       businessEmail: '',
     );
-    final harness = await pumpApp(
+    await pumpApp(
       tester,
       auth: auth,
       repository: repository,
@@ -221,7 +220,6 @@ void main() {
       },
       home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
     );
-    addTearDown(() => _disposeApp(harness.app));
 
     expect(
       tester
@@ -266,7 +264,6 @@ void main() {
         beforePump: (app) => app.go(Screen.orgApplicationStatus),
         home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
       );
-      addTearDown(() => _disposeApp(harness.app));
 
       expect(find.textContaining('Provide a valid business license'), findsOne);
       await tester.tap(find.byKey(const Key('org-status-reapply')));
@@ -328,7 +325,6 @@ void main() {
       ),
       beforePump: (app) => app.go(Screen.orgApply),
     );
-    addTearDown(() => _disposeApp(harness.app));
 
     await tester.enterText(
       find.byKey(const ValueKey('org-apply-name')),
@@ -412,11 +408,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await _continueToReview(tester);
     final actionBar = tester.widget<StickyActionBar>(
       find.byKey(const ValueKey('org-apply-submit')),
     );
     expect(actionBar.onPrimary, isNotNull);
 
+    await _continueToReview(tester);
     await tester.tap(find.byKey(const ValueKey('org-apply-submit')));
     await tester.pumpAndSettle();
 
@@ -445,17 +443,12 @@ void main() {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = DemoRepository(auth: auth);
-    late AppState appUnderTest;
     final harness = await pumpApp(
       tester,
       auth: auth,
       repository: repository,
-      home: _NonOwningAppHost(
-        app: () => appUnderTest,
-        child: const RootShell(),
-      ),
+      home: const RootShell(),
       beforePump: (app) {
-        appUnderTest = app;
         app.go(Screen.orgApply);
       },
     );
@@ -470,9 +463,9 @@ void main() {
     harness.app.toFanView();
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(findUiText('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('CONTINUE ORGANIZER APPLICATION'), findsOneWidget);
+    expect(findUiText('CONTINUE ORGANIZER APPLICATION'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('switcher-become-organizer')));
     await tester.pumpAndSettle();
@@ -484,96 +477,64 @@ void main() {
       'Night Heron Club',
     );
     expect(find.byKey(const Key('org-status-timeline')), findsNothing);
-
-    harness.app.dispose();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
   });
 
-  testWidgets(
-    'submit reports individual missing requirements and stays disabled',
-    (tester) async {
-      final auth = FakeAuthService();
-      await auth.signInDemo();
-      final repository = DemoRepository(auth: auth);
-      final picker = FakeMediaPicker();
-      final harness = await pumpApp(
-        tester,
-        auth: auth,
-        repository: repository,
-        home: OrgApplyScreen(mediaPicker: picker),
-      );
-      addTearDown(() => _disposeApp(harness.app));
-
-      expect(
-        tester
-            .widget<StickyActionBar>(
-              find.byKey(const ValueKey('org-apply-continue')),
-            )
-            .onPrimary,
-        isNull,
-      );
-      expect(
-        find.ancestor(
-          of: find.byType(TextField),
-          matching: find.byType(EpCard),
-        ),
-        findsNothing,
-      );
-
-      picker.nextPhoto = _licensePhoto;
-      await _completeApplication(tester, picker: picker);
-      await _scrollDownToKey(tester, const ValueKey('org-apply-missing'));
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('org-apply-missing')),
-          matching: find.text('Organizer Agreement'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        tester
-            .widget<StickyActionBar>(
-              find.byKey(const ValueKey('org-apply-submit')),
-            )
-            .onPrimary,
-        isNull,
-      );
-
-      await tester.tap(find.byKey(const ValueKey('org-apply-agree')));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<StickyActionBar>(
-              find.byKey(const ValueKey('org-apply-submit')),
-            )
-            .onPrimary,
-        isNotNull,
-      );
-
-      final document =
-          (await repository.myOrganizationApplication())!.documents.single;
-      final removeKey = ValueKey('org-apply-doc-remove-${document.storageId}');
-      await _scrollUpToKey(tester, removeKey);
-      await tester.tap(find.byKey(removeKey));
-      await tester.pumpAndSettle();
-      await _scrollDownToKey(tester, const ValueKey('org-apply-missing'));
-
-      expect(
-        find.descendant(
-          of: find.byKey(const ValueKey('org-apply-missing')),
-          matching: find.text('One verification photo'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        tester
-            .widget<StickyActionBar>(
-              find.byKey(const ValueKey('org-apply-submit')),
-            )
-            .onPrimary,
-        isNull,
-      );
-    },
-  );
+  testWidgets('each step validates required decisions before review', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = DemoRepository(auth: auth);
+    final picker = FakeMediaPicker();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: OrgApplyScreen(mediaPicker: picker),
+    );
+    expect(find.byKey(const ValueKey('org-apply-missing')), findsNothing);
+    await tester.tap(findUiText('Continue'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter organization name.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('org-apply-continue')), findsOneWidget);
+    await _completeApplication(tester, picker: picker);
+    await tester.tap(findUiText('Continue'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('Organizer Agreement to continue'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('org-apply-submit')), findsNothing);
+    await _scrollDownToKey(tester, const ValueKey('org-apply-agree'));
+    await tester.tap(find.byKey(const ValueKey('org-apply-agree')));
+    await tester.pumpAndSettle();
+    await _continueToReview(tester);
+    expect(
+      (await repository.myOrganizationApplication())!.status,
+      OrganizationApplicationStatus.draft,
+    );
+    expect(
+      find.byKey(const ValueKey('org-apply-submit')).hitTestable(),
+      findsOneWidget,
+    );
+    await tester.tap(findUiText('Back'));
+    await tester.pumpAndSettle();
+    final document =
+        (await repository.myOrganizationApplication())!.documents.single;
+    final removeKey = ValueKey('org-apply-doc-remove-${document.storageId}');
+    await _scrollUpToKey(tester, removeKey);
+    await tester.tap(find.byKey(removeKey));
+    await tester.pumpAndSettle();
+    await tester.tap(findUiText('Continue'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('One verification photo to continue'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('org-apply-submit')), findsNothing);
+  });
 
   testWidgets('draft validation failure keeps typed organization edits', (
     tester,
@@ -585,13 +546,12 @@ void main() {
         'saveOrganizationApplicationDraft',
         StateError('Contact name is required'),
       );
-    final harness = await pumpApp(
+    await pumpApp(
       tester,
       auth: auth,
       repository: repository,
       home: const OrgApplyScreen(),
     );
-    addTearDown(() => _disposeApp(harness.app));
 
     await tester.enterText(
       find.byKey(const ValueKey('org-apply-name')),
@@ -654,13 +614,12 @@ void main() {
       note: 'Add a photo of your liquor license.',
     );
 
-    final harness = await pumpApp(
+    await pumpApp(
       tester,
       auth: auth,
       repository: repository,
       home: const OrgApplyScreen(),
     );
-    addTearDown(() => _disposeApp(harness.app));
 
     expect(
       tester
@@ -697,10 +656,9 @@ void main() {
       home: OrgApplyScreen(mediaPicker: picker),
       auth: auth,
     );
-    addTearDown(() => _disposeApp(harness.app));
     expect(
       tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
-      isNull,
+      isNotNull,
     );
     expect(find.byKey(const ValueKey('org-apply-contact-name')), findsNothing);
     await _completeVenue(tester);
@@ -715,7 +673,7 @@ void main() {
     await tester.pump();
     expect(
       tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
-      isNull,
+      isNotNull,
     );
     await tester.enterText(
       find.byKey(const ValueKey('org-apply-name')),
@@ -748,7 +706,7 @@ void main() {
     await _scrollUpToKey(tester, const ValueKey('org-apply-back'));
     await tester.tap(find.byKey(const ValueKey('org-apply-back')));
     await tester.pumpAndSettle();
-    expect(find.text('STEP 1 OF 2 · VENUE'), findsOneWidget);
+    expect(findUiText('Organization and venue'), findsOneWidget);
     expect(_fieldText(tester, 'org-apply-name'), 'Night Heron');
     await _scrollDownToKey(tester, const ValueKey('org-apply-venue-name'));
     expect(_fieldText(tester, 'org-apply-venue-name'), 'The Back Room');
@@ -785,27 +743,26 @@ void main() {
     final auth = FakeAuthService();
     await auth.signInDemo();
     final repository = StubRepository(auth: auth);
-    final harness = await pumpApp(
+    await pumpApp(
       tester,
       auth: auth,
       repository: repository,
       home: const OrgApplyScreen(),
     );
-    addTearDown(() => _disposeApp(harness.app));
     await _completeVenue(tester);
     final saveGate = repository.gate('saveOrganizationApplicationDraft');
     repository.failOnce(
       'saveOrganizationApplicationDraft',
       StateError('Contact name is required'),
     );
-    await tester.tap(find.text('CONTINUE'));
+    await tester.tap(findUiText('CONTINUE'));
     await tester.pump();
-    expect(find.text('SAVING…'), findsOneWidget);
+    expect(findUiText('SAVING…'), findsNWidgets(2));
     expect(
       tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
       isNull,
     );
-    expect(find.text('STEP 2 OF 2 · CONTACT'), findsNothing);
+    expect(findUiText('Contact and verification'), findsNothing);
     saveGate.complete();
     await tester.pumpAndSettle();
     expect(find.text('Contact name is required'), findsOneWidget);
@@ -822,13 +779,12 @@ void main() {
       final auth = FakeAuthService();
       await auth.signInDemo();
       final repository = StubRepository(auth: auth);
-      final harness = await pumpApp(
+      await pumpApp(
         tester,
         auth: auth,
         repository: repository,
         home: const OrgApplyScreen(),
       );
-      addTearDown(() => _disposeApp(harness.app));
       await _completeVenue(tester);
       await _continueToContact(tester);
       await _enterText(tester, const ValueKey('org-apply-website'), 'https://');
@@ -839,13 +795,14 @@ void main() {
         'saveOrganizationApplicationDraft',
         StateError('Website must be a valid HTTPS URL'),
       );
-      await tester.tap(find.text('CONTINUE'));
+      await tester.tap(findUiText('CONTINUE'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('org-apply-continue')), findsOneWidget);
+      await _scrollDownToKey(tester, const ValueKey('org-apply-feedback'));
       expect(find.text('Website must be a valid HTTPS URL'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('org-apply-edit-contact')));
       await tester.pumpAndSettle();
-      expect(find.text('STEP 2 OF 2 · CONTACT'), findsOneWidget);
+      expect(findUiText('Contact and verification'), findsOneWidget);
       await _scrollDownToKey(tester, const ValueKey('org-apply-website'));
       expect(_fieldText(tester, 'org-apply-website'), 'https://');
       await _enterText(
@@ -871,7 +828,6 @@ void main() {
           home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
           beforePump: (app) => app.go(Screen.orgApply),
         );
-        addTearDown(() => _disposeApp(harness.app));
         await _completeVenue(tester);
         if (contactStep) {
           await _continueToContact(tester);
@@ -883,6 +839,7 @@ void main() {
           await _scrollDownToKey(tester, const ValueKey('org-apply-agree'));
           await tester.tap(find.byKey(const ValueKey('org-apply-agree')));
         }
+        await _scrollUpToKey(tester, const ValueKey('org-apply-save'));
         await tester.tap(find.byKey(const ValueKey('org-apply-save')));
         await tester.pumpAndSettle();
         expect(harness.app.current.screen, Screen.home);
@@ -892,7 +849,7 @@ void main() {
         if (contactStep) expect(draft.contactName, 'Saved contact');
         harness.app.go(Screen.orgApply);
         await tester.pumpAndSettle();
-        expect(find.text('STEP 1 OF 2 · VENUE'), findsOneWidget);
+        expect(findUiText('Organization and venue'), findsOneWidget);
         expect(_fieldText(tester, 'org-apply-name'), 'Night Heron Club');
         await _continueToContact(tester);
         if (contactStep) {
@@ -922,7 +879,6 @@ void main() {
         home: OrgApplyScreen(mediaPicker: picker),
         auth: auth,
       );
-      addTearDown(() => _disposeApp(harness.app));
       await _completeVenue(tester);
       await _continueToContact(tester);
       for (var i = 0; i < 5; i++) {
@@ -950,7 +906,7 @@ void main() {
       testWidgets(
         'both steps fit $width wide in $brightness with large text and keyboard',
         (tester) async {
-          final harness = await pumpApp(
+          await pumpApp(
             tester,
             home: Builder(
               builder: (context) => Theme(
@@ -964,7 +920,6 @@ void main() {
               ),
             ),
           );
-          addTearDown(() => _disposeApp(harness.app));
           tester.view.physicalSize = Size(width, 740);
           await tester.pumpAndSettle();
           await _completeVenue(tester);
@@ -999,10 +954,10 @@ void main() {
               tester.getTopLeft(find.byType(StickyActionBar)).dy,
             ),
           );
-          await _scrollDownToKey(tester, const ValueKey('org-apply-missing'));
+          await _scrollDownToKey(tester, const ValueKey('org-apply-agree'));
           expect(
             tester
-                .getBottomLeft(find.byKey(const ValueKey('org-apply-missing')))
+                .getBottomLeft(find.byKey(const ValueKey('org-apply-agree')))
                 .dy,
             lessThanOrEqualTo(
               tester.getTopLeft(find.byType(StickyActionBar)).dy,
@@ -1015,31 +970,12 @@ void main() {
   }
 }
 
-class _NonOwningAppHost extends StatelessWidget {
-  const _NonOwningAppHost({required this.app, required this.child});
-
-  final AppState Function() app;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) =>
-      ChangeNotifierProvider<AppState>.value(value: app(), child: child);
-}
-
 final _licensePhoto = PickedMedia(
   bytes: Uint8List.fromList([1, 2, 3]),
   filename: 'license.jpg',
   contentType: 'image/jpeg',
   sizeBytes: 3,
 );
-
-void _disposeApp(AppState app) {
-  try {
-    app.dispose();
-  } on FlutterError catch (error) {
-    if (!error.message.contains('used after being disposed')) rethrow;
-  }
-}
 
 class _ApplicationHost extends StatelessWidget {
   const _ApplicationHost({required this.mediaPicker, this.launch});
@@ -1108,9 +1044,9 @@ Future<void> _completeVenue(WidgetTester tester) async {
 
 Future<void> _continueToContact(WidgetTester tester) async {
   await tester.pump();
-  await tester.tap(find.text('CONTINUE'));
+  await tester.tap(findUiText('CONTINUE'));
   await tester.pumpAndSettle();
-  expect(find.text('STEP 2 OF 2 · CONTACT'), findsOneWidget);
+  expect(findUiText('Contact and verification'), findsOneWidget);
 }
 
 String? _fieldText(WidgetTester tester, String key) =>
@@ -1143,6 +1079,15 @@ Future<void> _scrollToKey(
     await tester.pump();
   }
   expect(target, findsOneWidget);
-  await Scrollable.ensureVisible(tester.element(target), alignment: .5);
+  await Scrollable.ensureVisible(tester.element(target), alignment: 1);
   await tester.pumpAndSettle();
+}
+
+Future<void> _continueToReview(WidgetTester tester) async {
+  if (find.byKey(const ValueKey('org-apply-submit')).evaluate().isNotEmpty) {
+    return;
+  }
+  await tester.tap(findUiText('Continue'));
+  await tester.pumpAndSettle();
+  expect(findUiText('Review'), findsOneWidget);
 }

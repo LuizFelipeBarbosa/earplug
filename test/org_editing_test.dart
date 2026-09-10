@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('adding a photo after reopening settings keeps saved photos', (
@@ -74,15 +75,19 @@ void main() {
       home: const Scaffold(body: OrgVenueEditScreen(venueId: 'v1')),
     );
     await enterOrganizer(tester, harness, 'org1');
+    await revealFormKey(tester, const Key('org-venue-public-name'));
     await tester.enterText(
       find.byKey(const Key('org-venue-public-name')),
       'Foghorn Hall',
     );
+    await revealFormKey(tester, const Key('org-venue-public-description'));
     await tester.enterText(
       find.byKey(const Key('org-venue-public-description')),
       'Updated venue description.',
     );
+    await revealFormKey(tester, const Key('org-venue-type-club'));
     await tester.tap(find.byKey(const Key('org-venue-type-club')));
+    await revealFormKey(tester, const Key('org-venue-public-capacity'));
     await tester.enterText(
       find.byKey(const Key('org-venue-public-capacity')),
       '220',
@@ -117,6 +122,8 @@ void main() {
       DemoData.venuePrivateDetails['v1']!.addr,
     );
 
+    await revealFormKey(tester, const Key('org-venue-save'));
+
     await tester.tap(find.byKey(const Key('org-venue-save')));
     await tester.pumpAndSettle();
     final venue = await repository.resolveVenue('v1');
@@ -150,6 +157,7 @@ void main() {
       home: const Scaffold(body: OrgVenueEditScreen(venueId: 'v1')),
     );
     await enterOrganizer(tester, harness, 'org1');
+    await revealFormKey(tester, const Key('org-venue-public-name'));
     await tester.enterText(
       find.byKey(const Key('org-venue-public-name')),
       'Pending venue name',
@@ -178,9 +186,8 @@ void main() {
 }
 
 Future<void> _scrollTo(WidgetTester tester, Finder target) async {
-  final scrollable = find
-      .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
-      .first;
+  await openAllFormSections(tester);
+  final scrollable = find.byType(Scrollable).first;
   await tester.scrollUntilVisible(target, 250, scrollable: scrollable);
   await tester.pumpAndSettle();
 }

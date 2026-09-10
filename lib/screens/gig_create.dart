@@ -91,12 +91,23 @@ class GigCreateScreen extends StatefulWidget {
 
 class _GigCreateScreenState extends State<GigCreateScreen> {
   final _cardName = TextEditingController();
+  final _basicsForm = GlobalKey<EpFormState>();
+  final _scroll = ScrollController();
+  int _step = 0;
+  int? _editorGeneration;
+  bool _attempted = false;
   final _cardFocus = FocusNode();
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final name = context.read<AppState>().gfName;
+    final app = context.read<AppState>();
+    if (_editorGeneration != app.gigEditorGeneration) {
+      _editorGeneration = app.gigEditorGeneration;
+      _step = 0;
+      _attempted = false;
+    }
+    final name = app.gfName;
     if (_cardFocus.hasFocus || _cardName.text == name) return;
     _cardName.value = TextEditingValue(
       text: name,
@@ -106,111 +117,176 @@ class _GigCreateScreenState extends State<GigCreateScreen> {
 
   @override
   void dispose() {
+    _scroll.dispose();
     _cardName.dispose();
     _cardFocus.dispose();
     super.dispose();
   }
 
+  void _showStep(int step) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _step = step;
+      _attempted = false;
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
+
+  String? _stepError(AppState app) => switch (_step) {
+    0 when app.gfName.trim().isEmpty => 'Enter a gig name.',
+    0 when app.gfVenueId == null => 'Choose a venue.',
+    0 when app.gfDate == null =>
+      'Choose the date and check the doors and start times.',
+    1 when app.gfPerformers.isEmpty => 'Add at least one performer.',
+    2 when !app.validTicketPricing => 'Set the ticket price and capacity.',
+    2 when app.gfTix == Ticketing.external && !app.validExternalTicketUrl =>
+      'Enter a valid HTTPS ticket link.',
+    _ => null,
+  };
+
+  void _continue() {
+    final app = context.read<AppState>();
+    setState(() => _attempted = true);
+    if (_step == 0 && _basicsForm.currentState?.validate() != true) return;
+    if (_stepError(app) != null) return;
+    _showStep(_step + 1);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final app = context.read<AppState>();
-    final form = context
-        .select<
-          AppState,
-          ({
-            bool published,
-            bool previewing,
-            bool editingPublished,
-            String saveState,
-            int performerCount,
-          })
-        >(
-          (app) => (
-            published: app.gfPublished,
-            previewing: app.gfPreviewing,
-            editingPublished:
-                app.gfProject?.status == GigProjectStatus.published,
-            saveState: app.gfSaveState,
-            performerCount: app.gfPerformers.length,
-          ),
-        );
-    if (form.published) {
+    final app = context.watch<AppState>();
+    if (app.gfPublished) {
       return const GigPublishedView(poster: _Poster(width: 212, height: 280));
     }
-    if (form.previewing) return const GigDraftPreview();
-
-    return Stack(
-      children: [
-        Column(
+    if (app.gfPreviewing) return const GigDraftPreview();
+    final guided = app.gfCreating;
+    final sections = <({String title, String summary, Widget child})>[
+      (
+        title: 'Basics',
+        summary: [
+          app.gfName,
+          app.gfDateLabel,
+        ].where((v) => v.isNotEmpty).join(' · '),
+        child: EpForm(
+          key: _basicsForm,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _GigNameField(controller: _cardName, focusNode: _cardFocus),
+              const SizedBox(height: EpLayout.fieldGap),
+              const _GigFields(admission: false),
+            ],
+          ),
+        ),
+      ),
+      (
+        title: 'Lineup',
+        summary: '${app.gfPerformers.length} performers',
+        child: const _LineupField(),
+      ),
+      (
+        title: 'Admission',
+        summary: '${app.gfPrice} · ${app.gfAgeRequirement.label}',
+        child: const _GigFields(admission: true),
+      ),
+      (
+        title: 'Poster and review',
+        summary: 'Optional artwork and additional information',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
-              padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 10),
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: context.epColors.border),
-                ),
-              ),
-              child: Row(
-                children: [
-                  CircleIconButton(
-                    icon: Icons.close,
-                    onTap: app.closeGigCreate,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          form.editingPublished ? 'EDIT GIG' : 'GIG DRAFT',
-                          style: Theme.of(context).textTheme.epSectionHeading,
-                        ),
-                        Text(
-                          form.saveState,
-                          style: epText(
-                            size: 11,
-                            weight: FontWeight.w800,
-                            letterSpacing: .8,
-                            color: form.saveState == 'SAVE FAILED'
-                                ? context.epColors.warning
-                                : context.epColors.contentDisabled,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: app.saveGigDraft,
-                    child: Text('SAVE DRAFT'),
-                  ),
-                ],
-              ),
+            const EpDisclosure(
+              title: 'Poster',
+              summary: 'Optional artwork and poster style',
+              child: _FlyerStudio(),
             ),
-            Expanded(
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  18,
-                  16,
-                  actionBarClearance(context) + 58,
-                ),
-                children: [
-                  _GigNameField(controller: _cardName, focusNode: _cardFocus),
-                  const SizedBox(height: 18),
-                  const _SlotGrid(),
-                  SectionBar.form(label: 'Lineup', count: form.performerCount),
-                  const _LineupField(),
-                  const SectionBar.form(label: 'Poster'),
-                  const _FlyerStudio(),
-                  const SectionBar.form(label: 'Additional information'),
-                  const _AdditionalInfoField(),
-                ],
-              ),
+            const EpDisclosure(
+              title: 'Additional information',
+              summary: 'Optional details for guests',
+              child: _AdditionalInfoField(),
             ),
+            if (guided) ...[
+              const SizedBox(height: 20),
+              Text(app.gfName, style: Theme.of(context).textTheme.titleLarge),
+              Text(
+                '${app.gfDateLabel} · Doors ${app.gfDoorsLabel} · Start ${app.gfStartLabel}',
+              ),
+              if (app.gfVenueId != null) Text(app.venue(app.gfVenueId!).name),
+              Text(
+                '${app.gfPerformers.length} performers · ${app.gfAgeRequirement.label}',
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Preview your listing before publishing. Artwork and additional details are optional.',
+              ),
+            ],
           ],
         ),
-        const Positioned(left: 0, right: 0, bottom: 0, child: _PublishBar()),
-      ],
+      ),
+    ];
+    return EpFormLayout(
+      body: SingleChildScrollView(
+        controller: _scroll,
+        padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            EpPageHeading(
+              title: guided ? 'Create gig' : 'Edit gig',
+              leading: CircleIconButton(
+                icon: Icons.close,
+                onTap: app.closeGigCreate,
+              ),
+              action: TextButton(
+                onPressed: app.saveGigDraft,
+                child: const Text('Save draft'),
+              ),
+            ),
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                sentenceCase(app.gfSaveState),
+                style: Theme.of(context).textTheme.epCaption,
+              ),
+            ),
+            if (guided)
+              EpFormSteps(
+                labels: [for (final section in sections) section.title],
+                current: _step,
+                onBackToStep: _showStep,
+              ),
+            for (var i = 0; i < sections.length; i++)
+              if (guided)
+                EpFormStep(active: _step == i, child: sections[i].child)
+              else
+                EpDisclosure(
+                  title: sections[i].title,
+                  summary: sections[i].summary,
+                  initiallyExpanded: i == 0,
+                  child: sections[i].child,
+                ),
+            if (_attempted) InlineFormFeedback(error: _stepError(app)),
+          ],
+        ),
+      ),
+      footer: guided && _step < 3
+          ? StickyActionBar(
+              primaryLabel: 'Continue',
+              onPrimary: _continue,
+              secondaryLabel: _step == 0 ? null : 'Back',
+              onSecondary: () => _showStep(_step - 1),
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (guided)
+                  TextButton(
+                    onPressed: () => _showStep(2),
+                    child: const Text('Back to admission'),
+                  ),
+                const _PublishBar(),
+              ],
+            ),
     );
   }
 }
@@ -254,7 +330,7 @@ class _FlyerStudio extends StatelessWidget {
                   key: const ValueKey('clear-flyer-art'),
                   onPressed: () => app.setGfFlyerArt(null),
                   icon: Icon(Icons.close),
-                  label: Text('REMOVE ART'),
+                  label: Text('Remove art'),
                 ),
             ],
           ),
@@ -446,7 +522,7 @@ class _ArtPlaceholder extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'CUSTOM FLYER PREVIEW',
+                  'Custom flyer preview',
                   style: epText(
                     size: 11,
                     weight: FontWeight.w900,
@@ -678,7 +754,7 @@ class _GigNameField extends StatelessWidget {
     return EpLabeledField(
       controller: controller,
       focusNode: focusNode,
-      label: 'GIG NAME',
+      label: 'Gig name',
       hint: 'Riptide Release Show',
       required: true,
       onChanged: app.setGfName,
@@ -687,8 +763,9 @@ class _GigNameField extends StatelessWidget {
   }
 }
 
-class _SlotGrid extends StatelessWidget {
-  const _SlotGrid();
+class _GigFields extends StatelessWidget {
+  const _GigFields({required this.admission});
+  final bool admission;
 
   @override
   Widget build(BuildContext context) {
@@ -780,23 +857,15 @@ class _SlotGrid extends StatelessWidget {
         onTap: () => showAgeSheet(context),
       ),
     ];
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final singleColumn =
-            constraints.maxWidth < 330 ||
-            MediaQuery.textScalerOf(context).scale(1) > 1.25;
-        const gap = 12.0;
-        final tileWidth = singleColumn
-            ? constraints.maxWidth
-            : (constraints.maxWidth - gap) / 2;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (final slot in slots) SizedBox(width: tileWidth, child: slot),
-          ],
-        );
-      },
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final slot in admission ? slots.skip(3) : slots.take(3))
+          Padding(
+            padding: const EdgeInsets.only(bottom: EpLayout.fieldGap),
+            child: slot,
+          ),
+      ],
     );
   }
 }
@@ -965,11 +1034,10 @@ class _LineupField extends StatelessWidget {
           ),
         Align(
           alignment: Alignment.centerLeft,
-          child: EpChip(
-            label: '+ Add band or performer',
-            active: false,
-            ghost: true,
-            onTap: () => showEpSheet(
+          child: OutlinedButton.icon(
+            label: const Text('Add band or performer'),
+            icon: const Icon(Icons.add),
+            onPressed: () => showEpSheet(
               context,
               (_) => const EpFormSheet(
                 title: 'Add performer',
@@ -1064,7 +1132,7 @@ class _AddPerformerBodyState extends State<_AddPerformerBody> {
         Divider(),
         EpLabeledField(
           controller: _name,
-          label: 'PERFORMER NAME',
+          label: 'Performer name',
           hint: 'Unlisted band or performer name',
           textCapitalization: TextCapitalization.words,
         ),
@@ -1074,14 +1142,14 @@ class _AddPerformerBodyState extends State<_AddPerformerBody> {
             Expanded(
               child: OutlinedButton(
                 onPressed: () => _addNamed(invite: false),
-                child: Text('ADD TEXT ONLY'),
+                child: Text('Add text only'),
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: FilledButton(
                 onPressed: () => _addNamed(invite: true),
-                child: Text('CREATE INVITE'),
+                child: Text('Create invite'),
               ),
             ),
           ],
@@ -1133,7 +1201,7 @@ class _AdditionalInfoFieldState extends State<_AdditionalInfoField> {
     minLines: 4,
     maxLines: 7,
     onChanged: context.read<AppState>().setGfDescription,
-    label: 'NOTES FOR FANS',
+    label: 'Notes for fans',
     hint: 'Accessibility, set times, parking, or anything fans should know',
     textCapitalization: TextCapitalization.sentences,
   );
@@ -1243,7 +1311,7 @@ class _FlyerReviewBodyState extends State<_FlyerReviewBody> {
                 ...choices,
                 ExpansionTile(
                   tilePadding: EdgeInsets.zero,
-                  title: Text('VIEW EXTRACTED TEXT'),
+                  title: Text('View extracted text'),
                   children: [
                     Align(
                       alignment: Alignment.centerLeft,
@@ -1339,42 +1407,13 @@ class _PublishBar extends StatelessWidget {
             canPublish: app.canPublishGig,
           ),
         );
-    final missingLabel = publish.missingLabel;
-    return ColoredBox(
-      color: context.epColors.tabBarBackground.withValues(alpha: .95),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
-            child: Semantics(
-              liveRegion: true,
-              child: Text(
-                missingLabel.isEmpty
-                    ? 'Ready. Fans nearby see it as soon as you publish.'
-                    : 'Still needs $missingLabel',
-                textAlign: TextAlign.center,
-                style: epText(
-                  size: 11,
-                  weight: FontWeight.w700,
-                  letterSpacing: .3,
-                  color: missingLabel.isEmpty
-                      ? context.epColors.success
-                      : context.epColors.contentSecondary,
-                ),
-              ),
-            ),
-          ),
-          StickyActionBar(
-            secondaryLabel: 'Preview',
-            onSecondary: app.previewGigDraft,
-            primaryLabel: publish.editingPublished
-                ? 'Publish updates'
-                : 'Publish gig',
-            onPrimary: publish.canPublish ? app.publishGig : null,
-          ),
-        ],
-      ),
+    return StickyActionBar(
+      secondaryLabel: 'Preview',
+      onSecondary: app.previewGigDraft,
+      primaryLabel: publish.editingPublished
+          ? 'Publish updates'
+          : 'Publish gig',
+      onPrimary: publish.canPublish ? app.publishGig : null,
     );
   }
 }

@@ -671,7 +671,7 @@ class RootShell extends StatelessWidget {
                       ? EpLayout.formWidth + 32
                       : double.infinity,
                 ),
-                child: _screenFor(entry),
+                child: FocusTraversalGroup(child: _screenFor(entry)),
               ),
             ),
           ),

@@ -24,6 +24,7 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
+  final _form = GlobalKey<EpFormState>();
   final _scrollController = ScrollController();
   late final TextEditingController _nameController;
   late final TextEditingController _bioController;
@@ -166,13 +167,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       header: 'Profile photo',
       items: [
         EpActionSheetItem(
-          label: 'CHANGE PHOTO',
+          label: 'Change photo',
           icon: Icons.photo_library_outlined,
           onPressed: _pickAvatar,
         ),
         if (hasPhoto)
           EpActionSheetItem(
-            label: 'REMOVE PHOTO',
+            label: 'Remove photo',
             icon: Icons.delete_outline,
             destructive: true,
             onPressed: () => setState(() {
@@ -204,7 +205,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           TextButton(
             key: const Key('keep-editing-profile'),
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text('KEEP EDITING'),
+            child: Text('Keep editing'),
           ),
           FilledButton(
             key: const Key('discard-profile-changes'),
@@ -215,7 +216,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               foregroundColor: const WidgetStatePropertyAll(Colors.white),
             ),
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text('DISCARD'),
+            child: Text('Discard'),
           ),
         ],
       ),
@@ -270,6 +271,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> _save() async {
+    if (_form.currentState?.validate() != true) return;
     final name = _nameController.text.trim();
     if (name.isEmpty) {
       setState(
@@ -345,18 +347,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final profile = app.profile;
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: ListView(
-            controller: _scrollController,
-            padding: EdgeInsets.fromLTRB(
-              16,
-              headerTopPad(context),
-              16,
-              actionBarClearance(context) +
-                  MediaQuery.paddingOf(context).bottom,
-            ),
+    return EpFormLayout(
+      body: EpForm(
+        key: _form,
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
@@ -367,8 +365,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'EDIT PROFILE',
-                      style: Theme.of(context).textTheme.epPageHeading,
+                      'Edit profile',
+                      style: Theme.of(context).textTheme.epFormHeading,
                     ),
                   ),
                 ],
@@ -377,128 +375,153 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 'Update your public profile and private music preferences.',
                 style: Theme.of(context).textTheme.epCaption,
               ),
-              const SectionBar.form(label: 'Identity'),
-              ListenableBuilder(
-                listenable: Listenable.merge([_nameController]),
-                builder: (context, _) => _FanIdentityPreview(
-                  name: _nameController.text,
-                  scene: _sceneName(_homeLocation),
-                  imageUrl: _removeAvatar ? null : profile?.avatarUrl,
-                  picked: _pickedAvatar,
-                  onEditAvatar: _saving ? null : _openAvatarOptions,
-                ),
-              ),
-              const SizedBox(height: EpLayout.fieldGap),
-              EpLabeledField(
-                fieldKey: const Key('fan-name-field'),
-                label: 'DISPLAY NAME',
-                hint: 'Your name',
-                controller: _nameController,
-                required: true,
-                enabled: !_saving,
-                textCapitalization: TextCapitalization.words,
-                onChanged: (_) {
-                  if (_nameValidation != null) {
-                    setState(() => _nameValidation = null);
-                  }
-                },
-              ),
-              if (_nameValidation case final nameError?) ...[
-                const SizedBox(height: 6),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    nameError,
-                    key: const Key('fan-name-validation'),
-                    style: Theme.of(context).textTheme.epCaption.copyWith(
-                      color: context.epColors.destructive,
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: EpLayout.fieldGap),
-              EpLabeledField(
-                fieldKey: const Key('fan-bio-field'),
-                label: 'ABOUT',
-                hint: 'A little about your taste in music',
-                controller: _bioController,
-                enabled: !_saving,
-                minLines: 4,
-                maxLines: 6,
-                maxLength: 280,
-                onChanged: (_) {},
-              ),
-              const SectionBar.form(label: 'Scene & Taste'),
-              _FanSelectionField(
-                key: const Key('fan-home-location-field'),
-                label: 'HOME LOCATION',
-                caption:
-                    'Private to your account. Personalization below decides whether this scene tunes discovery.',
-                child: _HomeLocationEditor(
-                  controller: _homeLocationController,
-                  focusNode: _homeLocationFocusNode,
-                  enabled: !_saving && !_locatingHome,
-                  locating: _locatingHome,
-                  selectedLocation: _homeLocation,
-                  failure: _homeLocationFailure,
-                  notice: _homeLocationNotice,
-                  validationMessage: _homeLocationValidation,
-                  onSelected: _selectHomeLocation,
-                  onUseCurrentLocation: _useCurrentLocation,
-                  onClear: () => _setHomeLocation(null),
-                  onRetry: _useCurrentLocation,
-                  onRecovery: _openLocationRecovery,
-                ),
-              ),
-              const SizedBox(height: EpLayout.fieldGap),
-              _FanSelectionField(
-                key: const Key('fan-favorite-genres-field'),
-                label: 'FAVORITE GENRES · ${_genres.length}',
-                child: Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
+
+              EpDisclosure(
+                title: 'Profile',
+                summary: _nameController.text,
+                initiallyExpanded: true,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    for (final genre in kGenres)
-                      EpChip(
-                        key: ValueKey('profile-genre-$genre'),
-                        label: genre,
-                        active: _genres.contains(genre),
-                        neutralSelected: true,
-                        onTap: _saving
-                            ? null
-                            : () => setState(() {
-                                _genres.contains(genre)
-                                    ? _genres.remove(genre)
-                                    : _genres.add(genre);
-                              }),
+                    ListenableBuilder(
+                      listenable: Listenable.merge([_nameController]),
+                      builder: (context, _) => _FanIdentityPreview(
+                        name: _nameController.text,
+                        scene: _sceneName(_homeLocation),
+                        imageUrl: _removeAvatar ? null : profile?.avatarUrl,
+                        picked: _pickedAvatar,
+                        onEditAvatar: _saving ? null : _openAvatarOptions,
                       ),
+                    ),
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpLabeledField(
+                      fieldKey: const Key('fan-name-field'),
+                      label: 'Display name',
+                      hint: 'Your name',
+                      controller: _nameController,
+                      required: true,
+                      enabled: !_saving,
+                      textCapitalization: TextCapitalization.words,
+                      onChanged: (_) {
+                        if (_nameValidation != null) {
+                          setState(() => _nameValidation = null);
+                        }
+                      },
+                    ),
+                    if (_nameValidation case final nameError?) ...[
+                      const SizedBox(height: 6),
+                      Semantics(
+                        liveRegion: true,
+                        child: Text(
+                          nameError,
+                          key: const Key('fan-name-validation'),
+                          style: Theme.of(context).textTheme.epCaption.copyWith(
+                            color: context.epColors.destructive,
+                          ),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpLabeledField(
+                      fieldKey: const Key('fan-bio-field'),
+                      label: 'About',
+                      hint: 'A little about your taste in music',
+                      controller: _bioController,
+                      enabled: !_saving,
+                      minLines: 4,
+                      maxLines: 6,
+                      maxLength: 280,
+                      onChanged: (_) {},
+                    ),
                   ],
                 ),
               ),
-              const SectionBar.form(label: 'Preferences'),
-              SwitchRow(
-                key: const Key('location-personalization'),
-                label: 'Personalize with home location',
-                caption:
-                    'Uses your selected scene to tune show discovery. Your location stays private.',
-                value: _locationPersonalizationEnabled,
-                onChanged: _saving
-                    ? null
-                    : (value) => setState(
-                        () => _locationPersonalizationEnabled = value,
+
+              EpDisclosure(
+                title: 'Music taste',
+                summary:
+                    '${_sceneName(_homeLocation)} · ${_genres.length} genres',
+                initiallyExpanded: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _FanSelectionField(
+                      key: const Key('fan-home-location-field'),
+                      label: 'Home location',
+                      caption:
+                          'Private to your account. Personalization below decides whether this scene tunes discovery.',
+                      child: _HomeLocationEditor(
+                        controller: _homeLocationController,
+                        focusNode: _homeLocationFocusNode,
+                        enabled: !_saving && !_locatingHome,
+                        locating: _locatingHome,
+                        selectedLocation: _homeLocation,
+                        failure: _homeLocationFailure,
+                        notice: _homeLocationNotice,
+                        validationMessage: _homeLocationValidation,
+                        onSelected: _selectHomeLocation,
+                        onUseCurrentLocation: _useCurrentLocation,
+                        onClear: () => _setHomeLocation(null),
+                        onRetry: _useCurrentLocation,
+                        onRecovery: _openLocationRecovery,
                       ),
+                    ),
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpSelectionField<String>(
+                      key: const Key('fan-favorite-genres-field'),
+                      label: 'Favorite genres',
+                      multiple: true,
+                      options: [
+                        for (final genre in kGenres)
+                          (value: genre, label: genre),
+                      ],
+                      selected: _genres.toSet(),
+                      onChanged: _saving
+                          ? null
+                          : (values) => setState(() {
+                              _genres.clear();
+                              _genres.addAll(values);
+                            }),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              SwitchRow(
-                key: const Key('followed-band-updates'),
-                label: 'Show followed-band updates',
-                caption:
-                    'Includes upcoming shows from bands you follow on your profile.',
-                value: _followedBandUpdatesEnabled,
-                onChanged: _saving
-                    ? null
-                    : (value) =>
-                          setState(() => _followedBandUpdatesEnabled = value),
+
+              EpDisclosure(
+                title: 'Preferences',
+                summary:
+                    '${_locationPersonalizationEnabled ? 'Personalized discovery' : 'General discovery'} · ${_followedBandUpdatesEnabled ? 'Band updates on' : 'Band updates off'}',
+                initiallyExpanded: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SwitchRow(
+                      key: const Key('location-personalization'),
+                      label: 'Personalize with home location',
+                      caption:
+                          'Uses your selected scene to tune show discovery. Your location stays private.',
+                      value: _locationPersonalizationEnabled,
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(
+                              () => _locationPersonalizationEnabled = value,
+                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchRow(
+                      key: const Key('followed-band-updates'),
+                      label: 'Show followed-band updates',
+                      caption:
+                          'Includes upcoming shows from bands you follow on your profile.',
+                      value: _followedBandUpdatesEnabled,
+                      onChanged: _saving
+                          ? null
+                          : (value) => setState(
+                              () => _followedBandUpdatesEnabled = value,
+                            ),
+                    ),
+                  ],
+                ),
               ),
               if (_error case final error?) ...[
                 const SizedBox(height: EpLayout.fieldGap),
@@ -516,17 +539,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             ],
           ),
         ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: StickyActionBar(
-            key: const Key('save-fan-profile'),
-            primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
-            onPrimary: _saving ? null : _save,
-          ),
-        ),
-      ],
+      ),
+      footer: StickyActionBar(
+        key: const Key('save-fan-profile'),
+        primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
+        onPrimary: _saving ? null : _save,
+      ),
     );
   }
 }
@@ -700,7 +718,7 @@ class _HomeLocationEditor extends StatelessWidget {
             ),
             if (selectedLocation != null && query.isNotEmpty)
               Text(
-                'SELECTED',
+                'Selected',
                 style: Theme.of(context).textTheme.epChipLabel.copyWith(
                   color: context.epColors.contentSecondary,
                 ),
@@ -746,7 +764,7 @@ class _HomeLocationEditor extends StatelessWidget {
                   foregroundColor: context.epColors.contentPrimary,
                   minimumSize: const Size(48, 48),
                 ),
-                child: Text('RETRY'),
+                child: Text('Retry'),
               ),
               if (locationFailure.reason ==
                       LocationFailureReason.servicesDisabled ||
@@ -791,92 +809,16 @@ class _FanIdentityPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final displayName = name.trim().isEmpty ? 'Your display name' : name.trim();
-    return Container(
-      key: const Key('fan-identity-preview'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: context.epColors.surfaceRaised,
-        border: Border.all(color: context.epColors.border),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'LIVE PREVIEW',
-            style: Theme.of(context).textTheme.epChipLabel.copyWith(
-              color: context.epColors.contentSecondary,
-              letterSpacing: 1.3,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Semantics(
-                container: true,
-                button: true,
-                enabled: onEditAvatar != null,
-                label: 'Edit profile photo',
-                excludeSemantics: true,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    key: const Key('fan-avatar-preview-control'),
-                    borderRadius: BorderRadius.circular(24),
-                    onTap: onEditAvatar,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 4, bottom: 4),
-                      child: _AvatarPreview(
-                        name: name,
-                        imageUrl: imageUrl,
-                        picked: picked,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
-                      key: const Key('fan-preview-name'),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epDisplay.copyWith(
-                        color: context.epColors.contentPrimary,
-                        fontSize: 25,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      scene.toUpperCase(),
-                      key: const Key('fan-preview-scene'),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.epBody.copyWith(
-                        color: context.epColors.contentSecondary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    TextAction(
-                      'EDIT PHOTO',
-                      key: const Key('fan-avatar-edit-action'),
-                      color: context.epColors.contentPrimary,
-                      padding: EdgeInsets.zero,
-                      onTap: onEditAvatar,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        key: const Key('fan-avatar-preview-control'),
+        onPressed: onEditAvatar,
+        icon: SizedBox.square(
+          dimension: 56,
+          child: _AvatarPreview(name: name, imageUrl: imageUrl, picked: picked),
+        ),
+        label: const Text('Edit photo'),
       ),
     );
   }

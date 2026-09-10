@@ -23,6 +23,7 @@ class OrgSettingsScreen extends StatefulWidget {
 }
 
 class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
+  final _form = GlobalKey<EpFormState>();
   final _scrollController = ScrollController();
   late final MediaPicker _mediaPicker = widget.mediaPicker ?? MediaPicker();
   final TextEditingController _name = TextEditingController();
@@ -176,7 +177,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
           children: [
             if (needsTaxInformation)
               const StatusPill(
-                label: 'ACTION NEEDED',
+                label: 'Action needed',
                 tone: EpStatusPillTone.warning,
               )
             else
@@ -188,7 +189,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'TAX DETAILS',
+                'Tax details',
                 style: Theme.of(context).textTheme.epLabel,
               ),
             ),
@@ -241,6 +242,7 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
   }
 
   Future<void> _save() async {
+    if (_form.currentState?.validate() != true) return;
     if (_saving) return;
     final app = context.read<AppState>();
     final organizationId = app.organizationId;
@@ -344,292 +346,288 @@ class _OrgSettingsScreenState extends State<OrgSettingsScreen> {
         role == OrganizationRole.owner || role == OrganizationRole.manager;
     final isOwner = role == OrganizationRole.owner;
 
-    final listView = ListView(
-      controller: _scrollController,
-      padding: EdgeInsets.fromLTRB(
-        16,
-        headerTopPad(context),
-        16,
-        tabBarClearance +
-            actionBarClearance(context) +
-            MediaQuery.paddingOf(context).bottom,
-      ),
-      children: [
-        const EpPageHeading(
-          title: 'ORGANIZATION SETTINGS',
-          description:
-              'Update the organization profile and private business details.',
-        ),
-        if (_loading)
-          const Padding(
-            padding: EdgeInsets.only(top: 80),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (_loadError != null)
-          _LoadError(onRetry: _load)
-        else if (dashboard != null) ...[
-          FormSection(
-            title: 'Public profile',
-            description: 'These details are visible to artists and fans.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                EpLabeledField(
-                  label: 'NAME',
-                  hint: 'Organization name',
-                  fieldKey: const Key('org-settings-name'),
-                  controller: _name,
-                  required: true,
-                  enabled: canManage,
-                  onChanged: _draftChanged,
-                ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  label: 'ABOUT',
-                  hint: 'About the organization',
-                  fieldKey: const Key('org-settings-description'),
-                  controller: _description,
-                  enabled: canManage,
-                  minLines: 3,
-                  maxLines: 6,
-                  onChanged: _draftChanged,
-                ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  label: 'WEBSITE',
-                  hint: 'https://',
-                  fieldKey: const Key('org-settings-website'),
-                  controller: _website,
-                  enabled: canManage,
-                  keyboardType: TextInputType.url,
-                  onChanged: _draftChanged,
-                ),
-              ],
-            ),
-          ),
-          FormSection(
-            title: 'Photos',
-            description: 'Add up to 10 photos of your organization.',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (_existingPhotoUrls.isNotEmpty ||
-                    _sessionPhotos.isNotEmpty) ...[
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final url in _existingPhotoUrls)
-                        _PhotoTile(
-                          child: EpNetworkImage(
-                            url: url,
-                            cacheWidth: 110,
-                            cacheHeight: 90,
-                            fallback: const Icon(Icons.photo_outlined),
-                          ),
-                        ),
-                      for (final photo in _sessionPhotos)
-                        _PhotoTile(
-                          child: Image.memory(
-                            photo.bytes,
-                            fit: BoxFit.cover,
-                            gaplessPlayback: true,
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                if (canManage)
-                  SlotShell(
-                    key: const Key('org-settings-add-photo'),
-                    state: SlotState.needed,
-                    onTap:
-                        _addingPhoto ||
-                            _existingPhotoUrls.length + _sessionPhotos.length >=
-                                10
-                        ? null
-                        : _addPhoto,
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.add_photo_alternate_outlined,
-                          color:
-                              _existingPhotoUrls.length +
-                                      _sessionPhotos.length >=
-                                  10
-                              ? context.epColors.contentDisabled
-                              : context.epColors.accent,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            _addingPhoto ? 'ADDING…' : 'ADD PHOTO',
-                            style: Theme.of(context).textTheme.epLabel,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          if (isOwner)
-            FormSection(
-              title: 'Private details',
-              description: 'Only EarPlug and your team see these.',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  EpLabeledField(
-                    label: 'LEGAL NAME',
-                    hint: 'Optional',
-                    fieldKey: const Key('org-settings-legal-name'),
-                    controller: _legalName,
-                    enabled: canManage,
-                    onChanged: _draftChanged,
-                  ),
-                  const SizedBox(height: EpLayout.fieldGap),
-                  EpLabeledField(
-                    label: 'BUSINESS EMAIL',
-                    hint: 'name@example.com',
-                    fieldKey: const Key('org-settings-business-email'),
-                    controller: _businessEmail,
-                    enabled: canManage,
-                    keyboardType: TextInputType.emailAddress,
-                    onChanged: _draftChanged,
-                  ),
-                  const SizedBox(height: EpLayout.fieldGap),
-                  EpLabeledField(
-                    label: 'CONTACT NAME',
-                    hint: 'Primary contact',
-                    fieldKey: const Key('org-settings-contact-name'),
-                    controller: _contactName,
-                    enabled: canManage,
-                    onChanged: _draftChanged,
-                  ),
-                  const SizedBox(height: EpLayout.fieldGap),
-                  EpLabeledField(
-                    label: 'PHONE',
-                    hint: 'Optional',
-                    fieldKey: const Key('org-settings-phone'),
-                    controller: _phone,
-                    enabled: canManage,
-                    keyboardType: TextInputType.phone,
-                    onChanged: _draftChanged,
-                  ),
-                ],
-              ),
-            ),
-          if (isOwner)
-            FormSection(
-              title: 'Stripe',
+    final listView = EpForm(
+      key: _form,
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const EpPageHeading(
+              title: 'Organization settings',
               description:
-                  'Needed to sell tickets later; bookings are paid to EarPlug.',
-              child: Column(
-                key: const Key('org-settings-stripe'),
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(switch (app.organizationStripeStatus?.state) {
-                    StripeAccountState.enabled => 'Connected',
-                    StripeAccountState.onboarding => 'Setup in progress',
-                    StripeAccountState.restricted => 'Needs information',
-                    _ => 'Not connected',
-                  }, style: Theme.of(context).textTheme.epBody),
-                  if (app.organizationStripeStatus?.state ==
-                      StripeAccountState.restricted)
-                    for (final requirement
-                        in app.organizationStripeStatus!.requirementsDue)
-                      Text(
-                        requirement,
-                        style: Theme.of(context).textTheme.epCaption,
-                      ),
-                  const SizedBox(height: 12),
-                  if (app.organizationStripeStatus?.state ==
-                      StripeAccountState.enabled)
-                    EpButton(
-                      'OPEN STRIPE DASHBOARD',
-                      key: const Key('org-settings-stripe-dashboard'),
-                      onTap: () => _runStripeAction(
-                        app.openOrganizationExpressDashboard,
-                      ),
-                    )
-                  else
-                    EpButton(
-                      switch (app.organizationStripeStatus?.state) {
-                        StripeAccountState.onboarding ||
-                        StripeAccountState.restricted => 'CONTINUE SETUP',
-                        _ => 'SET UP STRIPE',
-                      },
-                      key: const Key('org-settings-stripe-setup'),
-                      onTap: () => _runStripeAction(() async {
-                        await app.startOrganizationOnboarding();
-                        await app.refreshOrganizationStripeStatus();
-                      }),
+                  'Update the organization profile and private business details.',
+            ),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.only(top: 80),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_loadError != null)
+              _LoadError(onRetry: _load)
+            else if (dashboard != null) ...[
+              EpDisclosure(
+                title: 'Public profile',
+                initiallyExpanded: true,
+                summary: _name.text,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    EpLabeledField(
+                      label: 'Name',
+                      hint: 'Organization name',
+                      fieldKey: const Key('org-settings-name'),
+                      controller: _name,
+                      required: true,
+                      enabled: canManage,
+                      onChanged: _draftChanged,
                     ),
-                  const SizedBox(height: 8),
-                  EpButton(
-                    'REFRESH',
-                    key: const Key('org-settings-stripe-refresh'),
-                    kind: EpButtonKind.outline,
-                    onTap: () =>
-                        _runStripeAction(app.refreshOrganizationStripeStatus),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildTaxDetails(app),
-                  if (_stripeError != null) ...[
-                    const SizedBox(height: 8),
-                    InlineFormFeedback(
-                      error: _stripeError,
-                      errorKey: const Key('org-settings-stripe-error'),
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpLabeledField(
+                      label: 'About',
+                      hint: 'About the organization',
+                      fieldKey: const Key('org-settings-description'),
+                      controller: _description,
+                      enabled: canManage,
+                      minLines: 3,
+                      maxLines: 6,
+                      onChanged: _draftChanged,
+                    ),
+                    const SizedBox(height: EpLayout.fieldGap),
+                    EpLabeledField(
+                      label: 'Website',
+                      hint: 'https://',
+                      fieldKey: const Key('org-settings-website'),
+                      controller: _website,
+                      enabled: canManage,
+                      keyboardType: TextInputType.url,
+                      onChanged: _draftChanged,
                     ),
                   ],
-                ],
+                ),
               ),
-            ),
-          if (canManage) ...[
-            const SectionBar.form(label: 'DANGER ZONE'),
-            EpCard(
-              variant: EpCardVariant.raised,
-              child: DangerZone(
-                key: const Key('org-settings-deactivate'),
-                label: 'Deactivate organization',
-                consequence:
-                    'Deactivation removes the organization from active marketplace management.',
-                onPressed: _confirmDeactivate,
+              EpDisclosure(
+                title: 'Photos',
+                summary:
+                    '${_existingPhotoUrls.length + _sessionPhotos.length} of 10 photos',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_existingPhotoUrls.isNotEmpty ||
+                        _sessionPhotos.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final url in _existingPhotoUrls)
+                            _PhotoTile(
+                              child: EpNetworkImage(
+                                url: url,
+                                cacheWidth: 110,
+                                cacheHeight: 90,
+                                fallback: const Icon(Icons.photo_outlined),
+                              ),
+                            ),
+                          for (final photo in _sessionPhotos)
+                            _PhotoTile(
+                              child: Image.memory(
+                                photo.bytes,
+                                fit: BoxFit.cover,
+                                gaplessPlayback: true,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (canManage)
+                      SlotShell(
+                        key: const Key('org-settings-add-photo'),
+                        state: SlotState.needed,
+                        onTap:
+                            _addingPhoto ||
+                                _existingPhotoUrls.length +
+                                        _sessionPhotos.length >=
+                                    10
+                            ? null
+                            : _addPhoto,
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.add_photo_alternate_outlined,
+                              color:
+                                  _existingPhotoUrls.length +
+                                          _sessionPhotos.length >=
+                                      10
+                                  ? context.epColors.contentDisabled
+                                  : context.epColors.accent,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                _addingPhoto ? 'ADDING…' : 'ADD PHOTO',
+                                style: Theme.of(context).textTheme.epLabel,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
+              if (isOwner)
+                EpDisclosure(
+                  title: 'Private details',
+                  summary: 'Only EarPlug and your team see these.',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      EpLabeledField(
+                        label: 'Legal name',
+                        hint: 'Optional',
+                        fieldKey: const Key('org-settings-legal-name'),
+                        controller: _legalName,
+                        enabled: canManage,
+                        onChanged: _draftChanged,
+                      ),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        label: 'Business email',
+                        hint: 'name@example.com',
+                        fieldKey: const Key('org-settings-business-email'),
+                        controller: _businessEmail,
+                        enabled: canManage,
+                        keyboardType: TextInputType.emailAddress,
+                        onChanged: _draftChanged,
+                      ),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        label: 'Contact name',
+                        hint: 'Primary contact',
+                        fieldKey: const Key('org-settings-contact-name'),
+                        controller: _contactName,
+                        enabled: canManage,
+                        onChanged: _draftChanged,
+                      ),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        label: 'Phone',
+                        hint: 'Optional',
+                        fieldKey: const Key('org-settings-phone'),
+                        controller: _phone,
+                        enabled: canManage,
+                        keyboardType: TextInputType.phone,
+                        onChanged: _draftChanged,
+                      ),
+                    ],
+                  ),
+                ),
+              if (isOwner)
+                EpDisclosure(
+                  title: 'Payments',
+                  summary:
+                      'Needed to sell tickets later; bookings are paid to EarPlug.',
+                  child: Column(
+                    key: const Key('org-settings-stripe'),
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(switch (app.organizationStripeStatus?.state) {
+                        StripeAccountState.enabled => 'Connected',
+                        StripeAccountState.onboarding => 'Setup in progress',
+                        StripeAccountState.restricted => 'Needs information',
+                        _ => 'Not connected',
+                      }, style: Theme.of(context).textTheme.epBody),
+                      if (app.organizationStripeStatus?.state ==
+                          StripeAccountState.restricted)
+                        for (final requirement
+                            in app.organizationStripeStatus!.requirementsDue)
+                          Text(
+                            requirement,
+                            style: Theme.of(context).textTheme.epCaption,
+                          ),
+                      const SizedBox(height: 12),
+                      if (app.organizationStripeStatus?.state ==
+                          StripeAccountState.enabled)
+                        EpButton(
+                          'OPEN STRIPE DASHBOARD',
+                          key: const Key('org-settings-stripe-dashboard'),
+                          onTap: () => _runStripeAction(
+                            app.openOrganizationExpressDashboard,
+                          ),
+                        )
+                      else
+                        EpButton(
+                          switch (app.organizationStripeStatus?.state) {
+                            StripeAccountState.onboarding ||
+                            StripeAccountState.restricted => 'CONTINUE SETUP',
+                            _ => 'SET UP STRIPE',
+                          },
+                          key: const Key('org-settings-stripe-setup'),
+                          onTap: () => _runStripeAction(() async {
+                            await app.startOrganizationOnboarding();
+                            await app.refreshOrganizationStripeStatus();
+                          }),
+                        ),
+                      const SizedBox(height: 8),
+                      EpButton(
+                        'REFRESH',
+                        key: const Key('org-settings-stripe-refresh'),
+                        kind: EpButtonKind.outline,
+                        onTap: () => _runStripeAction(
+                          app.refreshOrganizationStripeStatus,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildTaxDetails(app),
+                      if (_stripeError != null) ...[
+                        const SizedBox(height: 8),
+                        InlineFormFeedback(
+                          error: _stripeError,
+                          errorKey: const Key('org-settings-stripe-error'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              if (canManage) ...[
+                const SectionBar.form(label: 'Danger zone'),
+                EpCard(
+                  variant: EpCardVariant.raised,
+                  child: DangerZone(
+                    key: const Key('org-settings-deactivate'),
+                    label: 'Deactivate organization',
+                    consequence:
+                        'Deactivation removes the organization from active marketplace management.',
+                    onPressed: _confirmDeactivate,
+                  ),
+                ),
+              ],
+              if (_saveError != null || _saved) ...[
+                const SizedBox(height: 16),
+                InlineFormFeedback(
+                  error: _saveError,
+                  success: _saved ? 'Changes saved.' : null,
+                  errorKey: const Key('org-settings-save-error'),
+                  successKey: const Key('org-settings-save-success'),
+                ),
+              ],
+            ],
           ],
-          if (_saveError != null || _saved) ...[
-            const SizedBox(height: 16),
-            InlineFormFeedback(
-              error: _saveError,
-              success: _saved ? 'Changes saved.' : null,
-              errorKey: const Key('org-settings-save-error'),
-              successKey: const Key('org-settings-save-success'),
-            ),
-          ],
-        ],
-      ],
+        ),
+      ),
     );
 
     if (!canManage || dashboard == null || _loading || _loadError != null) {
       return listView;
     }
-    return Stack(
-      children: [
-        Positioned.fill(child: listView),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: StickyActionBar(
-            key: const Key('org-settings-save'),
-            primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
-            onPrimary: _saving ? null : _save,
-          ),
-        ),
-      ],
+    return EpFormLayout(
+      body: listView,
+      footer: StickyActionBar(
+        key: const Key('org-settings-save'),
+        primaryLabel: _saving ? 'SAVING…' : 'SAVE CHANGES',
+        onPrimary: _saving ? null : _save,
+      ),
     );
   }
 }
@@ -699,7 +697,7 @@ class _DeactivateOrganizationDialogState
       actions: [
         TextButton(
           onPressed: _working ? null : () => Navigator.pop(context),
-          child: const Text('KEEP ORGANIZATION'),
+          child: const Text('Keep organization'),
         ),
         FilledButton(
           onPressed: !matches || _working ? null : _deactivate,

@@ -13,6 +13,7 @@ mixin _GigEditorState on _AppStateCore {
   Future<void> refreshBandDiscoveryReadiness(String id);
 
   // ---- gig create form
+  bool gfCreating = false;
   String gfName = '';
   DateTime? gfDate;
   TimeOfDay gfDoors = const TimeOfDay(hour: 20, minute: 0);
@@ -46,6 +47,7 @@ mixin _GigEditorState on _AppStateCore {
   bool _gigDraftDirty = false;
   int _gigEditGeneration = 0;
   int _gigEditorGeneration = 0;
+  int get gigEditorGeneration => _gigEditorGeneration;
   Future<GigProject>? _gigCreateFuture;
   Future<void>? _gigSaveFuture;
   Future<void>? _gigLineupMutationFuture;
@@ -54,6 +56,7 @@ mixin _GigEditorState on _AppStateCore {
 
   void startGigCreate() {
     _resetGigForm();
+    gfCreating = true;
     go(Screen.gigCreate);
   }
 
@@ -771,6 +774,7 @@ mixin _GigEditorState on _AppStateCore {
   }
 
   void _resetGigForm() {
+    gfCreating = false;
     _gigEditorGeneration++;
     gfName = '';
     gfDate = null;

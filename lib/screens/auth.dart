@@ -228,8 +228,14 @@ class _DoorStepState extends State<_DoorStep> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'GET ON\nEARPLUG',
-                  style: epDisplay(size: 38, height: .98),
+                  _stage == _EntryStage.providers
+                      ? 'GET ON\nEARPLUG'
+                      : _stage == _EntryStage.email
+                      ? 'Sign in with email'
+                      : 'Check your email',
+                  style: _stage == _EntryStage.providers
+                      ? epDisplay(size: 38, height: .98)
+                      : Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 12),
                 Text(
@@ -240,14 +246,16 @@ class _DoorStepState extends State<_DoorStep> {
                     height: 1.5,
                   ),
                 ),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 22),
-                    child: Center(
-                      child: _StampWell(stamped: widget.method != null),
+                if (_stage == _EntryStage.providers)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 22),
+                      child: Center(
+                        child: _StampWell(stamped: widget.method != null),
+                      ),
                     ),
                   ),
-                ),
+                if (_stage != _EntryStage.providers) const SizedBox(height: 24),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -332,7 +340,7 @@ class _DoorStepState extends State<_DoorStep> {
 
   List<Widget> _buildEntry() {
     return [
-      if (_stage == _EntryStage.email || _stage == _EntryStage.emailCode)
+      if (_stage == _EntryStage.email)
         EpLabeledField(
           controller: _emailController,
           label: 'EMAIL ADDRESS',
@@ -353,7 +361,21 @@ class _DoorStepState extends State<_DoorStep> {
           kind: _loading ? EpButtonKind.disabled : EpButtonKind.filled,
           onTap: _loading ? null : _sendEmailCode,
         ),
-      if (_stage == _EntryStage.emailCode) _buildCodeEntry(),
+      if (_stage == _EntryStage.emailCode) ...[
+        Text(
+          _emailController.text,
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: _loading ? null : _showEmail,
+            child: const Text('Change email'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _buildCodeEntry(),
+      ],
       if (_stage == _EntryStage.email && _error != null) ...[
         const SizedBox(height: 9),
         _InlineError(_error!),

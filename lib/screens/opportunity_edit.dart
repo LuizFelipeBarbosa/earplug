@@ -25,6 +25,10 @@ class OpportunityEditScreen extends StatefulWidget {
 
 class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
   final _scroll = ScrollController();
+  final _eventForm = GlobalKey<EpFormState>();
+  int _step = 0;
+  bool _attempted = false;
+  bool get _guided => widget.opportunityId == 'new';
   final _title = TextEditingController();
   final _description = TextEditingController();
   final _equipment = TextEditingController();
@@ -717,11 +721,11 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('KEEP'),
+              child: const Text('Keep'),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('CONFIRM'),
+              child: const Text('Cancel opportunity'),
             ),
           ],
         ),
@@ -768,313 +772,197 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
     final venueApproval = _venueApprovalStatus(_venueConsent?.status);
     final venueQuery = _venueSearch.text.trim().toLowerCase();
     final matchingVenues = !_isPrivate && !isVenueOperator
-        ? app.venues
-              .where((venue) {
-                return venue.verified &&
-                    venue.managedByOrganizationId != null &&
-                    (venueQuery.isEmpty ||
-                        venue.name.toLowerCase().contains(venueQuery) ||
-                        venue.area.toLowerCase().contains(venueQuery));
-              })
-              .take(20)
+        ? app.venues.where((venue) {
+            return venue.verified &&
+                venue.managedByOrganizationId != null &&
+                (venueQuery.isEmpty ||
+                    venue.name.toLowerCase().contains(venueQuery) ||
+                    venue.area.toLowerCase().contains(venueQuery));
+          })
         : const <Venue>[];
 
-    return Scaffold(
-      backgroundColor: context.epColors.background,
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: ListView(
-              controller: _scroll,
-              padding: EdgeInsets.fromLTRB(
-                16,
-                headerTopPad(context),
-                16,
-                tabBarClearance +
-                    actionBarClearance(context) +
-                    MediaQuery.paddingOf(context).bottom,
+    final sections = <({String title, String summary, Widget child})>[
+      (
+        title: 'Event',
+        summary: '${_title.text} · ${_dateLabel(context, _date)}',
+        child: EpForm(
+          key: _eventForm,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              EpLabeledField(
+                fieldKey: const ValueKey('opp-edit-title'),
+                label: 'Title',
+                hint: 'Give this night a name',
+                controller: _title,
+                required: true,
+                enabled: enabled,
+                onChanged: _textChanged,
               ),
-              children: [
-                Row(
-                  children: [
-                    CircleIconButton(onTap: app.back),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _savedTitle.trim().isEmpty
-                            ? (_isPrivate ? 'NEW REQUEST' : 'NEW OPPORTUNITY')
-                            : _savedTitle,
-                        style: Theme.of(context).textTheme.epPageHeading,
-                      ),
-                    ),
-                    if (_savedId != null) ...[
-                      const SizedBox(width: 8),
-                      StatusPill(label: _status.wireValue.replaceAll('_', ' ')),
+              if (_isPrivate) ...[
+                if (_privateLocations.isEmpty)
+                  EpButton(
+                    'Add a location',
+                    key: const Key('opp-add-location'),
+                    kind: EpButtonKind.outline,
+                    onTap: slotsEnabled
+                        ? () => app.go(Screen.privateLocationEdit, 'new')
+                        : null,
+                  )
+                else
+                  EpSelectionField<String>(
+                    key: const Key('opp-edit-location'),
+                    label: 'Location',
+                    options: [
+                      for (final location in _privateLocations)
+                        (value: location.id, label: location.label),
                     ],
-                  ],
-                ),
-                const SizedBox(height: 12),
+                    selected: {?_privateLocationId},
+                    onChanged: slotsEnabled
+                        ? (values) =>
+                              _changed(() => _privateLocationId = values.single)
+                        : null,
+                  ),
+                const SizedBox(height: 8),
                 Text(
-                  'Artists apply to slots. Fans never see this until it is confirmed.',
+                  'Artists see the area only. The exact address is shared after the deposit.',
                   style: Theme.of(context).textTheme.epCaption,
                 ),
-                const SizedBox(height: 24),
-                if (_loading)
-                  const Center(child: CircularProgressIndicator())
-                else if (_loadError != null) ...[
-                  Text(_loadError!),
-                  TextButton(onPressed: _load, child: const Text('RETRY')),
-                ] else ...[
-                  EpLabeledField(
-                    fieldKey: const ValueKey('opp-edit-title'),
-                    label: 'TITLE',
-                    hint: 'Give this night a name',
-                    controller: _title,
-                    required: true,
-                    enabled: enabled,
-                    onChanged: _textChanged,
+              ] else
+                EpSelectionField<String>(
+                  key: const Key('opp-edit-venue'),
+                  label: 'Venue',
+                  options: [
+                    for (final venue
+                        in isVenueOperator ? _venues : matchingVenues)
+                      (value: venue.id, label: '${venue.name} · ${venue.area}'),
+                  ],
+                  selected: {?_venueId},
+                  onChanged: venueEnabled
+                      ? (values) => _changed(() => _venueId = values.single)
+                      : null,
+                ),
+              const SectionBar.form(label: 'When'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton(
+                    key: const ValueKey('opp-edit-date'),
+                    onPressed: whenEnabled ? _pickDate : null,
+                    child: Text('DATE · ${_dateLabel(context, _date)}'),
                   ),
-                  if (_isPrivate) ...[
-                    const SectionBar.form(label: 'LOCATION'),
-                    if (_privateLocations.isEmpty)
-                      EpButton(
-                        'ADD A LOCATION',
-                        key: const Key('opp-add-location'),
-                        kind: EpButtonKind.outline,
-                        onTap: slotsEnabled
-                            ? () => app.go(Screen.privateLocationEdit, 'new')
-                            : null,
-                      )
-                    else
-                      Wrap(
-                        spacing: 7,
-                        runSpacing: 7,
-                        children: [
-                          for (final location in _privateLocations)
-                            EpChip(
-                              key: ValueKey('opp-location-${location.id}'),
-                              label: location.label,
-                              active: _privateLocationId == location.id,
-                              onTap: slotsEnabled
-                                  ? () => _changed(
-                                      () => _privateLocationId = location.id,
-                                    )
-                                  : null,
-                            ),
-                        ],
-                      ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Artists see the area only. The exact address is shared after the deposit.',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                  ] else if (isVenueOperator) ...[
-                    const SectionBar.form(label: 'VENUE'),
-                    Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
-                      children: [
-                        for (final venue in _venues)
-                          EpChip(
-                            key: ValueKey('opp-edit-venue-${venue.id}'),
-                            label: venue.name,
-                            active: _venueId == venue.id,
-                            onTap: slotsEnabled
-                                ? () => _changed(() => _venueId = venue.id)
-                                : null,
-                          ),
-                      ],
-                    ),
-                  ] else ...[
-                    const SectionBar.form(label: 'VENUE'),
-                    EpLabeledField(
-                      fieldKey: const Key('opp-edit-venue-search'),
-                      label: 'FIND A VENUE',
-                      hint: 'Search by venue name or area',
-                      controller: _venueSearch,
-                      enabled: venueEnabled,
-                      onChanged: (_) => setState(() {}),
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
-                      children: [
-                        for (final venue in matchingVenues)
-                          EpChip(
-                            key: ValueKey('opp-edit-venue-${venue.id}'),
-                            label: venue.name,
-                            active: _venueId == venue.id,
-                            onTap: venueEnabled
-                                ? () => _changed(() => _venueId = venue.id)
-                                : null,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Only venues that have joined EarPlug can approve events.',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                    if (_venueId != null) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        '${app.venue(_venueId!).name} · ${app.venue(_venueId!).area}',
-                        style: Theme.of(context).textTheme.epCaption,
-                      ),
-                    ],
-                  ],
-                  if (!_isPrivate && !isVenueOperator && _savedId != null) ...[
-                    const SectionBar.form(label: 'VENUE APPROVAL'),
-                    EpCard(
-                      key: const Key('opp-edit-venue-approval'),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: StatusPill(
-                              label: venueApproval.label,
-                              tone: venueApproval.tone,
-                            ),
-                          ),
-                          if (!venueApprovalLocked) ...[
-                            const SizedBox(height: 12),
-                            EpButton(
-                              'REQUEST VENUE APPROVAL',
-                              key: const Key('opp-edit-request-approval'),
-                              onTap: canManage && !_busy && _venueId != null
-                                  ? _requestVenueApproval
-                                  : null,
-                            ),
-                          ] else if (draft) ...[
-                            const SizedBox(height: 12),
-                            EpButton(
-                              'WITHDRAW REQUEST',
-                              key: const Key('opp-edit-withdraw-approval'),
-                              kind: EpButtonKind.outline,
-                              onTap:
-                                  canManage && !_busy && _venueConsent != null
-                                  ? _withdrawVenueApproval
-                                  : null,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                  const SectionBar.form(label: 'WHEN'),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      OutlinedButton(
-                        key: const ValueKey('opp-edit-date'),
-                        onPressed: whenEnabled ? _pickDate : null,
-                        child: Text('DATE · ${_dateLabel(context, _date)}'),
-                      ),
-                      OutlinedButton(
-                        key: const ValueKey('opp-edit-doors'),
-                        onPressed: whenEnabled
-                            ? () => _pickTime(doors: true)
-                            : null,
-                        child: Text('DOORS · ${_doors.format(context)}'),
-                      ),
-                      OutlinedButton(
-                        key: const ValueKey('opp-edit-start'),
-                        onPressed: whenEnabled
-                            ? () => _pickTime(doors: false)
-                            : null,
-                        child: Text('START · ${_start.format(context)}'),
-                      ),
-                      OutlinedButton(
-                        key: const ValueKey('opp-edit-deadline'),
-                        onPressed: whenEnabled
-                            ? () => _pickDate(deadline: true)
-                            : null,
-                        child: Text(
-                          'DEADLINE · ${_dateLabel(context, _deadline)}',
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (venueApprovalLocked) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Withdraw the venue request before changing the venue or date.',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                  ],
-                  SectionBar.form(label: 'SLOTS', count: _slots.length),
-                  if (!draft)
-                    Text(
-                      'Slots are locked once applications are open.',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                  for (var i = 0; i < _slots.length; i++)
-                    _slotFields(i, slotsEnabled),
-                  OutlinedButton.icon(
-                    key: const ValueKey('opp-edit-slot-add'),
-                    onPressed: slotsEnabled && _slots.length < 8
-                        ? () => _changed(() => _slots.add(_SlotDraft()))
+                  OutlinedButton(
+                    key: const ValueKey('opp-edit-doors'),
+                    onPressed: whenEnabled
+                        ? () => _pickTime(doors: true)
                         : null,
-                    icon: const Icon(Icons.add),
-                    label: const Text('ADD SLOT'),
+                    child: Text('DOORS · ${_doors.format(context)}'),
                   ),
-                  const SectionBar.form(label: 'STYLE'),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: [
-                      for (final genre in kGenres)
-                        EpChip(
-                          key: ValueKey('opp-edit-genre-$genre'),
-                          label: genre,
-                          active: _genres.contains(genre),
-                          onTap:
-                              enabled &&
-                                  (_genres.length < 5 ||
-                                      _genres.contains(genre))
-                              ? () => _changed(() {
-                                  if (!_genres.remove(genre)) {
-                                    _genres.add(genre);
-                                  }
-                                })
-                              : null,
-                        ),
-                    ],
+                  OutlinedButton(
+                    key: const ValueKey('opp-edit-start'),
+                    onPressed: whenEnabled
+                        ? () => _pickTime(doors: false)
+                        : null,
+                    child: Text('START · ${_start.format(context)}'),
                   ),
-                  const SizedBox(height: 12),
-                  const FieldLabel('AGE'),
-                  Wrap(
-                    spacing: 7,
-                    children: [
-                      for (final age in AgeRequirement.values)
-                        EpChip(
-                          key: ValueKey('opp-edit-age-${age.wireValue}'),
-                          label: age.label,
-                          active: _age == age,
-                          onTap: enabled
-                              ? () => _changed(() => _age = age)
-                              : null,
-                        ),
-                    ],
+                ],
+              ),
+              if (venueApprovalLocked) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Withdraw the venue request before changing the venue or date.',
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      (
+        title: 'Artist slots',
+        summary: '${_slots.length} slots · ${_genres.join(', ')}',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SectionBar.form(label: 'Slots', count: _slots.length),
+            if (!draft)
+              Text(
+                'Slots are locked once applications are open.',
+                style: Theme.of(context).textTheme.epCaption,
+              ),
+            for (var i = 0; i < _slots.length; i++)
+              _slotFields(i, slotsEnabled),
+            OutlinedButton.icon(
+              key: const ValueKey('opp-edit-slot-add'),
+              onPressed: slotsEnabled && _slots.length < 8
+                  ? () => _changed(() => _slots.add(_SlotDraft()))
+                  : null,
+              icon: const Icon(Icons.add),
+              label: const Text('Add slot'),
+            ),
+            const SizedBox(height: 20),
+            EpSelectionField<String>(
+              label: 'Genres',
+              multiple: true,
+              maxSelected: 5,
+              options: [
+                for (final genre in {...kGenres, ..._genres})
+                  (value: genre, label: genre),
+              ],
+              selected: _genres,
+              onChanged: enabled
+                  ? (values) => _changed(() {
+                      _genres.clear();
+                      _genres.addAll(values);
+                    })
+                  : null,
+            ),
+          ],
+        ),
+      ),
+      (
+        title: 'Details',
+        summary: _age.label,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 12),
+            const FieldLabel('AGE'),
+            Wrap(
+              spacing: 7,
+              children: [
+                for (final age in AgeRequirement.values)
+                  EpChip(
+                    multiple: false,
+                    key: ValueKey('opp-edit-age-${age.wireValue}'),
+                    label: age.label,
+                    active: _age == age,
+                    onTap: enabled ? () => _changed(() => _age = age) : null,
                   ),
-                  const SectionBar.form(label: 'DETAILS'),
-                  EpLabeledField(
-                    fieldKey: const ValueKey('opp-edit-desc'),
-                    label: 'DESCRIPTION',
-                    hint: 'Tell artists about the show',
-                    controller: _description,
-                    minLines: 3,
-                    maxLines: 6,
-                    enabled: enabled,
-                    onChanged: _textChanged,
-                  ),
-                  const SizedBox(height: EpLayout.fieldGap),
+              ],
+            ),
+            const SectionBar.form(label: 'Details'),
+            EpLabeledField(
+              fieldKey: const ValueKey('opp-edit-desc'),
+              label: 'Description',
+              hint: 'Tell artists about the show',
+              controller: _description,
+              minLines: 3,
+              maxLines: 6,
+              enabled: enabled,
+              onChanged: _textChanged,
+            ),
+            const SizedBox(height: EpLayout.fieldGap),
+            EpDisclosure(
+              title: 'Logistics',
+              summary: 'Optional equipment, requirements and attendance',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                   EpLabeledField(
                     fieldKey: const ValueKey('opp-edit-equipment'),
-                    label: 'EQUIPMENT',
+                    label: 'Equipment',
                     hint: 'Backline and equipment provided',
                     controller: _equipment,
                     enabled: enabled,
@@ -1083,7 +971,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                   const SizedBox(height: EpLayout.fieldGap),
                   EpLabeledField(
                     fieldKey: const ValueKey('opp-edit-requirements'),
-                    label: 'REQUIREMENTS',
+                    label: 'Requirements',
                     hint: 'What artists should bring or know',
                     controller: _requirements,
                     enabled: enabled,
@@ -1101,193 +989,400 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     enabled: enabled,
                     onChanged: _textChanged,
                   ),
-                  if (!_isPrivate) ...[
-                    const SectionBar.form(label: 'TICKETING'),
-                    Wrap(
-                      spacing: 7,
-                      children: [
-                        for (final ticketing in [
-                          OpportunityTicketing.none,
-                          OpportunityTicketing.rsvp,
-                          OpportunityTicketing.external,
-                          OpportunityTicketing.paid,
-                        ])
-                          EpChip(
-                            key: ValueKey(
-                              'opp-edit-ticketing-${ticketing.wireValue}',
-                            ),
-                            label: ticketing.wireValue,
-                            active: _ticketing == ticketing,
-                            onTap:
-                                enabled &&
-                                    (ticketing != OpportunityTicketing.paid ||
-                                        _stripeChargesEnabled)
-                                ? () => _changed(() => _ticketing = ticketing)
-                                : null,
-                          ),
-                      ],
-                    ),
-                    if (!_stripeChargesEnabled)
-                      Text(
-                        'Connect Stripe in SETTINGS to sell tickets',
-                        style: Theme.of(context).textTheme.epCaption,
-                      ),
-                    if (_ticketing == OpportunityTicketing.paid) ...[
-                      const SizedBox(height: EpLayout.fieldGap),
-                      EpFieldRow(
-                        first: EpLabeledField(
-                          fieldKey: const ValueKey('opp-edit-ticket-price'),
-                          label: 'TICKET PRICE (\$)',
-                          hint: '25',
-                          controller: _ticketPrice,
-                          keyboardType: TextInputType.number,
-                          enabled: ticketFieldsEnabled,
-                          onChanged: _textChanged,
-                          errorText: _ticketPriceError,
-                        ),
-                        second: EpLabeledField(
-                          fieldKey: const ValueKey('opp-edit-ticket-capacity'),
-                          label: 'CAPACITY',
-                          hint: '100',
-                          controller: _ticketCapacity,
-                          keyboardType: TextInputType.number,
-                          enabled: ticketFieldsEnabled,
-                          onChanged: _textChanged,
-                          errorText: _ticketCapacityError,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _ticketingFeeCaption,
-                        style: Theme.of(context).textTheme.epCaption,
-                      ),
-                      if (_ticketingEditable && canManage) ...[
-                        const SizedBox(height: 12),
-                        EpButton(
-                          'UPDATE TICKETING',
-                          key: const Key('opp-edit-update-ticketing'),
-                          onTap: _busy ? null : _updateTicketing,
-                        ),
-                      ],
-                    ],
-                    if (_ticketing == OpportunityTicketing.external) ...[
-                      const SizedBox(height: EpLayout.fieldGap),
-                      EpLabeledField(
-                        fieldKey: const ValueKey('opp-edit-external-url'),
-                        label: 'EXTERNAL TICKET URL',
-                        hint: 'https://',
-                        controller: _externalUrl,
-                        keyboardType: TextInputType.url,
-                        enabled: enabled,
-                        onChanged: _textChanged,
-                      ),
-                    ],
-                  ],
-                  const SectionBar.form(label: 'VISIBILITY'),
-                  Wrap(
-                    spacing: 7,
-                    children: [
-                      for (final visibility in OpportunityVisibility.values)
-                        EpChip(
-                          key: ValueKey(
-                            'opp-edit-visibility-${visibility == OpportunityVisibility.publicListing ? 'public' : 'invite'}',
-                          ),
-                          label:
-                              visibility == OpportunityVisibility.publicListing
-                              ? 'PUBLIC'
-                              : 'INVITE ONLY',
-                          active: _visibility == visibility,
-                          onTap: enabled
-                              ? () => _changed(() => _visibility = visibility)
-                              : null,
-                        ),
-                    ],
-                  ),
-                  const SectionBar.form(label: 'INVITE BANDS'),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: [
-                      for (final id in _invitedIds)
-                        EpChip(
-                          key: ValueKey('opp-edit-invite-$id'),
-                          label: _bands[id]?.name ?? 'Unavailable band',
-                          active: true,
-                          onTap: null,
-                          onRemoved: enabled ? () => _removeInvite(id) : null,
-                        ),
-                    ],
-                  ),
-                  OutlinedButton.icon(
-                    key: const ValueKey('opp-edit-invite-add'),
-                    onPressed: enabled ? _showInviteSheet : null,
-                    icon: const Icon(Icons.add),
-                    label: const Text('INVITE A BAND'),
-                  ),
-                  const SizedBox(height: 20),
-                  InlineFormFeedback(
-                    error: _error,
-                    success: _success,
-                    errorKey: const ValueKey('opp-edit-feedback'),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    needs.isEmpty ? 'READY' : 'Needs: ${needs.join(', ')}',
-                    key: const ValueKey('opp-edit-missing'),
-                    style: Theme.of(context).textTheme.epCaption,
-                  ),
-                  if (canManage &&
-                      _status != OpportunityStatus.cancelled &&
-                      _status != OpportunityStatus.completed) ...[
-                    const SizedBox(height: 24),
-                    DangerZone(
-                      key: ValueKey(
-                        draft ? 'opp-edit-delete' : 'opp-edit-cancel',
-                      ),
-                      label: draft ? 'DELETE DRAFT' : 'CANCEL OPPORTUNITY',
-                      consequence: draft
-                          ? 'Permanently remove this draft.'
-                          : 'Cancel this opportunity and its applications.',
-                      onPressed: _busy ? null : _deleteOrCancel,
-                    ),
-                  ],
                 ],
-              ],
-            ),
-          ),
-          if (!_loading && _loadError == null && _editable && canManage)
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: StickyActionBar(
-                key: ValueKey(switch (_status) {
-                  OpportunityStatus.draft => 'opp-edit-open',
-                  OpportunityStatus.open => 'opp-edit-close',
-                  _ => 'opp-edit-reopen',
-                }),
-                primaryLabel: waitingForVenueApproval
-                    ? 'WAITING FOR VENUE APPROVAL'
-                    : switch (_status) {
-                        OpportunityStatus.draft => 'OPEN FOR APPLICATIONS',
-                        OpportunityStatus.open => 'CLOSE APPLICATIONS',
-                        _ => 'REOPEN',
-                      },
-                onPrimary:
-                    !waitingForVenueApproval &&
-                        enabled &&
-                        _savedId != null &&
-                        (!draft || needs.isEmpty)
-                    ? _transition
-                    : null,
-                secondaryKey: const ValueKey('opp-edit-save'),
-                secondaryLabel: draft ? 'SAVE DRAFT' : 'SAVE CHANGES',
-                onSecondary: enabled ? _save : null,
               ),
             ),
-        ],
+          ],
+        ),
+      ),
+      (
+        title: 'Access',
+        summary:
+            '${_visibility == OpportunityVisibility.publicListing ? 'Public' : 'Invite only'} · ${_invitedIds.length} invitations',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OutlinedButton(
+              key: const ValueKey('opp-edit-deadline'),
+              onPressed: whenEnabled ? () => _pickDate(deadline: true) : null,
+              child: Text('DEADLINE · ${_dateLabel(context, _deadline)}'),
+            ),
+            if (!_isPrivate) ...[
+              const SectionBar.form(label: 'Ticketing'),
+              Wrap(
+                spacing: 7,
+                children: [
+                  for (final ticketing in [
+                    OpportunityTicketing.none,
+                    OpportunityTicketing.rsvp,
+                    OpportunityTicketing.external,
+                    OpportunityTicketing.paid,
+                  ])
+                    EpChip(
+                      multiple: false,
+                      key: ValueKey(
+                        'opp-edit-ticketing-${ticketing.wireValue}',
+                      ),
+                      label: ticketing.wireValue,
+                      active: _ticketing == ticketing,
+                      onTap:
+                          enabled &&
+                              (ticketing != OpportunityTicketing.paid ||
+                                  _stripeChargesEnabled)
+                          ? () => _changed(() => _ticketing = ticketing)
+                          : null,
+                    ),
+                ],
+              ),
+              if (!_stripeChargesEnabled)
+                Text(
+                  'Connect Stripe in SETTINGS to sell tickets',
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+              if (_ticketing == OpportunityTicketing.paid) ...[
+                const SizedBox(height: EpLayout.fieldGap),
+                EpFieldRow(
+                  first: EpLabeledField(
+                    fieldKey: const ValueKey('opp-edit-ticket-price'),
+                    label: 'TICKET PRICE (\$)',
+                    hint: '25',
+                    controller: _ticketPrice,
+                    keyboardType: TextInputType.number,
+                    enabled: ticketFieldsEnabled,
+                    onChanged: _textChanged,
+                    errorText: _attempted || !_guided
+                        ? _ticketPriceError
+                        : null,
+                  ),
+                  second: EpLabeledField(
+                    fieldKey: const ValueKey('opp-edit-ticket-capacity'),
+                    label: 'Capacity',
+                    hint: '100',
+                    controller: _ticketCapacity,
+                    keyboardType: TextInputType.number,
+                    enabled: ticketFieldsEnabled,
+                    onChanged: _textChanged,
+                    errorText: _attempted || !_guided
+                        ? _ticketCapacityError
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _ticketingFeeCaption,
+                  style: Theme.of(context).textTheme.epCaption,
+                ),
+                if (_ticketingEditable && canManage) ...[
+                  const SizedBox(height: 12),
+                  EpButton(
+                    'UPDATE TICKETING',
+                    key: const Key('opp-edit-update-ticketing'),
+                    onTap: _busy ? null : _updateTicketing,
+                  ),
+                ],
+              ],
+              if (_ticketing == OpportunityTicketing.external) ...[
+                const SizedBox(height: EpLayout.fieldGap),
+                EpLabeledField(
+                  fieldKey: const ValueKey('opp-edit-external-url'),
+                  label: 'External ticket url',
+                  hint: 'https://',
+                  controller: _externalUrl,
+                  keyboardType: TextInputType.url,
+                  enabled: enabled,
+                  onChanged: _textChanged,
+                ),
+              ],
+            ],
+            const SectionBar.form(label: 'Visibility'),
+            Wrap(
+              spacing: 7,
+              children: [
+                for (final visibility in OpportunityVisibility.values)
+                  EpChip(
+                    multiple: false,
+                    key: ValueKey(
+                      'opp-edit-visibility-${visibility == OpportunityVisibility.publicListing ? 'public' : 'invite'}',
+                    ),
+                    label: visibility == OpportunityVisibility.publicListing
+                        ? 'PUBLIC'
+                        : 'INVITE ONLY',
+                    active: _visibility == visibility,
+                    onTap: enabled
+                        ? () => _changed(() => _visibility = visibility)
+                        : null,
+                  ),
+              ],
+            ),
+            const SectionBar.form(label: 'Invite bands'),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                for (final id in _invitedIds)
+                  EpChip(
+                    multiple: false,
+                    key: ValueKey('opp-edit-invite-$id'),
+                    label: _bands[id]?.name ?? 'Unavailable band',
+                    active: true,
+                    onTap: null,
+                    onRemoved: enabled ? () => _removeInvite(id) : null,
+                  ),
+              ],
+            ),
+            OutlinedButton.icon(
+              key: const ValueKey('opp-edit-invite-add'),
+              onPressed: enabled ? _showInviteSheet : null,
+              icon: const Icon(Icons.add),
+              label: const Text('Invite a band'),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+      (
+        title: 'Review',
+        summary: _isPrivate || isVenueOperator
+            ? 'Requirements and publication'
+            : venueApproval.label,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(_title.text, style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              '${_dateLabel(context, _date)} · Doors ${_doors.format(context)} · Start ${_start.format(context)}',
+            ),
+            Text('${_slots.length} artist slots · ${_age.label}'),
+            Text('Applications close ${_dateLabel(context, _deadline)}'),
+            const SizedBox(height: 20),
+            Text(
+              needs.isEmpty
+                  ? 'Ready to open applications after saving.'
+                  : 'Complete ${needs.join(', ')} before opening applications.',
+              key: const ValueKey('opp-edit-missing'),
+            ),
+            if (!_isPrivate && !isVenueOperator && _savedId != null) ...[
+              const SectionBar.form(label: 'Venue approval'),
+              EpCard(
+                key: const Key('opp-edit-venue-approval'),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: StatusPill(
+                        label: venueApproval.label,
+                        tone: venueApproval.tone,
+                      ),
+                    ),
+                    if (!venueApprovalLocked) ...[
+                      const SizedBox(height: 12),
+                      EpButton(
+                        'REQUEST VENUE APPROVAL',
+                        key: const Key('opp-edit-request-approval'),
+                        onTap: canManage && !_busy && _venueId != null
+                            ? _requestVenueApproval
+                            : null,
+                      ),
+                    ] else if (draft) ...[
+                      const SizedBox(height: 12),
+                      EpButton(
+                        'WITHDRAW REQUEST',
+                        key: const Key('opp-edit-withdraw-approval'),
+                        kind: EpButtonKind.outline,
+                        onTap: canManage && !_busy && _venueConsent != null
+                            ? _withdrawVenueApproval
+                            : null,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    ];
+    return Scaffold(
+      backgroundColor: context.epColors.background,
+      body: EpFormLayout(
+        body: SingleChildScrollView(
+          controller: _scroll,
+          padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  CircleIconButton(onTap: _busy ? null : _close),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _savedTitle.trim().isEmpty
+                          ? (_isPrivate
+                                ? 'Create private request'
+                                : 'Create opportunity')
+                          : _savedTitle,
+                      style: Theme.of(context).textTheme.epFormHeading,
+                    ),
+                  ),
+                  if (_guided && _step < 4)
+                    TextButton(
+                      key: const ValueKey('opp-edit-save'),
+                      onPressed: enabled ? _save : null,
+                      child: const Text('Save draft'),
+                    ),
+                  if (_savedId != null) ...[
+                    const SizedBox(width: 8),
+                    StatusPill(label: _status.wireValue.replaceAll('_', ' ')),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Artists apply to slots. Fans never see this until it is confirmed.',
+                style: Theme.of(context).textTheme.epCaption,
+              ),
+              const SizedBox(height: 24),
+              if (_loading)
+                const Center(child: CircularProgressIndicator())
+              else if (_loadError != null) ...[
+                Text(_loadError!),
+                TextButton(onPressed: _load, child: const Text('Retry')),
+              ] else ...[
+                if (_guided)
+                  EpFormSteps(
+                    labels: [for (final section in sections) section.title],
+                    current: _step,
+                    onBackToStep: _busy ? null : _showStep,
+                  ),
+                for (var i = 0; i < sections.length; i++)
+                  if (_guided)
+                    EpFormStep(active: _step == i, child: sections[i].child)
+                  else
+                    EpDisclosure(
+                      title: sections[i].title,
+                      summary: sections[i].summary,
+                      initiallyExpanded: i == 0,
+                      child: sections[i].child,
+                    ),
+                InlineFormFeedback(
+                  error: _attempted ? _stepError ?? _error : _error,
+                  success: _success,
+                  errorKey: const ValueKey('opp-edit-feedback'),
+                ),
+                if ((!_guided || _step == 4) &&
+                    canManage &&
+                    _status != OpportunityStatus.cancelled &&
+                    _status != OpportunityStatus.completed)
+                  DangerZone(
+                    key: ValueKey(
+                      draft ? 'opp-edit-delete' : 'opp-edit-cancel',
+                    ),
+                    label: draft ? 'Delete draft' : 'Cancel opportunity',
+                    consequence: draft
+                        ? 'Permanently remove this draft.'
+                        : 'Cancel this opportunity and its applications.',
+                    onPressed: _busy ? null : _deleteOrCancel,
+                  ),
+              ],
+            ],
+          ),
+        ),
+        footer: _loading || _loadError != null || !_editable || !canManage
+            ? const SizedBox.shrink()
+            : _guided && _step < 4
+            ? StickyActionBar(
+                primaryLabel: 'Continue',
+                onPrimary: _busy ? null : _continue,
+                secondaryLabel: _step == 0 ? null : 'Back',
+                onSecondary: _busy ? null : () => _showStep(_step - 1),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_guided)
+                    TextButton(
+                      onPressed: _busy ? null : () => _showStep(3),
+                      child: const Text('Back to access'),
+                    ),
+                  StickyActionBar(
+                    key: ValueKey(switch (_status) {
+                      OpportunityStatus.draft => 'opp-edit-open',
+                      OpportunityStatus.open => 'opp-edit-close',
+                      _ => 'opp-edit-reopen',
+                    }),
+                    primaryLabel: waitingForVenueApproval
+                        ? 'WAITING FOR VENUE APPROVAL'
+                        : switch (_status) {
+                            OpportunityStatus.draft => 'OPEN FOR APPLICATIONS',
+                            OpportunityStatus.open => 'CLOSE APPLICATIONS',
+                            _ => 'REOPEN',
+                          },
+                    onPrimary:
+                        !waitingForVenueApproval &&
+                            enabled &&
+                            _savedId != null &&
+                            (!draft || needs.isEmpty)
+                        ? _transition
+                        : null,
+                    secondaryKey: const ValueKey('opp-edit-save'),
+                    secondaryLabel: draft ? 'SAVE DRAFT' : 'SAVE CHANGES',
+                    onSecondary: enabled ? _save : null,
+                  ),
+                ],
+              ),
       ),
     );
+  }
+
+  Future<void> _close() async {
+    if (_busy) return;
+    if ((_dirty || _pendingInvites.isNotEmpty) &&
+        !await confirmDiscardForm(context)) {
+      return;
+    }
+    if (mounted) context.read<AppState>().back();
+  }
+
+  void _showStep(int step) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _step = step;
+      _attempted = false;
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
+
+  String? get _stepError => switch (_step) {
+    0 when _title.text.trim().isEmpty => 'Enter a title.',
+    0 when _isPrivate ? _privateLocationId == null : _venueId == null =>
+      'Choose ${_isPrivate ? 'a location' : 'a venue'}.',
+    0 when _date == null => 'Choose the event date.',
+    1 when _slots.isEmpty => 'Add at least one artist slot.',
+    1 when _isPrivate && _slots.any((slot) => slot.input.guaranteeMinor <= 0) =>
+      'Enter a fee for every artist slot.',
+    3 when !_validDeadline =>
+      'Choose an application deadline before the event starts.',
+    3
+        when _ticketing == OpportunityTicketing.paid &&
+            _ticketPriceError != null =>
+      _ticketPriceError,
+    3
+        when _ticketing == OpportunityTicketing.paid &&
+            _ticketCapacityError != null =>
+      _ticketCapacityError,
+    _ => null,
+  };
+
+  void _continue() {
+    setState(() => _attempted = true);
+    if (_step == 0 && _eventForm.currentState?.validate() != true) return;
+    if (_stepError != null) {
+      revealFormFeedback(this, _scroll);
+      return;
+    }
+    _showStep(_step + 1);
   }
 
   Widget _slotFields(int index, bool enabled) {
@@ -1303,6 +1398,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
             children: [
               for (final role in SlotRole.values)
                 EpChip(
+                  multiple: false,
                   key: ValueKey('opp-edit-slot-$index-role-${role.wireValue}'),
                   label: role.wireValue,
                   active: slot.role == role,
@@ -1339,7 +1435,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
               Expanded(
                 child: SwitchRow(
                   key: ValueKey('opp-edit-slot-$index-required'),
-                  label: 'REQUIRED',
+                  label: 'Required',
                   value: slot.required,
                   onChanged: enabled
                       ? (value) => _changed(() => slot.required = value)
@@ -1433,13 +1529,13 @@ class _VenueApprovalRequestSheetState
   @override
   Widget build(BuildContext context) {
     return EpFormSheet(
-      title: 'REQUEST VENUE APPROVAL',
+      title: 'Request venue approval',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           EpLabeledField(
             fieldKey: const Key('opp-edit-approval-message'),
-            label: 'MESSAGE',
+            label: 'Message',
             hint: 'Add a note for the venue (optional)',
             controller: _message,
             enabled: !_submitting,

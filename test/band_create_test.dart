@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('create uses the shared identity editor in profile order', (
@@ -21,7 +22,10 @@ void main() {
     tester.view.physicalSize = const Size(402, 3000);
     await tester.pump();
 
-    expect(find.text('CREATE BAND'), findsWidgets);
+    expect(findUiText('CREATE BAND'), findsWidgets);
+    expect(find.byType(BandIdentityHeader), findsNothing);
+    expect(find.byKey(const ValueKey('create-about')), findsNothing);
+    await openAllFormSections(tester);
     expect(find.byType(BandIdentityHeader), findsOne);
     expect(find.byKey(const ValueKey('band-header-image-control')), findsOne);
     expect(find.byKey(const ValueKey('band-profile-image-control')), findsOne);
@@ -41,10 +45,10 @@ void main() {
     final genres = tester.getTopLeft(
       find.byKey(const ValueKey('band-genres-field')),
     );
-    expect(profile.dy, lessThan(name.dy));
+    expect(about.dy, lessThan(profile.dy));
     expect(name.dy, lessThan(area.dy));
-    expect(area.dy, lessThan(about.dy));
-    expect(about.dy, lessThan(genres.dy));
+    expect(area.dy, lessThan(genres.dy));
+    expect(genres.dy, lessThan(about.dy));
 
     for (final key in const [
       ValueKey('create-band-name'),
@@ -69,15 +73,17 @@ void main() {
         findsNothing,
       );
     }
-    expect(find.text('MANAGE VIDEOS AND PHOTOS'), findsNothing);
+    expect(findUiText('MANAGE VIDEOS AND PHOTOS'), findsNothing);
 
     harness.picker.nextPhoto = photoFixture(filename: 'banner.png');
+    await revealFormKey(tester, const ValueKey('band-header-image-control'));
     await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
     await tester.pumpAndSettle();
     expect(harness.app.nbBanner, isNotNull);
     expect(harness.app.nbPhoto, isNull);
 
     harness.picker.nextPhoto = photoFixture(filename: 'avatar.png');
+    await revealFormKey(tester, const ValueKey('band-profile-image-control'));
     await tester.tap(find.byKey(const ValueKey('band-profile-image-control')));
     await tester.pumpAndSettle();
     expect(harness.app.nbPhoto, isNotNull);
@@ -85,11 +91,14 @@ void main() {
 
     expect(find.byKey(const ValueKey('clear-band-photo')), findsOne);
     expect(find.byKey(const ValueKey('clear-band-banner')), findsOne);
+    await revealFormKey(tester, const ValueKey('clear-band-photo'));
     await tester.tap(find.byKey(const ValueKey('clear-band-photo')));
     await tester.pump();
     expect(harness.app.nbPhoto, isNull);
     expect(find.byKey(const ValueKey('clear-band-photo')), findsNothing);
     expect(find.byKey(const ValueKey('clear-band-banner')), findsOne);
+
+    await revealFormKey(tester, const ValueKey('clear-band-banner'));
 
     await tester.tap(find.byKey(const ValueKey('clear-band-banner')));
     await tester.pump();
@@ -105,22 +114,20 @@ void main() {
     tester.view.physicalSize = const Size(402, 2200);
     await tester.pump();
 
-    await tester.tap(find.text('PUNK'));
-    await tester.tap(find.text('HARDCORE'));
-    await tester.tap(find.text('GARAGE'));
-    await tester.tap(find.text('THRASH'));
+    await chooseBandGenres(tester, ['punk', 'hardcore', 'garage']);
     await tester.pump();
     expect(harness.app.nbGenres, ['punk', 'hardcore', 'garage']);
-    expect(harness.app.toast, 'Three genres max. It keeps discovery honest.');
 
-    await tester.tap(find.text('HARDCORE'));
+    await chooseBandGenres(tester, ['hardcore']);
+    await revealFormKey(tester, const ValueKey('show-custom-genre'));
     await tester.tap(find.byKey(const ValueKey('show-custom-genre')));
     await tester.pump();
+    await revealFormKey(tester, const ValueKey('edit-custom-genre'));
     await tester.enterText(
       find.byKey(const ValueKey('edit-custom-genre')),
       'surf punk',
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'ADD'));
+    await tester.tap(findUiControl(FilledButton, 'ADD'));
     await tester.pump();
     expect(harness.app.nbGenres, ['punk', 'garage', 'surf punk']);
     await tester.pump(const Duration(seconds: 3));
@@ -133,14 +140,13 @@ void main() {
     tester.view.physicalSize = const Size(402, 2200);
     await tester.pump();
 
-    await tester.tap(find.text('PUNK'));
-    await tester.tap(find.text('HARDCORE'));
-    await tester.tap(find.text('GARAGE'));
+    await chooseBandGenres(tester, ['punk', 'hardcore', 'garage']);
+    await revealFormKey(tester, const ValueKey('show-custom-genre'));
     await tester.tap(find.byKey(const ValueKey('show-custom-genre')));
     await tester.pump();
     final customGenre = find.byKey(const ValueKey('edit-custom-genre'));
     await tester.enterText(customGenre, 'ska');
-    await tester.tap(find.widgetWithText(FilledButton, 'ADD'));
+    await tester.tap(findUiControl(FilledButton, 'ADD'));
     await tester.pump();
 
     expect(harness.app.nbGenres, ['punk', 'hardcore', 'garage']);
@@ -157,14 +163,16 @@ void main() {
     tester.view.physicalSize = const Size(402, 2200);
     await tester.pump();
     harness.picker.nextPhoto = photoFixture(filename: 'banner.png');
+    await revealFormKey(tester, const ValueKey('band-header-image-control'));
     await tester.tap(find.byKey(const ValueKey('band-header-image-control')));
     await tester.pumpAndSettle();
     harness.picker.nextPhoto = photoFixture(filename: 'avatar.png');
+    await revealFormKey(tester, const ValueKey('band-profile-image-control'));
     await tester.tap(find.byKey(const ValueKey('band-profile-image-control')));
     await tester.pumpAndSettle();
 
     await _fillForm(tester);
-    await tester.tap(find.widgetWithText(FilledButton, 'CREATE BAND'));
+    await tester.tap(findUiControl(FilledButton, 'CREATE BAND'));
     await tester.pumpAndSettle();
 
     final bandId = harness.app.bandId;
@@ -179,12 +187,12 @@ void main() {
     final app = (await _pumpBandCreate(tester)).app;
     await _fillAndCreate(tester);
 
-    expect(find.text("YOU'RE LIVE"), findsOne);
-    expect(find.text('POST A MUSIC CLIP'), findsOne);
-    expect(find.text('PUBLISH A GIG'), findsOne);
-    expect(find.text('INVITE BAND MEMBERS'), findsOne);
-    expect(find.text('NOT NOW'), findsOne);
-    await tester.tap(find.text('NOT NOW'));
+    expect(findUiText("YOU'RE LIVE"), findsOne);
+    expect(findUiText('POST A MUSIC CLIP'), findsOne);
+    expect(findUiText('PUBLISH A GIG'), findsOne);
+    expect(findUiText('INVITE BAND MEMBERS'), findsOne);
+    expect(findUiText('NOT NOW'), findsOne);
+    await tester.tap(findUiText('NOT NOW'));
     await tester.pumpAndSettle();
     expect(app.current.screen, Screen.bandDash);
   });
@@ -197,38 +205,43 @@ void main() {
     await tester.pumpAndSettle();
 
     await _fillForm(tester);
+    await revealFormKey(tester, const ValueKey('create-about'));
     await tester.enterText(
       find.byKey(const ValueKey('create-about')),
       'Signal-heavy post-punk.',
     );
+    await revealFormKey(tester, const ValueKey('create-instagram'));
     await tester.enterText(
       find.byKey(const ValueKey('create-instagram')),
       '@staticbloom',
     );
+    await revealFormKey(tester, const ValueKey('create-bandcamp'));
     await tester.enterText(
       find.byKey(const ValueKey('create-bandcamp')),
       'staticbloom.bandcamp.com',
     );
+    await revealFormKey(tester, const ValueKey('create-youtube'));
     await tester.enterText(
       find.byKey(const ValueKey('create-youtube')),
       'youtube.com/@staticbloom',
     );
+    await revealFormKey(tester, const ValueKey('create-credits'));
     await tester.enterText(
       find.byKey(const ValueKey('create-credits')),
       'Recorded by June.',
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'CREATE BAND'));
+    await tester.tap(findUiControl(FilledButton, 'CREATE BAND'));
     await tester.pumpAndSettle();
-    expect(find.text("YOU'RE LIVE"), findsOne);
+    expect(findUiText("YOU'RE LIVE"), findsOne);
 
-    await tester.tap(find.text('START ANOTHER'));
+    await tester.tap(findUiText('START ANOTHER'));
     await tester.pumpAndSettle();
 
     expect(harness.app.nbCreated, isFalse);
     expect(harness.app.canCreateBand, isFalse);
     expect(harness.app.nbGenres, isEmpty);
     expect(find.text('Static Bloom'), findsNothing);
-    expect(find.text('Still needs a name + a genre + a home base'), findsOne);
+    expect(find.text('Choose at least one genre.'), findsNothing);
     for (final key in const [
       ValueKey('create-band-name'),
       ValueKey('create-home-base'),
@@ -239,14 +252,13 @@ void main() {
       ValueKey('create-credits'),
     ]) {
       expect(
-        tester.widget<TextField>(find.byKey(key)).controller!.text,
+        tester
+            .widget<TextField>(find.byKey(key, skipOffstage: false))
+            .controller!
+            .text,
         isEmpty,
       );
     }
-    expect(
-      tester.widget<EpChip>(find.widgetWithText(EpChip, 'PUNK')).active,
-      isFalse,
-    );
     expect(find.text('0 of 3 selected'), findsOne);
   });
 
@@ -258,15 +270,15 @@ void main() {
     final app = (await _pumpBandCreate(tester, repository: repository)).app;
     await _fillForm(tester);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'CREATE BAND'));
+    await tester.tap(findUiControl(FilledButton, 'CREATE BAND'));
     await tester.pump();
-    expect(find.text('SAVING…'), findsOne);
+    expect(findUiText('SAVING…'), findsOne);
     expect(repository.createCalls, 1);
 
     createGate.complete();
     await tester.pumpAndSettle();
     expect(app.nbCreated, isTrue);
-    expect(find.text("YOU'RE LIVE"), findsOne);
+    expect(findUiText("YOU'RE LIVE"), findsOne);
   });
 
   testWidgets(
@@ -300,14 +312,18 @@ void main() {
     },
   );
 
-  testWidgets('an unready create is visibly and semantically disabled', (
+  testWidgets('an unready create reveals required fields without submitting', (
     tester,
   ) async {
     final app = (await _pumpBandCreate(tester)).app;
     final disabledCreate = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'CREATE BAND'),
+      findUiControl(FilledButton, 'CREATE BAND'),
     );
-    expect(disabledCreate.onPressed, isNull);
+    expect(disabledCreate.onPressed, isNotNull);
+    await tester.tap(findUiControl(FilledButton, 'Create band'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter band name.'), findsOneWidget);
+    expect(find.text('Choose at least one genre.'), findsOneWidget);
     expect(app.nbCreated, isFalse);
   });
 }
@@ -329,28 +345,22 @@ Future<AppHarness> _pumpBandCreate(
 }
 
 Future<void> _fillForm(WidgetTester tester) async {
+  await revealFormKey(tester, const ValueKey('create-band-name'));
   await tester.enterText(
     find.byKey(const ValueKey('create-band-name')),
     'Static Bloom',
   );
+  await revealFormKey(tester, const ValueKey('create-home-base'));
   await tester.enterText(
     find.byKey(const ValueKey('create-home-base')),
     'Mission, SF',
   );
-  final punk = find.text('PUNK');
-  await tester.scrollUntilVisible(
-    punk,
-    160,
-    scrollable: find.byType(Scrollable).first,
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(punk);
-  await tester.pump();
+  await chooseBandGenres(tester, ['punk']);
 }
 
 Future<void> _fillAndCreate(WidgetTester tester) async {
   await _fillForm(tester);
-  await tester.tap(find.widgetWithText(FilledButton, 'CREATE BAND'));
+  await tester.tap(findUiControl(FilledButton, 'CREATE BAND'));
   await tester.pumpAndSettle();
 }
 

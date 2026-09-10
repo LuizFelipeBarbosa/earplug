@@ -157,6 +157,7 @@ class _WhenBody extends StatelessWidget {
                   children: [
                     for (final hour in const [18, 19, 20, 21, 22]) ...[
                       EpChip(
+                        multiple: false,
                         label:
                             'DOORS ${timeLabel(TimeOfDay(hour: hour, minute: 0))}',
                         active: app.gfDoors == TimeOfDay(hour: hour, minute: 0),
@@ -298,54 +299,63 @@ class _Month extends StatelessWidget {
 void showVenueSheet(BuildContext context) {
   final app = context.read<AppState>();
   app.ensureVenueDirectory();
-  showEpSheet(context, (ctx) {
-    return EpFormSheet(
-      title: 'Where is it',
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(ctx).height * .6,
-        ),
-        child: Selector<AppState, (String?, List<Venue>)>(
-          selector: (_, app) => (app.gfVenueId, app.venues),
-          builder: (context, selection, _) {
-            final (selectedVenueId, venues) = selection;
-            return ListView.builder(
-              shrinkWrap: true,
-              itemCount: venues.length + 1,
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return Text(
-                    'Venues are shared records, so the address stays consistent across '
-                    "every band's listings.",
-                    style: epText(
-                      size: 11,
-                      color: context.epColors.contentDisabled,
-                      height: 1.45,
-                    ),
-                  );
-                }
-
-                final venue = venues[index - 1];
-                return Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: EpOptionCard(
-                    title: venue.name,
-                    titleCaps: true,
-                    subtitle: '${venue.addr} · ${venue.area}',
-                    selected: selectedVenueId == venue.id,
-                    onTap: () {
-                      app.setGfVenue(venue.id);
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                );
-              },
-            );
-          },
+  var query = '';
+  showEpSheet(
+    context,
+    (ctx) => StatefulBuilder(
+      builder: (context, update) => EpFormSheet(
+        title: 'Venue',
+        child: SizedBox(
+          height: MediaQuery.sizeOf(ctx).height * .55,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                decoration: epInputDecoration(
+                  context,
+                  'Name or area',
+                ).copyWith(labelText: 'Search venues'),
+                onChanged: (value) =>
+                    update(() => query = value.trim().toLowerCase()),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: Selector<AppState, (String?, List<Venue>)>(
+                  selector: (_, app) => (app.gfVenueId, app.venues),
+                  builder: (context, selection, _) {
+                    final (selectedVenueId, venues) = selection;
+                    final matches = venues
+                        .where(
+                          (venue) => '${venue.name} ${venue.area}'
+                              .toLowerCase()
+                              .contains(query),
+                        )
+                        .toList();
+                    return ListView(
+                      children: [
+                        if (matches.isEmpty)
+                          const Text('No venues match this search.'),
+                        for (final venue in matches)
+                          EpOptionCard(
+                            title: venue.name,
+                            subtitle: '${venue.addr} · ${venue.area}',
+                            selected: selectedVenueId == venue.id,
+                            onTap: () {
+                              app.setGfVenue(venue.id);
+                              Navigator.pop(ctx);
+                            },
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    );
-  });
+    ),
+  );
 }
 
 // ---------------------------- price ----------------------------
@@ -410,8 +420,7 @@ class _PriceBodyState extends State<_PriceBody> {
         ),
         const SizedBox(height: 12),
         Text(
-          'Free gigs get roughly twice the RSVPs. Sliding scale? Put the range '
-          'in the gig name.',
+          'This is the amount collected at the door. Ticket access is set separately.',
           style: epText(
             size: 11,
             color: context.epColors.contentDisabled,
@@ -687,6 +696,7 @@ class _PresetNumberField extends StatelessWidget {
           children: [
             for (final preset in presets)
               EpChip(
+                multiple: false,
                 label: preset,
                 active: value == preset,
                 onTap: () => onPreset(preset),

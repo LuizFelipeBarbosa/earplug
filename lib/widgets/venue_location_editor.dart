@@ -266,87 +266,20 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
   }
 
   Widget _neighborhoodPreview(BuildContext context) {
-    final pin = _draft.pin;
-    // Keep the preview at neighborhood scale, without an exact-location marker.
-    final center = pin == null
-        ? widget.initialCenter
-        : LatLng(
-            (pin.latitude * 100).round() / 100,
-            (pin.longitude * 100).round() / 100,
-          );
-    return Material(
-      color: context.epColors.surface,
-      borderRadius: BorderRadius.circular(12),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        key: Key('${widget.keyPrefix}-preview'),
-        onTap: widget.enabled ? _editPin : null,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Row(
-            children: [
-              ExcludeSemantics(
-                child: SizedBox(
-                  width: 104,
-                  height: 80,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: MediaQuery(
-                      data: MediaQuery.of(
-                        context,
-                      ).copyWith(textScaler: TextScaler.noScaling),
-                      child: EpMap(
-                        key: ValueKey(center),
-                        showAttribution: false,
-                        options: MapOptions(
-                          initialCenter: center,
-                          initialZoom: widget.initialZoom,
-                          backgroundColor: context.epColors.background,
-                          interactionOptions: const InteractionOptions(
-                            flags: InteractiveFlag.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'FANS WILL SEE',
-                      style: Theme.of(context).textTheme.epLabel.copyWith(
-                        color: context.epColors.contentSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _draft.areaLabel,
-                      key: Key('${widget.keyPrefix}-area-caption'),
-                      style: Theme.of(
-                        context,
-                      ).textTheme.epBody.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      pin == null ? 'Place map pin' : 'Adjust map pin',
-                      style: Theme.of(context).textTheme.epCaption,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.chevron_right,
-                color: context.epColors.contentSecondary,
-              ),
-            ],
-          ),
-        ),
+    return ListTile(
+      key: Key('${widget.keyPrefix}-preview'),
+      contentPadding: EdgeInsets.zero,
+      leading: const Icon(Icons.place_outlined),
+      title: Text(
+        _draft.areaLabel,
+        key: Key('${widget.keyPrefix}-area-caption'),
       ),
+      subtitle: Text(
+        _draft.pin == null ? 'Adjust map · place a pin' : 'Adjust map',
+      ),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: widget.enabled ? _editPin : null,
+      titleAlignment: ListTileTitleAlignment.center,
     );
   }
 
@@ -464,7 +397,7 @@ class _VenueLocationEditorState extends State<VenueLocationEditor> {
           Text(
             _searchUnavailable
                 ? widget.compactMap
-                      ? 'Address search is unavailable. Open the neighborhood card to place the pin.'
+                      ? 'Address search is unavailable. Use Adjust map to place the pin.'
                       : 'Address search is unavailable. Tap the map to place the pin.'
                 : _transientError!,
             key: Key(

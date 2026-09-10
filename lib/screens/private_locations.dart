@@ -75,8 +75,8 @@ class _PrivateLocationsScreenState extends State<PrivateLocationsScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'LOCATIONS',
-                  style: Theme.of(context).textTheme.epPageHeading,
+                  'Locations',
+                  style: Theme.of(context).textTheme.epFormHeading,
                 ),
               ),
             ],
@@ -147,6 +147,7 @@ class PrivateLocationEditScreen extends StatefulWidget {
 }
 
 class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
+  final _form = GlobalKey<EpFormState>();
   final _scroll = ScrollController();
   final _label = TextEditingController();
   final _city = TextEditingController();
@@ -262,6 +263,7 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
   }
 
   Future<void> _save() async {
+    if (_form.currentState?.validate() != true) return;
     final app = context.read<AppState>();
     if (_busy || !app.canManageOrganization(app.organizationId)) return;
     final needs = [
@@ -339,11 +341,11 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('KEEP'),
+            child: const Text('Keep'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('CONFIRM'),
+            child: const Text('Remove location'),
           ),
         ],
       ),
@@ -384,111 +386,130 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
     final enabled = app.canManageOrganization(app.organizationId) && !_busy;
     return Scaffold(
       backgroundColor: context.epColors.background,
-      body: ListView(
-        controller: _scroll,
-        padding: EdgeInsets.fromLTRB(
-          16,
-          headerTopPad(context),
-          16,
-          tabBarClearance,
-        ),
-        children: [
-          Row(
-            children: [
-              CircleIconButton(onTap: app.back),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  widget.locationId == 'new' ? 'NEW LOCATION' : 'EDIT LOCATION',
-                  style: Theme.of(context).textTheme.epPageHeading,
+      body: EpFormLayout(
+        body: EpForm(
+          key: _form,
+          child: SingleChildScrollView(
+            controller: _scroll,
+            padding: EdgeInsets.fromLTRB(
+              16,
+              headerTopPad(context),
+              16,
+              tabBarClearance,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    CircleIconButton(onTap: app.back),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        widget.locationId == 'new'
+                            ? 'NEW LOCATION'
+                            : 'EDIT LOCATION',
+                        style: Theme.of(context).textTheme.epFormHeading,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.only(top: 80),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_loadError != null)
-            _LoadError(message: _loadError!, onRetry: _load)
-          else ...[
-            FormSection(
-              title: 'LOCATION',
-              description:
-                  'Artists see the area only. The exact address is shared after the deposit.',
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  EpLabeledField(
-                    fieldKey: const Key('private-location-label'),
-                    label: 'LABEL',
-                    hint: 'Backyard',
-                    controller: _label,
-                    required: true,
-                    enabled: enabled,
-                    onChanged: _draftChanged,
+                if (_loading)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 80),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_loadError != null)
+                  _LoadError(message: _loadError!, onRetry: _load)
+                else ...[
+                  FormSection(
+                    title: 'Location',
+                    description:
+                        'Artists see the area only. The exact address is shared after the deposit.',
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        EpLabeledField(
+                          fieldKey: const Key('private-location-label'),
+                          label: 'Label',
+                          hint: 'Backyard',
+                          controller: _label,
+                          required: true,
+                          enabled: enabled,
+                          onChanged: _draftChanged,
+                        ),
+                        const SizedBox(height: EpLayout.fieldGap),
+                        VenueLocationEditor(
+                          key: ValueKey(
+                            'private-location-editor-$_editorRevision',
+                          ),
+                          keyPrefix: 'private-location',
+                          initial: _location,
+                          onChanged: _locationChanged,
+                          showNameField: false,
+                          compactMap: true,
+                          audienceLabel: 'Artists',
+                          enabled: enabled,
+                          helperText: '',
+                          initialCenter:
+                              _location.pin ?? const LatLng(37.7749, -122.4194),
+                          initialZoom: _location.pin == null ? 11.5 : 15,
+                        ),
+                        const SizedBox(height: EpLayout.fieldGap),
+                        EpLabeledField(
+                          fieldKey: const Key('private-location-city'),
+                          label: 'City',
+                          hint: 'City',
+                          controller: _city,
+                          required: true,
+                          enabled: enabled,
+                          onChanged: _draftChanged,
+                        ),
+                        const SizedBox(height: EpLayout.fieldGap),
+                        EpDisclosure(
+                          title: 'Operational details',
+                          summary: 'Optional load-in, parking and access notes',
+                          child: EpLabeledField(
+                            fieldKey: const Key('private-location-notes'),
+                            label: 'Notes',
+                            hint: 'Load-in, parking, gate code…',
+                            controller: _notes,
+                            minLines: 2,
+                            maxLines: 4,
+                            enabled: enabled,
+                            onChanged: _draftChanged,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: EpLayout.fieldGap),
-                  VenueLocationEditor(
-                    key: ValueKey('private-location-editor-$_editorRevision'),
-                    keyPrefix: 'private-location',
-                    initial: _location,
-                    onChanged: _locationChanged,
-                    showNameField: false,
-                    audienceLabel: 'Artists',
-                    enabled: enabled,
-                    helperText:
-                        'The exact address is shared after the deposit.',
-                    initialCenter:
-                        _location.pin ?? const LatLng(37.7749, -122.4194),
-                    initialZoom: _location.pin == null ? 11.5 : 15,
+                  InlineFormFeedback(
+                    error: _error,
+                    errorKey: const Key('private-location-feedback'),
                   ),
-                  const SizedBox(height: EpLayout.fieldGap),
-                  EpLabeledField(
-                    fieldKey: const Key('private-location-city'),
-                    label: 'CITY',
-                    hint: 'City',
-                    controller: _city,
-                    required: true,
-                    enabled: enabled,
-                    onChanged: _draftChanged,
-                  ),
-                  const SizedBox(height: EpLayout.fieldGap),
-                  EpLabeledField(
-                    fieldKey: const Key('private-location-notes'),
-                    label: 'NOTES',
-                    hint: 'Load-in, parking, gate code…',
-                    controller: _notes,
-                    minLines: 2,
-                    maxLines: 4,
-                    enabled: enabled,
-                    onChanged: _draftChanged,
-                  ),
+                  const SizedBox(height: 16),
+
+                  if (widget.locationId != 'new') ...[
+                    const SizedBox(height: 12),
+                    EpButton(
+                      'REMOVE',
+                      key: const Key('private-location-remove'),
+                      kind: EpButtonKind.outline,
+                      onTap: enabled ? _remove : null,
+                    ),
+                  ],
                 ],
-              ),
+              ],
             ),
-            InlineFormFeedback(
-              error: _error,
-              errorKey: const Key('private-location-feedback'),
-            ),
-            const SizedBox(height: 16),
-            EpButton(
-              _busy ? 'SAVING…' : 'SAVE',
-              key: const Key('private-location-save'),
-              onTap: enabled ? _save : null,
-            ),
-            if (widget.locationId != 'new') ...[
-              const SizedBox(height: 12),
-              EpButton(
-                'REMOVE',
-                key: const Key('private-location-remove'),
-                kind: EpButtonKind.outline,
-                onTap: enabled ? _remove : null,
-              ),
-            ],
-          ],
-        ],
+          ),
+        ),
+        footer: !_loading && _loadError == null
+            ? StickyActionBar(
+                key: const Key('private-location-save'),
+                primaryLabel: _busy ? 'Saving…' : 'Save location',
+                onPrimary: enabled ? _save : null,
+              )
+            : const SizedBox.shrink(),
       ),
     );
   }

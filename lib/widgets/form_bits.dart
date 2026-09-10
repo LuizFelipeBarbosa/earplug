@@ -8,16 +8,24 @@ import 'ep_sheet.dart';
 /// A form footer participates in layout, including when the keyboard is open.
 /// Screens supply their existing scrollable and retain ownership of the draft.
 class EpFormLayout extends StatelessWidget {
-  const EpFormLayout({super.key, required this.body, required this.footer});
+  const EpFormLayout({
+    super.key,
+    required this.body,
+    required this.footer,
+    this.constrainWidth = true,
+  });
 
   final Widget body;
   final Widget footer;
+  final bool constrainWidth;
 
   @override
   Widget build(BuildContext context) => Align(
     alignment: Alignment.topCenter,
     child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: EpLayout.formWidth + 32),
+      constraints: BoxConstraints(
+        maxWidth: constrainWidth ? EpLayout.formWidth + 32 : double.infinity,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -113,23 +121,24 @@ class _EpDisclosureState extends State<EpDisclosure>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Semantics(
-          button: true,
-          expanded: _expanded,
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(
-              sentenceCase(widget.title),
-              style: Theme.of(context).textTheme.epBody.copyWith(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
+        MergeSemantics(
+          child: Semantics(
+            expanded: _expanded,
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(
+                sentenceCase(widget.title),
+                style: Theme.of(context).textTheme.epBody.copyWith(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              subtitle: _expanded || widget.summary.isEmpty
+                  ? null
+                  : Text(widget.summary),
+              trailing: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+              onTap: () => setState(() => _expanded = !_expanded),
             ),
-            subtitle: _expanded || widget.summary.isEmpty
-                ? null
-                : Text(widget.summary),
-            trailing: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
-            onTap: () => setState(() => _expanded = !_expanded),
           ),
         ),
         Offstage(
@@ -219,6 +228,7 @@ class EpSelectionField<T> extends StatelessWidget {
     required this.selected,
     required this.onChanged,
     this.multiple = false,
+    this.required = false,
     this.maxSelected,
     this.emptyLabel = 'Choose',
   });
@@ -227,6 +237,7 @@ class EpSelectionField<T> extends StatelessWidget {
   final Set<T> selected;
   final ValueChanged<Set<T>>? onChanged;
   final bool multiple;
+  final bool required;
   final int? maxSelected;
   final String emptyLabel;
 
@@ -238,18 +249,25 @@ class EpSelectionField<T> extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FieldLabel(label),
+        FieldLabel(label, required: required),
         const SizedBox(height: 8),
-        OutlinedButton(
-          onPressed: onChanged == null ? null : () => _open(context),
-          style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(labels.isEmpty ? emptyLabel : labels.join(', ')),
+        MergeSemantics(
+          child: Semantics(
+            label: sentenceCase(label),
+            child: OutlinedButton(
+              onPressed: onChanged == null ? null : () => _open(context),
+              style: OutlinedButton.styleFrom(alignment: Alignment.centerLeft),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      labels.isEmpty ? emptyLabel : labels.join(', '),
+                    ),
+                  ),
+                  const Icon(Icons.expand_more),
+                ],
               ),
-              const Icon(Icons.expand_more),
-            ],
+            ),
           ),
         ),
       ],
@@ -297,7 +315,7 @@ class EpSelectionField<T> extends StatelessWidget {
                                   'Search ${sentenceCase(label).toLowerCase()}',
                             ),
                         onChanged: (value) =>
-                            update(() => query = value.toLowerCase()),
+                            update(() => query = value.trim().toLowerCase()),
                       ),
                     ),
                     if (multiple)
@@ -631,8 +649,9 @@ class _EpLabeledFieldState extends State<EpLabeledField> {
             textCapitalization: textCapitalization,
             onChanged: (value) {
               onChanged?.call(value);
-              if (_attempted)
+              if (_attempted) {
                 setState(() => _validationError = _validateValue());
+              }
             },
             onEditingComplete: onEditingComplete,
             focusNode: focusNode ?? _focus,
@@ -1204,3 +1223,26 @@ class FormSection extends StatelessWidget {
     );
   }
 }
+
+/// Ask only when an explicit exit would discard edits that have not persisted.
+Future<bool> confirmDiscardForm(BuildContext context) async =>
+    await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Discard unsaved changes?'),
+        content: const Text(
+          'Your changes have not been saved. Keep editing to finish or save your draft.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Discard changes'),
+          ),
+        ],
+      ),
+    ) ==
+    true;

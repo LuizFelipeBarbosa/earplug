@@ -282,27 +282,34 @@ class BandGenreEditor extends StatelessWidget {
       key: const ValueKey('band-genres-field'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const FieldLabel('GENRES', required: true),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 7,
-          runSpacing: 7,
-          children: [
+        EpSelectionField<String>(
+          label: 'Genres',
+          required: true,
+          multiple: true,
+          maxSelected: 3,
+          options: [
             for (final genre in {...kGenres, ...genres})
-              EpChip(
-                label: genre,
-                active: genres.contains(genre),
-                onTap: enabled ? () => onToggle(genre) : null,
-              ),
-            EpChip(
-              key: const ValueKey('show-custom-genre'),
-              label: '+ ADD',
-              active: false,
-              ghost: true,
-              semanticLabel: 'Add custom genre',
-              onTap: enabled ? onShowCustomGenre : null,
-            ),
+              (value: genre, label: genre),
           ],
+          selected: genres.toSet(),
+          onChanged: !enabled
+              ? null
+              : (values) {
+                  for (final genre in List<String>.of(genres)) {
+                    if (!values.contains(genre)) onToggle(genre);
+                  }
+                  for (final genre in values) {
+                    if (!genres.contains(genre)) onToggle(genre);
+                  }
+                },
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            key: const ValueKey('show-custom-genre'),
+            onPressed: enabled ? onShowCustomGenre : null,
+            child: const Text('Add custom genre'),
+          ),
         ),
         if (addingCustomGenre) ...[
           const SizedBox(height: 10),

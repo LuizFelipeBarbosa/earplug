@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('host locations show labels and areas and open the editor', (
@@ -62,7 +63,7 @@ void main() {
 
     await _enterText(tester, 'private-location-label', 'Backyard');
     await _pickAddress(tester, 'Valencia');
-    expect(find.text('Artists will see: Mission'), findsOneWidget);
+    expect(find.text('Mission'), findsOneWidget);
     expect(find.textContaining('Fans will see:'), findsNothing);
     await _reveal(tester, find.byKey(const Key('private-location-city')));
     expect(
@@ -124,14 +125,14 @@ void main() {
 
         await _enterText(tester, 'private-location-label', 'Backyard');
         await _pickAddress(tester, 'Valencia');
-        expect(find.text('Artists will see: Mission'), findsOneWidget);
+        expect(find.text('Mission'), findsOneWidget);
         await _reveal(tester, find.byKey(const Key('private-location-city')));
         expect(
           _field(tester, 'private-location-city').controller!.text,
           isEmpty,
         );
         await _tap(tester, 'private-location-save');
-        expect(find.text('Needs: city'), findsOneWidget);
+        expect(find.text('Enter city.'), findsOneWidget);
         await tester.pumpWidget(const SizedBox.shrink());
       },
     );
@@ -153,8 +154,8 @@ void main() {
     );
 
     await _tap(tester, 'private-location-save');
-    expect(find.byKey(const Key('private-location-feedback')), findsOneWidget);
-    expect(find.text('Needs: label, address, map pin, city'), findsOneWidget);
+    expect(find.text('Enter label.'), findsOneWidget);
+    expect(find.text('Enter city.'), findsOneWidget);
     expect(
       await repository.privateLocationsFor('org2'),
       hasLength(beforeCount),
@@ -228,7 +229,7 @@ void main() {
 
     await _tap(tester, 'private-location-remove');
     expect(find.byType(AlertDialog), findsOneWidget);
-    await tester.tap(find.widgetWithText(TextButton, 'KEEP'));
+    await tester.tap(findUiControl(TextButton, 'KEEP'));
     await tester.pumpAndSettle();
     expect(
       (await repository.privateLocationsFor(
@@ -237,7 +238,7 @@ void main() {
       contains(id),
     );
     await _tap(tester, 'private-location-remove');
-    await tester.tap(find.widgetWithText(FilledButton, 'CONFIRM'));
+    await tester.tap(findUiControl(FilledButton, 'Remove location'));
     await tester.pumpAndSettle();
     expect(
       (await repository.privateLocationsFor(
@@ -266,7 +267,7 @@ void main() {
     );
 
     await _tap(tester, 'private-location-remove');
-    await tester.tap(find.widgetWithText(FilledButton, 'CONFIRM'));
+    await tester.tap(findUiControl(FilledButton, 'Remove location'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('private-location-feedback')), findsOneWidget);
     expect(
@@ -294,7 +295,7 @@ void main() {
     );
 
     expect(find.text('Could not load locations.'), findsOneWidget);
-    await tester.tap(find.text('RETRY'));
+    await tester.tap(findUiText('RETRY'));
     await tester.pumpAndSettle();
     expect(
       find.text(
@@ -329,14 +330,14 @@ void main() {
             .map((text) => text.data),
         ['HOST READINESS', 'Verified', 'Profile complete'],
       );
-      expect(find.text('ORGANIZATION READINESS'), findsNothing);
+      expect(findUiText('ORGANIZATION READINESS'), findsNothing);
       expect(find.text('Stripe details'), findsNothing);
       expect(find.text('Payouts enabled'), findsNothing);
       expect(find.text('Team invited'), findsNothing);
-      expect(find.text('VENUES'), findsNothing);
-      expect(find.text('MEMBERS'), findsNothing);
+      expect(findUiText('VENUES'), findsNothing);
+      expect(findUiText('MEMBERS'), findsNothing);
       await _reveal(tester, find.byKey(const Key('org-dash-locations')));
-      expect(find.text('NEW REQUEST'), findsOneWidget);
+      expect(findUiText('NEW REQUEST'), findsOneWidget);
       expect(
         find.byKey(const Key('org-dash-command-opportunity')),
         findsOneWidget,
@@ -386,10 +387,10 @@ void main() {
         'Team invited',
       ],
     );
-    expect(find.text('HOST READINESS'), findsNothing);
-    expect(find.text('MEMBERS'), findsOneWidget);
+    expect(findUiText('HOST READINESS'), findsNothing);
+    expect(findUiText('MEMBERS'), findsOneWidget);
     await _reveal(tester, find.byKey(const Key('org-dash-command-venues')));
-    expect(find.text('NEW OPPORTUNITY'), findsOneWidget);
+    expect(findUiText('NEW OPPORTUNITY'), findsOneWidget);
     expect(find.byKey(const Key('org-dash-command-venues')), findsOneWidget);
     expect(find.byKey(const Key('org-dash-command-team')), findsOneWidget);
     expect(find.byKey(const Key('org-dash-command-settings')), findsOneWidget);
@@ -403,20 +404,8 @@ TextField _field(WidgetTester tester, String key) =>
     tester.widget<TextField>(find.byKey(Key(key)));
 
 Future<void> _reveal(WidgetTester tester, Finder finder) async {
-  final scrollable = find
-      .descendant(
-        of: find.byType(ListView).first,
-        matching: find.byType(Scrollable),
-      )
-      .first;
-  tester.state<ScrollableState>(scrollable).position.jumpTo(0);
-  await tester.pump();
-  await tester.scrollUntilVisible(
-    finder,
-    250,
-    scrollable: scrollable,
-    maxScrolls: 40,
-  );
+  await openAllFormSections(tester);
+  await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
 }
 

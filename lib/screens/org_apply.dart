@@ -63,12 +63,15 @@ class OrgApplyScreen extends StatefulWidget {
   State<OrgApplyScreen> createState() => _OrgApplyScreenState();
 }
 
-enum _ApplicationStep { venue, contact }
+enum _ApplicationStep { venue, contact, review }
 
 class _OrgApplyScreenState extends State<OrgApplyScreen> {
   static const _autosaveDelay = Duration(milliseconds: 600);
 
+  bool _disposing = false;
   final _scroll = ScrollController();
+  final _venueForm = GlobalKey<EpFormState>();
+  final _contactForm = GlobalKey<EpFormState>();
   final _agreementRecognizer = TapGestureRecognizer();
   final _orgName = TextEditingController();
   final _capacity = TextEditingController();
@@ -92,7 +95,6 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   bool _venueNameEdited = false;
   int _venueEditorGeneration = 0;
   _ApplicationStep _step = _ApplicationStep.venue;
-  bool _contactVisited = false;
   bool _agreed = false;
   bool _redirected = false;
 
@@ -142,7 +144,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
     if (_autosaveTimer?.isActive == true || _hasUnsavedChanges) {
       return 'Saving…';
     }
-    return 'Draft saved';
+    return _applicationId == null ? 'Draft not saved yet' : 'Draft saved';
   }
 
   @override
@@ -177,6 +179,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
 
   @override
   void dispose() {
+    _disposing = true;
     _autosaveTimer?.cancel();
     _agreementRecognizer.dispose();
     _scroll.dispose();
@@ -202,7 +205,6 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         storedVenueName != application.orgName;
     _autosaveTimer?.cancel();
     _step = _ApplicationStep.venue;
-    _contactVisited = false;
     _applicationId = application.id;
     _revision = application.revision;
     _orgName.text = application.orgName;
@@ -291,6 +293,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   }
 
   void _saveOnBlur() {
+    if (_disposing || !mounted) return;
     if (_hasUnsavedChanges) unawaited(_saveDraft());
   }
 
@@ -486,17 +489,38 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
     }
   }
 
+  Future<void> _close() async {
+    if (_busy) return;
+    if (_hasUnsavedChanges && !await _saveDraft()) {
+      if (mounted) revealFormFeedback(this, _scroll);
+      return;
+    }
+    if (mounted) context.read<AppState>().back();
+  }
+
   void _showStep(_ApplicationStep step) {
     FocusScope.of(context).unfocus();
     setState(() {
       _step = step;
-      if (step == _ApplicationStep.contact) _contactVisited = true;
     });
     if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
   Future<void> _continue() async {
-    if (!_venueComplete || _busy) return;
+    if (_busy) return;
+    final venueStep = _step == _ApplicationStep.venue;
+    final formValid =
+        (venueStep ? _venueForm : _contactForm).currentState?.validate() ??
+        false;
+    final missing = (venueStep ? _venueRequirements : _contactRequirements)
+        .where((item) => !item.complete)
+        .map((item) => item.label)
+        .toList();
+    if (!formValid || missing.isNotEmpty) {
+      setState(() => _error = 'Complete ${missing.join(', ')} to continue.');
+      if (formValid) revealFormFeedback(this, _scroll);
+      return;
+    }
     FocusScope.of(context).unfocus();
     setState(() {
       _blockingSave = true;
@@ -509,7 +533,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
       revealFormFeedback(this, _scroll);
       return;
     }
-    _showStep(_ApplicationStep.contact);
+    _showStep(venueStep ? _ApplicationStep.contact : _ApplicationStep.review);
   }
 
   Future<void> _saveForLater() async {
@@ -582,65 +606,104 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
     }
 
     final venueStep = _step == _ApplicationStep.venue;
-    final requirements = venueStep ? _venueRequirements : _contactRequirements;
+    final reviewStep = _step == _ApplicationStep.review;
     return Material(
       color: context.epColors.background,
-      child: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              controller: _scroll,
-              padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
-              children: [
-                _header(context),
-                if (venueStep)
-                  ..._venueFields(context)
-                else
-                  ..._contactFields(context),
-                InlineFormFeedback(
-                  error: _error,
-                  errorKey: const ValueKey('org-apply-feedback'),
-                ),
-                if (venueStep &&
-                    _contactVisited &&
-                    _venueComplete &&
-                    _error != null)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: TextButton(
-                      key: const ValueKey('org-apply-edit-contact'),
-                      onPressed: _busy
-                          ? null
-                          : () => _showStep(_ApplicationStep.contact),
-                      child: const Text('EDIT CONTACT DETAILS'),
-                    ),
+      child: EpFormLayout(
+        body: SingleChildScrollView(
+          controller: _scroll,
+          padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(context),
+              EpFormStep(
+                active: venueStep,
+                child: EpForm(
+                  key: _venueForm,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _venueFields(context),
                   ),
-                if (!venueStep || !_venueComplete) ...[
-                  const SizedBox(height: 18),
-                  _RequirementsChecklist(requirements: requirements),
-                ],
-              ],
-            ),
+                ),
+              ),
+              EpFormStep(
+                active: _step == _ApplicationStep.contact,
+                child: EpForm(
+                  key: _contactForm,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _contactFields(context),
+                  ),
+                ),
+              ),
+              EpFormStep(
+                active: reviewStep,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 20),
+                    Text(
+                      _orgName.text,
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    if (_orgType == OrganizationType.venueOperator)
+                      Text(
+                        '${_venueLocation.name} · ${_venueLocation.address}',
+                      ),
+                    const SizedBox(height: 20),
+                    Text('${_contactName.text} · ${_businessEmail.text}'),
+                    Text(
+                      '${_documents.length} verification documents attached',
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Your application and verification documents will be reviewed by EarPlug. You can save your draft and return before submitting.',
+                    ),
+                  ],
+                ),
+              ),
+              if (_step == _ApplicationStep.venue &&
+                  _error != null &&
+                  RegExp(
+                    r'contact|email|phone|website',
+                    caseSensitive: false,
+                  ).hasMatch(_error!))
+                TextButton(
+                  key: const ValueKey('org-apply-edit-contact'),
+                  onPressed: () => _showStep(_ApplicationStep.contact),
+                  child: const Text('Review contact details'),
+                ),
+              InlineFormFeedback(
+                error: _error,
+                errorKey: const ValueKey('org-apply-feedback'),
+              ),
+            ],
           ),
-          StickyActionBar(
-            key: ValueKey(
-              venueStep ? 'org-apply-continue' : 'org-apply-submit',
-            ),
-            primaryLabel: _blockingSave
-                ? 'SAVING…'
-                : _submitting
-                ? 'SUBMITTING…'
-                : venueStep
-                ? 'CONTINUE'
-                : 'SUBMIT APPLICATION',
-            onPrimary: venueStep
-                ? (_venueComplete && !_busy ? _continue : null)
-                : (_canSubmit ? _submit : null),
-            secondaryKey: const ValueKey('org-apply-save'),
-            secondaryLabel: 'SAVE FOR LATER',
-            onSecondary: _busy ? null : _saveForLater,
-          ),
-        ],
+        ),
+        footer: StickyActionBar(
+          key: ValueKey(reviewStep ? 'org-apply-submit' : 'org-apply-continue'),
+          primaryLabel: _blockingSave
+              ? 'SAVING…'
+              : _submitting
+              ? 'SUBMITTING…'
+              : !reviewStep
+              ? 'Continue'
+              : 'Submit application',
+          onPrimary: _busy
+              ? null
+              : !reviewStep
+              ? _continue
+              : _canSubmit
+              ? _submit
+              : null,
+          secondaryLabel: venueStep ? 'Save for later' : 'Back',
+          onSecondary: _busy
+              ? null
+              : venueStep
+              ? _saveForLater
+              : () => _showStep(_ApplicationStep.values[_step.index - 1]),
+        ),
       ),
     );
   }
@@ -663,14 +726,14 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
               onTap: _busy
                   ? null
                   : venueStep
-                  ? () => context.read<AppState>().back()
-                  : () => _showStep(_ApplicationStep.venue),
+                  ? _close
+                  : () => _showStep(_ApplicationStep.values[_step.index - 1]),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'BECOME AN ORGANIZER',
-                style: textTheme.epPageHeading,
+                'Become an organizer',
+                style: textTheme.epFormHeading,
               ),
             ),
           ],
@@ -680,53 +743,37 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
           alignment: Alignment.centerRight,
           child: Semantics(
             liveRegion: true,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: colors.surfaceRaised,
-                borderRadius: BorderRadius.circular(99),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    saveState == 'Save failed'
-                        ? Icons.error_outline
-                        : Icons.circle,
-                    size: 10,
-                    color: saveState == 'Save failed'
-                        ? colors.destructive
-                        : saveState == 'Saving…'
-                        ? colors.warning
-                        : colors.success,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    saveState,
-                    key: const ValueKey('org-apply-save-state'),
-                    style: textTheme.epCaption,
-                  ),
-                ],
+            child: Text(
+              saveState,
+              key: const ValueKey('org-apply-save-state'),
+              style: textTheme.epCaption.copyWith(
+                color: _draftSaveFailed
+                    ? colors.destructive
+                    : colors.contentSecondary,
               ),
             ),
           ),
         ),
         const SizedBox(height: 18),
-        Text(
-          venueStep ? 'STEP 1 OF 2 · VENUE' : 'STEP 2 OF 2 · CONTACT',
+        EpFormSteps(
           key: const ValueKey('org-apply-step'),
-          style: textTheme.epLabel.copyWith(color: colors.contentSecondary),
+          labels: const [
+            'Organization and venue',
+            'Contact and verification',
+            'Review',
+          ],
+          current: _step.index,
+          onBackToStep: _busy
+              ? null
+              : (index) => _showStep(_ApplicationStep.values[index]),
         ),
-        const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: venueStep ? .5 : 1,
-          minHeight: 4,
-          borderRadius: BorderRadius.circular(99),
-          color: colors.accent,
-          backgroundColor: colors.border,
-          semanticsLabel: venueStep
-              ? 'Step 1 of 2: Venue'
-              : 'Step 2 of 2: Contact',
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            key: const ValueKey('org-apply-save'),
+            onPressed: _busy ? null : _saveForLater,
+            child: const Text('Save for later'),
+          ),
         ),
       ],
     );
@@ -735,30 +782,33 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   List<Widget> _venueFields(BuildContext context) {
     final enabled = !_busy;
     return [
-      const SectionBar.form(label: 'ORGANIZATION TYPE'),
+      const SectionBar.form(label: 'Organization type'),
       Wrap(
         spacing: 8,
         runSpacing: 8,
         children: [
           EpChip(
+            multiple: false,
             key: const Key('org-apply-type-venueOperator'),
-            label: 'BAR OR CLUB',
+            label: 'Bar or club',
             active: _orgType == OrganizationType.venueOperator,
             onTap: enabled
                 ? () => _selectOrgType(OrganizationType.venueOperator)
                 : null,
           ),
           EpChip(
+            multiple: false,
             key: const Key('org-apply-type-promoter'),
-            label: 'PROMOTER OR COLLECTIVE',
+            label: 'Promoter or collective',
             active: _orgType == OrganizationType.promoter,
             onTap: enabled
                 ? () => _selectOrgType(OrganizationType.promoter)
                 : null,
           ),
           EpChip(
+            multiple: false,
             key: const Key('org-apply-type-studentOrg'),
-            label: 'STUDENT ORGANIZATION',
+            label: 'Student organization',
             active: _orgType == OrganizationType.studentOrg,
             onTap: enabled
                 ? () => _selectOrgType(OrganizationType.studentOrg)
@@ -784,7 +834,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         },
         child: EpLabeledField(
           fieldKey: const ValueKey('org-apply-name'),
-          label: 'ORGANIZATION NAME',
+          label: 'Organization name',
           required: true,
           hint: 'Night Heron Club',
           controller: _orgName,
@@ -804,11 +854,11 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
           segments: const [
             ButtonSegment(
               value: 'bar',
-              label: Text('BAR', key: ValueKey('org-apply-kind-bar')),
+              label: Text('Bar', key: ValueKey('org-apply-kind-bar')),
             ),
             ButtonSegment(
               value: 'club',
-              label: Text('CLUB', key: ValueKey('org-apply-kind-club')),
+              label: Text('Club', key: ValueKey('org-apply-kind-club')),
             ),
           ],
           selected: {?_kind},
@@ -876,10 +926,10 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
   List<Widget> _contactFields(BuildContext context) {
     final enabled = !_busy;
     return [
-      const SectionBar.form(label: 'CONTACT'),
+      const SectionBar.form(label: 'Contact'),
       EpLabeledField(
         fieldKey: const ValueKey('org-apply-contact-name'),
-        label: 'CONTACT NAME',
+        label: 'Contact name',
         required: true,
         hint: 'Who should we contact?',
         controller: _contactName,
@@ -892,7 +942,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
       const SizedBox(height: EpLayout.fieldGap),
       EpLabeledField(
         fieldKey: const ValueKey('org-apply-email'),
-        label: 'BUSINESS EMAIL',
+        label: 'Business email',
         required: true,
         hint: 'bookings@example.com',
         controller: _businessEmail,
@@ -926,7 +976,7 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         onChanged: _textChanged,
         onEditingComplete: _saveOnBlur,
       ),
-      SectionBar.form(label: 'VERIFICATION', count: _documents.length),
+      SectionBar.form(label: 'Verification', count: _documents.length),
       if (_documents.isNotEmpty) ...[
         Wrap(
           spacing: 10,
@@ -980,51 +1030,6 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
         ),
       ),
     ];
-  }
-}
-
-class _RequirementsChecklist extends StatelessWidget {
-  const _RequirementsChecklist({required this.requirements});
-  final List<({String label, bool complete})> requirements;
-
-  @override
-  Widget build(BuildContext context) {
-    final completed = requirements.where((item) => item.complete).length;
-    return Column(
-      key: const ValueKey('org-apply-missing'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          completed == requirements.length
-              ? 'READY TO SUBMIT'
-              : '$completed OF ${requirements.length} COMPLETE',
-          style: Theme.of(context).textTheme.epLabel.copyWith(
-            color: context.epColors.contentSecondary,
-          ),
-        ),
-        for (final item in requirements.where((item) => !item.complete))
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  Icons.radio_button_unchecked,
-                  size: 16,
-                  color: context.epColors.contentDisabled,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    item.label,
-                    style: Theme.of(context).textTheme.epCaption,
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
   }
 }
 

@@ -22,6 +22,8 @@ class BandCreateScreen extends StatefulWidget {
 }
 
 class _BandCreateScreenState extends State<BandCreateScreen> {
+  final _form = GlobalKey<EpFormState>();
+  String? _validationError;
   final _name = TextEditingController();
   final _area = TextEditingController();
   final _bio = TextEditingController();
@@ -98,6 +100,17 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
     setState(() => _addingCustomGenre = false);
   }
 
+  void _create() {
+    final valid = _form.currentState?.validate() ?? false;
+    final app = context.read<AppState>();
+    setState(
+      () => _validationError = app.nbGenres.isEmpty
+          ? 'Choose at least one genre.'
+          : null,
+    );
+    if (valid && app.canCreateBand) app.createBand();
+  }
+
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
@@ -107,16 +120,13 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
     _wasCreated = app.nbCreated;
     if (app.nbCreated) return const _CreatedView();
 
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              headerTopPad(context),
-              16,
-              154 + MediaQuery.paddingOf(context).bottom,
-            ),
+    return EpFormLayout(
+      body: EpForm(
+        key: _form,
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
@@ -124,8 +134,8 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'CREATE BAND',
-                      style: Theme.of(context).textTheme.epPageHeading,
+                      'Create band',
+                      style: Theme.of(context).textTheme.epFormHeading,
                     ),
                   ),
                   ReadyPill(ready: app.canCreateBand),
@@ -137,48 +147,9 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                 style: Theme.of(context).textTheme.epCaption,
               ),
               const SizedBox(height: 18),
-              BandIdentityHeader(
-                name: app.nbName,
-                area: app.nbArea ?? '',
-                initials: bandInitialsFor(app.nbName),
-                color: Ep.brand,
-                avatarBytes: app.nbPhoto?.bytes,
-                bannerBytes: app.nbBanner?.bytes,
-                onAvatarTap: () => _pickArtwork(_CreateArtworkRole.avatar),
-                onBannerTap: () => _pickArtwork(_CreateArtworkRole.banner),
-              ),
-              const SizedBox(height: 9),
-              Text(
-                'Profile image and header image are separate. Changing one will not replace the other.',
-                style: Theme.of(context).textTheme.epCaption,
-              ),
-              if (app.nbPhoto != null || app.nbBanner != null) ...[
-                const SizedBox(height: 2),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 2,
-                  children: [
-                    if (app.nbPhoto != null)
-                      TextAction(
-                        'REMOVE PHOTO',
-                        key: const ValueKey('clear-band-photo'),
-                        onTap: () => app.setNbPhoto(null),
-                        color: context.epColors.contentSecondary,
-                      ),
-                    if (app.nbBanner != null)
-                      TextAction(
-                        'REMOVE HEADER IMAGE',
-                        key: const ValueKey('clear-band-banner'),
-                        onTap: () => app.setNbBanner(null),
-                        color: context.epColors.contentSecondary,
-                      ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 20),
               EpLabeledField(
                 fieldKey: const ValueKey('create-band-name'),
-                label: 'BAND NAME',
+                label: 'Band name',
                 hint: 'Your band name',
                 controller: _name,
                 required: true,
@@ -187,22 +158,14 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
               const SizedBox(height: EpLayout.fieldGap),
               EpLabeledField(
                 fieldKey: const ValueKey('create-home-base'),
-                label: 'HOME BASE',
+                label: 'Home base',
                 hint: 'Neighborhood or city',
                 controller: _area,
                 required: true,
                 onChanged: app.setNbArea,
               ),
               const SizedBox(height: EpLayout.fieldGap),
-              EpLabeledField(
-                fieldKey: const ValueKey('create-about'),
-                label: 'ABOUT',
-                hint: 'Tell fans about the band',
-                controller: _bio,
-                minLines: 4,
-                maxLines: 7,
-                onChanged: app.setNbBio,
-              ),
+
               const SizedBox(height: EpLayout.fieldGap),
               BandGenreEditor(
                 genres: app.nbGenres,
@@ -213,15 +176,83 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                     setState(() => _addingCustomGenre = true),
                 onAddCustomGenre: _addCustomGenre,
               ),
-              FormSection(
+              EpDisclosure(
+                title: 'About',
+                summary: _bio.text.isEmpty ? 'Optional biography' : _bio.text,
+                child: EpLabeledField(
+                  fieldKey: const ValueKey('create-about'),
+                  label: 'About',
+                  hint: 'Tell fans about the band',
+                  controller: _bio,
+                  minLines: 4,
+                  maxLines: 7,
+                  onChanged: app.setNbBio,
+                ),
+              ),
+              EpDisclosure(
+                title: 'Images',
+                summary: 'Optional profile and header images',
+                child: Column(
+                  children: [
+                    BandIdentityHeader(
+                      name: app.nbName,
+                      area: app.nbArea ?? '',
+                      initials: bandInitialsFor(app.nbName),
+                      color: Ep.brand,
+                      avatarBytes: app.nbPhoto?.bytes,
+                      bannerBytes: app.nbBanner?.bytes,
+                      onAvatarTap: () =>
+                          _pickArtwork(_CreateArtworkRole.avatar),
+                      onBannerTap: () =>
+                          _pickArtwork(_CreateArtworkRole.banner),
+                    ),
+                    const SizedBox(height: 9),
+                    Text(
+                      'Profile image and header image are separate. Changing one will not replace the other.',
+                      style: Theme.of(context).textTheme.epCaption,
+                    ),
+                    if (app.nbPhoto != null || app.nbBanner != null) ...[
+                      const SizedBox(height: 2),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 2,
+                        children: [
+                          if (app.nbPhoto != null)
+                            TextAction(
+                              'REMOVE PHOTO',
+                              key: const ValueKey('clear-band-photo'),
+                              onTap: () => app.setNbPhoto(null),
+                              color: context.epColors.contentSecondary,
+                            ),
+                          if (app.nbBanner != null)
+                            TextAction(
+                              'REMOVE HEADER IMAGE',
+                              key: const ValueKey('clear-band-banner'),
+                              onTap: () => app.setNbBanner(null),
+                              color: context.epColors.contentSecondary,
+                            ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                  ],
+                ),
+              ),
+              EpDisclosure(
                 title: 'Links',
-                description:
-                    'Add the places where fans can listen, watch, and follow.',
+                summary:
+                    [
+                      _instagram.text,
+                      _bandcamp.text,
+                      _youtube.text,
+                    ].where((v) => v.isNotEmpty).join(' · ').isEmpty
+                    ? 'Optional listening and social links'
+                    : 'Links added',
                 child: Column(
                   children: [
                     EpLabeledField(
                       fieldKey: const ValueKey('create-instagram'),
-                      label: 'INSTAGRAM',
+                      label: 'Instagram',
                       hint: 'Instagram',
                       controller: _instagram,
                       onChanged: app.setNbIg,
@@ -229,7 +260,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                     const SizedBox(height: EpLayout.fieldGap),
                     EpLabeledField(
                       fieldKey: const ValueKey('create-bandcamp'),
-                      label: 'BANDCAMP',
+                      label: 'Bandcamp',
                       hint: 'Bandcamp',
                       controller: _bandcamp,
                       onChanged: app.setNbBc,
@@ -237,7 +268,7 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                     const SizedBox(height: EpLayout.fieldGap),
                     EpLabeledField(
                       fieldKey: const ValueKey('create-youtube'),
-                      label: 'YOUTUBE OR VIDEO',
+                      label: 'Youtube or video',
                       hint: 'YouTube or video',
                       controller: _youtube,
                       onChanged: app.setNbYt,
@@ -245,13 +276,14 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                   ],
                 ),
               ),
-              FormSection(
+              EpDisclosure(
                 title: 'Credits',
-                description:
-                    'Acknowledge producers, artists, labels, and collaborators.',
+                summary: _credits.text.isEmpty
+                    ? 'Optional collaborators and acknowledgments'
+                    : _credits.text,
                 child: EpLabeledField(
                   fieldKey: const ValueKey('create-credits'),
-                  label: 'CREDITS',
+                  label: 'Credits',
                   hint: 'Who helped make the work',
                   controller: _credits,
                   minLines: 3,
@@ -259,19 +291,28 @@ class _BandCreateScreenState extends State<BandCreateScreen> {
                   onChanged: app.setNbCredits,
                 ),
               ),
-              _PostCreateRow(
-                icon: Icons.group_outlined,
-                label: 'INVITE BAND MEMBERS',
-                enabled: app.nbEditingCreated,
-                onTap: app.openInvitationPanel,
-                disabledMessage:
-                    'Create your band first, then invite band members.',
-              ),
+              if (app.nbEditingCreated)
+                _PostCreateRow(
+                  icon: Icons.group_outlined,
+                  label: 'Invite band members',
+                  enabled: app.nbEditingCreated,
+                  onTap: app.openInvitationPanel,
+                  disabledMessage:
+                      'Create your band first, then invite band members.',
+                ),
             ],
           ),
         ),
-        const Positioned(left: 0, right: 0, bottom: 0, child: _CreateBar()),
-      ],
+      ),
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InlineFormFeedback(
+            error: app.nbGenres.isEmpty ? _validationError : null,
+          ),
+          _CreateBar(onCreate: _create),
+        ],
+      ),
     );
   }
 }
@@ -341,63 +382,19 @@ class _PostCreateRow extends StatelessWidget {
 }
 
 class _CreateBar extends StatelessWidget {
-  const _CreateBar();
+  const _CreateBar({required this.onCreate});
+  final VoidCallback onCreate;
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final missing = app.bandMissing;
-    final live = app.canCreateBand && !app.nbSaving;
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        30,
-        16,
-        32 + MediaQuery.paddingOf(context).bottom,
-      ),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            context.epColors.background.withValues(alpha: 0),
-            context.epColors.background,
-          ],
-          stops: const [0, .34],
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            missing.isNotEmpty
-                ? 'Still needs ${missing.join(' + ')}'
-                : app.nbEditingCreated
-                ? 'Your band is live. Save to publish these updates.'
-                : 'Ready. Images, about, and links can be added any time.',
-            textAlign: TextAlign.center,
-            style: epText(
-              size: 11,
-              weight: FontWeight.w700,
-              color: missing.isEmpty
-                  ? context.epColors.accent
-                  : context.epColors.contentSecondary,
-            ),
-          ),
-          const SizedBox(height: 9),
-          EpButton(
-            app.nbSaving
-                ? 'SAVING…'
-                : app.nbEditingCreated
-                ? 'SAVE CHANGES'
-                : 'CREATE BAND',
-            fontSize: 14,
-            kind: live ? EpButtonKind.filled : EpButtonKind.disabled,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            onTap: live ? app.createBand : null,
-          ),
-        ],
-      ),
+    return StickyActionBar(
+      primaryLabel: app.nbSaving
+          ? 'Saving…'
+          : app.nbEditingCreated
+          ? 'Save changes'
+          : 'Create band',
+      onPrimary: app.nbSaving ? null : onCreate,
     );
   }
 }
@@ -438,13 +435,13 @@ class _CreatedView extends StatelessWidget {
               if (app.nbPhotoUploading || app.nbPhotoError != null)
                 _UploadRecovery(
                   uploading: app.nbPhotoUploading,
-                  label: 'PROFILE IMAGE',
+                  label: 'Profile image',
                   onRetry: app.retryNbPhoto,
                 ),
               if (app.nbBannerUploading || app.nbBannerError != null)
                 _UploadRecovery(
                   uploading: app.nbBannerUploading,
-                  label: 'HEADER IMAGE',
+                  label: 'Header image',
                   onRetry: app.retryNbBanner,
                 ),
               const SizedBox(height: 18),

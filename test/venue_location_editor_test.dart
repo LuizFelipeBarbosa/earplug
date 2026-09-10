@@ -245,9 +245,8 @@ void main() {
       ),
     );
     expect(find.byKey(const Key('venue-test-map')), findsNothing);
-    final previewMap = tester.widget<EpMap>(find.byType(EpMap));
-    expect(previewMap.layers, isEmpty);
-    expect(previewMap.options.interactionOptions.flags, InteractiveFlag.none);
+    expect(find.byType(EpMap), findsNothing);
+    expect(find.text('Adjust map'), findsOneWidget);
     expect(find.text('Mission'), findsOneWidget);
     await tester.tap(find.byKey(const Key('venue-test-preview')));
     await tester.pumpAndSettle();
@@ -379,7 +378,7 @@ void main() {
         enabled: false,
       ),
     );
-    final preview = tester.widget<InkWell>(
+    final preview = tester.widget<ListTile>(
       find.byKey(const Key('venue-test-preview')),
     );
     expect(preview.onTap, isNull);

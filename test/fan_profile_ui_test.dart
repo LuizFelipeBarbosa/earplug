@@ -22,6 +22,7 @@ import 'support/fakes.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('unsaved profile edits survive desktop and mobile resizing', (
@@ -38,7 +39,9 @@ void main() {
     tester.view.physicalSize = const Size(1280, 900);
     await tester.pumpAndSettle();
     final name = find.byKey(const Key('fan-name-field'));
+    await revealFormKey(tester, const Key('fan-name-field'));
     final bio = find.byKey(const Key('fan-bio-field'));
+    await revealFormKey(tester, const Key('fan-bio-field'));
     await tester.enterText(name, 'Rae Booker');
     await tester.enterText(bio, 'Small venues and loud guitars.');
 
@@ -51,7 +54,7 @@ void main() {
         'Small venues and loud guitars.',
       );
     }
-    await tester.tap(find.text('SAVE CHANGES'));
+    await tester.tap(findUiText('SAVE CHANGES'));
     await tester.pumpAndSettle();
     expect(harness.app.profile!.name, 'Rae Booker');
     expect(harness.app.profile!.bio, 'Small venues and loud guitars.');
@@ -65,39 +68,32 @@ void main() {
     tester.view.physicalSize = const Size(402, 3000);
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('fan-identity-preview')), findsOne);
-    final editorPreview = tester.widget<Container>(
-      find.byKey(const Key('fan-identity-preview')),
+    expect(find.byKey(const Key('fan-avatar-preview-control')), findsOne);
+    expect(find.byKey(const Key('fan-identity-preview')), findsNothing);
+    expect(find.byKey(const Key('home-location-input')), findsNothing);
+    await openAllFormSections(tester);
+    expect(findUiText('Profile'), findsOne);
+    expect(findUiText('Music taste'), findsOne);
+    expect(findUiText('DISPLAY NAME · REQUIRED'), findsOne);
+    expect(
+      find.bySemanticsLabel(
+        RegExp('^Display name · required', caseSensitive: false),
+      ),
+      findsOne,
     );
-    final editorDecoration = editorPreview.decoration! as BoxDecoration;
-    expect(editorDecoration.color, Ep.surfaceRaised);
-    expect(editorDecoration.gradient, isNull);
-    expect(editorDecoration.border!.top.color, Ep.border);
-    final previewName = tester.widget<Text>(
-      find.byKey(const Key('fan-preview-name')),
+    expect(findUiText('HOME LOCATION'), findsOne);
+    expect(findUiText('ABOUT'), findsOne);
+    expect(
+      find.bySemanticsLabel(RegExp('^About', caseSensitive: false)),
+      findsOne,
     );
-    final previewScene = tester.widget<Text>(
-      find.byKey(const Key('fan-preview-scene')),
-    );
-    expect(previewName.style!.color, Ep.contentPrimary);
-    expect(previewName.style!.fontSize, 25);
-    expect(previewScene.style!.color, Ep.contentSecondary);
-    expect(previewScene.style!.fontSize, 13);
-    expect(find.bySemanticsLabel('Edit profile photo'), findsOne);
-    expect(find.text('IDENTITY'), findsOne);
-    expect(find.text('SCENE & TASTE'), findsOne);
-    expect(find.text('DISPLAY NAME · REQUIRED'), findsOne);
-    expect(find.bySemanticsLabel(RegExp('^DISPLAY NAME · REQUIRED')), findsOne);
-    expect(find.text('HOME LOCATION'), findsOne);
-    expect(find.text('ABOUT'), findsOne);
-    expect(find.bySemanticsLabel(RegExp('^ABOUT')), findsOne);
-    expect(find.textContaining('FAVORITE GENRES'), findsOne);
-    expect(find.text('PREFERENCES'), findsOne);
+    expect(findUiText('Favorite genres'), findsOne);
+    expect(findUiText('PREFERENCES'), findsOne);
     expect(find.byType(EpLabeledField), findsNWidgets(2));
     expect(find.byType(StickyActionBar), findsOne);
 
     final orderedFields = [
-      find.byKey(const Key('fan-identity-preview')),
+      find.byKey(const Key('fan-avatar-preview-control')),
       find.byKey(const Key('fan-name-field')),
       find.byKey(const Key('fan-bio-field')),
       find.byKey(const Key('fan-home-location-field')),
@@ -133,9 +129,12 @@ void main() {
     tester.view.physicalSize = const Size(402, 1800);
     await tester.pumpAndSettle();
 
+    await openFormSection(tester, 'Music taste');
     expect(find.byType(DropdownButton<FanCity>), findsNothing);
     expect(find.byKey(const Key('home-location-input')), findsOne);
     expect(FanCity.values.length, greaterThan(2));
+
+    await revealFormKey(tester, const Key('home-location-input'));
 
     await tester.enterText(
       find.byKey(const Key('home-location-input')),
@@ -144,6 +143,7 @@ void main() {
     await tester.pump();
     expect(find.byKey(const Key('home-location-suggestion-sanJose')), findsOne);
     expect(find.bySemanticsLabel('San Jose, CA'), findsOne);
+    await revealFormKey(tester, const Key('home-location-suggestion-sanJose'));
     await tester.tap(find.byKey(const Key('home-location-suggestion-sanJose')));
     await tester.pumpAndSettle();
     expect(
@@ -157,6 +157,8 @@ void main() {
           .text,
       'San Jose, CA',
     );
+
+    await revealFormKey(tester, const Key('use-current-home-location'));
 
     await tester.tap(find.byKey(const Key('use-current-home-location')));
     await tester.pumpAndSettle();
@@ -180,16 +182,21 @@ void main() {
     tester.view.physicalSize = const Size(402, 1800);
     await tester.pumpAndSettle();
 
+    await revealFormKey(tester, const Key('fan-name-field'));
+
     await tester.enterText(
       find.byKey(const Key('fan-name-field')),
       'Keep This Name',
     );
+    await revealFormKey(tester, const Key('home-location-input'));
     await tester.enterText(
       find.byKey(const Key('home-location-input')),
       'Los Angeles',
     );
     await tester.pump();
     expect(find.byKey(const Key('home-location-no-results')), findsOne);
+
+    await revealFormKey(tester, const Key('save-fan-profile'));
 
     await tester.tap(find.byKey(const Key('save-fan-profile')));
     await tester.pump();
@@ -214,14 +221,18 @@ void main() {
     tester.view.physicalSize = const Size(402, 1800);
     await tester.pumpAndSettle();
 
+    await revealFormKey(tester, const Key('fan-name-field'));
+
     await tester.enterText(
       find.byKey(const Key('fan-name-field')),
       'Still Here',
     );
+    await revealFormKey(tester, const Key('home-location-input'));
     await tester.enterText(
       find.byKey(const Key('home-location-input')),
       'San Mateo, California',
     );
+    await revealFormKey(tester, const Key('use-current-home-location'));
     await tester.tap(find.byKey(const Key('use-current-home-location')));
     await tester.pumpAndSettle();
 
@@ -254,24 +265,28 @@ void main() {
       home: Scaffold(body: EditProfileScreen(mediaPicker: picker)),
     );
 
+    await revealFormKey(tester, const Key('fan-avatar-preview-control'));
+
     await tester.tap(find.byKey(const Key('fan-avatar-preview-control')));
     await tester.pumpAndSettle();
-    expect(find.text('PROFILE PHOTO'), findsOne);
-    expect(find.text('REMOVE PHOTO'), findsNothing);
+    expect(findUiText('PROFILE PHOTO'), findsOne);
+    expect(findUiText('REMOVE PHOTO'), findsNothing);
 
-    await tester.tap(find.text('CHANGE PHOTO'));
+    await tester.tap(findUiText('CHANGE PHOTO'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('picked-fan-avatar-preview')), findsOne);
 
-    await tester.tap(find.byKey(const Key('fan-avatar-edit-action')));
+    await revealFormKey(tester, const Key('fan-avatar-preview-control'));
+
+    await tester.tap(find.byKey(const Key('fan-avatar-preview-control')));
     await tester.pumpAndSettle();
-    expect(find.text('REMOVE PHOTO'), findsOne);
-    await tester.tap(find.text('REMOVE PHOTO'));
+    expect(findUiText('REMOVE PHOTO'), findsOne);
+    await tester.tap(findUiText('REMOVE PHOTO'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('picked-fan-avatar-preview')), findsNothing);
     expect(
       find.descendant(
-        of: find.byKey(const Key('fan-identity-preview')),
+        of: find.byKey(const Key('fan-avatar-preview-control')),
         matching: find.byType(EpFanAvatar),
       ),
       findsOne,
@@ -303,6 +318,7 @@ void main() {
       280,
     );
 
+    await openFormSection(tester, 'Preferences');
     await tester.scrollUntilVisible(
       find.byKey(const Key('followed-band-updates')),
       300,
@@ -322,6 +338,7 @@ void main() {
 
     await tester.tap(find.text('Personalize with home location'));
     await tester.tap(find.text('Show followed-band updates'));
+    await revealFormKey(tester, const Key('save-fan-profile'));
     await tester.tap(find.byKey(const Key('save-fan-profile')));
     await tester.pumpAndSettle();
 
@@ -345,7 +362,7 @@ void main() {
     expect(find.byKey(const Key('fan-profile-header')), findsOne);
     expect(find.byKey(const Key('fan-profile-avatar')), findsOne);
     expect(find.byType(EpFanAvatar), findsOne);
-    expect(find.text('EF'), findsOne);
+    expect(findUiText('EF'), findsOne);
     expect(find.byKey(const Key('edit-profile-action')), findsOne);
     expect(
       find.descendant(
@@ -359,8 +376,8 @@ void main() {
     expect(find.byTooltip('Edit profile'), findsNothing);
     expect(find.byTooltip('Share profile summary'), findsOne);
     expect(find.byTooltip('Privacy and account settings'), findsOne);
-    expect(find.text('EDIT PROFILE'), findsOne);
-    expect(find.text('SHARE PROFILE'), findsNothing);
+    expect(findUiText('EDIT PROFILE'), findsOne);
+    expect(findUiText('SHARE PROFILE'), findsNothing);
     expect(find.byKey(const Key('fan-profile-incomplete-hint')), findsOne);
     expect(find.textContaining('SCENE'), findsOne);
     final profileHeader = tester.widget<Container>(
@@ -392,6 +409,7 @@ void main() {
       Key('profile-settings-action'),
     ]) {
       final action = find.byKey(key);
+      await revealFormKey(tester, key);
       expect(tester.getSize(action), const Size(48, 48));
       expect(tester.getBottomLeft(action).dy, lessThanOrEqualTo(identityTop));
     }
@@ -462,7 +480,7 @@ void main() {
     for (var index = 1; index < positions.length; index++) {
       expect(positions[index].dy, greaterThan(positions[index - 1].dy));
     }
-    expect(find.text('EVENT HISTORY'), findsNothing);
+    expect(findUiText('EVENT HISTORY'), findsNothing);
     expect(find.byKey(const Key('history-qualification')), findsNothing);
   });
 
@@ -493,17 +511,21 @@ void main() {
         find.text('Past RSVPs will build your private event history.'),
         findsNothing,
       );
-      expect(find.text('FIND A SHOW'), findsNWidgets(2));
-      expect(find.text('EXPLORE BANDS'), findsOne);
+      expect(findUiText('FIND A SHOW'), findsNWidgets(2));
+      expect(findUiText('EXPLORE BANDS'), findsOne);
+
+      await revealFormKey(tester, const Key('fan-following-stat'));
 
       await tester.tap(find.byKey(const Key('fan-following-stat')));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('fan-following-sheet')), findsOne);
       expect(find.byKey(const Key('following-search-field')), findsNothing);
       expect(find.text('Follow bands to keep their profiles close.'), findsOne);
-      expect(find.text('EXPLORE BANDS'), findsNWidgets(2));
+      expect(findUiText('EXPLORE BANDS'), findsNWidgets(2));
       await tester.tap(find.byTooltip('Close Following'));
       await tester.pumpAndSettle();
+
+      await revealFormKey(tester, const Key('fan-history-stat'));
 
       await tester.tap(find.byKey(const Key('fan-history-stat')));
       await tester.pumpAndSettle();
@@ -512,7 +534,7 @@ void main() {
         find.text('Past RSVPs will build your private event history.'),
         findsOne,
       );
-      expect(find.text('FIND A SHOW'), findsNWidgets(3));
+      expect(findUiText('FIND A SHOW'), findsNWidgets(3));
     },
   );
 
@@ -530,11 +552,15 @@ void main() {
     );
 
     expect(find.byKey(const Key('history-qualification')), findsNothing);
+    await revealFormKey(tester, const Key('fan-following-stat'));
     await tester.tap(find.byKey(const Key('fan-following-stat')));
     await tester.pumpAndSettle();
 
     final followingSheet = find.byKey(const Key('fan-following-sheet'));
+
+    await revealFormKey(tester, const Key('fan-following-sheet'));
     final search = find.byKey(const Key('following-search-field'));
+    await revealFormKey(tester, const Key('following-search-field'));
     expect(followingSheet, findsOne);
     expect(search, findsOne);
     expect(find.bySemanticsLabel(RegExp('^Search followed bands')), findsOne);
@@ -554,6 +580,7 @@ void main() {
       ),
       findsOne,
     );
+    await revealFormKey(tester, const Key('clear-following-search'));
     await tester.tap(find.byKey(const Key('clear-following-search')));
     await tester.pump();
 
@@ -566,6 +593,7 @@ void main() {
       ),
       findsOne,
     );
+    await revealFormKey(tester, const Key('clear-following-search'));
     await tester.tap(find.byKey(const Key('clear-following-search')));
     await tester.pump();
 
@@ -581,8 +609,8 @@ void main() {
     await tester.enterText(search, 'no-band-will-match-this');
     await tester.pump();
     expect(find.textContaining('No followed bands match'), findsOne);
-    expect(find.text('CLEAR SEARCH'), findsOne);
-    await tester.tap(find.text('CLEAR SEARCH'));
+    expect(findUiText('CLEAR SEARCH'), findsOne);
+    await tester.tap(findUiText('CLEAR SEARCH'));
     await tester.pump();
 
     await tester.tap(
@@ -597,10 +625,11 @@ void main() {
 
     harness.app.back();
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const Key('fan-history-stat'));
     await tester.tap(find.byKey(const Key('fan-history-stat')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('fan-history-sheet')), findsOne);
-    expect(find.text('RSVP RECORD — ATTENDANCE NOT VERIFIED'), findsOne);
+    expect(findUiText('RSVP RECORD — ATTENDANCE NOT VERIFIED'), findsOne);
     for (final item in harness.app.history) {
       expect(find.text(item.title), findsOne);
     }
@@ -634,6 +663,8 @@ void main() {
       repository: DemoRepository(auth: auth),
       home: const Scaffold(body: MyGigsScreen()),
     );
+
+    await revealFormKey(tester, const Key('share-fan-profile'));
 
     await tester.tap(find.byKey(const Key('share-fan-profile')));
     await tester.pump();
@@ -676,6 +707,8 @@ void main() {
     tester.view.physicalSize = const Size(320, 700);
     await tester.pumpAndSettle();
 
+    await revealFormKey(tester, const Key('fan-history-stat'));
+
     await tester.tap(find.byKey(const Key('fan-history-stat')));
     await tester.pumpAndSettle();
     final title = tester.widget<Text>(find.text(_longHistoryTitle));
@@ -704,9 +737,9 @@ void main() {
 
       tester.view.physicalSize = const Size(402, 1400);
       for (var visit = 0; visit < 4; visit++) {
-        await tester.tap(find.text('EXPLORE'));
+        await tester.tap(findUiText('EXPLORE'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('PROFILE'));
+        await tester.tap(findUiText('PROFILE'));
         await tester.pumpAndSettle();
       }
 
@@ -759,6 +792,11 @@ void main() {
       expect(
         find.byKey(ValueKey('next-show-${repository.futureGig.id}')),
         findsNothing,
+      );
+
+      await revealFormKey(
+        tester,
+        ValueKey('ticket-action-${repository.futureGig.id}'),
       );
 
       await tester.tap(
@@ -845,7 +883,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(ValueKey('next-show-${repository.cancelledGig.id}')),
-          matching: find.text('QR PASS'),
+          matching: findUiText('QR PASS'),
         ),
         findsNothing,
       );
@@ -873,6 +911,11 @@ void main() {
     );
     tester.view.physicalSize = const Size(402, 3000);
     await tester.pumpAndSettle();
+
+    await revealFormKey(
+      tester,
+      ValueKey('ticket-action-${repository.futureGig.id}'),
+    );
 
     await tester.tap(
       find.byKey(ValueKey('ticket-action-${repository.futureGig.id}')),
@@ -908,10 +951,13 @@ void main() {
     tester.view.physicalSize = const Size(402, 1800);
     await tester.pumpAndSettle();
 
+    await revealFormKey(tester, const Key('fan-name-field'));
+
     await tester.enterText(
       find.byKey(const Key('fan-name-field')),
       'Changed Name',
     );
+    await revealFormKey(tester, const Key('home-location-input'));
     await tester.enterText(
       find.byKey(const Key('home-location-input')),
       'BERKELEY, CA',
@@ -921,6 +967,7 @@ void main() {
       260,
       scrollable: find.byType(Scrollable).first,
     );
+    await revealFormKey(tester, const Key('save-fan-profile'));
     await tester.tap(find.byKey(const Key('save-fan-profile')));
     await tester.pumpAndSettle();
 
@@ -949,14 +996,18 @@ void main() {
     tester.view.physicalSize = const Size(402, 1800);
     await tester.pumpAndSettle();
 
+    await revealFormKey(tester, const Key('save-fan-profile'));
+
     await tester.tap(find.byKey(const Key('save-fan-profile')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('fan-name-validation')), findsOne);
+    expect(find.text('Enter display name.'), findsOne);
     expect(find.byKey(const Key('edit-profile-error')), findsNothing);
+
+    await revealFormKey(tester, const Key('fan-name-field'));
 
     await tester.enterText(find.byKey(const Key('fan-name-field')), 'A Name');
     await tester.pump();
-    expect(find.byKey(const Key('fan-name-validation')), findsNothing);
+    expect(find.text('Enter display name.'), findsNothing);
   });
 
   testWidgets('leaving with unsaved edits asks before discarding them', (
@@ -980,6 +1031,7 @@ void main() {
 
     harness.app.go(Screen.editProfile);
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const Key('fan-name-field'));
     await tester.enterText(find.byKey(const Key('fan-name-field')), 'New Name');
     await tester.pump();
 
@@ -988,12 +1040,15 @@ void main() {
     expect(find.byKey(const Key('discard-profile-dialog')), findsOne);
     expect(harness.app.current.screen, Screen.editProfile);
 
+    await revealFormKey(tester, const Key('keep-editing-profile'));
+
     await tester.tap(find.byKey(const Key('keep-editing-profile')));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.editProfile);
 
     await tester.tap(find.byTooltip('Back to profile'));
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const Key('discard-profile-changes'));
     await tester.tap(find.byKey(const Key('discard-profile-changes')));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, isNot(Screen.editProfile));
@@ -1023,6 +1078,7 @@ void main() {
 
     expect(find.byKey(const Key('fan-profile-genres')), findsOne);
     expect(find.byKey(const Key('fan-profile-incomplete-hint')), findsOne);
+    await revealFormKey(tester, const ValueKey('fan-profile-genre-punk'));
     await tester.tap(find.byKey(const ValueKey('fan-profile-genre-punk')));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.editProfile);
@@ -1049,6 +1105,7 @@ void main() {
     tester.view.physicalSize = const Size(402, 5000);
     await tester.pumpAndSettle();
     final card = find.byKey(ValueKey('fan-event-${show.id}'));
+    await revealFormKey(tester, ValueKey('fan-event-${show.id}'));
     expect(card, findsOne);
     await tester.tap(card);
     await tester.pump();
@@ -1070,14 +1127,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(harness.app.follows, contains('b1'));
+    await revealFormKey(tester, const Key('fan-following-stat'));
     await tester.tap(find.byKey(const Key('fan-following-stat')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('FOLLOWING ✓'));
+    await tester.tap(findUiText('FOLLOWING ✓'));
     await tester.pump(const Duration(milliseconds: 20));
 
     expect(repository.toggleFollowCalls, 1);
     expect(harness.app.follows, contains('b1'));
-    expect(find.text('FOLLOWING ✓'), findsOne);
+    expect(findUiText('FOLLOWING ✓'), findsOne);
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -1103,6 +1161,7 @@ void main() {
     expect(find.byKey(const Key('profile-tutorial')), findsOne);
     for (var step = 0; step < 3; step++) {
       final next = find.byKey(const Key('profile-tutorial-next'));
+      await revealFormKey(tester, const Key('profile-tutorial-next'));
       tester.widget<FilledButton>(next).onPressed!();
       await tester.pumpAndSettle();
     }
@@ -1115,6 +1174,7 @@ void main() {
       repository: repository,
       home: const Scaffold(body: SettingsScreen()),
     );
+    await revealFormKey(tester, const Key('replay-profile-tutorial'));
     await tester.tap(find.byKey(const Key('replay-profile-tutorial')));
     await tester.pumpAndSettle();
     expect(replayHarness.app.current.screen, Screen.myGigs);
@@ -1146,7 +1206,7 @@ void main() {
       find.byKey(ValueKey('upcoming-rsvp-${repository.futureGig.id}')),
       findsOne,
     );
-    expect(find.text('QR PASS'), findsOne);
+    expect(findUiText('QR PASS'), findsOne);
     expect(find.byTooltip('Show QR code'), findsOne);
     expect(harness.app.upcomingRsvpGigs, contains(repository.futureGig));
   });
@@ -1206,11 +1266,13 @@ void main() {
       ),
     );
 
-    expect(find.text('LEGAL'), findsOneWidget);
+    expect(findUiText('LEGAL'), findsOneWidget);
     expect(find.byKey(const Key('legal-terms')), findsOneWidget);
     expect(find.byKey(const Key('legal-privacy')), findsOneWidget);
     expect(find.byKey(const Key('legal-agreements')), findsOneWidget);
     expect(find.text('Draft — not yet effective'), findsNWidgets(3));
+
+    await revealFormKey(tester, const Key('legal-terms'));
 
     await tester.tap(find.byKey(const Key('legal-terms')));
     await tester.pumpAndSettle();
@@ -1242,11 +1304,16 @@ void main() {
     expect(signOut.style!.foregroundColor!.resolve({}), Ep.destructive);
     expect(find.byKey(const Key('account-danger-zone')), findsOne);
 
+    await revealFormKey(tester, const Key('delete-account'));
+
     await tester.tap(find.byKey(const Key('delete-account')));
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const Key('cancel-delete-account'));
     await tester.tap(find.byKey(const Key('cancel-delete-account')));
     await tester.pumpAndSettle();
     expect(auth.deleteAccountCalls, 0);
+
+    await revealFormKey(tester, const Key('delete-account'));
 
     await tester.tap(find.byKey(const Key('delete-account')));
     await tester.pumpAndSettle();
@@ -1254,6 +1321,7 @@ void main() {
       find.byKey(const Key('confirm-delete-account')),
     );
     expect(confirm.onPressed, isNull);
+    await revealFormKey(tester, const Key('delete-account-confirmation'));
     await tester.enterText(
       find.byKey(const Key('delete-account-confirmation')),
       'DELETE',
@@ -1261,6 +1329,7 @@ void main() {
     await tester.pump();
     confirm = tester.widget(find.byKey(const Key('confirm-delete-account')));
     expect(confirm.onPressed, isNotNull);
+    await revealFormKey(tester, const Key('confirm-delete-account'));
     await tester.tap(find.byKey(const Key('confirm-delete-account')));
     await tester.pumpAndSettle();
 
@@ -1284,13 +1353,17 @@ void main() {
     tester.view.physicalSize = const Size(402, 1300);
     await tester.pumpAndSettle();
 
+    await revealFormKey(tester, const Key('delete-account'));
+
     await tester.tap(find.byKey(const Key('delete-account')));
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const Key('delete-account-confirmation'));
     await tester.enterText(
       find.byKey(const Key('delete-account-confirmation')),
       'DELETE',
     );
     await tester.pump();
+    await revealFormKey(tester, const Key('confirm-delete-account'));
     await tester.tap(find.byKey(const Key('confirm-delete-account')));
     await tester.pumpAndSettle();
 

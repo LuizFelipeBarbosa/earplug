@@ -65,7 +65,10 @@ class HostApplyScreen extends StatefulWidget {
 class _HostApplyScreenState extends State<HostApplyScreen> {
   static const _autosaveDelay = Duration(milliseconds: 600);
 
+  bool _disposing = false;
   final _scroll = ScrollController();
+  final _detailsForm = GlobalKey<EpFormState>();
+  int _step = 0;
   final _agreementRecognizer = TapGestureRecognizer();
   final _displayName = TextEditingController();
   final _phone = TextEditingController();
@@ -112,7 +115,7 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
     if (_autosaveTimer?.isActive == true || _hasUnsavedChanges) {
       return 'Saving…';
     }
-    return 'Draft saved';
+    return _applicationId == null ? 'Draft not saved yet' : 'Draft saved';
   }
 
   @override
@@ -151,6 +154,7 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
 
   @override
   void dispose() {
+    _disposing = true;
     _autosaveTimer?.cancel();
     _agreementRecognizer.dispose();
     _scroll.dispose();
@@ -201,6 +205,7 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
   void _textChanged([String? _]) => _changed(() {});
 
   void _saveOnBlur() {
+    if (_disposing || !mounted) return;
     if (_hasUnsavedChanges) unawaited(_saveDraft());
   }
 
@@ -466,125 +471,192 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
     final enabled = !_busy;
     return Material(
       color: context.epColors.background,
-      child: Column(
-        children: [
-          Expanded(
-            child: ListView(
-              controller: _scroll,
-              padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
-              children: [
-                _header(context),
-                const SectionBar.form(label: 'YOUR DETAILS'),
-                EpLabeledField(
-                  fieldKey: const ValueKey('host-apply-display-name'),
-                  label: 'DISPLAY NAME',
-                  required: true,
-                  hint: 'Your name',
-                  controller: _displayName,
-                  focusNode: _displayNameFocus,
-                  enabled: enabled,
-                  textCapitalization: TextCapitalization.words,
-                  onChanged: _textChanged,
-                  onEditingComplete: _saveOnBlur,
-                ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  fieldKey: const ValueKey('host-apply-phone'),
-                  label: 'PHONE',
-                  required: true,
-                  hint: '(415) 555-0101',
-                  controller: _phone,
-                  focusNode: _phoneFocus,
-                  enabled: enabled,
-                  keyboardType: TextInputType.phone,
-                  onChanged: _textChanged,
-                  onEditingComplete: _saveOnBlur,
-                ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  fieldKey: const ValueKey('host-apply-area'),
-                  label: 'AREA',
-                  required: true,
-                  hint: 'Mission District, San Francisco',
-                  controller: _area,
-                  focusNode: _areaFocus,
-                  enabled: enabled,
-                  textCapitalization: TextCapitalization.words,
-                  onChanged: _textChanged,
-                  onEditingComplete: _saveOnBlur,
-                ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  fieldKey: const ValueKey('host-apply-email'),
-                  label: 'EMAIL',
-                  required: true,
-                  hint: 'you@example.com',
-                  controller: _email,
-                  focusNode: _emailFocus,
-                  enabled: enabled,
-                  keyboardType: TextInputType.emailAddress,
-                  onChanged: _textChanged,
-                  onEditingComplete: _saveOnBlur,
-                ),
-                SectionBar.form(label: 'ID DOCUMENT', count: _documents.length),
-                if (_documents.isNotEmpty) ...[
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
+      child: EpFormLayout(
+        body: SingleChildScrollView(
+          controller: _scroll,
+          padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _header(context),
+              EpFormSteps(
+                labels: const ['Your details', 'Verification and review'],
+                current: _step,
+                onBackToStep: _busy ? null : _showStep,
+              ),
+              EpFormStep(
+                active: _step == 0,
+                child: EpForm(
+                  key: _detailsForm,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final document in _documents)
-                        _DocumentTile(
-                          document: document,
-                          enabled: enabled,
-                          onRemove: () => _removeDocument(document),
-                        ),
+                      const SectionBar.form(label: 'Your details'),
+                      EpLabeledField(
+                        fieldKey: const ValueKey('host-apply-display-name'),
+                        label: 'Display name',
+                        required: true,
+                        hint: 'Your name',
+                        controller: _displayName,
+                        focusNode: _displayNameFocus,
+                        enabled: enabled,
+                        textCapitalization: TextCapitalization.words,
+                        onChanged: _textChanged,
+                        onEditingComplete: _saveOnBlur,
+                      ),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        fieldKey: const ValueKey('host-apply-phone'),
+                        label: 'Phone',
+                        required: true,
+                        hint: '(415) 555-0101',
+                        controller: _phone,
+                        focusNode: _phoneFocus,
+                        enabled: enabled,
+                        keyboardType: TextInputType.phone,
+                        onChanged: _textChanged,
+                        onEditingComplete: _saveOnBlur,
+                      ),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        fieldKey: const ValueKey('host-apply-area'),
+                        label: 'Area',
+                        required: true,
+                        hint: 'Mission District, San Francisco',
+                        controller: _area,
+                        focusNode: _areaFocus,
+                        enabled: enabled,
+                        textCapitalization: TextCapitalization.words,
+                        onChanged: _textChanged,
+                        onEditingComplete: _saveOnBlur,
+                      ),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        fieldKey: const ValueKey('host-apply-email'),
+                        label: 'Email',
+                        required: true,
+                        hint: 'you@example.com',
+                        controller: _email,
+                        focusNode: _emailFocus,
+                        enabled: enabled,
+                        keyboardType: TextInputType.emailAddress,
+                        onChanged: _textChanged,
+                        onEditingComplete: _saveOnBlur,
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                ],
-                if (_documents.length < 5)
-                  _AddDocumentTile(enabled: enabled, onTap: _addDocument),
-                const SizedBox(height: EpLayout.fieldGap),
-                CheckboxListTile(
-                  key: const ValueKey('host-apply-agree'),
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  value: _agreed,
-                  onChanged: enabled
-                      ? (value) => _changed(() => _agreed = value ?? false)
-                      : null,
-                  title: Text.rich(
-                    TextSpan(
-                      text: 'I agree to the ',
-                      children: [
-                        TextSpan(
-                          text: 'Host Agreement',
-                          style: TextStyle(
-                            color: context.epColors.accent,
-                            decoration: TextDecoration.underline,
-                          ),
-                          recognizer: _agreementRecognizer,
-                        ),
-                        const TextSpan(text: ' and booking protection terms'),
-                      ],
+                ),
+              ),
+              EpFormStep(
+                active: _step == 1,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '${_displayName.text} · ${_area.text}',
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-                  ),
+                    Text('${_email.text} · ${_phone.text}'),
+                    SectionBar.form(
+                      label: 'Id document',
+                      count: _documents.length,
+                    ),
+                    if (_documents.isNotEmpty) ...[
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          for (final document in _documents)
+                            _DocumentTile(
+                              document: document,
+                              enabled: enabled,
+                              onRemove: () => _removeDocument(document),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    if (_documents.length < 5)
+                      _AddDocumentTile(enabled: enabled, onTap: _addDocument),
+                    const SizedBox(height: EpLayout.fieldGap),
+                    CheckboxListTile(
+                      key: const ValueKey('host-apply-agree'),
+                      contentPadding: EdgeInsets.zero,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      value: _agreed,
+                      onChanged: enabled
+                          ? (value) => _changed(() => _agreed = value ?? false)
+                          : null,
+                      title: Text.rich(
+                        TextSpan(
+                          text: 'I agree to the ',
+                          children: [
+                            TextSpan(
+                              text: 'Host Agreement',
+                              style: TextStyle(
+                                color: context.epColors.accent,
+                                decoration: TextDecoration.underline,
+                              ),
+                              recognizer: _agreementRecognizer,
+                            ),
+                            const TextSpan(
+                              text: ' and booking protection terms',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                InlineFormFeedback(
-                  error: _error,
-                  errorKey: const ValueKey('host-apply-feedback'),
-                ),
-              ],
-            ),
+              ),
+              InlineFormFeedback(
+                error: _error,
+                errorKey: const ValueKey('host-apply-feedback'),
+              ),
+            ],
           ),
-          StickyActionBar(
-            key: const ValueKey('host-apply-submit'),
-            primaryLabel: _submitting ? 'SUBMITTING…' : 'SUBMIT APPLICATION',
-            onPrimary: _canSubmit ? _submit : null,
+        ),
+        footer: StickyActionBar(
+          key: ValueKey(
+            _step == 0 ? 'host-apply-continue' : 'host-apply-submit',
           ),
-        ],
+          primaryLabel: _step == 0
+              ? 'Continue'
+              : _submitting
+              ? 'Submitting…'
+              : 'Submit application',
+          onPrimary: _busy
+              ? null
+              : _step == 0
+              ? _continue
+              : _canSubmit
+              ? _submit
+              : null,
+          secondaryLabel: _step == 0 ? null : 'Back',
+          onSecondary: _busy ? null : () => _showStep(0),
+        ),
       ),
     );
+  }
+
+  Future<void> _close() async {
+    if (_busy) return;
+    if (_hasUnsavedChanges && !await _saveDraft()) {
+      if (mounted) revealFormFeedback(this, _scroll);
+      return;
+    }
+    if (mounted) context.read<AppState>().back();
+  }
+
+  void _showStep(int step) {
+    FocusScope.of(context).unfocus();
+    setState(() => _step = step);
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
+
+  void _continue() {
+    if (_detailsForm.currentState?.validate() != true) return;
+    _showStep(1);
   }
 
   Widget _header(BuildContext context) {
@@ -599,11 +671,11 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
               key: const ValueKey('host-apply-back'),
               icon: Icons.close,
               tooltip: 'Close',
-              onTap: _busy ? null : () => context.read<AppState>().back(),
+              onTap: _busy ? null : _close,
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text('BECOME A HOST', style: textTheme.epPageHeading),
+              child: Text('Become a host', style: textTheme.epFormHeading),
             ),
           ],
         ),
@@ -762,7 +834,7 @@ class _AddDocumentTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'ADD ID DOCUMENT',
+                        'Add id document',
                         style: Theme.of(context).textTheme.epBody.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
