@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('manager groups every lifecycle and uses refreshed row grammar', (
@@ -28,14 +29,14 @@ void main() {
       home: const Scaffold(body: GigManagerScreen()),
     );
 
-    expect(find.text('GIGS'), findsOne);
+    expect(findUiText('GIGS'), findsOne);
 
     await tester.tap(find.byKey(const Key('band-gigs-seg-booked')));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('gig-project-published-rsvp')), findsOne);
     expect(find.byType(DateBlock), findsWidgets);
-    expect(find.text('PUBLISHED'), findsWidgets);
+    expect(findUiText('PUBLISHED'), findsWidgets);
     expect(find.textContaining('going'), findsOne);
     expect(find.byKey(const Key('gig-door-published-rsvp')), findsOne);
     expect(find.byKey(const Key('gig-door-published-external')), findsOne);
@@ -62,7 +63,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.text('CANCELLED'),
+      findUiText('CANCELLED'),
       180,
       scrollable: find.byType(Scrollable).first,
     );
@@ -189,7 +190,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(DoorModeScreen), findsOne);
       expect(find.text('Riptide Release Show'), findsOne);
-      expect(find.text('DOOR MODE · THE FOGHORN CLUB'), findsOne);
+      expect(findUiText('DOOR MODE · THE FOGHORN CLUB'), findsOne);
       expect(repository.organizerRosterRequests, ['g2']);
       expect(repository.projectRosterRequests, isEmpty);
     },
@@ -294,7 +295,7 @@ void main() {
       180,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('SALES · 0/50'), findsOne);
+    expect(findUiText('SALES · 0/50'), findsOne);
     await tester.ensureVisible(actions);
     await tester.pumpAndSettle();
     await tester.tap(actions);
@@ -330,7 +331,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('SALES'));
+    await tester.tap(findUiText('SALES'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     final sheet = find.byKey(const Key('band-ticket-sales-sheet'));

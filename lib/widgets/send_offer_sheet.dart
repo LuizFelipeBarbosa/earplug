@@ -146,9 +146,7 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
         header: Row(
           children: [
-            Expanded(
-              child: Text('SEND OFFER', style: textTheme.epSectionHeading),
-            ),
+            Expanded(child: Text('Send offer', style: textTheme.epFormHeading)),
             IconButton(
               tooltip: 'Close',
               onPressed: () => Navigator.pop(context),
@@ -186,13 +184,14 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
                 const SizedBox(height: 12),
                 Text(_bookingCommissionCaption, style: textTheme.epCaption),
                 const SizedBox(height: 18),
-                const SectionBar(label: 'CANCELLATION TERMS'),
+                const SectionBar.form(label: 'Cancellation terms'),
                 Wrap(
                   spacing: 7,
                   runSpacing: 7,
                   children: [
                     for (final template in CancellationTemplate.values)
                       EpChip(
+                        multiple: false,
                         key: ValueKey('send-offer-terms-${template.wireValue}'),
                         label: template.label,
                         active: _cancellationTemplate == template,
@@ -210,26 +209,36 @@ class _SendOfferSheetState extends State<_SendOfferSheet> {
                   style: textTheme.epCaption,
                 ),
                 const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  label: 'NOTES',
-                  hint: 'Optional booking terms',
-                  controller: _notes,
-                  fieldKey: const Key('send-offer-notes'),
-                  enabled: !_submitting,
-                  minLines: 3,
-                  maxLines: 5,
-                  maxLength: 2000,
-                ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  label: 'MESSAGE TO THE BAND',
-                  hint: 'Optional message for the band',
-                  controller: _message,
-                  fieldKey: const Key('send-offer-message'),
-                  enabled: !_submitting,
-                  minLines: 3,
-                  maxLines: 5,
-                  maxLength: 1000,
+                EpDisclosure(
+                  title: 'Notes and message',
+                  summary: 'Optional terms and a message to the band',
+                  initiallyExpanded: false,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      EpLabeledField(
+                        label: 'NOTES',
+                        hint: 'Optional booking terms',
+                        controller: _notes,
+                        fieldKey: const Key('send-offer-notes'),
+                        enabled: !_submitting,
+                        minLines: 3,
+                        maxLines: 5,
+                        maxLength: 2000,
+                      ),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        label: 'MESSAGE TO THE BAND',
+                        hint: 'Optional message for the band',
+                        controller: _message,
+                        fieldKey: const Key('send-offer-message'),
+                        enabled: !_submitting,
+                        minLines: 3,
+                        maxLines: 5,
+                        maxLength: 1000,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),

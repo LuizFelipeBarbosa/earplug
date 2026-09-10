@@ -630,9 +630,9 @@ void main() {
     );
     expect(
       tester
-          .widget<SegmentedButton<String>>(find.byType(SegmentedButton<String>))
-          .selected,
-      {'club'},
+          .widget<EpChip>(find.byKey(const ValueKey('org-apply-kind-club')))
+          .active,
+      isTrue,
     );
     await _continueToContact(tester);
 

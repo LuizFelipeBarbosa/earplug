@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   late FakeAuthService auth;
@@ -126,7 +127,7 @@ void main() {
     final used = find.byKey(const ValueKey('ticket-used'));
     expect(used, findsOneWidget);
     expect(
-      find.descendant(of: used, matching: find.text('CHECKED IN')),
+      find.descendant(of: used, matching: findUiText('CHECKED IN')),
       findsOneWidget,
     );
     for (final id in [

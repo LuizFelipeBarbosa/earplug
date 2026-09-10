@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/accessibility.dart';
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('bottom tab bar accommodates accessibility text scale', (
@@ -40,10 +41,10 @@ void main() {
     final filters = find.byKey(const Key('explore-filter-button'));
     expect(filters, findsOne);
     expect(tester.getSize(filters), const Size(48, 48));
-    expect(find.text('PUNK'), findsNothing);
+    expect(findUiText('PUNK'), findsNothing);
     await tester.tap(filters);
     await tester.pumpAndSettle();
-    expect(find.text('PUNK'), findsOne);
+    expect(findUiText('Genres'), findsOne);
     expect(tester.takeException(), isNull);
   });
 
@@ -73,7 +74,7 @@ void main() {
     final editAction = find.byKey(const Key('edit-profile-action'));
     expect(editAction, findsOne);
     expect(tester.getSize(editAction).height, greaterThanOrEqualTo(48));
-    expect(find.text('EDIT PROFILE'), findsOne);
+    expect(findUiText('EDIT PROFILE'), findsOne);
     expect(find.byTooltip('Share profile summary'), findsOne);
     expect(find.byTooltip('Privacy and account settings'), findsOne);
     await tester.scrollUntilVisible(
@@ -91,9 +92,9 @@ void main() {
     await tester.tap(find.byKey(const Key('fan-following-stat')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('following-search-field')), findsOne);
-    expect(find.text('FOLLOWING ✓'), findsWidgets);
+    expect(findUiText('FOLLOWING ✓'), findsWidgets);
     final followingButton = tester.widget<OutlinedButton>(
-      find.widgetWithText(OutlinedButton, 'FOLLOWING ✓').first,
+      findUiControl(OutlinedButton, 'FOLLOWING ✓').first,
     );
     expect(
       followingButton.style!.textStyle!.resolve({})!.fontSize,
@@ -121,7 +122,8 @@ void main() {
       tester.view.physicalSize = const Size(320, 900);
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('fan-identity-preview')), findsOne);
+      expect(find.byKey(const Key('fan-avatar-preview-control')), findsOne);
+      await openAllFormSections(tester);
       expect(find.byKey(const Key('fan-name-field')), findsOne);
       expect(find.byKey(const Key('save-fan-profile')), findsOne);
 

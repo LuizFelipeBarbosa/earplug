@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('compose publishes bk4, goes back, and rejects a second review', (
@@ -41,18 +42,22 @@ void main() {
     expect(tester.widget<FilledButton>(_submitButton()).onPressed, isNull);
     expect(find.byIcon(Icons.star_border), findsNWidgets(5));
 
+    await revealFormKey(tester, const ValueKey('review-rating-5'));
+
     await tester.tap(find.byKey(const ValueKey('review-rating-5')));
     await tester.pump();
     expect(find.byIcon(Icons.star), findsNWidgets(5));
     expect(tester.widget<FilledButton>(_submitButton()).onPressed, isNotNull);
     for (final category in ['professionalism', 'communication']) {
       final chip = find.byKey(ValueKey('review-cat-$category'));
+      await revealFormKey(tester, ValueKey('review-cat-$category'));
       await tester.tap(chip);
       await tester.pump();
       expect(tester.widget<EpChip>(chip).active, isTrue);
     }
     // A second tap removes a category without clearing the others.
     final sound = find.byKey(const ValueKey('review-cat-sound'));
+    await revealFormKey(tester, const ValueKey('review-cat-sound'));
     await tester.tap(sound);
     await tester.pump();
     await tester.tap(sound);
@@ -61,6 +66,7 @@ void main() {
 
     const text = 'Excellent set, easy planning, and a prepared band.';
     final field = find.byKey(const ValueKey('review-text'));
+    await revealFormKey(tester, const ValueKey('review-text'));
     await tester.ensureVisible(field);
     await tester.enterText(field, text);
     await tester.pump();
@@ -82,6 +88,7 @@ void main() {
 
     harness.app.openReviewCompose('bk4');
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const ValueKey('review-rating-4'));
     await tester.tap(find.byKey(const ValueKey('review-rating-4')));
     await tester.pump();
     expect(find.byIcon(Icons.star), findsNWidgets(4));
@@ -116,6 +123,7 @@ void main() {
     await enterOrganizer(tester, harness, 'org1');
     harness.app.openReviewCompose('bk3');
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const ValueKey('review-rating-5'));
     await tester.tap(find.byKey(const ValueKey('review-rating-5')));
     await tester.pump();
     await tester.tap(_submitButton());
@@ -167,7 +175,7 @@ void main() {
       home: const ReviewComposeScreen(bookingId: 'missing'),
     );
 
-    expect(find.text('BOOKING NOT FOUND'), findsOneWidget);
+    expect(findUiText('BOOKING NOT FOUND'), findsOneWidget);
     expect(find.byKey(const ValueKey('review-submit')), findsNothing);
     expect(find.byKey(const ValueKey('review-text')), findsNothing);
   });
@@ -185,6 +193,7 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
     final section = find.byKey(const ValueKey('band-reviews'));
+    await revealFormKey(tester, const ValueKey('band-reviews'));
     await _scrollTo(tester, section);
 
     expect(
@@ -195,6 +204,7 @@ void main() {
       findsOneWidget,
     );
     final card = find.byKey(ValueKey('band-review-${review.reviewId}'));
+    await revealFormKey(tester, ValueKey('band-review-${review.reviewId}'));
     expect(tester.widget(card), isA<EpCard>());
     expect(
       find.descendant(of: card, matching: find.text('The Foghorn Club')),
@@ -228,7 +238,7 @@ void main() {
       tester,
       home: const Scaffold(body: BandProfileScreen(bandId: 'b2')),
     );
-    await _scrollTo(tester, find.text('PAST GIGS · 2 PLAYED'));
+    await _scrollTo(tester, findUiText('PAST GIGS · 2 PLAYED'));
     await tester.drag(find.byType(Scrollable).first, const Offset(0, -700));
     await tester.pumpAndSettle();
 
@@ -250,6 +260,7 @@ void main() {
       );
       await enterOrganizer(tester, harness, 'org1');
       final rating = find.byKey(const ValueKey('org-dash-stat-rating'));
+      await revealFormKey(tester, const ValueKey('org-dash-stat-rating'));
       await _scrollTo(tester, rating);
       final stat = tester.widget<EpStatCard>(rating);
       expect(stat.label, 'RATING');
@@ -257,8 +268,14 @@ void main() {
       expect(stat.caption, '1 reviews');
 
       final section = find.byKey(const ValueKey('org-dash-reviews'));
+
+      await revealFormKey(tester, const ValueKey('org-dash-reviews'));
       await _scrollTo(tester, section);
       final card = find.byKey(ValueKey('org-dash-review-${review.reviewId}'));
+      await revealFormKey(
+        tester,
+        ValueKey('org-dash-review-${review.reviewId}'),
+      );
       expect(
         find.descendant(of: card, matching: find.text('Foghorn Diet')),
         findsOneWidget,
@@ -302,6 +319,7 @@ void main() {
       );
       await enterOrganizer(tester, harness, 'org1');
       final rating = find.byKey(const ValueKey('org-dash-stat-rating'));
+      await revealFormKey(tester, const ValueKey('org-dash-stat-rating'));
       await _scrollTo(tester, rating);
       final stat = tester.widget<EpStatCard>(rating);
       expect(stat.value, '3.5');
@@ -311,7 +329,15 @@ void main() {
       final first = find.byKey(
         ValueKey('org-dash-review-${reviews.first.reviewId}'),
       );
+      await revealFormKey(
+        tester,
+        ValueKey('org-dash-review-${reviews.first.reviewId}'),
+      );
       final last = find.byKey(
+        ValueKey('org-dash-review-${reviews.last.reviewId}'),
+      );
+      await revealFormKey(
+        tester,
         ValueKey('org-dash-review-${reviews.last.reviewId}'),
       );
       expect(

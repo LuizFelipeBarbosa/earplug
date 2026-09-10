@@ -99,9 +99,14 @@ class _TicketPurchaseSheetState extends State<_TicketPurchaseSheet> {
         mainAxisSize: MainAxisSize.min,
         header: Row(
           children: [
+            Text(
+              widget.gig.title,
+              style: textTheme.epBody.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 16),
             Expanded(
               child: Text(
-                reservation == null ? 'TICKETS' : 'YOUR HOLD',
+                reservation == null ? 'Tickets' : 'Review your hold',
                 style: textTheme.epSectionHeading,
               ),
             ),

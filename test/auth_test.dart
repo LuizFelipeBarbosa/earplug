@@ -14,6 +14,7 @@ import 'package:provider/provider.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   test(
@@ -378,7 +379,7 @@ void main() {
       },
     );
 
-    expect(find.text('RSVP CONFIRMED'), findsOne);
+    expect(findUiText('RSVP CONFIRMED'), findsOne);
     expect(app.rsvps, contains('g1'));
     expect(app.pending, isNull);
 
@@ -402,7 +403,7 @@ void main() {
       },
     );
 
-    expect(find.text('PLUG IN'), findsNothing);
+    expect(findUiText('PLUG IN'), findsNothing);
     await tester.pump(const Duration(seconds: 2));
 
     expect(app.rsvps, contains('g1'));
@@ -455,7 +456,7 @@ void main() {
       ),
       findsOne,
     );
-    expect(find.text('PLUG IN'), findsNothing);
+    expect(findUiText('PLUG IN'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -491,7 +492,7 @@ void main() {
       pumpFor: const Duration(milliseconds: 100),
     );
 
-    expect(find.text('EMAIL'), findsOne);
+    expect(findUiText('EMAIL'), findsOne);
     expect(find.text('G · Continue with Google'), findsOne);
     expect(find.text(' Continue with Apple'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -509,16 +510,16 @@ void main() {
       pumpFor: const Duration(milliseconds: 100),
     );
 
-    await tester.tap(find.text('EMAIL'));
+    await tester.tap(findUiText('EMAIL'));
     await tester.pump();
     await tester.enterText(find.byType(TextField).first, 'fan@example.com');
-    await tester.tap(find.text('SEND CODE'));
+    await tester.tap(findUiText('SEND CODE'));
     await tester.pumpAndSettle();
 
     final codeField = find.widgetWithText(TextField, '6-digit code');
     expect(
       tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, 'VERIFY'))
+          .widget<FilledButton>(findUiControl(FilledButton, 'VERIFY'))
           .onPressed,
       isNull,
     );
@@ -532,11 +533,11 @@ void main() {
     await tester.pump();
     expect(
       tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, 'VERIFY'))
+          .widget<FilledButton>(findUiControl(FilledButton, 'VERIFY'))
           .onPressed,
       isNotNull,
     );
-    await tester.tap(find.text('VERIFY'));
+    await tester.tap(findUiText('VERIFY'));
     await tester.pump();
     expect(auth.verifyCalls, 1);
   });
@@ -558,14 +559,14 @@ void main() {
       pumpFor: const Duration(milliseconds: 100),
     );
 
-    expect(find.text('FINISHING SIGN-IN'), findsOne);
+    expect(findUiText('FINISHING SIGN-IN'), findsOne);
     expect(repository.rsvpCalls, 0);
 
     repository.ensureGate.complete();
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pump();
     expect(repository.rsvpCalls, 1);
-    expect(find.text('RSVP CONFIRMED'), findsOne);
+    expect(findUiText('RSVP CONFIRMED'), findsOne);
 
     await harness.app.commitAuth();
     expect(repository.rsvpCalls, 1);
@@ -604,11 +605,11 @@ void main() {
       pumpFor: const Duration(milliseconds: 400),
     );
 
-    expect(find.text('TRY AGAIN'), findsOne);
+    expect(findUiText('TRY AGAIN'), findsOne);
     expect(harness.app.pending?.kind, PendingKind.save);
     expect(repository.saveCalls, 0);
 
-    await tester.tap(find.text('TRY AGAIN'));
+    await tester.tap(findUiText('TRY AGAIN'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pump();
@@ -616,7 +617,7 @@ void main() {
     expect(repository.ensureCalls, 2);
     expect(repository.saveCalls, 1);
     expect(harness.app.pending, isNull);
-    expect(find.text('SHOW SAVED'), findsOne);
+    expect(findUiText('SHOW SAVED'), findsOne);
     await tester.pump(const Duration(seconds: 2));
   });
 }

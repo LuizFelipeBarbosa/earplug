@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('organizer validates text and amount then submits minor units', (
@@ -22,7 +23,7 @@ void main() {
       tester,
       side: BookingSide.organizer,
     );
-    expect(find.text('REQUEST A REFUND'), findsOneWidget);
+    expect(findUiText('REQUEST A REFUND'), findsOneWidget);
     _expectCategories(tester);
     final amount = find.byKey(const Key('dispute-amount'));
     expect(
@@ -100,7 +101,7 @@ void main() {
       tester,
       side: BookingSide.artist,
     );
-    expect(find.text('OPEN A DISPUTE'), findsOneWidget);
+    expect(findUiText('OPEN A DISPUTE'), findsOneWidget);
     expect(find.byKey(const Key('dispute-amount')), findsNothing);
     _expectCategories(tester);
     expect(

@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   group('EarPlug theme', () {
@@ -242,7 +243,7 @@ void main() {
         expect(pressed, isTrue);
 
         expect(tester.getSize(find.byType(EpNavigationItem)).height, 66);
-        expect(tester.widget<Text>(find.text('PROFILE')).style!.fontSize, 11);
+        expect(tester.widget<Text>(findUiText('PROFILE')).style!.fontSize, 11);
         final indicator = tester.widget<AnimatedContainer>(
           find.descendant(
             of: find.byType(EpNavigationItem),
@@ -305,7 +306,7 @@ void main() {
         ),
       );
 
-      expect(find.text('SR'), findsOneWidget);
+      expect(findUiText('SR'), findsOneWidget);
       expect(find.byIcon(Icons.person), findsOneWidget);
       expect(
         find.descendant(
@@ -393,21 +394,21 @@ void main() {
           ),
         );
 
-        expect(find.text('UPCOMING · 2'), findsOne);
+        expect(findUiText('UPCOMING · 2'), findsOne);
         expect(find.text('10'), findsOne);
-        expect(find.text('SEP'), findsOne);
+        expect(findUiText('SEP'), findsOne);
         expect(find.bySemanticsLabel('Wednesday September 10'), findsOne);
-        expect(find.text('GOING ✓'), findsOne);
+        expect(findUiText('GOING ✓'), findsOne);
         expect(
-          tester.widget<Text>(find.text('GOING ✓')).style!.fontSize,
+          tester.widget<Text>(findUiText('GOING ✓')).style!.fontSize,
           greaterThanOrEqualTo(11),
         );
         expect(
-          tester.widget<Text>(find.text('PROFILE COMPLETE')).style!.fontSize,
+          tester.widget<Text>(findUiText('PROFILE COMPLETE')).style!.fontSize,
           greaterThanOrEqualTo(11),
         );
         expect(
-          tester.widget<Text>(find.text('SEP')).style!.fontSize,
+          tester.widget<Text>(findUiText('SEP')).style!.fontSize,
           greaterThanOrEqualTo(11),
         );
         expect(
@@ -462,7 +463,7 @@ void main() {
         tester.getSize(find.byType(EpChip).at(2)).height,
         greaterThanOrEqualTo(48),
       );
-      await tester.tap(find.text('+ ADD'));
+      await tester.tap(findUiText('+ ADD'));
       await tester.tap(find.byIcon(Icons.close));
       expect(selected, 1);
       expect(removed, 1);
@@ -484,7 +485,7 @@ void main() {
 
       final locked = tester.widget<FilterChip>(find.byType(FilterChip).first);
       final lockedLabelColor = tester
-          .widget<Text>(find.text('LOCKED'))
+          .widget<Text>(findUiText('LOCKED'))
           .style!
           .color;
       expect(lockedLabelColor, isNot(equals(locked.selectedColor)));
@@ -495,24 +496,24 @@ void main() {
       expect(locked.onSelected, isNotNull);
 
       final shown = tester.widget<FilterChip>(find.byType(FilterChip).at(1));
-      expect(tester.widget<Text>(find.text('SHOWN')).style!.color, Ep.dark);
+      expect(tester.widget<Text>(findUiText('SHOWN')).style!.color, Ep.dark);
       expect(shown.selectedColor, Ep.volt);
       expect(shown.selectedColor!.a, 1.0);
       expect(shown.side!.color, Ep.volt);
       expect(shown.onSelected, isNotNull);
 
       for (final label in ['LOCKED', 'SHOWN']) {
-        final chip = find.widgetWithText(EpChip, label);
+        final chip = findUiControl(EpChip, label);
         final rawChip = tester.widget<RawChip>(
           find.descendant(of: chip, matching: find.byType(RawChip)),
         );
         expect(rawChip.isEnabled, isTrue);
         expect(chip.hitTestable(), findsNothing);
         expect(
-          Focus.of(tester.element(find.text(label))).canRequestFocus,
+          Focus.of(tester.element(findUiText(label))).canRequestFocus,
           isFalse,
         );
-        await tester.tap(find.text(label), warnIfMissed: false);
+        await tester.tap(findUiText(label), warnIfMissed: false);
       }
       await tester.pump();
       expect(tester.takeException(), isNull);
@@ -574,10 +575,10 @@ void main() {
         greaterThanOrEqualTo(48),
       );
       await tester.tap(find.byType(SwitchRow));
-      await tester.tap(find.text('RESUME →'));
-      await tester.tap(find.text('PREVIEW'));
-      await tester.tap(find.text('SAVE CHANGES'));
-      await tester.tap(find.text('ARCHIVE BAND'));
+      await tester.tap(findUiText('RESUME →'));
+      await tester.tap(findUiText('PREVIEW'));
+      await tester.tap(findUiText('SAVE CHANGES'));
+      await tester.tap(findUiText('ARCHIVE BAND'));
       expect(enabled, isTrue);
       expect(resumed, isTrue);
       expect(previewed, isTrue);
@@ -618,10 +619,10 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('OPEN'));
+      await tester.tap(findUiText('OPEN'));
       await tester.pumpAndSettle();
       expect(find.byType(EpActionSheet), findsOne);
-      expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
+      expect(findUiText('RIPTIDE RELEASE SHOW'), findsOne);
       expect(
         tester.widget<Text>(find.text('Delete')).style!.color,
         Ep.destructive,
@@ -659,15 +660,15 @@ void main() {
         ),
       );
 
-      expect(find.text('FOLLOWERS'), findsOne);
+      expect(findUiText('FOLLOWERS'), findsOne);
       expect(
-        tester.widget<Text>(find.text('FOLLOWERS')).style!.fontSize,
+        tester.widget<Text>(findUiText('FOLLOWERS')).style!.fontSize,
         greaterThanOrEqualTo(11),
       );
       expect(find.text('486'), findsOne);
-      expect(find.text('NEXT UP'), findsOne);
+      expect(findUiText('NEXT UP'), findsOne);
       expect(find.text('Riptide Release Show'), findsOne);
-      await tester.tap(find.text('DOOR MODE'));
+      await tester.tap(findUiText('DOOR MODE'));
       expect(launched, isTrue);
     });
 
@@ -740,8 +741,8 @@ void main() {
         ),
       );
 
-      expect(find.text('BAND'), findsOne);
-      expect(find.text('SWITCH BAND'), findsNothing);
+      expect(findUiText('BAND'), findsOne);
+      expect(findUiText('SWITCH BAND'), findsNothing);
       expect(
         tester.getSemantics(find.byType(EpNavigationItem)).label,
         'SWITCH BAND',
@@ -827,7 +828,7 @@ void main() {
           Ep.ink,
         );
         expect(
-          tester.widget<Text>(find.text('THE FOGHORN CLUB')).style!.color,
+          tester.widget<Text>(findUiText('THE FOGHORN CLUB')).style!.color,
           Ep.ink,
         );
       }

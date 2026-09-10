@@ -1,12 +1,13 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:earplug/app_state.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
-import 'package:earplug/navigation.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/design_rules.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 /// Every app route is exercised with real demo state. Set EP_DESIGN_CAPTURE to
 /// a directory to export the rendered pages for visual review.
@@ -214,6 +216,55 @@ void main() {
             );
           }
         }
+        await openAllFormSections(tester);
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${screen.name}, expanded sections',
+        );
+        final inputs = find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField &&
+              widget.enabled != false &&
+              !widget.readOnly,
+        );
+        if (inputs.evaluate().isNotEmpty) {
+          await tester.ensureVisible(inputs.first);
+          await tester.tap(inputs.first);
+          tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+          await tester.pumpAndSettle();
+          expect(
+            tester.takeException(),
+            isNull,
+            reason: '${screen.name}, keyboard open',
+          );
+          for (final footer in find.byType(StickyActionBar).evaluate()) {
+            final bounds = tester.getRect(find.byWidget(footer.widget));
+            expect(
+              bounds.bottom,
+              lessThanOrEqualTo(view.size.height - 280),
+              reason: '${screen.name}, footer above keyboard',
+            );
+          }
+          if (capture != null) {
+            await _capture(
+              tester,
+              boundaryKey,
+              '$capture/${view.name}/${screen.name}-keyboard.png',
+            );
+          }
+          tester.view.viewInsets = const FakeViewPadding();
+        }
+        if (screen == Screen.gigCreate || screen == Screen.opportunityEdit) {
+          await _auditCreationSteps(
+            tester,
+            app,
+            screen,
+            view.size,
+            boundaryKey,
+            capture == null ? null : '$capture/${view.name}',
+          );
+        }
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pumpAndSettle();
       });
@@ -232,4 +283,92 @@ Future<void> _capture(WidgetTester tester, GlobalKey key, String path) async {
     await file.writeAsBytes(bytes!.buffer.asUint8List());
     image.dispose();
   });
+}
+
+Future<void> _auditCreationSteps(
+  WidgetTester tester,
+  AppState app,
+  Screen screen,
+  Size size,
+  GlobalKey boundary,
+  String? capture,
+) async {
+  tester.view.viewInsets = const FakeViewPadding();
+  FocusManager.instance.primaryFocus?.unfocus();
+  final originalCount = screen == Screen.opportunityEdit
+      ? (await app.repository.manageOpportunities(app.organizationId)).length
+      : null;
+  if (screen == Screen.gigCreate) {
+    app.setGfName('Form audit gig');
+    app.setGfVenue('v1');
+    app.setGfDate(DateTime.now().add(const Duration(days: 30)));
+  } else {
+    app.openOpportunityEditor('new');
+  }
+  await tester.pumpAndSettle();
+  final count = screen == Screen.gigCreate ? 4 : 5;
+  for (var step = 0; step < count; step++) {
+    if (screen == Screen.opportunityEdit && step == 0) {
+      await tester.enterText(
+        find.byKey(const Key('opp-edit-title')),
+        'Form audit opportunity',
+      );
+      await chooseFormSelection(
+        tester,
+        'Venue',
+        'The Foghorn Club · Mission, San Francisco',
+      );
+      final date = find.byKey(const Key('opp-edit-date'));
+      await tester.ensureVisible(date);
+      await tester.tap(date);
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'OK'));
+      await tester.pumpAndSettle();
+    } else if (screen == Screen.opportunityEdit && step == 1) {
+      await tester.tap(find.byKey(const Key('opp-edit-slot-add')));
+      await tester.pumpAndSettle();
+    }
+    expect(tester.widget<EpFormSteps>(find.byType(EpFormSteps)).current, step);
+    await openAllFormSections(tester);
+    expectNoFieldInCard(tester);
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: '${screen.name}, step $step',
+    );
+    if (capture != null) {
+      await _capture(
+        tester,
+        boundary,
+        '$capture/${screen.name}-step-$step.png',
+      );
+    }
+    // Intermediate controls and the primary action must coexist with the keyboard.
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    await tester.pumpAndSettle();
+    final bar = find.byType(StickyActionBar).last;
+    expect(tester.getRect(bar).bottom, lessThanOrEqualTo(size.height - 280));
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: '${screen.name}, step $step keyboard',
+    );
+    tester.view.viewInsets = const FakeViewPadding();
+    await tester.pumpAndSettle();
+    if (step < count - 1) {
+      final next = find.widgetWithText(FilledButton, 'Continue');
+      expect(next.hitTestable(), findsOneWidget);
+      await tester.tap(next);
+      await tester.pumpAndSettle();
+    }
+  }
+  if (screen == Screen.gigCreate) {
+    expect(app.gfPublished, isFalse);
+    expect(app.gfName, 'Form audit gig');
+  } else {
+    expect(
+      (await app.repository.manageOpportunities(app.organizationId)).length,
+      originalCount,
+    );
+  }
 }

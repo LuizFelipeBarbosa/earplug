@@ -7,6 +7,7 @@ import '../models.dart';
 import '../services/user_actions.dart';
 import '../theme.dart';
 import '../widgets/common.dart';
+import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
 
 class OrgTeamScreen extends StatefulWidget {
@@ -273,15 +274,14 @@ class _OrgTeamScreenState extends State<OrgTeamScreen> {
             ),
           ),
         if (isOwner) ...[
-          const SectionBar(label: 'INVITE'),
           Text(
             'Create one secure link for a manager, finance, or door role. It can be used for seven days.',
             style: Theme.of(context).textTheme.epCaption,
           ),
           const SizedBox(height: 12),
-          EpCard(
-            variant: EpCardVariant.raised,
-            padding: const EdgeInsets.all(15),
+          EpDisclosure(
+            title: 'Invite a teammate',
+            summary: 'Choose a role and create an invitation link',
             child: _inviteSection(context),
           ),
         ],
@@ -322,6 +322,7 @@ class _OrgTeamScreenState extends State<OrgTeamScreen> {
               OrganizationRole.door,
             ])
               EpChip(
+                multiple: false,
                 key: ValueKey('org-team-invite-role-${role.wireValue}'),
                 label: _roleLabel(role),
                 active: _selectedInviteRole == role,
@@ -331,6 +332,15 @@ class _OrgTeamScreenState extends State<OrgTeamScreen> {
               ),
           ],
         ),
+        Text(switch (_selectedInviteRole) {
+          OrganizationRole.manager =>
+            'Managers manage the organization, venues, events and bookings.',
+          OrganizationRole.finance =>
+            'Finance members can view financial records and exports.',
+          OrganizationRole.door =>
+            'Door staff can scan tickets and check in guests.',
+          _ => '',
+        }, style: Theme.of(context).textTheme.epCaption),
         const SizedBox(height: 12),
         if (!active) ...[
           if (_invite != null) ...[

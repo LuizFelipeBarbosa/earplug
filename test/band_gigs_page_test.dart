@@ -18,6 +18,7 @@ import 'package:provider/provider.dart';
 import 'support/design_rules.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('OPEN identifies private requests and explains disclosure', (
@@ -107,7 +108,7 @@ void main() {
     expect(find.textContaining('120 Demo Lane'), findsNothing);
     expect(find.byKey(const Key('opp-detail-apply')), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('EXPECTED GUESTS · 45'),
+      findUiText('EXPECTED GUESTS · 45'),
       300,
       scrollable: find
           .descendant(
@@ -117,7 +118,7 @@ void main() {
           .first,
     );
     await tester.pumpAndSettle();
-    expect(find.text('EXPECTED GUESTS · 45'), findsOneWidget);
+    expect(findUiText('EXPECTED GUESTS · 45'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -145,7 +146,7 @@ void main() {
       final card = find.byKey(const Key('opp-card-opp1'));
       expect(card, findsOneWidget);
       expect(
-        find.descendant(of: card, matching: find.text('INVITED')),
+        find.descendant(of: card, matching: findUiText('INVITED')),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);
@@ -226,12 +227,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.gigMgr);
     for (final segment in ['open', 'applied', 'booked', 'past']) {
-      expect(
-        find.widgetWithText(EpChip, segment.toUpperCase()),
-        findsOneWidget,
-      );
+      expect(findUiControl(EpChip, segment.toUpperCase()), findsOneWidget);
     }
-    expect(find.text('+ NEW GIG'), findsNothing);
+    expect(findUiText('+ NEW GIG'), findsNothing);
     expect(find.byKey(const Key('opp-card-opp1')), findsOneWidget);
 
     // Seed a legacy draft so the member's write checks cover a visible row.
@@ -246,7 +244,7 @@ void main() {
       tester.widget<GhostDraftRow>(find.byType(GhostDraftRow)).onResume,
       isNull,
     );
-    expect(find.text('RESUME →'), findsNothing);
+    expect(findUiText('RESUME →'), findsNothing);
     expect(find.byIcon(Icons.more_horiz), findsNothing);
     expect(find.byKey(Key('gig-actions-${draft.id}')), findsNothing);
     expect(find.byKey(Key('gig-edit-${draft.id}')), findsNothing);
@@ -275,7 +273,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('opp-card-opp3')),
-        matching: find.text('INVITED'),
+        matching: findUiText('INVITED'),
       ),
       findsOneWidget,
     );
@@ -283,7 +281,7 @@ void main() {
       tester.getTopLeft(find.byKey(const Key('opp-card-opp3'))).dy,
       lessThan(tester.getTopLeft(find.byKey(const Key('opp-card-opp1'))).dy),
     );
-    expect(find.text(r'HEADLINER · $300.00'), findsOneWidget);
+    expect(findUiText(r'HEADLINER · $300.00'), findsOneWidget);
     expect(find.byKey(const Key('band-gigs-load-more')), findsNothing);
     harness.app.dispose();
   });
@@ -319,13 +317,13 @@ void main() {
     final row = find.byKey(const Key('band-app-app1'));
     expect(row, findsOneWidget);
     expect(
-      find.descendant(of: row, matching: find.text('SUBMITTED')),
+      find.descendant(of: row, matching: findUiText('SUBMITTED')),
       findsOneWidget,
     );
     expect(find.textContaining('SUPPORT'), findsOneWidget);
     await tester.tap(find.byKey(const Key('band-app-app1-withdraw')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('KEEP'));
+    await tester.tap(findUiText('KEEP'));
     await tester.pumpAndSettle();
     expect(
       harness.app.myApplications.single.application.status,
@@ -340,7 +338,7 @@ void main() {
     );
     expect(find.byKey(const Key('band-app-app1-withdraw')), findsNothing);
     expect(
-      find.descendant(of: row, matching: find.text('WITHDRAWN')),
+      find.descendant(of: row, matching: findUiText('WITHDRAWN')),
       findsOneWidget,
     );
     expect(
@@ -524,7 +522,7 @@ void main() {
     final row = find.byKey(const Key('band-app-app1'));
     final respond = find.byKey(const ValueKey('band-app-app1-respond'));
     expect(
-      find.descendant(of: row, matching: find.text('OFFER RECEIVED')),
+      find.descendant(of: row, matching: findUiText('OFFER RECEIVED')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('band-app-app1-withdraw')), findsNothing);
@@ -534,7 +532,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(respond, findsOneWidget);
     expect(
-      find.descendant(of: respond, matching: find.text('RESPOND')),
+      find.descendant(of: respond, matching: findUiText('RESPOND')),
       findsOneWidget,
     );
     await tester.tap(respond);
@@ -579,7 +577,7 @@ void main() {
     final row = find.byKey(const Key('band-app-app1'));
     final viewBooking = find.byKey(const ValueKey('band-app-app1-booking'));
     expect(
-      find.descendant(of: row, matching: find.text('BOOKED')),
+      find.descendant(of: row, matching: findUiText('BOOKED')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('band-app-app1-withdraw')), findsNothing);
@@ -590,7 +588,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(viewBooking, findsOneWidget);
     expect(
-      find.descendant(of: viewBooking, matching: find.text('VIEW BOOKING')),
+      find.descendant(of: viewBooking, matching: findUiText('VIEW BOOKING')),
       findsOneWidget,
     );
     await tester.tap(viewBooking);
@@ -690,7 +688,12 @@ void main() {
     await tester.tap(find.text('Cancel gig…'));
     await tester.pumpAndSettle();
     expect(find.text('Cancel gig?'), findsOneWidget);
-    await tester.tap(find.text('CONFIRM'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(
       harness.app.managedGigProjects.single.status,
@@ -726,8 +729,8 @@ void main() {
         find.byKey(const Key('band-gigs-filter-area')),
         'Oakland',
       );
-      await tester.tap(find.widgetWithText(EpChip, 'PUNK'));
-      await tester.tap(find.widgetWithText(EpChip, 'BAR'));
+      await chooseFormSelection(tester, 'Genre', 'Punk');
+      await chooseFormSelection(tester, 'Venue type', 'Bar');
       await tester.ensureVisible(
         find.byKey(const Key('band-gigs-filter-minimum')),
       );
@@ -769,7 +772,7 @@ void main() {
     // Keep the same repository: app1 must be withdrawn before b1 applies again.
     screen.value = const OpportunityDetailScreen(opportunityRef: 'opp1');
     await tester.pumpAndSettle();
-    expect(find.text('SLOTS'), findsOneWidget);
+    expect(findUiText('SLOTS'), findsOneWidget);
     expect(
       find.byKey(const Key('opp-detail-slot-opp1-headliner')),
       findsOneWidget,
@@ -783,14 +786,7 @@ void main() {
     await tester.tap(find.byKey(const Key('opp-detail-apply')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('opp-apply-band-b1')), findsNothing);
-    expect(
-      tester
-          .widget<EpChip>(
-            find.byKey(const Key('opp-apply-slot-opp1-headliner')),
-          )
-          .active,
-      isTrue,
-    );
+    expect(find.textContaining('headliner'), findsOneWidget);
     expect(
       tester
           .widget<TextField>(find.byKey(const Key('opp-apply-fee')))
@@ -800,6 +796,9 @@ void main() {
     );
     expectNoFieldInCard(tester);
     await tester.enterText(find.byKey(const Key('opp-apply-fee')), '325.50');
+    await openAllFormSections(tester);
+    await tester.ensureVisible(find.byKey(const Key('opp-apply-availability')));
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('opp-apply-availability')),
       'Available after 6',
@@ -828,7 +827,7 @@ void main() {
     expect(active.lineupNote, 'Four musicians');
     expect(active.message, 'Ready for a full set.');
     expect(harness.app.toast, 'Application sent');
-    expect(find.text('APPLIED · SUBMITTED'), findsOneWidget);
+    expect(findUiText('APPLIED · SUBMITTED'), findsOneWidget);
     expect(find.byKey(const Key('opp-detail-apply')), findsNothing);
     expect(find.byKey(const Key('opp-detail-withdraw')), findsOneWidget);
     harness.app.dispose();
@@ -842,10 +841,15 @@ void main() {
       ),
     );
     await _signInBand(tester, harness);
-    expect(find.text('APPLIED · SUBMITTED'), findsOneWidget);
+    expect(findUiText('APPLIED · SUBMITTED'), findsOneWidget);
     await tester.tap(find.byKey(const Key('opp-detail-withdraw')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('CONFIRM'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(
@@ -867,7 +871,7 @@ void main() {
         ),
       );
       await _signInBand(tester, harness);
-      expect(find.text('INVITED'), findsOneWidget);
+      expect(findUiText('INVITED'), findsOneWidget);
       await tester.tap(find.byKey(const Key('opp-detail-apply')));
       await tester.pumpAndSettle();
 
@@ -900,7 +904,7 @@ void main() {
       initialOpportunityRef: 'missing',
     );
     expect(find.text("This opportunity isn't available."), findsOneWidget);
-    await tester.tap(find.text('BACK'));
+    await tester.tap(findUiText('BACK'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(harness.app.current.screen, Screen.home);
@@ -931,7 +935,12 @@ Future<void> _signInNonAdminMember(
 Future<void> _withdrawFromApplied(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('band-app-app1-withdraw')));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('CONFIRM'));
+  await tester.tap(
+    find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(FilledButton),
+    ),
+  );
   await tester.pumpAndSettle();
 }
 

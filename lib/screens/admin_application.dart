@@ -651,65 +651,62 @@ class _AdminReviewActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: context.epColors.tabBarBackground,
-          border: Border(top: BorderSide(color: context.epColors.border)),
-        ),
-        child: SafeArea(
-          top: false,
-          minimum: const EdgeInsets.all(12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (status == OrganizationApplicationStatus.submitted) ...[
-                EpButton(
-                  'START REVIEW',
-                  key: const Key('admin-review-start'),
-                  onTap: enabled ? onStart : null,
-                ),
-                const SizedBox(height: 8),
-              ],
-              Row(
-                children: [
-                  Expanded(
-                    child: EpButton(
-                      'REQUEST INFO',
-                      key: const Key('admin-review-request-info'),
-                      kind: EpButtonKind.outline,
-                      fontSize: 10,
-                      padding: const EdgeInsets.symmetric(vertical: 11),
-                      onTap: enabled ? onRequestInfo : null,
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: EpButton(
-                      'APPROVE',
-                      key: const Key('admin-review-approve'),
-                      kind: EpButtonKind.outline,
-                      fontSize: 10,
-                      padding: const EdgeInsets.symmetric(vertical: 11),
-                      onTap: enabled ? onApprove : null,
-                    ),
-                  ),
-                  const SizedBox(width: 7),
-                  Expanded(
-                    child: EpButton(
-                      'REJECT',
-                      key: const Key('admin-review-reject'),
-                      kind: EpButtonKind.outline,
-                      fontSize: 10,
-                      padding: const EdgeInsets.symmetric(vertical: 11),
-                      onTap: enabled ? onReject : null,
-                    ),
-                  ),
-                ],
+    return StickyActionBar(
+      primaryLabel: status == OrganizationApplicationStatus.submitted
+          ? 'Start review'
+          : 'Choose decision',
+      onPrimary: !enabled
+          ? null
+          : status == OrganizationApplicationStatus.submitted
+          ? onStart
+          : () => _chooseDecision(context),
+      secondaryLabel: status == OrganizationApplicationStatus.submitted
+          ? 'Choose decision'
+          : null,
+      onSecondary: enabled ? () => _chooseDecision(context) : null,
+    );
+  }
+
+  void _chooseDecision(BuildContext context) {
+    showEpSheet(
+      context,
+      (sheetContext) => EpFormSheet(
+        title: 'Application decision',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final choice in [
+              (
+                key: 'admin-review-request-info',
+                label: 'Request information',
+                detail: 'Ask the applicant to update their application.',
+                action: onRequestInfo,
               ),
-            ],
-          ),
+              (
+                key: 'admin-review-approve',
+                label: 'Approve application',
+                detail: 'Create the approved account.',
+                action: onApprove,
+              ),
+              (
+                key: 'admin-review-reject',
+                label: 'Reject application',
+                detail:
+                    'Tell the applicant their application was not approved.',
+                action: onReject,
+              ),
+            ])
+              ListTile(
+                key: Key(choice.key),
+                title: Text(choice.label),
+                subtitle: Text(choice.detail),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  choice.action();
+                },
+              ),
+          ],
         ),
       ),
     );
@@ -766,7 +763,7 @@ class _DecisionNoteSheetState extends State<_DecisionNoteSheet> {
           ),
           const SizedBox(height: 14),
           EpButton(
-            'CONFIRM',
+            sentenceCase(widget.title),
             key: const Key('admin-review-confirm'),
             onTap: _submitting ? null : _confirm,
           ),
@@ -815,7 +812,7 @@ class _ApprovalSheetState extends State<_ApprovalSheet> {
           ),
           const SizedBox(height: 14),
           EpButton(
-            'CONFIRM',
+            'Approve application',
             key: const Key('admin-review-confirm'),
             onTap: _submitting ? null : _confirm,
           ),

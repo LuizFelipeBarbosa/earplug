@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/design_rules.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('owner sees a venue request and can approve it', (tester) async {
@@ -29,7 +30,7 @@ void main() {
     final row = find.byKey(const Key('venue-request-consent-1'));
     expect(row, findsOneWidget);
     expect(tester.widget(row), isA<EpCard>());
-    expect(find.text('VENUE REQUESTS'), findsOneWidget);
+    expect(findUiText('VENUE REQUESTS'), findsOneWidget);
     expect(
       find.descendant(
         of: row,
@@ -48,7 +49,7 @@ void main() {
       find.descendant(of: row, matching: find.text('The Foghorn Club')),
       findsOneWidget,
     );
-    expect(find.text('PENDING APPROVAL'), findsOneWidget);
+    expect(findUiText('PENDING APPROVAL'), findsOneWidget);
     expect(
       find.byKey(const Key('venue-request-approve-consent-1')),
       findsOneWidget,
@@ -61,7 +62,7 @@ void main() {
     await tester.tap(find.byKey(const Key('venue-request-approve-consent-1')));
     await tester.pumpAndSettle();
 
-    expect(find.text('APPROVED'), findsOneWidget);
+    expect(findUiText('APPROVED'), findsOneWidget);
     expect(
       find.byKey(const Key('venue-request-revoke-consent-1')),
       findsOneWidget,
@@ -114,7 +115,7 @@ void main() {
 
         expect(find.byType(EpFormSheet), findsNothing);
         expect(find.byKey(const Key('venue-request-consent-1')), findsNothing);
-        expect(find.text('VENUE REQUESTS'), findsNothing);
+        expect(findUiText('VENUE REQUESTS'), findsNothing);
         expect(find.byKey(const ValueKey('org-venue-v1')), findsOneWidget);
         final consent = await repository.venueConsentForOpportunity(
           'opp-promoter',
@@ -234,7 +235,7 @@ void main() {
 
     expect(find.text('Could not load venues.'), findsOneWidget);
     expect(find.byKey(const Key('venue-request-consent-1')), findsNothing);
-    await tester.tap(find.text('RETRY'));
+    await tester.tap(findUiText('RETRY'));
     await tester.pumpAndSettle();
 
     expect(find.text('Could not load venues.'), findsNothing);

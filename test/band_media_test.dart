@@ -13,6 +13,7 @@ import 'support/fakes.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('focuses on videos and gallery photos with no artwork controls', (
@@ -22,11 +23,11 @@ void main() {
     tester.view.physicalSize = const Size(402, 3600);
     await tester.pumpAndSettle();
 
-    expect(find.text('UPLOAD VIDEO'), findsOne);
-    expect(find.text('UPLOAD PHOTOS'), findsOne);
-    expect(find.text('THIS IS WHAT WE SOUND LIKE · 5'), findsOne);
-    expect(find.text('GALLERY PHOTOS · 2'), findsOne);
-    expect(find.text('PROFILE BANNER'), findsNothing);
+    expect(findUiText('UPLOAD VIDEO'), findsOne);
+    expect(findUiText('UPLOAD PHOTOS'), findsOne);
+    expect(findUiText('THIS IS WHAT WE SOUND LIKE · 5'), findsOne);
+    expect(findUiText('GALLERY PHOTOS · 2'), findsOne);
+    expect(findUiText('PROFILE BANNER'), findsNothing);
     expect(find.textContaining('PROFILE IMAGE'), findsNothing);
     expect(find.byKey(const ValueKey('profile-banner-picker')), findsNothing);
 
@@ -38,8 +39,8 @@ void main() {
       expect(find.byKey(ValueKey('photo-media-${photo.id}')), findsOne);
     }
     expect(find.byType(BandVideoThumbnail), findsNWidgets(5));
-    expect(find.text('FEATURED FIRST'), findsOne);
-    expect(find.text('PROCESSING'), findsNWidgets(7));
+    expect(findUiText('FEATURED FIRST'), findsOne);
+    expect(findUiText('PROCESSING'), findsNWidgets(7));
     expect(tester.takeException(), isNull);
   });
 
@@ -57,10 +58,10 @@ void main() {
         ),
       );
 
-      expect(find.text('BAND MEDIA'), findsOne);
+      expect(findUiText('BAND MEDIA'), findsOne);
       expect(find.textContaining('ITEMS'), findsOne);
-      expect(find.text('UPLOAD VIDEO'), findsOne);
-      expect(find.text('UPLOAD PHOTOS'), findsOne);
+      expect(findUiText('UPLOAD VIDEO'), findsOne);
+      expect(findUiText('UPLOAD PHOTOS'), findsOne);
       expect(tester.takeException(), isNull);
     },
   );
@@ -72,15 +73,16 @@ void main() {
     await _pumpBandMedia(
       tester,
       auth: auth,
-      repository: StubRepository(auth: auth)..returns('mediaFor', const <BandMedia>[]),
+      repository: StubRepository(auth: auth)
+        ..returns('mediaFor', const <BandMedia>[]),
     );
     tester.view.physicalSize = const Size(402, 1800);
     await tester.pumpAndSettle();
 
-    expect(find.text('NO VIDEOS YET'), findsOne);
-    expect(find.text('NO GALLERY PHOTOS YET'), findsOne);
-    expect(find.text('UPLOAD A MUSIC CLIP'), findsOne);
-    expect(find.text('UPLOAD PHOTOS'), findsNWidgets(2));
+    expect(findUiText('NO VIDEOS YET'), findsOne);
+    expect(findUiText('NO GALLERY PHOTOS YET'), findsOne);
+    expect(findUiText('UPLOAD A MUSIC CLIP'), findsOne);
+    expect(findUiText('UPLOAD PHOTOS'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
   });
 
@@ -97,22 +99,22 @@ void main() {
     );
     harness.picker.nextVideo = videoFixture();
 
-    await tester.tap(find.text('UPLOAD VIDEO'));
+    await tester.tap(findUiText('UPLOAD VIDEO'));
     await tester.pump();
 
-    expect(find.text('UPLOADS · 1'), findsOne);
+    expect(findUiText('UPLOADS · 1'), findsOne);
     expect(find.text('riptide_live.mp4'), findsOne);
-    expect(find.text('SAVING'), findsOne);
+    expect(findUiText('SAVING'), findsOne);
 
     saveGate.complete();
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('RIPTIDE LIVE'),
+      findUiText('RIPTIDE LIVE'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
 
-    expect(find.text('RIPTIDE LIVE'), findsOne);
+    expect(findUiText('RIPTIDE LIVE'), findsOne);
     expect(tester.takeException(), isNull);
   });
 
@@ -135,19 +137,19 @@ void main() {
     );
     harness.picker.nextVideo = videoFixture();
 
-    await tester.tap(find.text('UPLOAD VIDEO'));
+    await tester.tap(findUiText('UPLOAD VIDEO'));
     await tester.pumpAndSettle();
 
-    expect(find.text('UPLOAD FAILED'), findsOne);
-    expect(find.text('RETRY'), findsOne);
-    expect(find.text('DISCARD'), findsOne);
+    expect(findUiText('UPLOAD FAILED'), findsOne);
+    expect(findUiText('RETRY'), findsOne);
+    expect(findUiText('DISCARD'), findsOne);
     expect(find.textContaining('simulated upload failure'), findsOne);
 
-    await tester.tap(find.text('DISCARD'));
+    await tester.tap(findUiText('DISCARD'));
     await tester.pump();
 
     expect(find.text('riptide_live.mp4'), findsNothing);
-    expect(find.text('RETRY'), findsNothing);
+    expect(findUiText('RETRY'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -174,7 +176,7 @@ void main() {
 
     final videoUploadCard = tester.widget<EpCard>(
       find.ancestor(
-        of: find.text('UPLOAD VIDEO'),
+        of: findUiText('UPLOAD VIDEO'),
         matching: find.byType(EpCard),
       ),
     );
@@ -261,12 +263,12 @@ void main() {
     await tester.tap(find.text('Remove video…'));
     await tester.pumpAndSettle();
 
-    expect(find.text('REMOVE VIDEO?'), findsOne);
-    expect(find.text('DELETE'), findsOne);
-    expect(find.text('KEEP'), findsOne);
+    expect(findUiText('REMOVE VIDEO?'), findsOne);
+    expect(findUiText('DELETE'), findsOne);
+    expect(findUiText('KEEP'), findsOne);
     expect(find.text(title), findsWidgets);
 
-    await tester.tap(find.text('DELETE'));
+    await tester.tap(findUiText('DELETE'));
     await tester.pumpAndSettle();
 
     expect(find.text(title), findsNothing);

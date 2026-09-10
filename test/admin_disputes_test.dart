@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/design_rules.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 // Public checkout confirms the booking; the past start makes it eligible.
 Future<Booking> _paidBooking(
@@ -184,14 +185,14 @@ void main() {
         expect(repository.resolutionStarted, isTrue);
         expect(completeResolution.isCompleted, isFalse);
         expect(repository.resolutionApplied, isFalse);
-        expect(find.text('RESOLVE DISPUTE'), findsOneWidget);
+        expect(findUiText('RESOLVE DISPUTE'), findsNWidgets(2));
         expect(tester.widget<EpButton>(confirm).onTap, isNull);
         expect(repository.openDisputesCalls, 1);
 
         // Rebuild the listening screen while the mutation is still in flight.
         await harness.app.refreshOrganizationBookings(booking.organizationId);
         await tester.pump(const Duration(seconds: 3));
-        expect(find.text('RESOLVE DISPUTE'), findsOneWidget);
+        expect(findUiText('RESOLVE DISPUTE'), findsNWidgets(2));
         expect(tester.widget<EpButton>(confirm).onTap, isNull);
         expect(repository.openDisputesCalls, 1);
 
@@ -210,7 +211,7 @@ void main() {
           await tester.pump();
           expect(find.text('No open disputes.'), findsOneWidget);
           expect(row, findsNothing);
-          expect(find.text('RESOLVE DISPUTE'), findsOneWidget);
+          expect(findUiText('RESOLVE DISPUTE'), findsNWidgets(2));
           expect(tester.widget<EpButton>(confirm).onTap, isNull);
           expect(adminRoute.isCurrent, isFalse);
           expect(routeCurrentOnReload, [false]);
@@ -219,7 +220,7 @@ void main() {
         }
         await tester.pumpAndSettle();
 
-        expect(find.text('RESOLVE DISPUTE'), findsNothing);
+        expect(findUiText('RESOLVE DISPUTE'), findsNothing);
         expect(confirm, findsNothing);
         expect(row, findsNothing);
         expect(find.text('No open disputes.'), findsOneWidget);
@@ -301,7 +302,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(review, findsNothing);
     expect(row, findsOneWidget);
-    expect(find.text('UNDER REVIEW'), findsOneWidget);
+    expect(findUiText('UNDER REVIEW'), findsOneWidget);
     expect(
       (await repository.disputesForBooking(booking.id)).single.status,
       DisputeStatus.underReview,
@@ -439,7 +440,7 @@ void main() {
       await tester.tap(confirm);
       await tester.pumpAndSettle();
       expect(find.byType(InlineFormFeedback), findsOneWidget);
-      expect(find.text('RESOLVE DISPUTE'), findsOneWidget);
+      expect(findUiText('RESOLVE DISPUTE'), findsNWidgets(2));
       expect((await repository.booking(booking.id))!.refundedMinor, 0);
       expect(tester.takeException(), isNull);
     }
@@ -451,7 +452,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(genericErrorMessage), findsOneWidget);
     expect(find.byType(InlineFormFeedback), findsOneWidget);
-    expect(find.text('RESOLVE DISPUTE'), findsOneWidget);
+    expect(findUiText('RESOLVE DISPUTE'), findsNWidgets(2));
     expect(tester.widget<EpButton>(confirm).onTap, isNotNull);
     expect(tester.takeException(), isNull);
     expectNoFieldInCard(tester);

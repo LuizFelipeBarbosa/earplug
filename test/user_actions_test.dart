@@ -4,6 +4,7 @@ import 'package:earplug/services/user_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('clipboard success is announced only after the write resolves', (
@@ -39,7 +40,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('COPY'));
+    await tester.tap(findUiText('COPY'));
     await tester.pump();
     expect(find.text('Link copied.'), findsNothing);
     write.complete();
@@ -78,9 +79,9 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('COPY'));
+    await tester.tap(findUiText('COPY'));
     await tester.pumpAndSettle();
-    expect(find.text('COPY THIS LINK'), findsOne);
+    expect(findUiText('COPY THIS LINK'), findsOne);
     expect(
       find.widgetWithText(SelectableText, 'https://earplug.app/static-bloom'),
       findsOne,

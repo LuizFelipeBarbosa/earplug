@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets(
@@ -31,15 +32,15 @@ void main() {
         pumpFor: const Duration(milliseconds: 100),
       );
 
-      expect(find.text('THIS GIG HAS BEEN CANCELLED'), findsNothing);
+      expect(findUiText('THIS GIG HAS BEEN CANCELLED'), findsNothing);
       expect(
         find.descendant(
           of: find.byType(GigFlyer),
-          matching: find.text('TEXT ONLY OPENER'),
+          matching: findUiText('TEXT ONLY OPENER'),
         ),
         findsOne,
       );
-      expect(find.text('RSVP — FREE'), findsOne);
+      expect(findUiText('RSVP — FREE'), findsOne);
 
       final heroContent = tester.widget<Stack>(
         find.byKey(const ValueKey('gig-detail-hero-content')),
@@ -51,7 +52,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(harness.app.gig('shared-gig')?.lifecycle, GigLifecycle.cancelled);
-      expect(find.text('THIS GIG HAS BEEN CANCELLED'), findsOne);
+      expect(findUiText('THIS GIG HAS BEEN CANCELLED'), findsOne);
     },
   );
 
@@ -63,7 +64,7 @@ void main() {
       home: const Scaffold(body: GigDetailScreen(gigId: 'g2')),
     );
 
-    expect(find.text('FOGHORN DIET PRESENTS'), findsOne);
+    expect(findUiText('FOGHORN DIET PRESENTS'), findsOne);
     expect(find.textContaining('IN-STORE RACKET'), findsNothing);
 
     final follow = find.byKey(const ValueKey('gig-lineup-follow-b1'));
@@ -96,8 +97,8 @@ void main() {
     );
 
     expect(harness.app.gig('shared-gig'), isNotNull);
-    expect(find.text('ABOUT'), findsNothing);
-    expect(find.text('VENUE'), findsOne);
+    expect(findUiText('ABOUT'), findsNothing);
+    expect(findUiText('VENUE'), findsOne);
   });
 
   testWidgets(
@@ -119,19 +120,19 @@ void main() {
         beforePump: (app) => app.openGig('shared-gig'),
       );
 
-      expect(find.text("WHO'S GOING"), findsNothing);
-      expect(find.text('23 GOING'), findsNothing);
+      expect(findUiText("WHO'S GOING"), findsNothing);
+      expect(findUiText('23 GOING'), findsNothing);
 
-      await tester.tap(find.text('RSVP — FREE'));
+      await tester.tap(findUiText('RSVP — FREE'));
       await tester.pump();
       expect(harness.app.rsvpCount(repository.gig), 24);
-      expect(find.text("WHO'S GOING"), findsNothing);
+      expect(findUiText("WHO'S GOING"), findsNothing);
 
       repository.completeMutation();
       await tester.pumpAndSettle();
       expect(harness.app.rsvpCount(repository.gig), 24);
-      expect(find.text("WHO'S GOING"), findsOne);
-      expect(find.text('24+ GOING'), findsOne);
+      expect(findUiText("WHO'S GOING"), findsOne);
+      expect(findUiText('24+ GOING'), findsOne);
       expect(find.text('24 of 80 spots filled'), findsOne);
       final progress = find.descendant(
         of: find.byKey(
@@ -152,7 +153,7 @@ void main() {
         findsNothing,
       );
       expect(find.textContaining('Attendance stays vague'), findsNothing);
-      expect(find.text('YOU MAY KNOW'), findsNothing);
+      expect(findUiText('YOU MAY KNOW'), findsNothing);
 
       repository.emitGoing(25);
       await tester.pumpAndSettle();
@@ -163,17 +164,17 @@ void main() {
         closeTo(25 / 80, .001),
       );
 
-      await tester.tap(find.text('GOING ✓'));
+      await tester.tap(findUiText('GOING ✓'));
       await tester.pump();
       expect(harness.app.rsvpCount(repository.gig), 24);
       expect(harness.app.hasConfirmedRsvp(repository.gig.id), isFalse);
       await tester.pump(const Duration(milliseconds: 300));
-      expect(find.text("WHO'S GOING"), findsNothing);
+      expect(findUiText("WHO'S GOING"), findsNothing);
 
       repository.completeMutation();
       await tester.pumpAndSettle();
       expect(harness.app.rsvpCount(repository.gig), 24);
-      expect(find.text("WHO'S GOING"), findsNothing);
+      expect(findUiText("WHO'S GOING"), findsNothing);
       semantics.dispose();
     },
   );
@@ -196,7 +197,7 @@ void main() {
       beforePump: (app) => app.openGig('shared-gig'),
     );
 
-    await tester.tap(find.text('RSVP — FREE'));
+    await tester.tap(findUiText('RSVP — FREE'));
     await tester.pump();
     expect(harness.app.rsvpCount(repository.gig), 8);
 
@@ -204,7 +205,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(harness.app.rsvps, isNot(contains('shared-gig')));
     expect(harness.app.rsvpCount(repository.gig), 7);
-    expect(find.text("WHO'S GOING"), findsNothing);
+    expect(findUiText("WHO'S GOING"), findsNothing);
     expect(harness.app.toast, 'Something broke. Try again.');
   });
 
@@ -227,15 +228,15 @@ void main() {
       beforePump: (app) => app.openGig('shared-gig'),
     );
 
-    expect(find.text("WHO'S GOING"), findsOne);
-    expect(find.text('4+ GOING'), findsOne);
+    expect(findUiText("WHO'S GOING"), findsOne);
+    expect(findUiText('4+ GOING'), findsOne);
     expect(find.byType(LinearProgressIndicator), findsNothing);
 
     repository.emitGig(
       repository.gig.copyWith(lifecycle: GigLifecycle.cancelled),
     );
     await tester.pumpAndSettle();
-    expect(find.text("WHO'S GOING"), findsNothing);
+    expect(findUiText("WHO'S GOING"), findsNothing);
   });
 
   testWidgets('paid gigs show the buy tickets CTA with their price', (
@@ -249,7 +250,7 @@ void main() {
       home: const Scaffold(body: GigDetailScreen(gigId: 'g8')),
     );
 
-    expect(find.text(r'BUY TICKETS · $25.00'), findsOne);
+    expect(findUiText(r'BUY TICKETS · $25.00'), findsOne);
     expect(find.byKey(const Key('gig-buy-tickets')), findsOne);
     expect(
       find.text(
@@ -257,7 +258,7 @@ void main() {
       ),
       findsOne,
     );
-    expect(find.text('RSVP — FREE'), findsNothing);
+    expect(findUiText('RSVP — FREE'), findsNothing);
     expect(find.textContaining('AT DOOR'), findsNothing);
   });
 
@@ -276,7 +277,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('ticket-hold')), findsOne);
-    expect(find.text('HOLD TICKETS'), findsOne);
+    expect(findUiText('HOLD TICKETS'), findsOne);
   });
 
   testWidgets('buy tickets gates signed-out fans through sign-in', (

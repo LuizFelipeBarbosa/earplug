@@ -137,9 +137,16 @@ class _PrivateLocationsScreenState extends State<PrivateLocationsScreen> {
 }
 
 class PrivateLocationEditScreen extends StatefulWidget {
-  const PrivateLocationEditScreen({super.key, required this.locationId});
+  const PrivateLocationEditScreen({
+    super.key,
+    required this.locationId,
+    this.onSaved,
+    this.onCancel,
+  });
 
   final String locationId;
+  final ValueChanged<String>? onSaved;
+  final VoidCallback? onCancel;
 
   @override
   State<PrivateLocationEditScreen> createState() =>
@@ -286,8 +293,9 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
       _error = null;
     });
     try {
+      var savedId = widget.locationId;
       if (widget.locationId == 'new') {
-        await app.repository.createPrivateLocation(
+        savedId = await app.repository.createPrivateLocation(
           organizationId: organizationId,
           label: _label.text.trim(),
           addr: _location.address.trim(),
@@ -312,7 +320,12 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
       if (mounted &&
           key == _loadedKey &&
           app.organizationId == organizationId) {
-        app.back();
+        final onSaved = widget.onSaved;
+        if (onSaved != null) {
+          onSaved(savedId);
+        } else {
+          app.back();
+        }
       }
     } catch (error) {
       if (!mounted ||
@@ -402,7 +415,7 @@ class _PrivateLocationEditScreenState extends State<PrivateLocationEditScreen> {
               children: [
                 Row(
                   children: [
-                    CircleIconButton(onTap: app.back),
+                    CircleIconButton(onTap: widget.onCancel ?? app.back),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(

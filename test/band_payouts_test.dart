@@ -18,6 +18,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets(
@@ -29,6 +30,7 @@ void main() {
         beforePump: (app) => app.switchToBand('b1'),
       );
       final export = find.byKey(const Key('band-payouts-export'));
+      await revealFormKey(tester, const Key('band-payouts-export'));
       await tester.scrollUntilVisible(export, 200);
       expect(harness.app.bandPayouts, isEmpty);
       expect(tester.widget<EpButton>(export).kind, EpButtonKind.disabled);
@@ -69,6 +71,7 @@ void main() {
         },
       );
       final export = find.byKey(const Key('band-payouts-export'));
+      await revealFormKey(tester, const Key('band-payouts-export'));
       await tester.scrollUntilVisible(export, 200);
       await tester.ensureVisible(export);
       await tester.pumpAndSettle();
@@ -87,7 +90,7 @@ void main() {
             .map((item) => item.label),
         ['YEAR TO DATE', 'LAST YEAR', 'LAST 30 DAYS'],
       );
-      await tester.tap(find.text(preset));
+      await tester.tap(findUiText(preset));
       await tester.pumpAndSettle();
 
       final range = repository.statementRange!;
@@ -134,12 +137,13 @@ void main() {
       },
     );
     final export = find.byKey(const Key('band-payouts-export'));
+    await revealFormKey(tester, const Key('band-payouts-export'));
     await tester.scrollUntilVisible(export, 200);
     await tester.ensureVisible(export);
     await tester.pumpAndSettle();
     await tester.tap(export);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.tap(findUiText('LAST 30 DAYS'));
     await tester.pumpAndSettle();
 
     expect(downloads, hasLength(1));
@@ -166,12 +170,13 @@ void main() {
       },
     );
     final export = find.byKey(const Key('band-payouts-export'));
+    await revealFormKey(tester, const Key('band-payouts-export'));
     await tester.scrollUntilVisible(export, 200);
     await tester.ensureVisible(export);
     await tester.pumpAndSettle();
     await tester.tap(export);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.tap(findUiText('LAST 30 DAYS'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('band-payouts-error')), findsOneWidget);
@@ -195,13 +200,17 @@ void main() {
     expect(find.byKey(const Key('band-payouts-history')), findsOneWidget);
     expect(find.text('No payouts yet.'), findsOneWidget);
 
+    await revealFormKey(tester, const Key('band-payouts-setup'));
+
     await tester.tap(find.byKey(const Key('band-payouts-setup')));
     await tester.pumpAndSettle();
 
     expect(launched, ['https://demo.stripe/onboard/b1']);
     expect(harness.app.bandPayoutStatus?.state, StripeAccountState.onboarding);
     expect(find.text('Finish your Stripe setup'), findsOneWidget);
-    expect(find.text('CONTINUE SETUP'), findsOneWidget);
+    expect(findUiText('CONTINUE SETUP'), findsOneWidget);
+
+    await revealFormKey(tester, const Key('band-payouts-setup'));
 
     await tester.tap(find.byKey(const Key('band-payouts-setup')));
     await tester.pumpAndSettle();
@@ -224,6 +233,8 @@ void main() {
     final launched = <String>[];
     harness.app.hostedUrlLauncher = (url) async => launched.add(url);
 
+    await revealFormKey(tester, const Key('band-payouts-refresh'));
+
     await tester.tap(find.byKey(const Key('band-payouts-refresh')));
     await tester.pumpAndSettle();
     expect(harness.app.bandPayoutStatus?.state, StripeAccountState.onboarding);
@@ -231,10 +242,13 @@ void main() {
     await harness.app.handleStripeReturn(band: true, id: 'b1');
     await tester.pumpAndSettle();
     expect(harness.app.bandPayoutStatus?.state, StripeAccountState.enabled);
-    expect(find.text('PAYOUTS ENABLED'), findsOneWidget);
+    expect(findUiText('PAYOUTS ENABLED'), findsOneWidget);
+
+    await revealFormKey(tester, const Key('band-payouts-refresh'));
 
     await tester.tap(find.byKey(const Key('band-payouts-refresh')));
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const Key('band-payouts-dashboard'));
     await tester.tap(find.byKey(const Key('band-payouts-dashboard')));
     await tester.pumpAndSettle();
     expect(launched, ['https://demo.stripe/dashboard/b1']);
@@ -262,14 +276,15 @@ void main() {
     final launched = <String>[];
     harness.app.hostedUrlLauncher = (url) async => launched.add(url);
     final button = find.byKey(const Key('band-payouts-enable-tickets'));
+    await revealFormKey(tester, const Key('band-payouts-enable-tickets'));
 
     expect(harness.app.bandPayoutStatus?.hasAccount, isTrue);
     expect(harness.app.bandPayoutStatus?.chargesEnabled, isTrue);
     expect(harness.app.bandPayoutStatus?.cardPaymentsStatus, isNull);
     expect(harness.app.bandPayoutStatus?.canSellTickets, isFalse);
     expect(button, findsOneWidget);
-    expect(find.text('ENABLE TICKET SALES'), findsOneWidget);
-    expect(find.text('TICKET SALES ENABLED'), findsNothing);
+    expect(findUiText('ENABLE TICKET SALES'), findsOneWidget);
+    expect(findUiText('TICKET SALES ENABLED'), findsNothing);
     expect(find.text(_ticketSalesCaption), findsOneWidget);
 
     await tester.ensureVisible(button);
@@ -299,11 +314,11 @@ void main() {
     );
 
     expect(harness.app.bandPayoutStatus?.canSellTickets, isTrue);
-    expect(find.text('TICKET SALES'), findsOneWidget);
-    expect(find.text('TICKET SALES ENABLED'), findsOneWidget);
+    expect(findUiText('TICKET SALES'), findsOneWidget);
+    expect(findUiText('TICKET SALES ENABLED'), findsOneWidget);
     final pill = tester.widget<StatusPill>(
       find.ancestor(
-        of: find.text('TICKET SALES ENABLED'),
+        of: findUiText('TICKET SALES ENABLED'),
         matching: find.byType(StatusPill),
       ),
     );
@@ -324,10 +339,10 @@ void main() {
     );
 
     expect(harness.app.bandPayoutStatus?.hasAccount, isFalse);
-    expect(find.text('SET UP PAYOUTS'), findsOneWidget);
-    expect(find.text('TICKET SALES'), findsNothing);
+    expect(findUiText('SET UP PAYOUTS'), findsOneWidget);
+    expect(findUiText('TICKET SALES'), findsNothing);
     expect(find.byKey(const Key('band-payouts-enable-tickets')), findsNothing);
-    expect(find.text('TICKET SALES ENABLED'), findsNothing);
+    expect(findUiText('TICKET SALES ENABLED'), findsNothing);
     expect(find.text(_ticketSalesCaption), findsNothing);
   });
 
@@ -348,6 +363,7 @@ void main() {
       },
     );
     final button = find.byKey(const Key('band-payouts-enable-tickets'));
+    await revealFormKey(tester, const Key('band-payouts-enable-tickets'));
     harness.app.hostedUrlLauncher = (_) async {
       throw StateError('Could not open ticket sales setup');
     };
@@ -409,6 +425,8 @@ void main() {
       );
 
       final paidRow = find.byKey(const ValueKey('band-payout-p1'));
+
+      await revealFormKey(tester, const ValueKey('band-payout-p1'));
       expect(paidRow, findsOneWidget);
       expect(
         find.descendant(of: paidRow, matching: find.text('Sat Aug 1')),
@@ -428,6 +446,8 @@ void main() {
       expect(paidPill.tone, EpStatusPillTone.success);
 
       final heldRow = find.byKey(const ValueKey('band-payout-p2'));
+
+      await revealFormKey(tester, const ValueKey('band-payout-p2'));
       expect(
         find.descendant(
           of: heldRow,
@@ -465,16 +485,18 @@ void main() {
     harness.app.hostedUrlLauncher = (_) async {
       throw StateError('Could not open Stripe');
     };
+    await revealFormKey(tester, const Key('band-payouts-setup'));
     await tester.tap(find.byKey(const Key('band-payouts-setup')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('band-payouts-error')), findsOneWidget);
     expect(find.textContaining('Could not open Stripe'), findsOneWidget);
 
     harness.app.hostedUrlLauncher = (_) async {};
+    await revealFormKey(tester, const Key('band-payouts-setup'));
     await tester.tap(find.byKey(const Key('band-payouts-setup')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('band-payouts-error')), findsNothing);
-    expect(find.text('CONTINUE SETUP'), findsOneWidget);
+    expect(findUiText('CONTINUE SETUP'), findsOneWidget);
   });
 
   testWidgets('band dashboard errors from the repository appear inline', (
@@ -493,6 +515,7 @@ void main() {
     );
 
     // The displayed status is enabled, but the demo account is still disabled.
+    await revealFormKey(tester, const Key('band-payouts-dashboard'));
     await tester.tap(find.byKey(const Key('band-payouts-dashboard')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('band-payouts-error')), findsOneWidget);
@@ -522,6 +545,8 @@ void main() {
       );
 
       final row = find.byKey(const Key('stripe-tax-row'));
+
+      await revealFormKey(tester, const Key('stripe-tax-row'));
       await tester.scrollUntilVisible(
         row,
         200,
@@ -529,7 +554,7 @@ void main() {
       );
       expect(row, findsOneWidget);
       expect(
-        find.descendant(of: row, matching: find.text('TAX DETAILS')),
+        find.descendant(of: row, matching: findUiText('TAX DETAILS')),
         findsOneWidget,
       );
       expect(
@@ -589,13 +614,14 @@ void main() {
         beforePump: (app) => app.switchToBand('b1'),
       );
       final button = find.byKey(const Key('band-payouts-tax-dashboard'));
+      await revealFormKey(tester, const Key('band-payouts-tax-dashboard'));
       await tester.scrollUntilVisible(
         button,
         200,
         scrollable: find.byType(Scrollable).first,
       );
       expect(
-        find.descendant(of: button, matching: find.text('MANAGE IN STRIPE')),
+        find.descendant(of: button, matching: findUiText('MANAGE IN STRIPE')),
         findsOneWidget,
       );
       harness.app.hostedUrlLauncher = (_) async {
@@ -639,15 +665,18 @@ void main() {
         beforePump: (app) => app.switchToOrganization('org1'),
       );
       await enterOrganizer(tester, harness, 'org1');
+      await openAllFormSections(tester);
 
       final button = find.byKey(const Key('org-settings-tax-dashboard'));
+
+      await revealFormKey(tester, const Key('org-settings-tax-dashboard'));
       await tester.scrollUntilVisible(
         button,
         250,
         scrollable: find.byType(Scrollable).first,
       );
       expect(
-        find.descendant(of: button, matching: find.text('MANAGE IN STRIPE')),
+        find.descendant(of: button, matching: findUiText('MANAGE IN STRIPE')),
         findsOneWidget,
       );
       harness.app.hostedUrlLauncher = (_) async {
@@ -657,7 +686,10 @@ void main() {
       await tester.pump();
       await tester.tap(button);
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('org-settings-stripe-error')), findsOneWidget);
+      expect(
+        find.byKey(const Key('org-settings-stripe-error')),
+        findsOneWidget,
+      );
       expect(find.textContaining('Could not open Stripe'), findsOneWidget);
       expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
 
@@ -673,9 +705,7 @@ void main() {
     },
   );
 
-  for (final (state, caption) in [
-    (StripeAccountState.enabled, 'Enabled'),
-  ]) {
+  for (final (state, caption) in [(StripeAccountState.enabled, 'Enabled')]) {
     testWidgets('band payouts tile shows ${state.name} and opens payouts', (
       tester,
     ) async {
@@ -686,14 +716,17 @@ void main() {
         repository: _stripeStatusRepository(
           auth: auth,
           state: state,
-          cardPaymentsStatus:
-              state == StripeAccountState.enabled ? 'active' : null,
+          cardPaymentsStatus: state == StripeAccountState.enabled
+              ? 'active'
+              : null,
         ),
         home: const Scaffold(body: BandDashScreen()),
         beforePump: (app) => app.switchToBand('b1'),
       );
 
       final tile = find.byKey(const Key('band-dash-payouts'));
+
+      await revealFormKey(tester, const Key('band-dash-payouts'));
       await tester.scrollUntilVisible(
         tile,
         180,
@@ -735,7 +768,7 @@ void main() {
       beforePump: (app) => app.switchToBand('b1'),
     );
 
-    expect(find.text('MANAGING · MEMBER'), findsOneWidget);
+    expect(findUiText('MANAGING · MEMBER'), findsOneWidget);
     expect(find.byKey(const Key('band-dash-payouts')), findsNothing);
   });
 
@@ -748,6 +781,7 @@ void main() {
       beforePump: (app) => app.switchToOrganization('org1'),
     );
     await enterOrganizer(tester, harness, 'org1');
+    await openAllFormSections(tester);
     final launched = <String>[];
     harness.app.hostedUrlLauncher = (url) async => launched.add(url);
 
@@ -763,11 +797,14 @@ void main() {
       find.byKey(const Key('org-settings-stripe-setup')),
     );
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const Key('org-settings-stripe-setup'));
     await tester.tap(find.byKey(const Key('org-settings-stripe-setup')));
     await tester.pumpAndSettle();
     expect(launched, ['https://demo.stripe/onboard/org1']);
     expect(find.text('Setup in progress'), findsOneWidget);
-    expect(find.text('CONTINUE SETUP'), findsOneWidget);
+    expect(findUiText('CONTINUE SETUP'), findsOneWidget);
+
+    await revealFormKey(tester, const Key('org-settings-stripe-refresh'));
 
     await tester.tap(find.byKey(const Key('org-settings-stripe-refresh')));
     await tester.pumpAndSettle();
@@ -779,6 +816,7 @@ void main() {
     await harness.app.handleStripeReturn(band: false, id: 'org1');
     await tester.pumpAndSettle();
     expect(find.text('Connected'), findsOneWidget);
+    await revealFormKey(tester, const Key('org-settings-stripe-dashboard'));
     await tester.tap(find.byKey(const Key('org-settings-stripe-dashboard')));
     await tester.pumpAndSettle();
     expect(launched.last, 'https://demo.stripe/dashboard/org1');
@@ -811,6 +849,7 @@ void main() {
       beforePump: (app) => app.switchToOrganization('org1'),
     );
     await enterOrganizer(tester, harness, 'org1');
+    await openAllFormSections(tester);
     expect(harness.app.organizerRoleFor('org1'), OrganizationRole.manager);
     await tester.scrollUntilVisible(
       find.byKey(const Key('org-settings-deactivate')),
@@ -830,6 +869,7 @@ void main() {
       beforePump: (app) => app.switchToOrganization('org1'),
     );
     await enterOrganizer(tester, harness, 'org1');
+    await openAllFormSections(tester);
     harness.app.hostedUrlLauncher = (_) async {
       throw StateError('Could not open Stripe');
     };
@@ -842,6 +882,7 @@ void main() {
       find.byKey(const Key('org-settings-stripe-setup')),
     );
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const Key('org-settings-stripe-setup'));
     await tester.tap(find.byKey(const Key('org-settings-stripe-setup')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('org-settings-stripe-error')), findsOneWidget);
@@ -849,6 +890,7 @@ void main() {
     expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
 
     harness.app.hostedUrlLauncher = (_) async {};
+    await revealFormKey(tester, const Key('org-settings-stripe-setup'));
     await tester.tap(find.byKey(const Key('org-settings-stripe-setup')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('org-settings-stripe-error')), findsNothing);
@@ -874,8 +916,9 @@ void main() {
             band ? app.switchToBand('b1') : app.switchToOrganization('org1'),
       );
       if (!band) await enterOrganizer(tester, harness, 'org1');
+      await openAllFormSections(tester);
       await tester.scrollUntilVisible(
-        find.text('CONTINUE SETUP'),
+        findUiText('CONTINUE SETUP'),
         250,
         scrollable: find.byType(Scrollable).first,
       );
@@ -920,6 +963,7 @@ void main() {
         beforePump: (app) => app.switchToOrganization('org1'),
       );
       await enterOrganizer(tester, harness, 'org1');
+      await openAllFormSections(tester);
 
       expect(find.text('Stripe setup arrives with bookings'), findsNothing);
       for (final key in [
@@ -927,6 +971,7 @@ void main() {
         'org-dash-readiness-payouts',
       ]) {
         final row = find.byKey(Key(key));
+        await revealFormKey(tester, Key(key));
         if (complete) {
           expect(row, findsNothing);
         } else {

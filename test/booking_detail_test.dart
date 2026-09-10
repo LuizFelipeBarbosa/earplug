@@ -21,6 +21,7 @@ import 'package:provider/provider.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   for (final side in [BookingSide.organizer, BookingSide.artist]) {
@@ -63,6 +64,7 @@ void main() {
       await tester.tap(open);
       await tester.pumpAndSettle();
       expectNoFieldInCard(tester);
+      await revealFormKey(tester, const Key('dispute-text'));
       await tester.enterText(
         find.byKey(const Key('dispute-text')),
         'Please review what happened at this performance.',
@@ -82,14 +84,12 @@ void main() {
       expect(open, findsNothing);
       await _reveal(
         tester,
-        find.widgetWithText(StatusPill, 'UNDER DISPUTE'),
+        findUiControl(StatusPill, 'UNDER DISPUTE'),
         delta: -300,
       );
       expect(
         tester
-            .widget<StatusPill>(
-              find.widgetWithText(StatusPill, 'UNDER DISPUTE'),
-            )
+            .widget<StatusPill>(findUiControl(StatusPill, 'UNDER DISPUTE'))
             .label,
         'Under dispute',
       );
@@ -111,12 +111,9 @@ void main() {
       );
       final row = find.byKey(Key('booking-dispute-${dispute.disputeId}'));
       await _reveal(tester, row);
-      expect(find.widgetWithText(SectionBar, 'DISPUTE'), findsOneWidget);
+      expect(findUiControl(SectionBar, 'DISPUTE'), findsOneWidget);
       expect(
-        find.descendant(
-          of: row,
-          matching: find.widgetWithText(StatusPill, 'OPEN'),
-        ),
+        find.descendant(of: row, matching: findUiControl(StatusPill, 'OPEN')),
         findsOneWidget,
       );
       expect(
@@ -147,7 +144,7 @@ void main() {
       expect(
         find.descendant(
           of: row,
-          matching: find.widgetWithText(StatusPill, 'UNDER REVIEW'),
+          matching: findUiControl(StatusPill, 'UNDER REVIEW'),
         ),
         findsOneWidget,
       );
@@ -165,7 +162,7 @@ void main() {
       expect(
         find.descendant(
           of: row,
-          matching: find.widgetWithText(StatusPill, 'RESOLVED'),
+          matching: findUiControl(StatusPill, 'RESOLVED'),
         ),
         findsOneWidget,
       );
@@ -210,9 +207,9 @@ void main() {
         repository: repository,
       );
       // TERMS follows the dispute action, so its reveal builds that part of the list.
-      await _reveal(tester, find.widgetWithText(SectionBar, 'TERMS'));
+      await _reveal(tester, findUiControl(SectionBar, 'TERMS'));
       expect(find.byKey(const Key('booking-dispute-open')), findsNothing);
-      expect(find.widgetWithText(SectionBar, 'DISPUTE'), findsNothing);
+      expect(findUiControl(SectionBar, 'DISPUTE'), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }
@@ -257,9 +254,7 @@ void main() {
     );
     expect(harness.app.bookingById(booking.id)?.status, BookingStatus.refunded);
     expect(
-      tester
-          .widget<StatusPill>(find.widgetWithText(StatusPill, 'REFUNDED'))
-          .label,
+      tester.widget<StatusPill>(findUiControl(StatusPill, 'REFUNDED')).label,
       'Refunded',
     );
     expect(
@@ -285,7 +280,7 @@ void main() {
     expect(
       find.descendant(
         of: latestRow,
-        matching: find.widgetWithText(StatusPill, 'RESOLVED'),
+        matching: findUiControl(StatusPill, 'RESOLVED'),
       ),
       findsOneWidget,
     );
@@ -366,7 +361,7 @@ void main() {
     expect(tester.widget<Text>(address).data, '120 Demo Lane, San Francisco');
     expect(pending, findsNothing);
     expect(find.text('Mission District · San Francisco'), findsOneWidget);
-    expect(find.text('HOST NOTES'), findsOneWidget);
+    expect(findUiText('HOST NOTES'), findsOneWidget);
     expect(find.text('Use the side gate for load-in.'), findsOneWidget);
     final map = tester.widget<VenueMiniMap>(find.byType(VenueMiniMap));
     final location = (await repository.privateLocationsFor('org2')).single;
@@ -475,9 +470,9 @@ void main() {
           Key('booking-safety-report-${report.reportId}'),
         );
         await _reveal(tester, card);
-        expect(find.widgetWithText(SectionBar, 'SAFETY'), findsOneWidget);
+        expect(findUiControl(SectionBar, 'SAFETY'), findsOneWidget);
         expect(
-          find.descendant(of: card, matching: find.text('HARASSMENT')),
+          find.descendant(of: card, matching: findUiText('HARASSMENT')),
           findsOneWidget,
         );
         expect(
@@ -497,7 +492,7 @@ void main() {
         expect(
           find.descendant(
             of: card,
-            matching: find.widgetWithText(StatusPill, 'OPEN'),
+            matching: findUiControl(StatusPill, 'OPEN'),
           ),
           findsOneWidget,
         );
@@ -516,7 +511,7 @@ void main() {
         expect(
           find.descendant(
             of: card,
-            matching: find.widgetWithText(StatusPill, 'RESOLVED'),
+            matching: findUiControl(StatusPill, 'RESOLVED'),
           ),
           findsOneWidget,
         );
@@ -554,6 +549,7 @@ void main() {
     );
 
     expect(harness.app.bookingById(bookingId)?.status, BookingStatus.confirmed);
+    await revealFormKey(tester, const Key('booking-cancel'));
     await tester.tap(find.byKey(const Key('booking-cancel')));
     await tester.pumpAndSettle();
     final safety = find.byKey(const Key('booking-cancel-safety'));
@@ -596,10 +592,7 @@ void main() {
     );
     expect(find.byType(EpFormSheet), findsNothing);
     expect(find.byKey(const Key('booking-cancel')), findsNothing);
-    expect(
-      find.widgetWithText(StatusPill, 'CANCELLED FOR SAFETY'),
-      findsOneWidget,
-    );
+    expect(findUiControl(StatusPill, 'CANCELLED FOR SAFETY'), findsOneWidget);
     expect(find.textContaining('Cancelled for safety '), findsOneWidget);
     await _reveal(tester, find.byType(StatusTimeline), delta: -300);
     final step = tester
@@ -624,6 +617,8 @@ void main() {
     );
     expect(find.byKey(const Key('booking-withdraw')), findsOneWidget);
 
+    await revealFormKey(tester, const Key('booking-refresh'));
+
     await tester.tap(find.byKey(const Key('booking-refresh')));
     await tester.pumpAndSettle();
 
@@ -632,7 +627,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(StatusPill),
-        matching: find.text('WITHDRAWN'),
+        matching: findUiText('WITHDRAWN'),
       ),
       findsOneWidget,
     );
@@ -650,7 +645,7 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(StatusPill),
-        matching: find.text('OFFER SENT'),
+        matching: findUiText('OFFER SENT'),
       ),
       findsOneWidget,
     );
@@ -698,15 +693,24 @@ void main() {
       );
     }
 
-    await tester.tap(find.byKey(const Key('booking-withdraw')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('KEEP'));
-    await tester.pumpAndSettle();
-    expect(harness.app.bookingById('bk1')?.status, BookingStatus.offerSent);
+    await revealFormKey(tester, const Key('booking-withdraw'));
 
     await tester.tap(find.byKey(const Key('booking-withdraw')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('CONFIRM'));
+    await tester.tap(findUiText('KEEP'));
+    await tester.pumpAndSettle();
+    expect(harness.app.bookingById('bk1')?.status, BookingStatus.offerSent);
+
+    await revealFormKey(tester, const Key('booking-withdraw'));
+
+    await tester.tap(find.byKey(const Key('booking-withdraw')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(harness.app.bookingById('bk1')?.status, BookingStatus.withdrawn);
     expect(find.byKey(const Key('booking-withdraw')), findsNothing);
@@ -770,9 +774,14 @@ void main() {
       );
       expect(find.byKey(const Key('booking-exact-address')), findsNothing);
 
+      await revealFormKey(tester, const Key('booking-accept'));
+
       await tester.tap(find.byKey(const Key('booking-accept')));
       await tester.pumpAndSettle();
-      final confirm = find.widgetWithText(FilledButton, 'ACCEPT');
+      final confirm = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: findUiControl(FilledButton, 'Accept offer'),
+      );
       expect(tester.widget<FilledButton>(confirm).onPressed, isNull);
       expect(harness.app.bookingById('bk1')?.status, BookingStatus.offerSent);
       expect(find.byType(AlertDialog), findsOneWidget);
@@ -800,6 +809,7 @@ void main() {
             .value,
         isFalse,
       );
+      await revealFormKey(tester, const Key('booking-accept-terms'));
       await tester.tap(find.byKey(const Key('booking-accept-terms')));
       await tester.pumpAndSettle();
       expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
@@ -886,7 +896,7 @@ void main() {
       expect(row, findsOneWidget);
       expect(pay, findsOneWidget);
       expect(
-        find.descendant(of: row, matching: find.text('PENDING')),
+        find.descendant(of: row, matching: findUiText('PENDING')),
         findsOneWidget,
       );
       expect(
@@ -932,6 +942,7 @@ void main() {
         find.byKey(const Key('booking-refresh')),
         delta: -300,
       );
+      await revealFormKey(tester, const Key('booking-refresh'));
       await tester.tap(find.byKey(const Key('booking-refresh')));
       await tester.pumpAndSettle();
       expect(
@@ -960,6 +971,7 @@ void main() {
 
       final booking = harness.app.bookingById(bookingId)!;
       final preview = (await harness.app.previewCancellation(booking))!;
+      await revealFormKey(tester, const Key('booking-cancel'));
       await tester.tap(find.byKey(const Key('booking-cancel')));
       await tester.pumpAndSettle();
       expect(
@@ -1006,7 +1018,7 @@ void main() {
       await _reveal(tester, find.text("Waiting for the organizer's payment"));
       expect(find.byKey(const Key('booking-payment-0')), findsOneWidget);
       expect(find.byKey(const Key('booking-pay-0')), findsNothing);
-      expect(find.text('PAY'), findsNothing);
+      expect(findUiText('PAY'), findsNothing);
       expect(find.text("Waiting for the organizer's payment"), findsOneWidget);
 
       final payment = (await repository.paymentsForBooking(bookingId)).single;
@@ -1017,10 +1029,12 @@ void main() {
         find.byKey(const Key('booking-refresh')),
         delta: -300,
       );
+      await revealFormKey(tester, const Key('booking-refresh'));
       await tester.tap(find.byKey(const Key('booking-refresh')));
       await tester.pumpAndSettle();
       final booking = harness.app.bookingById(bookingId)!;
       final preview = (await harness.app.previewCancellation(booking))!;
+      await revealFormKey(tester, const Key('booking-cancel'));
       await tester.tap(find.byKey(const Key('booking-cancel')));
       await tester.pumpAndSettle();
       expect(
@@ -1036,10 +1050,12 @@ void main() {
         findsOneWidget,
       );
       expectNoFieldInCard(tester);
+      await revealFormKey(tester, const Key('booking-cancel-reason'));
       await tester.enterText(
         find.byKey(const Key('booking-cancel-reason')),
         'Schedule conflict',
       );
+      await revealFormKey(tester, const Key('booking-cancel-confirm'));
       await tester.tap(find.byKey(const Key('booking-cancel-confirm')));
       await tester.pumpAndSettle();
       final refunds = find.byKey(const Key('booking-refunds'));
@@ -1049,7 +1065,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.descendant(of: refunds, matching: find.text('SUCCEEDED')),
+        find.descendant(of: refunds, matching: findUiText('SUCCEEDED')),
         findsOneWidget,
       );
       expect(
@@ -1089,6 +1105,7 @@ void main() {
     harness.app.hostedUrlLauncher = (url) async {
       launched.add(url);
     };
+    await revealFormKey(tester, const Key('booking-pay-now'));
     await tester.tap(find.byKey(const Key('booking-pay-now')));
     await tester.pumpAndSettle();
     expect(launched.single, startsWith('https://demo.stripe/checkout/'));
@@ -1105,16 +1122,25 @@ void main() {
     screen.value = const BookingDetailScreen(bookingId: 'bk1');
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('booking-decline')));
-    await tester.pumpAndSettle();
-    expect(find.text('Decline offer?'), findsOneWidget);
-    await tester.tap(find.text('KEEP'));
-    await tester.pumpAndSettle();
-    expect(harness.app.bookingById('bk1')?.status, BookingStatus.offerSent);
+    await revealFormKey(tester, const Key('booking-decline'));
 
     await tester.tap(find.byKey(const Key('booking-decline')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('CONFIRM'));
+    expect(find.text('Decline offer?'), findsOneWidget);
+    await tester.tap(findUiText('KEEP'));
+    await tester.pumpAndSettle();
+    expect(harness.app.bookingById('bk1')?.status, BookingStatus.offerSent);
+
+    await revealFormKey(tester, const Key('booking-decline'));
+
+    await tester.tap(find.byKey(const Key('booking-decline')));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(harness.app.bookingById('bk1')?.status, BookingStatus.declined);
     expect(find.byKey(const Key('booking-accept')), findsNothing);
@@ -1134,6 +1160,8 @@ void main() {
       await tester.pumpAndSettle();
       await _reveal(tester, find.byKey(const Key('booking-fee')));
       expect(find.text('No fee · confirms on acceptance'), findsOneWidget);
+
+      await revealFormKey(tester, const Key('booking-cancel'));
 
       await tester.tap(find.byKey(const Key('booking-cancel')));
       await tester.pumpAndSettle();
@@ -1182,7 +1210,7 @@ void main() {
       await enterOrganizer(tester, harness, 'org1');
       screen.value = const BookingDetailScreen(bookingId: 'bk3');
       await tester.pumpAndSettle();
-      await _reveal(tester, find.text('REVIEWS'));
+      await _reveal(tester, findUiText('REVIEWS'));
       await _reveal(tester, find.text('A welcoming room and helpful crew.'));
 
       expect(find.text('Your review · 5/5'), findsOneWidget);
@@ -1258,9 +1286,15 @@ void main() {
       bookingId: 'bk1',
       expectedRevision: 1,
     );
+    await revealFormKey(tester, const Key('booking-withdraw'));
     await tester.tap(find.byKey(const Key('booking-withdraw')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('CONFIRM'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      ),
+    );
     await tester.pumpAndSettle();
     await _reveal(tester, find.byKey(const Key('booking-feedback')));
     expect(find.text('Booking changed elsewhere'), findsOneWidget);
@@ -1277,7 +1311,7 @@ void main() {
     addTearDown(screen.dispose);
     final harness = await _pumpScreen(tester, screen);
     expect(find.text("This booking isn't available."), findsOneWidget);
-    await tester.tap(find.text('RETRY'));
+    await tester.tap(findUiText('RETRY'));
     await tester.pumpAndSettle();
     expect(find.text("This booking isn't available."), findsOneWidget);
     expect(tester.takeException(), isNull);

@@ -27,7 +27,7 @@ Future<bool> _confirmWithdraw(BuildContext context) async =>
           FilledButton(
             key: const Key('org-status-withdraw-confirm'),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('CONFIRM'),
+            child: const Text('Withdraw application'),
           ),
         ],
       ),

@@ -807,36 +807,44 @@ void main() {
   testWidgets('lineup role pills stay compact inside accessible menu targets', (
     tester,
   ) async {
-    final harness = await _pumpGigCreate(tester);
-    final performer = harness.app.gfPerformers.single;
-    final target = find.byKey(
-      ValueKey('gig-performer-role-target-${performer.id}'),
-    );
-    final pill = find.byKey(
-      ValueKey('gig-performer-role-pill-${performer.id}'),
-    );
+    final semantics = tester.ensureSemantics();
+    try {
+      final harness = await _pumpGigCreate(tester);
+      final performer = harness.app.gfPerformers.single;
+      final target = find.byKey(
+        ValueKey('gig-performer-role-target-${performer.id}'),
+      );
+      final pill = find.byKey(
+        ValueKey('gig-performer-role-pill-${performer.id}'),
+      );
 
-    await _scrollTo(tester, target);
-    expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
-    expect(tester.getSize(pill).height, lessThan(32));
+      await _scrollTo(tester, target);
+      expect(tester.getSize(target).height, greaterThanOrEqualTo(48));
+      expect(tester.getSize(pill).height, lessThan(32));
 
-    await harness.app.setGigPerformerRole(
-      performer.id,
-      GigPerformerRole.support,
-    );
-    await tester.pumpAndSettle();
-    expect(findUiText('SUPPORT'), findsOne);
-    final updatedPerformer = harness.app.gfPerformers.single;
-    expect(
-      tester
-          .getSize(
-            find.byKey(
-              ValueKey('gig-performer-role-pill-${updatedPerformer.id}'),
-            ),
-          )
-          .height,
-      lessThan(32),
-    );
+      expect(
+        tester.getSemantics(target).getSemanticsData().flagsCollection.isButton,
+        isTrue,
+      );
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+      await tester.tap(findUiText('Support'));
+      await tester.pumpAndSettle();
+      expect(findUiText('SUPPORT'), findsOne);
+      final updatedPerformer = harness.app.gfPerformers.single;
+      expect(
+        tester
+            .getSize(
+              find.byKey(
+                ValueKey('gig-performer-role-pill-${updatedPerformer.id}'),
+              ),
+            )
+            .height,
+        lessThan(32),
+      );
+    } finally {
+      semantics.dispose();
+    }
   });
 
   testWidgets('lineup mutations save pending form edits before applying', (

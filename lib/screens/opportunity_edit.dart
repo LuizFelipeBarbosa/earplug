@@ -13,6 +13,7 @@ import '../widgets/common.dart';
 import '../widgets/ep_sheet.dart';
 import '../widgets/form_bits.dart';
 import '../widgets/sheets.dart';
+import 'private_locations.dart';
 
 class OpportunityEditScreen extends StatefulWidget {
   const OpportunityEditScreen({super.key, required this.opportunityId});
@@ -805,9 +806,7 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
                     'Add a location',
                     key: const Key('opp-add-location'),
                     kind: EpButtonKind.outline,
-                    onTap: slotsEnabled
-                        ? () => app.go(Screen.privateLocationEdit, 'new')
-                        : null,
+                    onTap: slotsEnabled ? _addPrivateLocation : null,
                   )
                 else
                   EpSelectionField<String>(
@@ -1334,6 +1333,40 @@ class _OpportunityEditScreenState extends State<OpportunityEditScreen> {
               ),
       ),
     );
+  }
+
+  Future<void> _addPrivateLocation() async {
+    // Keep this editor mounted while the location is created so the request's
+    // title, timing and other unsaved fields survive both Cancel and Save.
+    final app = context.read<AppState>();
+    String? createdId;
+    await showEpSheet(
+      context,
+      (sheetContext) => SizedBox(
+        height: MediaQuery.sizeOf(sheetContext).height * .9,
+        child: PrivateLocationEditScreen(
+          locationId: 'new',
+          onCancel: () => Navigator.pop(sheetContext),
+          onSaved: (id) {
+            createdId = id;
+            Navigator.pop(sheetContext);
+          },
+        ),
+      ),
+    );
+    if (!mounted || createdId == null) return;
+    try {
+      final locations = await app.repository.privateLocationsFor(
+        app.organizationId,
+      );
+      if (!mounted) return;
+      _changed(() {
+        _privateLocations = locations;
+        _privateLocationId = createdId;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = _extractErrorMessage(error));
+    }
   }
 
   Future<void> _close() async {

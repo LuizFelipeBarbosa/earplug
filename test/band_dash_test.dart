@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('dashboard derives remaining tasks from current band data', (
@@ -19,28 +20,28 @@ void main() {
   ) async {
     await pumpApp(tester, home: const Scaffold(body: BandDashScreen()));
 
-    expect(find.text('MANAGING · ADMIN'), findsOne);
-    expect(find.text('DISCOVER'), findsOne);
-    expect(find.text('FANS'), findsOne);
+    expect(findUiText('MANAGING · ADMIN'), findsOne);
+    expect(findUiText('DISCOVER'), findsOne);
+    expect(findUiText('FANS'), findsOne);
     expect(find.byType(VoltStrip), findsOne);
-    expect(find.text('DOOR MODE'), findsOne);
+    expect(findUiText('DOOR MODE'), findsOne);
     expect(find.byKey(const Key('band-next-public-gig')), findsOne);
-    expect(find.text('PUBLISH GIG'), findsOne);
-    expect(find.text('ADD MEDIA'), findsOne);
-    expect(find.text('ANALYTICS'), findsOne);
+    expect(findUiText('PUBLISH GIG'), findsOne);
+    expect(findUiText('ADD MEDIA'), findsOne);
+    expect(findUiText('ANALYTICS'), findsOne);
     expect(find.byKey(const Key('band-command-edit-profile')), findsOne);
     await tester.scrollUntilVisible(
-      find.text('PREVIEW PUBLIC PROFILE →'),
+      findUiText('PREVIEW PUBLIC PROFILE →'),
       180,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('PREVIEW PUBLIC PROFILE →'), findsOne);
+    expect(findUiText('PREVIEW PUBLIC PROFILE →'), findsOne);
     await tester.scrollUntilVisible(
-      find.text('SETUP CHECKLIST'),
+      findUiText('SETUP CHECKLIST'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('SETUP CHECKLIST'), findsOne);
+    expect(findUiText('SETUP CHECKLIST'), findsOne);
     expect(find.text('3 of 7 complete'), findsOne);
     final setup = find.byKey(const Key('band-setup-checklist'));
     for (final label in [
@@ -72,7 +73,7 @@ void main() {
   ) async {
     await pumpApp(tester, home: const Scaffold(body: BandDashScreen()));
 
-    final roleText = tester.widget<Text>(find.text('MANAGING · ADMIN'));
+    final roleText = tester.widget<Text>(findUiText('MANAGING · ADMIN'));
     expect(roleText.style?.fontSize, greaterThanOrEqualTo(11));
 
     final scrollable = find.byType(Scrollable).first;
@@ -106,11 +107,11 @@ void main() {
     harness.app.returnToBandDashboard();
     await tester.pump();
     await tester.scrollUntilVisible(
-      find.text('PREVIEW PUBLIC PROFILE →'),
+      findUiText('PREVIEW PUBLIC PROFILE →'),
       180,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('PREVIEW PUBLIC PROFILE →'));
+    await tester.tap(findUiText('PREVIEW PUBLIC PROFILE →'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.bandPreview);
     expect(harness.app.current.param, 'b1');
@@ -142,7 +143,7 @@ void main() {
           home: const Scaffold(body: BandDashScreen()),
         );
 
-        await tester.tap(find.text('DOOR MODE'));
+        await tester.tap(findUiText('DOOR MODE'));
         await tester.pumpAndSettle();
 
         expect(find.byType(DoorModeScreen), findsOne);
@@ -227,7 +228,7 @@ void main() {
       180,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('SETUP CHECKLIST'), findsOne);
+    expect(findUiText('SETUP CHECKLIST'), findsOne);
   });
 
   testWidgets('discovery readiness requeries at boost window boundaries', (
@@ -357,13 +358,13 @@ void main() {
       home: const Scaffold(body: BandDashScreen()),
     );
 
-    expect(find.text('MANAGING · MEMBER'), findsOne);
-    expect(find.text('VIEW PUBLIC PROFILE →'), findsOne);
+    expect(findUiText('MANAGING · MEMBER'), findsOne);
+    expect(findUiText('VIEW PUBLIC PROFILE →'), findsOne);
     expect(find.byKey(const Key('band-public-profile')), findsOne);
     expect(find.byKey(const Key('band-command-edit-profile')), findsNothing);
-    expect(find.text('DOOR MODE'), findsNothing);
-    expect(find.text('SETUP CHECKLIST'), findsNothing);
-    expect(find.text('PUBLISH GIG'), findsNothing);
+    expect(findUiText('DOOR MODE'), findsNothing);
+    expect(findUiText('SETUP CHECKLIST'), findsNothing);
+    expect(findUiText('PUBLISH GIG'), findsNothing);
     expect(repository.setupStatusCalls, 0);
 
     await tester.tap(find.byKey(const Key('band-public-profile')));
@@ -384,13 +385,13 @@ void main() {
       home: const Scaffold(body: BandDashScreen()),
     );
 
-    await tester.tap(find.text('FOGHORN DIET'));
+    await tester.tap(findUiText('FOGHORN DIET'));
     await tester.pumpAndSettle();
 
-    expect(find.text('YOUR ACCOUNTS'), findsOne);
+    expect(findUiText('YOUR ACCOUNTS'), findsOne);
     expect(find.text('Personal account'), findsOne);
     expect(find.text('Manage band · admin'), findsOne);
-    expect(find.text('START ANOTHER BAND'), findsOne);
+    expect(findUiText('START ANOTHER BAND'), findsOne);
   });
 
   testWidgets('multi-band switcher changes the managed band', (tester) async {
@@ -410,12 +411,12 @@ void main() {
       home: const Scaffold(body: BandDashScreen()),
     );
 
-    await tester.tap(find.text('FOGHORN DIET'));
+    await tester.tap(findUiText('FOGHORN DIET'));
     await tester.pumpAndSettle();
 
-    expect(find.text('YOUR ACCOUNTS'), findsOne);
-    expect(find.text('PIGEON COURT'), findsOne);
-    await tester.tap(find.text('PIGEON COURT'));
+    expect(findUiText('YOUR ACCOUNTS'), findsOne);
+    expect(findUiText('PIGEON COURT'), findsOne);
+    await tester.tap(findUiText('PIGEON COURT'));
     await tester.pumpAndSettle();
 
     expect(harness.app.bandId, 'b2');

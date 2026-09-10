@@ -16,6 +16,7 @@ import 'package:provider/provider.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('submitted search tabs filter without changing a draft', (
@@ -37,8 +38,8 @@ void main() {
 
     expect(find.byKey(const Key('explore-result-tabs')), findsOne);
     // The event matches through its Foghorn Diet lineup relationship.
-    expect(find.text('RIPTIDE RELEASE SHOW'), findsWidgets);
-    expect(find.text('FOGHORN DIET'), findsWidgets);
+    expect(findUiText('RIPTIDE RELEASE SHOW'), findsWidgets);
+    expect(findUiText('FOGHORN DIET'), findsWidgets);
 
     await tester.enterText(
       find.byKey(const Key('explore-search-field')),
@@ -56,18 +57,18 @@ void main() {
           .text,
       'unsubmitted draft',
     );
-    expect(find.text('EVENTS'), findsNothing);
-    expect(find.text('FOGHORN DIET'), findsOne);
+    expect(findUiText('EVENTS'), findsOneWidget);
+    expect(findUiText('FOGHORN DIET'), findsOne);
 
     await tester.tap(find.byKey(const Key('explore-tab-venues')));
     await tester.pump();
-    expect(find.text('THE FOGHORN CLUB'), findsOne);
-    expect(find.text('FOGHORN DIET'), findsNothing);
+    expect(findUiText('THE FOGHORN CLUB'), findsOne);
+    expect(findUiText('FOGHORN DIET'), findsNothing);
 
     await tester.tap(find.byKey(const Key('explore-search-clear')));
     await tester.pumpAndSettle();
     expect(harness.app.query, isEmpty);
-    expect(find.text('GENRES'), findsNothing);
+    expect(findUiText('GENRES'), findsNothing);
     expect(find.byKey(const Key('explore-filter-button')), findsOne);
   });
 
@@ -84,7 +85,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('explore-tab-venues')));
     await tester.pump();
-    await tester.tap(find.text('THE FOGHORN CLUB'));
+    await tester.tap(findUiText('THE FOGHORN CLUB'));
     await tester.pump();
 
     expect(harness.app.current.screen, Screen.venue);
@@ -133,14 +134,14 @@ void main() {
     );
 
     expect(find.byKey(const Key('venue-detail-hero')), findsOne);
-    expect(find.text('THE FOGHORN CLUB'), findsOne);
+    expect(findUiText('THE FOGHORN CLUB'), findsOne);
     expect(find.textContaining('2455 Harrison St'), findsNothing);
     expect(find.textContaining(DemoData.venues['v1']!.addr), findsWidgets);
     expect(find.byKey(const Key('venue-detail-distance')), findsOne);
     expect(find.byType(VenueMiniMap), findsOne);
     expect(find.textContaining('DOOR POLICY'), findsNothing);
     expect(find.textContaining('PAST EVENTS'), findsNothing);
-    expect(find.text('UPCOMING EVENTS'), findsOne);
+    expect(findUiText('UPCOMING EVENTS'), findsOne);
     final cards = tester
         .widgetList<FanEventCard>(find.byType(FanEventCard))
         .toList();
@@ -167,7 +168,7 @@ void main() {
       const Offset(0, -1200),
     );
     await tester.pumpAndSettle();
-    expect(find.text('PERFORMING BANDS'), findsOne);
+    expect(findUiText('PERFORMING BANDS'), findsOne);
     expect(find.byKey(const ValueKey('venue-band-b1')), findsOne);
     await tester.tap(find.byKey(const ValueKey('venue-band-b1')));
     expect(harness.app.current.screen, Screen.band);
@@ -186,11 +187,11 @@ void main() {
       home: const Scaffold(body: VenueDetailScreen(venueId: 'v1')),
     );
 
-    expect(find.text("COULDN'T LOAD THIS VENUE"), findsOne);
+    expect(findUiText("COULDN'T LOAD THIS VENUE"), findsOne);
     await tester.tap(find.byKey(const Key('venue-detail-retry')));
     await tester.pumpAndSettle();
     expect(repository.calls, 2);
-    expect(find.text('THE FOGHORN CLUB'), findsOne);
+    expect(findUiText('THE FOGHORN CLUB'), findsOne);
   });
 
   testWidgets('venue detail has a distinct missing state', (tester) async {
@@ -198,7 +199,7 @@ void main() {
       tester,
       home: const Scaffold(body: VenueDetailScreen(venueId: 'missing')),
     );
-    expect(find.text('VENUE NOT FOUND'), findsOne);
+    expect(findUiText('VENUE NOT FOUND'), findsOne);
   });
 
   testWidgets('venue detail has a quiet no-events state', (tester) async {
@@ -247,7 +248,7 @@ void main() {
     );
 
     expect(find.text(gig.title.toUpperCase()), findsWidgets);
-    expect(find.text('FREE'), findsOne);
+    expect(findUiText('FREE'), findsOne);
     expect(find.text('18+'), findsOne);
     expect(find.textContaining('DOORS 8PM'), findsOne);
     expect(
@@ -285,11 +286,11 @@ void main() {
       ),
     );
 
-    expect(find.text('RSVP'), findsOne);
+    expect(findUiText('RSVP'), findsOne);
     await tester.tap(find.byKey(ValueKey('ticket-action-${gig.id}')));
     await tester.pump();
     expect(harness.app.rsvps, contains(gig.id));
-    expect(find.text('GOING ✓'), findsOne);
+    expect(findUiText('GOING ✓'), findsOne);
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -301,7 +302,7 @@ void main() {
       home: const Scaffold(body: GigDetailScreen(gigId: 'g4')),
     );
 
-    expect(find.text('AGE'), findsOne);
+    expect(findUiText('AGE'), findsOne);
     expect(find.text('21+'), findsOne);
     await tester.tap(find.byKey(const ValueKey('gig-detail-save-g4')));
     await tester.pump();

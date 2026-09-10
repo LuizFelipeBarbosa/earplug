@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('organizer dashboard shows verification and demo counts', (
@@ -171,41 +172,42 @@ void main() {
     });
   }
 
-  testWidgets('finance command opens for owners and is hidden for door members', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final repository = DemoRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      beforePump: (app) => app.switchToOrganization('org1'),
-      home: const Scaffold(body: OrgDashScreen()),
-    );
-    await enterOrganizer(tester, harness, 'org1');
+  testWidgets(
+    'finance command opens for owners and is hidden for door members',
+    (tester) async {
+      final auth = FakeAuthService();
+      await auth.signInDemo();
+      final repository = DemoRepository(auth: auth);
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        beforePump: (app) => app.switchToOrganization('org1'),
+        home: const Scaffold(body: OrgDashScreen()),
+      );
+      await enterOrganizer(tester, harness, 'org1');
 
-    final command = find.byKey(const Key('org-dash-command-finance'));
-    await tester.scrollUntilVisible(command, 250);
-    expect(command, findsOneWidget);
-    expect(
-      find.descendant(of: command, matching: find.text('FINANCE')),
-      findsOneWidget,
-    );
-    await tester.tap(command);
-    await tester.pumpAndSettle();
-    expect(harness.app.current.screen, Screen.orgFinance);
+      final command = find.byKey(const Key('org-dash-command-finance'));
+      await tester.scrollUntilVisible(command, 250);
+      expect(command, findsOneWidget);
+      expect(
+        find.descendant(of: command, matching: findUiText('FINANCE')),
+        findsOneWidget,
+      );
+      await tester.tap(command);
+      await tester.pumpAndSettle();
+      expect(harness.app.current.screen, Screen.orgFinance);
 
-    harness.app.myOrganizations = [
-      OrganizationMembership(
-        organization: DemoData.organizations['org1']!,
-        role: OrganizationRole.door,
-      ),
-    ];
-    await enterOrganizer(tester, harness, 'org1');
-    expect(command, findsNothing);
-  });
+      harness.app.myOrganizations = [
+        OrganizationMembership(
+          organization: DemoData.organizations['org1']!,
+          role: OrganizationRole.door,
+        ),
+      ];
+      await enterOrganizer(tester, harness, 'org1');
+      expect(command, findsNothing);
+    },
+  );
 
   testWidgets('venue edit page saves the public profile', (tester) async {
     final auth = FakeAuthService();
@@ -235,6 +237,7 @@ void main() {
 
     await tester.tap(venueCard);
     await tester.pumpAndSettle();
+    await openAllFormSections(tester);
     final demoVenue = DemoData.venues['v1']!;
     expect(find.text('The Foghorn Club'), findsWidgets);
     expect(
@@ -279,6 +282,8 @@ void main() {
       updatedDescription,
     );
     final clubChip = find.byKey(const Key('org-venue-type-club'));
+    await tester.ensureVisible(clubChip);
+    await tester.pumpAndSettle();
     await tester.tap(clubChip);
     await tester.enterText(
       find.byKey(const Key('org-venue-public-capacity')),
@@ -315,9 +320,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('org-venue-v1')));
     await tester.pumpAndSettle();
+    await openAllFormSections(tester);
     final pageScrollable = find
         .descendant(
-          of: find.byType(ListView).first,
+          of: find.byType(SingleChildScrollView).first,
           matching: find.byType(Scrollable),
         )
         .first;
@@ -329,7 +335,7 @@ void main() {
     );
     final address = tester.widget<TextField>(addressFinder);
     expect(address.controller?.text, DemoData.venuePrivateDetails['v1']!.addr);
-    expect(find.text('Tap the map to adjust the pin'), findsOneWidget);
+    expect(find.text('Adjust map'), findsOneWidget);
 
     await tester.enterText(addressFinder, '22 V');
     await tester.pump(const Duration(milliseconds: 300));
@@ -385,6 +391,7 @@ void main() {
     );
     expect(find.textContaining('Mara Kim'), findsOneWidget);
 
+    await openAllFormSections(tester);
     final financeRole = find.byKey(
       const ValueKey('org-team-invite-role-finance'),
     );
@@ -423,9 +430,9 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('org-team-member-demo-user')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('REMOVE'));
+    await tester.tap(findUiText('REMOVE'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'REMOVE'));
+    await tester.tap(findUiControl(FilledButton, 'REMOVE'));
     await tester.pumpAndSettle();
 
     expect(harness.app.toast, contains('at least one owner'));
@@ -450,9 +457,10 @@ void main() {
       find.byKey(const Key('org-settings-name')),
       'Foghorn Collective',
     );
+    await openAllFormSections(tester);
     final pageScrollable = find
         .descendant(
-          of: find.byType(ListView),
+          of: find.byType(SingleChildScrollView).first,
           matching: find.byType(Scrollable),
         )
         .first;

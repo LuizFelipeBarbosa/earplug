@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('quantity starts at one and stays between one and ten', (
@@ -62,7 +63,7 @@ void main() {
       await tester.tap(find.byKey(const Key('ticket-hold')));
       await tester.pumpAndSettle();
 
-      expect(find.text('YOUR HOLD'), findsOne);
+      expect(findUiText('Review your hold'), findsOne);
       expect(caption, findsNothing);
     });
   }
@@ -82,7 +83,7 @@ void main() {
 
     final reservation = harness.app.pendingReservation!;
     expect(reservation.quantity, 2);
-    expect(find.text('YOUR HOLD'), findsOne);
+    expect(findUiText('Review your hold'), findsOne);
     expect(find.text('Held for 30 minutes'), findsOne);
     final amounts = {
       'Tickets': reservation.subtotalMinor,
@@ -186,7 +187,7 @@ void main() {
     );
     final reservation = harness.app.pendingReservation!;
 
-    expect(find.text('YOUR HOLD'), findsOne);
+    expect(findUiText('Review your hold'), findsOne);
     expect(find.byKey(const Key('ticket-hold')), findsNothing);
     expect(find.byKey(const Key('ticket-pay')), findsOne);
     expect(find.text(reservation.total.label), findsOne);
@@ -207,7 +208,7 @@ void main() {
     expect(harness.app.pendingReservation, same(reservation));
     await tester.tap(find.byKey(const Key('gig-buy-tickets')));
     await tester.pumpAndSettle();
-    expect(find.text('YOUR HOLD'), findsOne);
+    expect(findUiText('Review your hold'), findsOne);
     expect(find.byKey(const Key('ticket-pay')), findsOne);
     expect(harness.app.pendingReservation, same(reservation));
   });

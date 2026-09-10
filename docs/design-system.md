@@ -1,106 +1,210 @@
 # EarPlug interface
 
-The shared theme in `lib/theme.dart` defines the appearance of every page.
-Use semantic text roles and colors from the active theme for UI. Archivo Black
-is reserved for branding, posters, and artist identity; functional headings use
-Archivo. Body copy uses regular weight so it does not compete with headings.
+The theme in `lib/theme.dart` owns typography, colors and control dimensions.
+Use Archivo for headings and inputs; reserve Archivo Black for branding,
+artist identity and actual posters. Blue identifies primary actions. Yellow
+highlights pair `highlight` with `onHighlight` in both themes. Media overlays
+retain light text on a dark scrim.
 
-## Layout
+## Form layout and actions
 
-- Below 960 logical pixels, navigation stays at the bottom and the app fills
-  the available width up to 600 pixels.
-- At 960 pixels and above, the app uses a 1,120-pixel workspace with persistent
-  side navigation. Fixed form actions meet the bottom of the content panel.
-- Use `EpPageHeading` when a title has an action or description. Actions move
-  below long titles on compact layouts and at larger text scales.
-- `StickyActionBar` stacks its buttons on narrow screens with enlarged text.
-  Use `actionBarClearance(context)` for the corresponding scroll padding.
-- Cards use a 16-pixel default radius; controls use 12 pixels. Icon controls
-  retain 48-pixel tap targets around a 40-pixel visible surface.
+Use the existing components in `lib/widgets/form_bits.dart`.
 
-## Color and media
+- One form column: 640 pixels of content, with 16-pixel side padding. The
+  desktop navigation breakpoint remains 960 pixels; public pages retain
+  their wider workspace.
+- Input text is 16-pixel Archivo. Fields have 56-pixel minimum height,
+  16-pixel insets and 12-pixel corners. Interactive targets are at least
+  48 pixels. Use 20 pixels between fields and 32 between sections.
+- Sentence case for functional headings, field labels and actions. Keep
+  names, acronyms, branding and preview typography intact.
+- Border the input itself. Use whitespace and headings to group fields;
+  avoid decorative required-state cards and permanent completion lists.
+- `EpFormLayout` measures its scrollable and footer. Put `StickyActionBar`
+  in `footer`; never position a form action above a guessed navigation offset.
+  `constrainWidth: false` supports embedded actions on public detail pages.
+- The root `Scaffold` owns mobile navigation through `bottomNavigationBar`.
+  Navigation yields its space to the keyboard. Desktop forms have a separate
+  `FocusTraversalGroup`, so Tab follows the form before returning to navigation.
+- Present one primary action. Back, Preview and Save draft are secondary.
+  Place destructive actions in `DangerZone` outside the normal save area.
+  Short forms name their action: Accept offer, Withdraw application,
+  Cancel booking, Resolve dispute, Remove location.
 
-Blue identifies primary actions and selected navigation. Yellow highlights use
-`highlight` and `onHighlight`, which preserve the same yellow and dark-ink
-pairing in both themes. Use `volt` for readable accent text on page surfaces.
+`EpFieldRow` is reserved for closely related inputs. It stacks on narrow
+screens and with enlarged text. `EpPageHeading` moves actions below long
+headings when needed. Existing public-page overlays may still use
+`actionBarClearance`; new form footers must participate in layout.
 
-Photo and video overlays keep light text on dark scrims in either theme.
-Media fallback artwork also stays dark. It must not inherit light-mode text
-colors when the artwork behind it remains dark.
+## Steps, sections and selections
 
-Segmented controls, dialogs, sheets, progress indicators, and snackbars have
-shared theme defaults. Prefer these defaults over page-specific styling.
+`EpFormSteps` names all steps and permits returning to earlier ones. Continue
+validates the current step; it never publishes or submits. `EpFormStep` keeps
+inactive content mounted and removes it from focus and accessibility traversal.
+One editor owns the controllers, selections, uploads and draft identity for
+all steps. Gig editor generations reset navigation when starting another gig.
 
-## Input forms
-
-Use `EpLabeledField` for labelled text entry. The label stays above the text
-box, with an 8-pixel gap, and remains associated with the editable field for
-screen readers. Required labels are explicit. Input text uses the `epInput`
-role: 16-pixel Archivo at regular weight. Brand/display fonts belong in previews,
-not editable values.
-
-The input itself is the only bordered surface. Do not put a field, genre picker,
-or group of preferences inside another card. `FormSection` groups controls with
-a heading, description, and whitespace. Cards remain appropriate for actual
-content previews and selectable items.
-
-- Leave `EpLayout.fieldGap` (20 pixels) between fields and control groups.
-- Use `SectionBar.form` or `FormSection` for 32-pixel section spacing.
-- Use `EpFieldRow` for related inputs. It stacks them below 480 pixels or with
-  enlarged text instead of squeezing labels and validation messages. Its input
-  subtree stays mounted across width changes, as does the shell's content panel,
-  so resizing preserves unsaved edits and focus.
-- Let `inputDecorationTheme` supply the 56-pixel minimum height, 16-pixel inset,
-  12-pixel corners, and focus, disabled, and error borders. Sheets use the same
-  input treatment as pages.
-- Keep helper text below the field and use `errorText` for field validation.
-  Use the appropriate keyboard and autofill hints. Single-line fields default
-  to Next; search, verification, and terminal actions can override it.
-
-The existing form suites exercise save/retry behavior, dirty drafts, required
-fields, address suggestions, invitations, ticket amounts, authentication, and
-keyboard access. `form_bits_test.dart` also verifies that visible labels remain
-accessible and Next moves focus without losing entered values.
-
-## Page coverage
-
-`test/design_audit_test.dart` renders and scrolls every `Screen` value with
-demo data in four configurations: 390×844 dark, 390×844 light, 1280×900 light,
-and 360×800 dark with 1.5× text. The enum-driven matrix automatically includes
-new routes, although routes requiring parameters must receive a fixture.
-
-| Area | Pages |
+| Creator | Steps |
 | --- | --- |
-| Discovery and fan account | Home, Explore, gig detail, band profile, venue detail, Profile, Edit Profile, Settings |
-| Sign-in and invitations | Auth, band invitation, lineup invitation, organization invitation |
-| Band workspace | Dashboard, Edit Band, public profile preview, Create Band, Band Media, Gigs, gig editor, Analytics, Payouts |
-| Organizer workspace | Application, application status, Dashboard, Venues, venue editor, Team, Settings, Opportunities, opportunity editor, applicants |
-| Booking and returns | Opportunity detail, booking detail, review composer, checkout return, checkout cancellation, Stripe return |
-| Ticketing | Ticket wallet, ticket with QR code, ticket checkout return, ticket checkout cancellation |
-| Administration | Application queue and application review |
+| Gig | Basics → Lineup → Admission → Poster and review |
+| Opportunity / private request | Event → Artist slots → Details → Access → Review |
+| Organizer application | Organization and venue → Contact and verification → Review |
+| Host application | Your details → Verification and review |
 
-The matrix includes unavailable invitation links, a submitted organizer
-application, confirmed booking and ticket checkouts, a valid ticket, an active
-ticket hold, and an invalid Stripe return. The focused
-test suites cover additional loading, error, permission, and success states,
-as well as Door Mode, photo/video viewers, and modal sheets.
+Existing records open in `EpDisclosure` sections, with the essential section
+open initially. A closed section shows its current value summary. Its content
+remains mounted; collapsing it does not clear controllers, selections or upload
+state. Use the same sections for optional biography, artwork, links, credits,
+logistics and messages. Artwork is never a creation prerequisite.
 
-Run the layout matrix:
+`EpSelectionField<T>` presents a labelled selected-value summary and opens a
+searchable picker. Single selections use radio semantics. Multiple selections
+use checkbox semantics and a temporary selection: Done commits, closing cancels,
+and Clear affects only the pending picker selection. Limits disable additional
+choices without preventing removal. Band genres retain the three-genre limit
+and custom-genre entry; opportunity genres retain their existing limit.
+
+Use `VenueLocationEditor(compactMap: true)` for address editing. Address
+suggestions update the location summary; Adjust map opens the manual pin editor.
+Cancel leaves the original pin untouched and Done applies it. Creating a missing
+private location opens a nested editor and returns the selection without
+unmounting or clearing the request draft. Keep explicit city
+entry and existing address disclosure rules. Explain privacy beside the relevant
+location control, once.
+
+## Validation and persistence
+
+Wrap text entry in `EpForm`. `EpLabeledField` retains the visible label and
+appropriate input/autofill semantics. Validation starts on Continue or Save,
+then updates as the user corrects a field. `EpFormState.validate()` opens the
+first invalid disclosure, scrolls to its field and requests focus. Non-text
+requirements and server failures use `InlineFormFeedback` with a useful action
+or route back to the affected section.
+
+Keep repository calls, permission checks, amounts and server validation in the
+existing editor. A step transition or picker opening cannot trigger the final
+action. Save draft stays separate from publish/open/submit. New opportunities
+can save a draft from any step, using the existing draft requirements.
+
+Show Saved only after persistence succeeds. Existing autosave queues and retry
+barriers remain in place. Host and organizer Close actions flush pending edits;
+failed saves keep the application open. Opportunity Close offers Keep editing
+or Discard changes when edits are unsaved. Profile dirty-exit recovery and gig
+draft recovery retain their existing behavior. A browser refresh is not a
+substitute for explicitly saving an editor that does not autosave.
+
+## Route coverage checklist
+
+`test/design_audit_test.dart` derives its route matrix from `Screen.values`:
+51 routes × four configurations (390×844 dark/light, 1280×900 light,
+360×800 dark with 1.5× text). It scrolls the routes, expands disclosure sections,
+checks keyboard-open inputs and measured action bounds, and exercises the
+intermediate gig and opportunity creation steps. The route identity and
+backend contract are unchanged.
+
+Checked entries identify coverage in the route matrix. Conditional workflow
+behavior is additionally covered by the focused suites listed below.
+
+| Checked | Route | Form/control treatment |
+| --- | --- | --- |
+| [x] | `home` | Discovery location, filters and search controls |
+| [x] | `gig` | RSVP, ticket entry and purchase sheet |
+| [x] | `band` | Follow, media and review controls |
+| [x] | `bandPreview` | Existing public preview |
+| [x] | `bandJoin` | Invitation acceptance and recovery |
+| [x] | `gigInvite` | Lineup invitation acceptance |
+| [x] | `venue` | Detail controls; existing page structure |
+| [x] | `explore` | Labelled search, clear and compact filters |
+| [x] | `myGigs` | Following search and profile actions |
+| [x] | `auth` | Compact email/code input and Change email |
+| [x] | `bandCreate` | Required identity; optional biography, images, links, credits |
+| [x] | `bandDash` | Existing dashboard actions |
+| [x] | `bandEdit` | Profile, Images, Links and credits, Members |
+| [x] | `bandMedia` | Upload, ordering, feature and remove controls |
+| [x] | `editProfile` | Profile, Music taste, Preferences; compact photo control |
+| [x] | `settings` | Preference and account controls |
+| [x] | `gigMgr` | Compact browse filters and focused action sheets |
+| [x] | `gigCreate` | Four-step creation; sections for existing gigs |
+| [x] | `analytics` | Existing dashboard controls |
+| [x] | `orgApply` | Three-step application; documents and draft retry |
+| [x] | `orgApplicationStatus` | Needs-information and withdrawal actions |
+| [x] | `orgJoin` | Team invitation acceptance |
+| [x] | `orgDash` | Existing dashboard actions |
+| [x] | `orgVenues` | Venue management actions |
+| [x] | `orgVenueEdit` | Identity, Address and access, Operational details |
+| [x] | `orgTeam` | Focused invitation section and role descriptions |
+| [x] | `orgSettings` | Public profile, Photos, Private details, Payments |
+| [x] | `orgFinance` | Export-period choices |
+| [x] | `orgTransactions` | Search/filter/export controls |
+| [x] | `adminQueue` | Existing queue and filters |
+| [x] | `adminApplication` | Start review; focused decision panel |
+| [x] | `orgOpportunities` | Draft/publication management actions |
+| [x] | `opportunityEdit` | Five-step creation; sections, locks and consent for editing |
+| [x] | `opportunityApplicants` | Offer, decline and application controls |
+| [x] | `opportunityDetail` | Compact band/slot summaries; optional application notes |
+| [x] | `bookingDetail` | Named booking actions and measured footer |
+| [x] | `reviewCompose` | Rating and text first; optional category tags |
+| [x] | `bandPayouts` | Payment connection and export-period choices |
+| [x] | `checkoutReturn` | Existing payment-return handling |
+| [x] | `checkoutCancel` | Existing cancellation/retry handling |
+| [x] | `stripeReturn` | Existing payment-connection return |
+| [x] | `myTickets` | Existing ticket wallet |
+| [x] | `ticket` | Existing QR and ticket actions |
+| [x] | `ticketCheckoutReturn` | Existing ticket-return handling |
+| [x] | `ticketCheckoutCancel` | Existing hold/retry handling |
+| [x] | `hostApply` | Two steps; submit above navigation and keyboard |
+| [x] | `privateLocations` | Location list and add action |
+| [x] | `privateLocationEdit` | Address summary, explicit city and optional operations |
+| [x] | `adminSafety` | Context, resolution note and Resolve report |
+| [x] | `adminDisputes` | Context, refund amount and Resolve dispute |
+| [x] | `adminBookings` | Existing administrative booking controls |
+
+## Sheet and conditional-state checklist
+
+| Checked | Surface | Regression suites |
+| --- | --- | --- |
+| [x] | Searchable radio/checkbox pickers, cancel, clear, limits | `form_redesign_test`, `band_create_test`, `band_edit_test` |
+| [x] | Gig date/time, overnight start, venue, price, ticket access, audience | `gig_create_test` |
+| [x] | Poster uploads, presets, overlay, preview, failed upload | `gig_create_test`, media suites |
+| [x] | Profile photos, separate band images, media order and featured items | `fan_profile_ui_test`, `band_create_test`, `band_edit_test`, `band_media_test` |
+| [x] | Address suggestions, unavailable search, manual map, city and disclosure | `venue_location_editor_test`, `private_locations_test`, `org_editing_test` |
+| [x] | Verification documents, agreements, save/retry, needs information | `host_apply_test`, `org_apply_test`, `admin_review_test` |
+| [x] | Organization/band invitation roles, generate/reuse/revoke, expiry | `org_manage_test`, `band_edit_test`, invitation suites |
+| [x] | Slots, fees, required flags, visibility, invitations, venue approval | `opportunity_edit_test`, `opportunity_manage_test` |
+| [x] | Application, offer, cancellation, withdrawal and agreement dialogs | `band_gigs_page_test`, `opportunity_manage_test`, `booking_detail_test` |
+| [x] | Review rating/text/tags | `reviews_ui_test` |
+| [x] | Disputes, refunds, safety and administrative decisions | `dispute_sheet_test`, `admin_disputes_test`, `admin_safety_test`, `admin_review_test` |
+| [x] | Discovery filters and following search | `explore_search_test`, `home_discovery_test`, `fan_accessibility_test` |
+| [x] | Ticket quantity → hold → fee review → checkout | `ticket_purchase_sheet_test`, ticket suites |
+| [x] | Door scanning and adjacent manual ticket entry | `door_mode_test` |
+| [x] | Financial export periods | `band_payouts_test`, `org_finance_test` |
+| [x] | Authentication, code recovery and interrupted actions | `auth_test` |
+
+Fixtures cover conditional states without creating production bookings,
+payments, invitations or administrative decisions. Hosted Clerk and Stripe
+screens are outside this redesign. Browser review supplements widget checks
+for rendered layout, focus order and accessible controls.
+
+## Integration and verification
+
+Implement and review on `feat/form-redesign`: shared foundation, core flows,
+then remaining surfaces and coverage. There is no Convex schema migration or
+new server payload. Existing permission checks and monetary calculations stay
+in their current repositories and controllers.
 
 ```sh
-flutter test test/design_audit_test.dart
+flutter analyze
+flutter test
+npm test
+EP_DESIGN_CAPTURE=/tmp/earplug-form-redesign flutter test test/design_audit_test.dart
 ```
 
-Export screenshots of page tops and scroll ends for visual inspection:
+`EP_DESIGN_VIEW` can restrict captures to one of the four configuration names.
+Captures use bundled fonts and deterministic fixtures with image/map fallbacks.
+Use the in-app Browser for web interaction checks.
 
-```sh
-EP_DESIGN_CAPTURE=/tmp/earplug-design flutter test test/design_audit_test.dart
-```
-
-Optionally set `EP_DESIGN_VIEW` to `mobile-dark`, `mobile-light`, `desktop`, or
-`large-text`. Captures use bundled fonts and deterministic demo fixtures;
-network artwork and map tiles use fallbacks. Use the demo web build to review
-browser rendering, live map tiles, keyboard interaction, and theme changes.
-
-These checks validate the client interface. They do not submit live payments,
-send invitations, or deploy the production site.
+Push the feature branch and review its Netlify deploy preview using the paired
+development Clerk and Convex configuration. Verify the DEV ribbon and affected
+flows there. Merge to `main` only through the normal release workflow; Netlify
+performs the production contract check and deployment described in
+`docs/environments.md`. Feature branch builds must never deploy production.

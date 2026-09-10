@@ -500,6 +500,7 @@ class _ResolveSheetState extends State<_ResolveSheet> {
               children: [
                 for (final (resolution, label) in _resolutions)
                   EpChip(
+                    multiple: false,
                     key: Key(
                       'admin-dispute-resolution-${resolution.wireValue}',
                     ),
@@ -541,7 +542,7 @@ class _ResolveSheetState extends State<_ResolveSheet> {
             ],
             const SizedBox(height: 14),
             EpButton(
-              'CONFIRM',
+              'Resolve dispute',
               key: const Key('admin-dispute-confirm'),
               onTap: _submitting ? null : _confirm,
             ),

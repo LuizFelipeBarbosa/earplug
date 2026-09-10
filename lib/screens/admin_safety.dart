@@ -352,7 +352,7 @@ class _ResolveSheetState extends State<_ResolveSheet> {
           ],
           const SizedBox(height: 14),
           EpButton(
-            'CONFIRM',
+            'Resolve report',
             key: const Key('admin-safety-resolve-confirm'),
             onTap: _submitting ? null : _confirm,
           ),

@@ -15,6 +15,7 @@ import 'package:latlong2/latlong.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 const _directoryOnlyVenue = Venue(
   id: 'v-derby',
@@ -47,20 +48,20 @@ void main() {
     await tester.pump();
 
     expect(harness.app.query, isEmpty);
-    expect(find.text('GENRES'), findsNothing);
-    expect(find.text('PUNK'), findsNothing);
+    expect(findUiText('GENRES'), findsNothing);
+    expect(findUiText('PUNK'), findsNothing);
 
     await tester.tap(find.byKey(const Key('explore-search-submit')));
     await tester.pumpAndSettle();
 
     expect(harness.app.query, 'Mission Creep');
     await tester.scrollUntilVisible(
-      find.text('MISSION CREEP'),
+      findUiText('MISSION CREEP').first,
       200,
       scrollable: _allResultsScrollable(),
     );
-    expect(find.text('MISSION CREEP'), findsOne);
-    expect(find.text('GENRES'), findsNothing);
+    expect(findUiText('MISSION CREEP'), findsWidgets);
+    expect(findUiText('GENRES'), findsNothing);
   });
 
   testWidgets('keyboard search submits and clear restores browsing', (
@@ -81,11 +82,11 @@ void main() {
 
     expect(harness.app.query, 'Foghorn');
     await tester.scrollUntilVisible(
-      find.text('FOGHORN DIET'),
+      findUiText('FOGHORN DIET'),
       200,
       scrollable: _allResultsScrollable(),
     );
-    expect(find.text('FOGHORN DIET'), findsOne);
+    expect(findUiText('FOGHORN DIET'), findsOne);
 
     await tester.tap(find.byKey(const Key('explore-search-clear')));
     await tester.pumpAndSettle();
@@ -99,7 +100,7 @@ void main() {
       isEmpty,
     );
     expect(find.byKey(const Key('explore-filter-button')), findsOne);
-    expect(find.text('GENRES'), findsNothing);
+    expect(findUiText('GENRES'), findsNothing);
   });
 
   testWidgets('scope changes keep results visible and announce progress', (
@@ -182,51 +183,45 @@ void main() {
         .performAction(tester.getSemantics(button).id, SemanticsAction.tap);
     await tester.pumpAndSettle();
 
-    for (final label in const [
-      'DATE',
-      'GENRES · CHOOSE ANY',
-      'DISTANCE',
-      'PRICE',
-      'PUNK',
-      'GARAGE',
-      'NOISE',
-    ]) {
-      expect(find.text(label), findsOne);
+    for (final label in const ['DATE', 'Genres', 'DISTANCE', 'PRICE']) {
+      expect(findUiText(label), findsOne);
     }
-    expect(find.textContaining('APPLY FILTERS ·'), findsOne);
+    expect(
+      find.textContaining(RegExp('apply filters ·', caseSensitive: false)),
+      findsOne,
+    );
 
-    await tester.tap(find.text('PUNK'));
-    await tester.pump();
+    await toggleFormSelection(tester, 'Genres', 'punk');
     expect(harness.app.fGenres, {'punk'});
     expect(harness.app.query, isEmpty);
     await tester.scrollUntilVisible(
-      find.text('VENUE'),
+      findUiText('VENUE'),
       280,
       scrollable: find.byType(Scrollable).last,
     );
-    expect(find.text('VENUE'), findsOne);
+    expect(findUiText('VENUE'), findsOne);
     await tester.scrollUntilVisible(
-      find.text('CLEAR ALL'),
+      findUiText('CLEAR ALL'),
       280,
       scrollable: find.byType(Scrollable).last,
     );
-    expect(find.text('CLEAR ALL'), findsOne);
+    expect(findUiText('CLEAR ALL'), findsOne);
     await tester.tap(find.byKey(const Key('show-filter-results')));
     await tester.pumpAndSettle();
 
     data = tester.getSemantics(button).getSemanticsData();
     expect(data.label, 'Filters, 1 active');
     expect(data.flagsCollection.isSelected, Tristate.isTrue);
-    expect(find.text('PUNK'), findsNothing);
+    expect(findUiText('PUNK'), findsNothing);
 
     await tester.tap(button);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('CLEAR ALL'),
+      findUiText('CLEAR ALL'),
       280,
       scrollable: find.byType(Scrollable).last,
     );
-    await tester.tap(find.text('CLEAR ALL'));
+    await tester.tap(findUiText('CLEAR ALL'));
     await tester.pump();
     await tester.tap(find.byKey(const Key('show-filter-results')));
     await tester.pumpAndSettle();
@@ -270,7 +265,7 @@ void main() {
       home: const Scaffold(body: ExploreScreen()),
     );
 
-    expect(find.text('TESS'), findsNothing);
+    expect(findUiText('TESS'), findsNothing);
     repository.publishTess();
     await tester.pumpAndSettle();
 
@@ -295,11 +290,11 @@ void main() {
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('TESS'), findsOne);
+    expect(findUiText('TESS'), findsOne);
 
     harness.app.toggleGenre('noise');
     await tester.pump();
-    expect(find.text('TESS'), findsNothing);
+    expect(findUiText('TESS'), findsNothing);
     harness.app.toggleGenre('noise');
     await tester.pump();
     expect(
@@ -331,7 +326,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.byKey(const Key('explore-filter-button')));
     await tester.pumpAndSettle();
-    expect(find.text('FILTERS'), findsOne);
+    expect(findUiText('FILTERS'), findsOne);
   });
 
   testWidgets('search results construct off-screen rows lazily', (
@@ -346,15 +341,15 @@ void main() {
     final results = find.byKey(const Key('explore-results-all'));
     final list = tester.widget<ListView>(results);
     expect(list.childrenDelegate, isA<SliverChildBuilderDelegate>());
-    expect(find.text('SUNSET BUNKER'), findsNothing);
+    expect(findUiText('SUNSET BUNKER'), findsNothing);
 
     await tester.scrollUntilVisible(
-      find.text('SUNSET BUNKER'),
+      findUiText('SUNSET BUNKER'),
       400,
       scrollable: _allResultsScrollable(),
     );
 
-    expect(find.text('SUNSET BUNKER'), findsOneWidget);
+    expect(findUiText('SUNSET BUNKER'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -399,13 +394,13 @@ void main() {
 
     expect(find.byKey(const Key('explore-all-bands')), findsOne);
     expect(find.text(DemoData.bands['b6']!.name.toUpperCase()), findsOne);
-    expect(find.text('SEE LESS BANDS'), findsOne);
+    expect(findUiText('SEE LESS BANDS'), findsOne);
 
     await tester.tap(bandsToggle);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('explore-band-preview')), findsOne);
-    expect(find.text('SEE ALL BANDS'), findsOne);
+    expect(findUiText('SEE ALL BANDS'), findsOne);
 
     final venuesToggle = find.byKey(const Key('explore-toggle-venues'));
     await tester.scrollUntilVisible(
@@ -420,7 +415,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(DemoData.venues['v6']!.name.toUpperCase()), findsOne);
-    expect(find.text('SEE LESS VENUES'), findsOne);
+    expect(findUiText('SEE LESS VENUES'), findsOne);
   });
 
   testWidgets('browse lists a venue absent from the feed', (tester) async {
@@ -451,7 +446,7 @@ void main() {
     harness.app.setQuery(_directoryOnlyVenue.name);
     await tester.pumpAndSettle();
 
-    expect(find.text('VENUES'), findsOne);
+    expect(findUiText('VENUES'), findsNWidgets(2));
     expect(find.text(_directoryOnlyVenue.name.toUpperCase()), findsOne);
     expect(find.text('No gigs found.'), findsOne);
   });
@@ -467,7 +462,10 @@ void main() {
     );
 
     expect(find.text("Couldn't load venues.", skipOffstage: false), findsOne);
-    final retry = find.text('RETRY', skipOffstage: false);
+    final retry = find.textContaining(
+      RegExp(r'^retry$', caseSensitive: false),
+      skipOffstage: false,
+    );
     await tester.ensureVisible(retry);
     await tester.pumpAndSettle();
     await tester.tap(retry);
@@ -520,10 +518,12 @@ void main() {
   });
 }
 
-Finder _allResultsScrollable() => find.descendant(
-  of: find.byKey(const Key('explore-results-all')),
-  matching: find.byType(Scrollable),
-);
+Finder _allResultsScrollable() => find
+    .descendant(
+      of: find.byKey(const Key('explore-results-all')),
+      matching: find.byType(Scrollable),
+    )
+    .first;
 
 class _LiveExploreRepository extends DemoRepository {
   _LiveExploreRepository({required super.auth});
@@ -577,7 +577,8 @@ class _RetryDirectoryRepository {
     : stub = StubRepository(auth: auth)
         ..returnsStream(
           'feed',
-          () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+          () =>
+              Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
         )
         ..failOnce('venues', Exception('venue directory failed'))
         ..returns('venues', const [_directoryOnlyVenue]);

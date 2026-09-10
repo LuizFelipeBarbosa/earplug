@@ -21,6 +21,7 @@ import 'support/design_rules.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('opportunities group drafts and open listings with counts', (
@@ -35,9 +36,9 @@ void main() {
     final openCard = find.byKey(const ValueKey('org-opp-opp1'));
     final draftCard = find.byKey(const ValueKey('org-opp-opp2'));
 
-    expect(find.text('OPPORTUNITIES'), findsOneWidget);
+    expect(findUiText('OPPORTUNITIES'), findsOneWidget);
     expect(find.text('Post a slot. Find your next artist.'), findsOneWidget);
-    expect(find.text('NEW OPPORTUNITY'), findsOneWidget);
+    expect(findUiText('NEW OPPORTUNITY'), findsOneWidget);
     expect(
       tester
           .widget<SectionBar>(
@@ -104,7 +105,7 @@ void main() {
     );
     expect(tester.widget<StatusPill>(consent).tone, EpStatusPillTone.warning);
     expect(
-      find.descendant(of: consent, matching: find.text('PENDING APPROVAL')),
+      find.descendant(of: consent, matching: findUiText('PENDING APPROVAL')),
       findsOneWidget,
     );
     harness.app.dispose();
@@ -124,12 +125,12 @@ void main() {
       beforePump: (app) => app.switchToOrganization('org2'),
     );
 
-    expect(find.text('REQUESTS'), findsOneWidget);
+    expect(findUiText('REQUESTS'), findsOneWidget);
     expect(find.text('Post a request. Find your artist.'), findsOneWidget);
-    expect(find.text('NEW REQUEST'), findsOneWidget);
-    expect(find.text('OPPORTUNITIES'), findsNothing);
+    expect(findUiText('NEW REQUEST'), findsOneWidget);
+    expect(findUiText('OPPORTUNITIES'), findsNothing);
     expect(find.text('Post a slot. Find your next artist.'), findsNothing);
-    expect(find.text('NEW OPPORTUNITY'), findsNothing);
+    expect(findUiText('NEW OPPORTUNITY'), findsNothing);
     final privateCard = find.byKey(const ValueKey('org-opp-opp-private'));
     await tester.ensureVisible(privateCard);
     expect(
@@ -230,7 +231,7 @@ void main() {
         await tester.ensureVisible(card);
         await tester.tap(card);
         await tester.pumpAndSettle();
-        expect(find.text('DOOR'), published ? findsOneWidget : findsNothing);
+        expect(findUiText('DOOR'), published ? findsOneWidget : findsNothing);
         harness.app.dispose();
       },
     );
@@ -243,6 +244,8 @@ void main() {
       tester,
       const OrgOpportunitiesScreen(),
     );
+
+    await revealFormKey(tester, const Key('org-opps-new'));
 
     await tester.tap(find.byKey(const Key('org-opps-new')));
     await tester.pumpAndSettle();
@@ -341,7 +344,12 @@ void main() {
       (await harness.app.repository.opportunity('opp1'))!.status,
       OpportunityStatus.open,
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'CONFIRM'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(FilledButton),
+      ),
+    );
     await tester.pumpAndSettle();
 
     final opportunity = await harness.app.repository.opportunity('opp1');
@@ -362,7 +370,7 @@ void main() {
 
     await _chooseOpportunityAction(tester, 'opp1', 'REOPEN');
     expect(find.byType(DatePickerDialog), findsOneWidget);
-    await tester.tap(find.text('OK'));
+    await tester.tap(findUiText('OK'));
     await tester.pumpAndSettle();
 
     final opportunity = await harness.app.repository.opportunity('opp1');
@@ -381,24 +389,25 @@ void main() {
     final harness = await _pumpOrganizerScreen(
       tester,
       const OrgOpportunitiesScreen(),
-      repositoryBuilder: (auth) => StubRepository(auth: auth)
-        ..wraps<List<Opportunity>>('manageOpportunities', (opportunities) {
-          return opportunities.map((opportunity) {
-            if (opportunity.id != 'opp1') return opportunity;
-            return opportunity.copyWith(status: OpportunityStatus.booking);
-          }).toList();
-        }),
+      repositoryBuilder: (auth) =>
+          StubRepository(auth: auth)
+            ..wraps<List<Opportunity>>('manageOpportunities', (opportunities) {
+              return opportunities.map((opportunity) {
+                if (opportunity.id != 'opp1') return opportunity;
+                return opportunity.copyWith(status: OpportunityStatus.booking);
+              }).toList();
+            }),
     );
     final card = find.byKey(const ValueKey('org-opp-opp1'));
     await tester.ensureVisible(card);
     await tester.tap(card);
     await tester.pumpAndSettle();
-    expect(find.text('REOPEN'), findsOneWidget);
+    expect(findUiText('REOPEN'), findsOneWidget);
 
-    await tester.tap(find.text('REOPEN'));
+    await tester.tap(findUiText('REOPEN'));
     await tester.pumpAndSettle();
     expect(find.byType(DatePickerDialog), findsOneWidget);
-    await tester.tap(find.text('OK'));
+    await tester.tap(findUiText('OK'));
     await tester.pumpAndSettle();
 
     final opportunity = await harness.app.repository.opportunity('opp1');
@@ -464,6 +473,8 @@ void main() {
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
 
+    await revealFormKey(tester, const ValueKey('applicant-app2-offer'));
+
     await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
     await tester.pumpAndSettle();
 
@@ -497,6 +508,8 @@ void main() {
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
 
+    await revealFormKey(tester, const ValueKey('applicant-app2-offer'));
+
     await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
     await tester.pumpAndSettle();
 
@@ -522,6 +535,7 @@ void main() {
           repositoryBuilder: (auth) =>
               repository = _FeeRatesRepository(auth: auth),
         );
+        await revealFormKey(tester, const ValueKey('applicant-app2-offer'));
         await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
         await tester.pumpAndSettle();
 
@@ -574,8 +588,11 @@ void main() {
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
 
+    await revealFormKey(tester, const ValueKey('applicant-app2-offer'));
+
     await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const ValueKey('send-offer-submit'));
     await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
     await tester.pumpAndSettle();
 
@@ -616,8 +633,11 @@ void main() {
         ),
     );
 
+    await revealFormKey(tester, const ValueKey('applicant-app2-offer'));
+
     await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const ValueKey('send-offer-submit'));
     await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
     await tester.pumpAndSettle();
 
@@ -639,8 +659,11 @@ void main() {
     );
     (harness.app.repository as DemoRepository).demoPaymentsEnabled = true;
 
+    await revealFormKey(tester, const ValueKey('applicant-app2-offer'));
+
     await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const ValueKey('send-offer-submit'));
     await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
     await tester.pumpAndSettle();
 
@@ -672,6 +695,8 @@ void main() {
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
 
+    await revealFormKey(tester, const ValueKey('applicant-app2-offer'));
+
     await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
     await tester.pumpAndSettle();
 
@@ -687,13 +712,17 @@ void main() {
     );
     (harness.app.repository as DemoRepository).demoPaymentsEnabled = true;
 
+    await revealFormKey(tester, const ValueKey('applicant-app2-offer'));
+
     await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
     await tester.pumpAndSettle();
     for (final amount in ['', 'abc', '-1', '1.50', '0x10']) {
+      await revealFormKey(tester, const ValueKey('send-offer-gross'));
       await tester.enterText(
         find.byKey(const ValueKey('send-offer-gross')),
         amount,
       );
+      await revealFormKey(tester, const ValueKey('send-offer-submit'));
       await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
       await tester.pumpAndSettle();
 
@@ -721,15 +750,20 @@ void main() {
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
 
+    await revealFormKey(tester, const ValueKey('applicant-app2-offer'));
+
     await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
     await tester.pumpAndSettle();
+    await revealFormKey(tester, const ValueKey('send-offer-gross'));
     await tester.enterText(find.byKey(const ValueKey('send-offer-gross')), '0');
+    await revealFormKey(tester, const ValueKey('send-offer-terms-flexible'));
     await tester.tap(find.byKey(const ValueKey('send-offer-terms-flexible')));
     await tester.pumpAndSettle();
     expect(
       find.text(CancellationTemplate.flexible.description),
       findsOneWidget,
     );
+    await revealFormKey(tester, const ValueKey('send-offer-notes'));
     await tester.enterText(
       find.byKey(const ValueKey('send-offer-notes')),
       '  Backline provided.  ',
@@ -737,6 +771,7 @@ void main() {
     final message = find.byKey(const ValueKey('send-offer-message'));
     await tester.ensureVisible(message);
     await tester.enterText(message, '  Looking forward to the show!  ');
+    await revealFormKey(tester, const ValueKey('send-offer-submit'));
     await tester.tap(find.byKey(const ValueKey('send-offer-submit')));
     await tester.pumpAndSettle();
 
@@ -758,6 +793,8 @@ void main() {
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
+
+    await revealFormKey(tester, const ValueKey('applicant-app2-offer'));
 
     await tester.tap(find.byKey(const ValueKey('applicant-app2-offer')));
     await tester.pumpAndSettle();
@@ -839,6 +876,8 @@ void main() {
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
 
+    await revealFormKey(tester, const ValueKey('applicant-app1-shortlist'));
+
     await tester.tap(find.byKey(const ValueKey('applicant-app1-shortlist')));
     await tester.pumpAndSettle();
 
@@ -864,7 +903,12 @@ void main() {
       await tester.tap(decline);
       await tester.pumpAndSettle();
       expect(find.text('Decline this applicant?'), findsOneWidget);
-      await tester.tap(find.widgetWithText(FilledButton, 'CONFIRM'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(FilledButton),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(_applicantPill(tester, 'app2').label, 'Declined');
@@ -884,9 +928,11 @@ void main() {
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
 
+    await revealFormKey(tester, const ValueKey('applicant-app1-decline'));
+
     await tester.tap(find.byKey(const ValueKey('applicant-app1-decline')));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, 'KEEP'));
+    await tester.tap(findUiControl(TextButton, 'KEEP'));
     await tester.pumpAndSettle();
 
     expect(_applicantPill(tester, 'app1').label, 'Submitted');
@@ -901,6 +947,8 @@ void main() {
       tester,
       const OpportunityApplicantsScreen(opportunityId: 'opp1'),
     );
+
+    await revealFormKey(tester, const ValueKey('applicant-app1-review'));
 
     await tester.tap(find.byKey(const ValueKey('applicant-app1-review')));
     await tester.pumpAndSettle();
@@ -933,12 +981,19 @@ void main() {
     expect(find.byKey(const ValueKey('applicant-app1')), findsOneWidget);
     expect(find.byKey(const ValueKey('applicant-app2')), findsNothing);
 
+    await revealFormKey(
+      tester,
+      const ValueKey('applicants-slot-opp1-headliner'),
+    );
+
     await tester.tap(
       find.byKey(const ValueKey('applicants-slot-opp1-headliner')),
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('applicant-app1')), findsNothing);
     expect(find.byKey(const ValueKey('applicant-app2')), findsOneWidget);
+
+    await revealFormKey(tester, const Key('applicants-slot-all'));
 
     await tester.tap(find.byKey(const Key('applicants-slot-all')));
     await tester.pumpAndSettle();
@@ -978,9 +1033,9 @@ void main() {
 
     expect(find.byKey(const ValueKey('applicant-app1')), findsOneWidget);
     expect(find.byKey(const ValueKey('applicant-app2')), findsOneWidget);
-    expect(find.text('START REVIEW'), findsNothing);
-    expect(find.text('SHORTLIST'), findsNothing);
-    expect(find.text('DECLINE'), findsNothing);
+    expect(findUiText('START REVIEW'), findsNothing);
+    expect(findUiText('SHORTLIST'), findsNothing);
+    expect(findUiText('DECLINE'), findsNothing);
     harness.app.dispose();
   });
 
@@ -1257,7 +1312,7 @@ Future<void> _chooseOpportunityAction(
   await tester.ensureVisible(card);
   await tester.tap(card);
   await tester.pumpAndSettle();
-  await tester.tap(find.text(action));
+  await tester.tap(findUiText(action));
   await tester.pumpAndSettle();
 }
 

@@ -12,6 +12,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('raster maps are ready immediately without a style repository', (
@@ -37,7 +38,7 @@ void main() {
     expect(find.byType(vt.VectorTileLayer), findsNothing);
     expect(find.byKey(const Key('raster-map-layer')), findsOne);
     expect(find.bySemanticsLabel('Loading map'), findsNothing);
-    expect(find.text('MAP UNAVAILABLE'), findsNothing);
+    expect(findUiText('MAP UNAVAILABLE'), findsNothing);
     expect(
       tester
           .widget<AbsorbPointer>(find.byKey(const Key('map-input-blocker')))
@@ -134,13 +135,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('MAP UNAVAILABLE'), findsOne);
-    expect(tester.getSize(find.widgetWithText(TextButton, 'RETRY')).height, 48);
+    expect(findUiText('MAP UNAVAILABLE'), findsOne);
+    expect(tester.getSize(findUiControl(TextButton, 'RETRY')).height, 48);
 
-    await tester.tap(find.text('RETRY'));
+    await tester.tap(findUiText('RETRY'));
     await tester.pumpAndSettle();
 
-    expect(find.text('MAP UNAVAILABLE'), findsNothing);
+    expect(findUiText('MAP UNAVAILABLE'), findsNothing);
     expect(find.text('© Stadia Maps'), findsOne);
   });
 

@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('answer board leads with the best-show takeaway', (tester) async {
@@ -20,7 +21,7 @@ void main() {
     expect(
       find.descendant(
         of: takeaway,
-        matching: find.text('BEST SHOW THIS WINDOW'),
+        matching: findUiText('BEST SHOW THIS WINDOW'),
       ),
       findsOne,
     );
@@ -50,7 +51,7 @@ void main() {
     );
 
     await tester.scrollUntilVisible(
-      find.text('CHECK-INS BY SHOW'),
+      findUiText('CHECK-INS BY SHOW'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
@@ -75,7 +76,7 @@ void main() {
     );
 
     expect(averageBar, findsOne);
-    expect(find.text('AVG 20'), findsOne);
+    expect(findUiText('AVG 20'), findsOne);
     expect(averageLine, findsOne);
     expect(
       tester.getTopLeft(averageBar).dy,
@@ -87,7 +88,7 @@ void main() {
     await pumpApp(tester, home: const Scaffold(body: AnalyticsScreen()));
 
     await tester.scrollUntilVisible(
-      find.text('BEST NIGHTS'),
+      findUiText('BEST NIGHTS'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
@@ -130,7 +131,7 @@ void main() {
     );
 
     expect(find.textContaining('No past gigs yet for'), findsOne);
-    expect(find.text('CHECK-INS BY SHOW'), findsNothing);
+    expect(findUiText('CHECK-INS BY SHOW'), findsNothing);
   });
 
   testWidgets(
@@ -149,7 +150,7 @@ void main() {
       expect(
         find.descendant(
           of: takeaway,
-          matching: find.text('BEST SHOW THIS WINDOW · 2-WAY TIE'),
+          matching: findUiText('BEST SHOW THIS WINDOW · 2-WAY TIE'),
         ),
         findsOne,
       );
@@ -254,7 +255,7 @@ void main() {
       findsNWidgets(4),
     );
     expect(
-      find.descendant(of: card, matching: find.text('SEE ALL 12')),
+      find.descendant(of: card, matching: findUiText('SEE ALL 12')),
       findsOne,
     );
 
@@ -333,7 +334,7 @@ void main() {
     await tester.tapAt(const Offset(8, 8));
     await tester.pumpAndSettle();
     await _tapSectionButton(tester, 'analytics-best-nights-see-all');
-    expect(find.text('ALL 7 NIGHTS'), findsOne);
+    expect(findUiText('ALL 7 NIGHTS'), findsOne);
   });
 
   testWidgets('forty-show recap remains overflow-free at narrow large text', (

@@ -434,7 +434,7 @@ class _DoorModeScreenState extends State<DoorModeScreen> {
                     scannerLocked: _scannerLocked,
                     onDetect: (value) => _checkIn(value, fromScanner: true),
                     onDetectError: () => _showCheckInFailure(
-                      'The scan could not be read. Hold the ticket steady or enter it below.',
+                      'The scan could not be read. Hold the ticket steady or enter it above.',
                     ),
                     onManualCheck: () => _checkIn(_manualCode.text),
                   )
@@ -668,6 +668,24 @@ class _ScannerView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       children: [
+        const SectionBar.form(label: 'Enter ticket code'),
+        const SizedBox(height: 8),
+        EpLabeledField(
+          fieldKey: const Key('door-manual-ticket'),
+          controller: manualCode,
+          focusNode: manualFocus,
+          autocorrect: false,
+          textInputAction: TextInputAction.done,
+          label: 'Ticket code',
+          hint: 'e.g. EP-9F2K-41',
+          onSubmitted: (_) => onManualCheck(),
+        ),
+        const SizedBox(height: EpLayout.fieldGap),
+        FilledButton(
+          onPressed: checking ? null : onManualCheck,
+          child: Text(checking ? 'CHECKING…' : 'CHECK TICKET'),
+        ),
+        const SizedBox(height: 20),
         SizedBox(
           key: const Key('door-scanner'),
           height: 360,
@@ -683,7 +701,7 @@ class _ScannerView extends StatelessWidget {
                   const _CameraFallback(message: 'STARTING CAMERA…'),
               errorBuilder: (_, _) => const _CameraFallback(
                 message:
-                    'CAMERA UNAVAILABLE\n\nAllow camera access, try another device, or enter the ticket below.',
+                    'CAMERA UNAVAILABLE\n\nAllow camera access, try another device, or enter the ticket above.',
               ),
             ),
           ),
@@ -701,23 +719,6 @@ class _ScannerView extends StatelessWidget {
           const _RosterRefreshFailureNotice(),
         ],
         const SizedBox(height: 18),
-        const SectionBar(label: 'MANUAL FALLBACK'),
-        const SizedBox(height: 8),
-        EpLabeledField(
-          fieldKey: const Key('door-manual-ticket'),
-          controller: manualCode,
-          focusNode: manualFocus,
-          autocorrect: false,
-          textInputAction: TextInputAction.done,
-          label: 'Ticket code',
-          hint: 'e.g. EP-9F2K-41',
-          onSubmitted: (_) => onManualCheck(),
-        ),
-        const SizedBox(height: EpLayout.fieldGap),
-        FilledButton(
-          onPressed: checking ? null : onManualCheck,
-          child: Text(checking ? 'CHECKING…' : 'CHECK TICKET'),
-        ),
         const SizedBox(height: 10),
         Text.rich(
           TextSpan(

@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 Future<({AppHarness harness, DemoRepository repository})> _pumpAdmin(
   WidgetTester tester,
@@ -110,7 +111,7 @@ void main() {
     );
     expect(tester.widget<StatusPill>(typePill).label, 'PROMOTER');
     expect(tester.widget<StatusPill>(typePill).tone, EpStatusPillTone.neutral);
-    expect(find.text('PROMOTER').hitTestable(), findsOneWidget);
+    expect(findUiText('PROMOTER').hitTestable(), findsOneWidget);
   });
 
   testWidgets('admin promoter detail shows its type and omits venue section', (
@@ -133,11 +134,11 @@ void main() {
     expect(typePill.label, 'PROMOTER');
     expect(typePill.tone, EpStatusPillTone.neutral);
     await tester.scrollUntilVisible(
-      find.text('DOCUMENTS'),
+      findUiText('DOCUMENTS'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('VENUE'), findsNothing);
+    expect(findUiText('VENUE'), findsNothing);
     expect(find.text('No venue provided.'), findsNothing);
   });
 
@@ -205,7 +206,7 @@ void main() {
       ),
     );
 
-    expect(find.text('VENUE'), findsOneWidget);
+    expect(findUiText('VENUE'), findsOneWidget);
     expect(find.text('3223 Mission St, San Francisco'), findsOneWidget);
   });
 
@@ -220,7 +221,7 @@ void main() {
     );
     final repository = result.repository;
 
-    await tester.tap(find.byKey(const Key('admin-review-start')));
+    await tester.tap(findUiControl(FilledButton, 'Start review'));
     await tester.pumpAndSettle();
 
     final application = await repository.organizationApplication(
@@ -239,6 +240,10 @@ void main() {
       ),
     );
     final repository = result.repository;
+
+    await tester.tap(findUiText('Choose decision'));
+
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('admin-review-request-info')));
     await tester.pumpAndSettle();
@@ -281,6 +286,10 @@ void main() {
       ),
     );
     await harness.auth.signInDemo();
+    await tester.pumpAndSettle();
+
+    await tester.tap(findUiText('Choose decision'));
+
     await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('admin-review-approve')));
@@ -380,15 +389,15 @@ void main() {
     );
 
     await tester.scrollUntilVisible(
-      find.text('HOST DETAILS'),
+      findUiText('HOST DETAILS'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('VENUE'), findsNothing);
+    expect(findUiText('VENUE'), findsNothing);
     expect(find.text('Jordan (host)'), findsOneWidget);
     expect(find.text('415-555-0100'), findsOneWidget);
     expect(find.text('Mission'), findsOneWidget);
-    expect(find.text('AGREEMENT ACCEPTED'), findsOneWidget);
+    expect(findUiText('AGREEMENT ACCEPTED'), findsOneWidget);
     expect(
       find.byKey(const Key('admin-application-organizer-agreement')),
       findsNothing,
@@ -397,9 +406,13 @@ void main() {
       find.text(dateLabel(submitted.hostAgreementAcceptedAt!)),
       findsOneWidget,
     );
-    expect(find.text('CONTACT EMAIL'), findsOneWidget);
+    expect(findUiText('CONTACT EMAIL'), findsOneWidget);
     expect(find.text('jordan@example.com'), findsWidgets);
     expectNoFieldInCard(tester);
+
+    await tester.tap(findUiText('Choose decision'));
+
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('admin-review-approve')));
     await tester.pumpAndSettle();
@@ -424,7 +437,7 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(createdText, findsOneWidget);
-    expect(find.text('VENUE'), findsNothing);
+    expect(findUiText('VENUE'), findsNothing);
   });
 
   for (final (label, key, screen) in <(String, String, Screen)>[

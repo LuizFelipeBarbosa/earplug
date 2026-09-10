@@ -10,6 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   late FakeAuthService auth;
@@ -79,7 +80,7 @@ void main() {
     expect(find.text(ticket.gig.title), findsOneWidget);
     expect(find.text(ticket.gig.venueName), findsOneWidget);
     expect(find.textContaining(dateLabel(ticket.gig.startsAt)), findsOneWidget);
-    expect(find.text('VALID'), findsOneWidget);
+    expect(findUiText('VALID'), findsOneWidget);
     expect(find.text('Show this at the door'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
 
@@ -108,7 +109,7 @@ void main() {
 
     expect(find.byKey(const Key('ticket-detail-qr')), findsNothing);
     expect(find.byType(QrImageView), findsNothing);
-    expect(find.text('CHECKED IN'), findsOneWidget);
+    expect(findUiText('CHECKED IN'), findsOneWidget);
     expect(
       find.text(
         'Checked in ${dateLabel(checkedInAt)} · '
@@ -208,7 +209,7 @@ void main() {
 
     expect(find.text("This ticket isn't available"), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
-    await tester.tap(find.text('BACK'));
+    await tester.tap(findUiText('BACK'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.myGigs);
   });

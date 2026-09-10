@@ -697,11 +697,9 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
               : _canSubmit
               ? _submit
               : null,
-          secondaryLabel: venueStep ? 'Save for later' : 'Back',
-          onSecondary: _busy
+          secondaryLabel: venueStep ? null : 'Back',
+          onSecondary: _busy || venueStep
               ? null
-              : venueStep
-              ? _saveForLater
               : () => _showStep(_ApplicationStep.values[_step.index - 1]),
         ),
       ),
@@ -845,49 +843,27 @@ class _OrgApplyScreenState extends State<OrgApplyScreen> {
       ),
       if (_orgType == OrganizationType.venueOperator) ...[
         const SizedBox(height: EpLayout.fieldGap),
-        const FieldLabel('WHAT ARE YOU', required: true),
+        const FieldLabel('Venue type', required: true),
         const SizedBox(height: 7),
-        SegmentedButton<String>(
-          expandedInsets: EdgeInsets.zero,
-          emptySelectionAllowed: true,
-          showSelectedIcon: false,
-          segments: const [
-            ButtonSegment(
-              value: 'bar',
-              label: Text('Bar', key: ValueKey('org-apply-kind-bar')),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            EpChip(
+              key: const ValueKey('org-apply-kind-bar'),
+              label: 'Bar',
+              multiple: false,
+              active: _kind == 'bar',
+              onTap: enabled ? () => _selectKind('bar') : null,
             ),
-            ButtonSegment(
-              value: 'club',
-              label: Text('Club', key: ValueKey('org-apply-kind-club')),
+            EpChip(
+              key: const ValueKey('org-apply-kind-club'),
+              label: 'Club',
+              multiple: false,
+              active: _kind == 'club',
+              onTap: enabled ? () => _selectKind('club') : null,
             ),
           ],
-          selected: {?_kind},
-          onSelectionChanged: enabled
-              ? (selection) {
-                  if (selection.isNotEmpty) _selectKind(selection.single);
-                }
-              : null,
-          style: ButtonStyle(
-            minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-            textStyle: WidgetStatePropertyAll(
-              Theme.of(context).textTheme.epLabel,
-            ),
-            backgroundColor: WidgetStateProperty.resolveWith(
-              (states) => states.contains(WidgetState.selected)
-                  ? context.epColors.surfaceSelected
-                  : context.epColors.surface,
-            ),
-            foregroundColor: WidgetStateProperty.resolveWith(
-              (states) => states.contains(WidgetState.disabled)
-                  ? context.epColors.contentDisabled
-                  : states.contains(WidgetState.selected)
-                  ? context.epColors.contentPrimary
-                  : context.epColors.contentSecondary,
-            ),
-            side: WidgetStatePropertyAll(
-              BorderSide(color: context.epColors.border),
-            ),
-          ),
         ),
         const SizedBox(height: EpLayout.fieldGap),
         Focus(

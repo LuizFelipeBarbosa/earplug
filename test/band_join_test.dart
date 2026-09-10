@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   test('demo acceptance creates one member membership and follower', () async {
@@ -55,14 +56,14 @@ void main() {
     );
 
     expect(find.text('Join Foghorn Diet?'), findsOne);
-    expect(find.text('JOIN BAND'), findsOne);
+    expect(findUiText('JOIN BAND'), findsOne);
     expect(harness.app.joinInviteAccepted, isFalse);
 
-    await tester.tap(find.text('JOIN BAND'));
+    await tester.tap(findUiText('JOIN BAND'));
     await tester.pumpAndSettle();
     expect(harness.app.joinInviteAccepted, isTrue);
     expect(find.text('You joined Foghorn Diet.'), findsOne);
-    expect(find.text('OPEN BAND DASHBOARD'), findsOne);
+    expect(findUiText('OPEN BAND DASHBOARD'), findsOne);
   });
 
   testWidgets('accepted membership updates band navigation before its stream', (
@@ -84,15 +85,15 @@ void main() {
       ),
     );
 
-    expect(find.text('SWITCH'), findsOne);
-    await tester.tap(find.text('JOIN BAND'));
+    expect(findUiText('SWITCH'), findsOne);
+    await tester.tap(findUiText('JOIN BAND'));
     await tester.pumpAndSettle();
 
     expect(harness.app.myBands, ['b2']);
-    expect(find.text('SWITCH'), findsOne);
-    await tester.tap(find.text('SWITCH'));
+    expect(findUiText('SWITCH'), findsOne);
+    await tester.tap(findUiText('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('PIGEON COURT'), findsOne);
+    expect(findUiText('PIGEON COURT'), findsOne);
   });
 
   testWidgets('signed-out recipient keeps the invite through authentication', (
@@ -109,9 +110,9 @@ void main() {
       home: const Scaffold(body: BandJoinScreen()),
     );
 
-    expect(find.text('SIGN IN TO JOIN'), findsOne);
+    expect(findUiText('SIGN IN TO JOIN'), findsOne);
     expect(find.textContaining('will not join automatically'), findsOne);
-    await tester.tap(find.text('SIGN IN TO JOIN'));
+    await tester.tap(findUiText('SIGN IN TO JOIN'));
     await tester.pump();
 
     expect(harness.app.current.screen, Screen.auth);
@@ -138,8 +139,8 @@ void main() {
       find.text('This invitation is invalid, expired, or revoked.'),
       findsOne,
     );
-    expect(find.text('JOIN BAND'), findsNothing);
-    expect(find.text('SIGN IN TO JOIN'), findsNothing);
+    expect(findUiText('JOIN BAND'), findsNothing);
+    expect(findUiText('SIGN IN TO JOIN'), findsNothing);
   });
 
   testWidgets('acceptance errors stay on the confirmation screen for retry', (
@@ -158,10 +159,10 @@ void main() {
       home: const Scaffold(body: BandJoinScreen()),
     );
 
-    await tester.tap(find.text('JOIN BAND'));
+    await tester.tap(findUiText('JOIN BAND'));
     await tester.pumpAndSettle();
     expect(find.text('This invitation could not be accepted.'), findsOne);
-    expect(find.text('TRY AGAIN'), findsOne);
+    expect(findUiText('TRY AGAIN'), findsOne);
   });
 
   testWidgets(
@@ -179,8 +180,8 @@ void main() {
       final app = harness.app;
 
       expect(find.text('Join The Shared Bill?'), findsOne);
-      expect(find.text('SIGN IN TO CLAIM'), findsOne);
-      await tester.tap(find.text('SIGN IN TO CLAIM'));
+      expect(findUiText('SIGN IN TO CLAIM'), findsOne);
+      await tester.tap(findUiText('SIGN IN TO CLAIM'));
       await tester.pump();
       expect(app.current.screen, Screen.auth);
       expect(app.pending?.kind, PendingKind.gigInvite);
@@ -190,9 +191,9 @@ void main() {
       app.leaveAuth();
       await tester.pumpAndSettle();
       expect(find.text('Foghorn Diet'), findsOne);
-      expect(find.text('CLAIM LINEUP SPOT'), findsOne);
+      expect(findUiText('CLAIM LINEUP SPOT'), findsOne);
 
-      await tester.tap(find.text('CLAIM LINEUP SPOT'));
+      await tester.tap(findUiText('CLAIM LINEUP SPOT'));
       await tester.pumpAndSettle();
       expect(repository.claimedToken, 'invite-token');
       expect(repository.claimedBandId, 'b1');

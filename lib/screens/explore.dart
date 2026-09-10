@@ -72,6 +72,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                 style: Theme.of(context).textTheme.epInput,
                 decoration: epInputDecoration(context, 'Bands, venues, gigs…')
                     .copyWith(
+                      labelText: 'Search',
                       suffixIcon: ValueListenableBuilder<TextEditingValue>(
                         valueListenable: _controller,
                         builder: (context, value, _) => Row(

@@ -174,9 +174,11 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
                 onPressed: action == _OfferAction.accept && !acceptedTerms
                     ? null
                     : () => Navigator.pop(context, true),
-                child: Text(
-                  action == _OfferAction.accept ? 'ACCEPT' : 'CONFIRM',
-                ),
+                child: Text(switch (action) {
+                  _OfferAction.accept => 'Accept offer',
+                  _OfferAction.decline => 'Decline offer',
+                  _OfferAction.withdraw => 'Withdraw offer',
+                }),
               ),
             ],
           ),
@@ -368,277 +370,250 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
             );
         final stickyBar = _stickyBar(booking, payments);
         final offerMessage = booking.currentOffer?.message;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  headerTopPad(context),
-                  16,
-                  tabBarClearance +
-                      actionBarClearance(context) +
-                      MediaQuery.paddingOf(context).bottom,
-                ),
+        return EpFormLayout(
+          constrainWidth: false,
+          body: ListView(
+            padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      BackButton(onPressed: app.back),
-                      IconButton(
-                        key: const Key('booking-refresh'),
-                        tooltip: 'Refresh booking',
-                        onPressed: _submitting ? null : _reload,
-                        icon: const Icon(Icons.refresh),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    booking.opportunityTitle,
-                    style: textTheme.epPageHeading,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      StatusPill(
-                        label: _statusLabel(booking),
-                        tone: booking.status.isLive
-                            ? EpStatusPillTone.success
-                            : EpStatusPillTone.neutral,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _statusCaption(context, booking),
-                          style: textTheme.epCaption,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  StatusTimeline(steps: _timelineSteps(booking)),
-                  const SectionBar(label: 'WHEN & WHERE'),
-                  if (booking.privateEvent)
-                    _PrivateBookingLocationCard(booking: booking)
-                  else
-                    EpCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            children: [
-                              DateBlock.forDate(booking.startsAt.toLocal()),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      booking.venue?.name ??
-                                          booking.privateLocation?.label ??
-                                          'Private event',
-                                      style: textTheme.epSectionHeading,
-                                    ),
-                                    if (booking.venue?.approxLabel ??
-                                            booking.privateLocation?.area
-                                        case final label?)
-                                      Text(label, style: textTheme.epMeta),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          if (booking.venue case final venue?)
-                            VenueMiniMap(
-                              venue: app.venue(venue.id),
-                              approximate: venue.exactAddress == null,
-                            ),
-                          if (booking.venue?.exactAddress ??
-                                  booking.privateLocation?.addr
-                              case final address?) ...[
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                const Icon(Icons.lock_outline, size: 16),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Exact address · shared with you: $address',
-                                    key: const Key('booking-exact-address'),
-                                    style: textTheme.epMeta,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  const SectionBar(label: 'SLOT'),
-                  EpCard(
-                    child: LedgerRow(
-                      title: booking.slotRole.name.toUpperCase(),
-                      trailing: Text(
-                        booking.slotRequired ? 'REQUIRED' : 'OPTIONAL',
-                      ),
-                    ),
-                  ),
-                  const SectionBar(label: 'FEE'),
-                  _FeeCard(fee: booking.fee, paidMinor: booking.paidMinor),
-                  if (booking.fee.grossMinor > 0)
-                    _BookingLedgerSection(
-                      key: const Key('booking-payments'),
-                      label: 'PAYMENTS',
-                      children: [
-                        for (final payment in payments)
-                          _PaymentRow(
-                            key: Key(
-                              'booking-payment-${payment.installmentIndex}',
-                            ),
-                            payment: payment,
-                            showPay:
-                                booking.viewerSide == BookingSide.organizer &&
-                                payment.canPay,
-                            onPay: _submitting
-                                ? null
-                                : () => _payInstallment(booking, payment),
-                          ),
-                        if (booking.viewerSide == BookingSide.artist &&
-                            payments.any((record) => record.status.isOpen))
-                          Text(
-                            "Waiting for the organizer's payment",
-                            style: textTheme.epCaption,
-                          ),
-                      ],
-                    ),
-                  if (booking.viewerSide == BookingSide.artist &&
-                      (booking.status == BookingStatus.completed ||
-                          booking.status == BookingStatus.paid))
-                    _BookingLedgerSection(
-                      key: const Key('booking-payouts'),
-                      label: 'PAYOUTS',
-                      children: [
-                        for (final payout in app.payoutsFor(booking.id))
-                          _PayoutRow(
-                            key: Key('booking-payout-${payout.id}'),
-                            payout: payout,
-                          ),
-                      ],
-                    ),
-                  if (refunds.isNotEmpty)
-                    _BookingLedgerSection(
-                      key: const Key('booking-refunds'),
-                      label: 'REFUNDS',
-                      children: [
-                        for (final refund in refunds)
-                          _RefundRow(refund: refund),
-                      ],
-                    ),
-                  if (canOpenDispute) ...[
-                    const SizedBox(height: 20),
-                    EpButton(
-                      booking.viewerSide == BookingSide.organizer
-                          ? 'REQUEST A REFUND'
-                          : 'OPEN A DISPUTE',
-                      key: const Key('booking-dispute-open'),
-                      kind: EpButtonKind.outline,
-                      onTap: () => _showDispute(booking),
-                    ),
-                  ],
-                  if (disputes.isNotEmpty)
-                    _BookingLedgerSection(
-                      label: 'DISPUTE',
-                      children: [
-                        for (final dispute in disputes)
-                          _DisputeRow(
-                            key: ValueKey(
-                              'booking-dispute-${dispute.disputeId}',
-                            ),
-                            dispute: dispute,
-                            currency: booking.fee.currency,
-                          ),
-                      ],
-                    ),
-                  const SectionBar(label: 'TERMS'),
-                  EpCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          booking.cancellationTemplate.label,
-                          style: textTheme.epSectionHeading,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          booking.cancellationTemplate.description,
-                          style: textTheme.epBody,
-                        ),
-                        if (booking.termsNotes?.trim().isNotEmpty == true) ...[
-                          const SizedBox(height: 8),
-                          Text(booking.termsNotes!, style: textTheme.epBody),
-                        ],
-                        const SizedBox(height: 12),
-                        Text(
-                          'Organizer accepted ${_fullDate(context, booking.organizerAcceptedTermsAt)}',
-                          style: textTheme.epMeta,
-                        ),
-                        if (booking.artistAcceptedTermsAt case final date?)
-                          Text(
-                            'Artist accepted ${_fullDate(context, date)}',
-                            style: textTheme.epMeta,
-                          ),
-                      ],
-                    ),
-                  ),
-                  if (offerMessage?.trim().isNotEmpty == true) ...[
-                    const SectionBar(label: 'OFFER MESSAGE'),
-                    EpCard(child: Text(offerMessage!, style: textTheme.epBody)),
-                  ],
-                  if (booking.counterpartyEmail case final email?) ...[
-                    const SectionBar(label: 'CONTACT'),
-                    EpCard(
-                      child: Text(
-                        email,
-                        key: const Key('booking-counterparty-email'),
-                      ),
-                    ),
-                  ],
-                  if (booking.publicGigId case final gigId?) ...[
-                    const SectionBar(label: 'EVENT PAGE'),
-                    EpButton(
-                      'EVENT PAGE',
-                      key: const Key('booking-view-gig'),
-                      onTap: () => context.read<AppState>().openGig(gigId),
-                    ),
-                  ],
-                  if (booking.status.isLive ||
-                      app.safetyReportsFor(booking.id).isNotEmpty)
-                    _BookingSafetySection(booking: booking),
-                  if (booking.status == BookingStatus.completed ||
-                      booking.status == BookingStatus.paid) ...[
-                    const SectionBar(label: 'REVIEWS'),
-                    _BookingReviewsSection(
-                      bookingId: booking.id,
-                      future: _reviews,
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  InlineFormFeedback(
-                    error: _error,
-                    errorKey: const Key('booking-feedback'),
+                  BackButton(onPressed: app.back),
+                  IconButton(
+                    key: const Key('booking-refresh'),
+                    tooltip: 'Refresh booking',
+                    onPressed: _submitting ? null : _reload,
+                    icon: const Icon(Icons.refresh),
                   ),
                 ],
               ),
-            ),
-            if (stickyBar != null)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: stickyBar,
+              Text(booking.opportunityTitle, style: textTheme.epPageHeading),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  StatusPill(
+                    label: _statusLabel(booking),
+                    tone: booking.status.isLive
+                        ? EpStatusPillTone.success
+                        : EpStatusPillTone.neutral,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _statusCaption(context, booking),
+                      style: textTheme.epCaption,
+                    ),
+                  ),
+                ],
               ),
-          ],
+              const SizedBox(height: 20),
+              StatusTimeline(steps: _timelineSteps(booking)),
+              const SectionBar(label: 'WHEN & WHERE'),
+              if (booking.privateEvent)
+                _PrivateBookingLocationCard(booking: booking)
+              else
+                EpCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          DateBlock.forDate(booking.startsAt.toLocal()),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  booking.venue?.name ??
+                                      booking.privateLocation?.label ??
+                                      'Private event',
+                                  style: textTheme.epSectionHeading,
+                                ),
+                                if (booking.venue?.approxLabel ??
+                                        booking.privateLocation?.area
+                                    case final label?)
+                                  Text(label, style: textTheme.epMeta),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (booking.venue case final venue?)
+                        VenueMiniMap(
+                          venue: app.venue(venue.id),
+                          approximate: venue.exactAddress == null,
+                        ),
+                      if (booking.venue?.exactAddress ??
+                              booking.privateLocation?.addr
+                          case final address?) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            const Icon(Icons.lock_outline, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Exact address · shared with you: $address',
+                                key: const Key('booking-exact-address'),
+                                style: textTheme.epMeta,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              const SectionBar(label: 'SLOT'),
+              EpCard(
+                child: LedgerRow(
+                  title: booking.slotRole.name.toUpperCase(),
+                  trailing: Text(
+                    booking.slotRequired ? 'REQUIRED' : 'OPTIONAL',
+                  ),
+                ),
+              ),
+              const SectionBar(label: 'FEE'),
+              _FeeCard(fee: booking.fee, paidMinor: booking.paidMinor),
+              if (booking.fee.grossMinor > 0)
+                _BookingLedgerSection(
+                  key: const Key('booking-payments'),
+                  label: 'PAYMENTS',
+                  children: [
+                    for (final payment in payments)
+                      _PaymentRow(
+                        key: Key('booking-payment-${payment.installmentIndex}'),
+                        payment: payment,
+                        showPay:
+                            booking.viewerSide == BookingSide.organizer &&
+                            payment.canPay,
+                        onPay: _submitting
+                            ? null
+                            : () => _payInstallment(booking, payment),
+                      ),
+                    if (booking.viewerSide == BookingSide.artist &&
+                        payments.any((record) => record.status.isOpen))
+                      Text(
+                        "Waiting for the organizer's payment",
+                        style: textTheme.epCaption,
+                      ),
+                  ],
+                ),
+              if (booking.viewerSide == BookingSide.artist &&
+                  (booking.status == BookingStatus.completed ||
+                      booking.status == BookingStatus.paid))
+                _BookingLedgerSection(
+                  key: const Key('booking-payouts'),
+                  label: 'PAYOUTS',
+                  children: [
+                    for (final payout in app.payoutsFor(booking.id))
+                      _PayoutRow(
+                        key: Key('booking-payout-${payout.id}'),
+                        payout: payout,
+                      ),
+                  ],
+                ),
+              if (refunds.isNotEmpty)
+                _BookingLedgerSection(
+                  key: const Key('booking-refunds'),
+                  label: 'REFUNDS',
+                  children: [
+                    for (final refund in refunds) _RefundRow(refund: refund),
+                  ],
+                ),
+              if (canOpenDispute) ...[
+                const SizedBox(height: 20),
+                EpButton(
+                  booking.viewerSide == BookingSide.organizer
+                      ? 'REQUEST A REFUND'
+                      : 'OPEN A DISPUTE',
+                  key: const Key('booking-dispute-open'),
+                  kind: EpButtonKind.outline,
+                  onTap: () => _showDispute(booking),
+                ),
+              ],
+              if (disputes.isNotEmpty)
+                _BookingLedgerSection(
+                  label: 'DISPUTE',
+                  children: [
+                    for (final dispute in disputes)
+                      _DisputeRow(
+                        key: ValueKey('booking-dispute-${dispute.disputeId}'),
+                        dispute: dispute,
+                        currency: booking.fee.currency,
+                      ),
+                  ],
+                ),
+              const SectionBar(label: 'TERMS'),
+              EpCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      booking.cancellationTemplate.label,
+                      style: textTheme.epSectionHeading,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      booking.cancellationTemplate.description,
+                      style: textTheme.epBody,
+                    ),
+                    if (booking.termsNotes?.trim().isNotEmpty == true) ...[
+                      const SizedBox(height: 8),
+                      Text(booking.termsNotes!, style: textTheme.epBody),
+                    ],
+                    const SizedBox(height: 12),
+                    Text(
+                      'Organizer accepted ${_fullDate(context, booking.organizerAcceptedTermsAt)}',
+                      style: textTheme.epMeta,
+                    ),
+                    if (booking.artistAcceptedTermsAt case final date?)
+                      Text(
+                        'Artist accepted ${_fullDate(context, date)}',
+                        style: textTheme.epMeta,
+                      ),
+                  ],
+                ),
+              ),
+              if (offerMessage?.trim().isNotEmpty == true) ...[
+                const SectionBar(label: 'OFFER MESSAGE'),
+                EpCard(child: Text(offerMessage!, style: textTheme.epBody)),
+              ],
+              if (booking.counterpartyEmail case final email?) ...[
+                const SectionBar(label: 'CONTACT'),
+                EpCard(
+                  child: Text(
+                    email,
+                    key: const Key('booking-counterparty-email'),
+                  ),
+                ),
+              ],
+              if (booking.publicGigId case final gigId?) ...[
+                const SectionBar(label: 'EVENT PAGE'),
+                EpButton(
+                  'EVENT PAGE',
+                  key: const Key('booking-view-gig'),
+                  onTap: () => context.read<AppState>().openGig(gigId),
+                ),
+              ],
+              if (booking.status.isLive ||
+                  app.safetyReportsFor(booking.id).isNotEmpty)
+                _BookingSafetySection(booking: booking),
+              if (booking.status == BookingStatus.completed ||
+                  booking.status == BookingStatus.paid) ...[
+                const SectionBar(label: 'REVIEWS'),
+                _BookingReviewsSection(bookingId: booking.id, future: _reviews),
+              ],
+              const SizedBox(height: 20),
+              InlineFormFeedback(
+                error: _error,
+                errorKey: const Key('booking-feedback'),
+              ),
+            ],
+          ),
+          footer: stickyBar ?? const SizedBox.shrink(),
         );
       },
     );
@@ -880,6 +855,7 @@ class _SafetyReportSheetState extends State<_SafetyReportSheet> {
                   SafetyCategory.other,
                 ])
                   EpChip(
+                    multiple: false,
                     key: ValueKey(
                       'booking-safety-category-${category.wireValue}',
                     ),
@@ -1410,7 +1386,7 @@ class _CancelBookingSheetState extends State<_CancelBookingSheet> {
             ),
             const SizedBox(height: 14),
             EpButton(
-              'CONFIRM',
+              'Cancel booking',
               key: const Key('booking-cancel-confirm'),
               onTap: _submitting ? null : _confirm,
             ),

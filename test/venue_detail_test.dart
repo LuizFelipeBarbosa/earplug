@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('approximate verified venue keeps its exact location private', (
@@ -73,6 +74,6 @@ void main() {
     await tester.tap(find.text('Choose a venue'));
     await tester.pumpAndSettle();
 
-    expect(find.text('+ NEW VENUE'), findsNothing);
+    expect(findUiText('+ NEW VENUE'), findsNothing);
   });
 }

@@ -112,6 +112,7 @@ class _DisputeSheetState extends State<DisputeSheet> {
                   DisputeCategory.other,
                 ])
                   EpChip(
+                    multiple: false,
                     key: ValueKey('dispute-category-${category.wireValue}'),
                     label: category.label.toUpperCase(),
                     active: _category == category,
@@ -154,7 +155,7 @@ class _DisputeSheetState extends State<DisputeSheet> {
             InlineFormFeedback(error: _error),
             const SizedBox(height: 14),
             EpButton(
-              'SUBMIT',
+              'Open dispute',
               key: const Key('dispute-submit'),
               onTap: _submitting ? null : _submit,
             ),

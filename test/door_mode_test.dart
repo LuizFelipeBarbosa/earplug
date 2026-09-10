@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   const launch = DoorModeLaunch(
@@ -28,9 +29,9 @@ void main() {
     );
 
     expect(find.byKey(const Key('door-viewer')), findsOne);
-    expect(find.text('DOOR MODE · THE FOGHORN CLUB'), findsOne);
+    expect(findUiText('DOOR MODE · THE FOGHORN CLUB'), findsOne);
     expect(find.text('Riptide Release Show'), findsOne);
-    expect(find.text('DOORS 8:00 PM'), findsOne);
+    expect(findUiText('DOORS 8:00 PM'), findsOne);
     expect(find.text('41 / 87 loaded'), findsOne);
     expect(find.byKey(const Key('door-roster-limited')), findsOne);
     expect(find.byKey(const Key('door-recent-empty')), findsOne);
@@ -56,7 +57,7 @@ void main() {
       find.byKey(const Key('door-manual-ticket')),
       ' EP-TEST ',
     );
-    await tester.tap(find.text('CHECK TICKET'));
+    await tester.tap(findUiText('CHECK TICKET'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
@@ -95,7 +96,7 @@ void main() {
       find.byKey(const Key('door-manual-ticket')),
       'EP-REFRESH-FAIL',
     );
-    await tester.tap(find.text('CHECK TICKET'));
+    await tester.tap(findUiText('CHECK TICKET'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
@@ -135,7 +136,7 @@ void main() {
       find.byKey(const Key('door-manual-ticket')),
       'EP-STALE-ROSTER',
     );
-    await tester.tap(find.text('CHECK TICKET'));
+    await tester.tap(findUiText('CHECK TICKET'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
 
@@ -144,14 +145,14 @@ void main() {
 
     expect(find.text('41 / 87'), findsOne);
     expect(find.byKey(const Key('door-roster-stale-failure')), findsOne);
-    expect(find.text('DISPLAYED COUNTS MAY BE STALE'), findsOne);
-    expect(find.text('RETRY ROSTER'), findsOne);
+    expect(findUiText('DISPLAYED COUNTS MAY BE STALE'), findsOne);
+    expect(findUiText('RETRY ROSTER'), findsOne);
 
-    await tester.tap(find.text('RETRY ROSTER'));
+    await tester.tap(findUiText('RETRY ROSTER'));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('door-roster-stale-failure')), findsNothing);
-    expect(find.text('DISPLAYED COUNTS MAY BE STALE'), findsNothing);
+    expect(findUiText('DISPLAYED COUNTS MAY BE STALE'), findsNothing);
     expect(find.text('42 / 87'), findsOne);
   });
 
@@ -168,7 +169,7 @@ void main() {
     );
 
     expect(find.textContaining('Door roster is unavailable'), findsOne);
-    expect(find.text('RETRY ROSTER'), findsOne);
+    expect(findUiText('RETRY ROSTER'), findsOne);
 
     await tester.tap(find.byKey(const Key('door-open-scanner')));
     await tester.pump(const Duration(milliseconds: 200));
@@ -176,7 +177,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
 
     expect(find.textContaining('Door roster is unavailable'), findsOne);
-    await tester.tap(find.text('RETRY ROSTER'));
+    await tester.tap(findUiText('RETRY ROSTER'));
     await tester.pumpAndSettle();
     expect(find.textContaining('Door roster is unavailable'), findsNothing);
     expect(find.text('41 / 87'), findsOne);
@@ -203,7 +204,7 @@ void main() {
         find.byKey(const Key('door-manual-ticket')),
         'bad',
       );
-      await tester.tap(find.text('CHECK TICKET'));
+      await tester.tap(findUiText('CHECK TICKET'));
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(find.text('That ticket belongs to a different gig.'), findsOne);
@@ -241,7 +242,7 @@ void main() {
 
       expect(find.text('Earplug Fan checked in ✓'), findsOne);
       expect(find.text('Ticket'), findsOne);
-      expect(find.text('RSVP'), findsNothing);
+      expect(findUiText('RSVP'), findsNothing);
 
       final ticket = (await repository.myTickets()).single;
       final checkedInTime = TimeOfDay.fromDateTime(
@@ -288,7 +289,7 @@ void main() {
     await _enterDoorCode(tester, 'earplug:ticket:v1:demo-g1');
 
     expect(find.text('Earplug Fan checked in ✓'), findsOne);
-    expect(find.text('RSVP'), findsOne);
+    expect(findUiText('RSVP'), findsOne);
     expect(find.text('Ticket'), findsNothing);
 
     await tester.tap(find.byTooltip('Back to door overview'));
@@ -322,7 +323,7 @@ void main() {
     await tester.tap(find.byKey(const Key('door-enter-code')));
     await tester.pump(const Duration(milliseconds: 200));
     await _enterDoorCode(tester, 'earplug:ticket:v1:demo-g8');
-    expect(find.text('RSVP'), findsOne);
+    expect(findUiText('RSVP'), findsOne);
     await _enterDoorCode(tester, token);
     expect(find.text('Ticket'), findsOne);
 
@@ -388,7 +389,7 @@ Future<String> _buyDemoTicket(DemoRepository repository) async {
 
 Future<void> _enterDoorCode(WidgetTester tester, String code) async {
   await tester.enterText(find.byKey(const Key('door-manual-ticket')), code);
-  await tester.tap(find.text('CHECK TICKET'));
+  await tester.tap(findUiText('CHECK TICKET'));
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 50));
 }

@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('a new account can apply without creating a band', (
@@ -30,7 +31,7 @@ void main() {
 
     expect(harness.app.myBands, isEmpty);
     expect(harness.app.myOrganizations, isEmpty);
-    await tester.tap(find.text('CREATE'));
+    await tester.tap(findUiText('CREATE'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('switcher-become-organizer')));
     await tester.pumpAndSettle();
@@ -51,7 +52,7 @@ void main() {
       home: const RootShell(),
     );
 
-    await tester.tap(find.text('CREATE'));
+    await tester.tap(findUiText('CREATE'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('switcher-become-organizer')));
     await tester.pumpAndSettle();
@@ -83,7 +84,7 @@ void main() {
         home: const RootShell(),
       );
 
-      await tester.tap(find.text('SIGN IN TO JOIN'));
+      await tester.tap(findUiText('SIGN IN TO JOIN'));
       await tester.pumpAndSettle();
       expect(harness.app.current.screen, Screen.auth);
       expect(harness.app.pending?.kind, PendingKind.orgJoin);
@@ -98,7 +99,7 @@ void main() {
       expect(harness.app.current.screen, Screen.orgJoin);
       expect(harness.app.current.param, invite.token);
       expect(repository.acceptedTokens, isEmpty);
-      await tester.tap(find.text('ACCEPT'));
+      await tester.tap(findUiText('ACCEPT'));
       await tester.pumpAndSettle();
       expect(repository.acceptedTokens, [invite.token]);
       expect(harness.app.current.screen, Screen.orgDash);
@@ -127,7 +128,7 @@ void main() {
       isTrue,
     );
 
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(findUiText('SWITCH'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('switcher-org-org1')), findsOne);
     // Existing org1 membership with no application in progress hides the entry.
@@ -146,9 +147,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('organizer-tab-dash')), findsNothing);
-    expect(find.text('GIGS'), findsOne);
-    expect(find.text('EXPLORE'), findsOne);
-    expect(find.text('PROFILE'), findsOne);
+    expect(findUiText('GIGS'), findsOne);
+    expect(findUiText('EXPLORE'), findsOne);
+    expect(findUiText('PROFILE'), findsOne);
     expect(harness.app.identity, isA<PersonalIdentity>());
   });
 
@@ -262,7 +263,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(harness.app.isPlatformAdmin, isTrue);
 
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(findUiText('SWITCH'));
     await tester.pumpAndSettle();
     final adminButton = find.byKey(const Key('switcher-admin'));
     await tester.ensureVisible(adminButton);

@@ -8,6 +8,7 @@ import 'package:shared_preferences_platform_interface/in_memory_shared_preferenc
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 const _key = 'appearance.themeMode.v1';
 
@@ -102,11 +103,11 @@ void main() {
     await pumpApp(tester, home: const Scaffold(body: SettingsScreen()));
     final segmented = find.byKey(const Key('appearance-mode'));
     expect(segmented, findsOne);
-    expect(find.text('SYSTEM'), findsOne);
-    expect(find.text('LIGHT'), findsOne);
-    expect(find.text('DARK'), findsOne);
+    expect(findUiText('SYSTEM'), findsOne);
+    expect(findUiText('LIGHT'), findsOne);
+    expect(findUiText('DARK'), findsOne);
 
-    await tester.tap(find.text('LIGHT'));
+    await tester.tap(findUiText('LIGHT'));
     await tester.pumpAndSettle();
 
     final control = tester.widget<SegmentedButton<ThemeMode>>(segmented);

@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   test('resolved artwork roles do not resurrect cleared legacy artwork', () {
@@ -97,14 +98,14 @@ void main() {
       250,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('CREDITS'), findsOne);
+    expect(findUiText('CREDITS'), findsOne);
     expect(find.text('Recorded by Jo Rivera at Room Tone.'), findsOne);
     await tester.scrollUntilVisible(
       find.text('Avery Stone'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('BAND MEMBERS'), findsOne);
+    expect(findUiText('BAND MEMBERS'), findsOne);
     expect(find.text('Avery Stone'), findsOne);
     expect(find.text('Jo Rivera'), findsOne);
   });
@@ -127,8 +128,8 @@ void main() {
     expect(find.byKey(const ValueKey('band-social-instagram')), findsNothing);
     expect(find.byKey(const ValueKey('band-social-bandcamp')), findsNothing);
     expect(find.byKey(const ValueKey('band-social-youtube')), findsNothing);
-    expect(find.text('CREDITS'), findsNothing);
-    expect(find.text('BAND MEMBERS'), findsNothing);
+    expect(findUiText('CREDITS'), findsNothing);
+    expect(findUiText('BAND MEMBERS'), findsNothing);
   });
 
   testWidgets('public profile renders only configured social icons', (
@@ -164,7 +165,7 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
-    expect(find.text('PUBLIC PROFILE PREVIEW'), findsOne);
+    expect(findUiText('PUBLIC PROFILE PREVIEW'), findsOne);
     expect(find.text('Edit profile'), findsOne);
     expect(find.text('Return to band dashboard'), findsOne);
 
@@ -187,8 +188,8 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
-    expect(find.text('BAND'), findsOne);
-    expect(find.text('PUBLIC PROFILE PREVIEW'), findsNothing);
+    expect(findUiText('BAND'), findsOne);
+    expect(findUiText('PUBLIC PROFILE PREVIEW'), findsNothing);
     expect(find.text('Return to band dashboard'), findsNothing);
     expect(find.text('Edit profile'), findsNothing);
   });
@@ -202,7 +203,10 @@ void main() {
     );
 
     expect(find.byKey(const ValueKey('band-profile-hero-b1')), findsOne);
-    expect(find.textContaining('FOLLOW ·'), findsOne);
+    expect(
+      find.textContaining(RegExp('follow ·', caseSensitive: false)),
+      findsOne,
+    );
     expect(find.byType(FilledButton), findsOne);
   });
 
@@ -250,7 +254,7 @@ void main() {
     );
 
     await tester.scrollUntilVisible(
-      find.text('PAST GIGS · 2 PLAYED'),
+      findUiText('PAST GIGS · 2 PLAYED'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
@@ -279,7 +283,7 @@ void main() {
     );
 
     await tester.scrollUntilVisible(
-      find.text('PAST GIGS · 4 PLAYED'),
+      findUiText('PAST GIGS · 4 PLAYED'),
       250,
       scrollable: find.byType(Scrollable).first,
     );
@@ -308,7 +312,13 @@ void main() {
     await _scrollToPastGigs(tester);
     expect(find.text('No past shows yet.', skipOffstage: false), findsOne);
     expect(find.text('PAST GIGS', skipOffstage: false), findsOne);
-    expect(find.text('RETRY', skipOffstage: false), findsNothing);
+    expect(
+      find.textContaining(
+        RegExp(r'^retry$', caseSensitive: false),
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets('history failure waits for RETRY and then renders', (
@@ -341,7 +351,10 @@ void main() {
     await tester.pump();
     expect(repository.calls, 1);
 
-    final retry = find.text('RETRY', skipOffstage: false);
+    final retry = find.textContaining(
+      RegExp(r'^retry$', caseSensitive: false),
+      skipOffstage: false,
+    );
     await tester.ensureVisible(retry);
     await tester.pumpAndSettle();
     await tester.tap(retry);
@@ -403,7 +416,7 @@ void main() {
     expect(find.byKey(const ValueKey('band-profile-avatar-frame')), findsOne);
     expect(find.byType(BandIdentityHeader), findsOne);
     expect(find.text('486 followers'), findsOne);
-    expect(find.text('PROFILE COMPLETE'), findsNothing);
+    expect(findUiText('PROFILE COMPLETE'), findsNothing);
     final edit = find.byKey(const ValueKey('edit-band-profile-banner'));
     expect(edit, findsOne);
 
@@ -447,7 +460,7 @@ void main() {
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
-    expect(find.text('PUBLIC PROFILE PREVIEW'), findsOne);
+    expect(findUiText('PUBLIC PROFILE PREVIEW'), findsOne);
     expect(find.text('Edit profile'), findsNothing);
     expect(
       find.byKey(const ValueKey('edit-band-profile-banner')),
@@ -463,7 +476,7 @@ void main() {
     await _pumpProfile(tester);
 
     await tester.scrollUntilVisible(
-      find.text('PHOTOS'),
+      findUiText('PHOTOS'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
@@ -563,7 +576,7 @@ Future<void> _saveSocialLinks(AppHarness harness) async {
 
 Future<void> _scrollToPastGigs(WidgetTester tester) async {
   await tester.scrollUntilVisible(
-    find.text('PAST GIGS'),
+    findUiText('PAST GIGS'),
     250,
     scrollable: find.byType(Scrollable).first,
   );

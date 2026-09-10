@@ -18,6 +18,7 @@ import 'package:provider/provider.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 // Purging the seeded demo rows made a genuinely empty feed reachable for the
 // first time, so the two reasons a feed can be empty have to read differently.
@@ -37,8 +38,8 @@ void main() {
 
     expect(harness.app.mapMode, isTrue);
     expect(find.byType(GigMapView), findsOne);
-    expect(find.text('PUNK'), findsNothing);
-    expect(find.text('EARPLUG'), findsOne);
+    expect(findUiText('PUNK'), findsNothing);
+    expect(findUiText('EARPLUG'), findsOne);
 
     final logo = tester.getRect(find.byKey(const Key('home-logo')));
     final wordmark = tester.getRect(find.byKey(const Key('home-wordmark')));
@@ -55,12 +56,12 @@ void main() {
     expect(location.left, 16);
     expect(location.right, 386);
 
-    await tester.tap(find.text('LIST'));
+    await tester.tap(findUiText('LIST'));
     await tester.pumpAndSettle();
 
     expect(harness.app.mapMode, isFalse);
     expect(find.byType(GigMapView), findsNothing);
-    expect(find.text('8 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
+    expect(findUiText('8 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
     final cards = tester.widgetList<FanEventCard>(find.byType(FanEventCard));
     final featured = cards.first;
     expect(featured.gig.id, harness.app.feed.first.id);
@@ -127,8 +128,8 @@ void main() {
       beforePump: (app) => app.setMapMode(false),
     );
 
-    expect(find.text('1 GIG NEAR YOU · LOCAL ORDER'), findsOne);
-    expect(find.text('1 GIGS NEAR YOU · LOCAL ORDER'), findsNothing);
+    expect(findUiText('1 GIG NEAR YOU · LOCAL ORDER'), findsOne);
+    expect(findUiText('1 GIGS NEAR YOU · LOCAL ORDER'), findsNothing);
   });
 
   testWidgets('map markers use the same multi-genre filtered feed', (
@@ -196,7 +197,9 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
-    final readyBand = DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
+    final readyBand = DemoData.bands['b1']!.copyWith(
+      discoveryProfileReady: true,
+    );
     await pumpApp(
       tester,
       auth: auth,
@@ -218,9 +221,9 @@ void main() {
       home: const Scaffold(body: HomeScreen()),
     );
 
-    await tester.tap(find.text('LIST'));
+    await tester.tap(findUiText('LIST'));
     await tester.pumpAndSettle();
-    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
+    expect(findUiText('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
   testWidgets('the feed refreshes when a discovery boost window opens', (
@@ -239,14 +242,14 @@ void main() {
     );
 
     expect(harness.app.isDiscoveryBoosted(repository.gig), isFalse);
-    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsNothing);
+    expect(findUiText('DISCOVERY BOOST · COMPLETE LISTING'), findsNothing);
 
     now = now.add(const Duration(seconds: 3));
     await tester.pump(const Duration(seconds: 3));
     await tester.pump();
 
     expect(harness.app.isDiscoveryBoosted(repository.gig), isTrue);
-    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
+    expect(findUiText('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
   testWidgets('a same-second boundary refreshes discovery boost membership', (
@@ -270,13 +273,13 @@ void main() {
     );
 
     expect(harness.app.isDiscoveryBoosted(repository.gig), isFalse);
-    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsNothing);
+    expect(findUiText('DISCOVERY BOOST · COMPLETE LISTING'), findsNothing);
 
     now = now.add(boundaryDelay);
     await tester.pump(boundaryDelay);
 
     expect(harness.app.isDiscoveryBoosted(repository.gig), isTrue);
-    expect(find.text('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
+    expect(findUiText('DISCOVERY BOOST · COMPLETE LISTING'), findsOne);
   });
 
   testWidgets('the whole map card opens one gig route', (tester) async {
@@ -288,9 +291,9 @@ void main() {
     await _expandClusterContaining(tester, 'gig-marker-g1');
     await tester.tap(find.byKey(const Key('gig-marker-g1')));
     await tester.pumpAndSettle();
-    expect(find.text('OPEN GIG →'), findsOne);
+    expect(findUiText('OPEN GIG →'), findsOne);
 
-    await tester.tap(find.text('BASEMENT BLOWOUT'));
+    await tester.tap(findUiText('BASEMENT BLOWOUT'));
     await tester.pumpAndSettle();
 
     expect(harness.app.authed, isFalse);
@@ -342,23 +345,23 @@ void main() {
 
     await tester.tap(find.byKey(const Key('venue-marker-v1')));
     await tester.pumpAndSettle();
-    expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
-    expect(find.text('1 OF 2 GIGS AT THIS VENUE'), findsOne);
+    expect(findUiText('RIPTIDE RELEASE SHOW'), findsOne);
+    expect(findUiText('1 OF 2 GIGS AT THIS VENUE'), findsOne);
 
     await tester.tap(find.byKey(const Key('previous-map-gig')));
     await tester.pumpAndSettle();
-    expect(find.text('RIPTIDE RELEASE SHOW'), findsOne);
+    expect(findUiText('RIPTIDE RELEASE SHOW'), findsOne);
 
     await tester.tap(find.byKey(const Key('next-map-gig')));
     await tester.pumpAndSettle();
-    expect(find.text('FOG CITY FEST — DAY SHOW'), findsOne);
-    expect(find.text('2 OF 2 GIGS AT THIS VENUE'), findsOne);
+    expect(findUiText('FOG CITY FEST — DAY SHOW'), findsOne);
+    expect(findUiText('2 OF 2 GIGS AT THIS VENUE'), findsOne);
 
     await tester.tap(find.byKey(const Key('next-map-gig')));
     await tester.pumpAndSettle();
-    expect(find.text('FOG CITY FEST — DAY SHOW'), findsOne);
+    expect(findUiText('FOG CITY FEST — DAY SHOW'), findsOne);
 
-    await tester.tap(find.text('OPEN GIG →'));
+    await tester.tap(findUiText('OPEN GIG →'));
     await tester.pumpAndSettle();
     expect(harness.app.current.param, 'g7');
     harness.app.back();
@@ -397,19 +400,18 @@ void main() {
       home: const Scaffold(body: HomeScreen()),
     );
 
-    await tester.tap(find.text('FILTERS'));
+    await tester.tap(findUiText('FILTERS'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('PUNK'));
-    await tester.pumpAndSettle();
+    await toggleFormSelection(tester, 'Genres', 'punk');
 
     expect(harness.app.fGenres, {'punk'});
-    expect(find.text('SHOW 3 RESULTS'), findsOne);
+    expect(findUiText('SHOW 3 RESULTS'), findsOne);
 
     await tester.tap(find.byKey(const Key('show-filter-results')));
     await tester.pumpAndSettle();
 
     expect(find.text('ANY GENRE · I\'M OPEN'), findsNothing);
-    expect(find.text('FILTERS · 1'), findsOne);
+    expect(findUiText('FILTERS · 1'), findsOne);
   });
 
   testWidgets('current location is user initiated and adds a map marker', (
@@ -422,7 +424,7 @@ void main() {
     );
 
     expect(harness.app.discoveryLocation, DiscoveryLocation.sf);
-    await tester.tap(find.text('MISSION, SF'));
+    await tester.tap(findUiText('MISSION, SF'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('current-location-option')));
     await tester.pumpAndSettle();
@@ -447,15 +449,15 @@ void main() {
     expect(harness.app.feed, isEmpty);
     expect(find.text(_noMatches), findsOne);
     expect(find.text(_noGigs), findsNothing);
-    expect(find.text('SHOW THIS WEEK'), findsOne);
-    expect(find.text('CLEAR GENRES'), findsOne);
-    expect(find.text('VIEW ALL NEARBY SHOWS'), findsOne);
+    expect(findUiText('SHOW THIS WEEK'), findsOne);
+    expect(findUiText('CLEAR GENRES'), findsOne);
+    expect(findUiText('VIEW ALL NEARBY SHOWS'), findsOne);
 
-    await tester.tap(find.text('SHOW THIS WEEK'));
+    await tester.tap(findUiText('SHOW THIS WEEK'));
     await tester.pumpAndSettle();
     expect(harness.app.fDate, DateFilter.week);
 
-    await tester.tap(find.text('VIEW ALL NEARBY SHOWS'));
+    await tester.tap(findUiText('VIEW ALL NEARBY SHOWS'));
     await tester.pumpAndSettle();
     expect(harness.app.filters.activeCount, 0);
     expect(harness.app.feed, isNotEmpty);
@@ -469,7 +471,8 @@ void main() {
       repository: StubRepository(auth: auth)
         ..returnsStream(
           'feed',
-          () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+          () =>
+              Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
         ),
       home: const Scaffold(body: HomeScreen()),
     );
@@ -477,7 +480,7 @@ void main() {
     expect(harness.app.allGigs, isEmpty);
     expect(find.text(_noGigs), findsOne);
     expect(find.text(_noMatches), findsNothing);
-    expect(find.text('0 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
+    expect(findUiText('0 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
   });
 
   testWidgets('Home list lazily builds a 60-gig feed', (tester) async {
@@ -633,8 +636,8 @@ void main() {
     expect(find.byKey(ValueKey('fan-event-${gig.id}')), findsOne);
     expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsNothing);
     expect(find.byKey(ValueKey('show-qr-${gig.id}')), findsNothing);
-    expect(find.text('QR PASS'), findsNothing);
-    expect(find.text('CANCELLED'), findsWidgets);
+    expect(findUiText('QR PASS'), findsNothing);
+    expect(findUiText('CANCELLED'), findsWidgets);
   });
 }
 
@@ -720,7 +723,9 @@ class _BoundaryBoostRepository extends StubRepository {
     required DateTime now,
     Duration opensAfter = const Duration(seconds: 2),
   }) : opensAt = now.add(opensAfter) {
-    final readyBand = DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
+    final readyBand = DemoData.bands['b1']!.copyWith(
+      discoveryProfileReady: true,
+    );
     returnsStream(
       'feed',
       () => Stream.value(

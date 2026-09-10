@@ -1218,6 +1218,70 @@ void main() {
     },
   );
 
+  testWidgets('adding a private location keeps the unsaved request mounted', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final repository = StubRepository(auth: auth)
+      ..wraps<List<PrivateLocation>>(
+        'privateLocationsFor',
+        (locations) => locations
+            .where((location) => location.id != 'private-location-org2')
+            .toList(),
+      );
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const OpportunityEditScreen(opportunityId: 'new'),
+      beforePump: (app) => app.switchToOrganization('org2'),
+    );
+    await _enterText(tester, 'opp-edit-title', 'Keep this private request');
+    await _tap(tester, 'opp-add-location');
+    expect(find.byKey(const Key('private-location-label')), findsOneWidget);
+    await tester.tap(find.byType(CircleIconButton).last);
+    await tester.pumpAndSettle();
+    expect(
+      _field(tester, 'opp-edit-title').controller!.text,
+      'Keep this private request',
+    );
+    await _tap(tester, 'opp-add-location');
+    await tester.enterText(
+      find.byKey(const Key('private-location-label')),
+      'Backyard',
+    );
+    await tester.enterText(
+      find.byKey(const Key('private-location-address')),
+      '22 Valencia',
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    final suggestion = find.byKey(const Key('private-location-suggestion-0'));
+    await tester.ensureVisible(suggestion);
+    await tester.tap(suggestion);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('private-location-save')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('private-location-label')), findsNothing);
+    expect(
+      _field(tester, 'opp-edit-title').controller!.text,
+      'Keep this private request',
+    );
+    final picker = tester.widget<EpSelectionField<String>>(
+      find.byKey(const Key('opp-edit-location')),
+    );
+    expect(picker.selected, {
+      (await repository.privateLocationsFor('org2')).single.id,
+    });
+    expect(
+      (await repository.manageOpportunities(
+        'org2',
+      )).where((o) => o.title == 'Keep this private request'),
+      isEmpty,
+    );
+  });
+
   testWidgets(
     'existing private request retains its mode and location on update',
     (tester) async {

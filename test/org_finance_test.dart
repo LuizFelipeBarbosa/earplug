@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   late FakeAuthService auth;
@@ -64,7 +65,7 @@ void main() {
     expect(overview.snapshot, isNull);
     expect(find.text('Connect Stripe to see your balance.'), findsOneWidget);
     expect(find.byKey(const Key('org-finance-connect-stripe')), findsOneWidget);
-    expect(find.text('IN STRIPE'), findsNothing);
+    expect(findUiText('IN STRIPE'), findsNothing);
 
     final bookings = find.byKey(const Key('org-finance-bookings'));
     _expectStats(tester, bookings, {
@@ -170,7 +171,7 @@ void main() {
             .map((item) => item.label),
         ['LAST 30 DAYS', 'THIS MONTH', 'LAST MONTH', 'YEAR TO DATE'],
       );
-      await tester.tap(find.text(preset));
+      await tester.tap(findUiText(preset));
       await tester.pumpAndSettle();
       expect(downloads, isEmpty);
       expect(pdfDownloads, isEmpty);
@@ -225,7 +226,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(export);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.tap(findUiText('LAST 30 DAYS'));
     await tester.pumpAndSettle();
     expect(downloads, isEmpty);
     expect(pdfDownloads, isEmpty);
@@ -257,7 +258,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('org-finance-export')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('LAST 30 DAYS'));
+    await tester.tap(findUiText('LAST 30 DAYS'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('org-finance-export-csv')));
     await tester.pumpAndSettle();
@@ -296,7 +297,7 @@ void main() {
             .tone,
         EpStatusPillTone.warning,
       );
-      expect(find.text('STALE'), findsOneWidget);
+      expect(findUiText('STALE'), findsOneWidget);
       expect(find.byKey(const Key('org-finance-connect-stripe')), findsNothing);
       final urls = <String>[];
       harness.app.hostedUrlLauncher = (url) async => urls.add(url);
@@ -322,7 +323,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Could not load finance.'), findsOneWidget);
       repository.failFinance = false;
-      await tester.tap(find.text('RETRY'));
+      await tester.tap(findUiText('RETRY'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('org-finance-bookings')), findsOneWidget);
 

@@ -456,7 +456,7 @@ Future<bool> _confirm(BuildContext context, String title, String body) async =>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('CONFIRM'),
+            child: Text(title.replaceAll('?', '')),
           ),
         ],
       ),

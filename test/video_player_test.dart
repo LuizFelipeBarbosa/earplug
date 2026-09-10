@@ -6,6 +6,7 @@ import 'package:video_player_platform_interface/video_player_platform_interface.
 
 import 'support/fake_video_player_platform.dart';
 import 'support/fixtures.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   late VideoPlayerPlatform originalPlatform;
@@ -42,7 +43,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('OPEN'));
+    await tester.tap(findUiText('OPEN'));
     await tester.pump();
     await tester.pump();
 
@@ -51,7 +52,7 @@ void main() {
     expect(find.byTooltip('Play'), findsNothing);
     expect(find.byTooltip('Pause'), findsNothing);
     expect(find.byKey(const Key('video-progress-slider')), findsOneWidget);
-    expect(find.text('TEST BAND'), findsOneWidget);
+    expect(findUiText('TEST BAND'), findsOneWidget);
     expect(find.text('Clip title'), findsOneWidget);
     expect(fakePlatform.calls, contains('setVolume:1.0'));
     expect(fakePlatform.calls, contains('play'));
@@ -130,7 +131,7 @@ void main() {
 
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
     await tester.pumpAndSettle();
-    expect(find.text('OPEN'), findsOneWidget);
+    expect(findUiText('OPEN'), findsOneWidget);
   });
 
   test('video sizing covers landscape, square, and portrait viewports', () {

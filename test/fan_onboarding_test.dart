@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
+import 'support/ui_test_helpers.dart';
 
 void main() {
   testWidgets('new-fan setup collapses, resumes, syncs, and completes', (
@@ -110,12 +111,12 @@ void main() {
 
     expect(find.byKey(const Key('band-entry')), findsNothing);
     expect(find.byKey(const Key('create-band-from-profile')), findsNothing);
-    expect(find.text('PLAY IN A BAND?'), findsNothing);
-    expect(find.text('CREATE'), findsOne);
-    await tester.tap(find.text('CREATE'));
+    expect(findUiText('PLAY IN A BAND?'), findsNothing);
+    expect(findUiText('CREATE'), findsOne);
+    await tester.tap(findUiText('CREATE'));
     await tester.pumpAndSettle();
-    expect(find.text('BECOME AN ORGANIZER'), findsOne);
-    await tester.tap(find.text('START A BAND'));
+    expect(findUiText('BECOME AN ORGANIZER'), findsOne);
+    await tester.tap(findUiText('START A BAND'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandCreate);
   });
@@ -133,11 +134,11 @@ void main() {
       ),
     );
 
-    expect(find.text('CREATE'), findsOne);
-    await tester.tap(find.text('CREATE'));
+    expect(findUiText('CREATE'), findsOne);
+    await tester.tap(findUiText('CREATE'));
     await tester.pumpAndSettle();
-    expect(find.text('BECOME AN ORGANIZER'), findsOne);
-    await tester.tap(find.text('START A BAND'));
+    expect(findUiText('BECOME AN ORGANIZER'), findsOne);
+    await tester.tap(findUiText('START A BAND'));
     await tester.pumpAndSettle();
 
     expect(harness.app.current.screen, Screen.auth);
@@ -163,9 +164,9 @@ void main() {
     await harness.app.commitAuth();
     await tester.pump();
 
-    expect(find.text('SWITCH'), findsOne);
+    expect(findUiText('SWITCH'), findsOne);
     expect(repository.hasMembershipListener, isTrue);
-    await tester.tap(find.text('SWITCH'));
+    await tester.tap(findUiText('SWITCH'));
     await tester.pump();
     expect(harness.app.current.screen, Screen.home);
 
@@ -176,11 +177,11 @@ void main() {
 
     expect(harness.app.membershipsLoaded, isTrue);
     expect(harness.app.myBands, ['b1']);
-    expect(find.text('SWITCH'), findsOne);
-    await tester.tap(find.text('SWITCH'));
+    expect(findUiText('SWITCH'), findsOne);
+    await tester.tap(findUiText('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('YOUR ACCOUNTS'), findsOne);
-    await tester.tap(find.text('FOGHORN DIET'));
+    expect(findUiText('YOUR ACCOUNTS'), findsOne);
+    await tester.tap(findUiText('FOGHORN DIET'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandDash);
     expect(harness.app.bandId, 'b1');
@@ -189,7 +190,7 @@ void main() {
     await tester.pump();
     expect(harness.app.myBands, isEmpty);
     expect(harness.app.membershipsLoaded, isFalse);
-    expect(find.text('CREATE'), findsOne);
+    expect(findUiText('CREATE'), findsOne);
     await tester.pump(const Duration(seconds: 3));
   });
 
@@ -244,12 +245,12 @@ void main() {
       ),
     );
 
-    expect(find.text('SWITCH'), findsOne);
-    await tester.tap(find.text('SWITCH'));
+    expect(findUiText('SWITCH'), findsOne);
+    await tester.tap(findUiText('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('YOUR ACCOUNTS'), findsOne);
+    expect(findUiText('YOUR ACCOUNTS'), findsOne);
     expect(find.text('Personal account'), findsOne);
-    await tester.tap(find.text('FOGHORN DIET'));
+    await tester.tap(findUiText('FOGHORN DIET'));
     await tester.pumpAndSettle();
     expect(harness.app.current.screen, Screen.bandDash);
     expect(harness.app.bandId, 'b1');
@@ -268,11 +269,11 @@ void main() {
       ),
     );
 
-    expect(find.text('SWITCH'), findsOne);
-    await tester.tap(find.text('SWITCH'));
+    expect(findUiText('SWITCH'), findsOne);
+    await tester.tap(findUiText('SWITCH'));
     await tester.pumpAndSettle();
-    expect(find.text('YOUR ACCOUNTS'), findsOne);
-    expect(find.text('PIGEON COURT'), findsWidgets);
+    expect(findUiText('YOUR ACCOUNTS'), findsOne);
+    expect(findUiText('PIGEON COURT'), findsWidgets);
   });
 }
 

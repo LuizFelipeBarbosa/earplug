@@ -641,36 +641,28 @@ class _OpportunityFiltersSheetState extends State<_OpportunityFiltersSheet> {
                   fieldKey: const Key('band-gigs-filter-area'),
                 ),
                 const SizedBox(height: 18),
-                const SectionBar(label: 'GENRE'),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    for (final genre in kGenres)
-                      EpChip(
-                        label: genre,
-                        active: _genre == genre,
-                        onTap: () => setState(
-                          () => _genre = _genre == genre ? null : genre,
-                        ),
-                      ),
+                EpSelectionField<String>(
+                  label: 'Genre',
+                  options: [
+                    (value: '', label: 'Any genre'),
+                    for (final genre in kGenres) (value: genre, label: genre),
                   ],
+                  selected: {_genre ?? ''},
+                  onChanged: (values) => setState(
+                    () => _genre = values.single.isEmpty ? null : values.single,
+                  ),
                 ),
-                const SizedBox(height: 18),
-                const SectionBar(label: 'VENUE TYPE'),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
+                const SizedBox(height: 20),
+                EpSelectionField<VenueType?>(
+                  label: 'Venue type',
+                  options: [
+                    (value: null, label: 'Any venue type'),
                     for (final type in VenueType.values)
-                      EpChip(
-                        label: type.name.toUpperCase(),
-                        active: _venueType == type,
-                        onTap: () => setState(
-                          () => _venueType = _venueType == type ? null : type,
-                        ),
-                      ),
+                      (value: type, label: type.name),
                   ],
+                  selected: {_venueType},
+                  onChanged: (values) =>
+                      setState(() => _venueType = values.single),
                 ),
                 const SizedBox(height: EpLayout.fieldGap),
                 EpLabeledField(
@@ -1171,11 +1163,7 @@ Future<void> _runProjectAction(
               (app.salesFor(project.publicGigId!)?.sold ?? 0) > 0
           ? 'Sold tickets are refunded in full and buyers are emailed. The gig leaves discovery but its public page stays available as cancelled.'
           : 'The gig leaves discovery but its public page stays available as cancelled.';
-      if (await _confirm(
-        context,
-        'Cancel gig?',
-        body,
-      )) {
+      if (await _confirm(context, 'Cancel gig?', body)) {
         await app.cancelGigProject(project.id);
       }
     case _ProjectAction.delete:
@@ -1267,7 +1255,7 @@ Future<bool> _confirm(BuildContext context, String title, String body) async =>
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text('CONFIRM'),
+            child: Text(title.replaceAll('?', '')),
           ),
         ],
       ),

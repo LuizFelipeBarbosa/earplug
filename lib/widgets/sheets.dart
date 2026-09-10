@@ -79,7 +79,10 @@ class EpSheetShell extends StatelessWidget {
           borderRadius: BorderRadius.vertical(top: Radius.circular(topRadius)),
           border: Border(top: BorderSide(color: borderColor ?? colors.border)),
         ),
-        child: scrollable ? SingleChildScrollView(child: content) : content,
+        child: Material(
+          type: MaterialType.transparency,
+          child: scrollable ? SingleChildScrollView(child: content) : content,
+        ),
       ),
     );
   }
@@ -112,42 +115,45 @@ class EpFormSheet extends StatelessWidget {
         color: context.epColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    sentenceCase(title),
-                    style: Theme.of(context).textTheme.epBody.copyWith(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w600,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      sentenceCase(title),
+                      style: Theme.of(context).textTheme.epBody.copyWith(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-                trailing ??
-                    IconButton(
-                      tooltip: 'Close',
-                      onPressed: () => Navigator.pop(context),
-                      icon: Icon(Icons.close),
-                    ),
-              ],
-            ),
-          ),
-          if (padBody)
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                child: child,
+                  trailing ??
+                      IconButton(
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.pop(context),
+                        icon: Icon(Icons.close),
+                      ),
+                ],
               ),
-            )
-          else
-            Flexible(child: child),
-        ],
+            ),
+            if (padBody)
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  child: child,
+                ),
+              )
+            else
+              Flexible(child: child),
+          ],
+        ),
       ),
     );
   }
@@ -294,7 +300,7 @@ class _ActionSheetRow extends StatelessWidget {
               ],
               Expanded(
                 child: Text(
-                  item.label,
+                  sentenceCase(item.label),
                   style: Theme.of(
                     context,
                   ).textTheme.epLabel.copyWith(color: color),

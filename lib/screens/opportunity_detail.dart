@@ -78,7 +78,7 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('CONFIRM'),
+              child: const Text('Withdraw application'),
             ),
           ],
         ),
@@ -168,226 +168,211 @@ class _OpportunityDetailScreenState extends State<OpportunityDetailScreen> {
         final applied = status != null && status.isActive;
         final canWithdraw =
             applied && status != ArtistApplicationStatus.offered;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: ListView(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  headerTopPad(context),
-                  16,
-                  tabBarClearance +
-                      actionBarClearance(context) +
-                      MediaQuery.paddingOf(context).bottom,
+        return EpFormLayout(
+          constrainWidth: false,
+          body: ListView(
+            padding: EdgeInsets.fromLTRB(16, headerTopPad(context), 16, 24),
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: BackButton(onPressed: _back),
+              ),
+              Text(
+                opportunity.title,
+                style: Theme.of(context).textTheme.epPageHeading,
+              ),
+              if (isPrivate) ...[
+                const SizedBox(height: 8),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: EpChip(
+                    key: Key('opp-detail-private'),
+                    label: 'PRIVATE EVENT',
+                    active: true,
+                    readOnly: true,
+                    onTap: null,
+                  ),
                 ),
-                children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: BackButton(onPressed: _back),
+              ],
+              const SizedBox(height: 8),
+              Text(
+                '${opportunity.status.wireValue.replaceAll('_', ' ').toUpperCase()} · Applications close ${_dateLabel(opportunity.applicationsCloseAt)}',
+                style: Theme.of(context).textTheme.epCaption,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                MaterialLocalizations.of(
+                  context,
+                ).formatFullDate(opportunity.startsAt.toLocal()),
+                style: Theme.of(context).textTheme.epMeta,
+              ),
+              if (item.invited) ...[
+                const SizedBox(height: 8),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: StatusPill(
+                    label: 'INVITED',
+                    tone: EpStatusPillTone.selected,
                   ),
-                  Text(
-                    opportunity.title,
-                    style: Theme.of(context).textTheme.epPageHeading,
-                  ),
-                  if (isPrivate) ...[
-                    const SizedBox(height: 8),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: EpChip(
-                        key: Key('opp-detail-private'),
-                        label: 'PRIVATE EVENT',
-                        active: true,
-                        readOnly: true,
-                        onTap: null,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Text(
-                    '${opportunity.status.wireValue.replaceAll('_', ' ').toUpperCase()} · Applications close ${_dateLabel(opportunity.applicationsCloseAt)}',
-                    style: Theme.of(context).textTheme.epCaption,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    MaterialLocalizations.of(
-                      context,
-                    ).formatFullDate(opportunity.startsAt.toLocal()),
-                    style: Theme.of(context).textTheme.epMeta,
-                  ),
-                  if (item.invited) ...[
-                    const SizedBox(height: 8),
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: StatusPill(
-                        label: 'INVITED',
-                        tone: EpStatusPillTone.selected,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  if (!isPrivate && venue != null)
-                    EpCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          VenueMiniMap(
-                            venue: venue,
-                            approximate: venue.exactAddress == null,
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            venue.name,
-                            style: Theme.of(context).textTheme.epSectionHeading,
-                          ),
-                          Text(
-                            venue.area,
-                            style: Theme.of(context).textTheme.epMeta,
-                          ),
-                        ],
-                      ),
-                    )
-                  else if (opportunity.area.isNotEmpty)
-                    Text(
-                      opportunity.area,
-                      style: Theme.of(context).textTheme.epMeta,
-                    ),
-                  if (isPrivate) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'The exact address is shared with the booked artist after the deposit is paid.',
-                      key: const Key('opp-detail-private-note'),
-                      style: Theme.of(context).textTheme.epBody,
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  const SectionBar(label: 'SLOTS'),
-                  for (final slot in opportunity.slots)
-                    Padding(
-                      key: ValueKey('opp-detail-slot-${slot.id}'),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  slot.role.name.toUpperCase(),
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.epSectionHeading,
-                                ),
-                                Text(
-                                  [
-                                    Money(
-                                      slot.guaranteeMinor,
-                                      opportunity.currency,
-                                    ).label,
-                                    if (slot.setLengthMin != null)
-                                      '${slot.setLengthMin} min',
-                                    if (slot.required) 'REQUIRED',
-                                  ].join(' · '),
-                                  style: Theme.of(context).textTheme.epMeta,
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          StatusPill(
-                            label: slot.status.name.toUpperCase(),
-                            tone: slot.status == SlotStatus.open
-                                ? EpStatusPillTone.success
-                                : EpStatusPillTone.neutral,
-                          ),
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: 20),
-                  const SectionBar(label: 'STYLE'),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
+                ),
+              ],
+              const SizedBox(height: 20),
+              if (!isPrivate && venue != null)
+                EpCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final genre in opportunity.genres)
-                        EpChip(
-                          label: genre,
-                          active: true,
-                          onTap: null,
-                          readOnly: true,
+                      VenueMiniMap(
+                        venue: venue,
+                        approximate: venue.exactAddress == null,
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        venue.name,
+                        style: Theme.of(context).textTheme.epSectionHeading,
+                      ),
+                      Text(
+                        venue.area,
+                        style: Theme.of(context).textTheme.epMeta,
+                      ),
+                    ],
+                  ),
+                )
+              else if (opportunity.area.isNotEmpty)
+                Text(
+                  opportunity.area,
+                  style: Theme.of(context).textTheme.epMeta,
+                ),
+              if (isPrivate) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'The exact address is shared with the booked artist after the deposit is paid.',
+                  key: const Key('opp-detail-private-note'),
+                  style: Theme.of(context).textTheme.epBody,
+                ),
+              ],
+              const SizedBox(height: 20),
+              const SectionBar(label: 'SLOTS'),
+              for (final slot in opportunity.slots)
+                Padding(
+                  key: ValueKey('opp-detail-slot-${slot.id}'),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              slot.role.name.toUpperCase(),
+                              style: Theme.of(
+                                context,
+                              ).textTheme.epSectionHeading,
+                            ),
+                            Text(
+                              [
+                                Money(
+                                  slot.guaranteeMinor,
+                                  opportunity.currency,
+                                ).label,
+                                if (slot.setLengthMin != null)
+                                  '${slot.setLengthMin} min',
+                                if (slot.required) 'REQUIRED',
+                              ].join(' · '),
+                              style: Theme.of(context).textTheme.epMeta,
+                            ),
+                          ],
                         ),
+                      ),
+                      const SizedBox(width: 12),
+                      StatusPill(
+                        label: slot.status.name.toUpperCase(),
+                        tone: slot.status == SlotStatus.open
+                            ? EpStatusPillTone.success
+                            : EpStatusPillTone.neutral,
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    opportunity.ageRequirement.label,
-                    style: Theme.of(context).textTheme.epMeta,
-                  ),
-                  const SizedBox(height: 20),
-                  const SectionBar(label: 'DETAILS'),
-                  if (opportunity.desc.trim().isNotEmpty)
-                    Text(
-                      opportunity.desc,
-                      style: Theme.of(context).textTheme.epBody,
-                    ),
-                  if (opportunity.equipment?.trim().isNotEmpty == true)
-                    LedgerRow(
-                      title: 'Equipment',
-                      details: [opportunity.equipment!],
-                    ),
-                  if (opportunity.requirements?.trim().isNotEmpty == true)
-                    LedgerRow(
-                      title: 'Requirements',
-                      details: [opportunity.requirements!],
-                    ),
-                  if (opportunity.expectedAttendance != null)
-                    LedgerRow(
-                      title: isPrivate ? 'EXPECTED GUESTS' : 'Expected attendance',
-                      details: ['${opportunity.expectedAttendance}'],
-                    ),
-                  LedgerRow(
-                    title: 'Ticketing',
-                    details: [
-                      switch (opportunity.ticketing) {
-                        OpportunityTicketing.none => 'No tickets required',
-                        OpportunityTicketing.rsvp => 'RSVP',
-                        OpportunityTicketing.external => 'External tickets',
-                        OpportunityTicketing.paid => 'Paid tickets',
-                      },
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const SectionBar(label: 'ORGANIZER'),
-                  Text(
-                    'Verified organizer',
-                    style: Theme.of(context).textTheme.epMeta,
-                  ),
-                  if (_error != null)
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: InlineFormFeedback(error: _error),
+                ),
+              const SizedBox(height: 20),
+              const SectionBar(label: 'STYLE'),
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  for (final genre in opportunity.genres)
+                    EpChip(
+                      label: genre,
+                      active: true,
+                      onTap: null,
+                      readOnly: true,
                     ),
                 ],
               ),
-            ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: StickyActionBar(
-                key: applied ? null : const Key('opp-detail-apply'),
-                primaryLabel: applied
-                    ? 'APPLIED · ${status.wireValue.replaceAll('_', ' ').toUpperCase()}'
-                    : 'APPLY',
-                onPrimary: applied ? null : () => _showApply(opportunity),
-                secondaryLabel: canWithdraw ? 'WITHDRAW' : null,
-                secondaryKey: const Key('opp-detail-withdraw'),
-                onSecondary: canWithdraw && !_withdrawing
-                    ? () => _withdraw(opportunity)
-                    : null,
+              const SizedBox(height: 8),
+              Text(
+                opportunity.ageRequirement.label,
+                style: Theme.of(context).textTheme.epMeta,
               ),
-            ),
-          ],
+              const SizedBox(height: 20),
+              const SectionBar(label: 'DETAILS'),
+              if (opportunity.desc.trim().isNotEmpty)
+                Text(
+                  opportunity.desc,
+                  style: Theme.of(context).textTheme.epBody,
+                ),
+              if (opportunity.equipment?.trim().isNotEmpty == true)
+                LedgerRow(
+                  title: 'Equipment',
+                  details: [opportunity.equipment!],
+                ),
+              if (opportunity.requirements?.trim().isNotEmpty == true)
+                LedgerRow(
+                  title: 'Requirements',
+                  details: [opportunity.requirements!],
+                ),
+              if (opportunity.expectedAttendance != null)
+                LedgerRow(
+                  title: isPrivate ? 'EXPECTED GUESTS' : 'Expected attendance',
+                  details: ['${opportunity.expectedAttendance}'],
+                ),
+              LedgerRow(
+                title: 'Ticketing',
+                details: [
+                  switch (opportunity.ticketing) {
+                    OpportunityTicketing.none => 'No tickets required',
+                    OpportunityTicketing.rsvp => 'RSVP',
+                    OpportunityTicketing.external => 'External tickets',
+                    OpportunityTicketing.paid => 'Paid tickets',
+                  },
+                ],
+              ),
+              const SizedBox(height: 20),
+              const SectionBar(label: 'ORGANIZER'),
+              Text(
+                'Verified organizer',
+                style: Theme.of(context).textTheme.epMeta,
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: InlineFormFeedback(error: _error),
+                ),
+            ],
+          ),
+          footer: StickyActionBar(
+            key: applied ? null : const Key('opp-detail-apply'),
+            primaryLabel: applied
+                ? 'APPLIED · ${status.wireValue.replaceAll('_', ' ').toUpperCase()}'
+                : 'APPLY',
+            onPrimary: applied ? null : () => _showApply(opportunity),
+            secondaryLabel: canWithdraw ? 'WITHDRAW' : null,
+            secondaryKey: const Key('opp-detail-withdraw'),
+            onSecondary: canWithdraw && !_withdrawing
+                ? () => _withdraw(opportunity)
+                : null,
+          ),
         );
       },
     );
@@ -494,8 +479,8 @@ class _ApplySheetState extends State<_ApplySheet> {
           children: [
             Expanded(
               child: Text(
-                'APPLY',
-                style: Theme.of(context).textTheme.epSectionHeading,
+                'Apply',
+                style: Theme.of(context).textTheme.epFormHeading,
               ),
             ),
             IconButton(
@@ -509,44 +494,38 @@ class _ApplySheetState extends State<_ApplySheet> {
           Expanded(
             child: ListView(
               children: [
-                if (_bands.length > 1) ...[
-                  const SectionBar(label: 'BAND'),
-                  Wrap(
-                    spacing: 7,
-                    runSpacing: 7,
-                    children: [
-                      for (final id in _bands)
-                        EpChip(
-                          key: ValueKey('opp-apply-band-$id'),
-                          label: widget.app.band(id)?.name ?? id,
-                          active: _bandId == id,
-                          onTap: _submitting
-                              ? null
-                              : () => setState(() => _bandId = id),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                ],
-                const SectionBar(label: 'SLOT'),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: [
-                    for (final slot in widget.opportunity.slots)
-                      EpChip(
-                        key: ValueKey('opp-apply-slot-${slot.id}'),
-                        label:
-                            '${slot.role.name.toUpperCase()} · ${Money(slot.guaranteeMinor, widget.opportunity.currency).label}',
-                        active: _slot?.id == slot.id,
-                        onTap: _submitting || slot.status != SlotStatus.open
-                            ? null
-                            : () => setState(() {
-                                _slot = slot;
-                                _fee.text = _feeText(slot);
-                              }),
-                      ),
+                EpSelectionField<String>(
+                  label: 'Band',
+                  options: [
+                    for (final id in _bands)
+                      (value: id, label: widget.app.band(id)?.name ?? id),
                   ],
+                  selected: {_bandId},
+                  onChanged: _submitting || _bands.length == 1
+                      ? null
+                      : (values) => setState(() => _bandId = values.single),
+                ),
+                const SizedBox(height: 20),
+                EpSelectionField<String>(
+                  label: 'Artist slot',
+                  options: [
+                    for (var i = 0; i < widget.opportunity.slots.length; i++)
+                      if (widget.opportunity.slots[i].status == SlotStatus.open)
+                        (
+                          value: widget.opportunity.slots[i].id,
+                          label:
+                              '${i + 1}. ${widget.opportunity.slots[i].role.name} · ${Money(widget.opportunity.slots[i].guaranteeMinor, widget.opportunity.currency).label}',
+                        ),
+                  ],
+                  selected: {if (_slot != null) _slot!.id},
+                  onChanged: _submitting
+                      ? null
+                      : (values) => setState(() {
+                          _slot = widget.opportunity.slots.firstWhere(
+                            (slot) => slot.id == values.single,
+                          );
+                          _fee.text = _feeText(_slot!);
+                        }),
                 ),
                 if (_slot == null)
                   const EmptyNote(message: 'No slots are currently open.'),
@@ -562,31 +541,41 @@ class _ApplySheetState extends State<_ApplySheet> {
                   ),
                 ),
                 const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  label: 'AVAILABILITY',
-                  hint: 'Anything we should know about timing?',
-                  controller: _availability,
-                  fieldKey: const Key('opp-apply-availability'),
-                  enabled: !_submitting,
-                ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  label: 'LINEUP',
-                  hint: 'Who will be playing?',
-                  controller: _lineup,
-                  fieldKey: const Key('opp-apply-lineup'),
-                  enabled: !_submitting,
-                ),
-                const SizedBox(height: EpLayout.fieldGap),
-                EpLabeledField(
-                  label: 'MESSAGE',
-                  hint: 'Tell the organizer about your band',
-                  controller: _message,
-                  fieldKey: const Key('opp-apply-message'),
-                  enabled: !_submitting,
-                  minLines: 3,
-                  maxLines: 5,
-                  maxLength: 1000,
+                EpDisclosure(
+                  title: 'Additional notes',
+                  summary: 'Optional availability, lineup and message',
+                  initiallyExpanded: false,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      EpLabeledField(
+                        label: 'AVAILABILITY',
+                        hint: 'Anything we should know about timing?',
+                        controller: _availability,
+                        fieldKey: const Key('opp-apply-availability'),
+                        enabled: !_submitting,
+                      ),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        label: 'LINEUP',
+                        hint: 'Who will be playing?',
+                        controller: _lineup,
+                        fieldKey: const Key('opp-apply-lineup'),
+                        enabled: !_submitting,
+                      ),
+                      const SizedBox(height: EpLayout.fieldGap),
+                      EpLabeledField(
+                        label: 'MESSAGE',
+                        hint: 'Tell the organizer about your band',
+                        controller: _message,
+                        fieldKey: const Key('opp-apply-message'),
+                        enabled: !_submitting,
+                        minLines: 3,
+                        maxLines: 5,
+                        maxLength: 1000,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -600,7 +589,7 @@ class _ApplySheetState extends State<_ApplySheet> {
           FilledButton(
             key: const Key('opp-apply-submit'),
             onPressed: _submitting || _slot == null ? null : _submit,
-            child: Text(_submitting ? 'SENDING…' : 'SUBMIT'),
+            child: Text(_submitting ? 'Sending…' : 'Send application'),
           ),
         ],
       ),

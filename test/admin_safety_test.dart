@@ -13,6 +13,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/ui_test_helpers.dart';
 
 Future<Booking> _acceptPrivateOffer(DemoRepository repository) async {
   final opportunity = (await repository.browseOpportunities(
@@ -79,7 +80,7 @@ void main() {
 
     await tester.tap(find.byKey(Key('admin-safety-resolve-$reportId')));
     await tester.pumpAndSettle();
-    expect(find.text('ADMIN NOTE'), findsOneWidget);
+    expect(findUiText('ADMIN NOTE'), findsOneWidget);
     expectNoFieldInCard(tester);
     await tester.enterText(
       find.byKey(const Key('admin-safety-note')),
@@ -185,27 +186,42 @@ void main() {
 
   for (final (label, screen, assertExtra)
       in <(String, Widget, void Function(WidgetTester)?)>[
-        ('bookings', const AdminBookingsScreen(), (tester) {
-          expect(find.byKey(const Key('admin-bookings-filter-all')), findsNothing);
-          expect(find.byKey(const Key('admin-bookings-more')), findsNothing);
-        }),
-        ('disputes', const AdminDisputesScreen(), (tester) {
-          expect(find.byKey(const Key('admin-disputes-more')), findsNothing);
-          expectNoFieldInCard(tester);
-        }),
+        (
+          'bookings',
+          const AdminBookingsScreen(),
+          (tester) {
+            expect(
+              find.byKey(const Key('admin-bookings-filter-all')),
+              findsNothing,
+            );
+            expect(find.byKey(const Key('admin-bookings-more')), findsNothing);
+          },
+        ),
+        (
+          'disputes',
+          const AdminDisputesScreen(),
+          (tester) {
+            expect(find.byKey(const Key('admin-disputes-more')), findsNothing);
+            expectNoFieldInCard(tester);
+          },
+        ),
         ('the admin queue', const AdminQueueScreen(), null),
         (
           'an admin application',
           const AdminApplicationScreen(applicationId: 'application-review-1'),
           null,
         ),
-        ('safety reports', const AdminSafetyScreen(), (tester) {
-          expect(
-            find.text('Only platform admins can view safety reports.'),
-            findsOneWidget,
-          );
-          expect(find.byKey(const Key('admin-safety-more')), findsNothing);
-        }),
+        (
+          'safety reports',
+          const AdminSafetyScreen(),
+          (tester) {
+            expect(
+              find.text('Only platform admins can view safety reports.'),
+              findsOneWidget,
+            );
+            expect(find.byKey(const Key('admin-safety-more')), findsNothing);
+          },
+        ),
       ]) {
     testWidgets('non-admins cannot view $label', (tester) async {
       final auth = FakeAuthService();

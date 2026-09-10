@@ -8,6 +8,7 @@ import '../services/location_service.dart';
 import '../theme.dart';
 import 'common.dart';
 import 'ep_sheet.dart';
+import 'form_bits.dart';
 import 'sheets.dart';
 
 void showDiscoveryLocationSheet(BuildContext context) {
@@ -51,7 +52,7 @@ class _SheetFrame extends StatelessWidget {
         children: [
           Expanded(
             child: Text(
-              title,
+              sentenceCase(title),
               style: Theme.of(context).textTheme.epSectionHeading,
             ),
           ),
@@ -223,9 +224,21 @@ class _FiltersSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     return _SheetFrame(
       title: 'FILTERS',
-      footer: _ResultsButton(
-        count: app.feed.length,
-        labelAsApply: labelConfirmationAsApply,
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ResultsButton(
+            count: app.feed.length,
+            labelAsApply: labelConfirmationAsApply,
+          ),
+          TextButton(
+            onPressed: app.activeFilterCount == 0
+                ? null
+                : app.clearDiscoveryFilters,
+            child: const Text('Clear all'),
+          ),
+        ],
       ),
       child: ListView(
         children: [
@@ -242,21 +255,25 @@ class _FiltersSheet extends StatelessWidget {
             runSpacing: 7,
             children: [
               EpChip(
+                multiple: false,
                 label: 'Any date',
                 active: app.fDate == DateFilter.all,
                 onTap: app.clearDateFilter,
               ),
               EpChip(
+                multiple: false,
                 label: 'Tonight',
                 active: app.fDate == DateFilter.tonight,
                 onTap: () => app.toggleDateFilter(DateFilter.tonight),
               ),
               EpChip(
+                multiple: false,
                 label: 'This week',
                 active: app.fDate == DateFilter.week,
                 onTap: () => app.toggleDateFilter(DateFilter.week),
               ),
               EpChip(
+                multiple: false,
                 label: _dateRangeLabel(context, app.fDateRange),
                 active: app.fDate == DateFilter.custom,
                 onTap: app.canSelectCustomDate
@@ -266,33 +283,22 @@ class _FiltersSheet extends StatelessWidget {
             ],
           ),
           const _Divider(),
-          Row(
-            children: [
-              const Expanded(child: _FilterHeading('GENRES · CHOOSE ANY')),
-              if (app.fGenres.isNotEmpty)
-                _TextAction(
-                  label: 'CLEAR GENRES',
-                  onTap: app.clearGenreFilters,
-                ),
+          EpSelectionField<String>(
+            label: 'Genres',
+            multiple: true,
+            emptyLabel: "Any genre · I'm open",
+            options: [
+              for (final genre in kGenres) (value: genre, label: genre),
             ],
-          ),
-          const SizedBox(height: 9),
-          Wrap(
-            spacing: 7,
-            runSpacing: 7,
-            children: [
-              EpChip(
-                label: "Any genre · I'm open",
-                active: app.fGenres.isEmpty,
-                onTap: app.clearGenreFilters,
-              ),
-              for (final genre in kGenres)
-                EpChip(
-                  label: genre,
-                  active: app.fGenres.contains(genre),
-                  onTap: () => app.toggleGenre(genre),
-                ),
-            ],
+            selected: app.fGenres.toSet(),
+            onChanged: (values) {
+              for (final genre in List<String>.of(app.fGenres)) {
+                if (!values.contains(genre)) app.toggleGenre(genre);
+              }
+              for (final genre in values) {
+                if (!app.fGenres.contains(genre)) app.toggleGenre(genre);
+              }
+            },
           ),
           const _Divider(),
           const _FilterHeading('DISTANCE'),
@@ -344,36 +350,20 @@ class _FiltersSheet extends StatelessWidget {
             ],
           ),
           const _Divider(),
-          Row(
-            children: [
-              const Expanded(child: _FilterHeading('VENUE')),
-              if (app.fVenueId != null)
-                _TextAction(
-                  label: 'ANY VENUE',
-                  onTap: () => app.setVenueFilter(null),
-                ),
+          EpSelectionField<String>(
+            label: 'Venue',
+            emptyLabel: 'Any venue',
+            options: [
+              (value: '', label: 'Any venue'),
+              for (final venue in app.venues)
+                (value: venue.id, label: '${venue.name} · ${venue.area}'),
             ],
-          ),
-          const SizedBox(height: 9),
-          _OptionTile(
-            title: 'Any venue',
-            selected: app.fVenueId == null,
-            onTap: () => app.setVenueFilter(null),
-          ),
-          for (final venue in app.venues)
-            _OptionTile(
-              title: venue.name,
-              subtitle: venue.area,
-              selected: app.fVenueId == venue.id,
-              onTap: () => app.setVenueFilter(venue.id),
+            selected: {app.fVenueId ?? ''},
+            onChanged: (values) => app.setVenueFilter(
+              values.single.isEmpty ? null : values.single,
             ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: app.activeFilterCount == 0
-                ? null
-                : app.clearDiscoveryFilters,
-            child: Text('CLEAR ALL'),
           ),
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -524,7 +514,12 @@ class _ChoiceChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return EpChip(label: label, active: selected, onTap: onTap);
+    return EpChip(
+      label: label,
+      active: selected,
+      onTap: onTap,
+      multiple: false,
+    );
   }
 }
 
