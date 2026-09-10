@@ -15,7 +15,7 @@ import schema from "./schema";
 // Keep references typed while this lane intentionally leaves codegen untouched.
 const api = generatedApi as typeof generatedApi &
   ApiFromModules<{ artistApplications: typeof artistApplications }>;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-09-04T12:00:00Z");
 const ACTORS = [
@@ -34,7 +34,6 @@ type Actor = (typeof ACTORS)[number];
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "false");
 });
 
 afterEach(() => {
@@ -1161,29 +1160,8 @@ async function setupPrivateApplications(visibility: "public" | "inviteOnly") {
 }
 
 describe("private booking applications", () => {
-  beforeEach(() => {
-    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
-  });
-
-  test("blocks private applications while private bookings are disabled and accepts them when enabled", async () => {
+  test("allows a private application to be submitted", async () => {
     const f = await setupPrivateApplications("public");
-    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "false");
-    await expect(f.apply()).rejects.toThrow(
-      "Private bookings are not available yet",
-    );
-    expect((await f.readOpportunity())?.applicationCount).toBe(0);
-    expect(
-      await f.t.run((ctx) =>
-        ctx.db
-          .query("artistApplications")
-          .withIndex("by_opportunityId_and_bandId", (q) =>
-            q.eq("opportunityId", f.opportunityId).eq("bandId", f.bandId),
-          )
-          .first(),
-      ),
-    ).toBeNull();
-
-    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
     const { applicationId } = await f.apply();
     expect((await f.readApplication(applicationId))?.status).toBe("submitted");
     expect((await f.readOpportunity())?.applicationCount).toBe(1);

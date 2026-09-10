@@ -11,7 +11,7 @@ import {
 } from "./lib/financeMath";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const CREATED_AT = 1_000;
 const ACTORS = ["owner", "manager", "finance", "door", "outsider"] as const;
 type Actor = (typeof ACTORS)[number];

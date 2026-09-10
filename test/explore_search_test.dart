@@ -14,6 +14,7 @@ import 'package:latlong2/latlong.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 const _directoryOnlyVenue = Venue(
   id: 'v-derby',
@@ -127,7 +128,24 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _SingleFollowerRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns(
+          'listBands',
+          BandPage(
+            items: [
+              bandFixture(
+                id: 'one-fan-band',
+                slug: 'one-fan-band',
+                name: 'One Fan Band',
+                area: 'Berkeley',
+                color: const Color(0xFF2233EE),
+                initials: 'OF',
+              ),
+            ],
+            continueCursor: null,
+            isDone: true,
+          ),
+        ),
       home: const Scaffold(body: ExploreScreen()),
       beforePump: (app) => app.loadMoreExploreBands(),
     );
@@ -410,7 +428,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _DirectoryRepository(auth: auth),
+      repository: _directoryRepository(auth),
       home: const Scaffold(body: ExploreScreen()),
     );
 
@@ -426,7 +444,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _DirectoryRepository(auth: auth),
+      repository: _directoryRepository(auth),
       home: const Scaffold(body: ExploreScreen()),
     );
 
@@ -444,7 +462,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: repository,
+      repository: repository.stub,
       home: const Scaffold(body: ExploreScreen()),
     );
 
@@ -476,7 +494,18 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _FeedVenueDirectoryFailureRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(
+            FeedSnapshot(
+              gigs: const [],
+              venues: {'v1': DemoData.venues['v1']!},
+              bands: const {},
+            ),
+          ),
+        )
+        ..fail('venues', Exception('venue directory failed')),
       home: const Scaffold(body: ExploreScreen()),
     );
 
@@ -495,27 +524,6 @@ Finder _allResultsScrollable() => find.descendant(
   of: find.byKey(const Key('explore-results-all')),
   matching: find.byType(Scrollable),
 );
-
-class _SingleFollowerRepository extends DemoRepository {
-  _SingleFollowerRepository({required super.auth});
-
-  @override
-  Future<BandPage> listBands({String? cursor, int numItems = 50}) async =>
-      BandPage(
-        items: [
-          bandFixture(
-            id: 'one-fan-band',
-            slug: 'one-fan-band',
-            name: 'One Fan Band',
-            area: 'Berkeley',
-            color: const Color(0xFF2233EE),
-            initials: 'OF',
-          ),
-        ],
-        continueCursor: null,
-        isDone: true,
-      );
-}
 
 class _LiveExploreRepository extends DemoRepository {
   _LiveExploreRepository({required super.auth});
@@ -559,46 +567,22 @@ class _LiveExploreRepository extends DemoRepository {
   Future<void> close() => _controller.close();
 }
 
-class _DirectoryRepository extends DemoRepository {
-  _DirectoryRepository({required super.auth});
+EarplugRepository _directoryRepository(FakeAuthService auth) =>
+    StubRepository(auth: auth)
+      ..returns('venues', [...DemoData.venues.values, _directoryOnlyVenue]);
 
-  @override
-  Future<List<Venue>> venues() async => [
-    ...DemoData.venues.values,
-    _directoryOnlyVenue,
-  ];
-}
+// Wrap the stub to preserve the integer calls getter; StubRepository.calls is a map.
+class _RetryDirectoryRepository {
+  _RetryDirectoryRepository({required FakeAuthService auth})
+    : stub = StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+        )
+        ..failOnce('venues', Exception('venue directory failed'))
+        ..returns('venues', const [_directoryOnlyVenue]);
 
-class _RetryDirectoryRepository extends DemoRepository {
-  _RetryDirectoryRepository({required super.auth});
+  final StubRepository stub;
 
-  int calls = 0;
-
-  @override
-  Stream<FeedSnapshot> feed() =>
-      Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {}));
-
-  @override
-  Future<List<Venue>> venues() async {
-    calls++;
-    if (calls == 1) throw Exception('venue directory failed');
-    return const [_directoryOnlyVenue];
-  }
-}
-
-class _FeedVenueDirectoryFailureRepository extends DemoRepository {
-  _FeedVenueDirectoryFailureRepository({required super.auth});
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: const [],
-      venues: {'v1': DemoData.venues['v1']!},
-      bands: const {},
-    ),
-  );
-
-  @override
-  Future<List<Venue>> venues() async =>
-      throw Exception('venue directory failed');
+  int get calls => stub.callsTo('venues');
 }

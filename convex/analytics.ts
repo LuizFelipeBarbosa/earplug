@@ -14,6 +14,7 @@ import {
   attributionCounts,
   bucketize,
   estimatedDraw,
+  partitionMeetsFloor,
   priceBand,
   returningAttendees,
   suppressPartition,
@@ -169,17 +170,6 @@ const LEAD_TIME_KEYS = [
   "dayOf",
 ] as const;
 
-/** Empty buckets identify nobody and are safe to publish; only buckets with
- * 1..K-1 distinct fans create a re-identification risk. Do not simplify this
- * to "every bucket >= K": that would suppress ordinary partitions containing
- * a safe zero. An entirely empty partition still has no data to publish. */
-function partitionMeetsFloor(fanSets: Array<Set<Id<"users">>>): boolean {
-  return (
-    fanSets.some((fanIds) => fanIds.size > 0) &&
-    fanSets.every((fanIds) => fanIds.size === 0 || fanIds.size >= K_ANON_FANS)
-  );
-}
-
 function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -261,7 +251,10 @@ export const bandRecap = query({
       if (!split) continue;
       newReturningFanSets.push(split.newFanIds, split.returningFanIds);
     }
-    const newReturningSuppressed = !partitionMeetsFloor(newReturningFanSets);
+    const newReturningSuppressed = !partitionMeetsFloor(
+      newReturningFanSets.map((s) => s.size),
+      K_ANON_FANS,
+    );
 
     const leadBuckets: Record<
       (typeof LEAD_TIME_KEYS)[number],
@@ -296,13 +289,19 @@ export const bandRecap = query({
         leadBuckets[key].fanIds.add(rsvp.userId);
       }
     }
-    const leadTimeSuppressed = !partitionMeetsFloor([
-      ...LEAD_TIME_KEYS.map((key) => leadBuckets[key].fanIds),
-      unmeasurableFanIds,
-    ]);
+    const leadTimeSuppressed = !partitionMeetsFloor(
+      [
+        ...LEAD_TIME_KEYS.map((key) => leadBuckets[key].fanIds),
+        unmeasurableFanIds,
+      ].map((s) => s.size),
+      K_ANON_FANS,
+    );
     // Withhold this count only when its distinct fans form a re-identifying
     // small cell. Migrated production rows are above the floor and still ship.
-    const publishedUnmeasurable = partitionMeetsFloor([unmeasurableFanIds])
+    const publishedUnmeasurable = partitionMeetsFloor(
+      [unmeasurableFanIds].map((s) => s.size),
+      K_ANON_FANS,
+    )
       ? unmeasurable
       : 0;
 
@@ -352,11 +351,14 @@ export const bandRecap = query({
         showCount === 1 ? "one" : showCount <= 3 ? "twoToThree" : "fourPlus";
       repeatFanIds[key].add(fanId);
     }
-    const repeatFansSuppressed = !partitionMeetsFloor([
-      repeatFanIds.one,
-      repeatFanIds.twoToThree,
-      repeatFanIds.fourPlus,
-    ]);
+    const repeatFansSuppressed = !partitionMeetsFloor(
+      [
+        repeatFanIds.one,
+        repeatFanIds.twoToThree,
+        repeatFanIds.fourPlus,
+      ].map((s) => s.size),
+      K_ANON_FANS,
+    );
     const newestFirst = [...analyzed].sort(
       (a, b) => b.gig.startsAt - a.gig.startsAt,
     );
@@ -630,10 +632,10 @@ export async function computeArtistInsights(
   );
   const checkInsByEvent = analyzed.map((show) => show.checkInUserIds);
   const { returning, firstTime } = returningAttendees(checkInsByEvent);
-  const returningSuppressed = !partitionMeetsFloor([
-    new Set(returning),
-    new Set(firstTime),
-  ]);
+  const returningSuppressed = !partitionMeetsFloor(
+    [new Set(returning), new Set(firstTime)].map((s) => s.size),
+    K_ANON_FANS,
+  );
   const basis = analyzed.some((show) => show.checkInUserIds.size > 0)
     ? "checkIns"
     : "rsvps";

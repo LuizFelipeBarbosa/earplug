@@ -7,18 +7,11 @@ import {
   assertTicketOrderTransition,
   TICKET_TOKEN_PREFIX,
 } from "./ticketStatus";
-
-function randomToken(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
-    "",
-  );
-}
+import { randomHexToken } from "./tokens";
 
 async function uniqueTicketToken(ctx: MutationCtx): Promise<string> {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const token = TICKET_TOKEN_PREFIX + randomToken();
+    const token = TICKET_TOKEN_PREFIX + randomHexToken(32);
     const existing = await ctx.db
       .query("tickets")
       .withIndex("by_token", (q) => q.eq("token", token))

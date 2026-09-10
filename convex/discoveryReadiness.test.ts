@@ -1,8 +1,7 @@
 import { convexTest } from "convex-test";
-import { runToCompletion } from "@convex-dev/migrations";
 import migrationsTest from "@convex-dev/migrations/test";
 import { describe, expect, test } from "vitest";
-import { api, components, internal } from "./_generated/api";
+import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import type { KnownFlyKey } from "./lib/helpers";
 import schema from "./schema";
@@ -58,7 +57,7 @@ async function completeProfileMedia(
 ) {
   const video = await addMedia(setupResult, "video");
   const photo = await addMedia(setupResult, "photo");
-  await setupResult.asAdmin.mutation(api.bands.setBandPhoto, {
+  await setupResult.asAdmin.mutation(api.bands.setBandAvatar, {
     bandId: setupResult.bandId,
     mediaId: photo.mediaId,
   });
@@ -174,7 +173,7 @@ describe("discovery profile readiness", () => {
     const fixture = await setup();
     const video = await addMedia(fixture, "video");
     await expect(
-      fixture.asAdmin.mutation(api.bands.setBandPhoto, {
+      fixture.asAdmin.mutation(api.bands.setBandAvatar, {
         bandId: fixture.bandId,
         mediaId: video.mediaId,
       }),
@@ -191,7 +190,7 @@ describe("discovery profile readiness", () => {
     );
     const photo = await addMedia(fixture, "photo");
     await expect(
-      fixture.asAdmin.mutation(api.bands.setBandPhoto, {
+      fixture.asAdmin.mutation(api.bands.setBandAvatar, {
         bandId: otherBandId,
         mediaId: photo.mediaId,
       }),
@@ -436,134 +435,5 @@ describe("discovery listing readiness", () => {
         now: 0,
       }),
     ).rejects.toThrow("Not an admin");
-  });
-});
-
-describe("discovery readiness migrations", () => {
-  test("dry-runs, backfills legacy rows pessimistically, and reruns safely", async () => {
-    const fixture = await setup();
-    const { bandId: missingClipBandId } = await fixture.asAdmin.mutation(
-      api.bands.createBand,
-      {
-        name: "Missing Legacy Clip",
-        genres: ["punk"],
-        bio: "The referenced upload is gone.",
-        area: "Oakland",
-      },
-    );
-    const storageId = await fixture.t.run(async (ctx) =>
-      ctx.storage.store(new Blob(["legacy video"])),
-    );
-    await fixture.t.run(async (ctx) => {
-      await ctx.db.patch(fixture.bandId, { hasClip: undefined });
-      await ctx.db.insert("bandMedia", {
-        bandId: fixture.bandId,
-        kind: "video",
-        storageId,
-        title: "Legacy clip",
-        order: 0,
-        pinned: true,
-      });
-      const missingStorageId = await ctx.storage.store(
-        new Blob(["deleted legacy video"]),
-      );
-      await ctx.storage.delete(missingStorageId);
-      await ctx.db.patch(missingClipBandId, { hasClip: undefined });
-      await ctx.db.insert("bandMedia", {
-        bandId: missingClipBandId,
-        kind: "video",
-        storageId: missingStorageId,
-        title: "Missing legacy clip",
-        order: 0,
-        pinned: true,
-      });
-    });
-
-    await fixture.t.mutation(internal.migrations.backfillBandHasClip, {
-      dryRun: true,
-    });
-    expect(
-      await fixture.t.run(
-        async (ctx) => (await ctx.db.get(fixture.bandId))?.hasClip,
-      ),
-    ).toBeNull();
-    await fixture.t.run(async (ctx) =>
-      runToCompletion(
-        ctx,
-        components.migrations,
-        internal.migrations.backfillBandHasClip,
-      ),
-    );
-    expect(
-      await fixture.t.run(
-        async (ctx) => (await ctx.db.get(fixture.bandId))?.hasClip,
-      ),
-    ).toBe(true);
-    expect(
-      await fixture.t.run(
-        async (ctx) => (await ctx.db.get(missingClipBandId))?.hasClip,
-      ),
-    ).toBe(false);
-    await fixture.t.run(async (ctx) =>
-      runToCompletion(
-        ctx,
-        components.migrations,
-        internal.migrations.backfillBandHasClip,
-      ),
-    );
-
-    const orphanGigId = await fixture.t.run(async (ctx) =>
-      ctx.db.insert("gigs", {
-        title: "Ambiguous legacy gig",
-        venueId: fixture.venueId,
-        price: 0,
-        startsAt: Date.now() + DAY_MS,
-        doorsTime: "8PM",
-        flyKey: "paper",
-        lineup: [fixture.bandId],
-        genres: ["punk"],
-        desc: "",
-        ticketing: "rsvp",
-        cap: "No cap",
-        goingCount: 0,
-      }),
-    );
-    const legacyProject = await createPublishableProject(fixture);
-    const { gigId: eligibleGigId } = await fixture.asAdmin.mutation(
-      api.gigs.publishDraft,
-      { projectId: legacyProject._id },
-    );
-    await fixture.t.run(async (ctx) =>
-      ctx.db.patch(eligibleGigId, { discoveryListingReady: undefined }),
-    );
-    await fixture.t.run(async (ctx) =>
-      runToCompletion(
-        ctx,
-        components.migrations,
-        internal.migrations.backfillGigDiscoveryListingReady,
-      ),
-    );
-    expect(
-      await fixture.t.run(
-        async (ctx) => (await ctx.db.get(orphanGigId))?.discoveryListingReady,
-      ),
-    ).toBe(false);
-    expect(
-      await fixture.t.run(
-        async (ctx) => (await ctx.db.get(eligibleGigId))?.discoveryListingReady,
-      ),
-    ).toBe(true);
-    await fixture.t.run(async (ctx) =>
-      runToCompletion(
-        ctx,
-        components.migrations,
-        internal.migrations.backfillGigDiscoveryListingReady,
-      ),
-    );
-    expect(
-      await fixture.t.run(
-        async (ctx) => (await ctx.db.get(orphanGigId))?.discoveryListingReady,
-      ),
-    ).toBe(false);
   });
 });

@@ -27,6 +27,7 @@ import {
   PAYMENT_REMINDER_LEAD_MS,
 } from "./lib/paymentStatus";
 import { StripeApiError, stripeRequest } from "./lib/stripeClient";
+import { asActor, DAY_MS, seedMarketplace } from "./marketplaceFixtures.test-helpers";
 import type * as payments from "./payments";
 import schema from "./schema";
 import type { StripeEvent } from "./stripeWebhook";
@@ -46,20 +47,8 @@ const internal = generatedInternal as typeof generatedInternal &
     ApiFromModules<{ payments: typeof payments }>,
     FunctionReference<"query" | "mutation" | "action", "internal">
   >;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T12:00:00Z");
-const DAY_MS = 24 * 60 * 60 * 1000;
-const ACTORS = [
-  "owner",
-  "finance",
-  "manager",
-  "door",
-  "admin",
-  "member",
-  "platformAdmin",
-  "stranger",
-] as const;
-type Actor = (typeof ACTORS)[number];
 const INSTALLMENTS = [
   {
     label: "Deposit",
@@ -104,126 +93,20 @@ afterEach(() => {
 
 async function setupPayments() {
   const t = convexTest(schema, modules);
-  const as = (actor: Actor) => t.withIdentity({ subject: `payment_${actor}` });
-  const ids = await t.run(async (ctx) => {
-    const users = {} as Record<Actor, Id<"users">>;
-    for (const actor of ACTORS) {
-      users[actor] = await ctx.db.insert("users", {
-        clerkId: `payment_${actor}`,
-        name: actor,
-        email: `${actor}@payment.test`,
-        genres: [],
-        attendedCount: 0,
-      });
-    }
-    await ctx.db.insert("platformAdmins", {
-      userId: users.platformAdmin,
-      grantedAt: NOW,
-    });
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Payment Collective",
-      slug: "payment-collective",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: users.owner,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    for (const role of ["owner", "finance", "manager", "door"] as const) {
-      await ctx.db.insert("organizationMembers", {
-        organizationId,
-        userId: users[role],
-        role,
-        createdAt: NOW,
-      });
-    }
-    const detailsId = await ctx.db.insert("organizationPrivateDetails", {
-      organizationId,
-      businessEmail: "billing@payment.test",
-      contactName: "Owner",
-      stripeChargesEnabled: false,
-      stripePayoutsEnabled: false,
-      stripeDetailsSubmitted: false,
-      verificationDocStorageIds: [],
-      updatedAt: NOW,
-    });
-    const venueId = await ctx.db.insert("venues", {
-      name: "Neighborhood Hall",
-      area: "Oakland",
-      addr: "100 Main Street",
-      distSF: "8 mi",
-      distOak: "1 mi",
-      lat: 37.8,
-      lng: -122.27,
-      managedByOrganizationId: organizationId,
-      status: "verified",
-      venueType: "hall",
-    });
-    const bandId = await ctx.db.insert("bands", {
-      name: "Static Bloom",
-      slug: "static-bloom",
-      genres: ["Indie"],
-      area: "Oakland",
-      colorHex: "#7B8FFF",
-      initials: "SB",
-      followerCount: 0,
-      pastShows: [],
-    });
-    for (const role of ["admin", "member"] as const) {
-      await ctx.db.insert("bandMembers", { bandId, userId: users[role], role });
-    }
-    const opportunityId = await ctx.db.insert("talentOpportunities", {
-      organizationId,
-      venueId,
-      mode: "publicEvent",
-      area: "Oakland",
-      venueType: "hall",
-      title: "Friday at the Hall",
-      desc: "An evening of local music.",
-      genres: ["Indie"],
+  const as = asActor(t, "payment");
+  const ids = await seedMarketplace(t, {
+    prefix: "payment",
+    now: NOW,
+    opportunity: {
       startsAt: NOW + 14 * DAY_MS,
-      ageRequirement: "allAges",
-      flyKey: "xerox",
       applicationsCloseAt: NOW + 7 * DAY_MS,
-      visibility: "public",
-      ticketing: "rsvp",
-      currency: "usd",
       status: "open",
-      slug: "friday-at-the-hall",
-      createdBy: users.owner,
-      revision: 1,
       applicationCount: 1,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const slotId = await ctx.db.insert("opportunitySlots", {
-      opportunityId,
-      order: 0,
-      role: "headliner",
-      guaranteeMinor: 15000,
-      required: true,
-      status: "open",
-    });
-    const applicationId = await ctx.db.insert("artistApplications", {
-      opportunityId,
-      slotId,
-      bandId,
-      submittedBy: users.admin,
-      status: "shortlisted",
-      message: "We are available",
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    return {
-      users,
-      organizationId,
-      detailsId,
-      venueId,
-      bandId,
-      opportunityId,
-      slotId,
-      applicationId,
-    };
+    },
+    slot: { guaranteeMinor: 15000, status: "open" },
+    application: { status: "shortlisted" },
+    booking: null,
+    bandPayoutAccount: false,
   });
 
   async function checked<T>(operation: () => Promise<T>): Promise<T> {

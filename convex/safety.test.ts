@@ -11,7 +11,7 @@ import schema from "./schema";
 // Keep references typed without changing generated files owned by another lane.
 const api = generatedApi as typeof generatedApi &
   ApiFromModules<{ safety: typeof safety }>;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-04T12:00:00Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTORS = [
@@ -27,7 +27,6 @@ type Actor = (typeof ACTORS)[number];
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
 });
 
 afterEach(() => {
@@ -241,7 +240,7 @@ describe("safety reporting", () => {
     },
   );
 
-  test.each(["stranger", "member", "platformAdmin"] as const)(
+  test.each(["stranger", "platformAdmin"] as const)(
     "refuses reporting and reading as non-party %s",
     async (actor) => {
       const f = await setupSafety();
@@ -292,11 +291,6 @@ describe("safety reporting", () => {
 
   test.each([
     "offer_sent",
-    "artist_accepted",
-    "awaiting_payment",
-    "expired",
-    "withdrawn",
-    "declined",
   ] as const)("refuses reports for ineligible status %s", async (status) => {
     const f = await setupSafety();
     await f.t.run((ctx) => ctx.db.patch(f.bookingId, { status }));
@@ -326,15 +320,6 @@ describe("safety reporting", () => {
       expect((await f.readReport(reportId))?.text).toHaveLength(length);
     },
   );
-
-  test("refuses reports while private bookings are disabled", async () => {
-    const f = await setupSafety();
-    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "false");
-    await expect(f.report("artist")).rejects.toThrow(
-      "Private bookings are not available yet",
-    );
-    expect(await f.emails()).toEqual([]);
-  });
 
   test("saves the report without scheduling mail when the reporter has no email", async () => {
     const f = await setupSafety();

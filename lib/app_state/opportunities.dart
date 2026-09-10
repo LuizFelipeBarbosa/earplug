@@ -1,13 +1,11 @@
 part of '../app_state.dart';
 
-/// Organizer opportunity management, band discovery and applications, and
-/// the policy controlling whether bands can write gigs.
+/// Organizer opportunity management, band discovery and applications.
 mixin _OpportunityState on _AppStateCore {
   // ---- requires (declared by sibling mixins or AppState)
   String get bandId;
   bool isAdminOf(String id);
   List<String> get myBands;
-  bool get privateBookingsEnabled;
   void go(Screen s, [String? param]);
 
   final Map<String, List<Opportunity>> _opportunitiesByOrg = {};
@@ -114,9 +112,7 @@ mixin _OpportunityState on _AppStateCore {
       if (_disposed || !identical(_browseLoadToken, token)) return;
 
       var privateItems = const <BrowseItem>[];
-      if (requestedBandId.isNotEmpty &&
-          myBands.any(isAdminOf) &&
-          privateBookingsEnabled) {
+      if (requestedBandId.isNotEmpty && myBands.any(isAdminOf)) {
         try {
           final privatePage = await repository.browseOpportunities(
             bandId: requestedBandId,
@@ -266,23 +262,6 @@ mixin _OpportunityState on _AppStateCore {
 
   void openOpportunity(String ref) => go(Screen.opportunityDetail, ref);
 
-  bool gigWritePolicy = true;
-  Object? _gigWritePolicyLoadToken;
-
-  Future<void> refreshGigWritePolicy() async {
-    if (_disposed) return;
-    final token = Object();
-    _gigWritePolicyLoadToken = token;
-    try {
-      final policy = await repository.gigWritePolicy();
-      if (_disposed || !identical(_gigWritePolicyLoadToken, token)) return;
-      gigWritePolicy = policy.bandGigWrites;
-      notifyListeners();
-    } catch (error) {
-      logError('gigWritePolicy', error);
-    }
-  }
-
   String _lastKnownBandId = '';
 
   @override
@@ -291,7 +270,6 @@ mixin _OpportunityState on _AppStateCore {
     _lastKnownBandId = bandId;
     unawaited(refreshBrowse());
     unawaited(refreshMyApplications());
-    unawaited(refreshGigWritePolicy());
   }
 
   @override
@@ -301,14 +279,12 @@ mixin _OpportunityState on _AppStateCore {
     _opportunityByIdTokens.clear();
     _browseLoadToken = null;
     _myApplicationsLoadToken = null;
-    _gigWritePolicyLoadToken = null;
     _opportunitiesByOrg.clear();
     _opportunitiesStatusByOrg.clear();
     _opportunityById.clear();
     browse = const OpportunityBrowseState();
     browseFilters = const OpportunityFilters();
     myApplications = const [];
-    gigWritePolicy = true;
     _lastKnownBandId = '';
   }
 }

@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { api, internal } from "./_generated/api";
+import { api } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   bookedLineup,
@@ -12,7 +12,7 @@ import {
 } from "./lib/gigPublish";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-04T12:00:00Z");
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -1033,64 +1033,4 @@ describe("organization-owned gig visibility", () => {
       venues: [],
     });
   });
-});
-
-describe("organization-owned gig backfills", () => {
-  // Run the registered migration's batch handler, including its returned patch.
-  // These single-gig fixtures need neither component state nor scheduled jobs.
-  const batchArgs = { cursor: null, dryRun: false, oneBatchOnly: true };
-
-  test("backfillGigProjects skips organization gigs without patching them", async () => {
-    const f = await setupGigPublish();
-    await f.bookSlot(f.slotA, f.bandA);
-    const gigId = await f.publish();
-    await f.t.run((ctx) =>
-      ctx.db.patch(gigId, {
-        lifecycle: undefined,
-        doorsAt: undefined,
-        performers: undefined,
-      }),
-    );
-    const before = await f.t.run((ctx) => ctx.db.get(gigId));
-
-    expect(
-      await f.t.mutation(internal.migrations.backfillGigProjects, batchArgs),
-    ).toMatchObject({ processed: 1, isDone: true });
-
-    await f.t.run(async (ctx) => {
-      expect(await ctx.db.query("gigProjects").collect()).toEqual([]);
-      expect(await ctx.db.query("gigProjectPerformers").collect()).toEqual([]);
-      expect(await ctx.db.get(gigId)).toEqual(before);
-    });
-  });
-
-  test.each([undefined, false, true])(
-    "backfillGigDiscoveryListingReady makes organization gigs ready without a project (was %s)",
-    async (discoveryListingReady) => {
-      const f = await setupGigPublish();
-      await f.bookSlot(f.slotA, f.bandA);
-      const gigId = await f.publish();
-      await f.t.run((ctx) => ctx.db.patch(gigId, { discoveryListingReady }));
-      const before = await f.t.run((ctx) => ctx.db.get(gigId));
-
-      expect(
-        await f.t.mutation(
-          internal.migrations.backfillGigDiscoveryListingReady,
-          batchArgs,
-        ),
-      ).toMatchObject({ processed: 1, isDone: true });
-      await f.t.mutation(
-        internal.migrations.backfillGigDiscoveryListingReady,
-        batchArgs,
-      );
-
-      await f.t.run(async (ctx) => {
-        expect(await ctx.db.query("gigProjects").collect()).toEqual([]);
-        expect(await ctx.db.get(gigId)).toEqual({
-          ...before,
-          discoveryListingReady: true,
-        });
-      });
-    },
-  );
 });

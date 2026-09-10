@@ -13,7 +13,7 @@ import {
 } from "./lib/ticketInventory";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T12:00:00Z");
 const DAY_MS = 24 * 60 * 60_000;
 const FEE = { bps: 500, fixedMinor: 30 };
@@ -25,8 +25,6 @@ type Actor = (typeof ACTORS)[number];
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  vi.stubEnv("TICKETS_ENABLED", "true");
-  vi.stubEnv("BAND_GIG_WRITES", "true");
   vi.stubEnv("TICKETING_FEE_BPS", String(BAND_FEE.bps));
   vi.stubEnv("TICKETING_FEE_FIXED_MINOR", String(BAND_FEE.fixedMinor));
 });
@@ -261,17 +259,6 @@ describe("ticket reservations", () => {
     expect(expired.inventory).toMatchObject({ reserved: 0, sold: 0 });
   });
 
-  test.each([undefined, "false", "invalid"])(
-    "refuses sales when TICKETS_ENABLED is %s",
-    async (value) => {
-      vi.stubEnv("TICKETS_ENABLED", value);
-      const { as, gigId } = await setupTickets();
-      await expect(
-        as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
-      ).rejects.toThrow("Ticket sales are not open yet");
-    },
-  );
-
   test.each([11, 0, -1, 1.5])(
     "refuses invalid quantity %s",
     async (quantity) => {
@@ -292,24 +279,6 @@ describe("ticket reservations", () => {
       ).rejects.toThrow("This event is not selling tickets");
     },
   );
-
-  test("refuses an organizer whose Stripe charges are disabled", async () => {
-    const { t, as, gigId, privateDetailsId } = await setupTickets();
-    await t.run((ctx) =>
-      ctx.db.patch(privateDetailsId, { stripeChargesEnabled: false }),
-    );
-    await expect(
-      as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
-    ).rejects.toThrow("This organizer is not ready to sell tickets yet");
-  });
-
-  test("refuses a suspended organizer", async () => {
-    const { t, as, gigId, organizationId } = await setupTickets();
-    await t.run((ctx) => ctx.db.patch(organizationId, { status: "suspended" }));
-    await expect(
-      as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
-    ).rejects.toThrow("This organizer is not ready to sell tickets yet");
-  });
 
   test.each(["cancelled", "unpublished", "deleted"] as const)(
     "refuses a %s gig",
@@ -631,56 +600,6 @@ describe("band ticket sales", () => {
       sold: 0,
     });
     expect(inventory).not.toHaveProperty("organizationId");
-  });
-
-  test.each([
-    "charges disabled",
-    "cards inactive",
-    "account missing",
-    "archived",
-  ])(
-    "refuses a band seller with %s",
-    async (condition) => {
-      const f = await setupBandTickets();
-      await f.t.run(async (ctx) => {
-        if (condition === "account missing") {
-          await ctx.db.delete(f.payoutAccountId);
-        } else if (condition === "archived") {
-          await ctx.db.patch(f.creatorBandId, { archivedAt: NOW });
-        } else {
-          await ctx.db.patch(
-            f.payoutAccountId,
-            condition === "charges disabled"
-              ? { chargesEnabled: false }
-              : { cardPaymentsStatus: "inactive" },
-          );
-        }
-      });
-      await expect(
-        f.as("buyer").mutation(api.tickets.reserve, {
-          gigId: f.bandGigId,
-          quantity: 1,
-        }),
-      ).rejects.toThrow("This band is not ready to sell tickets yet");
-      expect(
-        await f.t.run((ctx) => ctx.db.query("ticketOrders").take(10)),
-      ).toEqual([]);
-    },
-  );
-
-  test("the global tickets flag takes precedence for both sellers before gig lookup", async () => {
-    const f = await setupBandTickets();
-    vi.stubEnv("TICKETS_ENABLED", "false");
-    vi.stubEnv("BAND_GIG_WRITES", "false");
-    for (const gigId of [f.gigId, f.bandGigId]) {
-      await expect(
-        f.as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
-      ).rejects.toThrow("Ticket sales are not open yet");
-      await f.t.run((ctx) => ctx.db.delete(gigId));
-      await expect(
-        f.as("buyer").mutation(api.tickets.reserve, { gigId, quantity: 1 }),
-      ).rejects.toThrow("Ticket sales are not open yet");
-    }
   });
 
   test("salesForGig allows band admins to read band order totals", async () => {

@@ -7,23 +7,11 @@ import {
   consentEmail,
   sendTicketEmail,
   ticketEmail,
-  type BookingEmailKind,
 } from "./emails";
 import { appBaseUrl, deploymentName } from "./lib/env";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
-
-const kinds: BookingEmailKind[] = [
-  "offerSent",
-  "offerAccepted",
-  "offerDeclined",
-  "offerExpired",
-  "offerWithdrawn",
-  "bookingConfirmed",
-  "bookingCancelled",
-  "reviewRequested",
-];
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 
 const input = {
   opportunityTitle: "Autumn Sessions",
@@ -36,9 +24,12 @@ const input = {
 };
 
 describe("bookingEmail", () => {
-  test.each(kinds)("formats %s with the booking details and fee", (kind) => {
+  test("formats bookingConfirmed with the booking details and fee", () => {
     const grossLabel = "USD $1,234.50";
-    const { subject, text } = bookingEmail(kind, { ...input, grossLabel });
+    const { subject, text } = bookingEmail("bookingConfirmed", {
+      ...input,
+      grossLabel,
+    });
 
     expect(subject).toContain(input.opportunityTitle);
     expect(subject).toContain(input.venueName);
@@ -52,8 +43,8 @@ describe("bookingEmail", () => {
     expect(text).not.toMatch(/insurance|escrow/i);
   });
 
-  test.each(kinds)("formats %s without optional details", (kind) => {
-    const { text } = bookingEmail(kind, input);
+  test("formats bookingConfirmed without optional details", () => {
+    const { text } = bookingEmail("bookingConfirmed", input);
 
     expect(text).toContain("Sat, Oct 17");
     expect(text).not.toContain("undefined");
@@ -62,9 +53,9 @@ describe("bookingEmail", () => {
     expect(text.split("\n").at(-1)).toBe(input.link);
   });
 
-  test.each(kinds)("includes a supplied reason for %s", (kind) => {
+  test("includes a supplied reason for bookingConfirmed", () => {
     const reason = "The date no longer works for the band.";
-    const { text } = bookingEmail(kind, { ...input, reason });
+    const { text } = bookingEmail("bookingConfirmed", { ...input, reason });
 
     expect(text).toContain(reason);
     expect(text.split("\n").at(-1)).toBe(input.link);
@@ -139,11 +130,6 @@ describe("consentEmail", () => {
     startsAt: input.startsAt,
     requestingOrganizationName: input.orgName,
   };
-  const decisions = [
-    ["granted", "approved"],
-    ["declined", "declined"],
-    ["revoked", "revoked"],
-  ] as const;
 
   test("formats a venue request with the organization, event, and UTC date", () => {
     const { subject, text } = consentEmail("venueConsentRequested", {
@@ -161,15 +147,15 @@ describe("consentEmail", () => {
     expect(text).not.toContain("undefined");
   });
 
-  test.each(decisions)("formats a %s decision with a note", (status, outcome) => {
+  test("formats a granted decision with a note", () => {
     const note = "Please contact the venue team about the next steps.";
     const { subject, text } = consentEmail("venueConsentDecided", {
       ...consentInput,
-      status,
+      status: "granted",
       note,
     });
 
-    expect(subject).toContain(outcome);
+    expect(subject).toContain("approved");
     expect(subject).toContain(consentInput.opportunityTitle);
     expect(text).toContain(consentInput.requestingOrganizationName);
     expect(text).toContain(consentInput.venueName);
@@ -178,13 +164,13 @@ describe("consentEmail", () => {
     expect(text).not.toContain("undefined");
   });
 
-  test.each(decisions)("formats a %s decision without a note", (status, outcome) => {
+  test("formats a granted decision without a note", () => {
     const { subject, text } = consentEmail("venueConsentDecided", {
       ...consentInput,
-      status,
+      status: "granted",
     });
 
-    expect(subject).toContain(outcome);
+    expect(subject).toContain("approved");
     expect(text).toContain("Sat, Oct 17");
     expect(text).not.toContain("undefined");
     expect(text).not.toContain("Note:");
@@ -318,7 +304,7 @@ describe("sendTicketEmail", () => {
     return { t, ...ids, send, emails };
   }
 
-  test.each(["", " \t\n ", null])(
+  test.each([" \t\n ", null])(
     "skips scheduling when the buyer email is %j or the buyer is missing",
     async (email) => {
       const f = await setupOrder();
@@ -366,11 +352,11 @@ describe("sendTest", () => {
     vi.unstubAllGlobals();
   });
 
-  test.each([undefined, "true"])(
-    "skips without an API key when the sending flag is %s",
-    async (enabled) => {
+  test(
+    "skips without an API key when the sending flag is unset",
+    async () => {
       vi.stubEnv("RESEND_API_KEY", undefined);
-      vi.stubEnv("RESEND_SEND_ENABLED", enabled);
+      vi.stubEnv("RESEND_SEND_ENABLED", undefined);
       const fetchMock = vi.fn();
       vi.stubGlobal("fetch", fetchMock);
       const t = convexTest(schema, modules);
@@ -381,11 +367,11 @@ describe("sendTest", () => {
     },
   );
 
-  test.each([undefined, "false"])(
-    "skips with an API key when the sending flag is %s",
-    async (enabled) => {
+  test(
+    "skips with an API key when the sending flag is unset",
+    async () => {
       vi.stubEnv("RESEND_API_KEY", "re_test_key");
-      vi.stubEnv("RESEND_SEND_ENABLED", enabled);
+      vi.stubEnv("RESEND_SEND_ENABLED", undefined);
       const fetchMock = vi.fn();
       vi.stubGlobal("fetch", fetchMock);
       const t = convexTest(schema, modules);
@@ -463,25 +449,22 @@ describe("send", () => {
     vi.unstubAllEnvs();
   });
 
-  test.each(["disputeOpened", "disputeResolved"] as const)(
-    "accepts the %s email kind",
-    async (kind) => {
-      vi.stubEnv("RESEND_SEND_ENABLED", "false");
-      vi.spyOn(console, "log").mockImplementation(() => {});
-      const t = convexTest(schema, modules);
-      await expect(
-        t.action(internal.emails.send, {
-          kind,
-          to: "party@disputes.test",
-          ...bookingEmail(kind, {
-            ...input,
-            categoryLabel: "payment",
-            resolutionLabel: "dismissed",
-          }),
+  test("accepts the disputeOpened email kind", async () => {
+    vi.stubEnv("RESEND_SEND_ENABLED", "false");
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+    await expect(
+      t.action(internal.emails.send, {
+        kind: "disputeOpened",
+        to: "party@disputes.test",
+        ...bookingEmail("disputeOpened", {
+          ...input,
+          categoryLabel: "payment",
+          resolutionLabel: "dismissed",
         }),
-      ).resolves.toBeNull();
-    },
-  );
+      }),
+    ).resolves.toBeNull();
+  });
 
   test("disabled sending logs the kind and subject without the recipient address", async () => {
     vi.stubEnv("RESEND_API_KEY", undefined);

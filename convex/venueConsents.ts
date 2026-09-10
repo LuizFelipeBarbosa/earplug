@@ -11,9 +11,7 @@ import { consentEmail } from "./emails";
 import {
   ALL_ORGANIZATION_ROLES,
   requireOrganizationRole,
-  requireOrganizationRoleQuery,
 } from "./lib/authz";
-import { flag } from "./lib/env";
 import { cancelOpportunity } from "./lib/opportunityCancel";
 import {
   assertVenueConsentTransition,
@@ -150,9 +148,6 @@ export const request = mutation({
       opportunity.organizationId,
       ["owner", "manager"],
     );
-    if (!flag("PROMOTERS_ENABLED", false)) {
-      throw new Error("Venue approval is not available yet");
-    }
     if (opportunity.status !== "draft") {
       throw new Error("Request venue approval while the event is still a draft");
     }
@@ -375,7 +370,7 @@ export const forOpportunity = query({
   handler: async (ctx, args) => {
     const opportunity = await ctx.db.get(args.opportunityId);
     if (!opportunity) throw new Error("Opportunity not found");
-    await requireOrganizationRoleQuery(
+    await requireOrganizationRole(
       ctx,
       opportunity.organizationId,
       ALL_ORGANIZATION_ROLES,
@@ -405,7 +400,7 @@ export const forVenueOrganization = query({
   },
   returns: v.array(venueConsentRowValidator),
   handler: async (ctx, args) => {
-    await requireOrganizationRoleQuery(ctx, args.organizationId, [
+    await requireOrganizationRole(ctx, args.organizationId, [
       "owner",
       "manager",
     ]);

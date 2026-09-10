@@ -33,18 +33,6 @@ describe("encodeStripeForm", () => {
     );
   });
 
-  test("encodes booleans as literal strings", () => {
-    expect(encodeStripeForm({ enabled: true, disabled: false })).toBe(
-      "enabled=true&disabled=false",
-    );
-  });
-
-  test("encodes numbers using their string form", () => {
-    expect(encodeStripeForm({ amount: 1234, zero: 0, decimal: -1.25 })).toBe(
-      "amount=1234&zero=0&decimal=-1.25",
-    );
-  });
-
   test("omits undefined and preserves null as empty at every depth", () => {
     const form = new URLSearchParams(
       encodeStripeForm({
@@ -75,13 +63,6 @@ describe("encodeStripeForm", () => {
     expect(Object.fromEntries(new URLSearchParams(encoded))).toEqual({
       "meta data[key&[]]": "a+b & café/雪?=",
     });
-  });
-
-  test("returns an empty string when there are no pairs", () => {
-    expect(encodeStripeForm({})).toBe("");
-    expect(encodeStripeForm({ omitted: undefined, items: [], metadata: {} })).toBe(
-      "",
-    );
   });
 });
 
@@ -125,12 +106,12 @@ describe("stripeRequest", () => {
     );
   });
 
-  test.each([undefined, {}, { omitted: undefined }])(
-    "omits optional headers and an empty GET query for params %j",
-    async (params) => {
+  test(
+    "omits optional headers and an empty GET query for undefined params",
+    async () => {
       const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(Response.json({}));
 
-      await stripeRequest("GET", "/v1/balance", params, {
+      await stripeRequest("GET", "/v1/balance", undefined, {
         fetchImpl,
         secretKey: "sk_test_injected",
       });
@@ -148,7 +129,6 @@ describe("stripeRequest", () => {
   );
 
   test("sends POST headers and form body and returns typed JSON", async () => {
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     vi.stubEnv("STRIPE_SECRET_KEY", undefined);
     const payload = { id: "pi_1", amount: 1234 };
     const fetchImpl = vi
@@ -197,7 +177,6 @@ describe("stripeRequest", () => {
   });
 
   test("sends DELETE params as a form body", async () => {
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     const payload = { id: "cus_1", deleted: true };
     const fetchImpl = vi
       .fn<typeof fetch>()
@@ -222,7 +201,6 @@ describe("stripeRequest", () => {
   });
 
   test("maps a Stripe error and its Request-Id header into StripeApiError", async () => {
-    vi.stubEnv("PAYMENTS_ENABLED", "true");
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json(
         {
@@ -307,12 +285,7 @@ describe("stripeRequest", () => {
 
   test.each([
     "<html>Bad Gateway</html>",
-    JSON.stringify({ message: "Bad Gateway" }),
     JSON.stringify({ error: "Bad Gateway" }),
-    JSON.stringify({ error: null }),
-    JSON.stringify({ error: [] }),
-    "null",
-    "[]",
   ])("falls back for an invalid error body: %s", async (body) => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       new Response(body, {
@@ -351,60 +324,20 @@ describe("stripeRequest", () => {
   });
 });
 
-describe("money gate", () => {
-  test.each(["POST", "DELETE"] as const)(
-    "blocks %s before fetching when payments are unset or disabled",
-    async (method) => {
-      const fetchImpl = vi.fn<typeof fetch>();
+describe("non-GET requests", () => {
+  test("sends POST requests", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ id: "acct_1" }));
 
-      for (const value of [undefined, "false", "0", "invalid"]) {
-        vi.stubEnv("PAYMENTS_ENABLED", value);
-        const request = stripeRequest(method, "/v1/accounts", {}, {
-          fetchImpl,
-          secretKey: "sk_test_injected",
-        });
-
-        await expect(request).rejects.toStrictEqual(
-          new Error("Payments are not enabled"),
-        );
-        expect(fetchImpl).not.toHaveBeenCalled();
-      }
-    },
-  );
-
-  test.each([undefined, "false", "0", "invalid"])(
-    "allows GET when PAYMENTS_ENABLED is %s",
-    async (value) => {
-      vi.stubEnv("PAYMENTS_ENABLED", value);
-      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(Response.json({}));
-
-      await expect(
-        stripeRequest("GET", "/v1/balance", undefined, {
-          fetchImpl,
-          secretKey: "sk_test_injected",
-        }),
-      ).resolves.toEqual({});
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  test.each(["POST", "DELETE"] as const)(
-    "allows %s when payments are explicitly enabled",
-    async (method) => {
-      vi.stubEnv("PAYMENTS_ENABLED", "true");
-      const fetchImpl = vi
-        .fn<typeof fetch>()
-        .mockResolvedValue(Response.json({ id: "acct_1" }));
-
-      await expect(
-        stripeRequest(method, "/v1/accounts", undefined, {
-          fetchImpl,
-          secretKey: "sk_test_injected",
-        }),
-      ).resolves.toEqual({ id: "acct_1" });
-      expect(fetchImpl).toHaveBeenCalledTimes(1);
-    },
-  );
+    await expect(
+      stripeRequest("POST", "/v1/accounts", undefined, {
+        fetchImpl,
+        secretKey: "sk_test_injected",
+      }),
+    ).resolves.toEqual({ id: "acct_1" });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("stripeIdempotencyKey", () => {

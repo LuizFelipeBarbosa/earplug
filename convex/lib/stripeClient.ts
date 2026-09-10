@@ -1,4 +1,4 @@
-import { flag, stripeSecretKey } from "./env";
+import { stripeSecretKey } from "./env";
 
 // Pinned on purpose: do not "helpfully" bump this to "latest". Changing the
 // Stripe API version is a deliberate, tested migration, not an incidental edit.
@@ -73,10 +73,6 @@ export async function stripeRequest<T = Record<string, unknown>>(
     secretKey?: string;
   },
 ): Promise<T> {
-  if (method !== "GET" && !flag("PAYMENTS_ENABLED", false)) {
-    throw new Error("Payments are not enabled");
-  }
-
   const headers: Record<string, string> = {
     Authorization: `Bearer ${options?.secretKey ?? stripeSecretKey()}`,
     "Stripe-Version": STRIPE_API_VERSION,
@@ -136,4 +132,25 @@ export async function stripeRequest<T = Record<string, unknown>>(
 
 export function stripeIdempotencyKey(...parts: (string | number)[]): string {
   return parts.join(":").slice(0, 255);
+}
+
+export function isAlreadyExpiredSession(error: unknown): boolean {
+  if (!(error instanceof StripeApiError)) return false;
+  return (
+    /\bsession\b[\s\S]*\b(?:already|status|is|has)\b[\s\S]*\bexpired\b/i.test(
+      error.message,
+    ) || /^(?:checkout_)?session_(?:already_)?expired$/.test(error.code ?? "")
+  );
+}
+
+export function isAlreadyCompletedSession(error: unknown): boolean {
+  if (!(error instanceof StripeApiError)) return false;
+  return (
+    /\bsession\b[\s\S]*\b(?:already|status|is|has)\b[\s\S]*\b(?:complete(?:d)?|paid)\b/i.test(
+      error.message,
+    ) ||
+    /^(?:checkout_)?session_(?:already_)?(?:complete(?:d)?|paid)$/.test(
+      error.code ?? "",
+    )
+  );
 }

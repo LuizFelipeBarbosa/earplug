@@ -599,9 +599,7 @@ class _TicketsBodyState extends State<_TicketsBody> {
               Text(
                 app.canSellTickets
                     ? 'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.'
-                    : app.features.bandTicketing
-                    ? 'Enable ticket sales in PAYOUTS'
-                    : 'Ticket sales are off',
+                    : 'Enable ticket sales in PAYOUTS',
                 style: epText(
                   size: 11,
                   color: context.epColors.contentSecondary,

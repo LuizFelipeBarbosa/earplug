@@ -15,6 +15,7 @@ import 'package:provider/provider.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('draft save action stays above the organizer tab bar', (
@@ -643,7 +644,26 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
-    final repository = _StripeDisconnectedRepository(auth: auth);
+    final repository = StubRepository(auth: auth)
+      ..wraps<OrganizationDashboard>('organizationDashboard', (real) {
+        final verification = real.verification;
+        return OrganizationDashboard(
+          organization: real.organization,
+          role: real.role,
+          viaPlatformAdmin: real.viaPlatformAdmin,
+          verification: OrganizationVerification(
+            verified: verification.verified,
+            stripeDetailsSubmitted: verification.stripeDetailsSubmitted,
+            stripeChargesEnabled: false,
+            stripePayoutsEnabled: verification.stripePayoutsEnabled,
+            profileComplete: verification.profileComplete,
+            teamInvited: verification.teamInvited,
+          ),
+          venues: real.venues,
+          memberCount: real.memberCount,
+          privateDetails: real.privateDetails,
+        );
+      });
     final harness = await _pumpEditor(tester, auth, repository, 'opp2');
     await _reveal(
       tester,
@@ -999,7 +1019,11 @@ void main() {
     'a non-paid confirmed opportunity has no update-ticketing button',
     (tester) async {
       final auth = FakeAuthService();
-      final repository = _BookingStatusRepository(auth: auth);
+      final repository = StubRepository(auth: auth)
+        ..wraps<Opportunity?>('opportunity', (real) {
+          if (real == null || real.id != 'opp1') return real;
+          return real.copyWith(status: OpportunityStatus.booking);
+        });
       final harness = await _pumpEditor(tester, auth, repository, 'opp1');
 
       await _reveal(tester, find.byKey(const Key('opp-edit-ticketing-paid')));
@@ -1352,11 +1376,23 @@ class _FeeRatesRepository extends DemoRepository {
   }
 }
 
-class _ConfirmedPaidOpportunityRepository extends DemoRepository {
+class _ConfirmedPaidOpportunityRepository extends StubRepository {
   _ConfirmedPaidOpportunityRepository({
     required super.auth,
     this.failNextTicketingUpdate = false,
-  });
+  }) {
+    wraps<Opportunity?>('opportunity', (real) {
+      if (real == null || real.id != 'opp1') return real;
+      return real.copyWith(
+        ticketing: OpportunityTicketing.paid,
+        ticketPriceMinor: 2500,
+        ticketCapacity: 40,
+        ticketCurrency: 'usd',
+        status: OpportunityStatus.confirmed,
+        revision: _revision,
+      );
+    });
+  }
 
   final bool failNextTicketingUpdate;
   int _revision = 1;
@@ -1367,50 +1403,6 @@ class _ConfirmedPaidOpportunityRepository extends DemoRepository {
     int ticketCapacity,
   })?
   lastTicketingUpdate;
-
-  @override
-  Future<Opportunity?> opportunity(String opportunityId) async {
-    final existing = await super.opportunity(opportunityId);
-    if (existing == null || opportunityId != 'opp1') return existing;
-    return Opportunity(
-      id: existing.id,
-      organizationId: existing.organizationId,
-      mode: existing.mode,
-      venueId: existing.venueId,
-      venue: existing.venue,
-      title: existing.title,
-      desc: existing.desc,
-      eventType: existing.eventType,
-      expectedAttendance: existing.expectedAttendance,
-      genres: existing.genres,
-      startsAt: existing.startsAt,
-      doorsAt: existing.doorsAt,
-      endsAt: existing.endsAt,
-      ageRequirement: existing.ageRequirement,
-      equipment: existing.equipment,
-      requirements: existing.requirements,
-      flyKey: existing.flyKey,
-      flyerUrl: existing.flyerUrl,
-      applicationsCloseAt: existing.applicationsCloseAt,
-      visibility: existing.visibility,
-      ticketing: OpportunityTicketing.paid,
-      ticketPriceMinor: 2500,
-      ticketCapacity: 40,
-      ticketCurrency: 'usd',
-      externalUrl: existing.externalUrl,
-      status: OpportunityStatus.confirmed,
-      slug: existing.slug,
-      revision: _revision,
-      applicationCount: existing.applicationCount,
-      slots: existing.slots,
-      invitedBandIds: existing.invitedBandIds,
-      createdAt: existing.createdAt,
-      updatedAt: existing.updatedAt,
-      area: existing.area,
-      venueType: existing.venueType,
-      currency: existing.currency,
-    );
-  }
 
   @override
   Future<int> updateOpportunityTicketing({
@@ -1434,82 +1426,6 @@ class _ConfirmedPaidOpportunityRepository extends DemoRepository {
     );
     _revision++;
     return _revision;
-  }
-}
-
-class _BookingStatusRepository extends DemoRepository {
-  _BookingStatusRepository({required super.auth});
-
-  @override
-  Future<Opportunity?> opportunity(String opportunityId) async {
-    final existing = await super.opportunity(opportunityId);
-    if (existing == null || opportunityId != 'opp1') return existing;
-    return Opportunity(
-      id: existing.id,
-      organizationId: existing.organizationId,
-      mode: existing.mode,
-      venueId: existing.venueId,
-      venue: existing.venue,
-      title: existing.title,
-      desc: existing.desc,
-      eventType: existing.eventType,
-      expectedAttendance: existing.expectedAttendance,
-      genres: existing.genres,
-      startsAt: existing.startsAt,
-      doorsAt: existing.doorsAt,
-      endsAt: existing.endsAt,
-      ageRequirement: existing.ageRequirement,
-      equipment: existing.equipment,
-      requirements: existing.requirements,
-      flyKey: existing.flyKey,
-      flyerUrl: existing.flyerUrl,
-      applicationsCloseAt: existing.applicationsCloseAt,
-      visibility: existing.visibility,
-      ticketing: existing.ticketing,
-      ticketPriceMinor: existing.ticketPriceMinor,
-      ticketCapacity: existing.ticketCapacity,
-      ticketCurrency: existing.ticketCurrency,
-      externalUrl: existing.externalUrl,
-      status: OpportunityStatus.booking,
-      slug: existing.slug,
-      revision: existing.revision,
-      applicationCount: existing.applicationCount,
-      slots: existing.slots,
-      invitedBandIds: existing.invitedBandIds,
-      createdAt: existing.createdAt,
-      updatedAt: existing.updatedAt,
-      area: existing.area,
-      venueType: existing.venueType,
-      currency: existing.currency,
-    );
-  }
-}
-
-class _StripeDisconnectedRepository extends DemoRepository {
-  _StripeDisconnectedRepository({required super.auth});
-
-  @override
-  Future<OrganizationDashboard> organizationDashboard(
-    String organizationId,
-  ) async {
-    final dashboard = await super.organizationDashboard(organizationId);
-    final verification = dashboard.verification;
-    return OrganizationDashboard(
-      organization: dashboard.organization,
-      role: dashboard.role,
-      viaPlatformAdmin: dashboard.viaPlatformAdmin,
-      verification: OrganizationVerification(
-        verified: verification.verified,
-        stripeDetailsSubmitted: verification.stripeDetailsSubmitted,
-        stripeChargesEnabled: false,
-        stripePayoutsEnabled: verification.stripePayoutsEnabled,
-        profileComplete: verification.profileComplete,
-        teamInvited: verification.teamInvited,
-      ),
-      venues: dashboard.venues,
-      memberCount: dashboard.memberCount,
-      privateDetails: dashboard.privateDetails,
-    );
   }
 }
 

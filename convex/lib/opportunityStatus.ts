@@ -4,6 +4,9 @@ import {
   artistApplicationStatusValidator,
   opportunitySlotStatusValidator,
 } from "../schema";
+import { canTransition } from "./bookingStatus";
+
+export { canTransition } from "./bookingStatus";
 
 export type OpportunityStatus = Infer<typeof opportunityStatusValidator>;
 export type ArtistApplicationStatus = Infer<typeof artistApplicationStatusValidator>;
@@ -44,14 +47,6 @@ export const SLOT_TRANSITIONS: Record<
   booked: ["open", "cancelled"],
   cancelled: [],
 };
-
-export function canTransition<T extends string>(
-  table: Record<T, readonly T[]>,
-  from: T,
-  to: T,
-): boolean {
-  return table[from]?.includes(to) ?? false;
-}
 
 export function assertOpportunityTransition(
   from: OpportunityStatus,

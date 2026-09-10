@@ -11,13 +11,12 @@ import {
   ALL_ORGANIZATION_ROLES,
   organizationMembershipFor,
   requireOrganizationRole,
-  requireOrganizationRoleQuery,
 } from "./lib/authz";
 import { requireUser } from "./lib/helpers";
+import { insertInvite, refreshInvite } from "./lib/invites";
 import { organizationPayloadValidator } from "./organizations";
 import { organizationRoleValidator } from "./schema";
 
-const INVITE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
 const invitationalOrganizationRoleValidator = v.union(
   v.literal("manager"),
   v.literal("finance"),
@@ -64,85 +63,6 @@ async function newestInvite(
     .first();
 }
 
-async function uniqueToken(ctx: MutationCtx): Promise<string> {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const bytes = new Uint8Array(32);
-    // Convex's seeded mutation PRNG makes retries replay while calls get fresh entropy.
-    for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-    const token = Array.from(bytes, (byte) =>
-      byte.toString(16).padStart(2, "0"),
-    ).join("");
-    const collision = await ctx.db
-      .query("organizationMemberInvites")
-      .withIndex("by_token", (q) => q.eq("token", token))
-      .first();
-    if (collision === null) return token;
-  }
-  throw new Error("Could not issue invitation token");
-}
-
-async function insertInvite(
-  ctx: MutationCtx,
-  organizationId: Id<"organizations">,
-  createdBy: Id<"users">,
-  role: Infer<typeof organizationRoleValidator>,
-) {
-  const token = await uniqueToken(ctx);
-  const expiresAt = Date.now() + INVITE_LIFETIME_MS;
-  const inviteId = await ctx.db.insert("organizationMemberInvites", {
-    organizationId,
-    token,
-    role,
-    createdBy,
-    expiresAt,
-    revoked: false,
-    expired: false,
-  });
-  await ctx.scheduler.runAt(expiresAt, internal.organizationMembers.expire, {
-    organizationId,
-    token,
-  });
-  const invite = await ctx.db.get(inviteId);
-  if (invite === null) throw new Error("Created invitation not found");
-  return invitePayload(invite);
-}
-
-async function refreshInvite(
-  ctx: MutationCtx,
-  invite: Doc<"organizationMemberInvites">,
-  createdBy: Id<"users">,
-  role: Infer<typeof organizationRoleValidator>,
-) {
-  const replacement = {
-    organizationId: invite.organizationId,
-    token: await uniqueToken(ctx),
-    role,
-    createdBy,
-    expiresAt: Date.now() + INVITE_LIFETIME_MS,
-    revoked: false,
-    expired: false,
-  };
-  await ctx.db.replace(invite._id, replacement);
-  await ctx.scheduler.runAt(
-    replacement.expiresAt,
-    internal.organizationMembers.expire,
-    {
-      organizationId: replacement.organizationId,
-      token: replacement.token,
-    },
-  );
-  return {
-    organizationId: replacement.organizationId,
-    token: replacement.token,
-    role: replacement.role,
-    expiresAt: replacement.expiresAt,
-    revoked: replacement.revoked,
-    expired: replacement.expired,
-  };
-}
-
 async function anotherOwnerExists(
   ctx: MutationCtx,
   organizationId: Id<"organizations">,
@@ -175,7 +95,7 @@ export const list = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const access = await requireOrganizationRoleQuery(
+    const access = await requireOrganizationRole(
       ctx,
       args.organizationId,
       ALL_ORGANIZATION_ROLES,
@@ -273,7 +193,7 @@ export const manageInvite = query({
   args: { organizationId: v.id("organizations") },
   returns: v.union(organizationInvitePayloadValidator, v.null()),
   handler: async (ctx, args) => {
-    await requireOrganizationRoleQuery(ctx, args.organizationId, ["owner"]);
+    await requireOrganizationRole(ctx, args.organizationId, ["owner"]);
     const invite = await ctx.db
       .query("organizationMemberInvites")
       .withIndex("by_organizationId", (q) =>
@@ -299,23 +219,41 @@ export const createInvite = mutation({
       "owner",
     ]);
     const existing = await newestInvite(ctx, args.organizationId);
-    if (existing === null) {
-      return await insertInvite(
-        ctx,
-        args.organizationId,
-        access.user._id,
-        args.role,
-      );
+    if (existing !== null) {
+      const live =
+        !existing.revoked &&
+        existing.expired !== true &&
+        existing.expiresAt > Date.now();
+      if (live && existing.role === args.role) return invitePayload(existing);
     }
-    const live =
-      !existing.revoked &&
-      existing.expired !== true &&
-      existing.expiresAt > Date.now();
-    if (!live) {
-      return await refreshInvite(ctx, existing, access.user._id, args.role);
-    }
-    if (existing.role === args.role) return invitePayload(existing);
-    return await refreshInvite(ctx, existing, access.user._id, args.role);
+    const organizationId = existing?.organizationId ?? args.organizationId;
+    const fields = {
+      organizationId,
+      createdBy: access.user._id,
+      role: args.role,
+    };
+    const scheduleExpire = async (expiresAt: number, token: string) => {
+      await ctx.scheduler.runAt(expiresAt, internal.organizationMembers.expire, {
+        organizationId,
+        token,
+      });
+    };
+    const invite =
+      existing === null
+        ? await insertInvite(
+            ctx,
+            "organizationMemberInvites",
+            fields,
+            scheduleExpire,
+          )
+        : await refreshInvite(
+            ctx,
+            "organizationMemberInvites",
+            existing._id,
+            fields,
+            scheduleExpire,
+          );
+    return invitePayload(invite);
   },
 });
 
@@ -327,21 +265,35 @@ export const rotateInvite = mutation({
       "owner",
     ]);
     const existing = await newestInvite(ctx, args.organizationId);
-    if (existing === null) {
+    const organizationId = existing?.organizationId ?? args.organizationId;
+    const fields = {
+      organizationId,
+      createdBy: access.user._id,
       // Rotation normally follows creation, but a first call gets a safe door role.
-      return await insertInvite(
-        ctx,
-        args.organizationId,
-        access.user._id,
-        "door",
-      );
-    }
-    return await refreshInvite(
-      ctx,
-      existing,
-      access.user._id,
-      existing.role,
-    );
+      role: existing?.role ?? "door",
+    };
+    const scheduleExpire = async (expiresAt: number, token: string) => {
+      await ctx.scheduler.runAt(expiresAt, internal.organizationMembers.expire, {
+        organizationId,
+        token,
+      });
+    };
+    const invite =
+      existing === null
+        ? await insertInvite(
+            ctx,
+            "organizationMemberInvites",
+            fields,
+            scheduleExpire,
+          )
+        : await refreshInvite(
+            ctx,
+            "organizationMemberInvites",
+            existing._id,
+            fields,
+            scheduleExpire,
+          );
+    return invitePayload(invite);
   },
 });
 

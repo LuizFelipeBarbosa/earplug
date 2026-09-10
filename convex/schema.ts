@@ -1021,7 +1021,7 @@ export default defineSchema({
     publicProfilePreviewedAt: v.optional(v.number()),
     // Widen-phase discovery projection. Every live media write maintains this
     // transactionally; an absent legacy value is deliberately read as false
-    // until migrations:backfillBandHasClip has visited the row.
+    // on rows written before the hasClip backfill (applied to prod 2026-09-04).
     hasClip: v.optional(v.boolean()),
     // Independent public-profile artwork. `null` is intentional: it records an
     // explicit removal, while `undefined` lets legacy rows fall back to the
@@ -1149,8 +1149,8 @@ export default defineSchema({
     // blob outright — it is never a bandMedia row, because `lineup` is an array
     // so "whose media is it" would be ambiguous.
     flyStorageId: v.optional(v.id("_storage")),
-    // Optional during the widen/backfill phase. Readers treat absence as the
-    // legacy published state until migrations:backfillGigProjects completes.
+    // Optional for rows written before the gigProjects backfill (applied to prod
+    // 2026-09-04). Readers treat absence as the legacy published state.
     lifecycle: v.optional(gigLifecycleValidator),
     doorsAt: v.optional(v.number()),
     performers: v.optional(v.array(gigPublicPerformerValidator)),

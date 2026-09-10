@@ -31,12 +31,7 @@ type Env = {
   readonly CONVEX_CLOUD_URL: string;
   readonly CONVEX_SITE_URL: string;
   readonly APP_BASE_URL: string | undefined;
-  readonly BAND_GIG_WRITES: string | undefined;
   readonly BOOKING_COMMISSION_BPS: string | undefined;
-  readonly DISPUTES_ENABLED: string | undefined;
-  readonly PAYMENTS_ENABLED: string | undefined;
-  readonly PRIVATE_BOOKINGS_ENABLED: string | undefined;
-  readonly PROMOTERS_ENABLED: string | undefined;
   readonly RESEND_API_KEY: string | undefined;
   readonly RESEND_SEND_ENABLED: string | undefined;
   readonly STRIPE_CONNECT_WEBHOOK_SECRET: string | undefined;
@@ -44,7 +39,6 @@ type Env = {
   readonly STRIPE_WEBHOOK_SECRET: string | undefined;
   readonly TICKETING_FEE_BPS: string | undefined;
   readonly TICKETING_FEE_FIXED_MINOR: string | undefined;
-  readonly TICKETS_ENABLED: string | undefined;
 };
 
 /**

@@ -13,10 +13,8 @@ import {
 import {
   isPlatformAdmin,
   requirePlatformAdmin,
-  requirePlatformAdminQuery,
 } from "./lib/authz";
 import { openInAppDispute } from "./lib/disputeHold";
-import { deploymentName, flag } from "./lib/env";
 import { currentUser } from "./lib/helpers";
 import { bookingStatusValidator } from "./schema";
 
@@ -50,7 +48,7 @@ export const overview = query({
     capped: v.boolean(),
   }),
   handler: async (ctx) => {
-    await requirePlatformAdminQuery(ctx);
+    await requirePlatformAdmin(ctx);
     const [
       submitted,
       underReview,
@@ -134,117 +132,6 @@ export const overview = query({
   },
 });
 
-export const opsHealth = internalQuery({
-  args: { days: v.optional(v.number()), now: v.number() },
-  returns: v.object({
-    deployment: v.string(),
-    since: v.number(),
-    truncated: v.boolean(),
-    flags: v.object({
-      payments: v.boolean(),
-      tickets: v.boolean(),
-      privateBookings: v.boolean(),
-      disputes: v.boolean(),
-      promoters: v.boolean(),
-      bandGigWrites: v.boolean(),
-      resendSend: v.boolean(),
-    }),
-    resendConfigured: v.boolean(),
-    stripeEvents: v.array(
-      v.object({
-        type: v.string(),
-        status: v.string(),
-        livemode: v.boolean(),
-        count: v.number(),
-        lastReceivedAt: v.number(),
-      }),
-    ),
-    failed: v.array(
-      v.object({
-        eventId: v.string(),
-        type: v.string(),
-        receivedAt: v.number(),
-        error: v.optional(v.string()),
-      }),
-    ),
-  }),
-  handler: async (ctx, args) => {
-    if (
-      !Number.isFinite(args.now) ||
-      (args.days !== undefined && !Number.isFinite(args.days))
-    ) {
-      throw new Error("days and now must be finite numbers");
-    }
-    const days = Math.min(30, Math.max(1, args.days ?? 7));
-    const since = args.now - days * 24 * 60 * 60 * 1000;
-    const rows = await ctx.db
-      .query("stripeEvents")
-      .withIndex("by_receivedAt", (q) => q.gte("receivedAt", since))
-      .order("desc")
-      .take(5000);
-
-    const groups = new Map<
-      string,
-      {
-        type: string;
-        status: string;
-        livemode: boolean;
-        count: number;
-        lastReceivedAt: number;
-      }
-    >();
-    for (const row of rows) {
-      const key = JSON.stringify([row.type, row.status, row.livemode]);
-      const group = groups.get(key);
-      if (group) {
-        group.count++;
-      } else {
-        groups.set(key, {
-          type: row.type,
-          status: row.status,
-          livemode: row.livemode,
-          count: 1,
-          // Rows are newest first, so the first row has the latest timestamp.
-          lastReceivedAt: row.receivedAt,
-        });
-      }
-    }
-    const stripeEvents = Array.from(groups.values()).sort(
-      (a, b) =>
-        a.type.localeCompare(b.type) ||
-        a.status.localeCompare(b.status) ||
-        Number(a.livemode) - Number(b.livemode),
-    );
-    const failed = rows
-      .filter((row) => row.status === "failed")
-      .slice(0, 20)
-      .map((row) => ({
-        eventId: row.eventId,
-        type: row.type,
-        receivedAt: row.receivedAt,
-        error: row.error,
-      }));
-
-    return {
-      deployment: deploymentName() ?? "unknown",
-      since,
-      truncated: rows.length === 5000,
-      flags: {
-        payments: flag("PAYMENTS_ENABLED", false),
-        tickets: flag("TICKETS_ENABLED", false),
-        privateBookings: flag("PRIVATE_BOOKINGS_ENABLED", false),
-        disputes: flag("DISPUTES_ENABLED", false),
-        promoters: flag("PROMOTERS_ENABLED", false),
-        bandGigWrites: flag("BAND_GIG_WRITES", true),
-        resendSend: flag("RESEND_SEND_ENABLED", false),
-      },
-      resendConfigured: Boolean(env.RESEND_API_KEY),
-      stripeEvents,
-      failed,
-    };
-  },
-});
-
 const bookingRowValidator = v.object({
   bookingId: v.id("bookings"),
   title: v.string(),
@@ -270,7 +157,7 @@ export const bookings = query({
   },
   returns: paginationResultValidator(bookingRowValidator),
   handler: async (ctx, args) => {
-    await requirePlatformAdminQuery(ctx);
+    await requirePlatformAdmin(ctx);
     const filter = args.filter;
     const source = ctx.db.query("bookings");
     const result =
@@ -380,25 +267,5 @@ export const grantPlatformAdmin = internalMutation({
       ...(args.note === undefined ? {} : { note: args.note }),
     });
     return { granted: true, alreadyAdmin: false, dryRun: false };
-  },
-});
-
-export const revokePlatformAdmin = internalMutation({
-  args: {
-    userId: v.id("users"),
-    dryRun: v.optional(v.boolean()),
-  },
-  returns: v.object({ revoked: v.boolean(), dryRun: v.boolean() }),
-  handler: async (ctx, args) => {
-    const dryRun = args.dryRun ?? true;
-    const activeGrant = await ctx.db
-      .query("platformAdmins")
-      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
-      .filter((q) => q.eq(q.field("revokedAt"), undefined))
-      .first();
-    if (!activeGrant) return { revoked: false, dryRun };
-    if (dryRun) return { revoked: false, dryRun: true };
-    await ctx.db.patch(activeGrant._id, { revokedAt: Date.now() });
-    return { revoked: true, dryRun: false };
   },
 });

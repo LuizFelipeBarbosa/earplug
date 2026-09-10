@@ -52,16 +52,12 @@ export function consentRequiredFor(
 export function assertVenueUsable(
   venue: Doc<"venues">,
   organizationId: Id<"organizations">,
-  options: { promotersEnabled: boolean },
 ): { consentRequired: boolean } {
   if (venue.managedByOrganizationId === organizationId) {
     if (venue.status !== "verified") {
       throw new Error("Choose one of your verified venues");
     }
     return { consentRequired: false };
-  }
-  if (!options.promotersEnabled) {
-    throw new Error("Choose one of your verified venues");
   }
   if (venue.managedByOrganizationId === undefined) {
     throw new Error("This venue has not joined EarPlug yet");

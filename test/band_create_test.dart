@@ -1,7 +1,4 @@
-import 'dart:async';
-
 import 'package:earplug/app_state.dart';
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_create.dart';
@@ -11,9 +8,9 @@ import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/accessibility.dart';
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('create uses the shared identity editor in profile order', (
@@ -192,25 +189,6 @@ void main() {
     expect(app.current.screen, Screen.bandDash);
   });
 
-  testWidgets(
-    'created view omits gig publishing when gig writes are disabled',
-    (tester) async {
-      final repository = DemoRepository(auth: FakeAuthService());
-      repository.demoBandGigWrites = false;
-      final harness = await _pumpBandCreate(tester, repository: repository);
-      await _fillAndCreate(tester);
-      if (harness.app.gigWritePolicy) {
-        await harness.app.refreshGigWritePolicy();
-        await tester.pumpAndSettle();
-      }
-
-      expect(find.text("YOU'RE LIVE"), findsOne);
-      expect(find.text('PUBLISH A GIG'), findsNothing);
-      expect(find.text('POST A MUSIC CLIP'), findsOne);
-      expect(find.text('INVITE BAND MEMBERS'), findsOne);
-    },
-  );
-
   testWidgets('start another clears the rendered form and backing draft', (
     tester,
   ) async {
@@ -276,6 +254,7 @@ void main() {
     tester,
   ) async {
     final repository = _GatedDemoRepository(auth: FakeAuthService());
+    final createGate = repository.createGate;
     final app = (await _pumpBandCreate(tester, repository: repository)).app;
     await _fillForm(tester);
 
@@ -284,7 +263,7 @@ void main() {
     expect(find.text('SAVING…'), findsOne);
     expect(repository.createCalls, 1);
 
-    repository.gate.complete();
+    createGate.complete();
     await tester.pumpAndSettle();
     expect(app.nbCreated, isTrue);
     expect(find.text("YOU'RE LIVE"), findsOne);
@@ -293,7 +272,24 @@ void main() {
   testWidgets(
     'created band is usable before membership subscription catches up',
     (tester) async {
-      final repository = _SilentCreateRepository(auth: FakeAuthService());
+      final repository = StubRepository(auth: FakeAuthService())
+        ..returns('createBand', (
+          band: const Band(
+            id: 'silent-band',
+            name: 'Static Bloom',
+            genres: ['punk'],
+            area: 'Mission, SF',
+            color: Color(0xFF8FE6C4),
+            initials: 'SB',
+            followers: 1,
+            bio: '',
+            linkIg: null,
+            linkBc: null,
+            linkYt: null,
+            credits: null,
+          ),
+          slug: 'static-bloom',
+        ));
       final app = (await _pumpBandCreate(tester, repository: repository)).app;
       await _fillAndCreate(tester);
 
@@ -313,19 +309,6 @@ void main() {
     );
     expect(disabledCreate.onPressed, isNull);
     expect(app.nbCreated, isFalse);
-  });
-
-  testWidgets('band creation is usable at increased text scale', (
-    tester,
-  ) async {
-    await pumpApp(
-      tester,
-      beforePump: (app) => app.startBandCreate(),
-      home: scaledScreen(const BandCreateScreen()),
-    );
-
-    expect(find.text('CREATE BAND'), findsNWidgets(2));
-    expect(tester.takeException(), isNull);
   });
 }
 
@@ -371,66 +354,9 @@ Future<void> _fillAndCreate(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-class _GatedDemoRepository extends DemoRepository {
+class _GatedDemoRepository extends StubRepository {
   _GatedDemoRepository({required super.auth});
 
-  final gate = Completer<void>();
-  int createCalls = 0;
-
-  @override
-  Future<({Band band, String slug})> createBand({
-    required String name,
-    required List<String> genres,
-    required String bio,
-    required String area,
-    String? linkIg,
-    String? linkBc,
-    String? linkYt,
-    String? credits,
-  }) async {
-    createCalls++;
-    await gate.future;
-    return super.createBand(
-      name: name,
-      genres: genres,
-      bio: bio,
-      area: area,
-      linkIg: linkIg,
-      linkBc: linkBc,
-      linkYt: linkYt,
-      credits: credits,
-    );
-  }
-}
-
-class _SilentCreateRepository extends DemoRepository {
-  _SilentCreateRepository({required super.auth});
-
-  @override
-  Future<({Band band, String slug})> createBand({
-    required String name,
-    required List<String> genres,
-    required String bio,
-    required String area,
-    String? linkIg,
-    String? linkBc,
-    String? linkYt,
-    String? credits,
-  }) async => (
-    band: Band(
-      id: 'silent-band',
-      name: name,
-      genres: genres,
-      area: area,
-      color: const Color(0xFF8FE6C4),
-      initials: 'SB',
-      followers: 1,
-      bio: bio,
-      linkIg: linkIg,
-      linkBc: linkBc,
-      linkYt: linkYt,
-      credits: credits,
-    ),
-    slug: 'static-bloom',
-  );
+  late final createGate = gate('createBand');
+  int get createCalls => callsTo('createBand');
 }

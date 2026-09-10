@@ -1,4 +1,4 @@
-# EarPlug Convex function contract (FROZEN — v1.29)
+# EarPlug Convex function contract (FROZEN — v1.30)
 
 Both the Convex backend and the Flutter client are built against this contract.
 Changes require updating both workstreams — do not drift silently.
@@ -155,9 +155,9 @@ old share link can explain the cancellation. Admins can save, preview, publish,
 edit, duplicate, unpublish, cancel, and delete. Deletes first tombstone the
 project and public row, then use a bounded scheduled purge for joins and the
 projection. Released clients may keep calling `gigs:publishGig`; that
-compatibility path dual-writes a project. Legacy rows remain readable during
-the widen/backfill phase and normalize to `published` until
-`migrations:backfillGigProjects` has run.
+compatibility path dual-writes a project. Legacy rows remained readable during
+the widen/backfill phase by normalizing missing lifecycle values to
+`published`; the gig-project backfill completed on prod on 2026-09-04.
 
 **v1.15 — discovery readiness and progressive activation.** Public band
 payloads derive `profileComplete` and `discoveryProfileReady`; public gig
@@ -281,16 +281,9 @@ return when an organization is suspended or restored, including venues with
 no upcoming gigs. Band management projects and personal RSVP history remain
 available.
 
-Legacy venue rows are maintained by the ordered, idempotent
-`migrations:runReleaseBackfills` runner and observed through
-`migrations:releaseBackfillStatus`. `tool/run_release_backfills.mjs`, exposed as
-`npm run backfill:release`, drives that runner to completion during a production
-release.
-Release backfills for v1.19 are applied by the deployment's own 30-minute cron
-(`convex/crons.ts`, "apply release backfills", `migrations:runReleaseBackfills`)
-rather than by the Netlify build, since the Netlify deploy key lacks permission
-to run internal mutations directly; an authenticated admin session can apply
-them immediately with `npm run backfill:release -- --prod`.
+The v1.19 release backfills for legacy venue rows completed on prod on
+2026-09-04. Their runner and status functions, CLI script, npm command, and
+30-minute cron have been removed.
 
 All function results travel as JSON. Ids are Convex document-id strings (the
 Flutter models already use `String` ids). Timestamps are ms-since-epoch numbers
@@ -376,16 +369,15 @@ myApplicationStatus: ArtistApplicationStatus | null }`. The exact
 - `artistApplications:forBand` — Query; `{ bandId } -> Array<{ application: ApplicationPayload, opportunity: OpportunityPayload }>`; band members receive all statuses, newest first, capped at 100; nonmembers receive `[]`.
 - `artistApplications:mine` — Query; `{ opportunityId, bandId } -> ApplicationPayload | null`; band-member role required; returns the band's most recent application for that opportunity.
 
-`BAND_GIG_WRITES` defaults to true and gates these existing mutations:
+Band gig writes are available through these existing mutations:
 `gigs:createDraft`, `gigs:saveDraft`, `gigs:addPerformer`,
 `gigs:updatePerformer`, `gigs:removePerformer`, `gigs:reorderPerformers`,
 `gigs:publishDraft`, `gigs:duplicate`, and `gigs:claimPerformerInvite`.
-When false they throw "Bands now get booked through organizations. Find
-opportunities on your Gigs page." `gigs:unpublish`, `gigs:cancel`, and
-`gigs:deleteGig` remain ungated so bands can take down or cancel their existing
-gigs. `gigs:writePolicy` — Query; `{} -> { bandGigWrites: boolean }`;
-no authentication required; returns `bandGigWritesEnabled()` from
-`convex/lib/gigWritePolicy.ts` so clients can read the current policy.
+`gigs:unpublish`, `gigs:cancel`, and `gigs:deleteGig` let bands take down or
+cancel their existing gigs. `gigs:writePolicy` — Query;
+`{} -> { bandGigWrites: boolean }`;
+no authentication required; always returns `{ bandGigWrites: true }`.
+The client no longer calls it.
 
 `feedCutoff` now reads `readFeedCutoff` in `convex/clock.ts`. The "feed cutoff
 heartbeat" cron in `convex/crons.ts` runs the internal `clock:heartbeat`
@@ -454,8 +446,7 @@ has exactly these reachable next states:
 - `withdrawn -> []`.
 
 The seven states with empty transition lists are terminal. `sendOffer`
-requires a non-negative integer `grossMinor` and refuses values above zero
-while `PAYMENTS_ENABLED` is off (default false). Offers expire after 72 hours.
+requires a non-negative integer `grossMinor`. Offers expire after 72 hours.
 Accepting a zero-fee offer confirms the booking; a paid offer moves through
 `artist_accepted` to `awaiting_payment`.
 
@@ -510,14 +501,15 @@ seller via `createdByOrganization`, otherwise a band seller via
 
 Band-side gig editing remains scoped to `gigProjects`: management reads and
 `requireProjectAdmin` admit admins only to their own band's projects, and
-the `BAND_GIG_WRITES`-gated creation/edit/publish mutations operate through
-those projects. Performer invitation claims also require an existing
+the creation/edit/publish mutations operate through those projects.
+Performer invitation claims also require an existing
 `gigProjectPerformers` row linked to a project. Organization-owned gigs have
 no project a band could open or performer invitation it could claim, so
 these mutations never touch them; this follows from the project structure,
-without an explicit `ownerKind` check. `gigs:writePolicy` continues to expose
-the flag. Public gig reads use `ownedByActiveOwner` to exclude gigs whose
-referenced organization is missing or suspended when `createdByOrganization`
+without an explicit `ownerKind` check. `gigs:writePolicy` always returns
+`{ bandGigWrites: true }`; the client no longer calls it. Public gig reads
+use `ownedByActiveOwner` to exclude gigs whose referenced organization is
+missing or suspended when `createdByOrganization`
 is set, and otherwise exclude archived or missing owning bands when
 `createdByBand` is set.
 
@@ -602,12 +594,10 @@ The empty-list states `refunded`, `reversed`, and `succeeded` are terminal in
 their respective machines.
 
 `stripeRequest` in [`convex/lib/stripeClient.ts`](../convex/lib/stripeClient.ts)
-throws "Payments are not enabled" for every non-`GET` Stripe API call while
-`flag("PAYMENTS_ENABLED", false)` is off. This is the same money gate used by
-`sendOffer` for positive fees in v1.21. Stripe account refreshes use `GET`;
-onboarding links, dashboard links, Checkout, transfers and refunds require
-the flag. Cancellation settlement still records refund and payout obligations
-while the flag is off; their Stripe writes remain gated.
+supports non-`GET` Stripe API calls unconditionally. Stripe account refreshes
+use `GET`; onboarding links, dashboard links, Checkout, transfers and refunds
+use Stripe writes. Cancellation settlement records refund and payout
+obligations, and their Stripe writes are enabled.
 
 The platform endpoint `/stripe-webhook` subscribes to
 `checkout.session.completed`, `checkout.session.expired`, and
@@ -798,10 +788,9 @@ Reservation snapshots the fee from `resolveTicketingFee` in
 (`ticketingFeeBps`, `ticketingFeeFixedMinor`) wins; otherwise both
 `TICKETING_FEE_BPS` and `TICKETING_FEE_FIXED_MINOR` are required. The per-ticket
 fee is `round(unitPriceMinor * bps / 10000) + fixedMinor` for a nonzero price,
-and `feeMinor` multiplies that by quantity. `TICKETS_ENABLED` gates new
-reservations, Checkout and refund execution; ticket Stripe writes also use
-the v1.22 `PAYMENTS_ENABLED` / `stripeRequest` non-`GET` gate shared with
-`sendOffer`. The new `APP_BASE_URL` paths are
+and `feeMinor` multiplies that by quantity. New reservations, Checkout and
+refund execution are enabled; ticket Stripe writes use `stripeRequest`.
+The new `APP_BASE_URL` paths are
 `/tickets/return?session_id={CHECKOUT_SESSION_ID}` for Checkout success and
 `/tickets/cancel?order=<orderId>` for cancellation; `/t/<ticketId>` is the
 fan's wallet route on the same origin, not a Stripe return URL.
@@ -893,10 +882,9 @@ The new `safety:report` and `safety:mine` let either side file and view its
 safety reports, while `safety:listOpen`, `safety:resolve`, and
 `safety:forBookingAdmin` let platform admins triage and resolve them.
 `reviews:forBand` anonymizes private-event rows so reviews reveal no
-organizer or venue name. The new `features:flags` query returns
-`{ privateBookings, tickets, payments, bandGigWrites }`, letting the client
-gate the private-booking UI on `PRIVATE_BOOKINGS_ENABLED` without guessing
-at server-side flags.
+organizer or venue name. The `features:flags` query introduced
+`{ privateBookings, tickets, payments, bandGigWrites }`; the client no longer
+reads it for gating and always behaves as if every feature is enabled.
 
 **v1.26 — Phase 6 disputes and admin oversight.** The new `disputes` table
 stores `bookingId`, `openedByUserId`, `side` (`"organizer" | "artist"`),
@@ -915,8 +903,8 @@ chargeback webhook handler in `convex/stripeHandlers/disputes.ts`, not by
 admin through `admin:suspendOrganization({ organizationId, suspended, note? })`;
 suspension sets the organization to `suspended`, restoration sets it to
 `verified` and clears the note, and both cascade the corresponding venue
-status to up to 50 managed venues. `disputes:open` is a Mutation gated by
-`DISPUTES_ENABLED`; an organization owner/manager/finance member or band admin
+status to up to 50 managed venues. `disputes:open` is a Mutation;
+an organization owner/manager/finance member or band admin
 can open a dispute on its side of a live booking (`confirmed`, `completed`,
 or `paid`) with a positive `grossMinor` and no existing open or under-review
 in-app dispute. The window in `convex/lib/disputeStatus.ts` is inclusive from
@@ -956,9 +944,9 @@ only when the viewer reached the booking as an organizer through
 platform-admin access rather than organization membership. A client built
 before v1.26 does not read this field and silently treats a platform admin
 viewing a booking exactly like an organization member; this remains safe
-because the field is additive and optional. `features:flags` adds required
-`disputes: boolean`, mirroring `privateBookings` so the client gates its
-dispute UI on `DISPUTES_ENABLED`.
+because the field is additive and optional. `features:flags` added required
+`disputes: boolean`, mirroring `privateBookings`; the client no longer reads
+it for gating and always enables its dispute UI.
 
 **v1.27 — Promoter organizers, venue approval, statement data.** The new
 `venueConsents` table stores `opportunityId`, `venueId`, `venueOrganizationId`,
@@ -968,7 +956,7 @@ withdrawn | revoked`), optional `message`, optional `note`, optional
 `convex/lib/venueConsentStatus.ts` allows `pending` to transition to
 `granted`, `declined`, or `withdrawn`, and `granted` to transition to
 `revoked` or `withdrawn`; `declined`, `withdrawn`, and `revoked` are terminal.
-`venueConsents:request` is a Mutation gated by `PROMOTERS_ENABLED`; an
+`venueConsents:request` is a Mutation; an
 organization owner/manager requests approval for a draft opportunity at a
 verified venue managed by a different organization. One active (`pending`
 or `granted`) consent is allowed per opportunity; `currentConsentFor` checks
@@ -1010,9 +998,9 @@ the initial scan reaches 1000 payouts, before filtering by status and date.
 `financeActions:exportStatement` adds `transactions`, the structured rows
 used to generate its `csv`, and `totalsByKind`, per-kind `amountMinor`
 subtotals and `count` values, alongside the existing `csv`, `rows`, and
-`truncated` fields. `features:flags` adds required `promoters: boolean`,
-mirroring `disputes` so the client gates its promoter-organizer and
-venue-approval UI on `PROMOTERS_ENABLED`.
+`truncated` fields. `features:flags` added required `promoters: boolean`,
+mirroring `disputes`; the client no longer reads it for gating and always
+enables its promoter-organizer and venue-approval UI.
 
 **v1.28 — Launch readiness.** The new public Query
 `features:fees({ organizationId? })` returns
@@ -1022,7 +1010,7 @@ ticketingFeeFixedMinor: number, configured: boolean }`.
 `organizerAgreementAccepted: boolean`; the stored application payload adds
 optional `organizerAgreementAcceptedAt`, a timestamp in UTC milliseconds
 since epoch. This release adds ops/docs/legal scaffolding: the internal
-`admin:opsHealth` Query and `emails:sendTest` Action provide ops diagnostics,
+`emails:sendTest` Action provides an email smoke test,
 static legal pages provide placeholders for counsel's text, and environment
 and launch-readiness docs record the rollout checks. No money-affecting
 behavior changed.
@@ -1047,9 +1035,35 @@ is ready. `gigs.js:resolvePublic` adds optional `ticketSeller` to its
 nullable `GigPayload` return. Cancel/delete rules remain consistent with
 v1.23: band-hosted paid-gig cancellation reuses the same
 `cancelTicketSalesForGig` refund path, resolved against the band's seller
-instead of the organization's. `TICKETS_ENABLED` gates every seller; band
-sellers additionally require `flag("BAND_GIG_WRITES", true)` on `reserve`
-and `startCheckout` only, never on refunds.
+instead of the organization's. Reservations, Checkout, and refunds are
+enabled for both seller kinds.
+
+**v1.30 — backend cleanup.** Removed these obsolete functions and maintenance
+paths: `bands:setBandPhoto` and `bands:clearBandPhoto` (the client uses
+`bands:setBandAvatar` and `bands:setBandBanner`); `reviews:hide`;
+`admin:opsHealth`; `admin:revokePlatformAdmin`; `devTools:shiftBookingStart`;
+and every `migrations:*` function (`migrations:backfillVenueLocationPrivacy`,
+`migrations:backfillGigProjects`, `migrations:backfillBandHasClip`,
+`migrations:backfillGigDiscoveryListingReady`, `migrations:runReleaseBackfills`,
+`migrations:runDiscoveryReadinessBackfills`, `migrations:releaseBackfillStatus`,
+and `migrations:run`). The release and discovery-readiness backfills completed
+on prod on 2026-09-04; their runner machinery has been removed, including the
+"apply release backfills" cron in `convex/crons.ts`,
+`tool/run_release_backfills.mjs`, and the `npm run backfill:release` script.
+The `@convex-dev/migrations` component remains installed in
+`convex/convex.config.ts` for future use. Retired `PRIVATE_BOOKINGS_ENABLED`,
+`TICKETS_ENABLED`, `PAYMENTS_ENABLED`, `DISPUTES_ENABLED`, `PROMOTERS_ENABLED`,
+and `BAND_GIG_WRITES`: private bookings, ticket sales, Stripe non-`GET` calls,
+disputes, promoter/venue-consent flows, and band gig writes are now
+unconditional, with no feature gate or rollback flag. `features:flags` keeps
+the same six required boolean fields (`privateBookings`, `tickets`, `payments`,
+`bandGigWrites`, `disputes`, `promoters`), each now hardcoded `true`;
+`gigs:writePolicy` always returns `{ bandGigWrites: true }`. The Flutter client
+no longer calls either query and always behaves as if all six features are
+enabled. `RESEND_SEND_ENABLED` is the only remaining backend feature flag.
+`bands.imageStorageId` remains an optional legacy field used by `heroUrl` and
+as the fallback for `avatarUrl`/`bannerUrl` when their newer storage fields are
+absent; a future change will backfill avatar/banner before dropping it.
 
 ## Reconciliation
 
@@ -1293,8 +1307,6 @@ Verified against the current source as of v1.17; these deployed, client-required
 | `media:deleteMedia`                     | `{ mediaId }`                                                                                                                                                                                                        | `null`                          | requireBandAdmin of the media's band; deletes the row only — the blob stays and is reclaimed later by `media:sweepOrphanBlobs`, so a shared or missing blob can never wedge row deletion. Repacks the band's whole order to 0..n-1, clears the hero reference when applicable, promotes the next video when the pinned one is deleted, and transactionally recomputes `bands.hasClip` after a video deletion.                                                                                                                    |
 | `media:pinMedia`                        | `{ mediaId }`                                                                                                                                                                                                        | `null`                          | requireBandAdmin of the media's band; video only; unpins siblings.                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `media:moveMedia`                       | `{ mediaId, direction: "up"\|"down" }`                                                                                                                                                                               | `null`                          | requireBandAdmin of the media's band; swaps `order` with the adjacent row in the band's single global list, which may be of the other kind; no-op at ends.                                                                                                                                                                                                                                                                                                                                                                       |
-| `bands:setBandPhoto`                    | `{ bandId, mediaId }`                                                                                                                                                                                                | `null`                          | requireBandAdmin(bandId); media must be a photo belonging to that band.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `bands:clearBandPhoto`                  | `{ bandId }`                                                                                                                                                                                                         | `null`                          | requireBandAdmin(bandId); clears `imageStorageId` without deleting the blob.                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 The gig-project mutation family is admin-only: `gigs:createDraft`,
 `gigs:saveDraft`, `gigs:addPerformer`, `gigs:updatePerformer`,
@@ -1431,16 +1443,17 @@ bandId)`. Its permitted live writers are `interactions:toggleFollow` (±1 with
   `(title, startsAt, venueId)` through the `by_title` index and takes real
   operator-supplied gig details. It is not a seeder and shares nothing with
   `seed:seedDemo`.
-- The v1.14 widen phase mounts `@convex-dev/migrations` and keeps
-  `migrations:backfillGigProjects` idempotent while old gig rows exist. Run it
-  through the component runner after deploying the optional columns and new
-  tables; verify completion before a later change tightens those optional
-  fields. Historical one-shot mappings remain documented in
-  [docs/history/legacy-mapping.md](history/legacy-mapping.md).
-- The v1.15 widen phase adds idempotent
-  `migrations:backfillBandHasClip` and
-  `migrations:backfillGigDiscoveryListingReady`; the latter defaults missing
-  projects or ambiguous legacy ownership to false. Run them after the gig
-  project backfill through `migrations:runDiscoveryReadinessBackfills`, then
-  verify completion before tightening both optional stored fields. See
-  [docs/discovery-policy.md](discovery-policy.md) for the operational order.
+- The v1.14 widen phase mounted `@convex-dev/migrations` and deployed optional
+  columns and new tables so legacy gig rows remained readable while the
+  idempotent gig-project backfill ran; it completed on prod on 2026-09-04.
+  The component remains installed for future use, and the optional fields and
+  lifecycle fallback remain for compatibility pending a separate narrowing
+  change. Historical one-shot legacy-data mappings supported this widen phase
+  and are no longer needed now that the backfill is complete.
+- The v1.15 widen phase kept `bands.hasClip` and `gigs.discoveryListingReady`
+  optional while their idempotent backfills ran after the gig-project backfill;
+  missing projects or ambiguous legacy ownership defaulted listing readiness
+  to false. These backfills completed on prod on 2026-09-04; the optional fields
+  and ineligible-value fallbacks remain for compatibility pending a separate
+  narrowing change. See [docs/discovery-policy.md](discovery-policy.md) for the
+  completed rollout's context.

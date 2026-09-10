@@ -12,9 +12,11 @@ import {
   internalQuery,
   type QueryCtx,
 } from "./_generated/server";
-import { appBaseUrl, flag } from "./lib/env";
+import { appBaseUrl } from "./lib/env";
 import { feedCutoff, requireUser } from "./lib/helpers";
 import {
+  isAlreadyCompletedSession,
+  isAlreadyExpiredSession,
   StripeApiError,
   stripeIdempotencyKey,
   stripeRequest,
@@ -214,27 +216,6 @@ export const markCancelled = internalMutation({
   },
 });
 
-function isAlreadyExpiredSession(error: unknown): boolean {
-  if (!(error instanceof StripeApiError)) return false;
-  return (
-    /\bsession\b[\s\S]*\b(?:already|status|is|has)\b[\s\S]*\bexpired\b/i.test(
-      error.message,
-    ) || /^(?:checkout_)?session_(?:already_)?expired$/.test(error.code ?? "")
-  );
-}
-
-function isAlreadyCompletedSession(error: unknown): boolean {
-  if (!(error instanceof StripeApiError)) return false;
-  return (
-    /\bsession\b[\s\S]*\b(?:already|status|is|has)\b[\s\S]*\b(?:complete(?:d)?|paid)\b/i.test(
-      error.message,
-    ) ||
-    /^(?:checkout_)?session_(?:already_)?(?:complete(?:d)?|paid)$/.test(
-      error.code ?? "",
-    )
-  );
-}
-
 async function expireCheckoutSession(
   sessionId: string,
   stripeAccountId: string,
@@ -258,16 +239,10 @@ export const startCheckout = action({
   args: { orderId: v.id("ticketOrders") },
   returns: v.object({ url: v.string(), sessionId: v.string() }),
   handler: async (ctx, args): Promise<{ url: string; sessionId: string }> => {
-    if (!flag("TICKETS_ENABLED", false)) {
-      throw new Error("Ticket sales are not open yet");
-    }
     const context: Infer<typeof checkoutContextValidator> = await ctx.runQuery(
       internal.ticketCheckout.loadCheckoutContext,
       args,
     );
-    if (context.sellerKind === "band" && !flag("BAND_GIG_WRITES", true)) {
-      throw new Error("Bands are not selling tickets right now");
-    }
     const { order } = context;
     if (order.attempt >= 3) {
       throw new Error(

@@ -5,20 +5,15 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api as generatedApi, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { readFeedCutoff } from "./clock";
-import { flag } from "./lib/env";
 import { ArtistApplicationStatus } from "./lib/opportunityStatus";
+import { setupOrganization as setupOrganizationFixture } from "./orgFixtures.test-helpers";
 import schema from "./schema";
 import type * as readModule from "./talentOpportunitiesRead";
-
-vi.mock("./lib/env", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./lib/env")>();
-  return { ...actual, flag: vi.fn(actual.flag) };
-});
 
 // Keep the new module typed locally until the integration lane runs codegen.
 const api = generatedApi as typeof generatedApi &
   ApiFromModules<{ talentOpportunitiesRead: typeof readModule }>;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-09-04T12:00:00Z");
 const paginationOpts = { numItems: 100, cursor: null };
@@ -26,8 +21,6 @@ const paginationOpts = { numItems: 100, cursor: null };
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  vi.mocked(flag).mockReset();
-  vi.mocked(flag).mockImplementation((_name, defaultValue) => defaultValue);
 });
 
 afterEach(() => {
@@ -37,58 +30,36 @@ afterEach(() => {
 
 async function setupOrganization() {
   const t = convexTest(schema, modules);
-  const asOwner = t.withIdentity({ subject: "read_owner" });
-  const asManager = t.withIdentity({ subject: "read_manager" });
-  const asFinance = t.withIdentity({ subject: "read_finance" });
-  const asDoor = t.withIdentity({ subject: "read_door" });
-  const asArtist = t.withIdentity({ subject: "read_artist" });
-  const asOtherArtist = t.withIdentity({ subject: "read_other_artist" });
-  const asStranger = t.withIdentity({ subject: "read_stranger" });
-  const ids = await t.run(async (ctx) => {
-    const userIds: Id<"users">[] = [];
-    for (const actor of [
-      "owner",
-      "manager",
-      "finance",
-      "door",
-      "artist",
-      "other_artist",
-      "stranger",
-    ]) {
-      userIds.push(
-        await ctx.db.insert("users", {
-          clerkId: `read_${actor}`,
-          name: actor,
-          email: `${actor}@opportunity.test`,
-          genres: [],
-          attendedCount: 0,
-        }),
-      );
-    }
-    const [ownerId, managerId, financeId, doorId, artistId, otherArtistId] =
-      userIds;
-    const organizationId = await ctx.db.insert("organizations", {
+  const fixture = await setupOrganizationFixture(t, {
+    prefix: "read",
+    now: NOW,
+    roles: [
+      ...(["owner", "manager", "finance", "door"] as const).map((role) => ({
+        label: role,
+        role,
+        email: `${role}@opportunity.test`,
+      })),
+      ...["artist", "other_artist", "stranger"].map((label) => ({
+        label,
+        role: null,
+        email: `${label}@opportunity.test`,
+      })),
+    ],
+    organization: {
       name: "Opportunity Collective",
       slug: "opportunity-collective",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: ownerId,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    for (const [role, userId] of [
-      ["owner", ownerId],
-      ["manager", managerId],
-      ["finance", financeId],
-      ["door", doorId],
-    ] as const) {
-      await ctx.db.insert("organizationMembers", {
-        organizationId,
-        userId,
-        role,
-        createdAt: NOW,
-      });
-    }
+    },
+  });
+  const asOwner = fixture.as("owner");
+  const asManager = fixture.as("manager");
+  const asFinance = fixture.as("finance");
+  const asDoor = fixture.as("door");
+  const asArtist = fixture.as("artist");
+  const asOtherArtist = fixture.as("other_artist");
+  const asStranger = fixture.as("stranger");
+  const ids = await t.run(async (ctx) => {
+    const { organizationId, users } = fixture;
+    const { owner: ownerId, artist: artistId, other_artist: otherArtistId } = users;
     const venueFields = {
       name: "Neighborhood Hall",
       area: "Oakland",
@@ -1103,62 +1074,24 @@ function expectNoAddressFields(value: unknown) {
 }
 
 describe("private request discovery", () => {
-  test("band admins can browse private requests without any address fields", async () => {
+  test("private browse rejects anonymous viewers and non-band-admins", async () => {
     const f = await setupPrivateRequest();
-    vi.mocked(flag).mockReturnValue(true);
-    await f.seedInvite(f.opportunityId, f.otherBandId);
-    const result = await f.asOtherArtist.query(
-      api.talentOpportunitiesRead.browse,
-      { paginationOpts, mode: "privateBooking", bandId: f.otherBandId },
-    );
-    expect(result.page).toHaveLength(1);
-    expect(result.page[0]).toMatchObject({
-      opportunity: {
-        _id: f.opportunityId,
-        venue: null,
-        privateEvent: true,
-        area: "Rockridge, Oakland",
-      },
-      invited: true,
-      myApplicationStatus: null,
-    });
-    expectNoAddressFields(result.page[0]);
-    expect(flag).toHaveBeenCalledWith("PRIVATE_BOOKINGS_ENABLED", false);
+    for (const caller of [
+      f.t,
+      f.asStranger,
+      f.asArtist,
+      f.asOwner,
+      f.t.withIdentity({ subject: "no_user_record" }),
+    ]) {
+      await expect(
+        caller.query(api.talentOpportunitiesRead.browse, {
+          paginationOpts,
+          mode: "privateBooking",
+          bandId: f.otherBandId,
+        }),
+      ).rejects.toThrow("Sign in as a band admin to see private requests");
+    }
   });
-
-  test("band admins get an empty completed page when private bookings are disabled", async () => {
-    const f = await setupPrivateRequest();
-    vi.mocked(flag).mockReturnValue(false);
-    await expect(
-      f.asOtherArtist.query(api.talentOpportunitiesRead.browse, {
-        paginationOpts,
-        mode: "privateBooking",
-      }),
-    ).resolves.toEqual({ page: [], isDone: true, continueCursor: "" });
-  });
-
-  test.each([false, true])(
-    "private browse rejects anonymous viewers and non-band-admins when the flag is %s",
-    async (enabled) => {
-      const f = await setupPrivateRequest();
-      vi.mocked(flag).mockReturnValue(enabled);
-      for (const caller of [
-        f.t,
-        f.asStranger,
-        f.asArtist,
-        f.asOwner,
-        f.t.withIdentity({ subject: "no_user_record" }),
-      ]) {
-        await expect(
-          caller.query(api.talentOpportunitiesRead.browse, {
-            paginationOpts,
-            mode: "privateBooking",
-            bandId: f.otherBandId,
-          }),
-        ).rejects.toThrow("Sign in as a band admin to see private requests");
-      }
-    },
-  );
 
   test("any admin membership grants private browse even when the first membership is a regular member", async () => {
     const f = await setupPrivateRequest();
@@ -1169,7 +1102,6 @@ describe("private request discovery", () => {
         role: "admin",
       }),
     );
-    vi.mocked(flag).mockReturnValue(true);
     const result = await f.asArtist.query(api.talentOpportunitiesRead.browse, {
       paginationOpts,
       mode: "privateBooking",
@@ -1179,22 +1111,31 @@ describe("private request discovery", () => {
     ]);
   });
 
-  test.each([undefined, "publicEvent"] as const)(
-    "public browse with mode %s stays anonymous and does not check the private flag",
-    async (mode) => {
-      const f = await setupOrganization();
-      const { opportunityId } = await f.createOpen();
-      vi.mocked(flag).mockClear();
-      const result = await f.t.query(api.talentOpportunitiesRead.browse, {
-        paginationOpts,
-        mode,
-      });
-      expect(result.page.map((item) => item.opportunity._id)).toEqual([
-        opportunityId,
-      ]);
-      expect(flag).not.toHaveBeenCalled();
-    },
-  );
+  test("private browse returns masked location details for an uninvited band admin", async () => {
+    const {
+      asOtherArtist: asArtist,
+      otherBandId: bandId,
+      opportunityId,
+    } = await setupPrivateRequest();
+    const result = await asArtist.query(api.talentOpportunitiesRead.browse, {
+      paginationOpts,
+      mode: "privateBooking",
+      bandId,
+    });
+    expect(result.page).toMatchObject([
+      {
+        invited: false,
+        myApplicationStatus: null,
+        opportunity: {
+          _id: opportunityId,
+          privateEvent: true,
+          venue: null,
+          area: "Rockridge, Oakland",
+        },
+      },
+    ]);
+    expectNoAddressFields(result);
+  });
 
   test("private resolution requires membership in the specifically invited band and its band ID", async () => {
     const f = await setupPrivateRequest();

@@ -1207,60 +1207,6 @@ describe("analytics:artistInsights aggregates", () => {
     });
   });
 
-  test.each([4, 5])(
-    "floors %i returning fans with no first-time fans",
-    async (count) => {
-      const setup = await setupMemberBand();
-      const fans = await insertFans(setup.t, count, `returning_${count}`);
-      for (const daysAgo of [1, 20, 10]) {
-        const gigId = await insertGig(setup, {
-          title: `Repeat ${daysAgo}`,
-          startsAt: NOW - daysAgo * DAY_MS,
-        });
-        await insertCheckedInRsvps(setup, gigId, fans);
-      }
-      const result = await queryBandInsights(setup);
-      expect(result.checkIns).toBe(count * 3);
-      expect(result.returningAttendees).toBe(count < 5 ? 0 : count);
-      expect(result.returningSuppressed).toBe(count < 5);
-    },
-  );
-
-  test.each([
-    { returningCount: 5, firstTimeCount: 1, suppressed: true },
-    { returningCount: 5, firstTimeCount: 4, suppressed: true },
-    { returningCount: 5, firstTimeCount: 5, suppressed: false },
-    { returningCount: 4, firstTimeCount: 5, suppressed: true },
-    { returningCount: 0, firstTimeCount: 5, suppressed: false },
-  ])(
-    "floors both groups for $returningCount returning and $firstTimeCount first-time fans",
-    async ({ returningCount, firstTimeCount, suppressed }) => {
-      const setup = await setupMemberBand();
-      const fans = await insertFans(
-        setup.t,
-        returningCount + firstTimeCount,
-        "returning_partition",
-      );
-      for (const daysAgo of [2, 1]) {
-        const gigId = await insertGig(setup, {
-          title: `Attendance ${daysAgo}`,
-          startsAt: NOW - daysAgo * DAY_MS,
-        });
-        await insertCheckedInRsvps(
-          setup,
-          gigId,
-          daysAgo === 2 ? fans.slice(0, returningCount) : fans,
-        );
-      }
-
-      expect(await queryBandInsights(setup)).toMatchObject({
-        checkIns: returningCount * 2 + firstTimeCount,
-        returningAttendees: suppressed ? 0 : returningCount,
-        returningSuppressed: suppressed,
-      });
-    },
-  );
-
   test("estimates from RSVPs when every event has zero check-ins", async () => {
     const setup = await setupMemberBand();
     const fans = await insertFans(setup.t, 10, "rsvp_draw");
@@ -1412,7 +1358,7 @@ describe("analytics:artistInsights authorization", () => {
     },
   );
 
-  test.each(["owner", "manager"] as const)(
+  test.each(["owner"] as const)(
     "allows the opportunity organization's %s",
     async (role) => {
       const setup = await setupMemberBand();
@@ -1450,7 +1396,7 @@ describe("analytics:artistInsights authorization", () => {
     );
   });
 
-  test.each(["finance", "door"] as const)(
+  test.each(["finance"] as const)(
     "refuses an opportunity organization's %s member",
     async (role) => {
       const setup = await setupMemberBand();

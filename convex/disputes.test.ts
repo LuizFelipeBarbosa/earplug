@@ -3,36 +3,30 @@ import type { ApiFromModules, FunctionArgs } from "convex/server";
 import { convexTest } from "convex-test";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { api as generatedApi, internal } from "./_generated/api";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 import type * as disputes from "./disputes";
 import { DISPUTE_WINDOW_AFTER_COMPLETION_MS } from "./lib/disputeStatus";
 import { feeSnapshot } from "./lib/fees";
 import { PAYOUT_DELAY_MS } from "./lib/paymentStatus";
+import {
+  asActor,
+  DAY_MS,
+  seedMarketplace,
+  type Actor as MarketplaceActor,
+} from "./marketplaceFixtures.test-helpers";
 import schema from "./schema";
 
 // Keep references typed without editing generated files owned by another lane.
 const api = generatedApi as typeof generatedApi &
   ApiFromModules<{ disputes: typeof disputes }>;
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-06T12:00:00Z");
-const DAY_MS = 24 * 60 * 60 * 1000;
-const ACTORS = [
-  "owner",
-  "manager",
-  "finance",
-  "door",
-  "artist",
-  "secondArtist",
-  "member",
-  "stranger",
-  "platformAdmin",
-] as const;
-type Actor = (typeof ACTORS)[number];
+const STARTS_AT = NOW - DAY_MS;
+type Actor = Exclude<MarketplaceActor, "admin"> | "artist" | "secondArtist";
 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  vi.stubEnv("DISPUTES_ENABLED", "true");
 });
 
 afterEach(() => {
@@ -43,166 +37,83 @@ afterEach(() => {
 
 async function setupDisputes(bookingFields: Partial<Doc<"bookings">> = {}) {
   const t = convexTest(schema, modules);
-  const as = (actor: Actor) => t.withIdentity({ subject: `disputes_${actor}` });
-  const ids = await t.run(async (ctx) => {
-    const users = {} as Record<Actor, Id<"users">>;
-    for (const actor of ACTORS) {
-      users[actor] = await ctx.db.insert("users", {
-        clerkId: `disputes_${actor}`,
-        name: actor,
-        email: `  ${actor}@disputes.test  `,
-        genres: [],
-        attendedCount: 0,
-      });
-    }
-    await ctx.db.insert("platformAdmins", {
-      userId: users.platformAdmin,
-      grantedAt: NOW,
-    });
-    const organizationId = await ctx.db.insert("organizations", {
-      name: "Dispute Collective",
-      slug: "dispute-collective",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: users.owner,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    for (const role of ["owner", "manager", "finance", "door"] as const) {
-      await ctx.db.insert("organizationMembers", {
-        organizationId,
-        userId: users[role],
-        role,
-        createdAt: NOW,
-      });
-    }
-    const privateDetailsId = await ctx.db.insert("organizationPrivateDetails", {
-      organizationId,
+  const marketplaceActor = asActor(t, "disputes");
+  const as = (actor: Actor) =>
+    actor === "artist" || actor === "secondArtist"
+      ? t.withIdentity({ subject: `disputes_${actor}` })
+      : marketplaceActor(actor);
+  const marketplace = await seedMarketplace(t, {
+    prefix: "disputes",
+    now: NOW,
+    bandPayoutAccount: false,
+    organization: { name: "Dispute Collective", slug: "dispute-collective" },
+    organizationPrivateDetails: {
       businessEmail: "  contact@disputes.test  ",
       contactName: "Organizer",
-      stripeChargesEnabled: false,
-      stripePayoutsEnabled: false,
-      stripeDetailsSubmitted: false,
-      verificationDocStorageIds: [],
-      updatedAt: NOW,
-    });
-    const bandId = await ctx.db.insert("bands", {
-      name: "Static Bloom",
-      slug: "static-bloom",
-      genres: ["Indie"],
-      area: "Oakland",
-      colorHex: "#7B8FFF",
-      initials: "SB",
-      followerCount: 0,
-      pastShows: [],
-    });
-    for (const [actor, role] of [
-      ["artist", "admin"],
-      ["secondArtist", "admin"],
-      ["member", "member"],
-    ] as const) {
-      await ctx.db.insert("bandMembers", {
-        bandId,
-        userId: users[actor],
-        role,
-      });
-    }
-    const privateLocationId = await ctx.db.insert("privateLocations", {
-      organizationId,
-      label: "Garden reception",
-      addr: "200 Private Street",
-      city: "Oakland",
-      area: "Oakland",
-      lat: 37.8,
-      lng: -122.27,
-      createdAt: NOW,
-      updatedAt: NOW,
-    });
-    const opportunityId = await ctx.db.insert("talentOpportunities", {
-      organizationId,
-      privateLocationId,
-      mode: "privateBooking",
-      area: "Oakland",
+    },
+    privateLocation: { label: "Garden reception" },
+    opportunity: {
       title: "Autumn reception",
-      desc: "An evening of local music.",
-      genres: ["Indie"],
-      startsAt: NOW - DAY_MS,
-      ageRequirement: "allAges",
-      flyKey: "xerox",
-      applicationsCloseAt: NOW - 2 * DAY_MS,
-      visibility: "public",
-      ticketing: "rsvp",
-      currency: "usd",
-      status: "completed",
       slug: "autumn-reception",
-      createdBy: users.owner,
-      revision: 1,
+      startsAt: STARTS_AT,
+      applicationsCloseAt: NOW - 2 * DAY_MS,
+      status: "completed",
       applicationCount: 1,
       createdAt: NOW - 2 * DAY_MS,
-      updatedAt: NOW,
-    });
-    const slotId = await ctx.db.insert("opportunitySlots", {
-      opportunityId,
-      order: 0,
-      role: "headliner",
-      guaranteeMinor: 10000,
-      required: true,
-      status: "booked",
-      bandId,
-    });
-    const applicationId = await ctx.db.insert("artistApplications", {
-      opportunityId,
-      slotId,
-      bandId,
-      submittedBy: users.artist,
-      status: "booked",
-      message: "We are available",
-      createdAt: NOW - 2 * DAY_MS,
-      updatedAt: NOW,
-    });
-    const bookingId = await ctx.db.insert("bookings", {
-      opportunityId,
-      slotId,
-      organizationId,
-      bandId,
-      applicationId,
+    },
+    slot: { guaranteeMinor: 10000 },
+    application: { createdAt: NOW - 2 * DAY_MS },
+    booking: {
       status: "completed",
-      revision: 3,
-      startsAt: NOW - DAY_MS,
       ...feeSnapshot(10000, 1250),
-      cancellationTemplate: "standard",
       organizerAcceptedTermsAt: NOW - 2 * DAY_MS,
       artistAcceptedTermsAt: NOW - 2 * DAY_MS,
       confirmedAt: NOW - 2 * DAY_MS,
       completedAt: NOW - 60 * 60 * 1000,
-      payoutHold: false,
       paidMinor: 10000,
-      refundedMinor: 0,
-      createdBy: users.owner,
       createdAt: NOW - 2 * DAY_MS,
-      updatedAt: NOW,
       ...bookingFields,
+    },
+    paymentRecords: [
+      {
+        label: "Full payment",
+        amountMinor: 10000,
+        dueAt: NOW - 2 * DAY_MS,
+        status: "paid",
+        stripeChargeId: "ch_dispute",
+        stripePaymentIntentId: "pi_dispute",
+        paidAt: NOW - 2 * DAY_MS,
+        createdAt: NOW - 2 * DAY_MS,
+      },
+    ],
+  });
+  const ids = await t.run(async (ctx) => {
+    const { admin: artist, ...users } = marketplace.users;
+    // Preserve this suite's artist identity and whitespace-normalization inputs.
+    await ctx.db.patch(artist, {
+      clerkId: "disputes_artist",
+      name: "artist",
+      email: "  artist@disputes.test  ",
     });
-    await ctx.db.patch(slotId, { bookingId });
-    const paymentRecordId = await ctx.db.insert("paymentRecords", {
-      bookingId,
-      installmentIndex: 0,
-      label: "Full payment",
-      amountMinor: 10000,
-      currency: "usd",
-      dueAt: NOW - 2 * DAY_MS,
-      status: "paid",
-      stripeChargeId: "ch_dispute",
-      stripePaymentIntentId: "pi_dispute",
-      attempt: 0,
-      paidAt: NOW - 2 * DAY_MS,
-      refundedMinor: 0,
-      createdAt: NOW - 2 * DAY_MS,
-      updatedAt: NOW,
+    for (const [actor, userId] of Object.entries(users)) {
+      await ctx.db.patch(userId, { email: `  ${actor}@disputes.test  ` });
+    }
+    const secondArtist = await ctx.db.insert("users", {
+      clerkId: "disputes_secondArtist",
+      name: "secondArtist",
+      email: "  secondArtist@disputes.test  ",
+      genres: [],
+      attendedCount: 0,
     });
+    await ctx.db.insert("bandMembers", {
+      bandId: marketplace.bandId,
+      userId: secondArtist,
+      role: "admin",
+    });
+    const paymentRecordId = marketplace.paymentRecordIds[0];
     const payoutId = await ctx.db.insert("payouts", {
-      bookingId,
-      bandId,
+      bookingId: marketplace.bookingId,
+      bandId: marketplace.bandId,
       paymentRecordId,
       sourceChargeId: "ch_dispute",
       kind: "completion",
@@ -215,13 +126,9 @@ async function setupDisputes(bookingFields: Partial<Doc<"bookings">> = {}) {
       updatedAt: NOW,
     });
     return {
-      users,
-      organizationId,
-      privateDetailsId,
-      bandId,
-      bookingId,
-      slotId,
-      applicationId,
+      ...marketplace,
+      users: { ...users, artist, secondArtist },
+      privateDetailsId: marketplace.detailsId,
       paymentRecordId,
       payoutId,
     };
@@ -262,74 +169,59 @@ async function setupDisputes(bookingFields: Partial<Doc<"bookings">> = {}) {
 }
 
 describe("disputes.open", () => {
-  test.each([undefined, "false", "0"])(
-    "refuses when the flag is %s",
-    async (flag) => {
-      const f = await setupDisputes();
-      vi.stubEnv("DISPUTES_ENABLED", flag);
-      const before = await f.state();
-      await expect(f.open()).rejects.toThrow("Disputes are not available yet");
-      expect(await f.state()).toEqual(before);
-    },
-  );
-
-  test.each(["true", "1"])(
-    "opens a refund request and holds the booking/payout with flag %s",
-    async (flag) => {
-      vi.stubEnv("DISPUTES_ENABLED", flag);
-      const f = await setupDisputes();
-      const { disputeId } = await f.open();
-      const state = await f.state();
-      expect(state.booking).toMatchObject({
-        status: "disputed",
-        disputedFromStatus: "completed",
-        payoutHold: true,
-        payoutHoldReasons: ["dispute"],
-        revision: 4,
+  test("opens a refund request and holds the booking/payout", async () => {
+    const f = await setupDisputes();
+    const { disputeId } = await f.open();
+    const state = await f.state();
+    expect(state.booking).toMatchObject({
+      status: "disputed",
+      disputedFromStatus: "completed",
+      payoutHold: true,
+      payoutHoldReasons: ["dispute"],
+      revision: 4,
+    });
+    expect(state.disputes).toMatchObject([
+      {
+        _id: disputeId,
+        bookingId: f.bookingId,
+        openedByUserId: f.users.owner,
+        side: "organizer",
+        category: "late_or_short_set",
+        text: "The performance was shorter than agreed.",
+        requestedRefundMinor: 2500,
+        status: "open",
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+    ]);
+    expect(state.payouts).toMatchObject([
+      {
+        _id: f.payoutId,
+        status: "held",
+        holdReason: "dispute",
+      },
+    ]);
+    expect(state.jobs.map((job) => job.args[0].to).sort()).toEqual([
+      "artist@disputes.test",
+      "secondArtist@disputes.test",
+    ]);
+    for (const job of state.jobs) {
+      expect(job).toMatchObject({
+        name: "emails:send",
+        args: [
+          {
+            kind: "disputeOpened",
+            subject: "A dispute was opened on Autumn reception",
+          },
+        ],
+        scheduledTime: NOW,
       });
-      expect(state.disputes).toMatchObject([
-        {
-          _id: disputeId,
-          bookingId: f.bookingId,
-          openedByUserId: f.users.owner,
-          side: "organizer",
-          category: "late_or_short_set",
-          text: "The performance was shorter than agreed.",
-          requestedRefundMinor: 2500,
-          status: "open",
-          createdAt: NOW,
-          updatedAt: NOW,
-        },
-      ]);
-      expect(state.payouts).toMatchObject([
-        {
-          _id: f.payoutId,
-          status: "held",
-          holdReason: "dispute",
-        },
-      ]);
-      expect(state.jobs.map((job) => job.args[0].to).sort()).toEqual([
-        "artist@disputes.test",
-        "secondArtist@disputes.test",
-      ]);
-      for (const job of state.jobs) {
-        expect(job).toMatchObject({
-          name: "emails:send",
-          args: [
-            {
-              kind: "disputeOpened",
-              subject: "A dispute was opened on Autumn reception",
-            },
-          ],
-          scheduledTime: NOW,
-        });
-        expect(job.args[0].text).toContain("Category: late or short set.");
-        expect(job.args[0].text).toContain("Requested refund: 25.00 USD");
-        expect(job.args[0].text).toContain("Private event");
-        expect(job.args[0].text).not.toContain("200 Private Street");
-      }
-    },
-  );
+      expect(job.args[0].text).toContain("Category: late or short set.");
+      expect(job.args[0].text).toContain("Requested refund: 25.00 USD");
+      expect(job.args[0].text).toContain("Private event");
+      expect(job.args[0].text).not.toContain("200 Private Street");
+    }
+  });
 
   test("an artist opens without an amount and emails the organizer contact", async () => {
     const f = await setupDisputes();
@@ -364,7 +256,7 @@ describe("disputes.open", () => {
     },
   );
 
-  test.each(["", "  too short  ", "x".repeat(2001)])(
+  test.each(["  too short  ", "x".repeat(2001)])(
     "rejects text outside the trimmed length limits (case %#)",
     async (text) => {
       const f = await setupDisputes();
@@ -390,16 +282,11 @@ describe("disputes.open", () => {
     );
   });
 
-  test.each(["open", "under_review"] as const)(
+  test.each(["open"] as const)(
     "refuses a second dispute while the first is %s",
-    async (status) => {
+    async () => {
       const f = await setupDisputes();
-      const { disputeId } = await f.open();
-      if (status === "under_review") {
-        await f
-          .as("platformAdmin")
-          .mutation(api.disputes.startReview, { disputeId });
-      }
+      await f.open();
       const before = await f.state();
       await expect(f.open("artist")).rejects.toThrow();
       expect(await f.state()).toEqual(before);

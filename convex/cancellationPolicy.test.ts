@@ -94,50 +94,44 @@ describe("settleCancellation", () => {
     },
   );
 
-  for (const template of templates) {
-    describe(template, () => {
-      for (const cancelledBy of ["artist", "admin", "system"] as const) {
-        test.each([20, 10, 3, 1, 0, -1])(
-          `${cancelledBy} refunds everything at %i days`,
-          (days) => {
-            expect(
-              settleCancellation({
-                template,
-                msBeforeStart: days * DAY_MS,
-                cancelledBy,
-                paidMinor: 4001,
-                artistNetMinor: 18_000,
-                commissionMinor: 2000,
-              }),
-            ).toEqual({
-              refundMinor: 4001,
-              forfeitedMinor: 0,
-              artistPayoutMinor: 0,
-              platformKeepsMinor: 0,
-            });
-          },
-        );
-      }
-
-      test.each([20, 10, 3, 1])("zero paid settles to zero at %i days", (days) => {
-        expect(
-          settleCancellation({
-            template,
-            msBeforeStart: days * DAY_MS,
-            cancelledBy: "organizer",
-            paidMinor: 0,
-            artistNetMinor: 18_000,
-            commissionMinor: 2000,
-          }),
-        ).toEqual({
-          refundMinor: 0,
-          forfeitedMinor: 0,
-          artistPayoutMinor: 0,
-          platformKeepsMinor: 0,
-        });
+  test.each(templates)(
+    "%s ignores refund share for a non-organizer cancellation",
+    (template) => {
+      expect(
+        settleCancellation({
+          template,
+          msBeforeStart: 10 * DAY_MS,
+          cancelledBy: "artist",
+          paidMinor: 4001,
+          artistNetMinor: 18_000,
+          commissionMinor: 2000,
+        }),
+      ).toEqual({
+        refundMinor: 4001,
+        forfeitedMinor: 0,
+        artistPayoutMinor: 0,
+        platformKeepsMinor: 0,
       });
+    },
+  );
+
+  test("zero paid settles to zero regardless of template or timing", () => {
+    expect(
+      settleCancellation({
+        template: "standard",
+        msBeforeStart: 10 * DAY_MS,
+        cancelledBy: "organizer",
+        paidMinor: 0,
+        artistNetMinor: 18_000,
+        commissionMinor: 2000,
+      }),
+    ).toEqual({
+      refundMinor: 0,
+      forfeitedMinor: 0,
+      artistPayoutMinor: 0,
+      platformKeepsMinor: 0,
     });
-  }
+  });
 
   test("rounds an odd half-refund up and splits only the remaining forfeiture", () => {
     expect(

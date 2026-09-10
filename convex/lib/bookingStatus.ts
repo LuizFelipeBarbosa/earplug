@@ -35,6 +35,7 @@ export const BOOKING_TRANSITIONS: Record<
   withdrawn: [],
 };
 
+/** Shared transition-table check for status modules. */
 export function canTransition<T extends string>(
   table: Record<T, readonly T[]>,
   from: T,

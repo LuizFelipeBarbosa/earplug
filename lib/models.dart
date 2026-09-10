@@ -3,88 +3,17 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'app_links.dart';
+import 'data/json_coercion.dart';
 import 'date_names.dart';
 import 'money.dart';
 
-String _marketplaceString(Object? value) => value is String ? value : '';
-
-String? _marketplaceOptionalString(Object? value) =>
-    value is String ? value : null;
-
-int _marketplaceInt(Object? value) => _marketplaceOptionalInt(value) ?? 0;
-
-int? _marketplaceOptionalInt(Object? value) =>
-    value is num && value.isFinite ? value.toInt() : null;
-
-DateTime _marketplaceDate(Object? value) =>
-    _marketplaceOptionalDate(value) ?? DateTime.fromMillisecondsSinceEpoch(0);
-
-DateTime? _marketplaceOptionalDate(Object? value) {
-  final milliseconds = _marketplaceOptionalInt(value);
-  if (milliseconds == null ||
-      milliseconds < -8640000000000000 ||
-      milliseconds > 8640000000000000) {
-    return null;
-  }
-  return DateTime.fromMillisecondsSinceEpoch(milliseconds);
-}
-
-Map<String, dynamic> _marketplaceMap(Object? value) {
-  if (value is! Map) return const {};
-  return {
-    for (final entry in value.entries)
-      if (entry.key is String) entry.key as String: entry.value,
-  };
-}
-
-List<Map<String, dynamic>> _marketplaceMapList(Object? value) => [
-  if (value is List)
-    for (final item in value)
-      if (item is Map) _marketplaceMap(item),
-];
-
-List<String> _marketplaceStringList(Object? value) => [
-  if (value is List)
-    for (final item in value)
-      if (item is String) item,
-];
-
-LatLng _marketplacePoint(
+LatLng _pointFrom(
   Map<String, dynamic> json, {
   LatLng fallback = const LatLng(0, 0),
 }) => LatLng(
   json['lat'] is num ? (json['lat'] as num).toDouble() : fallback.latitude,
   json['lng'] is num ? (json['lng'] as num).toDouble() : fallback.longitude,
 );
-
-class FeatureFlags {
-  const FeatureFlags({
-    required this.privateBookings,
-    required this.tickets,
-    required this.payments,
-    required this.bandGigWrites,
-    this.disputes = false,
-    this.promoters = false,
-  });
-
-  final bool privateBookings;
-  final bool tickets;
-  final bool payments;
-  final bool bandGigWrites;
-  final bool disputes;
-  final bool promoters;
-
-  bool get bandTicketing => tickets && bandGigWrites;
-
-  factory FeatureFlags.fromJson(Map<String, dynamic> json) => FeatureFlags(
-    privateBookings: json['privateBookings'] == true,
-    tickets: json['tickets'] == true,
-    payments: json['payments'] == true,
-    bandGigWrites: json['bandGigWrites'] == true,
-    disputes: json['disputes'] == true,
-    promoters: json['promoters'] == true,
-  );
-}
 
 class FeeRates {
   const FeeRates({
@@ -100,9 +29,9 @@ class FeeRates {
   final bool configured;
 
   factory FeeRates.fromJson(Map<String, dynamic> json) => FeeRates(
-    bookingCommissionBps: _marketplaceInt(json['bookingCommissionBps']),
-    ticketingFeeBps: _marketplaceInt(json['ticketingFeeBps']),
-    ticketingFeeFixedMinor: _marketplaceInt(json['ticketingFeeFixedMinor']),
+    bookingCommissionBps: asFiniteInt(json['bookingCommissionBps']),
+    ticketingFeeBps: asFiniteInt(json['ticketingFeeBps']),
+    ticketingFeeFixedMinor: asFiniteInt(json['ticketingFeeFixedMinor']),
     configured: json['configured'] == true,
   );
 }
@@ -135,19 +64,19 @@ class PrivateLocation {
   final DateTime updatedAt;
 
   factory PrivateLocation.fromJson(Map<String, dynamic> json) {
-    final point = _marketplacePoint(json);
+    final point = _pointFrom(json);
     return PrivateLocation(
-      id: _marketplaceString(json['_id']),
-      organizationId: _marketplaceString(json['organizationId']),
-      label: _marketplaceString(json['label']),
-      addr: _marketplaceString(json['addr']),
-      city: _marketplaceString(json['city']),
-      area: _marketplaceString(json['area']),
+      id: asString(json['_id']),
+      organizationId: asString(json['organizationId']),
+      label: asString(json['label']),
+      addr: asString(json['addr']),
+      city: asString(json['city']),
+      area: asString(json['area']),
       lat: point.latitude,
       lng: point.longitude,
-      notes: _marketplaceOptionalString(json['notes']),
-      createdAt: _marketplaceDate(json['createdAt']),
-      updatedAt: _marketplaceDate(json['updatedAt']),
+      notes: asOptionalString(json['notes']),
+      createdAt: asDate(json['createdAt']),
+      updatedAt: asDate(json['updatedAt']),
     );
   }
 }
@@ -202,7 +131,7 @@ class ApproxLocation {
     LatLng fallbackPoint = const LatLng(0, 0),
     String fallbackLabel = '',
   }) => ApproxLocation(
-    centroid: _marketplacePoint(json, fallback: fallbackPoint),
+    centroid: _pointFrom(json, fallback: fallbackPoint),
     label: json['label'] is String ? json['label'] as String : fallbackLabel,
   );
 }
@@ -259,18 +188,18 @@ class Venue {
   LatLng? get exactPoint => exactAddress != null ? point : null;
 
   factory Venue.fromJson(Map<String, dynamic> json) {
-    final area = _marketplaceString(json['area']);
-    final addr = _marketplaceString(json['addr']);
-    final disclosedPoint = _marketplacePoint(json);
-    final description = _marketplaceOptionalString(json['description']);
+    final area = asString(json['area']);
+    final addr = asString(json['addr']);
+    final disclosedPoint = _pointFrom(json);
+    final description = asOptionalString(json['description']);
     final venueType = json['venueType'] is String
         ? VenueType.fromWire(json['venueType'])
         : null;
-    final capacityPublic = _marketplaceOptionalInt(json['capacityPublic']);
+    final capacityPublic = asOptionalFiniteInt(json['capacityPublic']);
     if (!json.containsKey('approxLocation')) {
       return Venue(
-        id: _marketplaceString(json['_id']),
-        name: _marketplaceString(json['name']),
+        id: asString(json['_id']),
+        name: asString(json['name']),
         area: area,
         addr: addr,
         point: disclosedPoint,
@@ -281,27 +210,27 @@ class Venue {
     }
 
     final approx = ApproxLocation.fromJson(
-      _marketplaceMap(json['approxLocation']),
+      asFilteredMap(json['approxLocation']),
       fallbackPoint: disclosedPoint,
       fallbackLabel: area,
     );
-    final exactAddress = _marketplaceOptionalString(json['exactAddr']);
+    final exactAddress = asOptionalString(json['exactAddr']);
     return Venue(
-      id: _marketplaceString(json['_id']),
-      name: _marketplaceString(json['name']),
+      id: asString(json['_id']),
+      name: asString(json['name']),
       area: area,
       addr: addr.isEmpty ? exactAddress ?? approx.label : addr,
       point: exactAddress == null ? approx.centroid : disclosedPoint,
-      slug: _marketplaceOptionalString(json['slug']),
+      slug: asOptionalString(json['slug']),
       description: description,
       venueType: venueType,
       capacityPublic: capacityPublic,
       approx: approx,
-      neighborhood: _marketplaceOptionalString(json['neighborhood']),
-      city: _marketplaceOptionalString(json['city']),
+      neighborhood: asOptionalString(json['neighborhood']),
+      city: asOptionalString(json['city']),
       disclosure: AddressDisclosure.fromWire(json['addressDisclosure']),
       verified: json['verified'] == true,
-      managedByOrganizationId: _marketplaceOptionalString(
+      managedByOrganizationId: asOptionalString(
         json['managedByOrganizationId'],
       ),
       exactAddress: exactAddress,
@@ -380,11 +309,11 @@ class VenuePrivateDetails {
 
   factory VenuePrivateDetails.fromJson(Map<String, dynamic> json) =>
       VenuePrivateDetails(
-        venueId: _marketplaceString(json['venueId']),
-        addr: _marketplaceString(json['addr']),
-        point: _marketplacePoint(json),
-        loadInNotes: _marketplaceOptionalString(json['loadInNotes']),
-        capacity: _marketplaceOptionalInt(json['capacity']),
+        venueId: asString(json['venueId']),
+        addr: asString(json['addr']),
+        point: _pointFrom(json),
+        loadInNotes: asOptionalString(json['loadInNotes']),
+        capacity: asOptionalFiniteInt(json['capacity']),
       );
 }
 
@@ -472,23 +401,45 @@ class Organization {
   factory Organization.fromJson(Map<String, dynamic> json) {
     final status = OrganizationStatus.fromWire(json['status']);
     return Organization(
-      id: _marketplaceString(json['_id']),
-      slug: _marketplaceString(json['slug']),
-      name: _marketplaceString(json['name']),
+      id: asString(json['_id']),
+      slug: asString(json['slug']),
+      name: asString(json['name']),
       orgType: OrganizationType.fromWire(json['orgType']),
       status: status,
       verified: json['verified'] is bool
           ? json['verified'] as bool
           : status == OrganizationStatus.verified,
-      description: _marketplaceOptionalString(json['description']),
-      website: _marketplaceOptionalString(json['website']),
-      photoUrls: _marketplaceStringList(json['photoUrls']),
-      createdAt: _marketplaceDate(json['createdAt']),
+      description: asOptionalString(json['description']),
+      website: asOptionalString(json['website']),
+      photoUrls: asStringList(json['photoUrls']),
+      createdAt: asDate(json['createdAt']),
       reviewSummary: json['reviewSummary'] is Map
-          ? ReviewSummary.fromJson(_marketplaceMap(json['reviewSummary']))
+          ? ReviewSummary.fromJson(asFilteredMap(json['reviewSummary']))
           : null,
     );
   }
+
+  Organization copyWith({
+    String? name,
+    String? description,
+    String? website,
+    List<String>? photoUrls,
+    OrganizationStatus? status,
+    bool? verified,
+    ReviewSummary? reviewSummary,
+  }) => Organization(
+    id: id,
+    slug: slug,
+    name: name ?? this.name,
+    orgType: orgType,
+    status: status ?? this.status,
+    verified: verified ?? this.verified,
+    description: description ?? this.description,
+    website: website ?? this.website,
+    photoUrls: photoUrls ?? this.photoUrls,
+    createdAt: createdAt,
+    reviewSummary: reviewSummary ?? this.reviewSummary,
+  );
 }
 
 class OrganizationMembership {
@@ -503,7 +454,7 @@ class OrganizationMembership {
   factory OrganizationMembership.fromJson(Map<String, dynamic> json) =>
       OrganizationMembership(
         organization: Organization.fromJson(
-          _marketplaceMap(json['organization']),
+          asFilteredMap(json['organization']),
         ),
         role: OrganizationRole.fromWire(json['role']),
       );
@@ -552,10 +503,10 @@ class OrganizationPrivateDetails {
 
   factory OrganizationPrivateDetails.fromJson(Map<String, dynamic> json) =>
       OrganizationPrivateDetails(
-        legalName: _marketplaceOptionalString(json['legalName']),
-        businessEmail: _marketplaceString(json['businessEmail']),
-        contactName: _marketplaceString(json['contactName']),
-        phone: _marketplaceOptionalString(json['phone']),
+        legalName: asOptionalString(json['legalName']),
+        businessEmail: asString(json['businessEmail']),
+        contactName: asString(json['contactName']),
+        phone: asOptionalString(json['phone']),
       );
 }
 
@@ -583,24 +534,24 @@ class OrganizationDashboard {
   factory OrganizationDashboard.fromJson(Map<String, dynamic> json) =>
       OrganizationDashboard(
         organization: Organization.fromJson(
-          _marketplaceMap(json['organization']),
+          asFilteredMap(json['organization']),
         ),
         role: json['role'] is String
             ? OrganizationRole.fromWire(json['role'])
             : null,
         viaPlatformAdmin: json['viaPlatformAdmin'] == true,
         verification: OrganizationVerification.fromJson(
-          _marketplaceMap(json['verification']),
+          asFilteredMap(json['verification']),
         ),
         venues: [
-          for (final venue in _marketplaceMapList(json['venues']))
+          for (final venue in asFilteredMapList(json['venues']))
             Venue.fromJson(venue),
         ],
-        memberCount: _marketplaceInt(json['memberCount']),
-        pendingVenueConsents: _marketplaceInt(json['pendingVenueConsents']),
+        memberCount: asFiniteInt(json['memberCount']),
+        pendingVenueConsents: asFiniteInt(json['pendingVenueConsents']),
         privateDetails: json['privateDetails'] is Map
             ? OrganizationPrivateDetails.fromJson(
-                _marketplaceMap(json['privateDetails']),
+                asFilteredMap(json['privateDetails']),
               )
             : null,
       );
@@ -623,11 +574,11 @@ class OrganizationMember {
 
   factory OrganizationMember.fromJson(Map<String, dynamic> json) =>
       OrganizationMember(
-        userId: _marketplaceString(json['userId']),
-        name: _marketplaceString(json['name']),
-        email: _marketplaceOptionalString(json['email']),
+        userId: asString(json['userId']),
+        name: asString(json['name']),
+        email: asOptionalString(json['email']),
         role: OrganizationRole.fromWire(json['role']),
-        createdAt: _marketplaceDate(json['createdAt']),
+        createdAt: asDate(json['createdAt']),
       );
 }
 
@@ -650,10 +601,10 @@ class OrganizationInvite {
 
   factory OrganizationInvite.fromJson(Map<String, dynamic> json) =>
       OrganizationInvite(
-        organizationId: _marketplaceString(json['organizationId']),
-        token: _marketplaceString(json['token']),
+        organizationId: asString(json['organizationId']),
+        token: asString(json['token']),
         role: OrganizationRole.fromWire(json['role']),
-        expiresAt: _marketplaceDate(json['expiresAt']),
+        expiresAt: asDate(json['expiresAt']),
         revoked: json['revoked'] == true,
         expired: json['expired'] == true,
       );
@@ -672,8 +623,8 @@ class OrganizationInviteResolution {
 
   factory OrganizationInviteResolution.fromJson(Map<String, dynamic> json) =>
       OrganizationInviteResolution(
-        organizationId: _marketplaceString(json['organizationId']),
-        organizationName: _marketplaceString(json['organizationName']),
+        organizationId: asString(json['organizationId']),
+        organizationName: asString(json['organizationName']),
         role: OrganizationRole.fromWire(json['role']),
       );
 }
@@ -689,7 +640,7 @@ class OrganizationInviteAcceptance {
 
   factory OrganizationInviteAcceptance.fromJson(Map<String, dynamic> json) =>
       OrganizationInviteAcceptance(
-        organizationId: _marketplaceString(json['organizationId']),
+        organizationId: asString(json['organizationId']),
         membershipCreated: json['membershipCreated'] == true,
       );
 }
@@ -748,9 +699,9 @@ class ApplicationCounts {
 
   factory ApplicationCounts.fromJson(Map<String, dynamic> json) =>
       ApplicationCounts(
-        submitted: _marketplaceInt(json['submitted']),
-        underReview: _marketplaceInt(json['under_review']),
-        needsInfo: _marketplaceInt(json['needs_info']),
+        submitted: asFiniteInt(json['submitted']),
+        underReview: asFiniteInt(json['under_review']),
+        needsInfo: asFiniteInt(json['needs_info']),
       );
 }
 
@@ -795,13 +746,13 @@ class ApplicationVenueDraft {
 
   factory ApplicationVenueDraft.fromJson(Map<String, dynamic> json) =>
       ApplicationVenueDraft(
-        name: _marketplaceString(json['name']),
-        addr: _marketplaceString(json['addr']),
-        point: _marketplacePoint(json),
-        area: _marketplaceString(json['area']),
-        neighborhood: _marketplaceOptionalString(json['neighborhood']),
-        city: _marketplaceOptionalString(json['city']),
-        capacity: _marketplaceOptionalInt(json['capacity']),
+        name: asString(json['name']),
+        addr: asString(json['addr']),
+        point: _pointFrom(json),
+        area: asString(json['area']),
+        neighborhood: asOptionalString(json['neighborhood']),
+        city: asOptionalString(json['city']),
+        capacity: asOptionalFiniteInt(json['capacity']),
         venueType: json['venueType'] is String
             ? VenueType.fromWire(json['venueType'])
             : null,
@@ -835,10 +786,10 @@ class ApplicationDocument {
 
   factory ApplicationDocument.fromJson(Map<String, dynamic> json) =>
       ApplicationDocument(
-        storageId: _marketplaceString(json['storageId']),
-        url: _marketplaceOptionalString(json['url']),
-        contentType: _marketplaceOptionalString(json['contentType']),
-        sizeBytes: _marketplaceOptionalInt(json['sizeBytes']),
+        storageId: asString(json['storageId']),
+        url: asOptionalString(json['url']),
+        contentType: asOptionalString(json['contentType']),
+        sizeBytes: asOptionalFiniteInt(json['sizeBytes']),
       );
 }
 
@@ -896,48 +847,86 @@ class OrganizationApplication {
   factory OrganizationApplication.fromJson(Map<String, dynamic> json) {
     final documentJson = json['documents'] ?? json['verificationDocuments'];
     return OrganizationApplication(
-      id: _marketplaceString(json['_id']),
+      id: asString(json['_id']),
       kind: json['kind'] == null
           ? null
           : ApplicationKind.fromWire(json['kind']),
-      hostDisplayName: _marketplaceOptionalString(json['hostDisplayName']),
-      hostPhone: _marketplaceOptionalString(json['hostPhone']),
-      hostArea: _marketplaceOptionalString(json['hostArea']),
-      hostAgreementAcceptedAt: _marketplaceOptionalDate(
+      hostDisplayName: asOptionalString(json['hostDisplayName']),
+      hostPhone: asOptionalString(json['hostPhone']),
+      hostArea: asOptionalString(json['hostArea']),
+      hostAgreementAcceptedAt: asOptionalDate(
         json['hostAgreementAcceptedAt'],
       ),
-      organizerAgreementAcceptedAt: _marketplaceOptionalDate(
+      organizerAgreementAcceptedAt: asOptionalDate(
         json['organizerAgreementAcceptedAt'],
       ),
       status: OrganizationApplicationStatus.fromWire(json['status']),
-      orgName: _marketplaceString(json['orgName']),
+      orgName: asString(json['orgName']),
       orgType: OrganizationType.fromWire(json['orgType']),
-      website: _marketplaceOptionalString(json['website']),
-      contactName: _marketplaceString(json['contactName']),
-      businessEmail: _marketplaceString(json['businessEmail']),
-      phone: _marketplaceOptionalString(json['phone']),
+      website: asOptionalString(json['website']),
+      contactName: asString(json['contactName']),
+      businessEmail: asString(json['businessEmail']),
+      phone: asOptionalString(json['phone']),
       venue: json['venue'] is Map
-          ? ApplicationVenueDraft.fromJson(_marketplaceMap(json['venue']))
+          ? ApplicationVenueDraft.fromJson(asFilteredMap(json['venue']))
           : null,
       documents: [
-        for (final document in _marketplaceMapList(documentJson))
+        for (final document in asFilteredMapList(documentJson))
           ApplicationDocument.fromJson(document),
       ],
-      reviewNote: _marketplaceOptionalString(json['reviewNote']),
-      decidedAt: _marketplaceOptionalDate(json['decidedAt']),
-      resultingOrganizationId: _marketplaceOptionalString(
+      reviewNote: asOptionalString(json['reviewNote']),
+      decidedAt: asOptionalDate(json['decidedAt']),
+      resultingOrganizationId: asOptionalString(
         json['resultingOrganizationId'],
       ),
-      resultingVenueId: _marketplaceOptionalString(json['resultingVenueId']),
-      revision: _marketplaceInt(json['revision']),
-      createdAt: _marketplaceDate(json['createdAt']),
-      updatedAt: _marketplaceDate(json['updatedAt']),
+      resultingVenueId: asOptionalString(json['resultingVenueId']),
+      revision: asFiniteInt(json['revision']),
+      createdAt: asDate(json['createdAt']),
+      updatedAt: asDate(json['updatedAt']),
     );
   }
 
   bool get editable =>
       status == OrganizationApplicationStatus.draft ||
       status == OrganizationApplicationStatus.needsInfo;
+
+  OrganizationApplication copyWith({
+    DateTime? organizerAgreementAcceptedAt,
+    OrganizationApplicationStatus? status,
+    List<ApplicationDocument>? documents,
+    String? reviewNote,
+    DateTime? decidedAt,
+    String? resultingOrganizationId,
+    String? resultingVenueId,
+    int? revision,
+    DateTime? updatedAt,
+  }) => OrganizationApplication(
+    id: id,
+    kind: kind,
+    hostDisplayName: hostDisplayName,
+    hostPhone: hostPhone,
+    hostArea: hostArea,
+    hostAgreementAcceptedAt: hostAgreementAcceptedAt,
+    organizerAgreementAcceptedAt:
+        organizerAgreementAcceptedAt ?? this.organizerAgreementAcceptedAt,
+    status: status ?? this.status,
+    orgName: orgName,
+    orgType: orgType,
+    website: website,
+    contactName: contactName,
+    businessEmail: businessEmail,
+    phone: phone,
+    venue: venue,
+    documents: documents ?? this.documents,
+    reviewNote: reviewNote ?? this.reviewNote,
+    decidedAt: decidedAt ?? this.decidedAt,
+    resultingOrganizationId:
+        resultingOrganizationId ?? this.resultingOrganizationId,
+    resultingVenueId: resultingVenueId ?? this.resultingVenueId,
+    revision: revision ?? this.revision,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }
 
 class AdminApplicationRow {
@@ -956,21 +945,21 @@ class AdminApplicationRow {
   final String applicantEmail;
 
   factory AdminApplicationRow.fromJson(Map<String, dynamic> json) {
-    final applicant = _marketplaceMap(json['applicant']);
+    final applicant = asFilteredMap(json['applicant']);
     return AdminApplicationRow(
       kind: json['kind'] == null
           ? null
           : ApplicationKind.fromWire(json['kind']),
       application: OrganizationApplication.fromJson(
-        _marketplaceMap(json['application']),
+        asFilteredMap(json['application']),
       ),
-      applicantUserId: _marketplaceString(
+      applicantUserId: asString(
         json['applicantUserId'] ?? applicant['userId'],
       ),
-      applicantName: _marketplaceString(
+      applicantName: asString(
         json['applicantName'] ?? applicant['name'],
       ),
-      applicantEmail: _marketplaceString(
+      applicantEmail: asString(
         json['applicantEmail'] ?? applicant['email'],
       ),
     );
@@ -991,10 +980,10 @@ class AdminApplicationPage {
   factory AdminApplicationPage.fromJson(Map<String, dynamic> json) =>
       AdminApplicationPage(
         items: [
-          for (final row in _marketplaceMapList(json['page'] ?? json['items']))
+          for (final row in asFilteredMapList(json['page']))
             AdminApplicationRow.fromJson(row),
         ],
-        continueCursor: _marketplaceOptionalString(json['continueCursor']),
+        continueCursor: asOptionalString(json['continueCursor']),
         isDone: json['isDone'] == true,
       );
 }
@@ -1019,16 +1008,16 @@ class AdminOverview {
   final ApplicationCounts hostApplications;
 
   factory AdminOverview.fromJson(Map<String, dynamic> json) {
-    final counts = _marketplaceMap(json['counts']);
+    final counts = asFilteredMap(json['counts']);
     return AdminOverview(
-      submitted: _marketplaceInt(counts['submittedApplications']),
-      underReview: _marketplaceInt(counts['underReviewApplications']),
-      needsInfo: _marketplaceInt(counts['needsInfoApplications']),
-      verifiedOrganizations: _marketplaceInt(counts['verifiedOrganizations']),
-      suspendedOrganizations: _marketplaceInt(counts['suspendedOrganizations']),
+      submitted: asFiniteInt(counts['submittedApplications']),
+      underReview: asFiniteInt(counts['underReviewApplications']),
+      needsInfo: asFiniteInt(counts['needsInfoApplications']),
+      verifiedOrganizations: asFiniteInt(counts['verifiedOrganizations']),
+      suspendedOrganizations: asFiniteInt(counts['suspendedOrganizations']),
       capped: json['capped'] == true,
       hostApplications: ApplicationCounts.fromJson(
-        _marketplaceMap(counts['hostApplications']),
+        asFilteredMap(counts['hostApplications']),
       ),
     );
   }
@@ -1572,18 +1561,39 @@ class VenueConsent {
   final DateTime? decidedAt;
 
   factory VenueConsent.fromJson(Map<String, dynamic> json) => VenueConsent(
-    id: _marketplaceString(json['consentId']),
-    opportunityId: _marketplaceString(json['opportunityId']),
-    venueId: _marketplaceString(json['venueId']),
-    venueOrganizationId: _marketplaceString(json['venueOrganizationId']),
-    requestingOrganizationId: _marketplaceString(
+    id: asString(json['consentId']),
+    opportunityId: asString(json['opportunityId']),
+    venueId: asString(json['venueId']),
+    venueOrganizationId: asString(json['venueOrganizationId']),
+    requestingOrganizationId: asString(
       json['requestingOrganizationId'],
     ),
     status: VenueConsentStatus.fromWire(json['status']),
-    message: _marketplaceOptionalString(json['message']),
-    note: _marketplaceOptionalString(json['note']),
-    createdAt: _marketplaceDate(json['createdAt']),
-    decidedAt: _marketplaceOptionalDate(json['decidedAt']),
+    message: asOptionalString(json['message']),
+    note: asOptionalString(json['note']),
+    createdAt: asDate(json['createdAt']),
+    decidedAt: asOptionalDate(json['decidedAt']),
+  );
+
+  static const _unchanged = Object();
+
+  VenueConsent copyWith({
+    VenueConsentStatus? status,
+    Object? note = _unchanged,
+    Object? decidedAt = _unchanged,
+  }) => VenueConsent(
+    id: id,
+    opportunityId: opportunityId,
+    venueId: venueId,
+    venueOrganizationId: venueOrganizationId,
+    requestingOrganizationId: requestingOrganizationId,
+    status: status ?? this.status,
+    message: message,
+    note: identical(note, _unchanged) ? this.note : note as String?,
+    createdAt: createdAt,
+    decidedAt: identical(decidedAt, _unchanged)
+        ? this.decidedAt
+        : decidedAt as DateTime?,
   );
 }
 
@@ -1627,12 +1637,12 @@ class VenueConsentRow extends VenueConsent {
       note: consent.note,
       createdAt: consent.createdAt,
       decidedAt: consent.decidedAt,
-      opportunityTitle: _marketplaceString(json['opportunityTitle']),
+      opportunityTitle: asString(json['opportunityTitle']),
       opportunityStatus: OpportunityStatus.fromWire(json['opportunityStatus']),
-      startsAt: _marketplaceDate(json['startsAt']),
-      endsAt: _marketplaceOptionalDate(json['endsAt']),
-      venueName: _marketplaceString(json['venueName']),
-      requestingOrganizationName: _marketplaceString(
+      startsAt: asDate(json['startsAt']),
+      endsAt: asOptionalDate(json['endsAt']),
+      venueName: asString(json['venueName']),
+      requestingOrganizationName: asString(
         json['requestingOrganizationName'],
       ),
     );
@@ -1662,14 +1672,14 @@ class OpportunitySlot {
 
   factory OpportunitySlot.fromJson(Map<String, dynamic> json) =>
       OpportunitySlot(
-        id: _marketplaceString(json['_id']),
-        order: _marketplaceInt(json['order']),
+        id: asString(json['_id']),
+        order: asFiniteInt(json['order']),
         role: SlotRole.fromWire(json['role']),
-        setLengthMin: _marketplaceOptionalInt(json['setLengthMin']),
-        guaranteeMinor: _marketplaceInt(json['guaranteeMinor']),
+        setLengthMin: asOptionalFiniteInt(json['setLengthMin']),
+        guaranteeMinor: asFiniteInt(json['guaranteeMinor']),
         required: json['required'] == true,
         status: SlotStatus.fromWire(json['status']),
-        bandId: _marketplaceOptionalString(json['bandId']),
+        bandId: asOptionalString(json['bandId']),
       );
 }
 
@@ -1757,54 +1767,136 @@ class Opportunity {
   final String currency;
 
   factory Opportunity.fromJson(Map<String, dynamic> json) => Opportunity(
-    id: _marketplaceString(json['_id']),
-    organizationId: _marketplaceString(json['organizationId']),
+    id: asString(json['_id']),
+    organizationId: asString(json['organizationId']),
     mode: OpportunityMode.fromWire(json['mode']),
-    venueId: _marketplaceOptionalString(json['venueId']),
-    privateLocationId: _marketplaceOptionalString(json['privateLocationId']),
+    venueId: asOptionalString(json['venueId']),
+    privateLocationId: asOptionalString(json['privateLocationId']),
     privateEvent: json['privateEvent'] == true,
     venue: json['venue'] is Map
-        ? Venue.fromJson(_marketplaceMap(json['venue']))
+        ? Venue.fromJson(asFilteredMap(json['venue']))
         : null,
-    title: _marketplaceString(json['title']),
-    desc: _marketplaceString(json['desc']),
-    eventType: _marketplaceOptionalString(json['eventType']),
-    expectedAttendance: _marketplaceOptionalInt(json['expectedAttendance']),
-    genres: _marketplaceStringList(json['genres']),
-    startsAt: _marketplaceDate(json['startsAt']),
-    doorsAt: _marketplaceOptionalDate(json['doorsAt']),
-    endsAt: _marketplaceOptionalDate(json['endsAt']),
+    title: asString(json['title']),
+    desc: asString(json['desc']),
+    eventType: asOptionalString(json['eventType']),
+    expectedAttendance: asOptionalFiniteInt(json['expectedAttendance']),
+    genres: asStringList(json['genres']),
+    startsAt: asDate(json['startsAt']),
+    doorsAt: asOptionalDate(json['doorsAt']),
+    endsAt: asOptionalDate(json['endsAt']),
     ageRequirement: AgeRequirement.fromJson(json['ageRequirement']),
-    equipment: _marketplaceOptionalString(json['equipment']),
-    requirements: _marketplaceOptionalString(json['requirements']),
-    flyKey: _marketplaceString(json['flyKey']),
-    flyerUrl: _marketplaceOptionalString(json['flyerUrl']),
-    applicationsCloseAt: _marketplaceDate(json['applicationsCloseAt']),
+    equipment: asOptionalString(json['equipment']),
+    requirements: asOptionalString(json['requirements']),
+    flyKey: asString(json['flyKey']),
+    flyerUrl: asOptionalString(json['flyerUrl']),
+    applicationsCloseAt: asDate(json['applicationsCloseAt']),
     visibility: OpportunityVisibility.fromWire(json['visibility']),
     ticketing: OpportunityTicketing.fromWire(json['ticketing']),
-    ticketPriceMinor: _marketplaceOptionalInt(json['ticketPriceMinor']),
-    ticketCapacity: _marketplaceOptionalInt(json['ticketCapacity']),
-    ticketCurrency: _marketplaceOptionalString(json['ticketCurrency']),
-    externalUrl: _marketplaceOptionalString(json['externalUrl']),
+    ticketPriceMinor: asOptionalFiniteInt(json['ticketPriceMinor']),
+    ticketCapacity: asOptionalFiniteInt(json['ticketCapacity']),
+    ticketCurrency: asOptionalString(json['ticketCurrency']),
+    externalUrl: asOptionalString(json['externalUrl']),
     status: OpportunityStatus.fromWire(json['status']),
-    slug: _marketplaceString(json['slug']),
-    revision: _marketplaceInt(json['revision']),
-    applicationCount: _marketplaceInt(json['applicationCount']),
+    slug: asString(json['slug']),
+    revision: asFiniteInt(json['revision']),
+    applicationCount: asFiniteInt(json['applicationCount']),
     slots: [
-      for (final slot in _marketplaceMapList(json['slots']))
+      for (final slot in asFilteredMapList(json['slots']))
         OpportunitySlot.fromJson(slot),
     ],
-    invitedBandIds: _marketplaceStringList(json['invitedBandIds']),
-    createdAt: _marketplaceDate(json['createdAt']),
-    updatedAt: _marketplaceDate(json['updatedAt']),
-    area: _marketplaceString(json['area']),
+    invitedBandIds: asStringList(json['invitedBandIds']),
+    createdAt: asDate(json['createdAt']),
+    updatedAt: asDate(json['updatedAt']),
+    area: asString(json['area']),
     venueType: json['venueType'] is String
         ? VenueType.fromWire(json['venueType'])
         : null,
     venueConsentStatus: json['venueConsentStatus'] is String
         ? VenueConsentStatus.fromWire(json['venueConsentStatus'])
         : null,
-    currency: _marketplaceString(json['currency']),
+    currency: asString(json['currency']),
+  );
+
+  static const _unchanged = Object();
+
+  Opportunity copyWith({
+    String? id,
+    String? slug,
+    String? title,
+    String? desc,
+    String? venueId,
+    String? privateLocationId,
+    String? eventType,
+    int? expectedAttendance,
+    List<String>? genres,
+    DateTime? startsAt,
+    DateTime? doorsAt,
+    DateTime? endsAt,
+    AgeRequirement? ageRequirement,
+    String? equipment,
+    String? requirements,
+    String? flyKey,
+    String? flyerUrl,
+    DateTime? applicationsCloseAt,
+    OpportunityVisibility? visibility,
+    OpportunityTicketing? ticketing,
+    int? ticketPriceMinor,
+    int? ticketCapacity,
+    String? ticketCurrency,
+    String? externalUrl,
+    OpportunityStatus? status,
+    VenueConsentStatus? venueConsentStatus,
+    int? revision,
+    int? applicationCount,
+    List<OpportunitySlot>? slots,
+    List<String>? invitedBandIds,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    Object? venue = _unchanged,
+    String? area,
+    Object? venueType = _unchanged,
+  }) => Opportunity(
+    id: id ?? this.id,
+    organizationId: organizationId,
+    mode: mode,
+    privateEvent: privateEvent,
+    privateLocationId: privateLocationId ?? this.privateLocationId,
+    venueId: venueId ?? this.venueId,
+    venue: identical(venue, _unchanged) ? this.venue : venue as Venue?,
+    title: title ?? this.title,
+    desc: desc ?? this.desc,
+    eventType: eventType ?? this.eventType,
+    expectedAttendance: expectedAttendance ?? this.expectedAttendance,
+    genres: genres == null ? this.genres : List<String>.of(genres),
+    startsAt: startsAt ?? this.startsAt,
+    doorsAt: doorsAt ?? this.doorsAt,
+    endsAt: endsAt ?? this.endsAt,
+    ageRequirement: ageRequirement ?? this.ageRequirement,
+    equipment: equipment ?? this.equipment,
+    requirements: requirements ?? this.requirements,
+    flyKey: flyKey ?? this.flyKey,
+    flyerUrl: flyerUrl ?? this.flyerUrl,
+    applicationsCloseAt: applicationsCloseAt ?? this.applicationsCloseAt,
+    visibility: visibility ?? this.visibility,
+    ticketing: ticketing ?? this.ticketing,
+    ticketPriceMinor: ticketPriceMinor ?? this.ticketPriceMinor,
+    ticketCapacity: ticketCapacity ?? this.ticketCapacity,
+    ticketCurrency: ticketCurrency ?? this.ticketCurrency,
+    externalUrl: externalUrl ?? this.externalUrl,
+    status: status ?? this.status,
+    venueConsentStatus: venueConsentStatus ?? this.venueConsentStatus,
+    slug: slug ?? this.slug,
+    revision: revision ?? this.revision,
+    applicationCount: applicationCount ?? this.applicationCount,
+    slots: slots ?? this.slots,
+    invitedBandIds: invitedBandIds ?? this.invitedBandIds,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+    area: area ?? this.area,
+    venueType: identical(venueType, _unchanged)
+        ? this.venueType
+        : venueType as VenueType?,
+    currency: currency,
   );
 }
 
@@ -1860,19 +1952,42 @@ class ArtistApplication {
 
   factory ArtistApplication.fromJson(Map<String, dynamic> json) =>
       ArtistApplication(
-        id: _marketplaceString(json['_id']),
-        opportunityId: _marketplaceString(json['opportunityId']),
-        slotId: _marketplaceString(json['slotId']),
-        bandId: _marketplaceString(json['bandId']),
+        id: asString(json['_id']),
+        opportunityId: asString(json['opportunityId']),
+        slotId: asString(json['slotId']),
+        bandId: asString(json['bandId']),
         status: ArtistApplicationStatus.fromWire(json['status']),
-        message: _marketplaceString(json['message']),
-        askMinor: _marketplaceOptionalInt(json['askMinor']),
-        availabilityNote: _marketplaceOptionalString(json['availabilityNote']),
-        lineupNote: _marketplaceOptionalString(json['lineupNote']),
-        decidedAt: _marketplaceOptionalDate(json['decidedAt']),
-        createdAt: _marketplaceDate(json['createdAt']),
-        updatedAt: _marketplaceDate(json['updatedAt']),
+        message: asString(json['message']),
+        askMinor: asOptionalFiniteInt(json['askMinor']),
+        availabilityNote: asOptionalString(json['availabilityNote']),
+        lineupNote: asOptionalString(json['lineupNote']),
+        decidedAt: asOptionalDate(json['decidedAt']),
+        createdAt: asDate(json['createdAt']),
+        updatedAt: asDate(json['updatedAt']),
       );
+
+  static const _unchanged = Object();
+
+  ArtistApplication copyWith({
+    ArtistApplicationStatus? status,
+    Object? decidedAt = _unchanged,
+    DateTime? updatedAt,
+  }) => ArtistApplication(
+    id: id,
+    opportunityId: opportunityId,
+    slotId: slotId,
+    bandId: bandId,
+    status: status ?? this.status,
+    message: message,
+    askMinor: askMinor,
+    availabilityNote: availabilityNote,
+    lineupNote: lineupNote,
+    decidedAt: identical(decidedAt, _unchanged)
+        ? this.decidedAt
+        : decidedAt as DateTime?,
+    createdAt: createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 }
 
 class ApplicantRow {
@@ -1888,42 +2003,42 @@ class ApplicantRow {
 
   factory ApplicantRow.fromJson(Map<String, dynamic> json) => ApplicantRow(
     application: ArtistApplication.fromJson(
-      _marketplaceMap(json['application']),
+      asFilteredMap(json['application']),
     ),
-    band: _bandFromJson(_marketplaceMap(json['band'])),
-    contactEmail: _marketplaceOptionalString(json['contactEmail']),
+    band: _bandFromJson(asFilteredMap(json['band'])),
+    contactEmail: asOptionalString(json['contactEmail']),
   );
 
   // Band's legacy parser expects complete payloads. Normalize this nested
   // payload so marketplace rows keep the same tolerant parsing contract.
   static Band _bandFromJson(Map<String, dynamic> json) {
-    final colorHex = _marketplaceString(json['colorHex']);
+    final colorHex = asString(json['colorHex']);
     final hex = colorHex.startsWith('#') ? colorHex.substring(1) : colorHex;
     return Band.fromJson({
       ...json,
-      '_id': _marketplaceString(json['_id']),
-      'slug': _marketplaceString(json['slug']),
-      'name': _marketplaceString(json['name']),
-      'genres': _marketplaceStringList(json['genres']),
-      'area': _marketplaceString(json['area']),
+      '_id': asString(json['_id']),
+      'slug': asString(json['slug']),
+      'name': asString(json['name']),
+      'genres': asStringList(json['genres']),
+      'area': asString(json['area']),
       'colorHex': int.tryParse(hex, radix: 16) == null ? '000000' : hex,
-      'initials': _marketplaceString(json['initials']),
-      'followerCount': _marketplaceInt(json['followerCount']),
-      if (json.containsKey('bio')) 'bio': _marketplaceString(json['bio']),
-      'linkIg': _marketplaceOptionalString(json['linkIg']),
-      'linkBc': _marketplaceOptionalString(json['linkBc']),
-      'linkYt': _marketplaceOptionalString(json['linkYt']),
-      'credits': _marketplaceOptionalString(json['credits']),
+      'initials': asString(json['initials']),
+      'followerCount': asFiniteInt(json['followerCount']),
+      if (json.containsKey('bio')) 'bio': asString(json['bio']),
+      'linkIg': asOptionalString(json['linkIg']),
+      'linkBc': asOptionalString(json['linkBc']),
+      'linkYt': asOptionalString(json['linkYt']),
+      'credits': asOptionalString(json['credits']),
       if (json.containsKey('avatarUrl'))
-        'avatarUrl': _marketplaceOptionalString(json['avatarUrl']),
+        'avatarUrl': asOptionalString(json['avatarUrl']),
       if (json.containsKey('bannerUrl'))
-        'bannerUrl': _marketplaceOptionalString(json['bannerUrl']),
-      'heroUrl': _marketplaceOptionalString(json['heroUrl']),
+        'bannerUrl': asOptionalString(json['bannerUrl']),
+      'heroUrl': asOptionalString(json['heroUrl']),
       'pastShows': [
-        for (final show in _marketplaceMapList(json['pastShows']))
+        for (final show in asFilteredMapList(json['pastShows']))
           {
-            'title': _marketplaceString(show['title']),
-            'meta': _marketplaceString(show['meta']),
+            'title': asString(show['title']),
+            'meta': asString(show['meta']),
           },
       ],
     });
@@ -1939,9 +2054,9 @@ class BandApplication {
   factory BandApplication.fromJson(Map<String, dynamic> json) =>
       BandApplication(
         application: ArtistApplication.fromJson(
-          _marketplaceMap(json['application']),
+          asFilteredMap(json['application']),
         ),
-        opportunity: Opportunity.fromJson(_marketplaceMap(json['opportunity'])),
+        opportunity: Opportunity.fromJson(asFilteredMap(json['opportunity'])),
       );
 }
 
@@ -1957,7 +2072,7 @@ class BrowseItem {
   final ArtistApplicationStatus? myApplicationStatus;
 
   factory BrowseItem.fromJson(Map<String, dynamic> json) => BrowseItem(
-    opportunity: Opportunity.fromJson(_marketplaceMap(json['opportunity'])),
+    opportunity: Opportunity.fromJson(asFilteredMap(json['opportunity'])),
     invited: json['invited'] == true,
     myApplicationStatus: json['myApplicationStatus'] == null
         ? null
@@ -1979,10 +2094,10 @@ class OpportunityPage {
   factory OpportunityPage.fromJson(Map<String, dynamic> json) =>
       OpportunityPage(
         items: [
-          for (final row in _marketplaceMapList(json['page'] ?? json['items']))
+          for (final row in asFilteredMapList(json['page']))
             BrowseItem.fromJson(row),
         ],
-        continueCursor: _marketplaceOptionalString(json['continueCursor']),
+        continueCursor: asOptionalString(json['continueCursor']),
         isDone: json['isDone'] == true,
       );
 }
@@ -2164,11 +2279,11 @@ class FeeBreakdown {
   final String currency;
 
   factory FeeBreakdown.fromJson(Map<String, dynamic> json) => FeeBreakdown(
-    grossMinor: _marketplaceInt(json['grossMinor']),
-    commissionBps: _marketplaceInt(json['commissionBps']),
-    commissionMinor: _marketplaceInt(json['commissionMinor']),
-    artistNetMinor: _marketplaceInt(json['artistNetMinor']),
-    currency: _marketplaceString(json['currency']),
+    grossMinor: asFiniteInt(json['grossMinor']),
+    commissionBps: asFiniteInt(json['commissionBps']),
+    commissionMinor: asFiniteInt(json['commissionMinor']),
+    artistNetMinor: asFiniteInt(json['artistNetMinor']),
+    currency: asString(json['currency']),
   );
 
   Money get gross => Money(grossMinor, currency);
@@ -2189,9 +2304,9 @@ class OfferInstallment {
 
   factory OfferInstallment.fromJson(Map<String, dynamic> json) =>
       OfferInstallment(
-        label: _marketplaceString(json['label']),
-        amountMinor: _marketplaceInt(json['amountMinor']),
-        dueAt: _marketplaceDate(json['dueAt']),
+        label: asString(json['label']),
+        amountMinor: asFiniteInt(json['amountMinor']),
+        dueAt: asDate(json['dueAt']),
       );
 }
 
@@ -2213,15 +2328,15 @@ class BookingOffer {
   final List<OfferInstallment> installments;
 
   factory BookingOffer.fromJson(Map<String, dynamic> json) => BookingOffer(
-    revision: _marketplaceInt(json['revision']),
-    message: _marketplaceOptionalString(json['message']),
-    sentAt: _marketplaceDate(json['sentAt']),
-    expiresAt: _marketplaceDate(json['expiresAt']),
+    revision: asFiniteInt(json['revision']),
+    message: asOptionalString(json['message']),
+    sentAt: asDate(json['sentAt']),
+    expiresAt: asDate(json['expiresAt']),
     response: json['response'] == null
         ? null
         : OfferResponse.fromWire(json['response']),
     installments: [
-      for (final installment in _marketplaceMapList(json['installments']))
+      for (final installment in asFilteredMapList(json['installments']))
         OfferInstallment.fromJson(installment),
     ],
   );
@@ -2243,11 +2358,11 @@ class BookingVenue {
   final String? exactAddress;
 
   factory BookingVenue.fromJson(Map<String, dynamic> json) => BookingVenue(
-    id: _marketplaceString(json['_id']),
-    name: _marketplaceString(json['name']),
-    slug: _marketplaceOptionalString(json['slug']),
-    approxLabel: _marketplaceOptionalString(json['approxLabel']),
-    exactAddress: _marketplaceOptionalString(json['exactAddress']),
+    id: asString(json['_id']),
+    name: asString(json['name']),
+    slug: asOptionalString(json['slug']),
+    approxLabel: asOptionalString(json['approxLabel']),
+    exactAddress: asOptionalString(json['exactAddress']),
   );
 }
 
@@ -2271,15 +2386,15 @@ class BookingPrivateLocation {
   final String? notes;
 
   factory BookingPrivateLocation.fromJson(Map<String, dynamic> json) {
-    final point = _marketplacePoint(json);
+    final point = _pointFrom(json);
     return BookingPrivateLocation(
-      label: _marketplaceString(json['label']),
-      area: _marketplaceString(json['area']),
-      city: _marketplaceString(json['city']),
-      addr: _marketplaceOptionalString(json['addr']),
+      label: asString(json['label']),
+      area: asString(json['area']),
+      city: asString(json['city']),
+      addr: asOptionalString(json['addr']),
       lat: json['lat'] is num ? point.latitude : null,
       lng: json['lng'] is num ? point.longitude : null,
-      notes: _marketplaceOptionalString(json['notes']),
+      notes: asOptionalString(json['notes']),
     );
   }
 }
@@ -2388,66 +2503,135 @@ class Booking {
   final bool viewerIsPlatformAdmin;
 
   factory Booking.fromJson(Map<String, dynamic> json) => Booking(
-    id: _marketplaceString(json['_id']),
-    opportunityId: _marketplaceString(json['opportunityId']),
-    opportunityTitle: _marketplaceString(json['opportunityTitle']),
-    opportunitySlug: _marketplaceString(json['opportunitySlug']),
-    slotId: _marketplaceString(json['slotId']),
+    id: asString(json['_id']),
+    opportunityId: asString(json['opportunityId']),
+    opportunityTitle: asString(json['opportunityTitle']),
+    opportunitySlug: asString(json['opportunitySlug']),
+    slotId: asString(json['slotId']),
     slotRole: SlotRole.fromWire(json['slotRole']),
     slotRequired: json['slotRequired'] == true,
-    organizationId: _marketplaceString(json['organizationId']),
-    organizationName: _marketplaceString(json['organizationName']),
-    bandId: _marketplaceString(json['bandId']),
-    bandName: _marketplaceString(json['bandName']),
-    bandSlug: _marketplaceString(json['bandSlug']),
-    applicationId: _marketplaceString(json['applicationId']),
+    organizationId: asString(json['organizationId']),
+    organizationName: asString(json['organizationName']),
+    bandId: asString(json['bandId']),
+    bandName: asString(json['bandName']),
+    bandSlug: asString(json['bandSlug']),
+    applicationId: asString(json['applicationId']),
     status: BookingStatus.fromWire(json['status']),
-    revision: _marketplaceInt(json['revision']),
-    startsAt: _marketplaceDate(json['startsAt']),
-    doorsAt: _marketplaceOptionalDate(json['doorsAt']),
-    fee: FeeBreakdown.fromJson(_marketplaceMap(json['fee'])),
-    paidMinor: _marketplaceInt(json['paidMinor']),
-    refundedMinor: _marketplaceInt(json['refundedMinor']),
-    paymentDueAt: _marketplaceOptionalDate(json['paymentDueAt']),
-    payoutHoldReasons: _marketplaceStringList(json['payoutHoldReasons']),
+    revision: asFiniteInt(json['revision']),
+    startsAt: asDate(json['startsAt']),
+    doorsAt: asOptionalDate(json['doorsAt']),
+    fee: FeeBreakdown.fromJson(asFilteredMap(json['fee'])),
+    paidMinor: asFiniteInt(json['paidMinor']),
+    refundedMinor: asFiniteInt(json['refundedMinor']),
+    paymentDueAt: asOptionalDate(json['paymentDueAt']),
+    payoutHoldReasons: asStringList(json['payoutHoldReasons']),
     cancellationTemplate: CancellationTemplate.fromWire(
       json['cancellationTemplate'],
     ),
-    termsNotes: _marketplaceOptionalString(json['termsNotes']),
-    organizerAcceptedTermsAt: _marketplaceDate(
+    termsNotes: asOptionalString(json['termsNotes']),
+    organizerAcceptedTermsAt: asDate(
       json['organizerAcceptedTermsAt'],
     ),
-    artistAcceptedTermsAt: _marketplaceOptionalDate(
+    artistAcceptedTermsAt: asOptionalDate(
       json['artistAcceptedTermsAt'],
     ),
-    confirmedAt: _marketplaceOptionalDate(json['confirmedAt']),
-    completedAt: _marketplaceOptionalDate(json['completedAt']),
-    cancelledAt: _marketplaceOptionalDate(json['cancelledAt']),
+    confirmedAt: asOptionalDate(json['confirmedAt']),
+    completedAt: asOptionalDate(json['completedAt']),
+    cancelledAt: asOptionalDate(json['cancelledAt']),
     cancelledBy: json['cancelledBy'] == null
         ? null
         : BookingCancelledBy.fromWire(json['cancelledBy']),
-    cancelReason: _marketplaceOptionalString(json['cancelReason']),
-    expiresAt: _marketplaceOptionalDate(json['expiresAt']),
+    cancelReason: asOptionalString(json['cancelReason']),
+    expiresAt: asOptionalDate(json['expiresAt']),
     currentOffer: json['currentOffer'] is Map
-        ? BookingOffer.fromJson(_marketplaceMap(json['currentOffer']))
+        ? BookingOffer.fromJson(asFilteredMap(json['currentOffer']))
         : null,
     venue: json['venue'] is Map
-        ? BookingVenue.fromJson(_marketplaceMap(json['venue']))
+        ? BookingVenue.fromJson(asFilteredMap(json['venue']))
         : null,
     privateLocation: json['privateLocation'] is Map
         ? BookingPrivateLocation.fromJson(
-            _marketplaceMap(json['privateLocation']),
+            asFilteredMap(json['privateLocation']),
           )
         : null,
     privateEvent: json['privateEvent'] == true,
     cancellationKind: json['cancellationKind'] == null
         ? null
         : CancellationKind.fromWire(json['cancellationKind']),
-    publicGigId: _marketplaceOptionalString(json['publicGigId']),
-    publicGigSlug: _marketplaceOptionalString(json['publicGigSlug']),
-    counterpartyEmail: _marketplaceOptionalString(json['counterpartyEmail']),
+    publicGigId: asOptionalString(json['publicGigId']),
+    publicGigSlug: asOptionalString(json['publicGigSlug']),
+    counterpartyEmail: asOptionalString(json['counterpartyEmail']),
     viewerSide: BookingSide.fromWire(json['viewerSide']),
     viewerIsPlatformAdmin: json['viewerIsPlatformAdmin'] == true,
+  );
+
+  Booking copyWith({
+    BookingStatus? status,
+    int? revision,
+    int? paidMinor,
+    int? refundedMinor,
+    DateTime? paymentDueAt,
+    List<String>? payoutHoldReasons,
+    DateTime? artistAcceptedTermsAt,
+    DateTime? confirmedAt,
+    DateTime? cancelledAt,
+    BookingCancelledBy? cancelledBy,
+    String? cancelReason,
+    BookingOffer? currentOffer,
+    BookingVenue? venue,
+    BookingPrivateLocation? privateLocation,
+    CancellationKind? cancellationKind,
+    String? publicGigId,
+    String? publicGigSlug,
+    BookingSide? viewerSide,
+    bool? viewerIsPlatformAdmin,
+    String? counterpartyEmail,
+  }) => Booking(
+    id: id,
+    opportunityId: opportunityId,
+    opportunityTitle: opportunityTitle,
+    opportunitySlug: opportunitySlug,
+    slotId: slotId,
+    slotRole: slotRole,
+    slotRequired: slotRequired,
+    organizationId: organizationId,
+    organizationName: organizationName,
+    bandId: bandId,
+    bandName: bandName,
+    bandSlug: bandSlug,
+    applicationId: applicationId,
+    status: status ?? this.status,
+    revision: revision ?? this.revision,
+    startsAt: startsAt,
+    doorsAt: doorsAt,
+    fee: fee,
+    paidMinor: paidMinor ?? this.paidMinor,
+    refundedMinor: refundedMinor ?? this.refundedMinor,
+    paymentDueAt: paymentDueAt ?? this.paymentDueAt,
+    payoutHoldReasons: payoutHoldReasons ?? this.payoutHoldReasons,
+    cancellationTemplate: cancellationTemplate,
+    termsNotes: termsNotes,
+    organizerAcceptedTermsAt: organizerAcceptedTermsAt,
+    artistAcceptedTermsAt: artistAcceptedTermsAt ?? this.artistAcceptedTermsAt,
+    confirmedAt: confirmedAt ?? this.confirmedAt,
+    completedAt: completedAt,
+    cancelledAt: cancelledAt ?? this.cancelledAt,
+    cancelledBy: cancelledBy ?? this.cancelledBy,
+    cancelReason: cancelReason ?? this.cancelReason,
+    expiresAt: expiresAt,
+    currentOffer: currentOffer ?? this.currentOffer,
+    venue: venue ?? this.venue,
+    privateEvent: privateEvent,
+    privateLocation: privateLocation ?? this.privateLocation,
+    cancellationKind: cancellationKind ?? this.cancellationKind,
+    publicGigId: publicGigId ?? this.publicGigId,
+    publicGigSlug: publicGigSlug ?? this.publicGigSlug,
+    // A query supplying a viewer must be able to explicitly hide the email.
+    counterpartyEmail: viewerSide == null
+        ? this.counterpartyEmail
+        : counterpartyEmail,
+    viewerSide: viewerSide ?? this.viewerSide,
+    viewerIsPlatformAdmin: viewerIsPlatformAdmin ?? this.viewerIsPlatformAdmin,
   );
 }
 
@@ -2577,20 +2761,41 @@ class Dispute {
   final DateTime? resolvedAt;
 
   factory Dispute.fromJson(Map<String, dynamic> json) => Dispute(
-    disputeId: _marketplaceString(json['disputeId']),
-    bookingId: _marketplaceString(json['bookingId']),
+    disputeId: asString(json['disputeId']),
+    bookingId: asString(json['bookingId']),
     side: DisputeSide.fromWire(json['side']),
     category: DisputeCategory.fromWire(json['category']),
-    text: _marketplaceString(json['text']),
-    requestedRefundMinor: _marketplaceOptionalInt(json['requestedRefundMinor']),
+    text: asString(json['text']),
+    requestedRefundMinor: asOptionalFiniteInt(json['requestedRefundMinor']),
     status: DisputeStatus.fromWire(json['status']),
     resolution: json['resolution'] == null
         ? null
         : DisputeResolution.fromWire(json['resolution']),
-    resolvedRefundMinor: _marketplaceOptionalInt(json['resolvedRefundMinor']),
-    adminNote: _marketplaceOptionalString(json['adminNote']),
-    createdAt: _marketplaceDate(json['createdAt']),
-    resolvedAt: _marketplaceOptionalDate(json['resolvedAt']),
+    resolvedRefundMinor: asOptionalFiniteInt(json['resolvedRefundMinor']),
+    adminNote: asOptionalString(json['adminNote']),
+    createdAt: asDate(json['createdAt']),
+    resolvedAt: asOptionalDate(json['resolvedAt']),
+  );
+
+  Dispute copyWith({
+    DisputeStatus? status,
+    DisputeResolution? resolution,
+    int? resolvedRefundMinor,
+    String? adminNote,
+    DateTime? resolvedAt,
+  }) => Dispute(
+    disputeId: disputeId,
+    bookingId: bookingId,
+    side: side,
+    category: category,
+    text: text,
+    requestedRefundMinor: requestedRefundMinor,
+    status: status ?? this.status,
+    resolution: resolution ?? this.resolution,
+    resolvedRefundMinor: resolvedRefundMinor ?? this.resolvedRefundMinor,
+    adminNote: adminNote ?? this.adminNote,
+    createdAt: createdAt,
+    resolvedAt: resolvedAt ?? this.resolvedAt,
   );
 }
 
@@ -2636,10 +2841,10 @@ class DisputeRow extends Dispute {
       adminNote: dispute.adminNote,
       createdAt: dispute.createdAt,
       resolvedAt: dispute.resolvedAt,
-      bookingTitle: _marketplaceString(json['bookingTitle']),
-      organizationName: _marketplaceString(json['organizationName']),
-      bandName: _marketplaceString(json['bandName']),
-      paidMinor: _marketplaceInt(json['paidMinor']),
+      bookingTitle: asString(json['bookingTitle']),
+      organizationName: asString(json['organizationName']),
+      bandName: asString(json['bandName']),
+      paidMinor: asFiniteInt(json['paidMinor']),
       bookingStatus: BookingStatus.fromWire(json['bookingStatus']),
     );
   }
@@ -2658,10 +2863,10 @@ class DisputesPage {
 
   factory DisputesPage.fromJson(Map<String, dynamic> json) => DisputesPage(
     items: [
-      for (final row in _marketplaceMapList(json['page'] ?? json['items']))
+      for (final row in asFilteredMapList(json['page']))
         DisputeRow.fromJson(row),
     ],
-    continueCursor: _marketplaceOptionalString(json['continueCursor']),
+    continueCursor: asOptionalString(json['continueCursor']),
     isDone: json['isDone'] == true,
   );
 }
@@ -2713,16 +2918,16 @@ class AdminBookingRow {
 
   factory AdminBookingRow.fromJson(Map<String, dynamic> json) =>
       AdminBookingRow(
-        bookingId: _marketplaceString(json['bookingId']),
-        title: _marketplaceString(json['title']),
-        organizationName: _marketplaceString(json['organizationName']),
-        bandName: _marketplaceString(json['bandName']),
+        bookingId: asString(json['bookingId']),
+        title: asString(json['title']),
+        organizationName: asString(json['organizationName']),
+        bandName: asString(json['bandName']),
         status: BookingStatus.fromWire(json['status']),
-        startsAt: _marketplaceDate(json['startsAt']),
-        paidMinor: _marketplaceInt(json['paidMinor']),
-        refundedMinor: _marketplaceInt(json['refundedMinor']),
-        payoutHoldReasons: _marketplaceStringList(json['payoutHoldReasons']),
-        openDisputeId: _marketplaceOptionalString(json['openDisputeId']),
+        startsAt: asDate(json['startsAt']),
+        paidMinor: asFiniteInt(json['paidMinor']),
+        refundedMinor: asFiniteInt(json['refundedMinor']),
+        payoutHoldReasons: asStringList(json['payoutHoldReasons']),
+        openDisputeId: asOptionalString(json['openDisputeId']),
       );
 }
 
@@ -2740,10 +2945,10 @@ class AdminBookingsPage {
   factory AdminBookingsPage.fromJson(Map<String, dynamic> json) =>
       AdminBookingsPage(
         items: [
-          for (final row in _marketplaceMapList(json['page'] ?? json['items']))
+          for (final row in asFilteredMapList(json['page']))
             AdminBookingRow.fromJson(row),
         ],
-        continueCursor: _marketplaceOptionalString(json['continueCursor']),
+        continueCursor: asOptionalString(json['continueCursor']),
         isDone: json['isDone'] == true,
       );
 }
@@ -2794,18 +2999,18 @@ class SafetyReport {
   final String? adminNote;
 
   factory SafetyReport.fromJson(Map<String, dynamic> json) => SafetyReport(
-    reportId: _marketplaceString(json['reportId'] ?? json['_id']),
-    bookingId: _marketplaceString(json['bookingId']),
+    reportId: asString(json['reportId'] ?? json['_id']),
+    bookingId: asString(json['bookingId']),
     category: SafetyCategory.fromWire(json['category']),
-    text: _marketplaceString(json['text']),
-    createdAt: _marketplaceDate(json['createdAt']),
-    status: _marketplaceString(json['status']),
-    reporterUserId: _marketplaceOptionalString(json['reporterUserId']),
+    text: asString(json['text']),
+    createdAt: asDate(json['createdAt']),
+    status: asString(json['status']),
+    reporterUserId: asOptionalString(json['reporterUserId']),
     reporterSide: json['reporterSide'] == null
         ? null
         : BookingSide.fromWire(json['reporterSide']),
-    resolvedAt: _marketplaceOptionalDate(json['resolvedAt']),
-    adminNote: _marketplaceOptionalString(json['adminNote']),
+    resolvedAt: asOptionalDate(json['resolvedAt']),
+    adminNote: asOptionalString(json['adminNote']),
   );
 }
 
@@ -2841,8 +3046,8 @@ class SafetyReportRow extends SafetyReport {
       reporterSide: report.reporterSide,
       resolvedAt: report.resolvedAt,
       adminNote: report.adminNote,
-      bookingTitle: _marketplaceString(json['bookingTitle']),
-      bandName: _marketplaceString(json['bandName']),
+      bookingTitle: asString(json['bookingTitle']),
+      bandName: asString(json['bandName']),
     );
   }
 }
@@ -2861,10 +3066,10 @@ class SafetyReportsPage {
   factory SafetyReportsPage.fromJson(Map<String, dynamic> json) =>
       SafetyReportsPage(
         items: [
-          for (final row in _marketplaceMapList(json['page'] ?? json['items']))
+          for (final row in asFilteredMapList(json['page']))
             SafetyReportRow.fromJson(row),
         ],
-        continueCursor: _marketplaceOptionalString(json['continueCursor']),
+        continueCursor: asOptionalString(json['continueCursor']),
         isDone: json['isDone'] == true,
       );
 }
@@ -2926,7 +3131,7 @@ class StripeAccountStatus {
         chargesEnabled: json['chargesEnabled'] == true,
         payoutsEnabled: json['payoutsEnabled'] == true,
         detailsSubmitted: json['detailsSubmitted'] == true,
-        requirementsDue: _marketplaceStringList(json['requirementsDue']),
+        requirementsDue: asStringList(json['requirementsDue']),
         cardPaymentsStatus: json['cardPaymentsStatus'] as String?,
       );
 }
@@ -2987,18 +3192,33 @@ class PaymentRecord {
   final bool canPay;
 
   factory PaymentRecord.fromJson(Map<String, dynamic> json) => PaymentRecord(
-    id: _marketplaceString(json['_id']),
-    installmentIndex: _marketplaceInt(json['installmentIndex']),
-    label: _marketplaceString(json['label']),
-    amountMinor: _marketplaceInt(json['amountMinor']),
-    currency: _marketplaceString(json['currency']),
-    dueAt: _marketplaceDate(json['dueAt']),
+    id: asString(json['_id']),
+    installmentIndex: asFiniteInt(json['installmentIndex']),
+    label: asString(json['label']),
+    amountMinor: asFiniteInt(json['amountMinor']),
+    currency: asString(json['currency']),
+    dueAt: asDate(json['dueAt']),
     status: PaymentRecordStatus.fromWire(json['status']),
-    paidAt: _marketplaceOptionalDate(json['paidAt']),
+    paidAt: asOptionalDate(json['paidAt']),
     canPay: json['canPay'] == true,
   );
 
   Money get amount => Money(amountMinor, currency);
+
+  PaymentRecord copyWith({PaymentRecordStatus? status, DateTime? paidAt}) {
+    final resolvedStatus = status ?? this.status;
+    return PaymentRecord(
+      id: id,
+      installmentIndex: installmentIndex,
+      label: label,
+      amountMinor: amountMinor,
+      currency: currency,
+      dueAt: dueAt,
+      status: resolvedStatus,
+      paidAt: paidAt ?? this.paidAt,
+      canPay: canPay && resolvedStatus.isOpen,
+    );
+  }
 }
 
 enum PayoutStatus {
@@ -3061,14 +3281,14 @@ class Payout {
   final String? holdReason;
 
   factory Payout.fromJson(Map<String, dynamic> json) => Payout(
-    id: _marketplaceString(json['_id']),
+    id: asString(json['_id']),
     kind: PayoutKind.fromWire(json['kind']),
-    amountMinor: _marketplaceInt(json['amountMinor']),
-    currency: _marketplaceString(json['currency']),
+    amountMinor: asFiniteInt(json['amountMinor']),
+    currency: asString(json['currency']),
     status: PayoutStatus.fromWire(json['status']),
-    scheduledFor: _marketplaceDate(json['scheduledFor']),
-    paidAt: _marketplaceOptionalDate(json['paidAt']),
-    holdReason: _marketplaceOptionalString(json['holdReason']),
+    scheduledFor: asDate(json['scheduledFor']),
+    paidAt: asOptionalDate(json['paidAt']),
+    holdReason: asOptionalString(json['holdReason']),
   );
 
   Money get amount => Money(amountMinor, currency);
@@ -3134,12 +3354,12 @@ class RefundRecord {
   final DateTime createdAt;
 
   factory RefundRecord.fromJson(Map<String, dynamic> json) => RefundRecord(
-    id: _marketplaceString(json['_id']),
-    amountMinor: _marketplaceInt(json['amountMinor']),
-    currency: _marketplaceString(json['currency']),
+    id: asString(json['_id']),
+    amountMinor: asFiniteInt(json['amountMinor']),
+    currency: asString(json['currency']),
     status: RefundStatus.fromWire(json['status']),
     reason: RefundReason.fromWire(json['reason']),
-    createdAt: _marketplaceDate(json['createdAt']),
+    createdAt: asDate(json['createdAt']),
   );
 
   Money get amount => Money(amountMinor, currency);
@@ -3165,11 +3385,11 @@ class RefundPreview {
   final BookingSide cancelledBy;
 
   factory RefundPreview.fromJson(Map<String, dynamic> json) => RefundPreview(
-    refundMinor: _marketplaceInt(json['refundMinor']),
-    forfeitedMinor: _marketplaceInt(json['forfeitedMinor']),
-    artistPayoutMinor: _marketplaceInt(json['artistPayoutMinor']),
-    paidMinor: _marketplaceInt(json['paidMinor']),
-    shareBps: _marketplaceInt(json['shareBps']),
+    refundMinor: asFiniteInt(json['refundMinor']),
+    forfeitedMinor: asFiniteInt(json['forfeitedMinor']),
+    artistPayoutMinor: asFiniteInt(json['artistPayoutMinor']),
+    paidMinor: asFiniteInt(json['paidMinor']),
+    shareBps: asFiniteInt(json['shareBps']),
     template: CancellationTemplate.fromWire(json['template']),
     cancelledBy: BookingSide.fromWire(json['cancelledBy']),
   );
@@ -3187,7 +3407,7 @@ class CheckoutStatus {
   final BookingStatus bookingStatus;
 
   factory CheckoutStatus.fromJson(Map<String, dynamic> json) => CheckoutStatus(
-    bookingId: _marketplaceString(json['bookingId']),
+    bookingId: asString(json['bookingId']),
     paymentStatus: PaymentRecordStatus.fromWire(json['paymentStatus']),
     bookingStatus: BookingStatus.fromWire(json['bookingStatus']),
   );
@@ -3262,15 +3482,15 @@ class TicketReservation {
 
   factory TicketReservation.fromJson(Map<String, dynamic> json) =>
       TicketReservation(
-        orderId: _marketplaceString(json['orderId']),
-        quantity: _marketplaceInt(json['quantity']),
-        unitPriceMinor: _marketplaceInt(json['unitPriceMinor']),
-        unitFeeMinor: _marketplaceInt(json['unitFeeMinor']),
-        subtotalMinor: _marketplaceInt(json['subtotalMinor']),
-        feeMinor: _marketplaceInt(json['feeMinor']),
-        totalMinor: _marketplaceInt(json['totalMinor']),
-        currency: _marketplaceString(json['currency']),
-        reservedUntil: _marketplaceDate(json['reservedUntil']),
+        orderId: asString(json['orderId']),
+        quantity: asFiniteInt(json['quantity']),
+        unitPriceMinor: asFiniteInt(json['unitPriceMinor']),
+        unitFeeMinor: asFiniteInt(json['unitFeeMinor']),
+        subtotalMinor: asFiniteInt(json['subtotalMinor']),
+        feeMinor: asFiniteInt(json['feeMinor']),
+        totalMinor: asFiniteInt(json['totalMinor']),
+        currency: asString(json['currency']),
+        reservedUntil: asDate(json['reservedUntil']),
       );
 
   Money get total => Money(totalMinor, currency);
@@ -3297,12 +3517,12 @@ class TicketGigSummary {
 
   factory TicketGigSummary.fromJson(Map<String, dynamic> json) =>
       TicketGigSummary(
-        id: _marketplaceString(json['_id'] ?? json['id']),
-        title: _marketplaceString(json['title']),
-        slug: _marketplaceOptionalString(json['slug']),
-        startsAt: _marketplaceDate(json['startsAt']),
-        doorsAt: _marketplaceOptionalDate(json['doorsAt']),
-        venueName: _marketplaceString(json['venueName']),
+        id: asString(json['_id'] ?? json['id']),
+        title: asString(json['title']),
+        slug: asOptionalString(json['slug']),
+        startsAt: asDate(json['startsAt']),
+        doorsAt: asOptionalDate(json['doorsAt']),
+        venueName: asString(json['venueName']),
         lifecycle: switch (json['lifecycle']) {
           'published' => GigLifecycle.published,
           'cancelled' => GigLifecycle.cancelled,
@@ -3335,14 +3555,14 @@ class TicketSummary {
   final TicketGigSummary gig;
 
   factory TicketSummary.fromJson(Map<String, dynamic> json) => TicketSummary(
-    id: _marketplaceString(json['_id'] ?? json['id']),
-    orderId: _marketplaceString(json['orderId']),
-    gigId: _marketplaceString(json['gigId']),
-    token: _marketplaceString(json['token']),
+    id: asString(json['_id'] ?? json['id']),
+    orderId: asString(json['orderId']),
+    gigId: asString(json['gigId']),
+    token: asString(json['token']),
     status: TicketStatus.fromWire(json['status']),
-    checkedInAt: _marketplaceOptionalDate(json['checkedInAt']),
-    createdAt: _marketplaceDate(json['createdAt']),
-    gig: TicketGigSummary.fromJson(_marketplaceMap(json['gig'])),
+    checkedInAt: asOptionalDate(json['checkedInAt']),
+    createdAt: asDate(json['createdAt']),
+    gig: TicketGigSummary.fromJson(asFilteredMap(json['gig'])),
   );
 }
 
@@ -3367,13 +3587,13 @@ class TicketOrderState {
 
   factory TicketOrderState.fromJson(Map<String, dynamic> json) =>
       TicketOrderState(
-        orderId: _marketplaceString(json['orderId']),
-        gigId: _marketplaceString(json['gigId']),
-        gigSlug: _marketplaceOptionalString(json['gigSlug']),
+        orderId: asString(json['orderId']),
+        gigId: asString(json['gigId']),
+        gigSlug: asOptionalString(json['gigSlug']),
         status: TicketOrderStatus.fromWire(json['status']),
-        quantity: _marketplaceInt(json['quantity']),
-        totalMinor: _marketplaceInt(json['totalMinor']),
-        currency: _marketplaceString(json['currency']),
+        quantity: asFiniteInt(json['quantity']),
+        totalMinor: asFiniteInt(json['totalMinor']),
+        currency: asString(json['currency']),
       );
 
   Money get total => Money(totalMinor, currency);
@@ -3409,17 +3629,17 @@ class TicketSales {
   final bool truncated;
 
   factory TicketSales.fromJson(Map<String, dynamic> json) => TicketSales(
-    capacity: _marketplaceInt(json['capacity']),
-    sold: _marketplaceInt(json['sold']),
-    reserved: _marketplaceInt(json['reserved']),
-    available: _marketplaceInt(json['available']),
-    ordersPaid: _marketplaceInt(json['ordersPaid']),
-    grossMinor: _marketplaceInt(json['grossMinor']),
-    feeMinor: _marketplaceInt(json['feeMinor']),
-    netMinor: _marketplaceInt(json['netMinor']),
-    currency: _marketplaceString(json['currency']),
-    refundedMinor: _marketplaceInt(json['refundedMinor']),
-    refundedOrgMinor: _marketplaceInt(json['refundedOrgMinor']),
+    capacity: asFiniteInt(json['capacity']),
+    sold: asFiniteInt(json['sold']),
+    reserved: asFiniteInt(json['reserved']),
+    available: asFiniteInt(json['available']),
+    ordersPaid: asFiniteInt(json['ordersPaid']),
+    grossMinor: asFiniteInt(json['grossMinor']),
+    feeMinor: asFiniteInt(json['feeMinor']),
+    netMinor: asFiniteInt(json['netMinor']),
+    currency: asString(json['currency']),
+    refundedMinor: asFiniteInt(json['refundedMinor']),
+    refundedOrgMinor: asFiniteInt(json['refundedOrgMinor']),
     truncated: json['truncated'] == true,
   );
 
@@ -3445,10 +3665,10 @@ class FinanceSnapshot {
 
   factory FinanceSnapshot.fromJson(Map<String, dynamic> json) =>
       FinanceSnapshot(
-        availableMinor: _marketplaceInt(json['availableMinor']),
-        pendingMinor: _marketplaceInt(json['pendingMinor']),
-        currency: _marketplaceString(json['currency']),
-        fetchedAt: _marketplaceDate(json['fetchedAt']),
+        availableMinor: asFiniteInt(json['availableMinor']),
+        pendingMinor: asFiniteInt(json['pendingMinor']),
+        currency: asString(json['currency']),
+        fetchedAt: asDate(json['fetchedAt']),
         stale: json['stale'] == true,
       );
 
@@ -3473,11 +3693,11 @@ class FinanceBookings {
 
   factory FinanceBookings.fromJson(Map<String, dynamic> json) =>
       FinanceBookings(
-        dueMinor: _marketplaceInt(json['dueMinor']),
-        paidMinor: _marketplaceInt(json['paidMinor']),
-        refundedMinor: _marketplaceInt(json['refundedMinor']),
-        disputedMinor: _marketplaceInt(json['disputedMinor']),
-        activeCount: _marketplaceInt(json['activeCount']),
+        dueMinor: asFiniteInt(json['dueMinor']),
+        paidMinor: asFiniteInt(json['paidMinor']),
+        refundedMinor: asFiniteInt(json['refundedMinor']),
+        disputedMinor: asFiniteInt(json['disputedMinor']),
+        activeCount: asFiniteInt(json['activeCount']),
       );
 }
 
@@ -3503,13 +3723,13 @@ class FinanceTickets {
   final bool truncated;
 
   factory FinanceTickets.fromJson(Map<String, dynamic> json) => FinanceTickets(
-    ordersPaid: _marketplaceInt(json['ordersPaid']),
-    grossMinor: _marketplaceInt(json['grossMinor']),
-    feeMinor: _marketplaceInt(json['feeMinor']),
-    refundedMinor: _marketplaceInt(json['refundedMinor']),
-    refundedOrgMinor: _marketplaceInt(json['refundedOrgMinor']),
-    netMinor: _marketplaceInt(json['netMinor']),
-    estimatedProcessingMinor: _marketplaceInt(json['estimatedProcessingMinor']),
+    ordersPaid: asFiniteInt(json['ordersPaid']),
+    grossMinor: asFiniteInt(json['grossMinor']),
+    feeMinor: asFiniteInt(json['feeMinor']),
+    refundedMinor: asFiniteInt(json['refundedMinor']),
+    refundedOrgMinor: asFiniteInt(json['refundedOrgMinor']),
+    netMinor: asFiniteInt(json['netMinor']),
+    estimatedProcessingMinor: asFiniteInt(json['estimatedProcessingMinor']),
     truncated: json['truncated'] == true,
   );
 }
@@ -3537,13 +3757,13 @@ class PendingPayment {
     Map<String, dynamic> json, {
     required String currency,
   }) => PendingPayment(
-    bookingId: _marketplaceString(json['bookingId']),
-    paymentRecordId: _marketplaceString(json['paymentRecordId']),
-    opportunityTitle: _marketplaceString(json['opportunityTitle']),
-    label: _marketplaceString(json['label']),
+    bookingId: asString(json['bookingId']),
+    paymentRecordId: asString(json['paymentRecordId']),
+    opportunityTitle: asString(json['opportunityTitle']),
+    label: asString(json['label']),
     currency: currency,
-    amountMinor: _marketplaceInt(json['amountMinor']),
-    dueAt: _marketplaceDate(json['dueAt']),
+    amountMinor: asFiniteInt(json['amountMinor']),
+    dueAt: asDate(json['dueAt']),
   );
 
   Money get amount => Money(amountMinor, currency);
@@ -3567,16 +3787,16 @@ class FinanceOverview {
   final String currency;
 
   factory FinanceOverview.fromJson(Map<String, dynamic> json) {
-    final currency = _marketplaceString(json['currency']);
+    final currency = asString(json['currency']);
     return FinanceOverview(
       stripeReady: json['stripeReady'] == true,
       snapshot: json['snapshot'] is Map
-          ? FinanceSnapshot.fromJson(_marketplaceMap(json['snapshot']))
+          ? FinanceSnapshot.fromJson(asFilteredMap(json['snapshot']))
           : null,
-      bookings: FinanceBookings.fromJson(_marketplaceMap(json['bookings'])),
-      tickets: FinanceTickets.fromJson(_marketplaceMap(json['tickets'])),
+      bookings: FinanceBookings.fromJson(asFilteredMap(json['bookings'])),
+      tickets: FinanceTickets.fromJson(asFilteredMap(json['tickets'])),
       pendingPayments: [
-        for (final item in _marketplaceMapList(json['pendingPayments']))
+        for (final item in asFilteredMapList(json['pendingPayments']))
           PendingPayment.fromJson(item, currency: currency),
       ],
       currency: currency,
@@ -3645,10 +3865,6 @@ enum FundsState {
     'paid' => FundsState.paid,
     'refunded' => FundsState.refunded,
     'disputed' => FundsState.disputed,
-    // Legacy aliases: earlier client builds used these wire values; keep
-    // accepting them here only (no corresponding enum members).
-    'paidOut' => FundsState.paid,
-    'reversed' => FundsState.refunded,
     _ => FundsState.unknown,
   };
 }
@@ -3680,16 +3896,16 @@ class FinanceTransaction {
 
   factory FinanceTransaction.fromJson(Map<String, dynamic> json) =>
       FinanceTransaction(
-        id: _marketplaceString(json['id']),
+        id: asString(json['id']),
         kind: LedgerKind.fromWire(json['kind']),
-        amountMinor: _marketplaceInt(json['amountMinor']),
-        currency: _marketplaceString(json['currency']),
+        amountMinor: asFiniteInt(json['amountMinor']),
+        currency: asString(json['currency']),
         fundsState: FundsState.fromWire(json['fundsState']),
-        occurredAt: _marketplaceDate(json['occurredAt']),
-        label: _marketplaceString(json['label']),
-        bookingId: _marketplaceOptionalString(json['bookingId']),
-        ticketOrderId: _marketplaceOptionalString(json['ticketOrderId']),
-        stripeRef: _marketplaceOptionalString(json['stripeRef']),
+        occurredAt: asDate(json['occurredAt']),
+        label: asString(json['label']),
+        bookingId: asOptionalString(json['bookingId']),
+        ticketOrderId: asOptionalString(json['ticketOrderId']),
+        stripeRef: asOptionalString(json['stripeRef']),
       );
 
   Money get amount => Money(amountMinor, currency);
@@ -3709,11 +3925,11 @@ class TransactionsPage {
   factory TransactionsPage.fromJson(Map<String, dynamic> json) =>
       TransactionsPage(
         items: [
-          for (final item in _marketplaceMapList(json['page'] ?? json['items']))
+          for (final item in asFilteredMapList(json['page']))
             FinanceTransaction.fromJson(item),
         ],
         isDone: json['isDone'] == true,
-        continueCursor: _marketplaceOptionalString(json['continueCursor']),
+        continueCursor: asOptionalString(json['continueCursor']),
       );
 }
 
@@ -3744,16 +3960,16 @@ class StatementTransaction {
 
   factory StatementTransaction.fromJson(Map<String, dynamic> json) =>
       StatementTransaction(
-        id: _marketplaceString(json['id']),
+        id: asString(json['id']),
         kind: LedgerKind.fromWire(json['kind']),
-        amountMinor: _marketplaceInt(json['amountMinor']),
-        currency: _marketplaceString(json['currency']),
+        amountMinor: asFiniteInt(json['amountMinor']),
+        currency: asString(json['currency']),
         fundsState: FundsState.fromWire(json['fundsState']),
-        occurredAt: _marketplaceDate(json['occurredAt']),
-        label: _marketplaceString(json['label']),
-        bookingId: _marketplaceOptionalString(json['bookingId']),
-        ticketOrderId: _marketplaceOptionalString(json['ticketOrderId']),
-        stripeRef: _marketplaceOptionalString(json['stripeRef']),
+        occurredAt: asDate(json['occurredAt']),
+        label: asString(json['label']),
+        bookingId: asOptionalString(json['bookingId']),
+        ticketOrderId: asOptionalString(json['ticketOrderId']),
+        stripeRef: asOptionalString(json['stripeRef']),
       );
 
   Money get amount => Money(amountMinor, currency);
@@ -3772,8 +3988,8 @@ class StatementTotal {
 
   factory StatementTotal.fromJson(Map<String, dynamic> json) => StatementTotal(
     kind: LedgerKind.fromWire(json['kind']),
-    amountMinor: _marketplaceInt(json['amountMinor']),
-    count: _marketplaceInt(json['count']),
+    amountMinor: asFiniteInt(json['amountMinor']),
+    count: asFiniteInt(json['count']),
   );
 }
 
@@ -3794,15 +4010,15 @@ class StatementExport {
 
   factory StatementExport.fromJson(Map<String, dynamic> json) =>
       StatementExport(
-        csv: _marketplaceString(json['csv']),
-        rows: _marketplaceInt(json['rows']),
+        csv: asString(json['csv']),
+        rows: asFiniteInt(json['rows']),
         truncated: json['truncated'] == true,
         transactions: [
-          for (final item in _marketplaceMapList(json['transactions']))
+          for (final item in asFilteredMapList(json['transactions']))
             StatementTransaction.fromJson(item),
         ],
         totalsByKind: [
-          for (final item in _marketplaceMapList(json['totalsByKind']))
+          for (final item in asFilteredMapList(json['totalsByKind']))
             StatementTotal.fromJson(item),
         ],
       );
@@ -3822,10 +4038,10 @@ class PayoutStatement {
   factory PayoutStatement.fromJson(Map<String, dynamic> json) =>
       PayoutStatement(
         payouts: [
-          for (final item in _marketplaceMapList(json['payouts']))
+          for (final item in asFilteredMapList(json['payouts']))
             PayoutStatementRow.fromJson(item),
         ],
-        totalNetMinor: _marketplaceInt(json['totalNetMinor']),
+        totalNetMinor: asFiniteInt(json['totalNetMinor']),
         truncated: json['truncated'] == true,
       );
 }
@@ -3863,19 +4079,19 @@ class PayoutStatementRow {
 
   factory PayoutStatementRow.fromJson(Map<String, dynamic> json) =>
       PayoutStatementRow(
-        payoutId: _marketplaceString(json['payoutId']),
-        bookingId: _marketplaceString(json['bookingId']),
-        bookingTitle: _marketplaceString(json['bookingTitle']),
-        organizationName: _marketplaceString(json['organizationName']),
+        payoutId: asString(json['payoutId']),
+        bookingId: asString(json['bookingId']),
+        bookingTitle: asString(json['bookingTitle']),
+        organizationName: asString(json['organizationName']),
         kind: PayoutKind.fromWire(json['kind']),
         status: PayoutStatus.fromWire(json['status']),
-        paidAt: _marketplaceDate(json['paidAt']),
-        netMinor: _marketplaceInt(json['netMinor']),
-        reversedMinor: _marketplaceInt(json['reversedMinor']),
-        currency: _marketplaceString(json['currency']),
-        grossMinor: _marketplaceOptionalInt(json['grossMinor']),
-        commissionMinor: _marketplaceOptionalInt(json['commissionMinor']),
-        stripeTransferId: _marketplaceOptionalString(json['stripeTransferId']),
+        paidAt: asDate(json['paidAt']),
+        netMinor: asFiniteInt(json['netMinor']),
+        reversedMinor: asFiniteInt(json['reversedMinor']),
+        currency: asString(json['currency']),
+        grossMinor: asOptionalFiniteInt(json['grossMinor']),
+        commissionMinor: asOptionalFiniteInt(json['commissionMinor']),
+        stripeTransferId: asOptionalString(json['stripeTransferId']),
       );
 }
 
@@ -3891,9 +4107,9 @@ class InsightBucket {
   final int checkIns;
 
   factory InsightBucket.fromJson(Map<String, dynamic> json) => InsightBucket(
-    key: _marketplaceString(json['key']),
-    events: _marketplaceInt(json['events']),
-    checkIns: _marketplaceInt(json['checkIns']),
+    key: asString(json['key']),
+    events: asFiniteInt(json['events']),
+    checkIns: asFiniteInt(json['checkIns']),
   );
 }
 
@@ -3906,7 +4122,7 @@ class InsightPartition {
   factory InsightPartition.fromJson(Map<String, dynamic> json) =>
       InsightPartition(
         buckets: [
-          for (final item in _marketplaceMapList(json['buckets']))
+          for (final item in asFilteredMapList(json['buckets']))
             InsightBucket.fromJson(item),
         ],
         suppressed: json['suppressed'] == true,
@@ -3927,9 +4143,9 @@ class Attribution {
   final bool suppressed;
 
   factory Attribution.fromJson(Map<String, dynamic> json) => Attribution(
-    referral: _marketplaceInt(json['referral']),
-    follow: _marketplaceInt(json['follow']),
-    unattributed: _marketplaceInt(json['unattributed']),
+    referral: asFiniteInt(json['referral']),
+    follow: asFiniteInt(json['follow']),
+    unattributed: asFiniteInt(json['unattributed']),
     suppressed: json['suppressed'] == true,
   );
 }
@@ -3984,10 +4200,10 @@ class EstimatedDraw {
   final DrawBasis basis;
 
   factory EstimatedDraw.fromJson(Map<String, dynamic> json) => EstimatedDraw(
-    low: _marketplaceInt(json['low']),
-    high: _marketplaceInt(json['high']),
+    low: asFiniteInt(json['low']),
+    high: asFiniteInt(json['high']),
     confidence: DrawConfidence.fromWire(json['confidence']),
-    events: _marketplaceInt(json['events']),
+    events: asFiniteInt(json['events']),
     basis: DrawBasis.fromWire(json['basis']),
   );
 }
@@ -4006,10 +4222,10 @@ class InsightsWindow {
   final DateTime? lastStartsAt;
 
   factory InsightsWindow.fromJson(Map<String, dynamic> json) => InsightsWindow(
-    events: _marketplaceInt(json['events']),
+    events: asFiniteInt(json['events']),
     truncated: json['truncated'] == true,
-    firstStartsAt: _marketplaceOptionalDate(json['firstStartsAt']),
-    lastStartsAt: _marketplaceOptionalDate(json['lastStartsAt']),
+    firstStartsAt: asOptionalDate(json['firstStartsAt']),
+    lastStartsAt: asOptionalDate(json['lastStartsAt']),
   );
 }
 
@@ -4020,8 +4236,8 @@ class InsightsBand {
   final String name;
 
   factory InsightsBand.fromJson(Map<String, dynamic> json) => InsightsBand(
-    bandId: _marketplaceString(json['bandId']),
-    name: _marketplaceString(json['name']),
+    bandId: asString(json['bandId']),
+    name: asString(json['name']),
   );
 }
 
@@ -4059,25 +4275,25 @@ class ArtistInsights {
   final EstimatedDraw? estimatedDraw;
 
   factory ArtistInsights.fromJson(Map<String, dynamic> json) => ArtistInsights(
-    band: InsightsBand.fromJson(_marketplaceMap(json['band'])),
-    window: InsightsWindow.fromJson(_marketplaceMap(json['window'])),
-    followers: _marketplaceInt(json['followers']),
-    rsvpTotal: _marketplaceInt(json['rsvpTotal']),
-    ticketsSold: _marketplaceInt(json['ticketsSold']),
-    checkIns: _marketplaceInt(json['checkIns']),
-    returningAttendees: _marketplaceInt(json['returningAttendees']),
+    band: InsightsBand.fromJson(asFilteredMap(json['band'])),
+    window: InsightsWindow.fromJson(asFilteredMap(json['window'])),
+    followers: asFiniteInt(json['followers']),
+    rsvpTotal: asFiniteInt(json['rsvpTotal']),
+    ticketsSold: asFiniteInt(json['ticketsSold']),
+    checkIns: asFiniteInt(json['checkIns']),
+    returningAttendees: asFiniteInt(json['returningAttendees']),
     returningSuppressed: json['returningSuppressed'] == true,
-    attribution: Attribution.fromJson(_marketplaceMap(json['attribution'])),
-    byArea: InsightPartition.fromJson(_marketplaceMap(json['byArea'])),
+    attribution: Attribution.fromJson(asFilteredMap(json['attribution'])),
+    byArea: InsightPartition.fromJson(asFilteredMap(json['byArea'])),
     byVenueType: InsightPartition.fromJson(
-      _marketplaceMap(json['byVenueType']),
+      asFilteredMap(json['byVenueType']),
     ),
-    byWeekday: InsightPartition.fromJson(_marketplaceMap(json['byWeekday'])),
+    byWeekday: InsightPartition.fromJson(asFilteredMap(json['byWeekday'])),
     byPriceBand: InsightPartition.fromJson(
-      _marketplaceMap(json['byPriceBand']),
+      asFilteredMap(json['byPriceBand']),
     ),
     estimatedDraw: json['estimatedDraw'] is Map
-        ? EstimatedDraw.fromJson(_marketplaceMap(json['estimatedDraw']))
+        ? EstimatedDraw.fromJson(asFilteredMap(json['estimatedDraw']))
         : null,
   );
 }
@@ -4120,9 +4336,9 @@ class TicketDoorResult {
   factory TicketDoorResult.fromJson(Map<String, dynamic> json) =>
       TicketDoorResult(
         kind: TicketDoorKind.fromWire(json['kind']),
-        holderName: _marketplaceOptionalString(json['holderName']),
-        checkedInAt: _marketplaceOptionalDate(json['checkedInAt']),
-        source: _marketplaceOptionalString(json['source']),
+        holderName: asOptionalString(json['holderName']),
+        checkedInAt: asOptionalDate(json['checkedInAt']),
+        source: asOptionalString(json['source']),
       );
 }
 
@@ -4142,10 +4358,10 @@ class DoorCounts {
   final bool truncated;
 
   factory DoorCounts.fromJson(Map<String, dynamic> json) => DoorCounts(
-    rsvpTotal: _marketplaceInt(json['rsvpTotal']),
-    rsvpCheckedIn: _marketplaceInt(json['rsvpCheckedIn']),
-    ticketsSold: _marketplaceInt(json['ticketsSold']),
-    ticketsCheckedIn: _marketplaceInt(json['ticketsCheckedIn']),
+    rsvpTotal: asFiniteInt(json['rsvpTotal']),
+    rsvpCheckedIn: asFiniteInt(json['rsvpCheckedIn']),
+    ticketsSold: asFiniteInt(json['ticketsSold']),
+    ticketsCheckedIn: asFiniteInt(json['ticketsCheckedIn']),
     truncated: json['truncated'] == true,
   );
 }
@@ -4178,10 +4394,10 @@ class ReviewSummary {
   factory ReviewSummary.fromJson(Map<String, dynamic>? json) {
     final mean = json?['mean'];
     return ReviewSummary(
-      count: _marketplaceInt(json?['count']),
+      count: asFiniteInt(json?['count']),
       mean: mean is num ? mean.toDouble() : 0,
-      completedBookings: _marketplaceInt(json?['completedBookings']),
-      cancellations: _marketplaceInt(json?['cancellations']),
+      completedBookings: asFiniteInt(json?['completedBookings']),
+      cancellations: asFiniteInt(json?['cancellations']),
     );
   }
 }
@@ -4206,13 +4422,13 @@ class Review {
   final DateTime? visibleAt;
 
   factory Review.fromJson(Map<String, dynamic> json) => Review(
-    reviewId: _marketplaceString(json['reviewId']),
+    reviewId: asString(json['reviewId']),
     authorSide: BookingSide.fromWire(json['authorSide']),
-    rating: _marketplaceInt(json['rating']),
-    categories: _marketplaceStringList(json['categories']),
-    text: _marketplaceString(json['text']),
-    submittedAt: _marketplaceDate(json['submittedAt']),
-    visibleAt: _marketplaceOptionalDate(json['visibleAt']),
+    rating: asFiniteInt(json['rating']),
+    categories: asStringList(json['categories']),
+    text: asString(json['text']),
+    submittedAt: asDate(json['submittedAt']),
+    visibleAt: asOptionalDate(json['visibleAt']),
   );
 }
 
@@ -4231,12 +4447,12 @@ class BookingReviews {
 
   factory BookingReviews.fromJson(Map<String, dynamic> json) => BookingReviews(
     mine: json['mine'] is Map
-        ? Review.fromJson(_marketplaceMap(json['mine']))
+        ? Review.fromJson(asFilteredMap(json['mine']))
         : null,
     theirs: json['theirs'] is Map
-        ? Review.fromJson(_marketplaceMap(json['theirs']))
+        ? Review.fromJson(asFilteredMap(json['theirs']))
         : null,
-    windowClosesAt: _marketplaceDate(json['windowClosesAt']),
+    windowClosesAt: asDate(json['windowClosesAt']),
     canSubmit: json['canSubmit'] == true,
   );
 }
@@ -4263,17 +4479,17 @@ class PublicReview {
   final String opportunityTitle;
 
   factory PublicReview.fromJson(Map<String, dynamic> json) => PublicReview(
-    reviewId: _marketplaceString(json['reviewId']),
-    rating: _marketplaceInt(json['rating']),
-    categories: _marketplaceStringList(json['categories']),
-    text: _marketplaceString(json['text']),
-    submittedAt: _marketplaceDate(json['submittedAt']),
-    monthLabel: _marketplaceString(json['monthLabel']),
+    reviewId: asString(json['reviewId']),
+    rating: asFiniteInt(json['rating']),
+    categories: asStringList(json['categories']),
+    text: asString(json['text']),
+    submittedAt: asDate(json['submittedAt']),
+    monthLabel: asString(json['monthLabel']),
     counterpartyName:
-        _marketplaceOptionalString(json['organizationName']) ??
-        _marketplaceOptionalString(json['bandName']) ??
+        asOptionalString(json['organizationName']) ??
+        asOptionalString(json['bandName']) ??
         '',
-    opportunityTitle: _marketplaceString(json['opportunityTitle']),
+    opportunityTitle: asString(json['opportunityTitle']),
   );
 }
 
@@ -4285,15 +4501,6 @@ const List<String> reviewCategories = [
   'hospitality',
   'payment',
 ];
-
-class GigWritePolicy {
-  const GigWritePolicy({required this.bandGigWrites});
-
-  final bool bandGigWrites;
-
-  factory GigWritePolicy.fromJson(Map<String, dynamic> json) =>
-      GigWritePolicy(bandGigWrites: json['bandGigWrites'] == true);
-}
 
 enum Ticketing { rsvp, external, paid }
 
@@ -4406,8 +4613,8 @@ class GigProject {
     overlay: json['overlay'] as bool,
     desc: json['desc'] as String,
     ticketing: Ticketing.values.byName(json['ticketing'] as String),
-    ticketPriceMinor: _marketplaceOptionalInt(json['ticketPriceMinor']),
-    ticketCapacity: _marketplaceOptionalInt(json['ticketCapacity']),
+    ticketPriceMinor: asOptionalFiniteInt(json['ticketPriceMinor']),
+    ticketCapacity: asOptionalFiniteInt(json['ticketCapacity']),
     ageRequirement: AgeRequirement.fromJson(json['ageRequirement']),
     externalUrl: json['externalUrl'] as String?,
     cap: json['cap'] as String,
@@ -4422,6 +4629,42 @@ class GigProject {
 
   bool get hasUnpublishedChanges =>
       status == GigProjectStatus.published && publishedRevision != revision;
+
+  /// Copies the project and refreshes [updatedAt] to the current time.
+  GigProject copyWith({
+    GigProjectStatus? status,
+    int? revision,
+    int? publishedRevision,
+    String? publicGigId,
+    String? publicSlug,
+    List<GigPerformer>? performers,
+  }) => GigProject(
+    id: id,
+    bandId: bandId,
+    publicGigId: publicGigId ?? this.publicGigId,
+    publicSlug: publicSlug ?? this.publicSlug,
+    status: status ?? this.status,
+    revision: revision ?? this.revision,
+    publishedRevision: publishedRevision ?? this.publishedRevision,
+    title: title,
+    doorsAt: doorsAt,
+    startsAt: startsAt,
+    venueId: venueId,
+    price: price,
+    flyKey: flyKey,
+    flyStorageId: flyStorageId,
+    flyerUrl: flyerUrl,
+    overlay: overlay,
+    desc: desc,
+    ticketing: ticketing,
+    ticketPriceMinor: ticketPriceMinor,
+    ticketCapacity: ticketCapacity,
+    ageRequirement: ageRequirement,
+    externalUrl: externalUrl,
+    cap: cap,
+    updatedAt: DateTime.now(),
+    performers: performers ?? this.performers,
+  );
 }
 
 DateTime? _optionalDate(Object? milliseconds) => milliseconds == null
@@ -4560,8 +4803,8 @@ class Gig {
       title: json['title'] as String,
       venueId: json['venueId'] as String,
       price: (json['price'] as num).toInt(),
-      ticketPriceMinor: _marketplaceOptionalInt(json['ticketPriceMinor']),
-      ticketCurrency: _marketplaceOptionalString(json['ticketCurrency']),
+      ticketPriceMinor: asOptionalFiniteInt(json['ticketPriceMinor']),
+      ticketCurrency: asOptionalString(json['ticketCurrency']),
       ticketSeller: json['ticketSeller'] == null
           ? null
           : TicketSellerRef.fromJson(
@@ -4606,7 +4849,7 @@ class Gig {
       ),
       createdByBand: json['createdByBand'] as String?,
       ownerKind: GigOwnerKind.fromWire(json['ownerKind']),
-      opportunityId: _marketplaceOptionalString(json['opportunityId']),
+      opportunityId: asOptionalString(json['opportunityId']),
       discoveryListingReady: json['discoveryListingReady'] == true,
     );
   }
@@ -4922,7 +5165,7 @@ class Band {
       linkYt: json['linkYt'] as String?,
       credits: json['credits'] as String?,
       reviewSummary: json['reviewSummary'] is Map
-          ? ReviewSummary.fromJson(_marketplaceMap(json['reviewSummary']))
+          ? ReviewSummary.fromJson(asFilteredMap(json['reviewSummary']))
           : null,
       avatarUrl: json['avatarUrl'] as String?,
       bannerUrl: json['bannerUrl'] as String?,

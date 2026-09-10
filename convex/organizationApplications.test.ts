@@ -1,11 +1,11 @@
 /// <reference types="vite/client" />
 import { convexTest } from "convex-test";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { api, internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 
 const draftFields = {
   orgName: "Night Light LLC",
@@ -71,15 +71,6 @@ async function setupActors() {
 }
 
 describe("organization applications", () => {
-  beforeEach(() => {
-    vi.unstubAllEnvs();
-    vi.stubEnv("PROMOTERS_ENABLED", undefined);
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   test("saveDraft creates and updates with optimistic concurrency", async () => {
     const { asApplicant } = await setupActors();
     const created = await asApplicant.mutation(
@@ -240,31 +231,9 @@ describe("organization applications", () => {
     ).toMatchObject({ status: "submitted", revision: 5 });
   });
 
-  test.each([
-    { orgType: "promoter", value: undefined },
-    { orgType: "promoter", value: "false" },
-    { orgType: "studentOrg", value: undefined },
-    { orgType: "studentOrg", value: "false" },
-  ] as const)(
-    "saveDraft enforces the phase-one venue operator restriction ($orgType, PROMOTERS_ENABLED=$value)",
-    async ({ orgType, value }) => {
-      vi.stubEnv("PROMOTERS_ENABLED", value);
-      const { asApplicant } = await setupActors();
-      await expect(
-        asApplicant.mutation(api.organizationApplications.saveDraft, {
-          ...draftFields,
-          orgType,
-        }),
-      ).rejects.toThrow(
-        "Only bars and clubs that control their location can apply right now",
-      );
-    },
-  );
-
   test.each(["promoter", "studentOrg"] as const)(
-    "saveDraft accepts %s with PROMOTERS_ENABLED and drops its venue",
+    "saveDraft accepts %s and drops its venue",
     async (orgType) => {
-      vi.stubEnv("PROMOTERS_ENABLED", "true");
       const { t, asApplicant } = await setupActors();
       const { applicationId } = await asApplicant.mutation(
         api.organizationApplications.saveDraft,
@@ -282,26 +251,21 @@ describe("organization applications", () => {
     },
   );
 
-  test.each([undefined, "false", "true"])(
-    "saveDraft refuses other organizations when PROMOTERS_ENABLED is %s",
-    async (value) => {
-      vi.stubEnv("PROMOTERS_ENABLED", value);
-      const { asApplicant } = await setupActors();
-      await expect(
-        asApplicant.mutation(api.organizationApplications.saveDraft, {
-          ...draftFields,
-          orgType: "other",
-        }),
-      ).rejects.toThrow(
-        "Only bars and clubs that control their location can apply right now",
-      );
-    },
-  );
+  test("saveDraft refuses other organizations", async () => {
+    const { asApplicant } = await setupActors();
+    await expect(
+      asApplicant.mutation(api.organizationApplications.saveDraft, {
+        ...draftFields,
+        orgType: "other",
+      }),
+    ).rejects.toThrow(
+      "Only bars and clubs that control their location can apply right now",
+    );
+  });
 
   test.each(["promoter", "studentOrg"] as const)(
     "submit requires a verification document for %s without a venue",
     async (orgType) => {
-      vi.stubEnv("PROMOTERS_ENABLED", "true");
       const { t, asApplicant } = await setupActors();
       const { applicationId, revision } = await asApplicant.mutation(
         api.organizationApplications.saveDraft,
@@ -340,41 +304,6 @@ describe("organization applications", () => {
         orgType,
         venue: null,
         revision: attached.revision + 1,
-      });
-    },
-  );
-
-  test.each(["promoter", "studentOrg"] as const)(
-    "submit refuses a saved %s draft after PROMOTERS_ENABLED is turned off",
-    async (orgType) => {
-      vi.stubEnv("PROMOTERS_ENABLED", "true");
-      const { t, asApplicant } = await setupActors();
-      const { applicationId } = await asApplicant.mutation(
-        api.organizationApplications.saveDraft,
-        { ...draftFields, orgType },
-      );
-      const storageId = await t.run((ctx) =>
-        ctx.storage.store(
-          new Blob(["verification"], { type: "application/pdf" }),
-        ),
-      );
-      const attached = await asApplicant.mutation(
-        api.organizationApplications.attachDocument,
-        { applicationId, storageId },
-      );
-
-      vi.stubEnv("PROMOTERS_ENABLED", "false");
-      await expect(
-        asApplicant.mutation(api.organizationApplications.submit, {
-          applicationId,
-          expectedRevision: attached.revision,
-        }),
-      ).rejects.toThrow(
-        "Only bars and clubs that control their location can apply right now",
-      );
-      expect(await t.run((ctx) => ctx.db.get(applicationId))).toMatchObject({
-        status: "draft",
-        revision: attached.revision,
       });
     },
   );
@@ -684,7 +613,6 @@ describe("organization applications", () => {
   });
 
   test("approval creates a promoter organization and owner without a venue", async () => {
-    vi.stubEnv("PROMOTERS_ENABLED", "true");
     const { t, asApplicant, asAdmin, applicantUserId } = await setupActors();
     const { applicationId } = await asApplicant.mutation(
       api.organizationApplications.saveDraft,
@@ -947,7 +875,6 @@ describe("host applications", () => {
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
-    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -1159,7 +1086,6 @@ describe("host applications", () => {
     "saveDraft freezes submitted kind %s in needs_info while allowing other edits",
     async (kind) => {
       vi.useFakeTimers();
-      vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
       const { t, asApplicant, asAdmin } = await setupActors();
       const fields = {
         ...draftFields,
@@ -1274,26 +1200,7 @@ describe("host applications", () => {
     },
   );
 
-  test.each([undefined, "false"])(
-    "submit rejects hosts when PRIVATE_BOOKINGS_ENABLED is %s",
-    async (value) => {
-      vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", value);
-      const { asApplicant } = await setupActors();
-      const created = await asApplicant.mutation(
-        api.organizationApplications.saveDraft,
-        hostDraftFields,
-      );
-      await expect(
-        asApplicant.mutation(api.organizationApplications.submit, {
-          applicationId: created.applicationId,
-          expectedRevision: created.revision,
-        }),
-      ).rejects.toThrow("Hosting is not available yet");
-    },
-  );
-
   test("submit requires host details, agreement, and a document", async () => {
-    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
     const { t, asApplicant } = await setupActors();
     let draft = await asApplicant.mutation(
       api.organizationApplications.saveDraft,
@@ -1367,7 +1274,6 @@ describe("host applications", () => {
     { organizerAgreementAccepted: false },
     {},
   ])("host submit ignores organizer agreement acceptance: %j", async (args) => {
-    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
     const { t, asApplicant } = await setupActors();
     const { applicationId } = await asApplicant.mutation(
       api.organizationApplications.saveDraft,
@@ -1426,7 +1332,6 @@ describe("host applications", () => {
 
   test("approval creates a privateHost organization and owner without a venue", async () => {
     vi.useFakeTimers();
-    vi.stubEnv("PRIVATE_BOOKINGS_ENABLED", "true");
     const { t, asApplicant, asAdmin, applicantUserId } =
       await setupActors();
     const created = await asApplicant.mutation(

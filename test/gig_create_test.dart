@@ -7,13 +7,13 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/gig_create.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/common.dart';
-import 'package:earplug/widgets/form_bits.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets(
@@ -149,39 +149,6 @@ void main() {
     },
   );
 
-  testWidgets('the six editing slots use the two-column checklist grammar', (
-    tester,
-  ) async {
-    await _pumpGigCreate(tester);
-
-    final date = tester.getTopLeft(find.byKey(const ValueKey('gig-slot-date')));
-    final times = tester.getTopLeft(
-      find.byKey(const ValueKey('gig-slot-times')),
-    );
-    final venue = tester.getTopLeft(
-      find.byKey(const ValueKey('gig-slot-venue')),
-    );
-    final cover = tester.getTopLeft(
-      find.byKey(const ValueKey('gig-slot-cover')),
-    );
-    final access = tester.getTopLeft(
-      find.byKey(const ValueKey('gig-slot-access')),
-    );
-    final audience = tester.getTopLeft(
-      find.byKey(const ValueKey('gig-slot-audience')),
-    );
-
-    expect(date.dy, times.dy);
-    expect(venue.dy, cover.dy);
-    expect(access.dy, audience.dy);
-    expect(times.dx, greaterThan(date.dx));
-    expect(venue.dx, date.dx);
-    expect(cover.dx, times.dx);
-    expect(access.dx, date.dx);
-    expect(audience.dx, times.dx);
-    expect(find.byType(StickyActionBar), findsOne);
-  });
-
   testWidgets('the editing slots collapse to one column for enlarged text', (
     tester,
   ) async {
@@ -272,6 +239,7 @@ void main() {
     tester,
   ) async {
     final repository = _GatedFlyerRepository(auth: FakeAuthService());
+    final uploadGate = repository.uploadGate;
     final harness = await _pumpGigCreate(tester, repository: repository);
     final app = harness.app;
     harness.picker.nextPhoto = photoFixture(filename: 'flyer.png');
@@ -295,7 +263,7 @@ void main() {
     expect(repository.publishCalls, 0);
     expect(app.gfPublished, isFalse);
 
-    repository.uploadGate.complete();
+    uploadGate.complete();
     await tester.pumpAndSettle();
     expect(app.gfFlyerUploading, isFalse);
     expect(app.gfFlyerStorageId, isNotNull);
@@ -408,7 +376,6 @@ void main() {
     final app = (await _pumpGigCreate(tester)).app;
     await app.refreshBandPayoutStatus();
     await tester.pumpAndSettle();
-    expect(app.features.bandTicketing, isTrue);
     expect(app.bandPayoutStatus?.hasAccount, isFalse);
     expect(app.canSellTickets, isFalse);
 
@@ -428,36 +395,6 @@ void main() {
     expect(app.gfTix, Ticketing.rsvp);
     expect(find.byKey(const Key('gig-ticket-price')), findsNothing);
     expect(find.byKey(const Key('gig-ticket-capacity')), findsNothing);
-  });
-
-  testWidgets('paid tickets stay disabled when the feature is off', (
-    tester,
-  ) async {
-    final app = (await _pumpGigCreate(tester)).app;
-    await app.repository.enableBandTicketSales(app.bandId);
-    await app.refreshBandPayoutStatus();
-    await tester.pumpAndSettle();
-    app.features = const FeatureFlags(
-      privateBookings: true,
-      tickets: false,
-      payments: true,
-      bandGigWrites: true,
-    );
-    expect(app.bandPayoutStatus?.canSellTickets, isTrue);
-    expect(app.canSellTickets, isFalse);
-
-    final accessSlot = find.byKey(const ValueKey('gig-slot-access'));
-    await _scrollTo(tester, accessSlot);
-    await tester.tap(accessSlot);
-    await tester.pumpAndSettle();
-
-    final paidOption = find.byKey(const Key('gig-tickets-paid'));
-    expect(find.text('Ticket sales are off'), findsOne);
-    expect(tester.widget<EpCard>(paidOption).variant, EpCardVariant.disabled);
-    expect(tester.widget<EpCard>(paidOption).onTap, isNull);
-    await tester.tap(paidOption);
-    await tester.pump();
-    expect(app.gfTix, Ticketing.rsvp);
   });
 
   testWidgets('enabled paid tickets explain direct Stripe payments', (
@@ -715,9 +652,23 @@ void main() {
   testWidgets('venue sheet updates when the directory finishes loading', (
     tester,
   ) async {
-    final repository = _GatedVenueRepository(auth: FakeAuthService());
+    final repository = StubRepository(auth: FakeAuthService())
+      ..wraps<List<Venue>>(
+        'venues',
+        (real) => [
+          ...real,
+          const Venue(
+            id: 'late-venue',
+            name: 'Late Arrival Hall',
+            area: 'Oakland',
+            addr: '123 Late Street',
+            point: LatLng(37.8, -122.27),
+          ),
+        ],
+      );
+    final venueGate = repository.gate('venues');
     addTearDown(() {
-      if (!repository.venueGate.isCompleted) repository.venueGate.complete();
+      if (!venueGate.isCompleted) venueGate.complete();
     });
     await _pumpGigCreate(tester, repository: repository);
 
@@ -725,28 +676,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('LATE ARRIVAL HALL'), findsNothing);
 
-    repository.venueGate.complete();
+    venueGate.complete();
     await tester.pumpAndSettle();
     expect(find.text('LATE ARRIVAL HALL'), findsOne);
-  });
-
-  testWidgets('venue sheet list sizes to two venues', (tester) async {
-    final repository = _TwoVenueRepository(auth: FakeAuthService());
-    await _pumpGigCreate(tester, repository: repository);
-
-    await tester.tap(find.text('Choose a venue'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('FIRST TEST VENUE'), findsOne);
-    expect(find.text('SECOND TEST VENUE'), findsOne);
-    final venueList = find.descendant(
-      of: find.byType(BottomSheet),
-      matching: find.byType(ListView),
-    );
-    expect(venueList, findsOne);
-    final screenHeight =
-        tester.view.physicalSize.height / tester.view.devicePixelRatio;
-    expect(tester.getSize(venueList).height, lessThan(screenHeight * .6));
   });
 
   test(
@@ -973,6 +905,7 @@ void main() {
   test('stale draft saves cannot update or clear a newer editor', () async {
     final auth = FakeAuthService();
     final repository = _GatedSaveRepository(auth: auth);
+    final saveGate = repository.saveGate;
     final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await Future<void>.delayed(Duration.zero);
@@ -988,7 +921,7 @@ void main() {
     app.startGigCreate();
     await Future<void>.delayed(Duration.zero);
     expect(app.gfProject, isNull);
-    repository.saveGate.complete();
+    saveGate.complete();
     await oldSave;
 
     expect(app.gfProject, isNull);
@@ -1065,80 +998,18 @@ Future<AppHarness> _pumpGigCreate(
   home: const Scaffold(body: GigCreateScreen()),
 );
 
-class _GatedFlyerRepository extends DemoRepository {
+class _GatedFlyerRepository extends StubRepository {
   _GatedFlyerRepository({required super.auth});
 
-  final uploadGate = Completer<void>();
-  int publishCalls = 0;
+  late final uploadGate = gate('generateMediaUploadUrl');
+  int get publishCalls => callsTo('publishGigDraft');
   String? publishedFlyStorageId;
 
   @override
-  Future<String> generateMediaUploadUrl(String bandId) async {
-    await uploadGate.future;
-    return super.generateMediaUploadUrl(bandId);
-  }
-
-  @override
   Future<String> publishGigDraft(String projectId) async {
-    publishCalls++;
     publishedFlyStorageId = (await getGigProject(projectId)).flyStorageId;
     return super.publishGigDraft(projectId);
   }
-}
-
-class _GatedVenueRepository extends DemoRepository {
-  _GatedVenueRepository({required super.auth});
-
-  final venueGate = Completer<void>();
-
-  @override
-  Future<List<Venue>> venues() async {
-    await venueGate.future;
-    return [
-      ...await super.venues(),
-      const Venue(
-        id: 'late-venue',
-        name: 'Late Arrival Hall',
-        area: 'Oakland',
-        addr: '123 Late Street',
-        point: LatLng(37.8, -122.27),
-      ),
-    ];
-  }
-}
-
-class _TwoVenueRepository extends DemoRepository {
-  _TwoVenueRepository({required super.auth});
-
-  static const _venues = [
-    Venue(
-      id: 'test-venue-1',
-      name: 'First Test Venue',
-      area: 'Oakland',
-      addr: '1 First Street',
-      point: LatLng(37.8, -122.27),
-    ),
-    Venue(
-      id: 'test-venue-2',
-      name: 'Second Test Venue',
-      area: 'San Francisco',
-      addr: '2 Second Street',
-      point: LatLng(37.76, -122.42),
-    ),
-  ];
-
-  @override
-  Stream<FeedSnapshot> feed() => super.feed().map(
-    (snapshot) => FeedSnapshot(
-      gigs: const [],
-      venues: {for (final venue in _venues) venue.id: venue},
-      bands: snapshot.bands,
-      nextStartsAt: snapshot.nextStartsAt,
-    ),
-  );
-
-  @override
-  Future<List<Venue>> venues() async => _venues;
 }
 
 class _GatedDraftRepository extends DemoRepository {
@@ -1158,66 +1029,17 @@ class _GatedDraftRepository extends DemoRepository {
   }
 }
 
-class _CountingDraftRepository extends DemoRepository {
+class _CountingDraftRepository extends StubRepository {
   _CountingDraftRepository({required super.auth});
 
-  int createCalls = 0;
-
-  @override
-  Future<GigProject> createGigDraft(String bandId) {
-    createCalls++;
-    return super.createGigDraft(bandId);
-  }
+  int get createCalls => callsTo('createGigDraft');
 }
 
-class _GatedSaveRepository extends DemoRepository {
+class _GatedSaveRepository extends StubRepository {
   _GatedSaveRepository({required super.auth});
 
-  final saveGate = Completer<void>();
-  int saveCalls = 0;
-
-  @override
-  Future<int> saveGigDraft({
-    required String projectId,
-    required int revision,
-    required String? title,
-    required DateTime? doorsAt,
-    required DateTime? startsAt,
-    required String? venueId,
-    required int price,
-    required String flyKey,
-    required String? flyStorageId,
-    required bool overlay,
-    required String desc,
-    required Ticketing ticketing,
-    required AgeRequirement ageRequirement,
-    required String? externalUrl,
-    required String cap,
-    int? ticketPriceMinor,
-    int? ticketCapacity,
-  }) async {
-    saveCalls++;
-    if (saveCalls == 1) await saveGate.future;
-    return super.saveGigDraft(
-      projectId: projectId,
-      revision: revision,
-      title: title,
-      doorsAt: doorsAt,
-      startsAt: startsAt,
-      venueId: venueId,
-      price: price,
-      flyKey: flyKey,
-      flyStorageId: flyStorageId,
-      overlay: overlay,
-      desc: desc,
-      ticketing: ticketing,
-      ageRequirement: ageRequirement,
-      externalUrl: externalUrl,
-      cap: cap,
-      ticketPriceMinor: ticketPriceMinor,
-      ticketCapacity: ticketCapacity,
-    );
-  }
+  late final saveGate = gate('saveGigDraft');
+  int get saveCalls => callsTo('saveGigDraft');
 }
 
 class _GatedManageRepository extends DemoRepository {

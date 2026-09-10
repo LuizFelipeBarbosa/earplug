@@ -27,8 +27,7 @@ import {
  * The order is load-then-authorize, which leaks existence: a non-admin can tell
  * a real mediaId from a fake one by which error comes back. Flipping it is the
  * right fix but it changes the error every caller sees, so it wants its own
- * reviewed change rather than a quiet edit here. `bands:setBandPhoto` already
- * authorizes first, so the codebase is inconsistent until that lands.
+ * reviewed change rather than a quiet edit here.
  */
 async function mediaForAdmin(
   ctx: MutationCtx,

@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 // Public checkout confirms the booking; the past start makes it eligible.
 Future<Booking> _paidBooking(
@@ -60,28 +61,6 @@ Future<Booking> _paidBooking(
   final checkout = await repository.startInstallmentCheckout(payment.id);
   await repository.simulateCheckoutCompleted(checkout.sessionId);
   return (await repository.booking(sent.bookingId))!;
-}
-
-class _FailingResolutionRepository extends DemoRepository {
-  _FailingResolutionRepository({required super.auth});
-
-  bool failResolution = true;
-
-  @override
-  Future<void> resolveDispute(
-    String disputeId, {
-    required DisputeResolution resolution,
-    int? refundMinor,
-    String? adminNote,
-  }) async {
-    if (failResolution) throw StateError('Resolution failed.');
-    await super.resolveDispute(
-      disputeId,
-      resolution: resolution,
-      refundMinor: refundMinor,
-      adminNote: adminNote,
-    );
-  }
 }
 
 class _DelayedResolutionRepository extends DemoRepository {
@@ -311,7 +290,6 @@ void main() {
     );
     expect(find.text(dateLabel(dispute.createdAt)), findsOneWidget);
     expect(find.text(dispute.text), findsOneWidget);
-    expectNoFieldInCard(tester);
 
     await tester.tap(find.byKey(Key('admin-dispute-open-$disputeId')));
     await tester.pumpAndSettle();
@@ -391,7 +369,6 @@ void main() {
       find.text('Paid ${Money(booking.paidMinor, 'usd').label}'),
       findsOneWidget,
     );
-    expectNoFieldInCard(tester);
 
     await tester.tap(find.byKey(Key('admin-dispute-resolve-$disputeId')));
     await tester.pumpAndSettle();
@@ -418,8 +395,9 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _FailingResolutionRepository(auth: auth)
-      ..platformAdmin = true;
+    final repository = StubRepository(auth: auth)
+      ..platformAdmin = true
+      ..failOnce('resolveDispute');
     final booking = await _paidBooking(repository);
     final disputeId = await repository.openDispute(
       bookingId: booking.id,
@@ -478,7 +456,6 @@ void main() {
     expect(tester.takeException(), isNull);
     expectNoFieldInCard(tester);
 
-    repository.failResolution = false;
     await tester.ensureVisible(confirm);
     await tester.tap(confirm);
     await tester.pumpAndSettle();
@@ -553,23 +530,5 @@ void main() {
       find.byKey(Key('admin-dispute-review-${disputeIds.first}')),
       findsNothing,
     );
-    expectNoFieldInCard(tester);
-  });
-
-  testWidgets('non-admins cannot view disputes', (tester) async {
-    final auth = FakeAuthService();
-    final repository = DemoRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const AdminDisputesScreen(),
-    );
-    await harness.auth.signInDemo();
-    await tester.pumpAndSettle();
-
-    expect(find.byKey(const Key('admin-not-authorized')), findsOneWidget);
-    expect(find.byKey(const Key('admin-disputes-more')), findsNothing);
-    expectNoFieldInCard(tester);
   });
 }

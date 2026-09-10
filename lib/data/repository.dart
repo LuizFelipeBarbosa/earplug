@@ -1,33 +1,9 @@
 import 'package:latlong2/latlong.dart';
 
 import '../models.dart';
+import 'json_coercion.dart';
 
-Map<String, dynamic> _recapMap(Object? value) {
-  if (value is Map<String, dynamic>) return value;
-  return const <String, dynamic>{};
-}
-
-List<Map<String, dynamic>> _recapMapList(Object? value) {
-  if (value is! List<Object?>) return const <Map<String, dynamic>>[];
-  return <Map<String, dynamic>>[
-    for (final item in value)
-      if (item is Map<String, dynamic>) item,
-  ];
-}
-
-String _recapString(Object? value) => value is String ? value : '';
-
-int _recapInt(Object? value) => value is num ? value.toInt() : 0;
-
-int? _recapNullableInt(Object? value) => value is num ? value.toInt() : null;
-
-num _recapNum(Object? value) => value is num ? value : 0;
-
-num? _recapNullableNum(Object? value) => value is num ? value : null;
-
-bool _recapBool(Object? value) => value is bool ? value : false;
-
-Ticketing _recapTicketing(Object? value) => switch (value) {
+Ticketing _ticketingFrom(Object? value) => switch (value) {
   'external' => Ticketing.external,
   _ => Ticketing.rsvp,
 };
@@ -148,19 +124,19 @@ class BandRecap {
   });
 
   factory BandRecap.fromJson(Map<String, dynamic> json) => BandRecap(
-    window: RecapWindow.fromJson(_recapMap(json['window'])),
-    totals: RecapTotals.fromJson(_recapMap(json['totals'])),
+    window: RecapWindow.fromJson(asMap(json['window'])),
+    totals: RecapTotals.fromJson(asMap(json['totals'])),
     shows: [
-      for (final show in _recapMapList(json['shows'])) RecapShow.fromJson(show),
+      for (final show in asMapList(json['shows'])) RecapShow.fromJson(show),
     ],
-    newReturningSuppressed: _recapBool(
-      _recapMap(json['newReturning'])['suppressed'],
+    newReturningSuppressed: asBool(
+      asMap(json['newReturning'])['suppressed'],
     ),
-    leadTime: RecapLeadTime.fromJson(_recapMap(json['leadTime'])),
-    venues: RecapVenues.fromJson(_recapMap(json['venues'])),
-    weekdays: RecapWeekdays.fromJson(_recapMap(json['weekdays'])),
-    repeatFans: RecapRepeatFans.fromJson(_recapMap(json['repeatFans'])),
-    pricing: RecapPricing.fromJson(_recapMap(json['pricing'])),
+    leadTime: RecapLeadTime.fromJson(asMap(json['leadTime'])),
+    venues: RecapVenues.fromJson(asMap(json['venues'])),
+    weekdays: RecapWeekdays.fromJson(asMap(json['weekdays'])),
+    repeatFans: RecapRepeatFans.fromJson(asMap(json['repeatFans'])),
+    pricing: RecapPricing.fromJson(asMap(json['pricing'])),
   );
 
   static const empty = BandRecap(
@@ -217,11 +193,11 @@ class RecapWindow {
   });
 
   factory RecapWindow.fromJson(Map<String, dynamic> json) => RecapWindow(
-    showsAnalyzed: _recapInt(json['showsAnalyzed']),
-    scanned: _recapInt(json['scanned']),
-    truncated: _recapBool(json['truncated']),
-    firstStartsAt: _recapNullableInt(json['firstStartsAt']),
-    lastStartsAt: _recapNullableInt(json['lastStartsAt']),
+    showsAnalyzed: asInt(json['showsAnalyzed']),
+    scanned: asInt(json['scanned']),
+    truncated: asBool(json['truncated']),
+    firstStartsAt: asOptionalInt(json['firstStartsAt']),
+    lastStartsAt: asOptionalInt(json['lastStartsAt']),
   );
 }
 
@@ -245,13 +221,13 @@ class RecapTotals {
   });
 
   factory RecapTotals.fromJson(Map<String, dynamic> json) => RecapTotals(
-    shows: _recapInt(json['shows']),
-    reportedRsvps: _recapInt(json['reportedRsvps']),
-    measuredRsvps: _recapInt(json['measuredRsvps']),
-    avgPerShow: _recapNum(json['avgPerShow']),
-    bestShowRsvps: _recapInt(json['bestShowRsvps']),
-    distinctFans: _recapInt(json['distinctFans']),
-    followerCount: _recapInt(json['followerCount']),
+    shows: asInt(json['shows']),
+    reportedRsvps: asInt(json['reportedRsvps']),
+    measuredRsvps: asInt(json['measuredRsvps']),
+    avgPerShow: asNum(json['avgPerShow']),
+    bestShowRsvps: asInt(json['bestShowRsvps']),
+    distinctFans: asInt(json['distinctFans']),
+    followerCount: asInt(json['followerCount']),
   );
 }
 
@@ -281,16 +257,16 @@ class RecapShow {
   });
 
   factory RecapShow.fromJson(Map<String, dynamic> json) => RecapShow(
-    gigId: _recapString(json['gigId']),
-    title: _recapString(json['title']),
-    startsAt: _recapInt(json['startsAt']),
-    venueName: _recapString(json['venueName']),
-    price: _recapInt(json['price']),
-    ticketing: _recapTicketing(json['ticketing']),
-    goingCount: _recapInt(json['goingCount']),
-    measuredRsvps: _recapInt(json['measuredRsvps']),
-    newFans: _recapNullableInt(json['newFans']),
-    returningFans: _recapNullableInt(json['returningFans']),
+    gigId: asString(json['gigId']),
+    title: asString(json['title']),
+    startsAt: asInt(json['startsAt']),
+    venueName: asString(json['venueName']),
+    price: asInt(json['price']),
+    ticketing: _ticketingFrom(json['ticketing']),
+    goingCount: asInt(json['goingCount']),
+    measuredRsvps: asInt(json['measuredRsvps']),
+    newFans: asOptionalInt(json['newFans']),
+    returningFans: asOptionalInt(json['returningFans']),
   );
 }
 
@@ -302,8 +278,8 @@ class RecapBucket {
   const RecapBucket({required this.key, required this.count});
 
   factory RecapBucket.fromJson(Map<String, dynamic> json) => RecapBucket(
-    key: _recapString(json['key']),
-    count: _recapInt(json['count']),
+    key: asString(json['key']),
+    count: asInt(json['count']),
   );
 }
 
@@ -321,10 +297,10 @@ class RecapVenue {
   });
 
   factory RecapVenue.fromJson(Map<String, dynamic> json) => RecapVenue(
-    venueName: _recapString(json['venueName']),
-    shows: _recapInt(json['shows']),
-    totalRsvps: _recapInt(json['totalRsvps']),
-    avgRsvps: _recapNum(json['avgRsvps']),
+    venueName: asString(json['venueName']),
+    shows: asInt(json['shows']),
+    totalRsvps: asInt(json['totalRsvps']),
+    avgRsvps: asNum(json['avgRsvps']),
   );
 }
 
@@ -340,9 +316,9 @@ class RecapWeekday {
   });
 
   factory RecapWeekday.fromJson(Map<String, dynamic> json) => RecapWeekday(
-    weekday: _recapInt(json['weekday']),
-    shows: _recapInt(json['shows']),
-    avgRsvps: _recapNum(json['avgRsvps']),
+    weekday: asInt(json['weekday']),
+    shows: asInt(json['shows']),
+    avgRsvps: asNum(json['avgRsvps']),
   );
 }
 
@@ -361,12 +337,12 @@ class RecapLeadTime {
 
   factory RecapLeadTime.fromJson(Map<String, dynamic> json) => RecapLeadTime(
     buckets: [
-      for (final bucket in _recapMapList(json['buckets']))
+      for (final bucket in asMapList(json['buckets']))
         RecapBucket.fromJson(bucket),
     ],
-    medianDays: _recapNullableNum(json['medianDays']),
-    unmeasurable: _recapInt(json['unmeasurable']),
-    suppressed: _recapBool(json['suppressed']),
+    medianDays: asOptionalNum(json['medianDays']),
+    unmeasurable: asInt(json['unmeasurable']),
+    suppressed: asBool(json['suppressed']),
   );
 }
 
@@ -378,9 +354,9 @@ class RecapVenues {
 
   factory RecapVenues.fromJson(Map<String, dynamic> json) => RecapVenues(
     rows: [
-      for (final row in _recapMapList(json['rows'])) RecapVenue.fromJson(row),
+      for (final row in asMapList(json['rows'])) RecapVenue.fromJson(row),
     ],
-    suppressed: _recapBool(json['suppressed']),
+    suppressed: asBool(json['suppressed']),
   );
 }
 
@@ -392,9 +368,9 @@ class RecapWeekdays {
 
   factory RecapWeekdays.fromJson(Map<String, dynamic> json) => RecapWeekdays(
     rows: [
-      for (final row in _recapMapList(json['rows'])) RecapWeekday.fromJson(row),
+      for (final row in asMapList(json['rows'])) RecapWeekday.fromJson(row),
     ],
-    suppressed: _recapBool(json['suppressed']),
+    suppressed: asBool(json['suppressed']),
   );
 }
 
@@ -407,10 +383,10 @@ class RecapRepeatFans {
   factory RecapRepeatFans.fromJson(Map<String, dynamic> json) =>
       RecapRepeatFans(
         tiers: [
-          for (final tier in _recapMapList(json['tiers']))
+          for (final tier in asMapList(json['tiers']))
             RecapBucket.fromJson(tier),
         ],
-        suppressed: _recapBool(json['suppressed']),
+        suppressed: asBool(json['suppressed']),
       );
 }
 
@@ -430,11 +406,11 @@ class RecapPricing {
   });
 
   factory RecapPricing.fromJson(Map<String, dynamic> json) => RecapPricing(
-    freeShows: _recapInt(json['freeShows']),
-    freeAvgRsvps: _recapNum(json['freeAvgRsvps']),
-    paidShows: _recapInt(json['paidShows']),
-    paidAvgRsvps: _recapNum(json['paidAvgRsvps']),
-    suppressed: _recapBool(json['suppressed']),
+    freeShows: asInt(json['freeShows']),
+    freeAvgRsvps: asNum(json['freeAvgRsvps']),
+    paidShows: asInt(json['paidShows']),
+    paidAvgRsvps: asNum(json['paidAvgRsvps']),
+    suppressed: asBool(json['suppressed']),
   );
 }
 
@@ -443,7 +419,6 @@ abstract class EarplugRepository {
   /// sequence mutations after an identity change.
   Future<void> refreshAuth();
 
-  Future<FeatureFlags> featureFlags();
   Future<FeeRates> feeRates({String? organizationId});
   Future<List<PrivateLocation>> privateLocationsFor(String organizationId);
   Future<String> createPrivateLocation({
@@ -833,10 +808,7 @@ abstract class EarplugRepository {
     String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('createOpportunity');
-  }
+  });
 
   Future<int> updateOpportunity({
     required String opportunityId,
@@ -864,87 +836,48 @@ abstract class EarplugRepository {
     String? ticketCurrency,
     String? externalUrl,
     List<SlotInput>? slots,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('updateOpportunity');
-  }
+  });
 
   Future<({int revision, DateTime applicationsCloseAt})> openOpportunity({
     required String opportunityId,
     required int expectedRevision,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('openOpportunity');
-  }
+  });
 
-  Future<void> closeOpportunityApplications(String opportunityId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('closeOpportunityApplications');
-  }
+  Future<void> closeOpportunityApplications(String opportunityId);
 
   Future<void> reopenOpportunity({
     required String opportunityId,
     required DateTime applicationsCloseAt,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('reopenOpportunity');
-  }
+  });
 
-  Future<void> cancelOpportunity(String opportunityId, {String? reason}) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('cancelOpportunity');
-  }
+  Future<void> cancelOpportunity(String opportunityId, {String? reason});
 
-  Future<void> deleteOpportunityDraft(String opportunityId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('deleteOpportunityDraft');
-  }
+  Future<void> deleteOpportunityDraft(String opportunityId);
 
   Future<({String opportunityId, String slug})> duplicateOpportunity(
     String opportunityId,
-  ) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('duplicateOpportunity');
-  }
+  );
 
   Future<bool> inviteBandToOpportunity({
     required String opportunityId,
     required String bandId,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('inviteBandToOpportunity');
-  }
+  });
 
   Future<void> uninviteBandFromOpportunity({
     required String opportunityId,
     required String bandId,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('uninviteBandFromOpportunity');
-  }
+  });
 
-  Future<List<Opportunity>> manageOpportunities(String organizationId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('manageOpportunities');
-  }
+  Future<List<Opportunity>> manageOpportunities(String organizationId);
 
-  Future<Opportunity?> opportunity(String opportunityId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('opportunity');
-  }
+  Future<Opportunity?> opportunity(String opportunityId);
 
-  Future<List<ApplicantRow>> applicantsFor(String opportunityId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('applicantsFor');
-  }
+  Future<List<ApplicantRow>> applicantsFor(String opportunityId);
 
   Future<void> reviewApplication({
     required String applicationId,
     required ArtistApplicationReviewAction action,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('reviewApplication');
-  }
+  });
 
   // Band opportunity discovery and applications.
   Future<OpportunityPage> browseOpportunities({
@@ -953,20 +886,11 @@ abstract class EarplugRepository {
     String? bandId,
     OpportunityFilters? filters,
     OpportunityMode? mode,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('browseOpportunities');
-  }
+  });
 
-  Future<List<BrowseItem>> invitedOpportunities(String bandId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('invitedOpportunities');
-  }
+  Future<List<BrowseItem>> invitedOpportunities(String bandId);
 
-  Future<BrowseItem?> resolveOpportunity(String ref, {String? bandId}) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('resolveOpportunity');
-  }
+  Future<BrowseItem?> resolveOpportunity(String ref, {String? bandId});
 
   Future<String> applyToOpportunity({
     required String opportunityId,
@@ -976,33 +900,16 @@ abstract class EarplugRepository {
     int? askMinor,
     String? availabilityNote,
     String? lineupNote,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('applyToOpportunity');
-  }
+  });
 
-  Future<void> withdrawApplication(String applicationId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('withdrawApplication');
-  }
+  Future<void> withdrawApplication(String applicationId);
 
-  Future<List<BandApplication>> myApplications(String bandId) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('myApplications');
-  }
+  Future<List<BandApplication>> myApplications(String bandId);
 
   Future<ArtistApplication?> myApplicationFor({
     required String opportunityId,
     required String bandId,
-  }) {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('myApplicationFor');
-  }
-
-  Future<GigWritePolicy> gigWritePolicy() {
-    // TODO(marketplace-phase2): demo lane implements this.
-    throw UnimplementedError('gigWritePolicy');
-  }
+  });
 
   Future<({String bookingId, String offerId, int revision})> sendOffer({
     required String applicationId,
@@ -1011,28 +918,19 @@ abstract class EarplugRepository {
     String? termsNotes,
     String? message,
     List<OfferInstallmentInput>? installments,
-  }) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('sendOffer');
-  }
+  });
 
   Future<int> withdrawOffer({
     required String bookingId,
     required int expectedRevision,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('withdrawOffer');
-  }
+  });
 
   Future<({BookingStatus status, int revision})> respondToOffer({
     required String bookingId,
     required bool accept,
     required int expectedRevision,
     String? message,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('respondToOffer');
-  }
+  });
 
   Future<({BookingStatus status, int revision})> cancelBooking({
     required String bookingId,
@@ -1040,143 +938,72 @@ abstract class EarplugRepository {
     required int expectedRevision,
     BookingSide? side,
     bool? safety,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('cancelBooking');
-  }
+  });
 
-  Future<StripeAccountStatus> bandPayoutStatus(String bandId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('bandPayoutStatus');
-  }
+  Future<StripeAccountStatus> bandPayoutStatus(String bandId);
 
-  Future<StripeAccountStatus> organizationStripeStatus(String organizationId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('organizationStripeStatus');
-  }
+  Future<StripeAccountStatus> organizationStripeStatus(String organizationId);
 
-  Future<String> startBandOnboarding(String bandId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('startBandOnboarding');
-  }
+  Future<String> startBandOnboarding(String bandId);
 
-  Future<String> enableBandTicketSales(String bandId) {
-    throw UnimplementedError('enableBandTicketSales');
-  }
+  Future<String> enableBandTicketSales(String bandId);
 
-  Future<String> startOrganizationOnboarding(String organizationId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('startOrganizationOnboarding');
-  }
+  Future<String> startOrganizationOnboarding(String organizationId);
 
-  Future<StripeAccountStatus> refreshBandAccountStatus(String bandId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('refreshBandAccountStatus');
-  }
+  Future<StripeAccountStatus> refreshBandAccountStatus(String bandId);
 
   Future<StripeAccountStatus> refreshOrganizationAccountStatus(
     String organizationId,
-  ) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('refreshOrganizationAccountStatus');
-  }
+  );
 
-  Future<String> bandExpressDashboardLink(String bandId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('bandExpressDashboardLink');
-  }
+  Future<String> bandExpressDashboardLink(String bandId);
 
-  Future<String> organizationExpressDashboardLink(String organizationId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('organizationExpressDashboardLink');
-  }
+  Future<String> organizationExpressDashboardLink(String organizationId);
 
   Future<({String url, String sessionId})> startInstallmentCheckout(
     String paymentRecordId,
-  ) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('startInstallmentCheckout');
-  }
+  );
 
-  Future<List<PaymentRecord>> paymentsForBooking(String bookingId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('paymentsForBooking');
-  }
+  Future<List<PaymentRecord>> paymentsForBooking(String bookingId);
 
-  Future<CheckoutStatus?> checkoutStatus(String sessionId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('checkoutStatus');
-  }
+  Future<CheckoutStatus?> checkoutStatus(String sessionId);
 
-  Future<List<Payout>> payoutsForBooking(String bookingId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('payoutsForBooking');
-  }
+  Future<List<Payout>> payoutsForBooking(String bookingId);
 
-  Future<List<Payout>> payoutsForBand(String bandId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('payoutsForBand');
-  }
+  Future<List<Payout>> payoutsForBand(String bandId);
 
   Future<RefundPreview> previewCancellation(
     String bookingId, {
     BookingSide? side,
     required DateTime now,
-  }) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('previewCancellation');
-  }
+  });
 
-  Future<List<RefundRecord>> refundsForBooking(String bookingId) {
-    // TODO(marketplace-phase3b): demo lane implements this.
-    throw UnimplementedError('refundsForBooking');
-  }
+  Future<List<RefundRecord>> refundsForBooking(String bookingId);
 
-  Future<Booking?> booking(String bookingId, {BookingSide? viewAs}) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('booking');
-  }
+  Future<Booking?> booking(String bookingId, {BookingSide? viewAs});
 
   Future<List<Booking>> organizationBookings(
     String organizationId, {
     List<BookingStatus>? statuses,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('organizationBookings');
-  }
+  });
 
-  Future<List<Booking>> bandBookings(String bandId) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('bandBookings');
-  }
+  Future<List<Booking>> bandBookings(String bandId);
 
   Future<({String reviewId, bool visible})> submitReview({
     required String bookingId,
     required int rating,
     required List<String> categories,
     required String text,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('submitReview');
-  }
+  });
 
-  Future<BookingReviews> reviewsForBooking(String bookingId) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('reviewsForBooking');
-  }
+  Future<BookingReviews> reviewsForBooking(String bookingId);
 
-  Future<List<PublicReview>> reviewsForBand(String bandId, {int? limit}) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('reviewsForBand');
-  }
+  Future<List<PublicReview>> reviewsForBand(String bandId, {int? limit});
 
   Future<List<PublicReview>> reviewsForOrganization(
     String organizationId, {
     int? limit,
-  }) {
-    // TODO(marketplace-phase3): demo lane implements this.
-    throw UnimplementedError('reviewsForOrganization');
-  }
+  });
 
   Future<List<GigProject>> manageGigs(String bandId);
   Future<GigProject> createGigDraft(String bandId);

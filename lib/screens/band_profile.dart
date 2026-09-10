@@ -761,7 +761,7 @@ class _ClipTile extends StatelessWidget {
           children: [
             BandVideoThumbnail(
               media: clip,
-              fallback: ClipTexture(bandColor: band.color),
+              fallback: _ClipTexture(bandColor: band.color),
             ),
             const Positioned.fill(
               child: DecoratedBox(
@@ -856,6 +856,38 @@ class _ClipTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ClipTexture extends StatelessWidget {
+  final Color bandColor;
+  final double patternScale;
+
+  // Preserve the constructor API when making this widget private.
+  const _ClipTexture({
+    // ignore: unused_element_parameter
+    super.key,
+    required this.bandColor,
+    // ignore: unused_element_parameter
+    this.patternScale = 1,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final style = FlyerStyle(
+      base: Ep.surface,
+      patternColor: Ep.whiteA(.06),
+      fg: Ep.contentPrimary,
+      pattern: FlyerPattern.scan,
+    );
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const ColoredBox(color: Ep.surface),
+        ColoredBox(color: bandColor.withValues(alpha: .14)),
+        CustomPaint(painter: FlyerPatternPainter(style, patternScale)),
+      ],
     );
   }
 }

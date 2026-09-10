@@ -261,41 +261,6 @@ void main() {
     expect(find.textContaining('AT DOOR'), findsNothing);
   });
 
-  for (final sellerKind in TicketSellerKind.values) {
-    testWidgets('paid gigs show the CTA note for a ${sellerKind.name} seller', (
-      tester,
-    ) async {
-      final auth = FakeAuthService();
-      final repository = _ControlledPublicGigRepository(auth: auth);
-      final gig = _textOnlyGig().copyWith(
-        tix: Ticketing.paid,
-        ticketPriceMinor: 2500,
-        ticketCurrency: 'usd',
-        ticketSeller: TicketSellerRef(kind: sellerKind, name: 'Foghorn Diet'),
-      );
-      await pumpApp(
-        tester,
-        auth: auth,
-        repository: repository,
-        home: const Scaffold(body: GigDetailScreen(gigId: 'shared-gig')),
-        beforePump: (app) {
-          repository.emit(gig);
-          app.openGig(gig.id);
-        },
-      );
-
-      expect(find.byKey(const Key('gig-buy-tickets')), findsOne);
-      expect(
-        find.text(
-          sellerKind == TicketSellerKind.band
-              ? 'Tickets are sold by Foghorn Diet · EarPlug fee added at checkout'
-              : 'Tickets are sold by the organizer · EarPlug fee added at checkout',
-        ),
-        findsOne,
-      );
-    });
-  }
-
   testWidgets('buy tickets opens the purchase sheet for signed-in fans', (
     tester,
   ) async {

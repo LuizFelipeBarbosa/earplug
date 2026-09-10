@@ -352,7 +352,9 @@ describe("bands: slugs and profile updates", () => {
       });
       return { storageId, mediaId };
     });
-    await asAdmin.mutation(api.bands.setBandPhoto, { bandId, mediaId });
+    await t.run(async (ctx) => {
+      await ctx.db.patch(bandId, { imageStorageId: storageId });
+    });
     const legacy = await t.query(api.bands.get, { bandId });
     expect(legacy?.heroUrl).toEqual(expect.any(String));
     expect(legacy?.avatarUrl).toBe(legacy?.heroUrl);

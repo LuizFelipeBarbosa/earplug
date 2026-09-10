@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('new-fan setup collapses, resumes, syncs, and completes', (
@@ -100,7 +101,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _MembershipRepository(auth: auth, count: 0),
+      repository: _membershipRepository(auth: auth, count: 0),
       home: const Scaffold(
         body: MyGigsScreen(),
         bottomNavigationBar: FanTabBar(),
@@ -236,7 +237,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _MembershipRepository(auth: auth, count: 1),
+      repository: _membershipRepository(auth: auth, count: 1),
       home: const Scaffold(
         body: MyGigsScreen(),
         bottomNavigationBar: FanTabBar(),
@@ -260,7 +261,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _MembershipRepository(auth: auth, count: 2),
+      repository: _membershipRepository(auth: auth, count: 2),
       home: const Scaffold(
         body: MyGigsScreen(),
         bottomNavigationBar: FanTabBar(),
@@ -343,18 +344,20 @@ class _DeferredMembershipRepository extends DemoRepository {
   Future<void> close() => _memberships.close();
 }
 
-class _MembershipRepository extends DemoRepository {
-  _MembershipRepository({required super.auth, required this.count});
-
-  final int count;
-
-  @override
-  Stream<List<OrganizationMembership>> myOrganizations() =>
-      Stream.value(const []);
-
-  @override
-  Stream<List<BandMembership>> myBands() => Stream.value([
-    if (count >= 1) BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
-    if (count >= 2) BandMembership(band: DemoData.bands['b2']!, role: 'member'),
-  ]);
-}
+StubRepository _membershipRepository({
+  required AuthService auth,
+  required int count,
+}) => StubRepository(auth: auth)
+  ..returnsStream<List<OrganizationMembership>>(
+    'myOrganizations',
+    () => Stream.value(const []),
+  )
+  ..returnsStream(
+    'myBands',
+    () => Stream.value([
+      if (count >= 1)
+        BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
+      if (count >= 2)
+        BandMembership(band: DemoData.bands['b2']!, role: 'member'),
+    ]),
+  );

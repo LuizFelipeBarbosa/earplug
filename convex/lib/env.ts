@@ -28,14 +28,7 @@ export function stripeSecretKey(): string {
   return key;
 }
 
-type FeatureFlag =
-  | "PAYMENTS_ENABLED"
-  | "TICKETS_ENABLED"
-  | "PRIVATE_BOOKINGS_ENABLED"
-  | "DISPUTES_ENABLED"
-  | "PROMOTERS_ENABLED"
-  | "BAND_GIG_WRITES"
-  | "RESEND_SEND_ENABLED";
+type FeatureFlag = "RESEND_SEND_ENABLED";
 
 export function flag(name: FeatureFlag, defaultValue: boolean): boolean {
   const value = env[name];

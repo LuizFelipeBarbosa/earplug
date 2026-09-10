@@ -357,7 +357,6 @@ class _BookingDetailScreenState extends State<BookingDetailScreen> {
         final disputes = app.disputesFor(booking.id).toList()
           ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
         final canOpenDispute =
-            app.disputesEnabled &&
             !booking.viewerIsPlatformAdmin &&
             booking.status.isLive &&
             !DateTime.now().isBefore(booking.startsAt) &&
@@ -739,7 +738,7 @@ class _BookingSafetySection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (booking.status.isLive && app.privateBookingsEnabled) ...[
+        if (booking.status.isLive) ...[
           const SizedBox(height: 20),
           EpButton(
             'REPORT A SAFETY CONCERN',

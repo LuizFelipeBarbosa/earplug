@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:ui' as ui;
 
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/main.dart';
 import 'package:earplug/models.dart';
@@ -13,7 +12,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 /// Every app route is exercised with real demo state. Set EP_DESIGN_CAPTURE to
 /// a directory to export the rendered pages for visual review.
@@ -66,10 +67,22 @@ void main() {
       ) async {
         final auth = FakeAuthService();
         if (screen != Screen.auth) await auth.signInDemo();
-        final repository = _AuditRepository(
-          auth: auth,
-          submittedApplication: screen == Screen.orgApplicationStatus,
-        )..platformAdmin = true;
+        final repository = StubRepository(auth: auth)
+          ..platformAdmin = true
+          ..returns(
+            'myOrganizationApplication',
+            screen == Screen.orgApplicationStatus
+                ? DemoData.submittedOrganizationApplication
+                : null,
+          )
+          ..returns(
+            'checkoutStatus',
+            const CheckoutStatus(
+              bookingId: 'bk1',
+              paymentStatus: PaymentRecordStatus.paid,
+              bookingStatus: BookingStatus.confirmed,
+            ),
+          );
         final boundaryKey = GlobalKey();
         final harness = await pumpApp(
           tester,
@@ -155,6 +168,7 @@ void main() {
         }
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: screen.name);
+        expectNoFieldInCard(tester);
         if (capture != null) {
           await _capture(
             tester,
@@ -191,6 +205,7 @@ void main() {
             }
             expect(failure, isNull, reason: '${screen.name}, scroll $step');
           }
+          expectNoFieldInCard(tester);
           if (capture != null) {
             await _capture(
               tester,
@@ -204,24 +219,6 @@ void main() {
       });
     }
   }
-}
-
-class _AuditRepository extends DemoRepository {
-  _AuditRepository({required super.auth, required this.submittedApplication});
-
-  final bool submittedApplication;
-
-  @override
-  Future<OrganizationApplication?> myOrganizationApplication() async =>
-      submittedApplication ? DemoData.submittedOrganizationApplication : null;
-
-  @override
-  Future<CheckoutStatus?> checkoutStatus(String sessionId) async =>
-      const CheckoutStatus(
-        bookingId: 'bk1',
-        paymentStatus: PaymentRecordStatus.paid,
-        bookingStatus: BookingStatus.confirmed,
-      );
 }
 
 Future<void> _capture(WidgetTester tester, GlobalKey key, String path) async {

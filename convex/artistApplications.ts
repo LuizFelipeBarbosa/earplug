@@ -13,6 +13,7 @@ import {
 import {
   bandPayloadValidator,
   currentUser,
+  normalizeNote,
   requireBandRole,
   toBandPayload,
 } from "./lib/helpers";
@@ -28,7 +29,6 @@ import {
 } from "./lib/opportunityStatus";
 import { bandIsInvited } from "./lib/opportunityVisibility";
 import { artistApplicationStatusValidator } from "./schema";
-import { requirePrivateBookingsEnabled } from "./talentOpportunities";
 
 export const applicationPayloadValidator = v.object({
   _id: v.id("artistApplications"),
@@ -84,14 +84,6 @@ export async function canBandSeeOpportunity(
   return await bandIsInvited(ctx, opportunity._id, bandId);
 }
 
-function normalizeNote(value: string | undefined, label: string) {
-  const note = value?.trim();
-  if (note !== undefined && note.length > 500) {
-    throw new Error(`${label} must be at most 500 characters`);
-  }
-  return note || undefined;
-}
-
 export const apply = mutation({
   args: {
     opportunityId: v.id("talentOpportunities"),
@@ -109,9 +101,6 @@ export const apply = mutation({
     });
     const opportunity = await ctx.db.get(args.opportunityId);
     if (!opportunity) throw new Error("Opportunity not found");
-    if (opportunity.mode === "privateBooking") {
-      requirePrivateBookingsEnabled();
-    }
     const organization = await ctx.db.get(opportunity.organizationId);
     if (!organization || organization.status !== "verified") {
       throw new Error("This organizer is not accepting applications");

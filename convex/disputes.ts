@@ -17,7 +17,6 @@ import {
   isPlatformAdmin,
   organizationMembershipFor,
   requirePlatformAdmin,
-  requirePlatformAdminQuery,
 } from "./lib/authz";
 import { assertBookingTransition } from "./lib/bookingStatus";
 import {
@@ -37,7 +36,7 @@ import {
   type DisputeResolution,
   type DisputeSide,
 } from "./lib/disputeStatus";
-import { appBaseUrl, flag } from "./lib/env";
+import { appBaseUrl } from "./lib/env";
 import { requireUser } from "./lib/helpers";
 import {
   bookingStatusValidator,
@@ -238,9 +237,6 @@ export const open = mutation({
   },
   returns: v.object({ disputeId: v.id("disputes") }),
   handler: async (ctx, args) => {
-    if (!flag("DISPUTES_ENABLED", false)) {
-      throw new Error("Disputes are not available yet");
-    }
     const booking = await ctx.db.get(args.bookingId);
     if (!booking) throw new Error("Booking not found");
     const user = await requireUser(ctx);
@@ -342,7 +338,7 @@ export const listOpen = query({
     }),
   ),
   handler: async (ctx, args) => {
-    await requirePlatformAdminQuery(ctx);
+    await requirePlatformAdmin(ctx);
     const result = await ctx.db
       .query("disputes")
       .withIndex("by_status_and_createdAt", (q) => q.eq("status", "open"))

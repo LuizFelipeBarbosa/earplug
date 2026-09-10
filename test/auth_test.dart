@@ -13,6 +13,7 @@ import 'package:provider/provider.dart';
 
 import 'support/fixtures.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   test(
@@ -61,7 +62,8 @@ void main() {
     'AppState does not delete Clerk when the Convex tombstone fails',
     () async {
       final auth = FakeAuthService();
-      final repository = _FailingDeletionRepository(auth: auth);
+      final repository = StubRepository(auth: auth)
+        ..fail('deleteCurrentUser', StateError('Convex tombstone failed'));
       final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
       await auth.signInDemo();
@@ -77,7 +79,8 @@ void main() {
     "an old avatar upload cannot release a new session's clear lock",
     () async {
       final auth = FakeAuthService();
-      final repository = _GatedAvatarRepository(auth: auth);
+      final repository = StubRepository(auth: auth)
+        ..returns('generateAvatarUploadUrl', 'https://upload.example/avatar');
       final uploadStarted = Completer<void>();
       final uploadGate = Completer<String>();
       final uploader = MediaUploadService(
@@ -102,14 +105,14 @@ void main() {
       await auth.signInDemo();
       await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      repository.clearGate = Completer<void>();
+      final clearGate = repository.gate('clearAvatar');
       final newClear = app.clearFanAvatar();
       expect(app.fanAvatarSaving, isTrue);
       uploadGate.complete('old-session-storage');
       expect(await oldUpload, isFalse);
       expect(app.fanAvatarSaving, isTrue);
 
-      repository.clearGate!.complete();
+      clearGate.complete();
       expect(await newClear, isTrue);
       expect(app.fanAvatarSaving, isFalse);
     },
@@ -119,8 +122,9 @@ void main() {
     "an old avatar clear cannot release a new session's upload lock",
     () async {
       final auth = FakeAuthService();
-      final repository = _GatedAvatarRepository(auth: auth)
-        ..clearGate = Completer<void>();
+      final repository = StubRepository(auth: auth)
+        ..returns('generateAvatarUploadUrl', 'https://upload.example/avatar');
+      final clearGate = repository.gate('clearAvatar');
       final uploadStarted = Completer<void>();
       final uploadGate = Completer<String>();
       final uploader = MediaUploadService(
@@ -147,7 +151,7 @@ void main() {
       final newUpload = app.updateFanAvatar(stubPhotoFixture());
       await uploadStarted.future;
       expect(app.fanAvatarSaving, isTrue);
-      repository.clearGate!.complete();
+      clearGate.complete();
       expect(await oldClear, isFalse);
       expect(app.fanAvatarSaving, isTrue);
 
@@ -161,7 +165,7 @@ void main() {
     'fan profile changes publish locally only after a successful save',
     () async {
       final auth = FakeAuthService();
-      final repository = _ProfileRepository(auth: auth);
+      final repository = StubRepository(auth: auth);
       final app = AppState.demo(repository: repository, auth: auth);
       addTearDown(app.dispose);
       await auth.signInDemo();
@@ -214,7 +218,7 @@ void main() {
       app.setDistanceFilter(10);
       expect(app.fMaxDistanceMiles, 10);
 
-      repository.failProfileSave = true;
+      repository.fail('updateFanProfile');
       expect(
         await app.saveFanProfile(
           name: 'Unsaved Name',
@@ -255,7 +259,11 @@ void main() {
 
   test('profile tutorial failure stays visible with a useful error', () async {
     final auth = FakeAuthService();
-    final repository = _FailingTutorialRepository(auth: auth);
+    final repository = StubRepository(auth: auth)
+      ..fail(
+        'setProfileTutorialCompleted',
+        StateError('tutorial mutation unavailable'),
+      );
     final app = AppState.demo(repository: repository, auth: auth);
     addTearDown(app.dispose);
     await auth.signInDemo();
@@ -279,7 +287,7 @@ void main() {
     expect(repository.meRequested, isTrue);
 
     await auth.signOut();
-    repository.profileGate.complete(
+    repository.completeMe(
       UserProfile(
         name: 'Previous Account',
         email: 'previous@example.com',
@@ -613,48 +621,16 @@ void main() {
   });
 }
 
-class _DeletionOrderRepository extends DemoRepository {
-  _DeletionOrderRepository({required this.auth}) : super(auth: auth);
+class _DeletionOrderRepository extends StubRepository {
+  _DeletionOrderRepository({required this.auth}) : super(auth: auth) {
+    wraps<void>(
+      'deleteCurrentUser',
+      (_) => authDeleteCallsAtTombstone.add(auth.deleteAccountCalls),
+    );
+  }
 
   final FakeAuthService auth;
   final List<int> authDeleteCallsAtTombstone = [];
-
-  @override
-  Future<void> deleteCurrentUser() async {
-    authDeleteCallsAtTombstone.add(auth.deleteAccountCalls);
-  }
-}
-
-class _FailingDeletionRepository extends DemoRepository {
-  _FailingDeletionRepository({required super.auth});
-
-  @override
-  Future<void> deleteCurrentUser() =>
-      Future<void>.error(StateError('Convex tombstone failed'));
-}
-
-class _FailingTutorialRepository extends DemoRepository {
-  _FailingTutorialRepository({required super.auth});
-
-  @override
-  Future<void> setProfileTutorialCompleted(bool completed) =>
-      Future<void>.error(StateError('tutorial mutation unavailable'));
-}
-
-class _GatedAvatarRepository extends DemoRepository {
-  _GatedAvatarRepository({required super.auth});
-
-  Completer<void>? clearGate;
-
-  @override
-  Future<String> generateAvatarUploadUrl() async =>
-      'https://upload.example/avatar';
-
-  @override
-  Future<void> clearAvatar() async {
-    await clearGate?.future;
-    await super.clearAvatar();
-  }
 }
 
 class _OutsideFeedFollowRepository extends DemoRepository {
@@ -705,69 +681,22 @@ class _OutsideFeedFollowRepository extends DemoRepository {
   }
 }
 
-class _GatedEnsureRepository extends DemoRepository {
-  _GatedEnsureRepository({required super.auth});
-
-  final ensureGate = Completer<void>();
-  int rsvpCalls = 0;
-
-  @override
-  Future<void> ensureUser({String? name}) => ensureGate.future;
-
-  @override
-  Future<void> ensureRsvp(String gigId) async {
-    if (!ensureGate.isCompleted) {
-      throw StateError('RSVP ran before ensureUser completed');
-    }
-    rsvpCalls++;
-    await super.ensureRsvp(gigId);
+class _GatedEnsureRepository extends StubRepository {
+  _GatedEnsureRepository({required super.auth}) {
+    ensureGate = gate('ensureUser');
   }
+
+  late final Completer<void> ensureGate;
+  int get rsvpCalls => callsTo('ensureRsvp');
 }
 
-class _RetryEnsureRepository extends DemoRepository {
-  _RetryEnsureRepository({required super.auth});
-
-  int ensureCalls = 0;
-  int saveCalls = 0;
-
-  @override
-  Future<void> ensureUser({String? name}) async {
-    ensureCalls++;
-    if (ensureCalls == 1) throw StateError('temporary setup failure');
-    await super.ensureUser(name: name);
+class _RetryEnsureRepository extends StubRepository {
+  _RetryEnsureRepository({required super.auth}) {
+    failOnce('ensureUser', StateError('temporary setup failure'));
   }
 
-  @override
-  Future<void> ensureSave(String gigId) async {
-    saveCalls++;
-    await super.ensureSave(gigId);
-  }
-}
-
-class _ProfileRepository extends DemoRepository {
-  _ProfileRepository({required super.auth});
-
-  bool failProfileSave = false;
-
-  @override
-  Future<void> updateFanProfile({
-    required String name,
-    required String? bio,
-    required FanCity? homeLocation,
-    required List<String> genres,
-    required bool locationPersonalizationEnabled,
-    required bool followedBandUpdatesEnabled,
-  }) async {
-    if (failProfileSave) throw StateError('profile save failed');
-    await super.updateFanProfile(
-      name: name,
-      bio: bio,
-      homeLocation: homeLocation,
-      genres: genres,
-      locationPersonalizationEnabled: locationPersonalizationEnabled,
-      followedBandUpdatesEnabled: followedBandUpdatesEnabled,
-    );
-  }
+  int get ensureCalls => callsTo('ensureUser');
+  int get saveCalls => callsTo('ensureSave');
 }
 
 class _CountingCodeAuth extends FakeAuthService {
@@ -787,16 +716,17 @@ class _CountingCodeAuth extends FakeAuthService {
   }
 }
 
-class _GatedProfileRepository extends DemoRepository {
-  _GatedProfileRepository({required super.auth});
+class _GatedProfileRepository extends StubRepository {
+  _GatedProfileRepository({required super.auth}) {
+    profileGate = gate('me');
+  }
 
-  final profileGate = Completer<UserProfile?>();
-  bool meRequested = false;
+  late final Completer<void> profileGate;
+  bool get meRequested => callsTo('me') > 0;
 
-  @override
-  Future<UserProfile?> me() {
-    meRequested = true;
-    return profileGate.future;
+  void completeMe(UserProfile? profile) {
+    returns('me', profile);
+    profileGate.complete();
   }
 }
 

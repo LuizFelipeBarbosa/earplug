@@ -58,11 +58,11 @@ class SlotShell extends StatelessWidget {
 }
 
 /// The small tracked-out label at the top of a slot.
-class SlotTag extends StatelessWidget {
+class _SlotTag extends StatelessWidget {
   final String text;
   final Color color;
 
-  const SlotTag(this.text, this.color, {super.key});
+  const _SlotTag(this.text, this.color);
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +107,7 @@ class SlotCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: SlotTag(
+                child: _SlotTag(
                   tag,
                   state == SlotState.needed
                       ? context.epColors.warning

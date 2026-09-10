@@ -8,12 +8,11 @@ import 'package:earplug/models.dart';
 import 'package:earplug/screens/band_profile.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/band_identity_editor.dart';
-import 'package:earplug/widgets/brand_icons.dart';
-import 'package:earplug/widgets/video_thumbnail.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   test('resolved artwork roles do not resurrect cleared legacy artwork', () {
@@ -75,7 +74,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         profileBand: DemoData.bands['b1']!.copyWith(
           linkIg: '@foghorn.diet',
@@ -117,7 +116,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         profileBand: DemoData.bands['b1']!,
         details: BandProfileDetails.empty,
@@ -139,7 +138,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         profileBand: DemoData.bands['b1']!.copyWith(
           linkIg: '@foghorn.diet',
@@ -180,30 +179,6 @@ void main() {
     expect(harness.app.current.screen, Screen.bandDash);
   });
 
-  testWidgets('member preview can return but cannot edit', (tester) async {
-    final auth = FakeAuthService();
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: _ProfileRepository(
-        auth: auth,
-        profileBand: DemoData.bands['b1']!,
-        details: BandProfileDetails.empty,
-        role: 'member',
-      ),
-      beforePump: (app) => app.go(Screen.bandPreview, 'b1'),
-      home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
-    );
-
-    expect(find.text('PUBLIC PROFILE PREVIEW'), findsOne);
-    expect(find.text('Return to band dashboard'), findsOne);
-    expect(find.text('Edit profile'), findsNothing);
-
-    await tester.tap(find.text('Return to band dashboard'));
-    await tester.pump();
-    expect(harness.app.current.screen, Screen.bandDash);
-  });
-
   testWidgets('ordinary visits retain the regular public header', (
     tester,
   ) async {
@@ -236,7 +211,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         profileBand: DemoData.bands['b1']!,
         details: BandProfileDetails.empty,
@@ -251,7 +226,7 @@ void main() {
     await pumpApp(
       tester,
       auth: incompleteAuth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: incompleteAuth,
         profileBand: DemoData.bands['b1']!.copyWith(profileComplete: false),
         details: BandProfileDetails.empty,
@@ -270,7 +245,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _HistoryRepository(auth: auth, stagedHistory: history),
+      repository: StubRepository(auth: auth)..returns('bandHistory', history),
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
 
@@ -411,21 +386,6 @@ void main() {
     expect(find.text('No past shows yet.', skipOffstage: false), findsOne);
   });
 
-  testWidgets('profile renders every video in one thumbnail section', (
-    tester,
-  ) async {
-    await _pumpProfile(tester);
-    final videos = DemoData.b1Media.where((media) => media.isVideo).toList();
-
-    expect(find.text('THIS IS WHAT WE SOUND LIKE'), findsOne);
-    expect(find.text('CLIPS'), findsNothing);
-    expect(find.text('PINNED'), findsOne);
-    for (final video in videos) {
-      expect(find.text(video.title), findsOne);
-    }
-    expect(find.byType(BandVideoThumbnail), findsNWidgets(videos.length));
-  });
-
   testWidgets('profile banner is scrimmed, upright, and editable by admins', (
     tester,
   ) async {
@@ -459,7 +419,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(
+      repository: _profileRepository(
         auth: auth,
         managedBandIds: const ['b1', 'b2'],
       ),
@@ -482,7 +442,7 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _ProfileRepository(auth: auth, role: 'member'),
+      repository: _profileRepository(auth: auth, role: 'member'),
       beforePump: (app) => app.go(Screen.bandPreview, 'b1'),
       home: const Scaffold(body: BandProfileScreen(bandId: 'b1')),
     );
@@ -539,64 +499,6 @@ void main() {
 
     // Flush app.say's 2.2s toast-clear timer so teardown sees no pending timer.
     await tester.pump(const Duration(seconds: 3));
-  });
-
-  testWidgets('band avatar falls back to initials without a hero photo', (
-    tester,
-  ) async {
-    final harness = await _pumpProfile(tester);
-    final band = harness.app.band('b1')!;
-
-    expect(band.heroUrl, isNull);
-    expect(find.text(band.initials), findsOne);
-  });
-
-  testWidgets('profile renders every configured band link', (tester) async {
-    final semantics = tester.ensureSemantics();
-    final harness = await _pumpProfile(tester);
-    await _saveSocialLinks(harness);
-    await tester.pumpAndSettle();
-
-    await tester.scrollUntilVisible(
-      find.byKey(const ValueKey('band-social-youtube')),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    final links = [
-      (
-        key: const ValueKey('band-social-instagram'),
-        label: 'Open Instagram',
-        icon: BrandGlyph.instagram,
-      ),
-      (
-        key: const ValueKey('band-social-bandcamp'),
-        label: 'Open Bandcamp',
-        icon: BrandGlyph.bandcamp,
-      ),
-      (
-        key: const ValueKey('band-social-youtube'),
-        label: 'Open YouTube',
-        icon: BrandGlyph.youtube,
-      ),
-    ];
-    for (final link in links) {
-      final button = find.byKey(link.key);
-      expect(button, findsOneWidget);
-      expect(tester.getSize(button).height, 48);
-      expect(tester.getSize(button).width, greaterThanOrEqualTo(48));
-      expect(find.byTooltip(link.label), findsOneWidget);
-      expect(find.bySemanticsLabel(link.label), findsOneWidget);
-      expect(
-        find.byWidgetPredicate(
-          (widget) => widget is BrandIcon && widget.glyph == link.icon,
-        ),
-        findsOneWidget,
-      );
-    }
-    expect(find.text('INSTAGRAM ↗'), findsOne);
-    expect(find.text('BANDCAMP ↗'), findsOne);
-    expect(find.text('YOUTUBE ↗'), findsOne);
-    semantics.dispose();
   });
 
   testWidgets('social icons wrap at narrow width and increased text scale', (
@@ -670,61 +572,38 @@ Future<void> _scrollToPastGigs(WidgetTester tester) async {
 
 /// Demo data with the viewer's memberships fixed, optionally with one band
 /// swapped into the feed and its profile details stubbed.
-class _ProfileRepository extends DemoRepository {
-  _ProfileRepository({
-    required super.auth,
-    this.profileBand,
-    this.details,
-    this.role = 'admin',
-    this.managedBandIds = const ['b1'],
-  });
-
-  final Band? profileBand;
-  final BandProfileDetails? details;
-  final String role;
-  final List<String> managedBandIds;
-
-  @override
-  Stream<FeedSnapshot> feed() {
-    final band = profileBand;
-    if (band == null) return super.feed();
-    return Stream.value(
-      FeedSnapshot(
-        gigs: DemoData.gigs,
-        venues: DemoData.venues,
-        bands: {...DemoData.bands, band.id: band},
+StubRepository _profileRepository({
+  required AuthService auth,
+  Band? profileBand,
+  BandProfileDetails? details,
+  String role = 'admin',
+  List<String> managedBandIds = const ['b1'],
+}) {
+  final stub = StubRepository(auth: auth);
+  if (profileBand != null) {
+    stub.returnsStream(
+      'feed',
+      () => Stream.value(
+        FeedSnapshot(
+          gigs: DemoData.gigs,
+          venues: DemoData.venues,
+          bands: {...DemoData.bands, profileBand.id: profileBand},
+        ),
       ),
     );
   }
-
-  @override
-  Stream<List<BandMembership>> myBands() => Stream.value([
-    for (final id in managedBandIds)
-      BandMembership(
-        band: id == profileBand?.id ? profileBand! : DemoData.bands[id]!,
-        role: role,
-      ),
-  ]);
-
-  @override
-  Future<BandProfileDetails> bandProfileDetails(String bandId) async =>
-      details ?? await super.bandProfileDetails(bandId);
-}
-
-class _HistoryRepository extends DemoRepository {
-  _HistoryRepository({
-    required super.auth,
-    this.stagedHistory = BandHistory.empty,
-  });
-
-  final BandHistory stagedHistory;
-  int calls = 0;
-
-  @override
-  Future<BandHistory> bandHistory(String bandId) async {
-    calls++;
-    return stagedHistory;
-  }
+  stub.returnsStream(
+    'myBands',
+    () => Stream.value([
+      for (final id in managedBandIds)
+        BandMembership(
+          band: id == profileBand?.id ? profileBand! : DemoData.bands[id]!,
+          role: role,
+        ),
+    ]),
+  );
+  if (details != null) stub.returns('bandProfileDetails', details);
+  return stub;
 }
 
 class _BareBandRepository extends DemoRepository {

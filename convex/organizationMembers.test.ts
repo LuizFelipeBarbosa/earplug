@@ -2,61 +2,38 @@ import { convexTest } from "convex-test";
 import { describe, expect, test, vi } from "vitest";
 import { api } from "./_generated/api";
 import { createInvite as createInviteMutation } from "./organizationMembers";
+import { setupOrganization as setupOrganizationFixture } from "./orgFixtures.test-helpers";
 import schema from "./schema";
 
 async function setupOrganization() {
   const t = convexTest(schema);
-  const asOwner = t.withIdentity({
-    subject: "membership_owner",
-    email: "owner@membership.test",
-    name: "Membership Owner",
-  });
-  const asSecondOwner = t.withIdentity({
-    subject: "membership_second_owner",
-    email: "second-owner@membership.test",
-    name: "Second Owner",
-  });
-  const asInvitee = t.withIdentity({
-    subject: "membership_invitee",
-    email: "invitee@membership.test",
-    name: "Invited Member",
-  });
-  const { userId: ownerId } = await asOwner.mutation(api.users.ensureUser, {});
-  const { userId: secondOwnerId } = await asSecondOwner.mutation(
-    api.users.ensureUser,
-    {},
-  );
-  const { userId: inviteeId } = await asInvitee.mutation(
-    api.users.ensureUser,
-    {},
-  );
-  const organizationId = await t.run(async (ctx) => {
-    const id = await ctx.db.insert("organizations", {
+  const fixture = await setupOrganizationFixture(t, {
+    prefix: "membership",
+    viaEnsureUser: true,
+    roles: [
+      { label: "owner", role: "owner", name: "Membership Owner" },
+      {
+        label: "second_owner",
+        role: null,
+        name: "Second Owner",
+        email: "second-owner@membership.test",
+      },
+      { label: "invitee", role: null, name: "Invited Member" },
+    ],
+    organization: {
       name: "Membership Venue Group",
       slug: "membership-venue-group",
-      orgType: "venueOperator",
-      status: "verified",
-      ownerUserId: ownerId,
-      createdAt: 1,
-      updatedAt: 1,
-    });
-    await ctx.db.insert("organizationMembers", {
-      organizationId: id,
-      userId: ownerId,
-      role: "owner",
-      createdAt: 1,
-    });
-    return id;
+    },
   });
   return {
-    t,
-    asOwner,
-    asSecondOwner,
-    asInvitee,
-    ownerId,
-    secondOwnerId,
-    inviteeId,
-    organizationId,
+    t: fixture.t,
+    asOwner: fixture.as("owner"),
+    asSecondOwner: fixture.as("second_owner"),
+    asInvitee: fixture.as("invitee"),
+    ownerId: fixture.users.owner,
+    secondOwnerId: fixture.users.second_owner,
+    inviteeId: fixture.users.invitee,
+    organizationId: fixture.organizationId,
   };
 }
 

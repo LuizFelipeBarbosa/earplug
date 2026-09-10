@@ -7,9 +7,8 @@ import { Doc, Id } from "./_generated/dataModel";
 import { QueryCtx, query } from "./_generated/server";
 import {
   ALL_ORGANIZATION_ROLES,
-  requireOrganizationRoleQuery,
+  requireOrganizationRole,
 } from "./lib/authz";
-import { flag } from "./lib/env";
 import { currentUser, feedCutoff } from "./lib/helpers";
 import {
   artistOpportunityPayloadValidator,
@@ -74,9 +73,6 @@ export const browse = query({
     if (mode === "privateBooking") {
       if (!user || !(await isAdminOfAnyBand(ctx, user._id))) {
         throw new Error("Sign in as a band admin to see private requests");
-      }
-      if (!flag("PRIVATE_BOOKINGS_ENABLED", false)) {
-        return { page: [], isDone: true, continueCursor: "" };
       }
     }
 
@@ -224,7 +220,7 @@ export const manageForOrganization = query({
   args: { organizationId: v.id("organizations") },
   returns: v.array(opportunityPayloadValidator),
   handler: async (ctx, args) => {
-    await requireOrganizationRoleQuery(
+    await requireOrganizationRole(
       ctx,
       args.organizationId,
       ALL_ORGANIZATION_ROLES,
@@ -270,7 +266,7 @@ export const get = query({
     const opportunity = await ctx.db.get(args.opportunityId);
     if (!opportunity) return null;
     try {
-      await requireOrganizationRoleQuery(
+      await requireOrganizationRole(
         ctx,
         opportunity.organizationId,
         ALL_ORGANIZATION_ROLES,

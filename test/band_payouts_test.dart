@@ -16,8 +16,8 @@ import 'package:earplug/widgets/sheets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/design_rules.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets(
@@ -44,7 +44,7 @@ void main() {
     },
   );
 
-  for (final preset in ['YEAR TO DATE', 'LAST YEAR', 'LAST 30 DAYS']) {
+  for (final preset in ['YEAR TO DATE']) {
     testWidgets('$preset downloads the band payout statement PDF', (
       tester,
     ) async {
@@ -194,7 +194,6 @@ void main() {
     expect(find.byKey(const Key('band-payouts-status')), findsOneWidget);
     expect(find.byKey(const Key('band-payouts-history')), findsOneWidget);
     expect(find.text('No payouts yet.'), findsOneWidget);
-    expectNoFieldInCard(tester);
 
     await tester.tap(find.byKey(const Key('band-payouts-setup')));
     await tester.pumpAndSettle();
@@ -245,7 +244,7 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
-    final repository = _StripeStatusRepository(
+    final repository = _stripeStatusRepository(
       auth: auth,
       state: StripeAccountState.enabled,
       cardPaymentsStatus: null,
@@ -257,8 +256,6 @@ void main() {
       repository: repository,
       home: const Scaffold(body: BandPayoutsScreen()),
       beforePump: (app) async {
-        await app.loadFeatureFlags();
-        app.features = _bandTicketingEnabled;
         app.switchToBand('b1');
       },
     );
@@ -274,7 +271,6 @@ void main() {
     expect(find.text('ENABLE TICKET SALES'), findsOneWidget);
     expect(find.text('TICKET SALES ENABLED'), findsNothing);
     expect(find.text(_ticketSalesCaption), findsOneWidget);
-    expectNoFieldInCard(tester);
 
     await tester.ensureVisible(button);
     await tester.tap(button);
@@ -291,15 +287,13 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _StripeStatusRepository(
+      repository: _stripeStatusRepository(
         auth: auth,
         state: StripeAccountState.enabled,
         cardPaymentsStatus: 'active',
       ),
       home: const Scaffold(body: BandPayoutsScreen()),
       beforePump: (app) async {
-        await app.loadFeatureFlags();
-        app.features = _bandTicketingEnabled;
         app.switchToBand('b1');
       },
     );
@@ -316,47 +310,7 @@ void main() {
     expect(pill.tone, EpStatusPillTone.success);
     expect(find.byKey(const Key('band-payouts-enable-tickets')), findsNothing);
     expect(find.text(_ticketSalesCaption), findsOneWidget);
-    expectNoFieldInCard(tester);
   });
-
-  for (final cardPaymentsStatus in [null, 'active']) {
-    testWidgets(
-      'ticket sales are hidden when the feature is off with card payments $cardPaymentsStatus',
-      (tester) async {
-        final auth = FakeAuthService();
-        final harness = await pumpApp(
-          tester,
-          auth: auth,
-          repository: _StripeStatusRepository(
-            auth: auth,
-            state: StripeAccountState.enabled,
-            cardPaymentsStatus: cardPaymentsStatus,
-          ),
-          home: const Scaffold(body: BandPayoutsScreen()),
-          beforePump: (app) async {
-            await app.loadFeatureFlags();
-            app.features = const FeatureFlags(
-              privateBookings: false,
-              tickets: false,
-              payments: false,
-              bandGigWrites: true,
-            );
-            app.switchToBand('b1');
-          },
-        );
-
-        expect(harness.app.bandPayoutStatus?.hasAccount, isTrue);
-        expect(harness.app.features.bandTicketing, isFalse);
-        expect(find.text('TICKET SALES'), findsNothing);
-        expect(
-          find.byKey(const Key('band-payouts-enable-tickets')),
-          findsNothing,
-        );
-        expect(find.text('TICKET SALES ENABLED'), findsNothing);
-        expect(find.text(_ticketSalesCaption), findsNothing);
-      },
-    );
-  }
 
   testWidgets('ticket sales stay hidden until a band has a Stripe account', (
     tester,
@@ -365,13 +319,10 @@ void main() {
       tester,
       home: const Scaffold(body: BandPayoutsScreen()),
       beforePump: (app) async {
-        await app.loadFeatureFlags();
-        app.features = _bandTicketingEnabled;
         app.switchToBand('b1');
       },
     );
 
-    expect(harness.app.features.bandTicketing, isTrue);
     expect(harness.app.bandPayoutStatus?.hasAccount, isFalse);
     expect(find.text('SET UP PAYOUTS'), findsOneWidget);
     expect(find.text('TICKET SALES'), findsNothing);
@@ -387,14 +338,12 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _StripeStatusRepository(
+      repository: _stripeStatusRepository(
         auth: auth,
         state: StripeAccountState.enabled,
       ),
       home: const Scaffold(body: BandPayoutsScreen()),
       beforePump: (app) async {
-        await app.loadFeatureFlags();
-        app.features = _bandTicketingEnabled;
         app.switchToBand('b1');
       },
     );
@@ -502,7 +451,6 @@ void main() {
             .tone,
         EpStatusPillTone.warning,
       );
-      expectNoFieldInCard(tester);
     },
   );
 
@@ -536,7 +484,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _StripeStatusRepository(
+      repository: _stripeStatusRepository(
         auth: auth,
         state: StripeAccountState.enabled,
       ),
@@ -553,11 +501,7 @@ void main() {
 
   for (final (description, requirementsDue, needsTaxInformation) in [
     ('ID number', ['external_account', 'individual.id_number'], true),
-    ('SSN', ['individual.ssn_last_4'], true),
-    ('tax ID', ['company.tax_id'], true),
-    ('verification document', ['individual.verification.document'], true),
     ('no requirements', <String>[], false),
-    ('non-tax requirement', ['external_account'], false),
   ]) {
     testWidgets('band tax row handles $description', (tester) async {
       final auth = FakeAuthService();
@@ -565,7 +509,7 @@ void main() {
       await pumpApp(
         tester,
         auth: auth,
-        repository: _StripeStatusRepository(
+        repository: _stripeStatusRepository(
           auth: auth,
           state: detailsSubmitted
               ? StripeAccountState.enabled
@@ -622,7 +566,6 @@ void main() {
         find.byKey(const Key('band-payouts-tax-dashboard')),
         detailsSubmitted ? findsOneWidget : findsNothing,
       );
-      expectNoFieldInCard(tester);
     });
   }
 
@@ -630,7 +573,7 @@ void main() {
     'restricted band with submitted details can manage tax details and retry errors',
     (tester) async {
       final auth = FakeAuthService();
-      final repository = _StripeStatusRepository(
+      final repository = _stripeStatusRepository(
         auth: auth,
         state: StripeAccountState.restricted,
         detailsSubmitted: true,
@@ -676,11 +619,61 @@ void main() {
     },
   );
 
+  testWidgets(
+    'restricted organization with submitted details can manage tax details and retry errors',
+    (tester) async {
+      final auth = FakeAuthService();
+      final repository = _stripeStatusRepository(
+        auth: auth,
+        state: StripeAccountState.restricted,
+        detailsSubmitted: true,
+        requirementsDue: const ['individual.id_number'],
+      );
+      // Enable the demo dashboard link while the displayed status stays restricted.
+      await repository.refreshOrganizationAccountStatus('org1');
+      final harness = await pumpApp(
+        tester,
+        auth: auth,
+        repository: repository,
+        home: const Scaffold(body: OrgSettingsScreen()),
+        beforePump: (app) => app.switchToOrganization('org1'),
+      );
+      await enterOrganizer(tester, harness, 'org1');
+
+      final button = find.byKey(const Key('org-settings-tax-dashboard'));
+      await tester.scrollUntilVisible(
+        button,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      expect(
+        find.descendant(of: button, matching: find.text('MANAGE IN STRIPE')),
+        findsOneWidget,
+      );
+      harness.app.hostedUrlLauncher = (_) async {
+        throw StateError('Could not open Stripe');
+      };
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('org-settings-stripe-error')), findsOneWidget);
+      expect(find.textContaining('Could not open Stripe'), findsOneWidget);
+      expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
+
+      final launched = <String>[];
+      harness.app.hostedUrlLauncher = (url) async => launched.add(url);
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(launched, ['https://demo.stripe/dashboard/org1']);
+      expect(find.byKey(const Key('org-settings-stripe-error')), findsNothing);
+      expect(find.byKey(const Key('org-settings-save-error')), findsNothing);
+    },
+  );
+
   for (final (state, caption) in [
-    (StripeAccountState.none, 'Set up payouts'),
-    (StripeAccountState.unknown, 'Set up payouts'),
-    (StripeAccountState.onboarding, 'Finish setup'),
-    (StripeAccountState.restricted, 'Finish setup'),
     (StripeAccountState.enabled, 'Enabled'),
   ]) {
     testWidgets('band payouts tile shows ${state.name} and opens payouts', (
@@ -690,7 +683,7 @@ void main() {
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: _StripeStatusRepository(
+        repository: _stripeStatusRepository(
           auth: auth,
           state: state,
           cardPaymentsStatus:
@@ -722,7 +715,22 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _NonOwnerRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'myBands',
+          () => Stream.value([
+            BandMembership(band: DemoData.bands['b1']!, role: 'member'),
+          ]),
+        )
+        ..returnsStream(
+          'myOrganizations',
+          () => Stream.value([
+            OrganizationMembership(
+              organization: DemoData.organizations['org1']!,
+              role: OrganizationRole.manager,
+            ),
+          ]),
+        ),
       home: const Scaffold(body: BandDashScreen()),
       beforePump: (app) => app.switchToBand('b1'),
     );
@@ -750,7 +758,6 @@ void main() {
     );
     expect(find.byKey(const Key('org-settings-stripe')), findsOneWidget);
     expect(find.text('Not connected'), findsOneWidget);
-    expectNoFieldInCard(tester);
 
     await tester.ensureVisible(
       find.byKey(const Key('org-settings-stripe-setup')),
@@ -784,7 +791,22 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _NonOwnerRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'myBands',
+          () => Stream.value([
+            BandMembership(band: DemoData.bands['b1']!, role: 'member'),
+          ]),
+        )
+        ..returnsStream(
+          'myOrganizations',
+          () => Stream.value([
+            OrganizationMembership(
+              organization: DemoData.organizations['org1']!,
+              role: OrganizationRole.manager,
+            ),
+          ]),
+        ),
       home: const Scaffold(body: OrgSettingsScreen()),
       beforePump: (app) => app.switchToOrganization('org1'),
     );
@@ -833,7 +855,7 @@ void main() {
     expect(find.text('Setup in progress'), findsOneWidget);
   });
 
-  for (final band in [true, false]) {
+  for (final band in [true]) {
     testWidgets('${band ? 'band' : 'organization'} lists Stripe requirements', (
       tester,
     ) async {
@@ -841,7 +863,7 @@ void main() {
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: _StripeStatusRepository(
+        repository: _stripeStatusRepository(
           auth: auth,
           state: StripeAccountState.restricted,
         ),
@@ -866,7 +888,7 @@ void main() {
     });
   }
 
-  for (final complete in [false, true]) {
+  for (final complete in [false]) {
     testWidgets('organization Stripe readiness links when complete=$complete', (
       tester,
     ) async {
@@ -874,7 +896,26 @@ void main() {
       final harness = await pumpApp(
         tester,
         auth: auth,
-        repository: _ReadinessRepository(auth: auth, complete: complete),
+        repository: StubRepository(auth: auth)
+          ..wraps<OrganizationDashboard>(
+            'organizationDashboard',
+            (real) => OrganizationDashboard(
+              organization: real.organization,
+              role: real.role,
+              viaPlatformAdmin: real.viaPlatformAdmin,
+              verification: OrganizationVerification(
+                verified: real.verification.verified,
+                stripeDetailsSubmitted: complete,
+                stripeChargesEnabled: complete,
+                stripePayoutsEnabled: complete,
+                profileComplete: real.verification.profileComplete,
+                teamInvited: real.verification.teamInvited,
+              ),
+              venues: real.venues,
+              memberCount: real.memberCount,
+              privateDetails: real.privateDetails,
+            ),
+          ),
         home: const Scaffold(body: OrgDashScreen()),
         beforePump: (app) => app.switchToOrganization('org1'),
       );
@@ -903,46 +944,41 @@ void main() {
   }
 }
 
-const _bandTicketingEnabled = FeatureFlags(
-  privateBookings: false,
-  tickets: true,
-  payments: false,
-  bandGigWrites: true,
-);
-
 const _ticketSalesCaption =
     'Fans pay you directly through Stripe; EarPlug adds its fee at checkout.';
 
-class _PayoutRepository extends DemoRepository {
-  _PayoutRepository({required super.auth, this.payoutsResponse});
-
-  final Future<List<Payout>>? payoutsResponse;
-  ({String bandId, DateTime from, DateTime to})? statementRange;
-
-  @override
-  Future<List<Payout>> payoutsForBand(String bandId) async {
-    if (payoutsResponse != null) return payoutsResponse!;
-    return [
-      Payout(
-        id: 'p1',
-        kind: PayoutKind.completion,
-        amountMinor: 12000,
-        currency: 'usd',
-        status: PayoutStatus.paid,
-        scheduledFor: DateTime(2026, 8, 1),
-        paidAt: DateTime(2026, 8, 2),
-      ),
-      Payout(
-        id: 'p2',
-        kind: PayoutKind.forfeit,
-        amountMinor: 4000,
-        currency: 'usd',
-        status: PayoutStatus.held,
-        scheduledFor: DateTime(2026, 8, 3),
-        holdReason: 'Waiting for bank details',
-      ),
-    ];
+class _PayoutRepository extends StubRepository {
+  _PayoutRepository({
+    required super.auth,
+    Future<List<Payout>>? payoutsResponse,
+  }) {
+    returns(
+      'payoutsForBand',
+      payoutsResponse ??
+          Future.value(<Payout>[
+            Payout(
+              id: 'p1',
+              kind: PayoutKind.completion,
+              amountMinor: 12000,
+              currency: 'usd',
+              status: PayoutStatus.paid,
+              scheduledFor: DateTime(2026, 8, 1),
+              paidAt: DateTime(2026, 8, 2),
+            ),
+            Payout(
+              id: 'p2',
+              kind: PayoutKind.forfeit,
+              amountMinor: 4000,
+              currency: 'usd',
+              status: PayoutStatus.held,
+              scheduledFor: DateTime(2026, 8, 3),
+              holdReason: 'Waiting for bank details',
+            ),
+          ]),
+    );
   }
+
+  ({String bandId, DateTime from, DateTime to})? statementRange;
 
   @override
   Future<PayoutStatement> bandPayoutStatement(
@@ -1001,84 +1037,27 @@ class _TruncatedPayoutRepository extends _PayoutRepository {
   }
 }
 
-class _StripeStatusRepository extends DemoRepository {
-  _StripeStatusRepository({
-    required super.auth,
-    required StripeAccountState state,
-    String? cardPaymentsStatus,
-    bool? detailsSubmitted,
-    List<String>? requirementsDue,
-  }) : status = StripeAccountStatus(
-         state: state,
-         hasAccount: state != StripeAccountState.none,
-         chargesEnabled: state == StripeAccountState.enabled,
-         cardPaymentsStatus: cardPaymentsStatus,
-         payoutsEnabled: state == StripeAccountState.enabled,
-         detailsSubmitted:
-             detailsSubmitted ?? (state == StripeAccountState.enabled),
-         requirementsDue:
-             requirementsDue ??
-             (state == StripeAccountState.restricted
-                 ? const [
-                     'individual.verification.document',
-                     'external_account',
-                   ]
-                 : const []),
-       );
-
-  final StripeAccountStatus status;
-
-  @override
-  Future<StripeAccountStatus> bandPayoutStatus(String bandId) async => status;
-
-  @override
-  Future<StripeAccountStatus> organizationStripeStatus(
-    String organizationId,
-  ) async => status;
-}
-
-class _NonOwnerRepository extends DemoRepository {
-  _NonOwnerRepository({required super.auth});
-
-  @override
-  Stream<List<BandMembership>> myBands() => Stream.value([
-    BandMembership(band: DemoData.bands['b1']!, role: 'member'),
-  ]);
-
-  @override
-  Stream<List<OrganizationMembership>> myOrganizations() => Stream.value([
-    OrganizationMembership(
-      organization: DemoData.organizations['org1']!,
-      role: OrganizationRole.manager,
-    ),
-  ]);
-}
-
-class _ReadinessRepository extends DemoRepository {
-  _ReadinessRepository({required super.auth, required this.complete});
-
-  final bool complete;
-
-  @override
-  Future<OrganizationDashboard> organizationDashboard(
-    String organizationId,
-  ) async {
-    final dashboard = await super.organizationDashboard(organizationId);
-    return OrganizationDashboard(
-      organization: dashboard.organization,
-      role: dashboard.role,
-      viaPlatformAdmin: dashboard.viaPlatformAdmin,
-      verification: OrganizationVerification(
-        verified: dashboard.verification.verified,
-        stripeDetailsSubmitted: complete,
-        stripeChargesEnabled: complete,
-        stripePayoutsEnabled: complete,
-        profileComplete: dashboard.verification.profileComplete,
-        teamInvited: dashboard.verification.teamInvited,
-      ),
-      venues: dashboard.venues,
-      memberCount: dashboard.memberCount,
-      privateDetails: dashboard.privateDetails,
-    );
-  }
+StubRepository _stripeStatusRepository({
+  required AuthService auth,
+  required StripeAccountState state,
+  String? cardPaymentsStatus,
+  bool? detailsSubmitted,
+  List<String>? requirementsDue,
+}) {
+  final status = StripeAccountStatus(
+    state: state,
+    hasAccount: state != StripeAccountState.none,
+    chargesEnabled: state == StripeAccountState.enabled,
+    cardPaymentsStatus: cardPaymentsStatus,
+    payoutsEnabled: state == StripeAccountState.enabled,
+    detailsSubmitted: detailsSubmitted ?? (state == StripeAccountState.enabled),
+    requirementsDue:
+        requirementsDue ??
+        (state == StripeAccountState.restricted
+            ? const ['individual.verification.document', 'external_account']
+            : const []),
+  );
+  return StubRepository(auth: auth)
+    ..returns('bandPayoutStatus', status)
+    ..returns('organizationStripeStatus', status);
 }

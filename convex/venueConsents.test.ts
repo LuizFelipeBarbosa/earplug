@@ -6,7 +6,7 @@ import type { Id } from "./_generated/dataModel";
 import { feeSnapshot } from "./lib/fees";
 import schema from "./schema";
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-09-04T12:00:00Z");
 
@@ -259,17 +259,6 @@ describe("venueConsents.request", () => {
     expect(emails).toHaveLength(1);
     expect(emails[0].args[0].to).toBe(f.venueBusinessEmail);
     expect(emails[0].scheduledTime).toBe(NOW);
-  });
-
-  test("refuses a request when venue approval is disabled", async () => {
-    const f = await setupConsentFixture();
-    vi.stubEnv("PROMOTERS_ENABLED", "false");
-
-    await expect(
-      f.asRequestingOwner.mutation(api.venueConsents.request, {
-        opportunityId: f.opportunityId,
-      }),
-    ).rejects.toThrow("Venue approval is not available yet");
   });
 
   test("refuses a request after the opportunity is opened", async () => {

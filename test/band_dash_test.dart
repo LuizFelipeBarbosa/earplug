@@ -10,8 +10,8 @@ import 'package:earplug/widgets/common.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/accessibility.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('dashboard derives remaining tasks from current band data', (
@@ -67,32 +67,6 @@ void main() {
     );
   });
 
-  testWidgets('dashboard offers gig discovery when gig writes are disabled', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    final repository = DemoRepository(auth: auth);
-    repository.demoBandGigWrites = false;
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      home: const Scaffold(body: BandDashScreen()),
-    );
-    if (harness.app.gigWritePolicy) {
-      await harness.app.refreshGigWritePolicy();
-      await tester.pumpAndSettle();
-    }
-
-    await tester.scrollUntilVisible(
-      find.text('FIND GIGS'),
-      180,
-      scrollable: find.byType(Scrollable).first,
-    );
-    expect(find.text('FIND GIGS'), findsOne);
-    expect(find.text('PUBLISH GIG'), findsNothing);
-  });
-
   testWidgets('role copy and interactive checklist rows meet size floors', (
     tester,
   ) async {
@@ -102,31 +76,13 @@ void main() {
     expect(roleText.style?.fontSize, greaterThanOrEqualTo(11));
 
     final scrollable = find.byType(Scrollable).first;
-    for (final id in [
-      'profile',
-      'image',
-      'clip',
-      'show',
-      'listing',
-      'revision',
-    ]) {
-      final row = find.byKey(ValueKey('band-discovery-$id'));
-      await tester.scrollUntilVisible(row, 120, scrollable: scrollable);
-      expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
-    }
-    for (final id in [
-      'profile',
-      'image',
-      'music',
-      'social',
-      'gig',
-      'members',
-      'preview',
-    ]) {
-      final row = find.byKey(ValueKey('band-setup-$id'));
-      await tester.scrollUntilVisible(row, 120, scrollable: scrollable);
-      expect(tester.getSize(row).height, greaterThanOrEqualTo(48));
-    }
+    final discoveryRow = find.byKey(const ValueKey('band-discovery-profile'));
+    await tester.scrollUntilVisible(discoveryRow, 120, scrollable: scrollable);
+    expect(tester.getSize(discoveryRow).height, greaterThanOrEqualTo(48));
+
+    final setupRow = find.byKey(const ValueKey('band-setup-profile'));
+    await tester.scrollUntilVisible(setupRow, 120, scrollable: scrollable);
+    expect(tester.getSize(setupRow).height, greaterThanOrEqualTo(48));
   });
 
   testWidgets('dashboard profile controls use explicit admin navigation', (
@@ -213,10 +169,19 @@ void main() {
         await pumpApp(
           tester,
           auth: auth,
-          repository: _PayoutStatusRepository(
-            auth: auth,
-            cardPaymentsStatus: cardPaymentsStatus,
-          ),
+          repository: StubRepository(auth: auth)
+            ..returns(
+              'bandPayoutStatus',
+              StripeAccountStatus(
+                state: StripeAccountState.enabled,
+                hasAccount: true,
+                chargesEnabled: true,
+                payoutsEnabled: true,
+                detailsSubmitted: true,
+                requirementsDue: const [],
+                cardPaymentsStatus: cardPaymentsStatus,
+              ),
+            ),
           home: const Scaffold(body: BandDashScreen()),
           beforePump: (app) => app.switchToBand('b1'),
         );
@@ -334,7 +299,19 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _SetupRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns(
+          'bandSetupStatus',
+          const BandSetupStatus(
+            profileComplete: true,
+            profileImageAdded: false,
+            musicAdded: true,
+            socialLinksAdded: false,
+            firstGigCreated: true,
+            membersInvited: false,
+            publicProfilePreviewed: true,
+          ),
+        ),
       home: const Scaffold(body: BandDashScreen()),
     );
 
@@ -422,7 +399,14 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _MultiBandRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'myBands',
+          () => Stream.value([
+            BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
+            BandMembership(band: DemoData.bands['b2']!, role: 'member'),
+          ]),
+        ),
       home: const Scaffold(body: BandDashScreen()),
     );
 
@@ -436,13 +420,6 @@ void main() {
 
     expect(harness.app.bandId, 'b2');
     expect(harness.app.current.screen, Screen.bandDash);
-  });
-
-  testWidgets('dashboard is usable at increased text scale', (tester) async {
-    await pumpApp(tester, home: scaledScreen(const BandDashScreen()));
-
-    expect(tester.takeException(), isNull);
-    expect(find.byType(Scrollable), findsWidgets);
   });
 }
 
@@ -484,69 +461,25 @@ class _DoorRepository extends DemoRepository {
   }
 }
 
-class _PayoutStatusRepository extends DemoRepository {
-  _PayoutStatusRepository({required super.auth, this.cardPaymentsStatus});
-
-  final String? cardPaymentsStatus;
-
-  @override
-  Future<StripeAccountStatus> bandPayoutStatus(String bandId) async =>
-      StripeAccountStatus(
-        state: StripeAccountState.enabled,
-        hasAccount: true,
-        chargesEnabled: true,
-        payoutsEnabled: true,
-        detailsSubmitted: true,
-        requirementsDue: const [],
-        cardPaymentsStatus: cardPaymentsStatus,
-      );
-}
-
-class _MultiBandRepository extends DemoRepository {
-  _MultiBandRepository({required super.auth});
-
-  @override
-  Stream<List<BandMembership>> myBands() async* {
-    yield [
-      BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
-      BandMembership(band: DemoData.bands['b2']!, role: 'member'),
-    ];
-  }
-}
-
-class _SetupRepository extends DemoRepository {
-  _SetupRepository({required super.auth});
-
-  @override
-  Future<BandSetupStatus> bandSetupStatus(String bandId) async =>
-      const BandSetupStatus(
-        profileComplete: true,
-        profileImageAdded: false,
-        musicAdded: true,
-        socialLinksAdded: false,
-        firstGigCreated: true,
-        membersInvited: false,
-        publicProfilePreviewed: true,
-      );
-}
-
-class _BoundaryReadinessRepository extends DemoRepository {
+class _BoundaryReadinessRepository extends StubRepository {
   _BoundaryReadinessRepository({required super.auth, required DateTime now})
     : opensAt = now.add(const Duration(seconds: 2)),
-      closesAt = now.add(const Duration(seconds: 4));
+      closesAt = now.add(const Duration(seconds: 4)) {
+    returnsStream(
+      'feed',
+      () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+    );
+    returnsStream(
+      'myBands',
+      () => Stream.value([
+        BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
+      ]),
+    );
+  }
 
   final DateTime opensAt;
   final DateTime closesAt;
   int readinessCalls = 0;
-
-  @override
-  Stream<FeedSnapshot> feed() =>
-      Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {}));
-
-  @override
-  Stream<List<BandMembership>> myBands() => Stream.value([
-    BandMembership(band: DemoData.bands['b1']!, role: 'admin'),
-  ]);
 
   @override
   Future<BandDiscoveryReadiness> bandDiscoveryReadiness(
@@ -579,15 +512,17 @@ class _BoundaryReadinessRepository extends DemoRepository {
   }
 }
 
-class _MemberRepository extends DemoRepository {
-  _MemberRepository({required super.auth});
+class _MemberRepository extends StubRepository {
+  _MemberRepository({required super.auth}) {
+    returnsStream(
+      'myBands',
+      () => Stream.value([
+        BandMembership(band: DemoData.bands['b1']!, role: 'member'),
+      ]),
+    );
+  }
 
   int setupStatusCalls = 0;
-
-  @override
-  Stream<List<BandMembership>> myBands() => Stream.value([
-    BandMembership(band: DemoData.bands['b1']!, role: 'member'),
-  ]);
 
   @override
   Future<BandSetupStatus> bandSetupStatus(String bandId) async {

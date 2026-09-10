@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:earplug/app_links.dart';
@@ -21,6 +20,7 @@ import 'package:provider/provider.dart';
 
 import 'support/fakes.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('organizer type picker is visible when promoters are enabled', (
@@ -34,16 +34,13 @@ void main() {
       auth: auth,
       repository: repository,
       beforePump: (app) async {
-        // Finish the initial feature-flag load before overriding it.
         await app.commitAuth();
-        app.features = _promotersEnabled;
         app.go(Screen.orgApply);
       },
       home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
     );
     addTearDown(() => _disposeApp(harness.app));
 
-    expect(harness.app.promotersEnabled, isTrue);
     for (final type in [
       OrganizationType.venueOperator,
       OrganizationType.promoter,
@@ -63,36 +60,6 @@ void main() {
     );
     await _scrollDownToKey(tester, const ValueKey('org-apply-kind-bar'));
     expect(find.byKey(const ValueKey('org-apply-kind-club')), findsOneWidget);
-    await _scrollDownToKey(tester, const ValueKey('org-apply-venue-name'));
-    await _scrollDownToKey(tester, const ValueKey('org-apply-capacity'));
-  });
-
-  testWidgets('organizer type picker is hidden when promoters are disabled', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final repository = DemoRepository(auth: auth);
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      repository: repository,
-      beforePump: (app) => app.go(Screen.orgApply),
-      home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
-    );
-    addTearDown(() => _disposeApp(harness.app));
-
-    expect(harness.app.promotersEnabled, isFalse);
-    expect(find.byKey(const Key('org-apply-type-venueOperator')), findsNothing);
-    expect(find.byKey(const Key('org-apply-type-promoter')), findsNothing);
-    expect(find.byKey(const Key('org-apply-type-studentOrg')), findsNothing);
-    expect(find.text('ORGANIZATION TYPE'), findsNothing);
-    expect(find.byKey(const ValueKey('org-apply-kind-bar')), findsOneWidget);
-    expect(find.byKey(const ValueKey('org-apply-kind-club')), findsOneWidget);
-    expect(
-      find.text('Promoters and student organizations are coming next.'),
-      findsOneWidget,
-    );
     await _scrollDownToKey(tester, const ValueKey('org-apply-venue-name'));
     await _scrollDownToKey(tester, const ValueKey('org-apply-capacity'));
   });
@@ -123,7 +90,6 @@ void main() {
       repository: repository,
       beforePump: (app) async {
         await app.commitAuth();
-        app.features = _promotersEnabled;
         app.go(Screen.orgApply);
       },
       home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
@@ -171,7 +137,6 @@ void main() {
       repository: repository,
       beforePump: (app) async {
         await app.commitAuth();
-        app.features = _promotersEnabled;
         app.go(Screen.orgApply);
       },
       home: _ApplicationHost(mediaPicker: picker),
@@ -252,7 +217,6 @@ void main() {
       repository: repository,
       beforePump: (app) async {
         await app.commitAuth();
-        app.features = _promotersEnabled;
         app.go(Screen.orgApply);
       },
       home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
@@ -272,46 +236,6 @@ void main() {
     expect(saved.orgType, OrganizationType.studentOrg);
     expect(saved.venue, isNull);
   });
-
-  testWidgets(
-    'disabled promoters flag saves stale promoter as venue operator',
-    (tester) async {
-      final auth = FakeAuthService();
-      await auth.signInDemo();
-      final repository = DemoRepository(auth: auth);
-      await repository.saveOrganizationApplicationDraft(
-        orgName: 'Night Heron Collective',
-        orgType: OrganizationType.promoter,
-        contactName: '',
-        businessEmail: '',
-      );
-      final harness = await pumpApp(
-        tester,
-        auth: auth,
-        repository: repository,
-        beforePump: (app) => app.go(Screen.orgApply),
-        home: _ApplicationHost(mediaPicker: FakeMediaPicker()),
-      );
-      addTearDown(() => _disposeApp(harness.app));
-
-      expect(find.byKey(const Key('org-apply-type-promoter')), findsNothing);
-      expect(find.byKey(const ValueKey('org-apply-kind-bar')), findsOneWidget);
-      expect(
-        tester.widget<StickyActionBar>(find.byType(StickyActionBar)).onPrimary,
-        isNull,
-      );
-      await tester.enterText(
-        find.byKey(const ValueKey('org-apply-name')),
-        'Night Heron Club',
-      );
-      await tester.pump(const Duration(milliseconds: 700));
-      await tester.pumpAndSettle();
-      expect(
-        (await repository.myOrganizationApplication())!.orgType,
-        OrganizationType.venueOperator,
-      );
-    },
-  );
 
   testWidgets(
     'rejected applicants start a new draft and retain the rejection',
@@ -433,6 +357,10 @@ void main() {
       '22 V',
     );
     await tester.pump(const Duration(milliseconds: 300));
+    await _scrollDownToKey(
+      tester,
+      const ValueKey('org-apply-venue-suggestion-0'),
+    );
     await tester.tap(
       find.byKey(const ValueKey('org-apply-venue-suggestion-0')),
     );
@@ -652,7 +580,11 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _FailOnceRepository(auth: auth);
+    final repository = StubRepository(auth: auth)
+      ..failOnce(
+        'saveOrganizationApplicationDraft',
+        StateError('Contact name is required'),
+      );
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -852,7 +784,7 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _FailOnceRepository(auth: auth)..failNext = false;
+    final repository = StubRepository(auth: auth);
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -861,8 +793,11 @@ void main() {
     );
     addTearDown(() => _disposeApp(harness.app));
     await _completeVenue(tester);
-    repository.saveGate = Completer<void>();
-    repository.failNext = true;
+    final saveGate = repository.gate('saveOrganizationApplicationDraft');
+    repository.failOnce(
+      'saveOrganizationApplicationDraft',
+      StateError('Contact name is required'),
+    );
     await tester.tap(find.text('CONTINUE'));
     await tester.pump();
     expect(find.text('SAVING…'), findsOneWidget);
@@ -871,8 +806,7 @@ void main() {
       isNull,
     );
     expect(find.text('STEP 2 OF 2 · CONTACT'), findsNothing);
-    repository.saveGate!.complete();
-    repository.saveGate = null;
+    saveGate.complete();
     await tester.pumpAndSettle();
     expect(find.text('Contact name is required'), findsOneWidget);
     await _scrollUpToKey(tester, const ValueKey('org-apply-save-state'));
@@ -887,7 +821,7 @@ void main() {
     (tester) async {
       final auth = FakeAuthService();
       await auth.signInDemo();
-      final repository = _FailOnceRepository(auth: auth)..failNext = false;
+      final repository = StubRepository(auth: auth);
       final harness = await pumpApp(
         tester,
         auth: auth,
@@ -901,8 +835,10 @@ void main() {
       await _scrollUpToKey(tester, const ValueKey('org-apply-back'));
       await tester.tap(find.byKey(const ValueKey('org-apply-back')));
       await tester.pumpAndSettle();
-      repository.failureMessage = 'Website must be a valid HTTPS URL';
-      repository.failNext = true;
+      repository.failOnce(
+        'saveOrganizationApplicationDraft',
+        StateError('Website must be a valid HTTPS URL'),
+      );
       await tester.tap(find.text('CONTINUE'));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('org-apply-continue')), findsOneWidget);
@@ -1090,14 +1026,6 @@ class _NonOwningAppHost extends StatelessWidget {
       ChangeNotifierProvider<AppState>.value(value: app(), child: child);
 }
 
-const _promotersEnabled = FeatureFlags(
-  privateBookings: false,
-  tickets: false,
-  payments: false,
-  bandGigWrites: true,
-  promoters: true,
-);
-
 final _licensePhoto = PickedMedia(
   bytes: Uint8List.fromList([1, 2, 3]),
   filename: 'license.jpg',
@@ -1132,55 +1060,6 @@ class _ApplicationHost extends StatelessWidget {
   }
 }
 
-class _FailOnceRepository extends DemoRepository {
-  _FailOnceRepository({required super.auth});
-
-  bool failNext = true;
-  String failureMessage = 'Contact name is required';
-  Completer<void>? saveGate;
-
-  @override
-  Future<({String applicationId, int revision})>
-  saveOrganizationApplicationDraft({
-    ApplicationKind? kind,
-    String? hostDisplayName,
-    String? hostPhone,
-    String? hostArea,
-    bool? hostAgreementAccepted,
-    String? applicationId,
-    int? expectedRevision,
-    required String orgName,
-    required OrganizationType orgType,
-    String? website,
-    required String contactName,
-    required String businessEmail,
-    String? phone,
-    ApplicationVenueDraft? venue,
-  }) async {
-    if (saveGate case final gate?) await gate.future;
-    if (failNext) {
-      failNext = false;
-      throw StateError(failureMessage);
-    }
-    return super.saveOrganizationApplicationDraft(
-      kind: kind,
-      hostDisplayName: hostDisplayName,
-      hostPhone: hostPhone,
-      hostArea: hostArea,
-      hostAgreementAccepted: hostAgreementAccepted,
-      applicationId: applicationId,
-      expectedRevision: expectedRevision,
-      orgName: orgName,
-      orgType: orgType,
-      website: website,
-      contactName: contactName,
-      businessEmail: businessEmail,
-      phone: phone,
-      venue: venue,
-    );
-  }
-}
-
 Future<void> _completeApplication(
   WidgetTester tester, {
   required FakeMediaPicker picker,
@@ -1205,6 +1084,7 @@ Future<void> _completeApplication(
 }
 
 Future<void> _completeVenue(WidgetTester tester) async {
+  await _scrollDownToKey(tester, const ValueKey('org-apply-name'));
   await tester.enterText(
     find.byKey(const ValueKey('org-apply-name')),
     'Night Heron Club',

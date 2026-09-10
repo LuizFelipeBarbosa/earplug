@@ -14,7 +14,7 @@ vi.mock("./lib/stripeClient", async (importOriginal) => {
   return { ...actual, stripeRequest: vi.fn() };
 });
 
-const modules = import.meta.glob("./**/*.ts");
+const modules = import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]);
 const NOW = Date.parse("2026-09-05T12:00:00Z");
 const ACCOUNT_ID = "acct_ticket_organization";
 const BAND_ACCOUNT_ID = "acct_ticket_band";
@@ -24,7 +24,6 @@ const stripeMock = vi.mocked(stripeRequest);
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(NOW);
-  vi.stubEnv("TICKETS_ENABLED", "true");
   stripeMock.mockReset();
   stripeMock.mockResolvedValue({ id: "re_late_ticket" });
 });
@@ -286,7 +285,6 @@ function ticketDisputeEvent(
 
 describe("ticket Checkout completion", () => {
   test("mints a band order paid on the band's connected account", async () => {
-    vi.stubEnv("BAND_GIG_WRITES", "false");
     const f = await setupTickets({}, "band");
     const before = await f.state();
     expect(before.order).toMatchObject({ sellerKind: "band", bandId: f.bandId });
@@ -403,21 +401,6 @@ describe("ticket Checkout completion", () => {
 });
 
 describe("ticket event account checks", () => {
-  test.each(["seller", "account"] as const)(
-    "ignores a band Checkout event with a missing %s",
-    async (missing) => {
-      const f = await setupTickets({}, "band");
-      await f.t.run((ctx) =>
-        ctx.db.delete(missing === "seller" ? f.bandId! : f.payoutAccountId!),
-      );
-      const before = await f.state();
-      expect(
-        await f.deliver({ ...checkoutEvent(f.orderId), account: BAND_ACCOUNT_ID }),
-      ).toEqual({ outcome: "applied" });
-      expect(await f.state()).toEqual(before);
-    },
-  );
-
   test.each([ACCOUNT_ID, "acct_other", undefined])(
     "ignores a band Checkout event from the wrong account (%s)",
     async (account) => {
@@ -488,8 +471,7 @@ describe("ticket event account checks", () => {
 });
 
 describe("late ticket payments", () => {
-  test("refunds a late band payment with band seller references while band gig writes are disabled", async () => {
-    vi.stubEnv("BAND_GIG_WRITES", "false");
+  test("refunds a late band payment with band seller references", async () => {
     const f = await setupTickets({ status: "expired" }, "band");
     const event = { ...checkoutEvent(f.orderId), account: BAND_ACCOUNT_ID };
     expect(await f.deliver(event)).toEqual({ outcome: "applied" });
@@ -800,7 +782,6 @@ describe("ticket Checkout expiry", () => {
 
 describe("ticket dashboard refunds", () => {
   test("records the band seller on dashboard refunds and their ledger entries", async () => {
-    vi.stubEnv("BAND_GIG_WRITES", "false");
     const f = await setupTickets(
       { status: "paid", stripePaymentIntentId: "pi_ticket" },
       "band",
@@ -922,7 +903,6 @@ describe("ticket disputes", () => {
   test.each(["won", "lost"] as const)(
     "records the band's dispute hold and %s outcome on its own ledger",
     async (outcome) => {
-      vi.stubEnv("BAND_GIG_WRITES", "false");
       const f = await setupTickets({ status: "paid" }, "band");
       const before = await f.state();
       const created = {

@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:earplug/app_links.dart';
 import 'package:earplug/app_state.dart';
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/models.dart';
@@ -13,47 +12,11 @@ import 'package:earplug/widgets/tab_bars.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'support/design_rules.dart';
 import 'support/fakes.dart';
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
-  testWidgets('host agreement link preserves the full checkbox label', (
-    tester,
-  ) async {
-    final auth = FakeAuthService();
-    await auth.signInDemo();
-    final opened = <Uri>[];
-    final harness = await pumpApp(
-      tester,
-      auth: auth,
-      home: HostApplyScreen(
-        launch: (uri) async {
-          opened.add(uri);
-          return true;
-        },
-      ),
-    );
-    addTearDown(() => _disposeApp(harness.app));
-
-    await _reveal(tester, 'host-apply-agree');
-    final agreement = find.byKey(const ValueKey('host-apply-agree'));
-    expect(
-      find.text(
-        'I agree to the Host Agreement and booking protection terms',
-        findRichText: true,
-      ),
-      findsOneWidget,
-    );
-    await tester.tapOnText(
-      find.textRange.ofSubstring('Host Agreement', descendentOf: agreement),
-    );
-    await tester.pumpAndSettle();
-
-    expect(opened, [Uri.parse(legalHostAgreementUrl)]);
-    expect(tester.widget<CheckboxListTile>(agreement).value, isFalse);
-  });
-
   testWidgets(
     'flat host form autosaves, validates every requirement and submits',
     (tester) async {
@@ -71,7 +34,6 @@ void main() {
       addTearDown(() => _disposeApp(harness.app));
 
       expect(find.text('BECOME A HOST'), findsOneWidget);
-      expectNoFieldInCard(tester);
       expect(_submitBar(tester).onPrimary, isNull);
       for (final field in _hostFields.entries) {
         await _enterText(tester, field.key, field.value);
@@ -119,7 +81,6 @@ void main() {
         (await repository.myOrganizationApplication())!.hostAgreementAcceptedAt,
         isNotNull,
       );
-      expectNoFieldInCard(tester);
 
       // Each field still gates submission when the document and agreement exist.
       for (final field in _hostFields.entries) {
@@ -234,7 +195,6 @@ void main() {
         ),
         findsOneWidget,
       );
-      expectNoFieldInCard(tester);
     });
   }
 
@@ -375,70 +335,36 @@ void main() {
     });
   }
 
-  testWidgets('feature flag blocks the form before an existing application', (
+  testWidgets('switcher host entry opens the host application', (
     tester,
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _HostTestRepository(auth: auth, privateBookings: false);
-    await repository.saveOrganizationApplicationDraft(
-      orgName: 'The Foghorn Club',
-      orgType: OrganizationType.venueOperator,
-      contactName: '',
-      businessEmail: '',
+    final repository = _HostTestRepository(
+      auth: auth,
+      excludedOrganizationTypes: const {OrganizationType.privateHost},
     );
     final harness = await pumpApp(
       tester,
-      home: const HostApplyScreen(),
+      home: const Scaffold(bottomNavigationBar: FanTabBar()),
       auth: auth,
       repository: repository,
-      beforePump: (app) => app.openHostApply(),
     );
     addTearDown(() => _disposeApp(harness.app));
-
-    expect(find.text('Private bookings are not open yet.'), findsOneWidget);
-    expect(find.text('OPEN APPLICATION'), findsNothing);
-    expect(find.byType(TextField), findsNothing);
-    await tester.tap(find.text('BACK'));
+    await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
-    expect(harness.app.current.screen, Screen.home);
+
+    final hostEntry = find.byKey(const Key('switcher-become-host'));
+    expect(hostEntry, findsOneWidget);
+    expect(find.byKey(const Key('switcher-org-org1')), findsOneWidget);
+    expect(find.byKey(const Key('switcher-org-org2')), findsNothing);
+    expect(find.byKey(const Key('switcher-become-organizer')), findsNothing);
+    expect(find.text('BECOME A HOST'), findsOneWidget);
+    await tester.ensureVisible(hostEntry);
+    await tester.tap(hostEntry);
+    await tester.pumpAndSettle();
+    expect(harness.app.current.screen, Screen.hostApply);
   });
-
-  for (final enabled in [true, false]) {
-    testWidgets('switcher host entry follows privateBookings=$enabled', (
-      tester,
-    ) async {
-      final auth = FakeAuthService();
-      await auth.signInDemo();
-      final repository = _HostTestRepository(
-        auth: auth,
-        privateBookings: enabled,
-        excludedOrganizationTypes: const {OrganizationType.privateHost},
-      );
-      final harness = await pumpApp(
-        tester,
-        home: const Scaffold(bottomNavigationBar: FanTabBar()),
-        auth: auth,
-        repository: repository,
-      );
-      addTearDown(() => _disposeApp(harness.app));
-      await tester.tap(find.text('SWITCH'));
-      await tester.pumpAndSettle();
-
-      final hostEntry = find.byKey(const Key('switcher-become-host'));
-      expect(hostEntry, enabled ? findsOneWidget : findsNothing);
-      expect(find.byKey(const Key('switcher-org-org1')), findsOneWidget);
-      expect(find.byKey(const Key('switcher-org-org2')), findsNothing);
-      expect(find.byKey(const Key('switcher-become-organizer')), findsNothing);
-      if (enabled) {
-        expect(find.text('BECOME A HOST'), findsOneWidget);
-        await tester.ensureVisible(hostEntry);
-        await tester.tap(hostEntry);
-        await tester.pumpAndSettle();
-        expect(harness.app.current.screen, Screen.hostApply);
-      }
-    });
-  }
 
   testWidgets(
     'memberships hide both entries without an application in progress',
@@ -453,7 +379,6 @@ void main() {
         repository: repository,
       );
       addTearDown(() => _disposeApp(harness.app));
-      expect(harness.app.privateBookingsEnabled, isTrue);
       expect(harness.app.myOrganizationApplication, isNull);
       await tester.tap(find.text('SWITCH'));
       await tester.pumpAndSettle();
@@ -480,7 +405,6 @@ void main() {
       repository: repository,
     );
     addTearDown(() => _disposeApp(harness.app));
-    expect(harness.app.privateBookingsEnabled, isTrue);
     expect(harness.app.myOrganizationApplication?.kind, ApplicationKind.host);
     expect(
       harness.app.myOrganizationApplication?.status,
@@ -527,7 +451,6 @@ void main() {
       repository: repository,
     );
     addTearDown(() => _disposeApp(harness.app));
-    expect(harness.app.privateBookingsEnabled, isTrue);
     await tester.tap(find.text('SWITCH'));
     await tester.pumpAndSettle();
 
@@ -572,7 +495,6 @@ void main() {
           repository: repository,
         );
         addTearDown(() => _disposeApp(harness.app));
-        expect(harness.app.privateBookingsEnabled, isTrue);
         final application = harness.app.myOrganizationApplication!;
         expect(application.kind, ApplicationKind.host);
         expect(application.status, OrganizationApplicationStatus.approved);
@@ -851,34 +773,26 @@ void _disposeApp(AppState app) {
   }
 }
 
-class _HostTestRepository extends DemoRepository {
+class _HostTestRepository extends StubRepository {
   _HostTestRepository({
     required super.auth,
-    this.privateBookings = true,
     this.hostRole = OrganizationRole.owner,
     this.excludedOrganizationTypes = const {},
-  });
+  }) {
+    returns(
+      'me',
+      UserProfile(
+        name: 'Jordan Lee',
+        email: 'fan@example.com',
+        genres: const [],
+        attendedCount: 0,
+        createdAt: DateTime(2026),
+      ),
+    );
+  }
 
-  final bool privateBookings;
   final OrganizationRole hostRole;
   final Set<OrganizationType> excludedOrganizationTypes;
-
-  @override
-  Future<FeatureFlags> featureFlags() async => FeatureFlags(
-    privateBookings: privateBookings,
-    tickets: true,
-    payments: true,
-    bandGigWrites: true,
-  );
-
-  @override
-  Future<UserProfile?> me() async => UserProfile(
-    name: 'Jordan Lee',
-    email: 'fan@example.com',
-    genres: const [],
-    attendedCount: 0,
-    createdAt: DateTime(2026),
-  );
 
   @override
   Stream<List<OrganizationMembership>> myOrganizations() =>

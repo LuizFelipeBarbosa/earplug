@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   testWidgets('submitted search tabs filter without changing a draft', (
@@ -181,7 +182,7 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: repository,
+      repository: repository.stub,
       home: const Scaffold(body: VenueDetailScreen(venueId: 'v1')),
     );
 
@@ -205,7 +206,16 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _EmptyVenueRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returns(
+          'venueDetail',
+          VenueDetail(
+            venue: DemoData.venues['v1']!,
+            gigs: const [],
+            bands: const {},
+            truncated: false,
+          ),
+        ),
       home: const Scaffold(body: VenueDetailScreen(venueId: 'v1')),
     );
     expect(find.text('Nothing on the calendar right now.'), findsOne);
@@ -305,7 +315,32 @@ void main() {
   ) async {
     final auth = FakeAuthService();
     await auth.signInDemo();
-    final repository = _ExternalRsvpRepository(auth: auth);
+    final repository = StubRepository(auth: auth)
+      ..returnsStream(
+        'feed',
+        () => Stream.value(
+          FeedSnapshot(
+            gigs: [
+              for (final gig in DemoData.gigs)
+                if (gig.id != 'g4') gig,
+            ],
+            venues: DemoData.venues,
+            bands: DemoData.bands,
+          ),
+        ),
+      )
+      ..returnsStream(
+        'myInteractions',
+        () => Stream.value(
+          Interactions(
+            rsvpGigIds: {'g4'},
+            followBandIds: {},
+            savedGigIds: {},
+            gigs: [DemoData.gigs.firstWhere((gig) => gig.id == 'g4')],
+            attendedCount: 0,
+          ),
+        ),
+      );
     final harness = await pumpApp(
       tester,
       auth: auth,
@@ -322,44 +357,15 @@ void main() {
   });
 }
 
-class _RetryVenueRepository extends DemoRepository {
-  _RetryVenueRepository({required super.auth});
+// Wrap the stub to preserve the integer calls getter; StubRepository.calls is a map.
+class _RetryVenueRepository {
+  _RetryVenueRepository({required FakeAuthService auth})
+    : stub = StubRepository(auth: auth)
+        ..failOnce('venueDetail', Exception('venue failed'));
 
-  int calls = 0;
+  final StubRepository stub;
 
-  @override
-  Future<VenueDetail?> venueDetail(String venueId) {
-    calls++;
-    if (calls == 1) throw Exception('venue failed');
-    return super.venueDetail(venueId);
-  }
-}
-
-class _ExternalRsvpRepository extends DemoRepository {
-  _ExternalRsvpRepository({required super.auth});
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: [
-        for (final gig in DemoData.gigs)
-          if (gig.id != 'g4') gig,
-      ],
-      venues: DemoData.venues,
-      bands: DemoData.bands,
-    ),
-  );
-
-  @override
-  Stream<Interactions> myInteractions() => Stream.value(
-    Interactions(
-      rsvpGigIds: {'g4'},
-      followBandIds: {},
-      savedGigIds: {},
-      gigs: [DemoData.gigs.firstWhere((gig) => gig.id == 'g4')],
-      attendedCount: 0,
-    ),
-  );
+  int get calls => stub.callsTo('venueDetail');
 }
 
 class _PagedBandsRepository extends DemoRepository {
@@ -383,16 +389,4 @@ class _PagedBandsRepository extends DemoRepository {
       isDone: true,
     );
   }
-}
-
-class _EmptyVenueRepository extends DemoRepository {
-  _EmptyVenueRepository({required super.auth});
-
-  @override
-  Future<VenueDetail?> venueDetail(String venueId) async => VenueDetail(
-    venue: DemoData.venues['v1']!,
-    gigs: const [],
-    bands: const {},
-    truncated: false,
-  );
 }

@@ -715,11 +715,11 @@ class PriceBadge extends StatelessWidget {
   }
 }
 
-class _FlyerPatternPainter extends CustomPainter {
+class FlyerPatternPainter extends CustomPainter {
   final FlyerStyle style;
   final double scale;
 
-  const _FlyerPatternPainter(this.style, this.scale);
+  const FlyerPatternPainter(this.style, this.scale);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -776,37 +776,8 @@ class _FlyerPatternPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_FlyerPatternPainter old) =>
+  bool shouldRepaint(FlyerPatternPainter old) =>
       old.style != style || old.scale != scale;
-}
-
-class ClipTexture extends StatelessWidget {
-  final Color bandColor;
-  final double patternScale;
-
-  const ClipTexture({
-    super.key,
-    required this.bandColor,
-    this.patternScale = 1,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final style = FlyerStyle(
-      base: Ep.surface,
-      patternColor: Ep.whiteA(.06),
-      fg: Ep.contentPrimary,
-      pattern: FlyerPattern.scan,
-    );
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        const ColoredBox(color: Ep.surface),
-        ColoredBox(color: bandColor.withValues(alpha: .14)),
-        CustomPaint(painter: _FlyerPatternPainter(style, patternScale)),
-      ],
-    );
-  }
 }
 
 /// Xeroxed-flyer block: solid base color under a faint print texture.
@@ -862,7 +833,7 @@ class FlyerBox extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: imageUrl == null || imageUrl!.isEmpty
           ? CustomPaint(
-              painter: _FlyerPatternPainter(style, patternScale),
+              painter: FlyerPatternPainter(style, patternScale),
               child: Padding(padding: padding, child: child),
             )
           : RepaintBoundary(
@@ -875,7 +846,7 @@ class FlyerBox extends StatelessWidget {
                     cacheWidth: (width ?? 448).round(),
                     cacheHeight: height?.round(),
                     fallback: CustomPaint(
-                      painter: _FlyerPatternPainter(style, patternScale),
+                      painter: FlyerPatternPainter(style, patternScale),
                     ),
                   ),
                   if (scrim)
@@ -962,7 +933,7 @@ class EpFanAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final initials = profileInitials(name);
+    final initials = _profileInitials(name);
     final fallback = ColoredBox(
       color: Ep.brand,
       child: Center(
@@ -1304,96 +1275,6 @@ class EpStatCard extends StatelessWidget {
   }
 }
 
-/// Labeled horizontal value bar scaled against a caller-supplied maximum.
-class EpBar extends StatelessWidget {
-  final String label;
-  final num value;
-  final num max;
-  final String valueText;
-
-  const EpBar({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.max,
-    required this.valueText,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final fraction = max <= 0
-        ? 0.0
-        : (value.toDouble() / max.toDouble()).clamp(0.0, 1.0).toDouble();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.epCaption.copyWith(
-                  fontWeight: FontWeight.w800,
-                  color: context.epColors.contentSecondary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              valueText,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.epCaption.copyWith(
-                fontWeight: FontWeight.w800,
-                color: context.epColors.accent,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Container(
-          height: 8,
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: context.epColors.surfaceDisabled,
-            border: Border.all(color: context.epColors.border),
-            borderRadius: BorderRadius.circular(99),
-          ),
-          alignment: Alignment.centerLeft,
-          child: FractionallySizedBox(
-            widthFactor: fraction,
-            heightFactor: 1,
-            child: const DecoratedBox(
-              decoration: BoxDecoration(color: Ep.brand),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Inline explanation for a server-suppressed analytics partition.
-class EpSuppressedNote extends StatelessWidget {
-  final String message;
-
-  const EpSuppressedNote({super.key, this.message = 'Not enough data yet'});
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      message,
-      style: Theme.of(context).textTheme.epCaption.copyWith(
-        fontSize: 11.5,
-        color: context.epColors.contentDisabled,
-      ),
-    );
-  }
-}
-
 enum EpCardVariant { standard, raised, selected, disabled }
 
 /// Semantic card container used across screens.
@@ -1570,7 +1451,7 @@ class _TrianglePainter extends CustomPainter {
 }
 
 /// "Sam Reyes" → "SR"; single words take one letter; null/empty → "??".
-String profileInitials(String? name) {
+String _profileInitials(String? name) {
   final words = name
       ?.trim()
       .split(RegExp(r'\s+'))

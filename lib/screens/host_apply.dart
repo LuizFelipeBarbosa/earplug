@@ -231,13 +231,12 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
     final savedEditVersion = _editVersion;
     final app = context.read<AppState>();
     final application = app.myOrganizationApplication;
-    if (!app.privateBookingsEnabled ||
-        (application != null &&
-            (_pendingOrganizerApplication(application) ||
-                (application.kind == ApplicationKind.host &&
-                    !application.editable &&
-                    application.status !=
-                        OrganizationApplicationStatus.withdrawn)))) {
+    if (application != null &&
+        (_pendingOrganizerApplication(application) ||
+            (application.kind == ApplicationKind.host &&
+                !application.editable &&
+                application.status !=
+                    OrganizationApplicationStatus.withdrawn))) {
       return false;
     }
     try {
@@ -429,16 +428,6 @@ class _HostApplyScreenState extends State<HostApplyScreen> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final application = app.myOrganizationApplication;
-    if (!app.privateBookingsEnabled) {
-      return Material(
-        color: context.epColors.background,
-        child: _ApplicationNotice(
-          message: 'Private bookings are not open yet.',
-          action: 'BACK',
-          onTap: app.back,
-        ),
-      );
-    }
     if (application != null && _pendingOrganizerApplication(application)) {
       return Material(
         color: context.epColors.background,

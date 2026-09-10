@@ -27,6 +27,7 @@ import 'package:earplug/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/async.dart';
+import 'support/stub_repository.dart';
 
 void main() {
   test('route parsing distinguishes gigs, bands, and reserved roots', () {
@@ -123,7 +124,7 @@ void main() {
     }
   });
 
-  test('referral slugs are trimmed on any route with fragment fallback', () {
+  test('referral slugs and join tokens are trimmed with fragment fallback', () {
     expect(
       referralBandSlugFromUri(
         Uri.parse('https://earplug.app/g/some-gig?ref=static-bloom'),
@@ -161,6 +162,13 @@ void main() {
         referralBandSlugFromUri(Uri.parse('https://earplug.app/$path')),
         isNull,
       );
+    }
+
+    for (final (url, expected) in const [
+      ('https://earplug.app/join/secret-token', 'secret-token'),
+      ('https://earplug.app/#/join/secret-token', 'secret-token'),
+    ]) {
+      expect(joinTokenFromUri(Uri.parse(url)), expected);
     }
   });
 
@@ -780,20 +788,6 @@ void main() {
     expect(repository.listBandsCalls, 2);
   });
 
-  test('join token is preserved from a path-based web URL', () {
-    expect(
-      joinTokenFromUri(Uri.parse('https://earplug.app/join/secret-token')),
-      'secret-token',
-    );
-  });
-
-  test('join token is preserved from a hash-based fallback URL', () {
-    expect(
-      joinTokenFromUri(Uri.parse('https://earplug.app/#/join/secret-token')),
-      'secret-token',
-    );
-  });
-
   test('ordinary app URLs do not enter the invitation flow', () {
     expect(joinTokenFromUri(Uri.parse('https://earplug.app/explore')), isNull);
   });
@@ -856,17 +850,11 @@ void main() {
   });
 }
 
-class _NavigationRepository extends DemoRepository {
+class _NavigationRepository extends StubRepository {
   _NavigationRepository({required super.auth});
 
-  var publicGigCalls = 0;
+  int get publicGigCalls => callsTo('publicGig');
   var listBandsCalls = 0;
-
-  @override
-  Stream<Gig?> publicGig(String gigId) {
-    publicGigCalls++;
-    return super.publicGig(gigId);
-  }
 
   @override
   Future<BandPage> listBands({String? cursor, int numItems = 50}) async {

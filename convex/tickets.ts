@@ -9,7 +9,6 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { requireOrganizationRole } from "./lib/authz";
-import { flag } from "./lib/env";
 import {
   currentUser,
   feedCutoff,
@@ -24,7 +23,6 @@ import {
   reserveInventory,
 } from "./lib/ticketInventory";
 import {
-  assertSellerFlags,
   assertSellerOpen,
   resolveTicketSeller,
   sellerRefFields,
@@ -78,9 +76,6 @@ export const reserve = mutation({
   }),
   handler: async (ctx, args) => {
     const user = await requireUser(ctx);
-    if (!flag("TICKETS_ENABLED", false)) {
-      throw new Error("Ticket sales are not open yet");
-    }
     const gig = await ctx.db.get(args.gigId);
     if (!gig) throw new Error("Event not found");
     if (
@@ -91,7 +86,6 @@ export const reserve = mutation({
     }
     const seller = await resolveTicketSeller(ctx, gig);
     if (!seller) throw new Error("This event is not selling tickets");
-    assertSellerFlags(seller);
     const now = Date.now();
     if (gig.startsAt <= now) {
       throw new Error("This event has already started");

@@ -8,7 +8,7 @@ import { cancelTicketSalesForGig } from "./lib/ticketCancellation";
 import schema from "./schema";
 
 const modules = {
-  ...import.meta.glob("./**/*.ts"),
+  ...import.meta.glob(["./**/*.ts", "!./**/*.test.ts", "!./**/*.test-helpers.ts"]),
   "./ticketRefunds.ts": async () => ({
     ...(await import("./ticketRefunds")),
     // Leave refunds pending so continuations must skip orders still marked paid.

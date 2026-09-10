@@ -332,7 +332,6 @@ class DemoRepository implements EarplugRepository {
   String? _myOrganizationApplicationId;
 
   bool platformAdmin = false;
-  bool demoBandGigWrites = true;
   bool demoPaymentsEnabled = false;
   int demoCommissionBps = 1000;
 
@@ -842,15 +841,6 @@ class DemoRepository implements EarplugRepository {
   }
 
   @override
-  Future<FeatureFlags> featureFlags() async => const FeatureFlags(
-    privateBookings: true,
-    tickets: true,
-    payments: true,
-    bandGigWrites: true,
-    disputes: true,
-  );
-
-  @override
   Future<FeeRates> feeRates({String? organizationId}) async => const FeeRates(
     bookingCommissionBps: 1000,
     ticketingFeeBps: 500,
@@ -1137,8 +1127,7 @@ class DemoRepository implements EarplugRepository {
       createdAt: now,
     );
     _disputedFromStatus[bookingId] = booking.status;
-    _bookings[bookingId] = _copyBooking(
-      booking,
+    _bookings[bookingId] = booking.copyWith(
       status: BookingStatus.disputed,
       revision: booking.revision + 1,
       payoutHoldReasons: {...booking.payoutHoldReasons, 'dispute'}.toList(),
@@ -1184,8 +1173,7 @@ class DemoRepository implements EarplugRepository {
     if (dispute.status != DisputeStatus.open) {
       throw StateError('Only open disputes can be put under review');
     }
-    _disputes[disputeId] = _copyDispute(
-      dispute,
+    _disputes[disputeId] = dispute.copyWith(
       status: DisputeStatus.underReview,
     );
   }
@@ -1237,8 +1225,7 @@ class DemoRepository implements EarplugRepository {
     if (restoredStatus == null) {
       throw StateError('The booking has no pre-dispute status to restore');
     }
-    _bookings[booking.id] = _copyBooking(
-      booking,
+    _bookings[booking.id] = booking.copyWith(
       status: restoredStatus,
       revision: booking.revision + 1,
       refundedMinor: booking.refundedMinor + resolvedRefundMinor,
@@ -1248,8 +1235,7 @@ class DemoRepository implements EarplugRepository {
       ],
     );
     _disputedFromStatus.remove(booking.id);
-    _disputes[disputeId] = _copyDispute(
-      dispute,
+    _disputes[disputeId] = dispute.copyWith(
       status: DisputeStatus.resolved,
       resolution: resolution,
       resolvedRefundMinor: resolvedRefundMinor,
@@ -1309,8 +1295,7 @@ class DemoRepository implements EarplugRepository {
     if (opportunity.status != OpportunityStatus.draft) {
       throw StateError('Withdraw is only possible while the event is a draft');
     }
-    _venueConsents[consentId] = _copyVenueConsent(
-      consent,
+    _venueConsents[consentId] = consent.copyWith(
       status: VenueConsentStatus.withdrawn,
       note: consent.note,
       decidedAt: consent.decidedAt,
@@ -1336,8 +1321,7 @@ class DemoRepository implements EarplugRepository {
     if (trimmedNote.length > 1000) {
       throw StateError('Note must be 1000 characters or fewer');
     }
-    _venueConsents[consentId] = _copyVenueConsent(
-      consent,
+    _venueConsents[consentId] = consent.copyWith(
       status: status,
       note: trimmedNote.isEmpty ? null : trimmedNote,
       decidedAt: DateTime.now(),
@@ -1372,8 +1356,7 @@ class DemoRepository implements EarplugRepository {
     if (trimmedNote.length > 1000) {
       throw StateError('Note must be 1000 characters or fewer');
     }
-    _venueConsents[consentId] = _copyVenueConsent(
-      consent,
+    _venueConsents[consentId] = consent.copyWith(
       status: VenueConsentStatus.revoked,
       note: trimmedNote.isEmpty ? null : trimmedNote,
       decidedAt: DateTime.now(),
@@ -1460,24 +1443,6 @@ class DemoRepository implements EarplugRepository {
                 consent.status == VenueConsentStatus.granted),
       )
       .firstOrNull;
-
-  VenueConsent _copyVenueConsent(
-    VenueConsent consent, {
-    required VenueConsentStatus status,
-    required String? note,
-    required DateTime? decidedAt,
-  }) => VenueConsent(
-    id: consent.id,
-    opportunityId: consent.opportunityId,
-    venueId: consent.venueId,
-    venueOrganizationId: consent.venueOrganizationId,
-    requestingOrganizationId: consent.requestingOrganizationId,
-    status: status,
-    message: consent.message,
-    note: note,
-    createdAt: consent.createdAt,
-    decidedAt: decidedAt,
-  );
 
   @override
   Future<AdminBookingsPage> adminBookings({
@@ -1594,28 +1559,6 @@ class DemoRepository implements EarplugRepository {
     );
   }
 
-  Dispute _copyDispute(
-    Dispute dispute, {
-    required DisputeStatus status,
-    DisputeResolution? resolution,
-    int? resolvedRefundMinor,
-    String? adminNote,
-    DateTime? resolvedAt,
-  }) => Dispute(
-    disputeId: dispute.disputeId,
-    bookingId: dispute.bookingId,
-    side: dispute.side,
-    category: dispute.category,
-    text: dispute.text,
-    requestedRefundMinor: dispute.requestedRefundMinor,
-    status: status,
-    resolution: resolution ?? dispute.resolution,
-    resolvedRefundMinor: resolvedRefundMinor ?? dispute.resolvedRefundMinor,
-    adminNote: adminNote ?? dispute.adminNote,
-    createdAt: dispute.createdAt,
-    resolvedAt: resolvedAt ?? dispute.resolvedAt,
-  );
-
   @override
   Future<OrganizationApplication?> myOrganizationApplication() async {
     final applicationId = _myOrganizationApplicationId;
@@ -1707,8 +1650,7 @@ class DemoRepository implements EarplugRepository {
     final application = _requireOrganizationApplication(applicationId);
     _checkApplicationRevision(application, expectedRevision);
     final now = DateTime.now();
-    final updated = _copyOrganizationApplication(
-      application,
+    final updated = application.copyWith(
       organizerAgreementAcceptedAt: organizerAgreementAccepted ? now : null,
       status: OrganizationApplicationStatus.submitted,
       revision: application.revision + 1,
@@ -1721,8 +1663,7 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> withdrawOrganizationApplication(String applicationId) async {
     final application = _requireOrganizationApplication(applicationId);
-    _organizationApplications[applicationId] = _copyOrganizationApplication(
-      application,
+    _organizationApplications[applicationId] = application.copyWith(
       status: OrganizationApplicationStatus.withdrawn,
       revision: application.revision + 1,
       updatedAt: DateTime.now(),
@@ -1748,8 +1689,7 @@ class DemoRepository implements EarplugRepository {
         url: 'demo://organization-application-document/$storageId',
       ),
     ];
-    final updated = _copyOrganizationApplication(
-      application,
+    final updated = application.copyWith(
       documents: documents,
       revision: application.revision + 1,
       updatedAt: DateTime.now(),
@@ -1764,8 +1704,7 @@ class DemoRepository implements EarplugRepository {
     required String storageId,
   }) async {
     final application = _requireOrganizationApplication(applicationId);
-    final updated = _copyOrganizationApplication(
-      application,
+    final updated = application.copyWith(
       documents: application.documents
           .where((document) => document.storageId != storageId)
           .toList(),
@@ -1922,8 +1861,7 @@ class DemoRepository implements EarplugRepository {
       ApplicationDecision.rejected => DateTime.now(),
       _ => null,
     };
-    final updated = _copyOrganizationApplication(
-      application,
+    final updated = application.copyWith(
       status: status,
       reviewNote: note,
       decidedAt: decidedAt,
@@ -1994,8 +1932,7 @@ class DemoRepository implements EarplugRepository {
     String? website,
   }) async {
     final organization = _requireOrganization(organizationId);
-    final updated = _copyOrganization(
-      organization,
+    final updated = organization.copyWith(
       name: name,
       description: description,
       website: website,
@@ -2042,8 +1979,7 @@ class DemoRepository implements EarplugRepository {
     if (organization.photoUrls.length >= 10) {
       throw StateError('You can upload up to 10 photos');
     }
-    final updated = _copyOrganization(
-      organization,
+    final updated = organization.copyWith(
       photoUrls: [...organization.photoUrls, photoUrl],
     );
     _organizations[organizationId] = updated;
@@ -2057,8 +1993,7 @@ class DemoRepository implements EarplugRepository {
     required List<String> storageIds,
   }) async {
     final organization = _requireOrganization(organizationId);
-    final updated = _copyOrganization(
-      organization,
+    final updated = organization.copyWith(
       photoUrls: [
         for (final storageId in storageIds)
           'demo://organization-photo/$storageId',
@@ -2072,8 +2007,7 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> deactivateOrganization(String organizationId) async {
     final organization = _requireOrganization(organizationId);
-    final updated = _copyOrganization(
-      organization,
+    final updated = organization.copyWith(
       status: OrganizationStatus.suspended,
       verified: false,
     );
@@ -2421,8 +2355,7 @@ class DemoRepository implements EarplugRepository {
     String? note,
   }) async {
     final organization = _requireOrganization(organizationId);
-    final updated = _copyOrganization(
-      organization,
+    final updated = organization.copyWith(
       status: suspended
           ? OrganizationStatus.suspended
           : OrganizationStatus.verified,
@@ -3331,8 +3264,7 @@ class DemoRepository implements EarplugRepository {
       if (project.bandId == bandId &&
           project.startsAt?.isAfter(now) == true &&
           project.status == GigProjectStatus.published) {
-        _gigProjects[project.id] = _copyGigProject(
-          project,
+        _gigProjects[project.id] = project.copyWith(
           status: GigProjectStatus.cancelled,
         );
       }
@@ -3923,8 +3855,7 @@ class DemoRepository implements EarplugRepository {
       if (application.opportunityId == opportunityId &&
           (application.status == ArtistApplicationStatus.submitted ||
               application.status == ArtistApplicationStatus.underReview)) {
-        _artistApplications[application.id] = _copyArtistApplication(
-          application,
+        _artistApplications[application.id] = application.copyWith(
           status: ArtistApplicationStatus.expired,
           decidedAt: null,
           updatedAt: now,
@@ -3963,8 +3894,7 @@ class DemoRepository implements EarplugRepository {
     for (final application in _artistApplications.values.toList()) {
       if (application.opportunityId == opportunityId &&
           application.status.isActive) {
-        _artistApplications[application.id] = _copyArtistApplication(
-          application,
+        _artistApplications[application.id] = application.copyWith(
           status: ArtistApplicationStatus.declined,
           decidedAt: now,
           updatedAt: now,
@@ -4114,8 +4044,7 @@ class DemoRepository implements EarplugRepository {
         ArtistApplicationStatus.declined,
     };
     final now = DateTime.now();
-    _artistApplications[applicationId] = _copyArtistApplication(
-      existing,
+    _artistApplications[applicationId] = existing.copyWith(
       status: status,
       decidedAt: action == ArtistApplicationReviewAction.declined
           ? now
@@ -4274,8 +4203,7 @@ class DemoRepository implements EarplugRepository {
     if (!existing.status.isActive) {
       throw StateError('Application is not active');
     }
-    _artistApplications[applicationId] = _copyArtistApplication(
-      existing,
+    _artistApplications[applicationId] = existing.copyWith(
       status: ArtistApplicationStatus.withdrawn,
       decidedAt: null,
       updatedAt: DateTime.now(),
@@ -4430,8 +4358,7 @@ class DemoRepository implements EarplugRepository {
             ),
       viewerSide: BookingSide.organizer,
     );
-    _artistApplications[applicationId] = _copyArtistApplication(
-      application,
+    _artistApplications[applicationId] = application.copyWith(
       status: ArtistApplicationStatus.offered,
       decidedAt: application.decidedAt,
       updatedAt: now,
@@ -4451,8 +4378,7 @@ class DemoRepository implements EarplugRepository {
         'Booking cannot go from ${booking.status.wireValue} to withdrawn',
       );
     }
-    final updated = _copyBooking(
-      booking,
+    final updated = booking.copyWith(
       status: BookingStatus.withdrawn,
       revision: booking.revision + 1,
       currentOffer: _respondedOffer(
@@ -4482,8 +4408,7 @@ class DemoRepository implements EarplugRepository {
       throw StateError('This offer has expired');
     }
     if (!accept) {
-      final updated = _copyBooking(
-        booking,
+      final updated = booking.copyWith(
         status: BookingStatus.declined,
         revision: booking.revision + 1,
         currentOffer: _respondedOffer(
@@ -4496,8 +4421,7 @@ class DemoRepository implements EarplugRepository {
       return (status: updated.status, revision: updated.revision);
     }
 
-    final accepted = _copyBooking(
-      booking,
+    final accepted = booking.copyWith(
       status: BookingStatus.artistAccepted,
       revision: booking.revision + 1,
       artistAcceptedTermsAt: now,
@@ -4521,8 +4445,7 @@ class DemoRepository implements EarplugRepository {
         canPay: true,
       );
       _paymentRecordsByBooking[bookingId] = [record];
-      updated = _copyBooking(
-        accepted,
+      updated = accepted.copyWith(
         status: BookingStatus.awaitingPayment,
         revision: accepted.revision + 1,
         paymentDueAt: record.dueAt,
@@ -4563,8 +4486,7 @@ class DemoRepository implements EarplugRepository {
       );
     }
     final now = DateTime.now();
-    var updated = _copyBooking(
-      booking,
+    var updated = booking.copyWith(
       status: status,
       revision: booking.revision + 1,
       cancelledBy: resolvedSide == BookingSide.organizer
@@ -4613,8 +4535,7 @@ class DemoRepository implements EarplugRepository {
         _payoutsByBooking.putIfAbsent(bookingId, () => []).add(payout);
         _payoutsByBand.putIfAbsent(booking.bandId, () => []).add(payout);
       }
-      updated = _copyBooking(
-        updated,
+      updated = updated.copyWith(
         refundedMinor: booking.refundedMinor + settlement.refundMinor,
       );
     }
@@ -4623,8 +4544,7 @@ class DemoRepository implements EarplugRepository {
     if (booking.status == BookingStatus.confirmed) {
       _releaseBookingSlot(booking, now);
       if (application?.status == ArtistApplicationStatus.booked) {
-        _artistApplications[application!.id] = _copyArtistApplication(
-          application,
+        _artistApplications[application!.id] = application.copyWith(
           status: resolvedSide == BookingSide.organizer
               ? ArtistApplicationStatus.declined
               : ArtistApplicationStatus.withdrawn,
@@ -4746,8 +4666,7 @@ class DemoRepository implements EarplugRepository {
         throw StateError('This installment is not payable');
       }
       final sessionId = 'demo-session-${_nextCheckoutSessionId++}';
-      entry.value[index] = _copyPaymentRecord(
-        record,
+      entry.value[index] = record.copyWith(
         status: PaymentRecordStatus.checkoutOpen,
       );
       _paymentSessionToRecordKey[sessionId] = (
@@ -4795,13 +4714,11 @@ class DemoRepository implements EarplugRepository {
     final updated = record.installmentIndex == 0
         ? _confirmBooking(booking, now)
         : booking;
-    records[index] = _copyPaymentRecord(
-      record,
+    records[index] = record.copyWith(
       status: PaymentRecordStatus.paid,
       paidAt: now,
     );
-    _bookings[key.bookingId] = _copyBooking(
-      updated,
+    _bookings[key.bookingId] = updated.copyWith(
       paidMinor: booking.paidMinor + record.amountMinor,
     );
   }
@@ -5064,10 +4981,6 @@ class DemoRepository implements EarplugRepository {
   }) async => _publicReviews(organizationId: organizationId, limit: limit);
 
   @override
-  Future<GigWritePolicy> gigWritePolicy() async =>
-      GigWritePolicy(bandGigWrites: demoBandGigWrites);
-
-  @override
   Future<List<GigProject>> manageGigs(String bandId) async => [
     for (final project in _gigProjects.values)
       if (project.bandId == bandId &&
@@ -5313,8 +5226,7 @@ class DemoRepository implements EarplugRepository {
     );
     _publishedGigs.removeWhere((gig) => gig.id == gigId);
     _publishedGigs.add(gig);
-    _gigProjects[project.id] = _copyGigProject(
-      project,
+    _gigProjects[project.id] = project.copyWith(
       status: GigProjectStatus.published,
       publicGigId: gigId,
       publicSlug: slug,
@@ -5369,8 +5281,7 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> unpublishGig(String projectId) async {
     final project = _requireGigProject(projectId);
-    _gigProjects[projectId] = _copyGigProject(
-      project,
+    _gigProjects[projectId] = project.copyWith(
       status: GigProjectStatus.draft,
     );
     _publishedGigs.removeWhere((gig) => gig.id == project.publicGigId);
@@ -5380,8 +5291,7 @@ class DemoRepository implements EarplugRepository {
   @override
   Future<void> cancelGig(String projectId) async {
     final project = _requireGigProject(projectId);
-    _gigProjects[projectId] = _copyGigProject(
-      project,
+    _gigProjects[projectId] = project.copyWith(
       status: GigProjectStatus.cancelled,
     );
     _publishedGigs.removeWhere((gig) => gig.id == project.publicGigId);
@@ -5590,8 +5500,7 @@ class DemoRepository implements EarplugRepository {
           ? _organizationPrivateDetails[stored.organizationId]?.businessEmail
           : null;
     }
-    return _copyBooking(
-      stored,
+    return stored.copyWith(
       privateLocation: location == null
           ? null
           : BookingPrivateLocation(
@@ -5617,94 +5526,6 @@ class DemoRepository implements EarplugRepository {
     );
   }
 
-  PaymentRecord _copyPaymentRecord(
-    PaymentRecord record, {
-    required PaymentRecordStatus status,
-    DateTime? paidAt,
-  }) => PaymentRecord(
-    id: record.id,
-    installmentIndex: record.installmentIndex,
-    label: record.label,
-    amountMinor: record.amountMinor,
-    currency: record.currency,
-    dueAt: record.dueAt,
-    status: status,
-    paidAt: paidAt ?? record.paidAt,
-    canPay: record.canPay && status.isOpen,
-  );
-
-  Booking _copyBooking(
-    Booking booking, {
-    BookingStatus? status,
-    int? revision,
-    int? paidMinor,
-    int? refundedMinor,
-    DateTime? paymentDueAt,
-    List<String>? payoutHoldReasons,
-    DateTime? artistAcceptedTermsAt,
-    DateTime? confirmedAt,
-    DateTime? cancelledAt,
-    BookingCancelledBy? cancelledBy,
-    String? cancelReason,
-    BookingOffer? currentOffer,
-    BookingVenue? venue,
-    BookingPrivateLocation? privateLocation,
-    CancellationKind? cancellationKind,
-    String? publicGigId,
-    String? publicGigSlug,
-    BookingSide? viewerSide,
-    bool? viewerIsPlatformAdmin,
-    String? counterpartyEmail,
-  }) => Booking(
-    id: booking.id,
-    opportunityId: booking.opportunityId,
-    opportunityTitle: booking.opportunityTitle,
-    opportunitySlug: booking.opportunitySlug,
-    slotId: booking.slotId,
-    slotRole: booking.slotRole,
-    slotRequired: booking.slotRequired,
-    organizationId: booking.organizationId,
-    organizationName: booking.organizationName,
-    bandId: booking.bandId,
-    bandName: booking.bandName,
-    bandSlug: booking.bandSlug,
-    applicationId: booking.applicationId,
-    status: status ?? booking.status,
-    revision: revision ?? booking.revision,
-    startsAt: booking.startsAt,
-    doorsAt: booking.doorsAt,
-    fee: booking.fee,
-    paidMinor: paidMinor ?? booking.paidMinor,
-    refundedMinor: refundedMinor ?? booking.refundedMinor,
-    paymentDueAt: paymentDueAt ?? booking.paymentDueAt,
-    payoutHoldReasons: payoutHoldReasons ?? booking.payoutHoldReasons,
-    cancellationTemplate: booking.cancellationTemplate,
-    termsNotes: booking.termsNotes,
-    organizerAcceptedTermsAt: booking.organizerAcceptedTermsAt,
-    artistAcceptedTermsAt:
-        artistAcceptedTermsAt ?? booking.artistAcceptedTermsAt,
-    confirmedAt: confirmedAt ?? booking.confirmedAt,
-    completedAt: booking.completedAt,
-    cancelledAt: cancelledAt ?? booking.cancelledAt,
-    cancelledBy: cancelledBy ?? booking.cancelledBy,
-    cancelReason: cancelReason ?? booking.cancelReason,
-    expiresAt: booking.expiresAt,
-    currentOffer: currentOffer ?? booking.currentOffer,
-    venue: venue ?? booking.venue,
-    privateEvent: booking.privateEvent,
-    privateLocation: privateLocation ?? booking.privateLocation,
-    cancellationKind: cancellationKind ?? booking.cancellationKind,
-    publicGigId: publicGigId ?? booking.publicGigId,
-    publicGigSlug: publicGigSlug ?? booking.publicGigSlug,
-    // A query supplying a viewer must be able to explicitly hide the email.
-    counterpartyEmail: viewerSide == null
-        ? booking.counterpartyEmail
-        : counterpartyEmail,
-    viewerSide: viewerSide ?? booking.viewerSide,
-    viewerIsPlatformAdmin:
-        viewerIsPlatformAdmin ?? booking.viewerIsPlatformAdmin,
-  );
-
   BookingOffer _respondedOffer(BookingOffer offer, OfferResponse response) =>
       BookingOffer(
         revision: offer.revision,
@@ -5719,8 +5540,7 @@ class DemoRepository implements EarplugRepository {
     final application = _artistApplications[booking.applicationId];
     // The denormalized booking fixtures have no backing application.
     if (application == null) return;
-    _artistApplications[application.id] = _copyArtistApplication(
-      application,
+    _artistApplications[application.id] = application.copyWith(
       status: ArtistApplicationStatus.shortlisted,
       decidedAt: null,
       updatedAt: now,
@@ -5741,8 +5561,7 @@ class DemoRepository implements EarplugRepository {
       booking.slotId,
       booking.bandId,
     );
-    _artistApplications[application.id] = _copyArtistApplication(
-      application,
+    _artistApplications[application.id] = application.copyWith(
       status: ArtistApplicationStatus.booked,
       decidedAt: application.decidedAt,
       updatedAt: now,
@@ -5752,8 +5571,7 @@ class DemoRepository implements EarplugRepository {
       if (competitor.id != application.id &&
           competitor.slotId == booking.slotId &&
           competitor.status.isActive) {
-        _artistApplications[competitor.id] = _copyArtistApplication(
-          competitor,
+        _artistApplications[competitor.id] = competitor.copyWith(
           status: ArtistApplicationStatus.declined,
           decidedAt: now,
           updatedAt: now,
@@ -5785,8 +5603,7 @@ class DemoRepository implements EarplugRepository {
     }
     _opportunities[opportunity.id] = updatedOpportunity;
     _emitFeed();
-    return _copyBooking(
-      booking,
+    return booking.copyWith(
       status: BookingStatus.confirmed,
       revision: booking.revision + 1,
       confirmedAt: now,
@@ -6034,7 +5851,7 @@ class DemoRepository implements EarplugRepository {
     } else {
       final organization = _organizations[organizationId];
       if (organization == null) return;
-      final updated = _copyOrganization(organization, reviewSummary: summary);
+      final updated = organization.copyWith(reviewSummary: summary);
       _organizations[organization.id] = updated;
       _replaceOrganizationInMemberships(updated);
       _emitOrganizations();
@@ -6116,44 +5933,40 @@ class DemoRepository implements EarplugRepository {
         : _venues[venueId ?? opportunity.venueId];
     final location =
         _privateLocations[privateLocationId ?? opportunity.privateLocationId];
-    return Opportunity(
-      id: id ?? opportunity.id,
-      organizationId: opportunity.organizationId,
-      mode: opportunity.mode,
-      privateEvent: opportunity.privateEvent,
-      privateLocationId: privateLocationId ?? opportunity.privateLocationId,
-      venueId: venueId ?? opportunity.venueId,
+    return opportunity.copyWith(
+      id: id,
+      slug: slug,
+      title: title,
+      desc: desc,
+      venueId: venueId,
+      privateLocationId: privateLocationId,
+      eventType: eventType,
+      expectedAttendance: expectedAttendance,
+      genres: genres,
+      startsAt: startsAt,
+      doorsAt: doorsAt,
+      endsAt: endsAt,
+      ageRequirement: ageRequirement,
+      equipment: equipment,
+      requirements: requirements,
+      flyKey: flyKey,
+      flyerUrl: flyerUrl,
+      applicationsCloseAt: applicationsCloseAt,
+      visibility: visibility,
+      ticketing: ticketing,
+      ticketPriceMinor: ticketPriceMinor,
+      ticketCapacity: ticketCapacity,
+      ticketCurrency: ticketCurrency,
+      externalUrl: externalUrl,
+      status: status,
+      venueConsentStatus: venueConsentStatus,
+      revision: revision,
+      applicationCount: applicationCount,
+      slots: slots,
+      invitedBandIds: invitedBandIds,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
       venue: venue,
-      title: title ?? opportunity.title,
-      desc: desc ?? opportunity.desc,
-      eventType: eventType ?? opportunity.eventType,
-      expectedAttendance: expectedAttendance ?? opportunity.expectedAttendance,
-      genres: genres == null ? opportunity.genres : List<String>.of(genres),
-      startsAt: startsAt ?? opportunity.startsAt,
-      doorsAt: doorsAt ?? opportunity.doorsAt,
-      endsAt: endsAt ?? opportunity.endsAt,
-      ageRequirement: ageRequirement ?? opportunity.ageRequirement,
-      equipment: equipment ?? opportunity.equipment,
-      requirements: requirements ?? opportunity.requirements,
-      flyKey: flyKey ?? opportunity.flyKey,
-      flyerUrl: flyerUrl ?? opportunity.flyerUrl,
-      applicationsCloseAt:
-          applicationsCloseAt ?? opportunity.applicationsCloseAt,
-      visibility: visibility ?? opportunity.visibility,
-      ticketing: ticketing ?? opportunity.ticketing,
-      ticketPriceMinor: ticketPriceMinor ?? opportunity.ticketPriceMinor,
-      ticketCapacity: ticketCapacity ?? opportunity.ticketCapacity,
-      ticketCurrency: ticketCurrency ?? opportunity.ticketCurrency,
-      externalUrl: externalUrl ?? opportunity.externalUrl,
-      status: status ?? opportunity.status,
-      venueConsentStatus: venueConsentStatus ?? opportunity.venueConsentStatus,
-      slug: slug ?? opportunity.slug,
-      revision: revision ?? opportunity.revision,
-      applicationCount: applicationCount ?? opportunity.applicationCount,
-      slots: slots ?? opportunity.slots,
-      invitedBandIds: invitedBandIds ?? opportunity.invitedBandIds,
-      createdAt: createdAt ?? opportunity.createdAt,
-      updatedAt: updatedAt ?? opportunity.updatedAt,
       area:
           location?.area ??
           (venueId == null
@@ -6162,29 +5975,8 @@ class DemoRepository implements EarplugRepository {
                     ? venue.area
                     : venue.approx.label)),
       venueType: venueId == null ? opportunity.venueType : venue?.venueType,
-      currency: opportunity.currency,
     );
   }
-
-  ArtistApplication _copyArtistApplication(
-    ArtistApplication application, {
-    required ArtistApplicationStatus status,
-    required DateTime? decidedAt,
-    required DateTime updatedAt,
-  }) => ArtistApplication(
-    id: application.id,
-    opportunityId: application.opportunityId,
-    slotId: application.slotId,
-    bandId: application.bandId,
-    status: status,
-    message: application.message,
-    askMinor: application.askMinor,
-    availabilityNote: application.availabilityNote,
-    lineupNote: application.lineupNote,
-    decidedAt: decidedAt,
-    createdAt: application.createdAt,
-    updatedAt: updatedAt,
-  );
 
   ArtistApplication? _latestArtistApplication(
     String opportunityId,
@@ -6228,8 +6020,7 @@ class DemoRepository implements EarplugRepository {
     GigProject project, {
     required List<GigPerformer> performers,
   }) {
-    final updated = _copyGigProject(
-      project,
+    final updated = project.copyWith(
       revision: project.revision + 1,
       performers: performers,
     );
@@ -6252,42 +6043,6 @@ class DemoRepository implements EarplugRepository {
     );
     _emitFeed();
   }
-
-  GigProject _copyGigProject(
-    GigProject project, {
-    GigProjectStatus? status,
-    int? revision,
-    int? publishedRevision,
-    String? publicGigId,
-    String? publicSlug,
-    List<GigPerformer>? performers,
-  }) => GigProject(
-    id: project.id,
-    bandId: project.bandId,
-    publicGigId: publicGigId ?? project.publicGigId,
-    publicSlug: publicSlug ?? project.publicSlug,
-    status: status ?? project.status,
-    revision: revision ?? project.revision,
-    publishedRevision: publishedRevision ?? project.publishedRevision,
-    title: project.title,
-    doorsAt: project.doorsAt,
-    startsAt: project.startsAt,
-    venueId: project.venueId,
-    price: project.price,
-    flyKey: project.flyKey,
-    flyStorageId: project.flyStorageId,
-    flyerUrl: project.flyerUrl,
-    overlay: project.overlay,
-    desc: project.desc,
-    ticketing: project.ticketing,
-    ticketPriceMinor: project.ticketPriceMinor,
-    ticketCapacity: project.ticketCapacity,
-    ageRequirement: project.ageRequirement,
-    externalUrl: project.externalUrl,
-    cap: project.cap,
-    updatedAt: DateTime.now(),
-    performers: performers ?? project.performers,
-  );
 
   FeedSnapshot _currentFeed() => FeedSnapshot(
     gigs: List<Gig>.unmodifiable([
@@ -6405,46 +6160,6 @@ class DemoRepository implements EarplugRepository {
     }
   }
 
-  OrganizationApplication _copyOrganizationApplication(
-    OrganizationApplication application, {
-    DateTime? organizerAgreementAcceptedAt,
-    OrganizationApplicationStatus? status,
-    List<ApplicationDocument>? documents,
-    String? reviewNote,
-    DateTime? decidedAt,
-    String? resultingOrganizationId,
-    String? resultingVenueId,
-    int? revision,
-    DateTime? updatedAt,
-  }) => OrganizationApplication(
-    id: application.id,
-    kind: application.kind,
-    hostDisplayName: application.hostDisplayName,
-    hostPhone: application.hostPhone,
-    hostArea: application.hostArea,
-    hostAgreementAcceptedAt: application.hostAgreementAcceptedAt,
-    organizerAgreementAcceptedAt:
-        organizerAgreementAcceptedAt ??
-        application.organizerAgreementAcceptedAt,
-    status: status ?? application.status,
-    orgName: application.orgName,
-    orgType: application.orgType,
-    website: application.website,
-    contactName: application.contactName,
-    businessEmail: application.businessEmail,
-    phone: application.phone,
-    venue: application.venue,
-    documents: documents ?? application.documents,
-    reviewNote: reviewNote ?? application.reviewNote,
-    decidedAt: decidedAt ?? application.decidedAt,
-    resultingOrganizationId:
-        resultingOrganizationId ?? application.resultingOrganizationId,
-    resultingVenueId: resultingVenueId ?? application.resultingVenueId,
-    revision: revision ?? application.revision,
-    createdAt: application.createdAt,
-    updatedAt: updatedAt ?? application.updatedAt,
-  );
-
   Organization _requireOrganization(String organizationId) {
     final organization = _organizations[organizationId];
     if (organization == null) throw StateError('Organization not found.');
@@ -6456,29 +6171,6 @@ class DemoRepository implements EarplugRepository {
     if (venue == null) throw StateError('Venue not found.');
     return venue;
   }
-
-  Organization _copyOrganization(
-    Organization organization, {
-    String? name,
-    String? description,
-    String? website,
-    List<String>? photoUrls,
-    OrganizationStatus? status,
-    bool? verified,
-    ReviewSummary? reviewSummary,
-  }) => Organization(
-    id: organization.id,
-    slug: organization.slug,
-    name: name ?? organization.name,
-    orgType: organization.orgType,
-    status: status ?? organization.status,
-    verified: verified ?? organization.verified,
-    description: description ?? organization.description,
-    website: website ?? organization.website,
-    photoUrls: photoUrls ?? organization.photoUrls,
-    createdAt: organization.createdAt,
-    reviewSummary: reviewSummary ?? organization.reviewSummary,
-  );
 
   void _replaceOrganizationInMemberships(Organization organization) {
     for (var index = 0; index < _organizationMemberships.length; index++) {

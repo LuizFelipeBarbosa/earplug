@@ -1,20 +1,23 @@
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:earplug/app_state.dart';
-import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/data/repository.dart';
 import 'package:earplug/demo_data.dart';
 import 'package:earplug/models.dart';
 import 'package:earplug/screens/home.dart';
+import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/services/location_service.dart';
 import 'package:earplug/theme.dart';
+import 'package:earplug/widgets/common.dart';
 import 'package:earplug/widgets/fan_event_card.dart';
 import 'package:earplug/widgets/map_view.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 import 'support/harness.dart';
+import 'support/stub_repository.dart';
 
 // Purging the seeded demo rows made a genuinely empty feed reachable for the
 // first time, so the two reasons a feed can be empty have to read differently.
@@ -109,7 +112,17 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _SingleGigRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(
+            FeedSnapshot(
+              gigs: [DemoData.gigs.first],
+              venues: DemoData.venues,
+              bands: DemoData.bands,
+            ),
+          ),
+        ),
       home: const Scaffold(body: HomeScreen()),
       beforePump: (app) => app.setMapMode(false),
     );
@@ -183,10 +196,25 @@ void main() {
     tester,
   ) async {
     final auth = FakeAuthService();
+    final readyBand = DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
     await pumpApp(
       tester,
       auth: auth,
-      repository: _BoostRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(
+            FeedSnapshot(
+              gigs: DemoData.gigs,
+              venues: DemoData.venues,
+              bands: {...DemoData.bands, 'b1': readyBand},
+            ),
+          ),
+        )
+        ..returnsStream(
+          'myBands',
+          () => Stream.value([BandMembership(band: readyBand, role: 'admin')]),
+        ),
       home: const Scaffold(body: HomeScreen()),
     );
 
@@ -342,7 +370,18 @@ void main() {
     await pumpApp(
       tester,
       auth: auth,
-      repository: _MissingVenueRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(
+            FeedSnapshot(
+              gigs: [DemoData.gigs.first, _missingVenueGig],
+              venues: {'v3': DemoData.venues['v3']!},
+              bands: const {},
+            ),
+          ),
+        )
+        ..returns('venues', const <Venue>[]),
       home: const Scaffold(body: HomeScreen()),
     );
 
@@ -427,7 +466,11 @@ void main() {
     final harness = await pumpApp(
       tester,
       auth: auth,
-      repository: _EmptyFeedRepository(auth: auth),
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {})),
+        ),
       home: const Scaffold(body: HomeScreen()),
     );
 
@@ -435,6 +478,163 @@ void main() {
     expect(find.text(_noGigs), findsOne);
     expect(find.text(_noMatches), findsNothing);
     expect(find.text('0 GIGS NEAR YOU · LOCAL ORDER'), findsOne);
+  });
+
+  testWidgets('Home list lazily builds a 60-gig feed', (tester) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final snapshot = _bigFeedSnapshot();
+    await pumpApp(
+      tester,
+      auth: auth,
+      repository: StubRepository(auth: auth)
+        ..returnsStream('feed', () => Stream.value(snapshot)),
+      home: const Scaffold(body: HomeScreen()),
+      beforePump: (app) => app.setMapMode(false),
+    );
+
+    expect(tester.widgetList(find.byType(FanEventCard)).length, lessThan(60));
+  });
+
+  testWidgets('compact is the default date-first card presentation', (
+    tester,
+  ) async {
+    final gig = DemoData.gigs.firstWhere((item) => item.discoveryListingReady);
+    final auth = FakeAuthService();
+    final boostedBand = DemoData.bands[gig.createdByBand]!.copyWith(
+      discoveryProfileReady: true,
+    );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: StubRepository(auth: auth)
+        ..returnsStream(
+          'feed',
+          () => Stream.value(
+            FeedSnapshot(
+              gigs: DemoData.gigs,
+              venues: DemoData.venues,
+              bands: {...DemoData.bands, gig.createdByBand!: boostedBand},
+            ),
+          ),
+        )
+        ..returnsStream(
+          'myBands',
+          () =>
+              Stream.value([BandMembership(band: boostedBand, role: 'admin')]),
+        ),
+      now: () => gig.startsAt.subtract(const Duration(days: 1)),
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Padding(
+            padding: const EdgeInsets.all(16),
+            child: FanEventCard(gig: gig, app: context.watch<AppState>()),
+          ),
+        ),
+      ),
+    );
+
+    expect(harness.app.isDiscoveryBoosted(gig), isTrue);
+    final card = tester.widget<FanEventCard>(find.byType(FanEventCard));
+    expect(card.presentation, FanEventCardPresentation.compact);
+    expect(find.byType(DateBlock), findsOne);
+    expect(find.byType(GigFlyer), findsNothing);
+    expect(find.text('${gig.going} GOING'), findsOne);
+    expect(find.byKey(ValueKey('save-${gig.id}')), findsOne);
+    expect(find.byKey(ValueKey('share-${gig.id}')), findsOne);
+    expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);
+    final boostLabel = tester.widget<Text>(
+      find.byKey(ValueKey('discovery-boost-${gig.id}')),
+    );
+    expect(boostLabel.style!.fontSize, greaterThanOrEqualTo(11));
+    final ageLabel = tester.widget<Text>(
+      find.text(gig.ageRequirement.label.toUpperCase()),
+    );
+    expect(ageLabel.style!.fontSize, greaterThanOrEqualTo(11));
+  });
+
+  testWidgets('featured presentation uses the resolved presenter and flyer', (
+    tester,
+  ) async {
+    final gig = DemoData.gigs.firstWhere((item) => item.createdByBand != null);
+    await pumpApp(
+      tester,
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: FanEventCard(
+              gig: gig,
+              app: context.read<AppState>(),
+              presentation: FanEventCardPresentation.featured,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final presenter = DemoData.bands[gig.createdByBand]!.name.toUpperCase();
+    expect(find.byType(DateBlock), findsNothing);
+    expect(find.byType(GigFlyer), findsOne);
+    expect(find.text('$presenter PRESENTS'), findsOne);
+    expect(find.text(gig.title.toUpperCase()), findsOne);
+    expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsOne);
+  });
+
+  testWidgets('cancelled future RSVP still surfaces in the upcoming profile', (
+    tester,
+  ) async {
+    final auth = FakeAuthService();
+    await auth.signInDemo();
+    final cancelledGig = DemoData.gigs
+        .firstWhere(
+          (gig) =>
+              gig.tix == Ticketing.rsvp && gig.startsAt.isAfter(DateTime.now()),
+        )
+        .copyWith(lifecycle: GigLifecycle.cancelled);
+    final repository = StubRepository(auth: auth)
+      ..returnsStream(
+        'feed',
+        () => Stream.value(
+          FeedSnapshot(
+            gigs: [
+              for (final gig in DemoData.gigs)
+                if (gig.id == cancelledGig.id) cancelledGig else gig,
+            ],
+            venues: DemoData.venues,
+            bands: DemoData.bands,
+          ),
+        ),
+      )
+      ..returnsStream(
+        'myInteractions',
+        () => Stream.value(
+          Interactions(
+            rsvpGigIds: {cancelledGig.id},
+            followBandIds: const {},
+            savedGigIds: const {},
+            gigs: [cancelledGig],
+            attendedCount: 0,
+          ),
+        ),
+      );
+    final harness = await pumpApp(
+      tester,
+      auth: auth,
+      repository: repository,
+      home: const Scaffold(body: MyGigsScreen()),
+    );
+
+    final gig = cancelledGig;
+    await tester.pumpAndSettle();
+    expect(harness.app.rsvps, contains(gig.id));
+    expect(harness.app.upcomingRsvpGigs.map((g) => g.id), [gig.id]);
+    expect(find.byKey(ValueKey('next-show-${gig.id}')), findsOne);
+    expect(find.byKey(ValueKey('fan-event-${gig.id}')), findsOne);
+    expect(find.byKey(ValueKey('ticket-action-${gig.id}')), findsNothing);
+    expect(find.byKey(ValueKey('show-qr-${gig.id}')), findsNothing);
+    expect(find.text('QR PASS'), findsNothing);
+    expect(find.text('CANCELLED'), findsWidgets);
   });
 }
 
@@ -457,6 +657,43 @@ Future<void> _expandClusterContaining(
   expect(marker, findsOne);
 }
 
+FeedSnapshot _bigFeedSnapshot() {
+  return FeedSnapshot(
+    gigs: List.generate(60, (index) {
+      final source = DemoData.gigs.first;
+      return Gig(
+        id: 'big-$index',
+        slug: 'big-$index',
+        title: source.title,
+        venueId: source.venueId,
+        price: source.price,
+        startsAt: source.startsAt,
+        doorsAt: source.doorsAt,
+        dateShort: source.dateShort,
+        dateLine: source.dateLine,
+        time: source.time,
+        when: source.when,
+        flyKey: source.flyKey,
+        lineup: source.lineup,
+        performers: source.performers,
+        going: source.going,
+        genres: source.genres,
+        desc: source.desc,
+        tix: source.tix,
+        externalUrl: source.externalUrl,
+        flyerUrl: source.flyerUrl,
+        cap: source.cap,
+        ageRequirement: source.ageRequirement,
+        lifecycle: source.lifecycle,
+        createdByBand: source.createdByBand,
+        discoveryListingReady: source.discoveryListingReady,
+      );
+    }),
+    venues: DemoData.venues,
+    bands: DemoData.bands,
+  );
+}
+
 class _SuccessfulLocationService implements LocationService {
   const _SuccessfulLocationService();
 
@@ -477,83 +714,34 @@ class _SuccessfulLocationService implements LocationService {
   Future<bool> openLocationSettings() async => true;
 }
 
-class _MissingVenueRepository extends DemoRepository {
-  _MissingVenueRepository({required super.auth});
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: [DemoData.gigs.first, _missingVenueGig],
-      venues: {'v3': DemoData.venues['v3']!},
-      bands: const {},
-    ),
-  );
-
-  @override
-  Future<List<Venue>> venues() async => const [];
-}
-
-class _SingleGigRepository extends DemoRepository {
-  _SingleGigRepository({required super.auth});
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: [DemoData.gigs.first],
-      venues: DemoData.venues,
-      bands: DemoData.bands,
-    ),
-  );
-}
-
-class _BoostRepository extends DemoRepository {
-  _BoostRepository({required super.auth});
-
-  Band get _readyBand =>
-      DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: DemoData.gigs,
-      venues: DemoData.venues,
-      bands: {...DemoData.bands, 'b1': _readyBand},
-    ),
-  );
-
-  @override
-  Stream<List<BandMembership>> myBands() =>
-      Stream.value([BandMembership(band: _readyBand, role: 'admin')]);
-}
-
-class _BoundaryBoostRepository extends DemoRepository {
+class _BoundaryBoostRepository extends StubRepository {
   _BoundaryBoostRepository({
     required super.auth,
     required DateTime now,
     Duration opensAfter = const Duration(seconds: 2),
-  }) : opensAt = now.add(opensAfter);
+  }) : opensAt = now.add(opensAfter) {
+    final readyBand = DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
+    returnsStream(
+      'feed',
+      () => Stream.value(
+        FeedSnapshot(
+          gigs: [gig],
+          venues: {'v1': DemoData.venues['v1']!},
+          bands: {'b1': readyBand},
+        ),
+      ),
+    );
+    returnsStream(
+      'myBands',
+      () => Stream.value([BandMembership(band: readyBand, role: 'admin')]),
+    );
+  }
 
   final DateTime opensAt;
-
-  Band get _readyBand =>
-      DemoData.bands['b1']!.copyWith(discoveryProfileReady: true);
 
   late final Gig gig = DemoData.gigs[1].copyWith(
     startsAt: opensAt.add(discoveryBoostLead),
   );
-
-  @override
-  Stream<FeedSnapshot> feed() => Stream.value(
-    FeedSnapshot(
-      gigs: [gig],
-      venues: {'v1': DemoData.venues['v1']!},
-      bands: {'b1': _readyBand},
-    ),
-  );
-
-  @override
-  Stream<List<BandMembership>> myBands() =>
-      Stream.value([BandMembership(band: _readyBand, role: 'admin')]);
 }
 
 final _missingVenueGig = Gig(
@@ -573,12 +761,3 @@ final _missingVenueGig = Gig(
   desc: 'The venue row was deleted.',
   tix: Ticketing.rsvp,
 );
-
-/// Stands in for the cleaned dev deployment: reachable, healthy, nothing booked.
-class _EmptyFeedRepository extends DemoRepository {
-  _EmptyFeedRepository({required super.auth});
-
-  @override
-  Stream<FeedSnapshot> feed() =>
-      Stream.value(const FeedSnapshot(gigs: [], venues: {}, bands: {}));
-}
