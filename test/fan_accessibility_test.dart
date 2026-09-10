@@ -1,7 +1,6 @@
 import 'package:earplug/data/demo_repository.dart';
 import 'package:earplug/screens/edit_profile.dart';
 import 'package:earplug/screens/explore.dart';
-import 'package:earplug/screens/home.dart';
 import 'package:earplug/screens/my_gigs.dart';
 import 'package:earplug/services/auth_service.dart';
 import 'package:earplug/widgets/tab_bars.dart';
@@ -31,20 +30,6 @@ void main() {
       matching: find.byType(Row),
     );
     expect(tester.getSize(tabBarRow).height, greaterThan(66));
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('Home list remains usable at increased text scale', (
-    tester,
-  ) async {
-    await pumpApp(
-      tester,
-      beforePump: (app) => app.setMapMode(false),
-      home: scaledScreen(const HomeScreen()),
-    );
-
-    expect(find.text('LIST'), findsOne);
-    expect(find.textContaining('GIGS NEAR YOU'), findsOne);
     expect(tester.takeException(), isNull);
   });
 

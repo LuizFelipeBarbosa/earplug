@@ -12,6 +12,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/design_rules.dart';
 import 'support/harness.dart';
 import 'support/stub_repository.dart';
 
@@ -167,6 +168,7 @@ void main() {
         }
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull, reason: screen.name);
+        expectNoFieldInCard(tester);
         if (capture != null) {
           await _capture(
             tester,
@@ -203,6 +205,7 @@ void main() {
             }
             expect(failure, isNull, reason: '${screen.name}, scroll $step');
           }
+          expectNoFieldInCard(tester);
           if (capture != null) {
             await _capture(
               tester,
